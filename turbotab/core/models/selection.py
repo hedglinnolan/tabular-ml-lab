@@ -879,8 +879,7 @@ def mark_final(out: dict[str, Any], *, opened: bool, family: str | None) -> dict
 # van der Ploeg, Austin & Steyerberg (BMC Med Res Methodol 2014;14:137) found that support vector
 # machines, neural networks and random forests "may need over 10 times as many events per variable
 # to achieve a stable AUC and a small optimism" as logistic regression. A flexible learner is one
-# that nearly memorizes its rows (it declares ``bootstrap_optimism = False``, ``models/base.py``),
-# unless it declares ``flexible`` itself.
+# that declares ``flexible`` (``models/base.py``; MODEL_FAMILY_CONTRACT C11).
 
 FLEXIBLE_REASON = ("below Riley et al.'s minimum sample size, a flexible learner may need over 10 "
                    "times as many events per variable as a regression to reach a stable score "
@@ -912,12 +911,8 @@ class SampleSize(BaseModel):
 
 
 def is_flexible(family: Any) -> bool:
-    """A flexible learner (the comment above): its own ``flexible``, else a family that nearly
-    memorizes its rows."""
-    declared = getattr(family, "flexible", None)
-    if declared is not None:
-        return bool(declared)
-    return not bool(getattr(family, "bootstrap_optimism", True))
+    """A flexible learner (the comment above), as the family declares it."""
+    return bool(family.flexible)
 
 
 def shelf_order(ranked: Sequence[tuple[Any, Any]], situation: Any

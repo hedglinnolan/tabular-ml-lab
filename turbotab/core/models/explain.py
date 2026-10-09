@@ -350,30 +350,34 @@ def anatomy(pipeline: Any, raw_columns: Sequence[str], task: str) -> Anatomy:
                    sources=sources, group=group, task=task, as_raw=frozenset(unchanged))
 
 
-LINEAR_MODELS = ("LinearRegression", "LogisticRegression", "ElasticNetCV", "PooledElasticNetCV",
-                 "Float32ElasticNetCV", "LogisticRegressionCV")
+def model_kind(family_key: str, anat: Anatomy) -> str | None:
+    """How SHAP is computed for this family's fitted model step: ``linear`` or ``trees``, as the
+    family declares its ``attribution`` (MODEL_FAMILY_CONTRACT C10), or None (not built).
+
+    None too when the fitted step is not the family's own: a yes/no model step that exposes no
+    ``decision_function`` (an Explore lever's wrapper, ``methods.levers.ImbalanceCorrected``) has
+    no margin for ``Anatomy.raw_score`` to read, and a linear step with no ``coef_`` has no
+    coefficients for the closed form."""
+    from turbotab.core.models.base import get_family
+
+    kind = get_family(family_key).attribution
+    if kind == "none" or (anat.task == "binary" and not hasattr(anat.rest, "decision_function")):
+        return None
+    if kind == "linear" and not hasattr(anat.model, "coef_"):
+        return None
+    return kind
 
 
-def model_kind(model: Any) -> str | None:
-    """How SHAP is computed for this model step: ``linear``, ``trees``, or None (not built)."""
-    name = type(model).__name__
-    if name.startswith("HistGradientBoosting"):
-        return "trees"
-    if name in LINEAR_MODELS and hasattr(model, "coef_"):
-        return "linear"
-    return None
-
-
-def attributions(anat: Anatomy, A: pd.DataFrame, background: pd.DataFrame | None = None
-                 ) -> tuple[pd.DataFrame, float] | None:
+def attributions(anat: Anatomy, A: pd.DataFrame, background: pd.DataFrame | None = None,
+                 *, kind: str) -> tuple[pd.DataFrame, float] | None:
     """SHAP values of every row of ``A`` (the model's inputs), one column per model-matrix column,
     on the model's own scale, and the expected value they are measured from; None when the family
     has no SHAP computation here or several outputs.
 
     ``background``: the inputs of the rows the model was fit on; its mean matrix row is ``E[z]``
-    in the linear closed form (TreeSHAP's covers are the trees' own training counts)."""
-    kind = model_kind(anat.model)
-    if kind is None:
+    in the linear closed form (TreeSHAP's covers are the trees' own training counts). ``kind``:
+    the family's attribution (:func:`model_kind`)."""
+    if kind not in METHOD_WORDS:
         return None
     Z = anat.matrix(A)
     names = [str(c) for c in Z.columns]
@@ -1098,6 +1102,7 @@ Progress = Callable[[float, str], None]
 class _Work:
     fam: FamilyFit
     anat: Anatomy
+    kind: str  # its attribution, as :func:`model_kind` read it
     A_all: pd.DataFrame
     A: pd.DataFrame
     phi: pd.DataFrame  # grouped, the explained rows × inputs
@@ -1180,19 +1185,20 @@ def _colors(values: pd.Series) -> tuple[list[float | None], list[float | None], 
 
 def _work(fam: FamilyFit, s: Setting, sample: np.ndarray) -> _Work | FamilyExplanation:
     anat = anatomy(fam.fitted, list(s.X.columns), s.task)
-    if model_kind(anat.model) is None:
+    kind = model_kind(fam.key, anat)
+    if kind is None:
         return FamilyExplanation(family=fam.key, label=fam.label, explained=False,
                                  reason=f"{fam.label}: its SHAP values are not built here.")
     A_all = anat.inputs(s.X)
     A = A_all.iloc[sample]
-    found = attributions(anat, A, A_all)
+    found = attributions(anat, A, A_all, kind=kind)
     if found is None:
         return FamilyExplanation(family=fam.key, label=fam.label, explained=False,
                                  reason=f"{fam.label}: explanations are built for one output "
                                         f"(a numeric or yes/no outcome).")
     phi, base = found
     phi = grouped(phi, anat.group)
-    return _Work(fam=fam, anat=anat, A_all=A_all, A=A, phi=phi,
+    return _Work(fam=fam, anat=anat, kind=kind, A_all=A_all, A=A, phi=phi,
                  ranked=importance(phi).sort_values(ascending=False, kind="stable"), base=base,
                  floor=floor_of(fam, s), refits=[])
 
@@ -1211,7 +1217,7 @@ def _refits(w: _Work, s: Setting, sample: np.ndarray, refit: Refit,
         model = refit(reseeded(clone(w.fam.unfitted), r), s.X.iloc[idx], np.asarray(s.y)[idx], units)
         anat = anatomy(model, list(s.X.columns), s.task)
         A = anat.inputs(X_ex)
-        found = attributions(anat, A, anat.inputs(s.X.iloc[idx]))
+        found = attributions(anat, A, anat.inputs(s.X.iloc[idx]), kind=w.kind)
         if found is None:
             continue
         w.refits.append((anat, A))
@@ -1274,13 +1280,15 @@ def _interactions(w: _Work, s: Setting, order: Sequence[str]) -> Interactions | 
 
 def _architecture(w: _Work, s: Setting, outcome_unit: str | None, units: Mapping[str, str],
                   roles: Mapping[str, Role], scale: str) -> Architecture:
-    kind = model_kind(w.anat.model)
-    if kind == "trees":
+    from turbotab.core.models.base import get_family
+
+    declared = get_family(w.fam.key).architecture  # MODEL_FAMILY_CONTRACT C10
+    if "trees" in declared:
         columns = [str(c) for c in w.anat.matrix(w.A.iloc[:1]).columns]
         return Architecture(kind="trees", trees=tree_structure(w.anat, columns))
     equation = linear_equation(w.anat, w.A_all, target=s.target, scale=scale,
                                outcome_unit=outcome_unit, units=units, roles=roles)
-    if hasattr(w.anat.model, "alpha_") or hasattr(w.anat.model, "C_"):
+    if "shrinkage" in declared:
         return Architecture(kind="shrinkage", equation=equation,
                             path=shrinkage_path(w.anat, w.A_all, s.y))
     return Architecture(kind="equation", equation=equation)
@@ -1399,7 +1407,7 @@ def explain(families: Sequence[FamilyFit], s: Setting, refit: Refit,
         interactions = _interactions(w, s, list(main.index)) if w.floor.passed else None
         explained.append(FamilyExplanation(
             family=fam.key, label=fam.label, explained=True,
-            method=METHOD_WORDS[model_kind(w.anat.model) or "linear"], scale=scale, base=w.base,
+            method=METHOD_WORDS[w.kind], scale=scale, base=w.base,
             floor=None if s.purpose == "inference" else w.floor, importance=importance_rows,
             beeswarm=beeswarm,
             observations=observations, stability=_stability(w, s, again, main),

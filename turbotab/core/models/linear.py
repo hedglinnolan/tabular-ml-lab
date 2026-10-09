@@ -21,14 +21,24 @@ import pandas as pd
 
 from turbotab.core.decisions import Purpose, Task
 from turbotab.core.models.base import (
+    CLASS_SCALES,
     Assessment,
     FamilyBase,
+    Identity,
+    InferenceDecl,
     Situation,
     coefficient_rows,
     register_family,
 )
 
 ROWS_PER_PREDICTOR = 10  # multiclass only: no published criterion is computed for it yet
+# What the methods text calls it, by the outcome it models (``voice``'s select_models sentence).
+METHODS_LABELS = {
+    "regression": "linear regression",
+    "binary": "logistic regression",
+    "multiclass": "multinomial logistic regression",
+    "ordinal": "multinomial logistic regression, which ignores the levels' order",
+}
 # Belsley, Kuh & Welsch (1980): the condition number of the design matrix with its intercept, each
 # column scaled to unit length. Above 30 is the usual "moderate" mark; 1,000 is far past "strong"
 # and means some columns are close to an exact linear combination of others (shares that sum to
@@ -116,6 +126,30 @@ class Linear(FamilyBase):
     needs_scaling = False
     handles_missing = False
     linear_in_values = True
+    # MODEL_FAMILY_CONTRACT §1 (§3.1's row for it).
+    identity = Identity(kind="estimator", library="scikit-learn",
+                        estimator="LinearRegression; LogisticRegression (no penalty)")
+    purposes = ("prediction", "inference")
+    predicts = True
+    flexible = False
+    bootstrap_optimism = True
+    inference_decl = InferenceDecl(table="intervals",
+                                   intervals=("model", "HC3", "CR2", "profile", "Taylor"),
+                                   design_based=True, product_terms=True, matrix_table=True,
+                                   default_for=("regression", "binary"))
+    invariances = ("linear_maps",)
+    curve_shape = "straight"
+    diagnostics = ("separation", "collinearity", "residual_spread", "influence")
+    output = "margin"
+    updating = ("shrinkage",)
+    raw_scale = CLASS_SCALES
+    attribution = "linear"
+    architecture = ("equation",)
+    review_lenses = ("shared",)
+    cost_model = "cross_product"  # least squares and Newton-Cholesky factor the p × p product
+
+    def methods_label(self, task: Task | None) -> str:
+        return METHODS_LABELS.get(task, "a linear model")
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         if task == "regression":

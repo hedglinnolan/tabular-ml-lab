@@ -47,7 +47,14 @@ import pandas as pd
 from sklearn.base import BaseEstimator
 
 from turbotab.core.decisions import Purpose, Task
-from turbotab.core.models.base import Assessment, FamilyBase, Situation, register_family
+from turbotab.core.models.base import (
+    Assessment,
+    FamilyBase,
+    Identity,
+    InferenceDecl,
+    Situation,
+    register_family,
+)
 
 FDR = 0.05
 LEVEL = 0.95
@@ -328,6 +335,19 @@ class FeatureWise(FamilyBase):
     # Its tests run over more columns than an imputation model holds, so it pools no multiple
     # imputations: under that answer the fit holds its table with the ways forward (MS7 repair).
     pools_imputations = False
+    # MODEL_FAMILY_CONTRACT §1 (§3.1's row for it). It makes no predictions, so its invariances,
+    # raw scale and attribution are not applicable.
+    identity = Identity(kind="estimator", library="turbotab", estimator="FeatureWiseTests")
+    flexible = False
+    bootstrap_optimism = True
+    inference_decl = InferenceDecl(table="intervals", intervals=("model", "CR2"),
+                                   matrix_table=True)
+    curve_shape = "straight"
+    review_lenses = ("metabolomics", "genomics")
+
+    def methods_label(self, task: Task | None) -> str:
+        # WP11: one least-squares test per exposure, q-values by Benjamini–Hochberg
+        return "feature-wise least-squares tests with Benjamini–Hochberg false-discovery control"
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         return FeatureWiseTests(task=task, features=None)

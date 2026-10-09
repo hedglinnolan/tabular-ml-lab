@@ -92,18 +92,15 @@ def time_one_fit(pipeline: Any, X: Any, y: Any) -> float | None:
     return time.perf_counter() - started
 
 
-def fit_cost(model: Any, n_rows: float, n_columns: float) -> float:
-    """Operations one fit of ``model`` takes on an ``n_rows`` × ``n_columns`` matrix, up to a constant.
+def fit_cost(family: Any, n_rows: float, n_columns: float) -> float:
+    """Operations one fit of ``family`` takes on an ``n_rows`` × ``n_columns`` matrix, up to a
+    constant, by its declared ``cost_model`` (MODEL_FAMILY_CONTRACT C6).
 
-    Least squares (``LinearRegression``) and Newton-Cholesky logistic regression factor the p × p
-    cross-product: about n·p·min(n, p). Everything else on the shelf passes over the cells once per
-    iteration: n·p.
+    ``cross_product``: least squares and Newton-Cholesky logistic regression factor the p × p
+    cross-product, about n·p·min(n, p). ``cells``: one pass over the cells per iteration, n·p.
     """
-    from sklearn.linear_model import LinearRegression, LogisticRegression
-
     n, p = float(n_rows), float(n_columns)
-    if isinstance(model, LinearRegression) or (
-            isinstance(model, LogisticRegression) and model.solver == "newton-cholesky"):
+    if family.cost_model == "cross_product":
         return n * p * min(n, p)
     return n * p
 
@@ -159,8 +156,8 @@ def estimate_fits(store: Any, state: Any, task: str, train_ids: Any, families: S
         name, step = pipeline.steps[-1]
         if units is not None and "units" in step.get_params(deep=False):
             pipeline.set_params(**{f"{name}__units": units})  # a family that models the unit
-        model = pipeline[-1]
-        scale = fit_cost(model, n_rows, n_columns) / max(fit_cost(model, len(y), len(sampled)), 1.0)
+        scale = (fit_cost(family, n_rows, n_columns)
+                 / max(fit_cost(family, len(y), len(sampled)), 1.0))
         seconds = time_one_fit(pipeline, X[spec.inputs], y)
         if seconds is None:
             continue

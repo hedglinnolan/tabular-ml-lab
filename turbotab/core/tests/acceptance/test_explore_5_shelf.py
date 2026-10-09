@@ -79,6 +79,8 @@ def test_5_rileys_minimum_runs_before_the_shelf_and_below_it_the_regressions_ran
     assert size["below"] is below
     order = [f["key"] for f in shelf["families"]]
     flexible = next(f for f in shelf["families"] if f["key"] == "boosted_trees")
+    # MC-1: a quiet name beside each concern, none yet (MC-5 writes them)
+    assert all(f["terms"] == [None] * len(f["concerns"]) for f in shelf["families"])
     if below:
         assert order.index("boosted_trees") > max(order.index(k) for k in order if k != "boosted_trees")
         assert flexible["concerns"][0] == (

@@ -197,6 +197,7 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
         families=[
             ShelfFamily(key=f.key, label=f.label, rank=i + 1, fit=a.fit,
                         concerns=([assay] if assay else []) + list(a.concerns),
+                        terms=[None] * (bool(assay) + len(a.concerns)),
                         inductive_bias=f.inductive_bias,
                         estimate_seconds=estimates[f.key].seconds if estimates.get(f.key) else None,
                         estimate=estimates[f.key].text if estimates.get(f.key) else None)

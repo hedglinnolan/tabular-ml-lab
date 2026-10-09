@@ -41,7 +41,6 @@ from pydantic import BaseModel, ConfigDict
 
 from turbotab.core.graph import Bundle, StageContext
 
-FAMILY_FOR = {"regression": "linear", "binary": "linear", "ordinal": "proportional_odds"}
 COEFFICIENT_LABELS = {"omega_total": "ω-total", "omega_hierarchical": "ω-hierarchical",
                       "test_retest_icc": "test–retest ICC(3,1)",
                       "calibration_slope": "calibration slope"}
@@ -365,9 +364,11 @@ def _why_not(spec: Any, specs: Sequence[Any], *, inference: bool, task: str,
     if grouped is not None:
         return grouped[0], [dict(e) for e in grouped[1]], False
     if family is None or pipeline is None:
+        from turbotab.core.models.base import inference_default
+
         return ((f"The correction refits a least-squares, logistic or proportional-odds model; "
                  f"choose the {'proportional-odds' if task == 'ordinal' else 'linear'} family "
-                 f"among the models." if task in FAMILY_FOR else
+                 f"among the models." if inference_default(task) is not None else
                  f"A {task.replace('_', '-')} outcome's coefficients are not corrected here."),
                 [], False)
     if spec.kind == "formative" and spec.reliability == "internal_consistency":
@@ -498,7 +499,7 @@ def scales_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.methods import scales as S
     from turbotab.core.methods.imputation import ImputationRefused
     from turbotab.core.methods.missing import impute_for_inference
-    from turbotab.core.models import get_family
+    from turbotab.core.models.base import inference_default
     from turbotab.core.models.inference import (INDEPENDENT, Outcome, cluster_columns,
                                                 floor_refusal, resolve_clusters)
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
@@ -557,8 +558,10 @@ def scales_stage(ctx: StageContext) -> Bundle:
             imputation = {"m": int(imputations.m),
                           "imputed": {str(c): int(n) for c, n in imputations.imputed.items()
                                       if c in items}}
-    key = FAMILY_FOR.get(task)
-    family = get_family(key) if key and key in (state.models or []) and key in pipelines else None
+    # The task's default inference family (its declared ``default_for``), when it was chosen.
+    default = inference_default(task)
+    key = default.key if default is not None else None
+    family = default if key and key in (state.models or []) and key in pipelines else None
     pipeline = pipelines.get(key) if family is not None else None
     survey = getattr(state, "survey", None)
     blocked = (population_block() if inference and survey is not None
