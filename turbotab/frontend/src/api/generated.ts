@@ -223,6 +223,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * For The Record
+         * @description Each stage's For the record lines (SIZING P0.5), collapsed in the quest log and never
+         *     counted: what was read (the ingest's facts and warnings, the profile's basis), why a question
+         *     was not asked, the defaults no other choice changes a number on here (with why), and the
+         *     answers TurboTab recorded itself. A stage not reached yet has none.
+         */
+        get: operations["for_the_record_api_projects__pid__record_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/triage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Triage
+         * @description The triage of the open noticings at the gate (SIZING P0.5; calm/FOUNDATION §7): before the
+         *     plan is fixed under Estimate and Describe (and while the goal is unanswered), before the
+         *     held-out rows open under Predict. Each open noticing carries the recommended disposition
+         *     ("doesn't change your numbers here", "could bias the estimate", "act on it") and its reason;
+         *     blockers come first and must be resolved. ``POST …/decisions`` with ``{"kind":
+         *     "confirm_sweep", "stage": <the gate's stage>, "sweep": "noticings"}`` records every
+         *     disposition, with any the person changed in ``lines``.
+         */
+        get: operations["triage_api_projects__pid__triage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/methods": {
         parameters: {
             query?: never;
@@ -1388,6 +1437,48 @@ export interface components {
              */
             role: "identifier" | "exposure" | "energy" | "covariate" | "design" | "flag" | "time" | "excluded" | "cluster";
         };
+        /** ConfirmSweep */
+        "ConfirmSweep-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "confirm_sweep";
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "data" | "question" | "first_look" | "whos_in" | "models" | "results" | "writeup";
+            /**
+             * Sweep
+             * @default defaults
+             * @enum {string}
+             */
+            sweep: "defaults" | "noticings";
+            /** Lines */
+            lines?: components["schemas"]["SweptLine-Input"][];
+        };
+        /** ConfirmSweep */
+        "ConfirmSweep-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "confirm_sweep";
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "data" | "question" | "first_look" | "whos_in" | "models" | "results" | "writeup";
+            /**
+             * Sweep
+             * @default defaults
+             * @enum {string}
+             */
+            sweep: "defaults" | "noticings";
+            /** Lines */
+            lines: components["schemas"]["SweptLine-Output"][];
+        };
         /**
          * CovariateAnswers
          * @description The modified disjunctive cause criterion, asked as questions (VanderWeele 2019; MODELING_
@@ -1534,7 +1625,7 @@ export interface components {
              */
             after_estimates: boolean;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"] | components["schemas"]["SetModelSequence-Output"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Output"] | components["schemas"]["SetTimeVarying-Output"] | components["schemas"]["SetExplain-Output"] | components["schemas"]["SetForms-Output"] | components["schemas"]["SetModification-Output"] | components["schemas"]["ViewOutcome-Output"] | components["schemas"]["SetLevers-Output"] | components["schemas"]["SetSelection-Output"] | components["schemas"]["SetIntendedUse-Output"] | components["schemas"]["SetUpdating-Output"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"] | components["schemas"]["SetModelSequence-Output"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Output"] | components["schemas"]["SetTimeVarying-Output"] | components["schemas"]["SetExplain-Output"] | components["schemas"]["SetForms-Output"] | components["schemas"]["SetModification-Output"] | components["schemas"]["ViewOutcome-Output"] | components["schemas"]["SetLevers-Output"] | components["schemas"]["SetSelection-Output"] | components["schemas"]["SetIntendedUse-Output"] | components["schemas"]["SetUpdating-Output"] | components["schemas"]["ConfirmSweep-Output"];
         };
         /**
          * DeferFinding
@@ -1754,7 +1845,7 @@ export interface components {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"] | components["schemas"]["SetModelSequence-Output"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Output"] | components["schemas"]["SetTimeVarying-Output"] | components["schemas"]["SetExplain-Output"] | components["schemas"]["SetForms-Output"] | components["schemas"]["SetModification-Output"] | components["schemas"]["ViewOutcome-Output"] | components["schemas"]["SetLevers-Output"] | components["schemas"]["SetSelection-Output"] | components["schemas"]["SetIntendedUse-Output"] | components["schemas"]["SetUpdating-Output"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"] | components["schemas"]["SetModelSequence-Output"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Output"] | components["schemas"]["SetTimeVarying-Output"] | components["schemas"]["SetExplain-Output"] | components["schemas"]["SetForms-Output"] | components["schemas"]["SetModification-Output"] | components["schemas"]["ViewOutcome-Output"] | components["schemas"]["SetLevers-Output"] | components["schemas"]["SetSelection-Output"] | components["schemas"]["SetIntendedUse-Output"] | components["schemas"]["SetUpdating-Output"] | components["schemas"]["ConfirmSweep-Output"]) | null;
         };
         /** ExplainSpec */
         ExplainSpec: {
@@ -2004,6 +2095,20 @@ export interface components {
             horizon: number | null;
             /** Prediction Horizon */
             prediction_horizon: number | null;
+        };
+        /**
+         * ForTheRecord
+         * @description Each stage's For the record lines (FOUNDATION §3: collapsed, never counted). A stage not
+         *     reached yet has none: what it would say may still change.
+         */
+        ForTheRecord: {
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+            /** Stages */
+            stages: components["schemas"]["RecordStage"][];
         };
         /** FrameRow */
         FrameRow: {
@@ -3348,6 +3453,10 @@ export interface components {
             selection: components["schemas"]["SelectionSpec"] | null;
             intended_use: components["schemas"]["IntendedUseSpec"] | null;
             updating: components["schemas"]["UpdatingSpec"] | null;
+            /** Sweeps */
+            sweeps: {
+                [key: string]: components["schemas"]["SweepConfirmation"];
+            } | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -3388,11 +3497,15 @@ export interface components {
         };
         /**
          * QuestLine
-         * @description One line of a stage: a Router question, a declaration or a finding.
+         * @description One line of a stage: a Router question, a declaration, a finding or what the values settled
+         *     (``reading``).
          *
          *     ``status``: ``answered``; ``open`` (answerable now); ``waiting`` (``waiting_for`` names the
          *     earlier answers it needs, ``computing`` the results its card waits for); ``set_for_you`` (a
-         *     default the engine stated, in the Confirm sweep or For the record).
+         *     default the engine stated, in the Confirm sweep or For the record). A default's ``reason`` is
+         *     why it was set; on a Confirm line ``would_change`` says what another choice would change here,
+         *     and a default For the record says in ``changes_nothing`` why no other choice changes a number
+         *     (P0.5). ``id`` is the card that opens its options; a reading's ``items`` carry their own.
          */
         QuestLine: {
             /** Id */
@@ -3403,7 +3516,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "question" | "declaration" | "finding";
+            source: "question" | "declaration" | "finding" | "reading";
             /**
              * Label
              * @enum {string}
@@ -3435,6 +3548,15 @@ export interface components {
              */
             computing: string[];
             reopened_by: components["schemas"]["ReopenedBy"] | null;
+            /** Would Change */
+            would_change: string | null;
+            /** Changes Nothing */
+            changes_nothing: string | null;
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["ReadItem"][];
         };
         /**
          * QuestLog
@@ -3445,7 +3567,7 @@ export interface components {
         QuestLog: {
             /**
              * Version
-             * @default 2
+             * @default 3
              */
             version: number;
             /** Stages */
@@ -3512,6 +3634,39 @@ export interface components {
             change: components["schemas"]["Exit"][];
         };
         /**
+         * ReadItem
+         * @description One reading the values settled with no question asked (``readings.read_from_data``).
+         */
+        ReadItem: {
+            /** Kind */
+            kind: string;
+            /** Column */
+            column: string;
+            /** Value */
+            value: string;
+            /** Words */
+            words: string;
+            /** Evidence */
+            evidence: string;
+            /**
+             * Options
+             * @default []
+             */
+            options: components["schemas"]["ReadOption"][];
+        };
+        /**
+         * ReadOption
+         * @description Another reading of a column, and the decision that records it.
+         */
+        ReadOption: {
+            /** Label */
+            label: string;
+            /** Decision */
+            decision: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
          * ReadingItem
          * @description One reading a block confirmation lists, with the value it shows.
          */
@@ -3536,6 +3691,40 @@ export interface components {
             read_from_data: components["schemas"]["ReadFromData"][];
             /** Sentence */
             sentence: string;
+        };
+        /**
+         * RecordLine
+         * @description One collapsed line: ``ingest`` (what was read and its warnings), ``profile`` (what the
+         *     column summaries read), ``not_applicable`` (why a question was not asked), ``set_for_you`` (a
+         *     default no other choice changes a number on here, with why), ``filled`` (an answer the engine
+         *     recorded itself), ``noted`` (what was looked at or noticed with nothing to decide).
+         */
+        RecordLine: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "ingest" | "profile" | "not_applicable" | "set_for_you" | "filled" | "noted";
+            /** Key */
+            key: string;
+            /** Id */
+            id: string | null;
+            /** Text */
+            text: string;
+            /** Decision Id */
+            decision_id: string | null;
+        };
+        /** RecordStage */
+        RecordStage: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Lines
+             * @default []
+             */
+            lines: components["schemas"]["RecordLine"][];
         };
         /**
          * Refusal
@@ -6407,13 +6596,77 @@ export interface components {
         };
         /**
          * Sweep
-         * @description The stage's one Confirm sweep: how many defaults it holds, and whether each is answered.
+         * @description The stage's one Confirm sweep (P0.5): how many defaults it holds, and whether each is
+         *     answered, by the person's own answer or by "Confirm all" (``confirmed_by``, the
+         *     ``confirm_sweep`` record). ``changed``: the lines set for the person anew, or stated otherwise,
+         *     since that confirmation. ``id`` is the crosswalk's card; ``heading`` and ``action`` are its
+         *     words ("Here are the 6 other choices set for you", "Confirm all 6").
          */
         Sweep: {
             /** Lines */
             lines: number;
             /** Answered */
             answered: boolean;
+            /**
+             * Id
+             * @default
+             */
+            id: string;
+            /**
+             * Heading
+             * @default
+             */
+            heading: string;
+            /**
+             * Action
+             * @default
+             */
+            action: string;
+            /** Confirmed By */
+            confirmed_by: string | null;
+            /**
+             * Changed
+             * @default []
+             */
+            changed: string[];
+        };
+        /** SweepConfirmation */
+        SweepConfirmation: {
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "data" | "question" | "first_look" | "whos_in" | "models" | "results" | "writeup";
+            /**
+             * Sweep
+             * @default defaults
+             * @enum {string}
+             */
+            sweep: "defaults" | "noticings";
+            /** Lines */
+            lines: components["schemas"]["SweptLine-Output"][];
+        };
+        /** SweptLine */
+        "SweptLine-Input": {
+            /** Id */
+            id: string;
+            /** Key */
+            key: string;
+            /** Value */
+            value: string;
+            /** Basis */
+            basis?: string | null;
+        };
+        /** SweptLine */
+        "SweptLine-Output": {
+            /** Id */
+            id: string;
+            /** Key */
+            key: string;
+            /** Value */
+            value: string;
+            /** Basis */
+            basis: string | null;
         };
         /**
          * TableFocusView
@@ -6579,6 +6832,98 @@ export interface components {
             ordering_acknowledged: boolean;
             /** Diagnostics Seen */
             diagnostics_seen: string | null;
+        };
+        /**
+         * Triage
+         * @description The triage at the gate: its stage and crosswalk card, each noticing (blockers first), how
+         *     many block, whether it can be confirmed now (the gate not passed, no blocker, something to
+         *     triage), whether every noticing has a recorded disposition, and the record that holds them.
+         *     ``changed``: the noticings whose recorded disposition no longer stands, the recommendation or
+         *     its reason having changed since. ``passed``: the gate has passed (the plan is fixed, or under
+         *     Predict the held-out rows are open), so the triage is read, no longer confirmed.
+         */
+        Triage: {
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+            /** Stage */
+            stage: string;
+            /** Gate */
+            gate: string;
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["TriageItem"][];
+            /**
+             * Blockers
+             * @default 0
+             */
+            blockers: number;
+            /**
+             * Confirmable
+             * @default false
+             */
+            confirmable: boolean;
+            /**
+             * Answered
+             * @default false
+             */
+            answered: boolean;
+            /** Confirmed By */
+            confirmed_by: string | null;
+            /**
+             * Changed
+             * @default []
+             */
+            changed: string[];
+            /**
+             * Passed
+             * @default false
+             */
+            passed: boolean;
+        };
+        /**
+         * TriageItem
+         * @description One open noticing at the gate, or one the last confirmation disposed of: where it is
+         *     decided (``line``, ``stage``, the ``question`` it routes to), the engine's recommended
+         *     disposition with its plain label and reason, whether it blocks (it must be resolved before the
+         *     triage is confirmed), and the disposition the last confirmation recorded while it still
+         *     stands (the recommendation and reason it was recorded on are the triage's now).
+         */
+        TriageItem: {
+            /** Id */
+            id: string;
+            /** Line */
+            line: string;
+            /** Stage */
+            stage: string;
+            /** Summary */
+            summary: string;
+            /** Severity */
+            severity: string;
+            /**
+             * Columns
+             * @default []
+             */
+            columns: string[];
+            /** Question */
+            question: string | null;
+            /**
+             * Recommended
+             * @enum {string}
+             */
+            recommended: "no_change" | "could_bias" | "act_on_it";
+            /** Label */
+            label: string;
+            /** Reason */
+            reason: string;
+            /** Blocker */
+            blocker: boolean;
+            /** Recorded */
+            recorded: ("no_change" | "could_bias" | "act_on_it") | null;
         };
         /** UpdatingSpec */
         UpdatingSpec: {
@@ -8074,6 +8419,28 @@ export interface components {
             outcome: components["schemas"]["RowComparison"] | null;
             /** Columns */
             columns: components["schemas"]["RowComparison"][];
+        };
+        /** ConfirmSweep */
+        ConfirmSweep: {
+            /**
+             * Kind
+             * @default confirm_sweep
+             * @constant
+             */
+            kind: "confirm_sweep";
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "data" | "question" | "first_look" | "whos_in" | "models" | "results" | "writeup";
+            /**
+             * Sweep
+             * @default defaults
+             * @enum {string}
+             */
+            sweep: "defaults" | "noticings";
+            /** Lines */
+            lines: components["schemas"]["SweptLine"][];
         };
         /**
          * CovariateAnswers
@@ -14804,6 +15171,20 @@ export interface components {
              */
             weight: string | null;
         };
+        /** SweptLine */
+        SweptLine: {
+            /** Id */
+            id: string;
+            /** Key */
+            key: string;
+            /** Value */
+            value: string;
+            /**
+             * Basis
+             * @default null
+             */
+            basis: string | null;
+        };
         /**
          * TargetInfo
          * @description The ``target_info`` artifact.
@@ -15863,7 +16244,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"] | components["schemas"]["SetBatch-Input"] | components["schemas"]["SetMultiplicity-Input"] | components["schemas"]["SetScales-Input"] | components["schemas"]["SetUsualIntake-Input"] | components["schemas"]["SetModelSequence-Input"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Input"] | components["schemas"]["SetTimeVarying-Input"] | components["schemas"]["SetExplain-Input"] | components["schemas"]["SetForms-Input"] | components["schemas"]["SetModification-Input"] | components["schemas"]["ViewOutcome-Input"] | components["schemas"]["SetLevers-Input"] | components["schemas"]["SetSelection-Input"] | components["schemas"]["SetIntendedUse-Input"] | components["schemas"]["SetUpdating-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"] | components["schemas"]["SetBatch-Input"] | components["schemas"]["SetMultiplicity-Input"] | components["schemas"]["SetScales-Input"] | components["schemas"]["SetUsualIntake-Input"] | components["schemas"]["SetModelSequence-Input"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Input"] | components["schemas"]["SetTimeVarying-Input"] | components["schemas"]["SetExplain-Input"] | components["schemas"]["SetForms-Input"] | components["schemas"]["SetModification-Input"] | components["schemas"]["ViewOutcome-Input"] | components["schemas"]["SetLevers-Input"] | components["schemas"]["SetSelection-Input"] | components["schemas"]["SetIntendedUse-Input"] | components["schemas"]["SetUpdating-Input"] | components["schemas"]["ConfirmSweep-Input"];
             };
         };
         responses: {
@@ -16074,6 +16455,86 @@ export interface operations {
             };
         };
     };
+    for_the_record_api_projects__pid__record_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForTheRecord"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    triage_api_projects__pid__triage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Triage"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     methods_api_projects__pid__methods_get: {
         parameters: {
             query?: never;
@@ -16247,7 +16708,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"] | components["schemas"]["SetBatch-Input"] | components["schemas"]["SetMultiplicity-Input"] | components["schemas"]["SetScales-Input"] | components["schemas"]["SetUsualIntake-Input"] | components["schemas"]["SetModelSequence-Input"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Input"] | components["schemas"]["SetTimeVarying-Input"] | components["schemas"]["SetExplain-Input"] | components["schemas"]["SetForms-Input"] | components["schemas"]["SetModification-Input"] | components["schemas"]["ViewOutcome-Input"] | components["schemas"]["SetLevers-Input"] | components["schemas"]["SetSelection-Input"] | components["schemas"]["SetIntendedUse-Input"] | components["schemas"]["SetUpdating-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"] | components["schemas"]["SetBatch-Input"] | components["schemas"]["SetMultiplicity-Input"] | components["schemas"]["SetScales-Input"] | components["schemas"]["SetUsualIntake-Input"] | components["schemas"]["SetModelSequence-Input"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Input"] | components["schemas"]["SetTimeVarying-Input"] | components["schemas"]["SetExplain-Input"] | components["schemas"]["SetForms-Input"] | components["schemas"]["SetModification-Input"] | components["schemas"]["ViewOutcome-Input"] | components["schemas"]["SetLevers-Input"] | components["schemas"]["SetSelection-Input"] | components["schemas"]["SetIntendedUse-Input"] | components["schemas"]["SetUpdating-Input"] | components["schemas"]["ConfirmSweep-Input"];
             };
         };
         responses: {

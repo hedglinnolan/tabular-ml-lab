@@ -38,7 +38,7 @@ def test_the_quest_log_is_served_versioned_with_the_seven_stages_in_order(client
     r = client.get(f"/api/projects/{pid}/quest")
     assert r.status_code == 200, r.text
     log = r.json()
-    assert log["version"] == QUEST_VERSION == 2
+    assert log["version"] == QUEST_VERSION == 3
     assert [(s["key"], s["name"]) for s in log["stages"]] == SEVEN
     # Nothing is locked, and the log says why (P0.8): no goal is chosen yet.
     assert log["fit"]["purpose"] is None and log["fit"]["locked"] is False

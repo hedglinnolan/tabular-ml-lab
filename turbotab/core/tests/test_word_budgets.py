@@ -407,6 +407,13 @@ def representative_decisions():
         d.SetIntendedUse(use="risk_estimation", fairness="none"),
         d.SetUpdating(method="shrinkage"),
         d.SetUpdating(method="none"),
+        # P0.5: "Confirm all" on a stage's sweep, and on the triage of open noticings
+        d.ConfirmSweep(stage="whos_in", lines=[d.SweptLine(
+            id="q:grain", key="grain", value="every `SEQN` appears once, so each person is one "
+                                              "row.")]),
+        d.ConfirmSweep(stage="models", sweep="noticings", lines=[
+            d.SweptLine(id="finding:binary_text__age", key="binary_text__age", value="could_bias"),
+            d.SweptLine(id="finding:note", key="note", value="no_change")]),
     ]
 
 

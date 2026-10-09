@@ -109,6 +109,7 @@ function view(): ProjectView {
       selection: null,
       intended_use: null,
       updating: null,
+      sweeps: null,
     },
     decisions: [record(1)],
     stages: {

@@ -707,6 +707,8 @@ function slotOf(d: Decision): Slot | null {
       return "intended_use";
     case "set_updating":
       return "updating";
+    case "confirm_sweep":
+      return "sweeps";
     case "revert":
       return null;
   }
@@ -896,6 +898,7 @@ function valueOf(d: Decision): ProjectState[Slot] {
     case "confirm_readings": // each listed reading where its own confirmation goes
     case "join_files": // keyed by file; the mock serves no added files
     case "import_codebook": // keyed by codebook; the mock serves no codebooks
+    case "confirm_sweep": // keyed by stage; the mock serves no quest log
     case "apply_repair":
     case "defer_finding":
     case "dismiss_finding":
@@ -996,6 +999,7 @@ export function fold(records: DecisionRecord[]): ProjectState {
     selection: null,
     intended_use: null,
     updating: null,
+    sweeps: null,
   };
   // Each record's slots as they stood before it (a block confirmation writes several).
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }[]>();

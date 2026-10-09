@@ -182,6 +182,8 @@ NOT_METHODS: dict[str, str] = {
     "set_column_unit": "states a column's unit and, for energy, its days: a reading",
     "dismiss_finding": "sets a finding aside, recorded with its reason; nothing is transformed",
     "defer_finding": "defers a finding, recorded; nothing is transformed",
+    "confirm_sweep": "confirms the choices set for the person as stated, or triages the open "
+                     "noticings: each default is the method of its own question",
     "revert": "undoes an earlier decision; the record keeps both",
 }
 

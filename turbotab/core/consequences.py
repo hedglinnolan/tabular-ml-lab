@@ -1000,6 +1000,10 @@ UNPREVIEWED: dict[str, str] = {
         "Records that an outcome view was looked at, on which rows, and each lever's answer then; "
         "no row, column or value changes, and the methods text discloses a lever set by hand "
         "afterwards."),
+    "confirm_sweep": (
+        "Confirms the choices already set for the person, as stated, or the triage of the open "
+        "noticings: every answer stays as it is, so nothing on the canvas changes; each line "
+        "previews its own alternatives when it is opened."),
 }
 
 

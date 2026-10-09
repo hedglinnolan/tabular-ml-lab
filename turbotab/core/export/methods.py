@@ -124,6 +124,8 @@ SECTION_OF: dict[str, tuple[str, str]] = {
     "set_intended_use": ("statistical", "analysis"),
     "set_updating": ("statistical", "analysis"),
     "revert": ("other", "other"),
+    # P0.5: "Confirm all" quotes the defaults it confirms; each default's method is its own line
+    "confirm_sweep": ("other", "other"),
 }
 
 
