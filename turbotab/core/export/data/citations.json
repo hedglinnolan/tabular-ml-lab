@@ -1,0 +1,6715 @@
+{
+ "format": 1,
+ "checked_on": "2026-10-09",
+ "about": "The citation registry (SIZING X4). Records with a DOI carry Crossref's (or DataCite's) metadata, rewritten by `python -m turbotab.core.export.citations_check`; records without one are marked by kind, with an ISBN or URL and the reason. `cited_as` holds how the app's text cites each one; `disagreements` lists where that text differs from the record.",
+ "records": [
+  {
+   "key": "friedman2001",
+   "kind": "article",
+   "cited_as": [
+    "Friedman, J\\. H\\. \\(2001\\)",
+    "Friedman(?: [A-Z]+)?,? \\(?2001\\b"
+   ],
+   "doi": "10.1214/aos/1013203451",
+   "authors": [
+    "Friedman, Jerome H."
+   ],
+   "title": "Greedy function approximation: A gradient boosting machine.",
+   "year": 2001,
+   "venue": "The Annals of Statistics",
+   "volume": "29",
+   "issue": "5",
+   "pages": "",
+   "publisher": "Institute of Mathematical Statistics",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2001
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "hastie2009",
+   "kind": "book",
+   "cited_as": [
+    "Hastie, T\\., Tibshirani, R\\., Friedman, J\\. \\(2009\\)"
+   ],
+   "doi": "10.1007/978-0-387-84858-7",
+   "authors": [
+    "Hastie, Trevor",
+    "Tibshirani, Robert",
+    "Friedman, Jerome"
+   ],
+   "title": "The Elements of Statistical Learning",
+   "year": 2009,
+   "venue": "Springer Series in Statistics",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "Springer New York",
+   "crossref_type": "book",
+   "years_seen": [
+    2009
+   ],
+   "isbn": "9780387848570",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "collins2024tripodai",
+   "kind": "article",
+   "cited_as": [
+    "Collins et al\\.(?:,? TRIPOD\\+AI)?,? (?:BMJ )?\\(?2024\\b(?:,? BMJ)?;? ?385",
+    "TRIPOD\\+AI\\b",
+    "Collins et al\\. 2024(?=\\))"
+   ],
+   "doi": "10.1136/bmj-2023-078378",
+   "authors": [
+    "Collins, Gary S",
+    "Moons, Karel G M",
+    "Dhiman, Paula",
+    "Riley, Richard D",
+    "Beam, Andrew L",
+    "Van Calster, Ben",
+    "Ghassemi, Marzyeh",
+    "Liu, Xiaoxuan",
+    "Reitsma, Johannes B",
+    "van Smeden, Maarten",
+    "Boulesteix, Anne-Laure",
+    "Camaradou, Jennifer Catherine",
+    "Celi, Leo Anthony",
+    "Denaxas, Spiros",
+    "Denniston, Alastair K",
+    "Glocker, Ben",
+    "Golub, Robert M",
+    "Harvey, Hugh",
+    "Heinze, Georg",
+    "Hoffman, Michael M",
+    "Kengne, André Pascal",
+    "Lam, Emily",
+    "Lee, Naomi",
+    "Loder, Elizabeth W",
+    "Maier-Hein, Lena",
+    "Mateen, Bilal A",
+    "McCradden, Melissa D",
+    "Oakden-Rayner, Lauren",
+    "Ordish, Johan",
+    "Parnell, Richard",
+    "Rose, Sherri",
+    "Singh, Karandeep",
+    "Wynants, Laure",
+    "Logullo, Patricia"
+   ],
+   "title": "TRIPOD+AI statement: updated guidance for reporting clinical prediction models that use regression or machine learning methods",
+   "year": 2024,
+   "venue": "BMJ",
+   "volume": "385",
+   "issue": "",
+   "pages": "e078378",
+   "publisher": "BMJ",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2024
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "collins2024evaluation",
+   "kind": "article",
+   "cited_as": [
+    "Collins et al\\.,? (?:BMJ )?\\(?2024\\b[;,]? ?(?:BMJ )?384",
+    "Collins et al\\. 2024(?=\\))"
+   ],
+   "doi": "10.1136/bmj-2023-074819",
+   "authors": [
+    "Collins, Gary S",
+    "Dhiman, Paula",
+    "Ma, Jie",
+    "Schlussel, Michael M",
+    "Archer, Lucinda",
+    "Van Calster, Ben",
+    "Harrell, Jr, Frank E",
+    "Martin, Glen P",
+    "Moons, Karel G M",
+    "van Smeden, Maarten",
+    "Sperrin, Matthew",
+    "Bullock, Garrett S",
+    "Riley, Richard D"
+   ],
+   "title": "Evaluation of clinical prediction models (part 1): from development to external validation",
+   "year": 2024,
+   "venue": "BMJ",
+   "volume": "384",
+   "issue": "",
+   "pages": "e074819",
+   "publisher": "BMJ",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2024
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "lachat2016strobenut",
+   "kind": "article",
+   "cited_as": [
+    "Lachat\\b[^;()]{0,90}?\\(?2016\\b",
+    "STROBE-nut\\b"
+   ],
+   "doi": "10.1371/journal.pmed.1002036",
+   "authors": [
+    "Lachat, Carl",
+    "Hawwash, Dana",
+    "Ocké, Marga C.",
+    "Berg, Christina",
+    "Forsum, Elisabet",
+    "Hörnell, Agneta",
+    "Larsson, Christel",
+    "Sonestedt, Emily",
+    "Wirfält, Elisabet",
+    "Åkesson, Agneta",
+    "Kolsteren, Patrick",
+    "Byrnes, Graham",
+    "De Keyzer, Willem",
+    "Van Camp, John",
+    "Cade, Janet E.",
+    "Slimani, Nadia",
+    "Cevallos, Myriam",
+    "Egger, Matthias",
+    "Huybrechts, Inge"
+   ],
+   "title": "Strengthening the Reporting of Observational Studies in Epidemiology—Nutritional Epidemiology (STROBE-nut): An Extension of the STROBE Statement",
+   "year": 2016,
+   "venue": "PLOS Medicine",
+   "volume": "13",
+   "issue": "6",
+   "pages": "e1002036",
+   "publisher": "Public Library of Science (PLoS)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "vonelm2007strobe",
+   "kind": "article",
+   "cited_as": [
+    "STROBE(?: item)? \\d"
+   ],
+   "doi": "10.1016/s0140-6736(07)61602-x",
+   "authors": [
+    "von Elm, Erik",
+    "Altman, Douglas G",
+    "Egger, Matthias",
+    "Pocock, Stuart J",
+    "Gøtzsche, Peter C",
+    "Vandenbroucke, Jan P"
+   ],
+   "title": "The Strengthening the Reporting of Observational Studies in Epidemiology (STROBE) statement: guidelines for reporting observational studies",
+   "year": 2007,
+   "venue": "The Lancet",
+   "volume": "370",
+   "issue": "9596",
+   "pages": "1453-1457",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2007
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "gallo2011strobeme",
+   "kind": "article",
+   "cited_as": [
+    "Gallo\\b[^;()]{0,90}?\\(?2011\\b",
+    "STROBE-ME\\b"
+   ],
+   "doi": "10.1371/journal.pmed.1001117",
+   "authors": [
+    "Gallo, Valentina",
+    "Egger, Matthias",
+    "McCormack, Valerie",
+    "Farmer, Peter B.",
+    "Ioannidis, John P. A.",
+    "Kirsch-Volders, Micheline",
+    "Matullo, Giuseppe",
+    "Phillips, David H.",
+    "Schoket, Bernadette",
+    "Stromberg, Ulf",
+    "Vermeulen, Roel",
+    "Wild, Christopher",
+    "Porta, Miquel",
+    "Vineis, Paolo"
+   ],
+   "title": "STrengthening the Reporting of OBservational studies in Epidemiology – Molecular Epidemiology (STROBE-ME): An Extension of the STROBE Statement",
+   "year": 2011,
+   "venue": "PLoS Medicine",
+   "volume": "8",
+   "issue": "10",
+   "pages": "e1001117",
+   "publisher": "Public Library of Science (PLoS)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2011
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "schulz2010consort",
+   "kind": "article",
+   "cited_as": [
+    "Schulz\\b[^;()]{0,90}?\\(?2010\\b"
+   ],
+   "doi": "10.1136/bmj.c332",
+   "authors": [
+    "Schulz, K. F",
+    "Altman, D. G",
+    "Moher, D.",
+    "for the CONSORT Group"
+   ],
+   "title": "CONSORT 2010 Statement: updated guidelines for reporting parallel group randomised trials",
+   "year": 2010,
+   "venue": "BMJ",
+   "volume": "340",
+   "issue": "mar23 1",
+   "pages": "c332-c332",
+   "publisher": "BMJ",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2010
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "moher2010consort",
+   "kind": "article",
+   "cited_as": [
+    "Moher\\b[^;()]{0,90}?\\(?2010\\b"
+   ],
+   "doi": "10.1136/bmj.c869",
+   "authors": [
+    "Moher, D.",
+    "Hopewell, S.",
+    "Schulz, K. F",
+    "Montori, V.",
+    "Gotzsche, P. C",
+    "Devereaux, P J",
+    "Elbourne, D.",
+    "Egger, M.",
+    "Altman, D. G"
+   ],
+   "title": "CONSORT 2010 Explanation and Elaboration: updated guidelines for reporting parallel group randomised trials",
+   "year": 2010,
+   "venue": "BMJ",
+   "volume": "340",
+   "issue": "mar23 1",
+   "pages": "c869-c869",
+   "publisher": "BMJ",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2010
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "benchimol2015record",
+   "kind": "article",
+   "cited_as": [
+    "RECORD \\d"
+   ],
+   "doi": "10.1371/journal.pmed.1001885",
+   "authors": [
+    "Benchimol, Eric I.",
+    "Smeeth, Liam",
+    "Guttmann, Astrid",
+    "Harron, Katie",
+    "Moher, David",
+    "Petersen, Irene",
+    "Sørensen, Henrik T.",
+    "von Elm, Erik",
+    "Langan, Sinéad M.",
+    "RECORD Working Committee"
+   ],
+   "title": "The REporting of studies Conducted using Observational Routinely-collected health Data (RECORD) Statement",
+   "year": 2015,
+   "venue": "PLOS Medicine",
+   "volume": "12",
+   "issue": "10",
+   "pages": "e1001885",
+   "publisher": "Public Library of Science (PLoS)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2015
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "brazma2001miame",
+   "kind": "article",
+   "cited_as": [
+    "MIAME \\d"
+   ],
+   "doi": "10.1038/ng1201-365",
+   "authors": [
+    "Brazma, Alvis",
+    "Hingamp, Pascal",
+    "Quackenbush, John",
+    "Sherlock, Gavin",
+    "Spellman, Paul",
+    "Stoeckert, Chris",
+    "Aach, John",
+    "Ansorge, Wilhelm",
+    "Ball, Catherine A.",
+    "Causton, Helen C.",
+    "Gaasterland, Terry",
+    "Glenisson, Patrick",
+    "Holstege, Frank C.P.",
+    "Kim, Irene F.",
+    "Markowitz, Victor",
+    "Matese, John C.",
+    "Parkinson, Helen",
+    "Robinson, Alan",
+    "Sarkans, Ugis",
+    "Schulze-Kremer, Steffen",
+    "Stewart, Jason",
+    "Taylor, Ronald",
+    "Vilo, Jaak",
+    "Vingron, Martin"
+   ],
+   "title": "Minimum information about a microarray experiment (MIAME)—toward standards for microarray data",
+   "year": 2001,
+   "venue": "Nature Genetics",
+   "volume": "29",
+   "issue": "4",
+   "pages": "365-371",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2001
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "fged_minseqe",
+   "kind": "standard",
+   "cited_as": [
+    "MINSEQE \\d"
+   ],
+   "doi": null,
+   "title": "MINSEQE: Minimum Information about a high-throughput Nucleotide SEQuencing Experiment",
+   "year": 2012,
+   "authors": [
+    "Functional Genomics Data Society"
+   ],
+   "publisher": "Functional Genomics Data Society (FGED)",
+   "url": "https://www.fged.org/projects/minseqe/",
+   "no_doi": "A standard published as a web page; it has no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "sharma2021cross",
+   "kind": "article",
+   "cited_as": [
+    "CROSS \\d"
+   ],
+   "doi": "10.1007/s11606-021-06737-1",
+   "authors": [
+    "Sharma, Akash",
+    "Minh Duc, Nguyen Tran",
+    "Luu Lam Thang, Tai",
+    "Nam, Nguyen Hai",
+    "Ng, Sze Jia",
+    "Abbas, Kirellos Said",
+    "Huy, Nguyen Tien",
+    "Marušić, Ana",
+    "Paul, Christine L.",
+    "Kwok, Janette",
+    "Karbwang, Juntra",
+    "de Waure, Chiara",
+    "Drummond, Frances J.",
+    "Kizawa, Yoshiyuki",
+    "Taal, Erik",
+    "Vermeulen, Joeri",
+    "Lee, Gillian H. M.",
+    "Gyedu, Adam",
+    "To, Kien Gia",
+    "Verra, Martin L.",
+    "Jacqz-Aigrain, Évelyne M.",
+    "Leclercq, Wouter K. G.",
+    "Salminen, Simo T.",
+    "Sherbourne, Cathy Donald",
+    "Mintzes, Barbara",
+    "Lozano, Sergi",
+    "Tran, Ulrich S.",
+    "Matsui, Mitsuaki",
+    "Karamouzian, Mohammad"
+   ],
+   "title": "A Consensus-Based Checklist for Reporting of Survey Studies (CROSS)",
+   "year": 2021,
+   "venue": "Journal of General Internal Medicine",
+   "volume": "36",
+   "issue": "10",
+   "pages": "3179-3187",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2021
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "huebner2018ida",
+   "kind": "article",
+   "cited_as": [
+    "STRATOS TG3 IDA\\b"
+   ],
+   "doi": "10.1353/obs.2018.0014",
+   "authors": [
+    "Huebner, Marianne",
+    "le Cessie, Saskia",
+    "Schmidt, Carsten O.",
+    "Vach, Werner"
+   ],
+   "title": "A Contemporary Conceptual Framework for Initial Data Analysis",
+   "year": 2018,
+   "venue": "Observational Studies",
+   "volume": "4",
+   "issue": "1",
+   "pages": "171-192",
+   "publisher": "Project MUSE",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2018
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "vancalster2024stratos",
+   "kind": "preprint",
+   "cited_as": [
+    "Van Calster\\b[^;()]{0,90}?\\(?2024\\b",
+    "Van Calster et al\\.,? STRATOS TG6",
+    "STRATOS TG6\\b"
+   ],
+   "doi": "10.48550/arXiv.2412.10288",
+   "verified_by": "datacite",
+   "authors": [
+    "Van Calster, Ben",
+    "Collins, Gary S.",
+    "Vickers, Andrew J.",
+    "Wynants, Laure",
+    "Kerr, Kathleen F.",
+    "Barreñada, Lasai",
+    "Varoquaux, Gael",
+    "Singh, Karandeep",
+    "Moons, Karel G. M.",
+    "Hernandez-boussard, Tina",
+    "Timmerman, Dirk",
+    "Mclernon, David J.",
+    "Van Smeden, Maarten",
+    "Steyerberg, Ewout W."
+   ],
+   "title": "Performance evaluation of predictive AI models to support medical decisions: Overview and guidance",
+   "year": 2024,
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "arXiv",
+   "years_seen": [
+    2024
+   ],
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "bustin2009miqe",
+   "kind": "article",
+   "cited_as": [
+    "Bustin\\b[^;()]{0,90}?\\(?2009\\b"
+   ],
+   "doi": "10.1373/clinchem.2008.112797",
+   "authors": [
+    "Bustin, Stephen A",
+    "Benes, Vladimir",
+    "Garson, Jeremy A",
+    "Hellemans, Jan",
+    "Huggett, Jim",
+    "Kubista, Mikael",
+    "Mueller, Reinhold",
+    "Nolan, Tania",
+    "Pfaffl, Michael W",
+    "Shipley, Gregory L",
+    "Vandesompele, Jo",
+    "Wittwer, Carl T"
+   ],
+   "title": "The MIQE Guidelines: Minimum Information for Publication of Quantitative Real-Time PCR Experiments",
+   "year": 2009,
+   "venue": "Clinical Chemistry",
+   "volume": "55",
+   "issue": "4",
+   "pages": "611-622",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2009
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "mirzayi2021storms",
+   "kind": "article",
+   "cited_as": [
+    "Mirzayi\\b[^;()]{0,90}?\\(?2021\\b"
+   ],
+   "doi": "10.1038/s41591-021-01552-x",
+   "authors": [
+    "Mirzayi, Chloe",
+    "Renson, Audrey",
+    "Furlanello, Cesare",
+    "Sansone, Susanna-Assunta",
+    "Zohra, Fatima",
+    "Elsafoury, Shaimaa",
+    "Geistlinger, Ludwig",
+    "Kasselman, Lora J.",
+    "Eckenrode, Kelly",
+    "van de Wijgert, Janneke",
+    "Loughman, Amy",
+    "Marques, Francine Z.",
+    "MacIntyre, David A.",
+    "Arumugam, Manimozhiyan",
+    "Azhar, Rimsha",
+    "Beghini, Francesco",
+    "Bergstrom, Kirk",
+    "Bhatt, Ami",
+    "Bisanz, Jordan E.",
+    "Braun, Jonathan",
+    "Bravo, Hector Corrada",
+    "Buck, Gregory A.",
+    "Bushman, Frederic",
+    "Casero, David",
+    "Clarke, Gerard",
+    "Collado, Maria Carmen",
+    "Cotter, Paul D.",
+    "Cryan, John F.",
+    "Demmer, Ryan T.",
+    "Devkota, Suzanne",
+    "Elinav, Eran",
+    "Escobar, Juan S.",
+    "Fettweis, Jennifer",
+    "Finn, Robert D.",
+    "Fodor, Anthony A.",
+    "Forslund, Sofia",
+    "Franke, Andre",
+    "Furlanello, Cesare",
+    "Gilbert, Jack",
+    "Grice, Elizabeth",
+    "Haibe-Kains, Benjamin",
+    "Handley, Scott",
+    "Herd, Pamela",
+    "Holmes, Susan",
+    "Jacobs, Jonathan P.",
+    "Karstens, Lisa",
+    "Knight, Rob",
+    "Knights, Dan",
+    "Koren, Omry",
+    "Kwon, Douglas S.",
+    "Langille, Morgan",
+    "Lindsay, Brianna",
+    "McGovern, Dermot",
+    "McHardy, Alice C.",
+    "McWeeney, Shannon",
+    "Mueller, Noel T.",
+    "Nezi, Luigi",
+    "Olm, Matthew",
+    "Palm, Noah",
+    "Pasolli, Edoardo",
+    "Raes, Jeroen",
+    "Redinbo, Matthew R.",
+    "Rühlemann, Malte",
+    "Balfour Sartor, R.",
+    "Schloss, Patrick D.",
+    "Schriml, Lynn",
+    "Segal, Eran",
+    "Shardell, Michelle",
+    "Sharpton, Thomas",
+    "Smirnova, Ekaterina",
+    "Sokol, Harry",
+    "Sonnenburg, Justin L.",
+    "Srinivasan, Sujatha",
+    "Thingholm, Louise B.",
+    "Turnbaugh, Peter J.",
+    "Upadhyay, Vaibhav",
+    "Walls, Ramona L.",
+    "Wilmes, Paul",
+    "Yamada, Takuji",
+    "Zeller, Georg",
+    "Zhang, Mingyu",
+    "Zhao, Ni",
+    "Zhao, Liping",
+    "Bao, Wenjun",
+    "Culhane, Aedin",
+    "Devanarayan, Viswanath",
+    "Dopazo, Joaquin",
+    "Fan, Xiaohui",
+    "Fischer, Matthias",
+    "Jones, Wendell",
+    "Kusko, Rebecca",
+    "Mason, Christopher E.",
+    "Mercer, Tim R.",
+    "Sansone, Susanna-Assunta",
+    "Scherer, Andreas",
+    "Shi, Leming",
+    "Thakkar, Shraddha",
+    "Tong, Weida",
+    "Wolfinger, Russ",
+    "Hunter, Christopher",
+    "Segata, Nicola",
+    "Huttenhower, Curtis",
+    "Dowd, Jennifer B.",
+    "Jones, Heidi E.",
+    "Waldron, Levi",
+    "Genomic Standards Consortium",
+    "Massive Analysis and Quality Control Society"
+   ],
+   "title": "Reporting guidelines for human microbiome research: the STORMS checklist",
+   "year": 2021,
+   "venue": "Nature Medicine",
+   "volume": "27",
+   "issue": "11",
+   "pages": "1885-1892",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2021
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "sumner2007msi",
+   "kind": "article",
+   "cited_as": [
+    "Sumner\\b[^;()]{0,90}?\\(?2007\\b"
+   ],
+   "doi": "10.1007/s11306-007-0082-2",
+   "authors": [
+    "Sumner, Lloyd W.",
+    "Amberg, Alexander",
+    "Barrett, Dave",
+    "Beale, Michael H.",
+    "Beger, Richard",
+    "Daykin, Clare A.",
+    "Fan, Teresa W.-M.",
+    "Fiehn, Oliver",
+    "Goodacre, Royston",
+    "Griffin, Julian L.",
+    "Hankemeier, Thomas",
+    "Hardy, Nigel",
+    "Harnly, James",
+    "Higashi, Richard",
+    "Kopka, Joachim",
+    "Lane, Andrew N.",
+    "Lindon, John C.",
+    "Marriott, Philip",
+    "Nicholls, Andrew W.",
+    "Reily, Michael D.",
+    "Thaden, John J.",
+    "Viant, Mark R."
+   ],
+   "title": "Proposed minimum reporting standards for chemical analysis: Chemical Analysis Working Group (CAWG) Metabolomics Standards Initiative (MSI)",
+   "year": 2007,
+   "venue": "Metabolomics",
+   "volume": "3",
+   "issue": "3",
+   "pages": "211-221",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2007
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "hernan2020whatif",
+   "kind": "book",
+   "cited_as": [
+    "Hernán & Robins,? \\(?2020\\b",
+    "Hernán & Robins, Causal Inference"
+   ],
+   "doi": null,
+   "title": "Causal Inference: What If",
+   "year": 2020,
+   "authors": [
+    "Hernán, Miguel A.",
+    "Robins, James M."
+   ],
+   "publisher": "Chapman & Hall/CRC",
+   "url": "https://www.hsph.harvard.edu/miguel-hernan/causal-inference-book/",
+   "no_doi": "Published online by the authors (2020); the print edition's DOI is not in Crossref.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "chernozhukov2018dml",
+   "kind": "article",
+   "cited_as": [
+    "Chernozhukov\\b[^;()]{0,90}?\\(?2018\\b"
+   ],
+   "doi": "10.1111/ectj.12097",
+   "authors": [
+    "Chernozhukov, Victor",
+    "Chetverikov, Denis",
+    "Demirer, Mert",
+    "Duflo, Esther",
+    "Hansen, Christian",
+    "Newey, Whitney",
+    "Robins, James"
+   ],
+   "title": "Double/debiased machine learning for treatment and structural parameters",
+   "year": 2018,
+   "venue": "The Econometrics Journal",
+   "volume": "21",
+   "issue": "1",
+   "pages": "C1-C68",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2018
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "vanderlaan2006tmle",
+   "kind": "article",
+   "cited_as": [
+    "van der Laan\\b[^;()]{0,90}?\\(?2006\\b"
+   ],
+   "doi": "10.2202/1557-4679.1043",
+   "authors": [
+    "van der Laan, Mark J.",
+    "Rubin, Daniel"
+   ],
+   "title": "Targeted Maximum Likelihood Learning",
+   "year": 2006,
+   "venue": "The International Journal of Biostatistics",
+   "volume": "2",
+   "issue": "1",
+   "pages": "",
+   "publisher": "Walter de Gruyter GmbH",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2006
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "schuler2017tmle",
+   "kind": "article",
+   "cited_as": [
+    "Schuler\\b[^;()]{0,90}?\\(?2017\\b"
+   ],
+   "doi": "10.1093/aje/kww165",
+   "authors": [
+    "Schuler, Megan S.",
+    "Rose, Sherri"
+   ],
+   "title": "Targeted Maximum Likelihood Estimation for Causal Inference in Observational Studies",
+   "year": 2017,
+   "venue": "American Journal of Epidemiology",
+   "volume": "185",
+   "issue": "1",
+   "pages": "65-73",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016,
+    2017
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "belloni2014pds",
+   "kind": "article",
+   "cited_as": [
+    "Belloni\\b[^;()]{0,90}?\\(?2014\\b"
+   ],
+   "doi": "10.1093/restud/rdt044",
+   "authors": [
+    "Belloni, A.",
+    "Chernozhukov, V.",
+    "Hansen, C."
+   ],
+   "title": "Inference on Treatment Effects after Selection among High-Dimensional Controls",
+   "year": 2014,
+   "venue": "The Review of Economic Studies",
+   "volume": "81",
+   "issue": "2",
+   "pages": "608-650",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2013,
+    2014
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "robins2000msm",
+   "kind": "article",
+   "cited_as": [
+    "Robins, Hernán & Brumback,? \\(?2000\\b"
+   ],
+   "doi": "10.1097/00001648-200009000-00011",
+   "authors": [
+    "Robins, James M.",
+    "Hernán, Miguel Ángel",
+    "Brumback, Babette"
+   ],
+   "title": "Marginal Structural Models and Causal Inference in Epidemiology",
+   "year": 2000,
+   "venue": "Epidemiology",
+   "volume": "11",
+   "issue": "5",
+   "pages": "550-560",
+   "publisher": "Ovid Technologies (Wolters Kluwer Health)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2000
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "hernan2000msm",
+   "kind": "article",
+   "cited_as": [
+    "Hernán, Brumback & Robins,? \\(?2000\\b"
+   ],
+   "doi": "10.1097/00001648-200009000-00012",
+   "authors": [
+    "Hernán, Miguel Ángel",
+    "Brumback, Babette",
+    "Robins, James M."
+   ],
+   "title": "Marginal Structural Models to Estimate the Causal Effect of Zidovudine on the Survival of HIV-Positive Men",
+   "year": 2000,
+   "venue": "Epidemiology",
+   "volume": "11",
+   "issue": "5",
+   "pages": "561-570",
+   "publisher": "Ovid Technologies (Wolters Kluwer Health)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2000
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "cole2008weights",
+   "kind": "article",
+   "cited_as": [
+    "Cole & Hernán,? \\(?2008\\b"
+   ],
+   "doi": "10.1093/aje/kwn164",
+   "authors": [
+    "Cole, S. R.",
+    "Hernan, M. A."
+   ],
+   "title": "Constructing Inverse Probability Weights for Marginal Structural Models",
+   "year": 2008,
+   "venue": "American Journal of Epidemiology",
+   "volume": "168",
+   "issue": "6",
+   "pages": "656-664",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2008
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "robins1986gformula",
+   "kind": "article",
+   "cited_as": [
+    "Robins\\b[^;()]{0,90}?\\(?1986\\b"
+   ],
+   "doi": "10.1016/0270-0255(86)90088-6",
+   "authors": [
+    "Robins, James"
+   ],
+   "title": "A new approach to causal inference in mortality studies with a sustained exposure period—application to control of the healthy worker survivor effect",
+   "year": 1986,
+   "venue": "Mathematical Modelling",
+   "volume": "7",
+   "issue": "9-12",
+   "pages": "1393-1512",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1986
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "mcgrath2020gformula",
+   "kind": "article",
+   "cited_as": [
+    "McGrath\\b[^;()]{0,90}?\\(?2020\\b"
+   ],
+   "doi": "10.1016/j.patter.2020.100008",
+   "authors": [
+    "McGrath, Sean",
+    "Lin, Victoria",
+    "Zhang, Zilu",
+    "Petito, Lucia C.",
+    "Logan, Roger W.",
+    "Hernán, Miguel A.",
+    "Young, Jessica G."
+   ],
+   "title": "gfoRmula: An R Package for Estimating the Effects of Sustained Treatment Strategies via the Parametric g-formula",
+   "year": 2020,
+   "venue": "Patterns",
+   "volume": "1",
+   "issue": "3",
+   "pages": "100008",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2020
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "vanderweele2017evalue",
+   "kind": "article",
+   "cited_as": [
+    "VanderWeele & Ding,? \\(?2017\\b"
+   ],
+   "doi": "10.7326/m16-2607",
+   "authors": [
+    "VanderWeele, Tyler J.",
+    "Ding, Peng"
+   ],
+   "title": "Sensitivity Analysis in Observational Research: Introducing the E-Value",
+   "year": 2017,
+   "venue": "Annals of Internal Medicine",
+   "volume": "167",
+   "issue": "4",
+   "pages": "268-274",
+   "publisher": "American College of Physicians",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2017
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "bell2002brl",
+   "kind": "periodical",
+   "cited_as": [
+    "Bell & McCaffrey,? \\(?2002\\b"
+   ],
+   "doi": null,
+   "title": "Bias reduction in standard errors for linear regression with multi-stage samples",
+   "year": 2002,
+   "authors": [
+    "Bell, Robert M.",
+    "McCaffrey, Daniel F."
+   ],
+   "venue": "Survey Methodology",
+   "volume": "28",
+   "issue": "2",
+   "pages": "169-181",
+   "publisher": "Statistics Canada",
+   "url": "https://www150.statcan.gc.ca/n1/en/catalogue/12-001-X20020029058",
+   "no_doi": "Survey Methodology (Statistics Canada) registers no DOIs.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "vanderweele2019confounder",
+   "kind": "article",
+   "cited_as": [
+    "VanderWeele\\b[^;()]{0,90}?\\(?2019\\b"
+   ],
+   "doi": "10.1007/s10654-019-00494-6",
+   "authors": [
+    "VanderWeele, Tyler J."
+   ],
+   "title": "Principles of confounder selection",
+   "year": 2019,
+   "venue": "European Journal of Epidemiology",
+   "volume": "34",
+   "issue": "3",
+   "pages": "211-219",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2019
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "vanderweele2009interaction",
+   "kind": "article",
+   "cited_as": [
+    "VanderWeele\\b[^;()]{0,90}?\\(?2009\\b"
+   ],
+   "doi": "10.1097/ede.0b013e3181ba333c",
+   "authors": [
+    "VanderWeele, Tyler J."
+   ],
+   "title": "On the Distinction Between Interaction and Effect Modification",
+   "year": 2009,
+   "venue": "Epidemiology",
+   "volume": "20",
+   "issue": "6",
+   "pages": "863-871",
+   "publisher": "Ovid Technologies (Wolters Kluwer Health)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2009
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "knol2012interaction",
+   "kind": "article",
+   "cited_as": [
+    "Knol\\b[^;()]{0,90}?\\(?2012\\b"
+   ],
+   "doi": "10.1093/ije/dyr218",
+   "authors": [
+    "Knol, Mirjam J",
+    "VanderWeele, Tyler J"
+   ],
+   "title": "Recommendations for presenting analyses of effect modification and interaction",
+   "year": 2012,
+   "venue": "International Journal of Epidemiology",
+   "volume": "41",
+   "issue": "2",
+   "pages": "514-520",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2012
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "hosmer1992interaction",
+   "kind": "article",
+   "cited_as": [
+    "Hosmer & Lemeshow,? \\(?1992\\b"
+   ],
+   "doi": "10.1097/00001648-199209000-00012",
+   "authors": [
+    "Hosmer, David W.",
+    "Lemeshow, Stanley"
+   ],
+   "title": "Confidence Interval Estimation of Interaction",
+   "year": 1992,
+   "venue": "Epidemiology",
+   "volume": "3",
+   "issue": "5",
+   "pages": "452-456",
+   "publisher": "Ovid Technologies (Wolters Kluwer Health)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1992
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "daniel2021gcomp",
+   "kind": "article",
+   "cited_as": [
+    "Daniel\\b[^;()]{0,90}?\\(?2021\\b"
+   ],
+   "doi": "10.1002/bimj.201900297",
+   "authors": [
+    "Daniel, Rhian",
+    "Zhang, Jingjing",
+    "Farewell, Daniel"
+   ],
+   "title": "Making apples from oranges: Comparing noncollapsible effect estimators and their standard errors after adjustment for different covariate sets",
+   "year": 2021,
+   "venue": "Biometrical Journal",
+   "volume": "63",
+   "issue": "3",
+   "pages": "528-557",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2020,
+    2021
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "zhang1998rr",
+   "kind": "article",
+   "cited_as": [
+    "Zhang & Yu,? \\(?1998\\b"
+   ],
+   "doi": "10.1001/jama.280.19.1690",
+   "authors": [
+    "Zhang, Jun",
+    "Yu, Kai F."
+   ],
+   "title": "What's the Relative Risk?: A Method of Correcting the Odds Ratio in Cohort Studies of Common Outcomes",
+   "year": 1998,
+   "venue": "JAMA",
+   "volume": "280",
+   "issue": "19",
+   "pages": "1690",
+   "publisher": "American Medical Association (AMA)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1998
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "westreich2013table2",
+   "kind": "article",
+   "cited_as": [
+    "Westreich\\b[^;()]{0,90}?\\(?2013\\b"
+   ],
+   "doi": "10.1093/aje/kws412",
+   "authors": [
+    "Westreich, D.",
+    "Greenland, S."
+   ],
+   "title": "The Table 2 Fallacy: Presenting and Interpreting Confounder and Modifier Coefficients",
+   "year": 2013,
+   "venue": "American Journal of Epidemiology",
+   "volume": "177",
+   "issue": "4",
+   "pages": "292-298",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2013
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "grambsch1994ph",
+   "kind": "article",
+   "cited_as": [
+    "Grambsch & Therneau,? \\(?1994\\b"
+   ],
+   "doi": "10.1093/biomet/81.3.515",
+   "authors": [
+    "GRAMBSCH, PATRICIA M.",
+    "THERNEAU, TERRY M."
+   ],
+   "title": "Proportional hazards tests and diagnostics based on weighted residuals",
+   "year": 1994,
+   "venue": "Biometrika",
+   "volume": "81",
+   "issue": "3",
+   "pages": "515-526",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1994
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "cook1977influence",
+   "kind": "article",
+   "cited_as": [
+    "Cook\\b[^;()]{0,90}?\\(?1977\\b"
+   ],
+   "doi": "10.1080/00401706.1977.10489493",
+   "authors": [
+    "Cook, R. Dennis"
+   ],
+   "title": "Detection of Influential Observation in Linear Regression",
+   "year": 1977,
+   "venue": "Technometrics",
+   "volume": "19",
+   "issue": "1",
+   "pages": "15-18",
+   "publisher": "Informa UK Limited",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1977,
+    2015
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "cinelli2020sensitivity",
+   "kind": "article",
+   "cited_as": [
+    "Cinelli\\b[^;()]{0,90}?\\(?2020\\b"
+   ],
+   "doi": "10.1111/rssb.12348",
+   "authors": [
+    "Cinelli, Carlos",
+    "Hazlett, Chad"
+   ],
+   "title": "Making Sense of Sensitivity: Extending Omitted Variable Bias",
+   "year": 2020,
+   "venue": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+   "volume": "82",
+   "issue": "1",
+   "pages": "39-67",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2019,
+    2020
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "blum2020evalue",
+   "kind": "article",
+   "cited_as": [
+    "Blum\\b[^;()]{0,90}?\\(?2020\\b"
+   ],
+   "doi": "10.1093/ije/dyz261",
+   "authors": [
+    "Blum, Manuel R",
+    "Tan, Yuan Jin",
+    "Ioannidis, John P A"
+   ],
+   "title": "Use of E-values for addressing confounding in observational studies—an empirical assessment of the literature",
+   "year": 2020,
+   "venue": "International Journal of Epidemiology",
+   "volume": "49",
+   "issue": "5",
+   "pages": "1482-1494",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2020
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "schisterman2009overadjustment",
+   "kind": "article",
+   "cited_as": [
+    "Schisterman\\b[^;()]{0,90}?\\(?2009\\b"
+   ],
+   "doi": "10.1097/ede.0b013e3181a819a1",
+   "authors": [
+    "Schisterman, Enrique F.",
+    "Cole, Stephen R.",
+    "Platt, Robert W."
+   ],
+   "title": "Overadjustment Bias and Unnecessary Adjustment in Epidemiologic Studies",
+   "year": 2009,
+   "venue": "Epidemiology",
+   "volume": "20",
+   "issue": "4",
+   "pages": "488-495",
+   "publisher": "Ovid Technologies (Wolters Kluwer Health)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2009
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "tobin2005mendelian",
+   "kind": "article",
+   "cited_as": [
+    "Tobin\\b[^;()]{0,90}?\\(?2005\\b"
+   ],
+   "doi": "10.1002/sim.2165",
+   "authors": [
+    "Tobin, Martin D.",
+    "Sheehan, Nuala A.",
+    "Scurrah, Katrina J.",
+    "Burton, Paul R."
+   ],
+   "title": "Adjusting for treatment effects in studies of quantitative traits: antihypertensive therapy and systolic blood pressure",
+   "year": 2005,
+   "venue": "Statistics in Medicine",
+   "volume": "24",
+   "issue": "19",
+   "pages": "2911-2935",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2005
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "steyerberg2016intext",
+   "kind": "article",
+   "cited_as": [
+    "Steyerberg & Harrell,? \\(?2016\\b"
+   ],
+   "doi": "10.1016/j.jclinepi.2015.04.005",
+   "authors": [
+    "Steyerberg, Ewout W.",
+    "Harrell, Jr., Frank E."
+   ],
+   "title": "Prediction models need appropriate internal, internal–external, and external validation",
+   "year": 2016,
+   "venue": "Journal of Clinical Epidemiology",
+   "volume": "69",
+   "issue": "",
+   "pages": "245-247",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "binder1983",
+   "kind": "article",
+   "cited_as": [
+    "Binder\\b[^;()]{0,90}?\\(?1983\\b"
+   ],
+   "doi": "10.2307/1402588",
+   "authors": [
+    "Binder, David A."
+   ],
+   "title": "On the Variances of Asymptotically Normal Estimators from Complex Surveys",
+   "year": 1983,
+   "venue": "International Statistical Review / Revue Internationale de Statistique",
+   "volume": "51",
+   "issue": "3",
+   "pages": "279",
+   "publisher": "JSTOR",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1983
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "lumley2010complex",
+   "kind": "book",
+   "cited_as": [
+    "Lumley\\b[^;()]{0,90}?\\(?2010\\b"
+   ],
+   "doi": "10.1002/9780470580066",
+   "authors": [
+    "Lumley, Thomas"
+   ],
+   "title": "Complex Surveys: A Guide to Analysis Using R",
+   "year": 2010,
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "Wiley",
+   "crossref_type": "monograph",
+   "years_seen": [
+    2010
+   ],
+   "isbn": "9780470284308",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "graubard1999margins",
+   "kind": "article",
+   "cited_as": [
+    "Graubard\\b[^;()]{0,90}?\\(?1999\\b"
+   ],
+   "doi": "10.1111/j.0006-341x.1999.00652.x",
+   "authors": [
+    "Graubard, Barry I.",
+    "Korn, Edward L."
+   ],
+   "title": "Predictive Margins with Survey Data",
+   "year": 1999,
+   "venue": "Biometrics",
+   "volume": "55",
+   "issue": "2",
+   "pages": "652-659",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1999,
+    2004
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "korn1999health",
+   "kind": "book",
+   "cited_as": [
+    "Korn & Graubard,? \\(?1999\\b"
+   ],
+   "doi": "10.1002/9781118032619",
+   "authors": [
+    "Korn, Edward L.",
+    "Graubard, Barry I."
+   ],
+   "title": "Analysis of Health Surveys",
+   "year": 1999,
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "Wiley",
+   "crossref_type": "monograph",
+   "years_seen": [
+    1999,
+    2011
+   ],
+   "isbn": "9780471137733",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "korn1990bonferroni",
+   "kind": "article",
+   "cited_as": [
+    "Korn & Graubard,? \\(?1990\\b"
+   ],
+   "doi": "10.2307/2684345",
+   "authors": [
+    "Korn, Edward L.",
+    "Graubard, Barry I."
+   ],
+   "title": "Simultaneous Testing of Regression Coefficients with Complex Survey Data: Use of Bonferroni t Statistics",
+   "year": 1990,
+   "venue": "The American Statistician",
+   "volume": "44",
+   "issue": "4",
+   "pages": "270",
+   "publisher": "JSTOR",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1990
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "rao1988resampling",
+   "kind": "article",
+   "cited_as": [
+    "Rao & Wu,? \\(?1988\\b"
+   ],
+   "doi": "10.1080/01621459.1988.10478591",
+   "authors": [
+    "Rao, J. N. K.",
+    "Wu, C. F. J."
+   ],
+   "title": "Resampling Inference with Complex Survey Data",
+   "year": 1988,
+   "venue": "Journal of the American Statistical Association",
+   "volume": "83",
+   "issue": "401",
+   "pages": "231-241",
+   "publisher": "Informa UK Limited",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1988,
+    2012
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "beaumont2012bootstrap",
+   "kind": "article",
+   "cited_as": [
+    "Beaumont\\b[^;()]{0,90}?\\(?2012\\b"
+   ],
+   "doi": "10.1111/j.1751-5823.2011.00166.x",
+   "authors": [
+    "Beaumont, Jean‐François",
+    "Patak, Zdenek"
+   ],
+   "title": "On the Generalized Bootstrap for Sample Surveys with Special Attention to Poisson Sampling",
+   "year": 2012,
+   "venue": "International Statistical Review",
+   "volume": "80",
+   "issue": "1",
+   "pages": "127-148",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2012
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "wieczorek2022designcv",
+   "kind": "article",
+   "cited_as": [
+    "Wieczorek\\b[^;()]{0,90}?\\(?2022\\b"
+   ],
+   "doi": "10.1002/sta4.454",
+   "authors": [
+    "Wieczorek, Jerzy",
+    "Guerin, Cole",
+    "McMahon, Thomas"
+   ],
+   "title": "K ‐fold cross‐validation for complex sample surveys",
+   "year": 2022,
+   "venue": "Stat",
+   "volume": "11",
+   "issue": "1",
+   "pages": "e454",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2022
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "groves2009survey",
+   "kind": "book",
+   "cited_as": [
+    "Groves\\b[^;()]{0,90}?\\(?2009\\b"
+   ],
+   "doi": null,
+   "title": "Survey Methodology",
+   "year": 2009,
+   "edition": "2nd",
+   "authors": [
+    "Groves, Robert M.",
+    "Fowler, Floyd J., Jr.",
+    "Couper, Mick P.",
+    "Lepkowski, James M.",
+    "Singer, Eleanor",
+    "Tourangeau, Roger"
+   ],
+   "publisher": "Wiley",
+   "isbn": "978-0-470-46546-2",
+   "no_doi": "Crossref holds no DOI for this edition.",
+   "verified_by": "isbn",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "krosnick2002nonattitude",
+   "kind": "article",
+   "cited_as": [
+    "Krosnick(?: JA)? et al\\.,? Public Opin Q 2002"
+   ],
+   "doi": "10.1086/341394",
+   "authors": [
+    "Krosnick, Jon A.",
+    "Holbrook, Allyson L.",
+    "Berent, Matthew K.",
+    "Carson, Richard T.",
+    "Hanemann, W. Michael",
+    "Kopp, Raymond J.",
+    "Mitchell, Robert Cameron",
+    "Presser, Stanley",
+    "Ruud, Paul A.",
+    "Smith, V. Kerry",
+    "Moody, Wendy R.",
+    "Green, Melanie C.",
+    "Conaway, Michael"
+   ],
+   "title": "The Impact of “No Opinion” Response Options on Data Quality",
+   "year": 2002,
+   "venue": "Public Opinion Quarterly",
+   "volume": "66",
+   "issue": "3",
+   "pages": "371-403",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2001
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": [
+    "'Krosnick JA et al. Public Opin Q 2002;66:371': year 2002, the record 2001 (the registry keeps year 2002: Crossref's deposit dates this article 2001, but Crossref's other records for Public Opinion Quarterly volume 66 issue 3 (10.1086/342185, 10.1086/341669) are dated 2002; the issue is Autumn 2002.)"
+   ],
+   "overrides": {
+    "fields": {
+     "year": 2002
+    },
+    "why": "Crossref's deposit dates this article 2001, but Crossref's other records for Public Opinion Quarterly volume 66 issue 3 (10.1086/342185, 10.1086/341669) are dated 2002; the issue is Autumn 2002."
+   },
+   "crossref_original": {
+    "year": 2001
+   }
+  },
+  {
+   "key": "rubin1987mi",
+   "kind": "book",
+   "cited_as": [
+    "Rubin\\b[^;()]{0,90}?\\(?1987\\b"
+   ],
+   "doi": "10.1002/9780470316696",
+   "authors": [
+    "Rubin, Donald B."
+   ],
+   "title": "Multiple Imputation for Nonresponse in Surveys",
+   "year": 1987,
+   "venue": "Wiley Series in Probability and Statistics",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "Wiley",
+   "crossref_type": "monograph",
+   "years_seen": [
+    1987,
+    2008
+   ],
+   "isbn": "9780471087052",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "bartlett2015smcfcs",
+   "kind": "article",
+   "cited_as": [
+    "Bartlett\\b[^;()]{0,90}?\\(?2015\\b"
+   ],
+   "doi": "10.1177/0962280214521348",
+   "authors": [
+    "Bartlett, Jonathan W",
+    "Seaman, Shaun R",
+    "White, Ian R",
+    "Carpenter, James R",
+    "for the Alzheimer's Disease Neuroimaging Initiative*"
+   ],
+   "title": "Multiple imputation of covariates by fully conditional specification: Accommodating the substantive model",
+   "year": 2015,
+   "venue": "Statistical Methods in Medical Research",
+   "volume": "24",
+   "issue": "4",
+   "pages": "462-487",
+   "publisher": "SAGE Publications",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2014,
+    2015
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "white2011mi",
+   "kind": "article",
+   "cited_as": [
+    "White, Royston & Wood,? \\(?2011\\b"
+   ],
+   "doi": "10.1002/sim.4067",
+   "authors": [
+    "White, Ian R.",
+    "Royston, Patrick",
+    "Wood, Angela M."
+   ],
+   "title": "Multiple imputation using chained equations: Issues and guidance for practice",
+   "year": 2011,
+   "venue": "Statistics in Medicine",
+   "volume": "30",
+   "issue": "4",
+   "pages": "377-399",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2010,
+    2011
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "barnard1999df",
+   "kind": "article",
+   "cited_as": [
+    "Barnard\\b[^;()]{0,90}?\\(?1999\\b"
+   ],
+   "doi": "10.1093/biomet/86.4.948",
+   "authors": [
+    "Barnard, J"
+   ],
+   "title": "Miscellanea. Small-sample degrees of freedom with multiple imputation",
+   "year": 1999,
+   "venue": "Biometrika",
+   "volume": "86",
+   "issue": "4",
+   "pages": "948-955",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1999
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "reiter2007df",
+   "kind": "article",
+   "cited_as": [
+    "Reiter\\b[^;()]{0,90}?\\(?2007\\b"
+   ],
+   "doi": "10.1093/biomet/asm028",
+   "authors": [
+    "Reiter, J. P."
+   ],
+   "title": "Small-sample degrees of freedom for multi-component significance tests with multiple imputation for missing data",
+   "year": 2007,
+   "venue": "Biometrika",
+   "volume": "94",
+   "issue": "2",
+   "pages": "502-508",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2007
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "ludtke2017clustered",
+   "kind": "article",
+   "cited_as": [
+    "Lüdtke\\b[^;()]{0,90}?\\(?2017\\b"
+   ],
+   "doi": "10.1037/met0000096",
+   "authors": [
+    "Lüdtke, Oliver",
+    "Robitzsch, Alexander",
+    "Grund, Simon"
+   ],
+   "title": "Multiple imputation of missing data in multilevel designs: A comparison of different strategies.",
+   "year": 2017,
+   "venue": "Psychological Methods",
+   "volume": "22",
+   "issue": "1",
+   "pages": "141-165",
+   "publisher": "American Psychological Association (APA)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2017
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "wood2008selection",
+   "kind": "article",
+   "cited_as": [
+    "Wood\\b[^;()]{0,90}?\\(?2008\\b"
+   ],
+   "doi": "10.1002/sim.3177",
+   "authors": [
+    "Wood, Angela M.",
+    "White, Ian R.",
+    "Royston, Patrick"
+   ],
+   "title": "How should variable selection be performed with multiply imputed data?",
+   "year": 2008,
+   "venue": "Statistics in Medicine",
+   "volume": "27",
+   "issue": "17",
+   "pages": "3227-3246",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2008
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "eekhout2014scales",
+   "kind": "article",
+   "cited_as": [
+    "Eekhout\\b[^;()]{0,90}?\\(?2014\\b"
+   ],
+   "doi": "10.1016/j.jclinepi.2013.09.009",
+   "authors": [
+    "Eekhout, Iris",
+    "de Vet, Henrica C.W.",
+    "Twisk, Jos W.R.",
+    "Brand, Jaap P.L.",
+    "de Boer, Michiel R.",
+    "Heymans, Martijn W."
+   ],
+   "title": "Missing data in a multi-item instrument were best handled by multiple imputation at the item score level",
+   "year": 2014,
+   "venue": "Journal of Clinical Epidemiology",
+   "volume": "67",
+   "issue": "3",
+   "pages": "335-342",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2014
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "moons2006outcome",
+   "kind": "article",
+   "cited_as": [
+    "Moons\\b[^;()]{0,90}?\\(?2006\\b"
+   ],
+   "doi": "10.1016/j.jclinepi.2006.01.009",
+   "authors": [
+    "Moons, Karel G.M.",
+    "Donders, Rogier A.R.T.",
+    "Stijnen, Theo",
+    "Harrell, Jr., Frank E."
+   ],
+   "title": "Using the outcome for imputation of missing predictor values was preferred",
+   "year": 2006,
+   "venue": "Journal of Clinical Epidemiology",
+   "volume": "59",
+   "issue": "10",
+   "pages": "1092-1101",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2006
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "sisk2023missing",
+   "kind": "article",
+   "cited_as": [
+    "Sisk\\b[^;()]{0,90}?\\(?2023\\b"
+   ],
+   "doi": "10.1177/09622802231165001",
+   "authors": [
+    "Sisk, Rose",
+    "Sperrin, Matthew",
+    "Peek, Niels",
+    "van Smeden, Maarten",
+    "Martin, Glen Philip"
+   ],
+   "title": "Imputation and missing indicators for handling missing data in the development and deployment of clinical prediction models: A simulation study",
+   "year": 2023,
+   "venue": "Statistical Methods in Medical Research",
+   "volume": "32",
+   "issue": "8",
+   "pages": "1461-1477",
+   "publisher": "SAGE Publications",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2023
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "little2019missing",
+   "kind": "book",
+   "cited_as": [
+    "Little\\b[^;()]{0,90}?\\(?2019\\b"
+   ],
+   "doi": "10.1002/9781119482260",
+   "authors": [
+    "Little, Roderick",
+    "Rubin, Donald"
+   ],
+   "title": "Statistical Analysis with Missing Data, Third Edition",
+   "year": 2019,
+   "venue": "Wiley Series in Probability and Statistics",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "Wiley",
+   "crossref_type": "monograph",
+   "years_seen": [
+    2019
+   ],
+   "isbn": "9780470526798",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "groenwold2016",
+   "kind": "article",
+   "cited_as": [
+    "Groenwold\\b[^;()]{0,90}?\\(?2016\\b"
+   ],
+   "doi": "10.1016/j.jclinepi.2016.03.017",
+   "authors": [
+    "Groenwold, Rolf H.H.",
+    "Moons, Karel G.M.",
+    "Pajouheshnia, Romin",
+    "Altman, Doug G.",
+    "Collins, Gary S.",
+    "Debray, Thomas P.A.",
+    "Reitsma, Johannes B.",
+    "Riley, Richard D.",
+    "Peelen, Linda M."
+   ],
+   "title": "Explicit inclusion of treatment in prognostic modeling was recommended in observational and randomized settings",
+   "year": 2016,
+   "venue": "Journal of Clinical Epidemiology",
+   "volume": "78",
+   "issue": "",
+   "pages": "90-100",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "white2005baseline",
+   "kind": "article",
+   "cited_as": [
+    "White & Thompson,? \\(?2005\\b"
+   ],
+   "doi": "10.1002/sim.1981",
+   "authors": [
+    "White, Ian R.",
+    "Thompson, Simon G."
+   ],
+   "title": "Adjusting for partially missing baseline measurements in randomized trials",
+   "year": 2005,
+   "venue": "Statistics in Medicine",
+   "volume": "24",
+   "issue": "7",
+   "pages": "993-1007",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2004,
+    2005
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "rosner1989rc",
+   "kind": "article",
+   "cited_as": [
+    "Rosner\\b[^;()]{0,90}?\\(?1989\\b"
+   ],
+   "doi": "10.1002/sim.4780080905",
+   "authors": [
+    "Rosner, B.",
+    "Willett, W. C.",
+    "Spiegelman, D."
+   ],
+   "title": "Correction of logistic regression relative risk estimates and confidence intervals for systematic within‐person measurement error",
+   "year": 1989,
+   "venue": "Statistics in Medicine",
+   "volume": "8",
+   "issue": "9",
+   "pages": "1051-1069",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1989,
+    2006
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "rosner1990rc",
+   "kind": "article",
+   "cited_as": [
+    "Rosner\\b[^;()]{0,90}?\\(?1990\\b"
+   ],
+   "doi": "10.1093/oxfordjournals.aje.a115715",
+   "authors": [
+    "ROSNER, B.",
+    "SPIEGELMAN, D.",
+    "WILLETT, W. C."
+   ],
+   "title": "CORRECTION OF LOGISTIC REGRESSION RELATIVE RISK ESTIMATES AND CONFIDENCE INTERVALS FOR MEASUREMENT ERROR: THE CASE OF MULTIPLE COVARIATES MEASURED WITH ERROR",
+   "year": 1990,
+   "venue": "American Journal of Epidemiology",
+   "volume": "132",
+   "issue": "4",
+   "pages": "734-745",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1990
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "carroll2006measurement",
+   "kind": "book",
+   "cited_as": [
+    "Carroll\\b[^;()]{0,90}?\\(?2006\\b"
+   ],
+   "doi": "10.1201/9781420010138",
+   "authors": [
+    "Carroll, Raymond J.",
+    "Ruppert, David",
+    "Stefanski, Leonard A.",
+    "Crainiceanu, Ciprian M."
+   ],
+   "title": "Measurement Error in Nonlinear Models",
+   "year": 2006,
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "Chapman and Hall/CRC",
+   "crossref_type": "book",
+   "years_seen": [
+    2006
+   ],
+   "isbn": "9781420010138",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "freedman2011rc",
+   "kind": "article",
+   "cited_as": [
+    "Freedman\\b[^;()]{0,90}?\\(?2011\\b"
+   ],
+   "doi": "10.1093/jnci/djr189",
+   "authors": [
+    "Freedman, Laurence S.",
+    "Schatzkin, Arthur",
+    "Midthune, Douglas",
+    "Kipnis, Victor"
+   ],
+   "title": "Dealing With Dietary Measurement Error in Nutritional Cohort Studies",
+   "year": 2011,
+   "venue": "JNCI: Journal of the National Cancer Institute",
+   "volume": "103",
+   "issue": "14",
+   "pages": "1086-1092",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2011
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "schomaker2018bootmi",
+   "kind": "article",
+   "cited_as": [
+    "(?:Boot MI, )?Schomaker\\b[^;()]{0,90}?\\(?2018\\b"
+   ],
+   "doi": "10.1002/sim.7654",
+   "authors": [
+    "Schomaker, Michael",
+    "Heumann, Christian"
+   ],
+   "title": "Bootstrap inference when using multiple imputation",
+   "year": 2018,
+   "venue": "Statistics in Medicine",
+   "volume": "37",
+   "issue": "14",
+   "pages": "2252-2266",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2018
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "keogh2020stratos1",
+   "kind": "article",
+   "cited_as": [
+    "Keogh\\b[^;()]{0,90}?\\(?2020\\b"
+   ],
+   "doi": "10.1002/sim.8532",
+   "authors": [
+    "Keogh, Ruth H.",
+    "Shaw, Pamela A.",
+    "Gustafson, Paul",
+    "Carroll, Raymond J.",
+    "Deffner, Veronika",
+    "Dodd, Kevin W.",
+    "Küchenhoff, Helmut",
+    "Tooze, Janet A.",
+    "Wallace, Michael P.",
+    "Kipnis, Victor",
+    "Freedman, Laurence S."
+   ],
+   "title": "STRATOS guidance document on measurement error and misclassification of variables in observational epidemiology: Part 1—Basic theory and simple methods of adjustment",
+   "year": 2020,
+   "venue": "Statistics in Medicine",
+   "volume": "39",
+   "issue": "16",
+   "pages": "2197-2231",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2020
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "boe2023rc",
+   "kind": "article",
+   "cited_as": [
+    "Boe\\b[^;()]{0,90}?\\(?2023\\b"
+   ],
+   "doi": "10.1093/aje/kwad098",
+   "authors": [
+    "Boe, Lillian A",
+    "Shaw, Pamela A",
+    "Midthune, Douglas",
+    "Gustafson, Paul",
+    "Kipnis, Victor",
+    "Park, Eunyoung",
+    "Sotres-Alvarez, Daniela",
+    "Freedman, Laurence",
+    "Of The Stratos Initiative, On Behalf Of The Measurement Error And Misclassification Topic Group Tg"
+   ],
+   "title": "Issues in Implementing Regression Calibration Analyses",
+   "year": 2023,
+   "venue": "American journal of epidemiology",
+   "volume": "192",
+   "issue": "8",
+   "pages": "1406-1414",
+   "publisher": "",
+   "years_seen": [
+    2023
+   ],
+   "verified_by": "doi_handle",
+   "verified_on": "2026-10-09",
+   "verification_note": "Crossref's REST API answered 404 for this DOI; doi.org resolves it (registration agency Crossref), and the metadata is PubMed's, read through Europe PMC.",
+   "disagreements": []
+  },
+  {
+   "key": "tooze2006episodic",
+   "kind": "article",
+   "cited_as": [
+    "Tooze\\b[^;()]{0,90}?\\(?2006\\b"
+   ],
+   "doi": "10.1016/j.jada.2006.07.003",
+   "authors": [
+    "Tooze, Janet A.",
+    "Midthune, Douglas",
+    "Dodd, Kevin W.",
+    "Freedman, Laurence S.",
+    "Krebs-Smith, Susan M.",
+    "Subar, Amy F.",
+    "Guenther, Patricia M.",
+    "Carroll, Raymond J.",
+    "Kipnis, Victor"
+   ],
+   "title": "A New Statistical Method for Estimating the Usual Intake of Episodically Consumed Foods with Application to Their Distribution",
+   "year": 2006,
+   "venue": "Journal of the American Dietetic Association",
+   "volume": "106",
+   "issue": "10",
+   "pages": "1575-1587",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2006
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "tooze2010multivariate",
+   "kind": "article",
+   "cited_as": [
+    "Tooze\\b[^;()]{0,90}?\\(?2010\\b"
+   ],
+   "doi": "10.1002/sim.4063",
+   "authors": [
+    "Tooze, Janet A.",
+    "Kipnis, Victor",
+    "Buckman, Dennis W.",
+    "Carroll, Raymond J.",
+    "Freedman, Laurence S.",
+    "Guenther, Patricia M.",
+    "Krebs‐Smith, Susan M.",
+    "Subar, Amy F.",
+    "Dodd, Kevin W."
+   ],
+   "title": "A mixed‐effects model approach for estimating the distribution of usual intake of nutrients: The NCI method",
+   "year": 2010,
+   "venue": "Statistics in Medicine",
+   "volume": "29",
+   "issue": "27",
+   "pages": "2857-2868",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2010
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "kipnis2009episodic",
+   "kind": "article",
+   "cited_as": [
+    "Kipnis\\b[^;()]{0,90}?\\(?2009\\b"
+   ],
+   "doi": "10.1111/j.1541-0420.2009.01223.x",
+   "authors": [
+    "Kipnis, Victor",
+    "Midthune, Douglas",
+    "Buckman, Dennis W.",
+    "Dodd, Kevin W.",
+    "Guenther, Patricia M.",
+    "Krebs‐Smith, Susan M.",
+    "Subar, Amy F.",
+    "Tooze, Janet A.",
+    "Carroll, Raymond J.",
+    "Freedman, Laurence S."
+   ],
+   "title": "Modeling Data with Excess Zeros and Measurement Error: Application to Evaluating Relationships between Episodically Consumed Foods and Health Outcomes",
+   "year": 2009,
+   "venue": "Biometrics",
+   "volume": "65",
+   "issue": "4",
+   "pages": "1003-1010",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2009
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "kipnis2003open",
+   "kind": "article",
+   "cited_as": [
+    "Kipnis\\b[^;()]{0,90}?\\(?2003\\b"
+   ],
+   "doi": "10.1093/aje/kwg091",
+   "authors": [
+    "Kipnis, V."
+   ],
+   "title": "Structure of Dietary Measurement Error: Results of the OPEN Biomarker Study",
+   "year": 2003,
+   "venue": "American Journal of Epidemiology",
+   "volume": "158",
+   "issue": "1",
+   "pages": "14-21",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2003
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "prentice2011biomarker",
+   "kind": "article",
+   "cited_as": [
+    "Prentice\\b[^;()]{0,90}?\\(?2011\\b"
+   ],
+   "doi": "10.1093/aje/kwr140",
+   "authors": [
+    "Prentice, Ross L.",
+    "Mossavar-Rahmani, Yasmin",
+    "Huang, Ying",
+    "Van Horn, Linda",
+    "Beresford, Shirley A. A.",
+    "Caan, Bette",
+    "Tinker, Lesley",
+    "Schoeller, Dale",
+    "Bingham, Sheila",
+    "Eaton, Charles B.",
+    "Thomson, Cynthia",
+    "Johnson, Karen C.",
+    "Ockene, Judy",
+    "Sarto, Gloria",
+    "Heiss, Gerardo",
+    "Neuhouser, Marian L."
+   ],
+   "title": "Evaluation and Comparison of Food Records, Recalls, and Frequencies for Energy and Protein Assessment by Using Recovery Biomarkers",
+   "year": 2011,
+   "venue": "American Journal of Epidemiology",
+   "volume": "174",
+   "issue": "5",
+   "pages": "591-603",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2011
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "subar2015",
+   "kind": "article",
+   "cited_as": [
+    "Subar\\b[^;()]{0,90}?\\(?2015\\b"
+   ],
+   "doi": "10.3945/jn.115.219634",
+   "authors": [
+    "Subar, Amy F",
+    "Freedman, Laurence S",
+    "Tooze, Janet A",
+    "Kirkpatrick, Sharon I",
+    "Boushey, Carol",
+    "Neuhouser, Marian L",
+    "Thompson, Frances E",
+    "Potischman, Nancy",
+    "Guenther, Patricia M",
+    "Tarasuk, Valerie",
+    "Reedy, Jill",
+    "Krebs-Smith, Susan M"
+   ],
+   "title": "Addressing Current Criticism Regarding the Value of Self-Report Dietary Data",
+   "year": 2015,
+   "venue": "The Journal of Nutrition",
+   "volume": "145",
+   "issue": "12",
+   "pages": "2639-2645",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2015
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "luijken2019",
+   "kind": "article",
+   "cited_as": [
+    "Luijken\\b[^;()]{0,90}?\\(?2019\\b"
+   ],
+   "doi": "10.1002/sim.8183",
+   "authors": [
+    "Luijken, K.",
+    "Groenwold, R. H. H.",
+    "Van Calster, B.",
+    "Steyerberg, E. W.",
+    "van Smeden, M."
+   ],
+   "title": "Impact of predictor measurement heterogeneity across settings on the performance of prediction models: A measurement error perspective",
+   "year": 2019,
+   "venue": "Statistics in Medicine",
+   "volume": "38",
+   "issue": "18",
+   "pages": "3444-3459",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2019
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "iom2000dri",
+   "kind": "book",
+   "cited_as": [
+    "Institute of Medicine\\b[^;()]{0,90}?\\(?2000\\b"
+   ],
+   "doi": "10.17226/9956",
+   "authors": [
+    "Institute of Medicine"
+   ],
+   "title": "Dietary Reference Intakes: Applications in Dietary Assessment",
+   "year": 2000,
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "National Academies Press",
+   "crossref_type": "edited-book",
+   "years_seen": [
+    2000
+   ],
+   "isbn": "9780309071833",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": [],
+   "overrides": {
+    "fields": {
+     "authors": [
+      "Institute of Medicine"
+     ]
+    },
+    "why": "Crossref's record names no author; the National Academies Press credits the Institute of Medicine."
+   },
+   "crossref_original": {
+    "authors": []
+   }
+  },
+  {
+   "key": "iom1998folate",
+   "kind": "book",
+   "cited_as": [
+    "Institute of Medicine\\b[^;()]{0,90}?\\(?1998\\b"
+   ],
+   "doi": "10.17226/6015",
+   "authors": [
+    "Institute of Medicine"
+   ],
+   "title": "Dietary Reference Intakes for Thiamin, Riboflavin, Niacin, Vitamin B6, Folate, Vitamin B12, Pantothenic Acid, Biotin, and Choline",
+   "year": 1998,
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "National Academies Press",
+   "crossref_type": "edited-book",
+   "years_seen": [
+    1998
+   ],
+   "isbn": "9780309065542",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": [],
+   "overrides": {
+    "fields": {
+     "authors": [
+      "Institute of Medicine"
+     ]
+    },
+    "why": "Crossref's record names no author; the National Academies Press credits the Institute of Medicine."
+   },
+   "crossref_original": {
+    "authors": []
+   }
+  },
+  {
+   "key": "iom2001vitamina",
+   "kind": "book",
+   "cited_as": [
+    "2001 \\(RAE\\)"
+   ],
+   "doi": "10.17226/10026",
+   "authors": [
+    "Institute of Medicine"
+   ],
+   "title": "Dietary Reference Intakes for Vitamin A, Vitamin K, Arsenic, Boron, Chromium, Copper, Iodine, Iron, Manganese, Molybdenum, Nickel, Silicon, Vanadium, and Zinc",
+   "year": 2001,
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "National Academies Press",
+   "crossref_type": "edited-book",
+   "years_seen": [
+    2001
+   ],
+   "isbn": "9780309072793",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": [],
+   "overrides": {
+    "fields": {
+     "authors": [
+      "Institute of Medicine"
+     ]
+    },
+    "why": "Crossref's record names no author; the National Academies Press credits the Institute of Medicine."
+   },
+   "crossref_original": {
+    "authors": []
+   }
+  },
+  {
+   "key": "iom2011calcium",
+   "kind": "book",
+   "cited_as": [
+    "2011 \\(calcium"
+   ],
+   "doi": "10.17226/13050",
+   "authors": [
+    "Institute of Medicine"
+   ],
+   "title": "Dietary Reference Intakes for Calcium and Vitamin D",
+   "year": 2011,
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "National Academies Press",
+   "crossref_type": "edited-book",
+   "years_seen": [
+    2011
+   ],
+   "isbn": "9780309163941",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": [],
+   "overrides": {
+    "fields": {
+     "authors": [
+      "Institute of Medicine"
+     ]
+    },
+    "why": "Crossref's record names no author; the National Academies Press credits the Institute of Medicine."
+   },
+   "crossref_original": {
+    "authors": []
+   }
+  },
+  {
+   "key": "willett2013nutepi",
+   "kind": "book",
+   "cited_as": [
+    "Willett(?:'s textbook)?\\b[^;()]{0,30}?\\(?2013\\b"
+   ],
+   "doi": "10.1093/acprof:oso/9780199754038.001.0001",
+   "authors": [
+    "Willett, Walter"
+   ],
+   "title": "Nutritional Epidemiology",
+   "year": 2012,
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "Oxford University Press",
+   "crossref_type": "book",
+   "years_seen": [
+    2012,
+    2013
+   ],
+   "isbn": "0199754039",
+   "edition": "3",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "willett2022letter",
+   "kind": "article",
+   "cited_as": [
+    "Willett, Stampfer & Tobias,? \\(?2022\\b"
+   ],
+   "doi": "10.1093/ajcn/nqac114",
+   "authors": [
+    "Willett, Walter C",
+    "Stampfer, Meir",
+    "Tobias, Deirdre K"
+   ],
+   "title": "Re: Adjustment for energy intake in nutritional research: a causal inference perspective",
+   "year": 2022,
+   "venue": "The American Journal of Clinical Nutrition",
+   "volume": "116",
+   "issue": "2",
+   "pages": "608-609",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2022
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "tomova2022energy",
+   "kind": "article",
+   "cited_as": [
+    "Tomova(?: GD)?(?: et al\\.)?,? \\(?2022\\b"
+   ],
+   "doi": "10.1093/ajcn/nqab266",
+   "authors": [
+    "Tomova, Georgia D",
+    "Arnold, Kellyn F",
+    "Gilthorpe, Mark S",
+    "Tennant, Peter WG"
+   ],
+   "title": "Adjustment for energy intake in nutritional research: a causal inference perspective",
+   "year": 2022,
+   "venue": "The American Journal of Clinical Nutrition",
+   "volume": "115",
+   "issue": "1",
+   "pages": "189-198",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2022
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "tomova2022substitution",
+   "kind": "article",
+   "cited_as": [
+    "Tomova, Gilthorpe & Tennant,? \\(?2022\\b"
+   ],
+   "doi": "10.1093/ajcn/nqac188",
+   "authors": [
+    "Tomova, Georgia D",
+    "Gilthorpe, Mark S",
+    "Tennant, Peter WG"
+   ],
+   "title": "Theory and performance of substitution models for estimating relative causal effects in nutritional epidemiology",
+   "year": 2022,
+   "venue": "The American Journal of Clinical Nutrition",
+   "volume": "116",
+   "issue": "5",
+   "pages": "1379-1388",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2022
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "mccullough2023energy",
+   "kind": "article",
+   "cited_as": [
+    "McCullough\\b[^;()]{0,90}?\\(?2023\\b"
+   ],
+   "doi": "10.1093/aje/kwac071",
+   "authors": [
+    "McCullough, Lauren E",
+    "Byrd, Doratha A"
+   ],
+   "title": "Total Energy Intake: Implications for Epidemiologic Analyses",
+   "year": 2023,
+   "venue": "American Journal of Epidemiology",
+   "volume": "192",
+   "issue": "11",
+   "pages": "1801-1805",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2022,
+    2023
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "louie2026substitution",
+   "kind": "article",
+   "cited_as": [
+    "Louie\\b[^;()]{0,90}?\\(?2026\\b"
+   ],
+   "doi": "10.1038/s41430-026-01712-7",
+   "authors": [
+    "Louie, Jimmy Chun Yu",
+    "Bhowmik, Jahar"
+   ],
+   "title": "The (ab)use of food frequency questionnaire data in substitution modelling in nutritional epidemiology: a critique",
+   "year": 2026,
+   "venue": "European Journal of Clinical Nutrition",
+   "volume": "80",
+   "issue": "5",
+   "pages": "458-468",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2026
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "yamamoto2023misreporting",
+   "kind": "article",
+   "cited_as": [
+    "Yamamoto\\b[^;()]{0,90}?\\(?2023\\b"
+   ],
+   "doi": "10.7554/elife.83616",
+   "authors": [
+    "Yamamoto, Nao",
+    "Ejima, Keisuke",
+    "Zoh, Roger S",
+    "Brown, Andrew W"
+   ],
+   "title": "Bias in nutrition-health associations is not eliminated by excluding extreme reporters in empirical or simulation studies",
+   "year": 2023,
+   "venue": "eLife",
+   "volume": "12",
+   "issue": "",
+   "pages": "e83616",
+   "publisher": "eLife Sciences Publications, Ltd",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2023
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "reedy2018hei",
+   "kind": "article",
+   "cited_as": [
+    "Reedy\\b[^;()]{0,90}?\\(?2018\\b"
+   ],
+   "doi": "10.1016/j.jand.2018.05.019",
+   "authors": [
+    "Reedy, Jill",
+    "Lerman, Jennifer L.",
+    "Krebs-Smith, Susan M.",
+    "Kirkpatrick, Sharon I.",
+    "Pannucci, TusaRebecca E.",
+    "Wilson, Magdalena M.",
+    "Subar, Amy F.",
+    "Kahle, Lisa L.",
+    "Tooze, Janet A."
+   ],
+   "title": "Evaluation of the Healthy Eating Index-2015",
+   "year": 2018,
+   "venue": "Journal of the Academy of Nutrition and Dietetics",
+   "volume": "118",
+   "issue": "9",
+   "pages": "1622-1633",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2018
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "turner2010categorisation",
+   "kind": "article",
+   "cited_as": [
+    "Turner\\b[^;()]{0,90}?\\(?2010\\b"
+   ],
+   "doi": "10.1186/1742-5573-7-9",
+   "authors": [
+    "Turner, Elizabeth L",
+    "Dobson, Joanna E",
+    "Pocock, Stuart J"
+   ],
+   "title": "Categorisation of continuous risk factors in epidemiological publications: a survey of current practice",
+   "year": 2010,
+   "venue": "Epidemiologic Perspectives &amp; Innovations",
+   "volume": "7",
+   "issue": "1",
+   "pages": "9",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2010
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "long2014stata",
+   "kind": "book",
+   "cited_as": [
+    "Long & Freese,? \\(?2014\\b"
+   ],
+   "doi": null,
+   "title": "Regression Models for Categorical Dependent Variables Using Stata",
+   "year": 2014,
+   "edition": "3rd",
+   "authors": [
+    "Long, J. Scott",
+    "Freese, Jeremy"
+   ],
+   "publisher": "Stata Press",
+   "isbn": "978-1-59718-111-2",
+   "no_doi": "A Stata Press book; it has no DOI.",
+   "verified_by": "isbn",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "harrell2015rms",
+   "kind": "book",
+   "cited_as": [
+    "Harrell,? Regression Modeling Strategies"
+   ],
+   "doi": "10.1007/978-3-319-19425-7",
+   "edition": "2nd",
+   "authors": [
+    "Harrell, Frank E."
+   ],
+   "title": "Regression Modeling Strategies: With Applications to Linear Models, Logistic and Ordinal Regression, and Survival Analysis",
+   "year": 2015,
+   "venue": "Springer Series in Statistics",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "Springer International Publishing",
+   "crossref_type": "book",
+   "years_seen": [
+    2015
+   ],
+   "isbn": "9783319194240",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "grambsch1991splines",
+   "kind": "article",
+   "cited_as": [
+    "Grambsch & O'Brien,? \\(?1991\\b"
+   ],
+   "doi": "10.1002/sim.4780100504",
+   "authors": [
+    "Grambsch, Patricia M.",
+    "O'Brien, Peter C."
+   ],
+   "title": "The effects of transformations and preliminary tests for non‐linearity in regression",
+   "year": 1991,
+   "venue": "Statistics in Medicine",
+   "volume": "10",
+   "issue": "5",
+   "pages": "697-709",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1991,
+    2006
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "altman2006dichotomizing",
+   "kind": "article",
+   "cited_as": [
+    "Altman\\b[^;()]{0,90}?\\(?2006\\b"
+   ],
+   "doi": "10.1136/bmj.332.7549.1080",
+   "authors": [
+    "Altman, Douglas G",
+    "Royston, Patrick"
+   ],
+   "title": "The cost of dichotomising continuous variables",
+   "year": 2006,
+   "venue": "BMJ",
+   "volume": "332",
+   "issue": "7549",
+   "pages": "1080.1",
+   "publisher": "BMJ",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2006
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "brenner1997misclassification",
+   "kind": "article",
+   "cited_as": [
+    "Brenner\\b[^;()]{0,90}?\\(?1997\\b"
+   ],
+   "doi": "10.1097/00001648-199707000-00014",
+   "authors": [
+    "Brenner, Hermann",
+    "Blettner, Maria"
+   ],
+   "title": "Controlling for Continuous Confounders in Epidemiologic Research",
+   "year": 1997,
+   "venue": "Epidemiology",
+   "volume": "8",
+   "issue": "4",
+   "pages": "429",
+   "publisher": "Ovid Technologies (Wolters Kluwer Health)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1997
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "desquilbet2010splines",
+   "kind": "article",
+   "cited_as": [
+    "Desquilbet\\b[^;()]{0,90}?\\(?2010\\b"
+   ],
+   "doi": "10.1002/sim.3841",
+   "authors": [
+    "Desquilbet, Loic",
+    "Mariotti, François"
+   ],
+   "title": "Dose‐response analyses using restricted cubic spline functions in public health research",
+   "year": 2010,
+   "venue": "Statistics in Medicine",
+   "volume": "29",
+   "issue": "9",
+   "pages": "1037-1057",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2010
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "cronbach1951alpha",
+   "kind": "article",
+   "cited_as": [
+    "Cronbach\\b[^;()]{0,90}?\\(?1951\\b"
+   ],
+   "doi": "10.1007/bf02310555",
+   "authors": [
+    "Cronbach, Lee J."
+   ],
+   "title": "Coefficient Alpha and the Internal Structure of Tests",
+   "year": 1951,
+   "venue": "Psychometrika",
+   "volume": "16",
+   "issue": "3",
+   "pages": "297-334",
+   "publisher": "Cambridge University Press (CUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1951,
+    2025
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "mcneish2018alpha",
+   "kind": "article",
+   "cited_as": [
+    "McNeish\\b[^;()]{0,90}?\\(?2018\\b"
+   ],
+   "doi": "10.1037/met0000144",
+   "authors": [
+    "McNeish, Daniel"
+   ],
+   "title": "Thanks coefficient alpha, we’ll take it from here.",
+   "year": 2018,
+   "venue": "Psychological Methods",
+   "volume": "23",
+   "issue": "3",
+   "pages": "412-433",
+   "publisher": "American Psychological Association (APA)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2018
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "schmidt2003transient",
+   "kind": "article",
+   "cited_as": [
+    "Schmidt\\b[^;()]{0,90}?\\(?2003\\b"
+   ],
+   "doi": "10.1037/1082-989x.8.2.206",
+   "authors": [
+    "Schmidt, Frank L.",
+    "Le, Huy",
+    "Ilies, Remus"
+   ],
+   "title": "Beyond alpha: An empirical examination of the effects of different sources of measurement error on reliability estimates for measures of individual-differences constructs.",
+   "year": 2003,
+   "venue": "Psychological Methods",
+   "volume": "8",
+   "issue": "2",
+   "pages": "206-224",
+   "publisher": "American Psychological Association (APA)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2003
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "devellis2017scale",
+   "kind": "book",
+   "cited_as": [
+    "DeVellis\\b[^;()]{0,90}?\\(?2017\\b"
+   ],
+   "doi": null,
+   "title": "Scale Development: Theory and Applications",
+   "year": 2017,
+   "edition": "4th",
+   "authors": [
+    "DeVellis, Robert F."
+   ],
+   "publisher": "SAGE Publications",
+   "isbn": "978-1-5063-4156-9",
+   "verified_by": "isbn",
+   "verified_on": "2026-10-09",
+   "disagreements": [],
+   "no_doi": "A SAGE textbook; Crossref holds no DOI for this edition."
+  },
+  {
+   "key": "vickers2006dca",
+   "kind": "article",
+   "cited_as": [
+    "Vickers\\b[^;()]{0,90}?\\(?2006\\b"
+   ],
+   "doi": "10.1177/0272989x06295361",
+   "authors": [
+    "Vickers, Andrew J.",
+    "Elkin, Elena B."
+   ],
+   "title": "Decision Curve Analysis: A Novel Method for Evaluating Prediction Models",
+   "year": 2006,
+   "venue": "Medical Decision Making",
+   "volume": "26",
+   "issue": "6",
+   "pages": "565-574",
+   "publisher": "SAGE Publications",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2006
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "steyerberg2019cpm",
+   "kind": "book",
+   "cited_as": [
+    "Steyerberg,? Clinical Prediction Models[^;()]{0,20}?\\(?2019\\b"
+   ],
+   "doi": "10.1007/978-3-030-16399-0",
+   "authors": [
+    "Steyerberg, Ewout W."
+   ],
+   "title": "Clinical Prediction Models: A Practical Approach to Development, Validation, and Updating",
+   "year": 2019,
+   "venue": "Statistics for Biology and Health",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "Springer International Publishing",
+   "crossref_type": "book",
+   "years_seen": [
+    2019
+   ],
+   "isbn": "9783030163983",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "harrell_addedvalue",
+   "kind": "web",
+   "cited_as": [
+    "Harrell, Statistically efficient ways"
+   ],
+   "doi": null,
+   "title": "Statistically Efficient Ways to Quantify Added Predictive Value of New Measurements",
+   "year": 2018,
+   "authors": [
+    "Harrell, Frank E., Jr."
+   ],
+   "publisher": "Statistical Thinking (fharrell.com)",
+   "url": "https://www.fharrell.com/post/addvalue/",
+   "no_doi": "A blog article; it has no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "nadeau2003variance",
+   "kind": "article",
+   "cited_as": [
+    "Nadeau\\b[^;()]{0,90}?\\(?2003\\b"
+   ],
+   "doi": "10.1023/a:1024068626366",
+   "authors": [
+    "Nadeau, Claude",
+    "Bengio, Yoshua"
+   ],
+   "title": "Inference for the Generalization Error",
+   "year": 2003,
+   "venue": "Machine Learning",
+   "volume": "52",
+   "issue": "3",
+   "pages": "239-281",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2003
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "bouckaert2004",
+   "kind": "chapter",
+   "cited_as": [
+    "Bouckaert\\b[^;()]{0,90}?\\(?2004\\b"
+   ],
+   "doi": "10.1007/978-3-540-24775-3_3",
+   "authors": [
+    "Bouckaert, Remco R.",
+    "Frank, Eibe"
+   ],
+   "title": "Evaluating the Replicability of Significance Tests for Comparing Learning Algorithms",
+   "year": 2004,
+   "venue": "Lecture Notes in Computer Science",
+   "volume": "",
+   "issue": "",
+   "pages": "3-12",
+   "publisher": "Springer Berlin Heidelberg",
+   "crossref_type": "book-chapter",
+   "years_seen": [
+    2004
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "saeb2017",
+   "kind": "article",
+   "cited_as": [
+    "Saeb\\b[^;()]{0,90}?\\(?2017\\b"
+   ],
+   "doi": "10.1093/gigascience/gix019",
+   "authors": [
+    "Saeb, Sohrab",
+    "Lonini, Luca",
+    "Jayaraman, Arun",
+    "Mohr, David C.",
+    "Kording, Konrad P."
+   ],
+   "title": "The need to approximate the use-case in clinical machine learning",
+   "year": 2017,
+   "venue": "GigaScience",
+   "volume": "6",
+   "issue": "5",
+   "pages": "gix019",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2017
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "tsamardinos2018bbc",
+   "kind": "article",
+   "cited_as": [
+    "Tsamardinos\\b[^;()]{0,90}?\\(?2018\\b"
+   ],
+   "doi": "10.1007/s10994-018-5714-4",
+   "authors": [
+    "Tsamardinos, Ioannis",
+    "Greasidou, Elissavet",
+    "Borboudakis, Giorgos"
+   ],
+   "title": "Bootstrapping the out-of-sample predictions for efficient and accurate cross-validation",
+   "year": 2018,
+   "venue": "Machine Learning",
+   "volume": "107",
+   "issue": "12",
+   "pages": "1895-1922",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2018
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "harrell1996",
+   "kind": "article",
+   "cited_as": [
+    "Harrell, Lee & Mark\\b[^;()]{0,30}?\\(?1996\\b"
+   ],
+   "doi": "10.1002/(sici)1097-0258(19960229)15:4<361::aid-sim168>3.0.co;2-4",
+   "authors": [
+    "HARRELL, FRANK E.",
+    "LEE, KERRY L.",
+    "MARK, DANIEL B."
+   ],
+   "title": "MULTIVARIABLE PROGNOSTIC MODELS: ISSUES IN DEVELOPING MODELS, EVALUATING ASSUMPTIONS AND ADEQUACY, AND MEASURING AND REDUCING ERRORS",
+   "year": 1996,
+   "venue": "Statistics in Medicine",
+   "volume": "15",
+   "issue": "4",
+   "pages": "361-387",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1996
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "graf1999brier",
+   "kind": "article",
+   "cited_as": [
+    "Graf\\b[^;()]{0,90}?\\(?1999\\b"
+   ],
+   "doi": "10.1002/(sici)1097-0258(19990915/30)18:17/18<2529::aid-sim274>3.0.co;2-5",
+   "authors": [
+    "Graf, Erika",
+    "Schmoor, Claudia",
+    "Sauerbrei, Willi",
+    "Schumacher, Martin"
+   ],
+   "title": "Assessment and comparison of prognostic classification schemes for survival data",
+   "year": 1999,
+   "venue": "Statistics in Medicine",
+   "volume": "18",
+   "issue": "17-18",
+   "pages": "2529-2545",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1999
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "mclernon2023survival",
+   "kind": "article",
+   "cited_as": [
+    "McLernon\\b[^;()]{0,90}?\\(?2023\\b"
+   ],
+   "doi": "10.7326/m22-0844",
+   "authors": [
+    "McLernon, David J.",
+    "Giardiello, Daniele",
+    "Van Calster, Ben",
+    "Wynants, Laure",
+    "van Geloven, Nan",
+    "van Smeden, Maarten",
+    "Therneau, Terry",
+    "Steyerberg, Ewout W.",
+    "McLernon, David J.",
+    "Giardiello, Daniele",
+    "Van Calster, Ben",
+    "Wynants, Laure",
+    "van Geloven, Nan",
+    "van Smeden, Maarten",
+    "Therneau, Terry",
+    "Steyerberg, Ewout W.",
+    "Bossuyt, Patrick",
+    "Boyles, Tom",
+    "Collins, Gary",
+    "Karr, Kathleen",
+    "Macaskill, Petra",
+    "Moons, Carl",
+    "Vickers, Andrew",
+    "Westphal, Max",
+    "Abrahamowicz, Michal",
+    "Gorfine, Malka",
+    "Ambrogi, Federico",
+    "Cook, Richard",
+    "Joly, Pierre",
+    "Andersen, Per Kragh",
+    "Martinussen, Torben",
+    "Pohar-Perme, Maja",
+    "Putter, Hein",
+    "Taylor, Jeremy",
+    "topic groups 6 and 8 of the STRATOS Initiative"
+   ],
+   "title": "Assessing Performance and Clinical Usefulness in Prediction Models With Survival Outcomes: Practical Guidance for Cox Proportional Hazards Models",
+   "year": 2023,
+   "venue": "Annals of Internal Medicine",
+   "volume": "176",
+   "issue": "1",
+   "pages": "105-114",
+   "publisher": "American College of Physicians",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2023
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "vancalster2019calibration",
+   "kind": "article",
+   "cited_as": [
+    "Van Calster\\b[^;()]{0,90}?\\(?2019\\b"
+   ],
+   "doi": "10.1186/s12916-019-1466-7",
+   "authors": [
+    "Van Calster, Ben",
+    "McLernon, David J.",
+    "van Smeden, Maarten",
+    "Wynants, Laure",
+    "Steyerberg, Ewout W.",
+    "On behalf of Topic Group ‘Evaluating diagnostic tests and prediction models’ of the STRATOS initiative"
+   ],
+   "title": "Calibration: the Achilles heel of predictive analytics",
+   "year": 2019,
+   "venue": "BMC Medicine",
+   "volume": "17",
+   "issue": "1",
+   "pages": "230",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2019
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "bates2023cv",
+   "kind": "article",
+   "cited_as": [
+    "Bates\\b[^;()]{0,90}?\\(?2023\\b"
+   ],
+   "doi": "10.1080/01621459.2023.2197686",
+   "authors": [
+    "Bates, Stephen",
+    "Hastie, Trevor",
+    "Tibshirani, Robert"
+   ],
+   "title": "Cross-Validation: What Does It Estimate and How Well Does It Do It?",
+   "year": 2024,
+   "venue": "Journal of the American Statistical Association",
+   "volume": "119",
+   "issue": "546",
+   "pages": "1434-1445",
+   "publisher": "Informa UK Limited",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2023,
+    2024
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "vandengoorbergh2022imbalance",
+   "kind": "article",
+   "cited_as": [
+    "van den Goorbergh\\b[^;()]{0,90}?\\(?2022\\b"
+   ],
+   "doi": "10.1093/jamia/ocac093",
+   "authors": [
+    "van den Goorbergh, Ruben",
+    "van Smeden, Maarten",
+    "Timmerman, Dirk",
+    "Van Calster, Ben"
+   ],
+   "title": "The harm of class imbalance corrections for risk prediction models: illustration and simulation using logistic regression",
+   "year": 2022,
+   "venue": "Journal of the American Medical Informatics Association",
+   "volume": "29",
+   "issue": "9",
+   "pages": "1525-1534",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2022
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "varma2006",
+   "kind": "article",
+   "cited_as": [
+    "Varma\\b[^;()]{0,90}?\\(?2006\\b"
+   ],
+   "doi": "10.1186/1471-2105-7-91",
+   "authors": [
+    "Varma, Sudhir",
+    "Simon, Richard"
+   ],
+   "title": "Bias in error estimation when using cross-validation for model selection",
+   "year": 2006,
+   "venue": "BMC Bioinformatics",
+   "volume": "7",
+   "issue": "1",
+   "pages": "91",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2006
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "ambroise2002",
+   "kind": "article",
+   "cited_as": [
+    "Ambroise\\b[^;()]{0,90}?\\(?2002\\b"
+   ],
+   "doi": "10.1073/pnas.102102699",
+   "authors": [
+    "Ambroise, Christophe",
+    "McLachlan, Geoffrey J."
+   ],
+   "title": "Selection bias in gene extraction on the basis of microarray gene-expression data",
+   "year": 2002,
+   "venue": "Proceedings of the National Academy of Sciences",
+   "volume": "99",
+   "issue": "10",
+   "pages": "6562-6566",
+   "publisher": "National Academy of Sciences",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2002
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "heinze2018selection",
+   "kind": "article",
+   "cited_as": [
+    "Heinze\\b[^;()]{0,90}?\\(?2018\\b"
+   ],
+   "doi": "10.1002/bimj.201700067",
+   "authors": [
+    "Heinze, Georg",
+    "Wallisch, Christine",
+    "Dunkler, Daniela"
+   ],
+   "title": "Variable selection – A review and recommendations for the practicing statistician",
+   "year": 2018,
+   "venue": "Biometrical Journal",
+   "volume": "60",
+   "issue": "3",
+   "pages": "431-449",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2018
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "heinze2024ida",
+   "kind": "article",
+   "cited_as": [
+    "Heinze\\b[^;()]{0,90}?\\(?2024\\b"
+   ],
+   "doi": "10.1186/s12874-024-02294-3",
+   "authors": [
+    "Heinze, Georg",
+    "Baillie, Mark",
+    "Lusa, Lara",
+    "Sauerbrei, Willi",
+    "Schmidt, Carsten Oliver",
+    "Harrell, Frank E.",
+    "Huebner, Marianne",
+    "on behalf of TG2 and TG3 of the STRATOS initiative"
+   ],
+   "title": "Regression without regrets –initial data analysis is a prerequisite for multivariable regression",
+   "year": 2024,
+   "venue": "BMC Medical Research Methodology",
+   "volume": "24",
+   "issue": "1",
+   "pages": "178",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2024
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "shah2013stability",
+   "kind": "article",
+   "cited_as": [
+    "Shah\\b[^;()]{0,90}?\\(?2013\\b"
+   ],
+   "doi": "10.1111/j.1467-9868.2011.01034.x",
+   "authors": [
+    "Shah, Rajen D.",
+    "Samworth, Richard J."
+   ],
+   "title": "Variable Selection with Error Control: Another Look at Stability Selection",
+   "year": 2013,
+   "venue": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+   "volume": "75",
+   "issue": "1",
+   "pages": "55-80",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2012,
+    2013
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "fan2008sis",
+   "kind": "article",
+   "cited_as": [
+    "Fan & Lv\\b[^;()]{0,30}?\\(?2008\\b"
+   ],
+   "doi": "10.1111/j.1467-9868.2008.00674.x",
+   "authors": [
+    "Fan, Jianqing",
+    "Lv, Jinchi"
+   ],
+   "title": "Sure Independence Screening for Ultrahigh Dimensional Feature Space",
+   "year": 2008,
+   "venue": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+   "volume": "70",
+   "issue": "5",
+   "pages": "849-911",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2008
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "hosmer2013logistic",
+   "kind": "book",
+   "cited_as": [
+    "Hosmer, Lemeshow & Sturdivant,? \\(?2013\\b"
+   ],
+   "doi": "10.1002/9781118548387",
+   "authors": [
+    "Hosmer, Jr., David W.",
+    "Lemeshow, Stanley",
+    "Sturdivant, Rodney X."
+   ],
+   "title": "Applied Logistic Regression",
+   "year": 2013,
+   "venue": "Wiley Series in Probability and Statistics",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "Wiley",
+   "crossref_type": "monograph",
+   "years_seen": [
+    2013
+   ],
+   "isbn": "9780470582473",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "kuhn2008caret",
+   "kind": "article",
+   "cited_as": [
+    "Kuhn\\b[^;()]{0,90}?\\(?2008\\b"
+   ],
+   "doi": "10.18637/jss.v028.i05",
+   "authors": [
+    "Kuhn, Max"
+   ],
+   "title": "Building Predictive Models in R Using the caret Package",
+   "year": 2008,
+   "venue": "Journal of Statistical Software",
+   "volume": "28",
+   "issue": "5",
+   "pages": "",
+   "publisher": "Foundation for Open Access Statistic",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2008
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "moscovich2022cv",
+   "kind": "article",
+   "cited_as": [
+    "Moscovich\\b[^;()]{0,90}?\\(?2022\\b"
+   ],
+   "doi": "10.1111/rssb.12537",
+   "authors": [
+    "Moscovich, Amit",
+    "Rosset, Saharon"
+   ],
+   "title": "On the Cross-Validation Bias due to Unsupervised Preprocessing",
+   "year": 2022,
+   "venue": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+   "volume": "84",
+   "issue": "4",
+   "pages": "1474-1502",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2022
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "gelman2013forking",
+   "kind": "web",
+   "cited_as": [
+    "Gelman & Loken,? \\(?2013\\b"
+   ],
+   "doi": null,
+   "title": "The garden of forking paths: Why multiple comparisons can be a problem, even when there is no \"fishing expedition\" or \"p-hacking\" and the research hypothesis was posited ahead of time",
+   "year": 2013,
+   "authors": [
+    "Gelman, Andrew",
+    "Loken, Eric"
+   ],
+   "publisher": "Department of Statistics, Columbia University",
+   "url": "https://sites.stat.columbia.edu/gelman/research/unpublished/forking.pdf",
+   "no_doi": "An unpublished manuscript; it has no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "benjamini1995fdr",
+   "kind": "article",
+   "cited_as": [
+    "Benjamini\\b[^;()]{0,90}?\\(?1995\\b"
+   ],
+   "doi": "10.1111/j.2517-6161.1995.tb02031.x",
+   "authors": [
+    "Benjamini, Yoav",
+    "Hochberg, Yosef"
+   ],
+   "title": "Controlling the False Discovery Rate: A Practical and Powerful Approach to Multiple Testing",
+   "year": 1995,
+   "venue": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+   "volume": "57",
+   "issue": "1",
+   "pages": "289-300",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1995,
+    2018
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "rothman1990multiple",
+   "kind": "article",
+   "cited_as": [
+    "Rothman\\b[^;()]{0,90}?\\(?1990\\b"
+   ],
+   "doi": "10.1097/00001648-199001000-00010",
+   "authors": [
+    "Rothman, Kenneth J."
+   ],
+   "title": "No Adjustments Are Needed for Multiple Comparisons",
+   "year": 1990,
+   "venue": "Epidemiology",
+   "volume": "1",
+   "issue": "1",
+   "pages": "43-46",
+   "publisher": "Ovid Technologies (Wolters Kluwer Health)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1990
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "rothman2008modern",
+   "kind": "book",
+   "cited_as": [
+    "Rothman, Greenland & Lash,? Modern Epidemiology"
+   ],
+   "doi": null,
+   "title": "Modern Epidemiology",
+   "year": 2008,
+   "edition": "3rd",
+   "authors": [
+    "Rothman, Kenneth J.",
+    "Greenland, Sander",
+    "Lash, Timothy L."
+   ],
+   "publisher": "Lippincott Williams & Wilkins",
+   "isbn": "978-0-7817-5564-1",
+   "no_doi": "A print textbook; it has no DOI.",
+   "verified_by": "isbn",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "kahan2012",
+   "kind": "article",
+   "cited_as": [
+    "Kahan\\b[^;()]{0,90}?\\(?2012\\b"
+   ],
+   "doi": "10.1002/sim.4431",
+   "authors": [
+    "Kahan, Brennan C.",
+    "Morris, Tim P."
+   ],
+   "title": "Improper analysis of trials randomised using stratified blocks or minimisation",
+   "year": 2012,
+   "venue": "Statistics in Medicine",
+   "volume": "31",
+   "issue": "4",
+   "pages": "328-340",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2011,
+    2012
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "leyrat2018",
+   "kind": "article",
+   "cited_as": [
+    "Leyrat\\b[^;()]{0,90}?\\(?2018\\b"
+   ],
+   "doi": "10.1093/ije/dyx169",
+   "authors": [
+    "Leyrat, Clémence",
+    "Morgan, Katy E",
+    "Leurent, Baptiste",
+    "Kahan, Brennan C"
+   ],
+   "title": "Cluster randomized trials with a small number of clusters: which analyses should be used?",
+   "year": 2018,
+   "venue": "International Journal of Epidemiology",
+   "volume": "47",
+   "issue": "1",
+   "pages": "321-331",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2017,
+    2018
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "campbell2012consort",
+   "kind": "article",
+   "cited_as": [
+    "Campbell\\b[^;()]{0,90}?\\(?2012\\b"
+   ],
+   "doi": "10.1136/bmj.e5661",
+   "authors": [
+    "Campbell, M. K.",
+    "Piaggio, G.",
+    "Elbourne, D. R.",
+    "Altman, D. G.",
+    "for the CONSORT Group"
+   ],
+   "title": "Consort 2010 statement: extension to cluster randomised trials",
+   "year": 2012,
+   "venue": "BMJ",
+   "volume": "345",
+   "issue": "sep04 1",
+   "pages": "e5661-e5661",
+   "publisher": "BMJ",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2012
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "senn1994baseline",
+   "kind": "article",
+   "cited_as": [
+    "Senn\\b[^;()]{0,90}?\\(?1994\\b"
+   ],
+   "doi": "10.1002/sim.4780131703",
+   "authors": [
+    "Senn, Stephen"
+   ],
+   "title": "Testing for baseline balance in clinical trials",
+   "year": 1994,
+   "venue": "Statistics in Medicine",
+   "volume": "13",
+   "issue": "17",
+   "pages": "1715-1726",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1994,
+    2006
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "kent2020path",
+   "kind": "article",
+   "cited_as": [
+    "Kent\\b[^;()]{0,90}?\\(?2020\\b"
+   ],
+   "doi": "10.7326/m18-3667",
+   "authors": [
+    "Kent, David M.",
+    "Paulus, Jessica K.",
+    "van Klaveren, David",
+    "D'Agostino, Ralph",
+    "Goodman, Steve",
+    "Hayward, Rodney",
+    "Ioannidis, John P.A.",
+    "Patrick-Lake, Bray",
+    "Morton, Sally",
+    "Pencina, Michael",
+    "Raman, Gowri",
+    "Ross, Joseph S.",
+    "Selker, Harry P.",
+    "Varadhan, Ravi",
+    "Vickers, Andrew",
+    "Wong, John B.",
+    "Steyerberg, Ewout W."
+   ],
+   "title": "The Predictive Approaches to Treatment effect Heterogeneity (PATH) Statement",
+   "year": 2020,
+   "venue": "Annals of Internal Medicine",
+   "volume": "172",
+   "issue": "1",
+   "pages": "35-45",
+   "publisher": "American College of Physicians",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2020
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "janes2008covariate",
+   "kind": "article",
+   "cited_as": [
+    "Janes\\b[^;()]{0,90}?\\(?2008\\b"
+   ],
+   "doi": "10.1111/j.1541-0420.2007.00823.x",
+   "authors": [
+    "Janes, Holly",
+    "Pepe, Margaret S."
+   ],
+   "title": "Matching in Studies of Classification Accuracy: Implications for Analysis, Efficiency, and Assessment of Incremental Value",
+   "year": 2008,
+   "venue": "Biometrics",
+   "volume": "64",
+   "issue": "1",
+   "pages": "1-9",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2008
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "king2001rare",
+   "kind": "article",
+   "cited_as": [
+    "King\\b[^;()]{0,90}?\\(?2001\\b"
+   ],
+   "doi": "10.1093/oxfordjournals.pan.a004868",
+   "authors": [
+    "King, Gary",
+    "Zeng, Langche"
+   ],
+   "title": "Logistic Regression in Rare Events Data",
+   "year": 2001,
+   "venue": "Political Analysis",
+   "volume": "9",
+   "issue": "2",
+   "pages": "137-163",
+   "publisher": "Cambridge University Press (CUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2001,
+    2017
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "prentice1979casecontrol",
+   "kind": "article",
+   "cited_as": [
+    "Prentice\\b[^;()]{0,90}?\\(?1979\\b"
+   ],
+   "doi": "10.1093/biomet/66.3.403",
+   "authors": [
+    "PRENTICE, R. L.",
+    "PYKE, R."
+   ],
+   "title": "Logistic disease incidence models and case-control studies",
+   "year": 1979,
+   "venue": "Biometrika",
+   "volume": "66",
+   "issue": "3",
+   "pages": "403-411",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1979
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "morgenstern1995ecologic",
+   "kind": "article",
+   "cited_as": [
+    "Morgenstern\\b[^;()]{0,90}?\\(?1995\\b"
+   ],
+   "doi": "10.1146/annurev.pu.16.050195.000425",
+   "authors": [
+    "Morgenstern, Hal"
+   ],
+   "title": "Ecologic Studies in Epidemiology: Concepts, Principles, and Methods",
+   "year": 1995,
+   "venue": "Annual Review of Public Health",
+   "volume": "16",
+   "issue": "1",
+   "pages": "61-81",
+   "publisher": "Annual Reviews",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1995
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "pearce2016casecontrol",
+   "kind": "article",
+   "cited_as": [
+    "Pearce\\b[^;()]{0,90}?\\(?2016\\b"
+   ],
+   "doi": "10.1136/bmj.i969",
+   "authors": [
+    "Pearce, Neil"
+   ],
+   "title": "Analysis of matched case-control studies",
+   "year": 2016,
+   "venue": "BMJ",
+   "volume": "",
+   "issue": "",
+   "pages": "i969",
+   "publisher": "BMJ",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "kahn2016dq",
+   "kind": "article",
+   "cited_as": [
+    "Kahn\\b[^;()]{0,90}?\\(?2016\\b"
+   ],
+   "doi": "10.13063/2327-9214.1244",
+   "authors": [
+    "Kahn, Michael G.",
+    "Callahan, Tiffany J.",
+    "Barnard, Juliana",
+    "Bauck, Alan E.",
+    "Brown, Jeff",
+    "Davidson, Bruce N.",
+    "Estiri, Hossein",
+    "Goerg, Carsten",
+    "Holve, Erin",
+    "Johnson, Steven G.",
+    "Liaw, Siaw-Teng",
+    "Hamilton-Lopez, Marianne",
+    "Meeker, Daniella",
+    "Ong, Toan C.",
+    "Ryan, Patrick",
+    "Shang, Ning",
+    "Weiskopf, Nicole G.",
+    "Weng, Chunhua",
+    "Zozus, Meredith N.",
+    "Schilling, Lisa"
+   ],
+   "title": "A Harmonized Data Quality Assessment Terminology and Framework for the Secondary Use of Electronic Health Record Data",
+   "year": 2016,
+   "venue": "eGEMs (Generating Evidence &amp; Methods to improve patient outcomes)",
+   "volume": "4",
+   "issue": "1",
+   "pages": "18",
+   "publisher": "Ubiquity Press, Ltd.",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "weiskopf2013dq",
+   "kind": "article",
+   "cited_as": [
+    "Weiskopf\\b[^;()]{0,90}?\\(?2013\\b"
+   ],
+   "doi": "10.1136/amiajnl-2011-000681",
+   "authors": [
+    "Weiskopf, N. G.",
+    "Weng, C."
+   ],
+   "title": "Methods and dimensions of electronic health record data quality assessment: enabling reuse for clinical research",
+   "year": 2013,
+   "venue": "Journal of the American Medical Informatics Association",
+   "volume": "20",
+   "issue": "1",
+   "pages": "144-151",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2013
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "kapoor2023leakage",
+   "kind": "article",
+   "cited_as": [
+    "Kapoor\\b[^;()]{0,90}?\\(?2023\\b"
+   ],
+   "doi": "10.1016/j.patter.2023.100804",
+   "authors": [
+    "Kapoor, Sayash",
+    "Narayanan, Arvind"
+   ],
+   "title": "Leakage and the reproducibility crisis in machine-learning-based science",
+   "year": 2023,
+   "venue": "Patterns",
+   "volume": "4",
+   "issue": "9",
+   "pages": "100804",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2023
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "hoelzel2004hba1c",
+   "kind": "article",
+   "cited_as": [
+    "Hoelzel\\b[^;()]{0,90}?\\(?2004\\b"
+   ],
+   "doi": "10.1373/clinchem.2003.024802",
+   "authors": [
+    "Hoelzel, Wieland",
+    "Weykamp, Cas",
+    "Jeppsson, Jan-Olof",
+    "Miedema, Kor",
+    "Barr, John R",
+    "Goodall, Ian",
+    "Hoshino, Tadao",
+    "John, W Garry",
+    "Kobold, Uwe",
+    "Little, Randie",
+    "Mosca, Andrea",
+    "Mauri, Pierluigi",
+    "Paroni, Rita",
+    "Susanto, Fransiscus",
+    "Takei, Izumu",
+    "Thienpont, Linda",
+    "Umemoto, Masao",
+    "Wiedmeyer, Hsiao-Mei",
+    "the IFCC Working Group on HbA1c Standardization"
+   ],
+   "title": "IFCC Reference System for Measurement of Hemoglobin A1c in Human Blood and the National Standardization Schemes in the United States, Japan, and Sweden: A Method-Comparison Study",
+   "year": 2004,
+   "venue": "Clinical Chemistry",
+   "volume": "50",
+   "issue": "1",
+   "pages": "166-174",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2004
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "hornung1990nondetect",
+   "kind": "article",
+   "cited_as": [
+    "Hornung & Reed,? \\(?1990\\b"
+   ],
+   "doi": "10.1080/1047322x.1990.10389587",
+   "authors": [
+    "Hornung, Richard W.",
+    "Reed, Laurence D."
+   ],
+   "title": "Estimation of Average Concentration in the Presence of Nondetectable Values",
+   "year": 1990,
+   "venue": "Applied Occupational and Environmental Hygiene",
+   "volume": "5",
+   "issue": "1",
+   "pages": "46-51",
+   "publisher": "Informa UK Limited",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1990
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "helsel2012censored",
+   "kind": "book",
+   "cited_as": [
+    "Helsel\\b[^;()]{0,90}?\\(?2012\\b"
+   ],
+   "doi": "10.1002/9781118162729",
+   "edition": "2nd",
+   "authors": [
+    "Helsel, Dennis R."
+   ],
+   "title": "Statistics for Censored Environmental Data Using Minitab® and R: Helsel/Statistics for Environmental Data 2E",
+   "year": 2012,
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "John Wiley & Sons, Inc.",
+   "crossref_type": "book",
+   "years_seen": [
+    2011
+   ],
+   "isbn": "9781118162729",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": [
+    "'Helsel 2012, Statistics for Censored Environmental Data, 2nd ed.': year 2012, the record 2011 (the registry keeps year 2012: Crossref dates the online release 30 December 2011; the second edition's year is 2012 (Open Library, ISBN 978-0-470-47988-9).)",
+    "'Helsel DR 2012, Statistics for Censored Environmental Data Using Minitab and R, 2nd ed. (Wiley': year 2012, the record 2011 (the registry keeps year 2012: Crossref dates the online release 30 December 2011; the second edition's year is 2012 (Open Library, ISBN 978-0-470-47988-9).)"
+   ],
+   "overrides": {
+    "fields": {
+     "year": 2012
+    },
+    "why": "Crossref dates the online release 30 December 2011; the second edition's year is 2012 (Open Library, ISBN 978-0-470-47988-9)."
+   },
+   "crossref_original": {
+    "year": 2011
+   }
+  },
+  {
+   "key": "breslow1980iarc",
+   "kind": "book",
+   "cited_as": [
+    "Breslow\\b[^;()]{0,90}?\\(?1980\\b"
+   ],
+   "doi": null,
+   "title": "Statistical Methods in Cancer Research. Volume I: The Analysis of Case-Control Studies",
+   "year": 1980,
+   "authors": [
+    "Breslow, Norman E.",
+    "Day, Nicholas E."
+   ],
+   "venue": "IARC Scientific Publications",
+   "volume": "32",
+   "publisher": "International Agency for Research on Cancer",
+   "isbn": "978-92-832-1132-2",
+   "url": "https://publications.iarc.who.int/Book-And-Report-Series/Iarc-Scientific-Publications/Statistical-Methods-In-Cancer-Research-Volume-I-The-Analysis-Of-Case-Control-Studies-1980",
+   "no_doi": "An IARC Scientific Publication; it has no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "aitchison1986",
+   "kind": "book",
+   "cited_as": [
+    "Aitchison\\b[^;()]{0,90}?\\(?1986\\b"
+   ],
+   "doi": "10.1007/978-94-009-4109-0",
+   "authors": [
+    "Aitchison, J."
+   ],
+   "title": "The Statistical Analysis of Compositional Data",
+   "year": 1986,
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "Springer Netherlands",
+   "crossref_type": "book",
+   "years_seen": [
+    1986
+   ],
+   "isbn": "9789401083249",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "lundberg2017shap",
+   "kind": "proceedings",
+   "cited_as": [
+    "Lundberg & Lee,? \\(?2017\\b"
+   ],
+   "doi": null,
+   "title": "A Unified Approach to Interpreting Model Predictions",
+   "year": 2017,
+   "authors": [
+    "Lundberg, Scott M.",
+    "Lee, Su-In"
+   ],
+   "venue": "Advances in Neural Information Processing Systems",
+   "volume": "30",
+   "pages": "4765-4774",
+   "publisher": "Curran Associates",
+   "url": "https://proceedings.neurips.cc/paper/2017/hash/8a20a8621978632d76c43dfd28b67767-Abstract.html",
+   "no_doi": "NeurIPS proceedings carry no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "lundberg2020treeshap",
+   "kind": "article",
+   "cited_as": [
+    "Lundberg\\b[^;()]{0,90}?\\(?2020\\b"
+   ],
+   "doi": "10.1038/s42256-019-0138-9",
+   "authors": [
+    "Lundberg, Scott M.",
+    "Erion, Gabriel",
+    "Chen, Hugh",
+    "DeGrave, Alex",
+    "Prutkin, Jordan M.",
+    "Nair, Bala",
+    "Katz, Ronit",
+    "Himmelfarb, Jonathan",
+    "Bansal, Nisha",
+    "Lee, Su-In"
+   ],
+   "title": "From local explanations to global understanding with explainable AI for trees",
+   "year": 2020,
+   "venue": "Nature Machine Intelligence",
+   "volume": "2",
+   "issue": "1",
+   "pages": "56-67",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2020
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "friedman2008rulefit",
+   "kind": "article",
+   "cited_as": [
+    "Friedman & Popescu,? \\(?2008\\b"
+   ],
+   "doi": "10.1214/07-aoas148",
+   "authors": [
+    "Friedman, Jerome H.",
+    "Popescu, Bogdan E."
+   ],
+   "title": "Predictive learning via rule ensembles",
+   "year": 2008,
+   "venue": "The Annals of Applied Statistics",
+   "volume": "2",
+   "issue": "3",
+   "pages": "",
+   "publisher": "Institute of Mathematical Statistics",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2008
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "apley2020ale",
+   "kind": "article",
+   "cited_as": [
+    "Apley\\b[^;()]{0,90}?\\(?2020\\b"
+   ],
+   "doi": "10.1111/rssb.12377",
+   "authors": [
+    "Apley, Daniel W.",
+    "Zhu, Jingyu"
+   ],
+   "title": "Visualizing the Effects of Predictor Variables in Black Box Supervised Learning Models",
+   "year": 2020,
+   "venue": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+   "volume": "82",
+   "issue": "4",
+   "pages": "1059-1086",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2020
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "molnar2022pitfalls",
+   "kind": "chapter",
+   "cited_as": [
+    "Molnar\\b[^;()]{0,90}?\\(?2022\\b"
+   ],
+   "doi": "10.1007/978-3-031-04083-2_4",
+   "authors": [
+    "Molnar, Christoph",
+    "König, Gunnar",
+    "Herbinger, Julia",
+    "Freiesleben, Timo",
+    "Dandl, Susanne",
+    "Scholbeck, Christian A.",
+    "Casalicchio, Giuseppe",
+    "Grosse-Wentrup, Moritz",
+    "Bischl, Bernd"
+   ],
+   "title": "General Pitfalls of Model-Agnostic Interpretation Methods for Machine Learning Models",
+   "year": 2022,
+   "venue": "Lecture Notes in Computer Science",
+   "volume": "",
+   "issue": "",
+   "pages": "39-68",
+   "publisher": "Springer International Publishing",
+   "crossref_type": "book-chapter",
+   "years_seen": [
+    2022
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "broadhurst2018qc",
+   "kind": "article",
+   "cited_as": [
+    "Broadhurst\\b[^;()]{0,90}?\\(?2018\\b"
+   ],
+   "doi": "10.1007/s11306-018-1367-3",
+   "authors": [
+    "Broadhurst, David",
+    "Goodacre, Royston",
+    "Reinke, Stacey N.",
+    "Kuligowski, Julia",
+    "Wilson, Ian D.",
+    "Lewis, Matthew R.",
+    "Dunn, Warwick B."
+   ],
+   "title": "Guidelines and considerations for the use of system suitability and quality control samples in mass spectrometry assays applied in untargeted clinical metabolomic studies",
+   "year": 2018,
+   "venue": "Metabolomics",
+   "volume": "14",
+   "issue": "6",
+   "pages": "72",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2018
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "dunn2011qc",
+   "kind": "article",
+   "cited_as": [
+    "Dunn\\b[^;()]{0,90}?\\(?2011\\b"
+   ],
+   "doi": "10.1038/nprot.2011.335",
+   "authors": [
+    "Dunn, Warwick B",
+    "Broadhurst, David",
+    "Begley, Paul",
+    "Zelena, Eva",
+    "Francis-McIntyre, Sue",
+    "Anderson, Nadine",
+    "Brown, Marie",
+    "Knowles, Joshau D",
+    "Halsall, Antony",
+    "Haselden, John N",
+    "Nicholls, Andrew W",
+    "Wilson, Ian D",
+    "Kell, Douglas B",
+    "Goodacre, Royston",
+    "The Human Serum Metabolome (HUSERMET) Consortium"
+   ],
+   "title": "Procedures for large-scale metabolic profiling of serum and plasma using gas chromatography and liquid chromatography coupled to mass spectrometry",
+   "year": 2011,
+   "venue": "Nature Protocols",
+   "volume": "6",
+   "issue": "7",
+   "pages": "1060-1083",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2011
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "dieterle2006pqn",
+   "kind": "article",
+   "cited_as": [
+    "Dieterle\\b[^;()]{0,90}?\\(?2006\\b"
+   ],
+   "doi": "10.1021/ac051632c",
+   "authors": [
+    "Dieterle, Frank",
+    "Ross, Alfred",
+    "Schlotterbeck, Götz",
+    "Senn, Hans"
+   ],
+   "title": "Probabilistic Quotient Normalization as Robust Method to Account for Dilution of Complex Biological Mixtures. Application in 1 H NMR Metabonomics",
+   "year": 2006,
+   "venue": "Analytical Chemistry",
+   "volume": "78",
+   "issue": "13",
+   "pages": "4281-4290",
+   "publisher": "American Chemical Society (ACS)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2006
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "robinson2010tmm",
+   "kind": "article",
+   "cited_as": [
+    "Robinson & Oshlack,? \\(?2010\\b"
+   ],
+   "doi": "10.1186/gb-2010-11-3-r25",
+   "authors": [
+    "Robinson, Mark D",
+    "Oshlack, Alicia"
+   ],
+   "title": "A scaling normalization method for differential expression analysis of RNA-seq data",
+   "year": 2010,
+   "venue": "Genome Biology",
+   "volume": "11",
+   "issue": "3",
+   "pages": "R25",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2010
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "robinson2010edger",
+   "kind": "article",
+   "cited_as": [
+    "Robinson, McCarthy & Smyth,? \\(?2010\\b"
+   ],
+   "doi": "10.1093/bioinformatics/btp616",
+   "authors": [
+    "Robinson, Mark D.",
+    "McCarthy, Davis J.",
+    "Smyth, Gordon K."
+   ],
+   "title": "edgeR : a Bioconductor package for differential expression analysis of digital gene expression data",
+   "year": 2010,
+   "venue": "Bioinformatics",
+   "volume": "26",
+   "issue": "1",
+   "pages": "139-140",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2009,
+    2010
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "hornung2015cv",
+   "kind": "article",
+   "cited_as": [
+    "Hornung\\b[^;()]{0,90}?\\(?2015\\b"
+   ],
+   "doi": "10.1186/s12874-015-0088-9",
+   "authors": [
+    "Hornung, Roman",
+    "Bernau, Christoph",
+    "Truntzer, Caroline",
+    "Wilson, Rory",
+    "Stadler, Thomas",
+    "Boulesteix, Anne-Laure"
+   ],
+   "title": "A measure of the impact of CV incompleteness on prediction error estimation with application to PCA and normalization",
+   "year": 2015,
+   "venue": "BMC Medical Research Methodology",
+   "volume": "15",
+   "issue": "1",
+   "pages": "95",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2015
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "hornung2017addon",
+   "kind": "article",
+   "cited_as": [
+    "Hornung\\b[^;()]{0,90}?\\(?2017\\b"
+   ],
+   "doi": "10.1093/bioinformatics/btw650",
+   "authors": [
+    "Hornung, Roman",
+    "Causeur, David",
+    "Bernau, Christoph",
+    "Boulesteix, Anne-Laure"
+   ],
+   "title": "Improving cross-study prediction through addon batch effect adjustment or addon normalization",
+   "year": 2017,
+   "venue": "Bioinformatics",
+   "volume": "33",
+   "issue": "3",
+   "pages": "397-404",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016,
+    2017
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "lubin2004nondetect",
+   "kind": "article",
+   "cited_as": [
+    "Lubin\\b[^;()]{0,90}?\\(?2004\\b"
+   ],
+   "doi": "10.1289/ehp.7199",
+   "authors": [
+    "Lubin, Jay H.",
+    "Colt, Joanne S.",
+    "Camann, David",
+    "Davis, Scott",
+    "Cerhan, James R.",
+    "Severson, Richard K.",
+    "Bernstein, Leslie",
+    "Hartge, Patricia"
+   ],
+   "title": "Epidemiologic Evaluation of Measurement Data in the Presence of Detection Limits",
+   "year": 2004,
+   "venue": "Environmental Health Perspectives",
+   "volume": "112",
+   "issue": "17",
+   "pages": "1691-1696",
+   "publisher": "American Chemical Society (ACS)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2004
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "wei2018missing",
+   "kind": "article",
+   "cited_as": [
+    "Wei\\b[^;()]{0,90}?\\(?2018\\b"
+   ],
+   "doi": "10.1038/s41598-017-19120-0",
+   "authors": [
+    "Wei, Runmin",
+    "Wang, Jingye",
+    "Su, Mingming",
+    "Jia, Erik",
+    "Chen, Shaoqiu",
+    "Chen, Tianlu",
+    "Ni, Yan"
+   ],
+   "title": "Missing Value Imputation Approach for Mass Spectrometry-based Metabolomics Data",
+   "year": 2018,
+   "venue": "Scientific Reports",
+   "volume": "8",
+   "issue": "1",
+   "pages": "663",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2018
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "lazar2016missing",
+   "kind": "article",
+   "cited_as": [
+    "Lazar\\b[^;()]{0,90}?\\(?2016\\b"
+   ],
+   "doi": "10.1021/acs.jproteome.5b00981",
+   "authors": [
+    "Lazar, Cosmin",
+    "Gatto, Laurent",
+    "Ferro, Myriam",
+    "Bruley, Christophe",
+    "Burger, Thomas"
+   ],
+   "title": "Accounting for the Multiple Natures of Missing Values in Label-Free Quantitative Proteomics Data Sets to Compare Imputation Strategies",
+   "year": 2016,
+   "venue": "Journal of Proteome Research",
+   "volume": "15",
+   "issue": "4",
+   "pages": "1116-1125",
+   "publisher": "American Chemical Society (ACS)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "diguida2016",
+   "kind": "article",
+   "cited_as": [
+    "Di Guida\\b[^;()]{0,90}?\\(?2016\\b"
+   ],
+   "doi": "10.1007/s11306-016-1030-9",
+   "authors": [
+    "Di Guida, Riccardo",
+    "Engel, Jasper",
+    "Allwood, J. William",
+    "Weber, Ralf J. M.",
+    "Jones, Martin R.",
+    "Sommer, Ulf",
+    "Viant, Mark R.",
+    "Dunn, Warwick B."
+   ],
+   "title": "Non-targeted UHPLC-MS metabolomic data processing methods: a comparative investigation of normalisation, missing value imputation, transformation and scaling",
+   "year": 2016,
+   "venue": "Metabolomics",
+   "volume": "12",
+   "issue": "5",
+   "pages": "93",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "vandenberg2006scaling",
+   "kind": "article",
+   "cited_as": [
+    "van den Berg\\b[^;()]{0,90}?\\(?2006\\b"
+   ],
+   "doi": "10.1186/1471-2164-7-142",
+   "authors": [
+    "van den Berg, Robert A",
+    "Hoefsloot, Huub CJ",
+    "Westerhuis, Johan A",
+    "Smilde, Age K",
+    "van der Werf, Mariët J"
+   ],
+   "title": "Centering, scaling, and transformations: improving the biological information content of metabolomics data",
+   "year": 2006,
+   "venue": "BMC Genomics",
+   "volume": "7",
+   "issue": "1",
+   "pages": "142",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2006
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "johnson2007combat",
+   "kind": "article",
+   "cited_as": [
+    "Johnson\\b[^;()]{0,90}?\\(?2007\\b"
+   ],
+   "doi": "10.1093/biostatistics/kxj037",
+   "authors": [
+    "Johnson, W. Evan",
+    "Li, Cheng",
+    "Rabinovic, Ariel"
+   ],
+   "title": "Adjusting batch effects in microarray expression data using empirical Bayes methods",
+   "year": 2007,
+   "venue": "Biostatistics",
+   "volume": "8",
+   "issue": "1",
+   "pages": "118-127",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2006,
+    2007
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "nygaard2016batch",
+   "kind": "article",
+   "cited_as": [
+    "Nygaard\\b[^;()]{0,90}?\\(?2016\\b"
+   ],
+   "doi": "10.1093/biostatistics/kxv027",
+   "authors": [
+    "Nygaard, Vegard",
+    "Rødland, Einar Andreas",
+    "Hovig, Eivind"
+   ],
+   "title": "Methods that remove batch effects while retaining group differences may lead to exaggerated confidence in downstream analyses",
+   "year": 2016,
+   "venue": "Biostatistics",
+   "volume": "17",
+   "issue": "1",
+   "pages": "29-39",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2015,
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "zhang2018batch",
+   "kind": "article",
+   "cited_as": [
+    "Zhang\\b[^;()]{0,90}?\\(?2018\\b"
+   ],
+   "doi": "10.1186/s12859-018-2263-6",
+   "authors": [
+    "Zhang, Yuqing",
+    "Jenkins, David F.",
+    "Manimaran, Solaiappan",
+    "Johnson, W. Evan"
+   ],
+   "title": "Alternative empirical Bayes models for adjusting for batch effects in genomic studies",
+   "year": 2018,
+   "venue": "BMC Bioinformatics",
+   "volume": "19",
+   "issue": "1",
+   "pages": "262",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2018
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "abeysooriya2021",
+   "kind": "article",
+   "cited_as": [
+    "Abeysooriya\\b[^;()]{0,90}?\\(?2021\\b"
+   ],
+   "doi": "10.1371/journal.pcbi.1008984",
+   "authors": [
+    "Abeysooriya, Mandhri",
+    "Soria, Megan",
+    "Kasu, Mary Sravya",
+    "Ziemann, Mark"
+   ],
+   "title": "Gene name errors: Lessons not learned",
+   "year": 2021,
+   "venue": "PLOS Computational Biology",
+   "volume": "17",
+   "issue": "7",
+   "pages": "e1008984",
+   "publisher": "Public Library of Science (PLoS)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2021
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "ziemann2016",
+   "kind": "article",
+   "cited_as": [
+    "Ziemann\\b[^;()]{0,90}?\\(?2016\\b"
+   ],
+   "doi": "10.1186/s13059-016-1044-7",
+   "authors": [
+    "Ziemann, Mark",
+    "Eren, Yotam",
+    "El-Osta, Assam"
+   ],
+   "title": "Gene name errors are widespread in the scientific literature",
+   "year": 2016,
+   "venue": "Genome Biology",
+   "volume": "17",
+   "issue": "1",
+   "pages": "177",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "baggerly2009",
+   "kind": "article",
+   "cited_as": [
+    "Baggerly\\b[^;()]{0,90}?\\(?2009\\b"
+   ],
+   "doi": "10.1214/09-aoas291",
+   "authors": [
+    "Baggerly, Keith A.",
+    "Coombes, Kevin R."
+   ],
+   "title": "Deriving chemosensitivity from cell lines: Forensic bioinformatics and reproducible research in high-throughput biology",
+   "year": 2009,
+   "venue": "The Annals of Applied Statistics",
+   "volume": "3",
+   "issue": "4",
+   "pages": "",
+   "publisher": "Institute of Mathematical Statistics",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2009
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "bolstad2003",
+   "kind": "article",
+   "cited_as": [
+    "Bolstad\\b[^;()]{0,90}?\\(?2003\\b"
+   ],
+   "doi": "10.1093/bioinformatics/19.2.185",
+   "authors": [
+    "Bolstad, B.M.",
+    "Irizarry, R.A",
+    "Åstrand, M.",
+    "Speed, T.P."
+   ],
+   "title": "A comparison of normalization methods for high density oligonucleotide array data based on variance and bias",
+   "year": 2003,
+   "venue": "Bioinformatics",
+   "volume": "19",
+   "issue": "2",
+   "pages": "185-193",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2003
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "candia2017",
+   "kind": "article",
+   "cited_as": [
+    "Candia\\b[^;()]{0,90}?\\(?2017\\b"
+   ],
+   "doi": "10.1038/s41598-017-14755-5",
+   "authors": [
+    "Candia, Julián",
+    "Cheung, Foo",
+    "Kotliarov, Yuri",
+    "Fantoni, Giovanna",
+    "Sellers, Brian",
+    "Griesman, Trevor",
+    "Huang, Jinghe",
+    "Stuccio, Sarah",
+    "Zingone, Adriana",
+    "Ryan, Bríd M.",
+    "Tsang, John S.",
+    "Biancotto, Angélique"
+   ],
+   "title": "Assessment of Variability in the SOMAscan Assay",
+   "year": 2017,
+   "venue": "Scientific Reports",
+   "volume": "7",
+   "issue": "1",
+   "pages": "14248",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2017
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "chen2013450k",
+   "kind": "article",
+   "cited_as": [
+    "Chen\\b[^;()]{0,90}?\\(?2013\\b"
+   ],
+   "doi": "10.4161/epi.23470",
+   "authors": [
+    "Chen, Yi-an",
+    "Lemire, Mathieu",
+    "Choufani, Sanaa",
+    "Butcher, Darci T.",
+    "Grafodatskaya, Daria",
+    "Zanke, Brent W.",
+    "Gallinger, Steven",
+    "Hudson, Thomas J.",
+    "Weksberg, Rosanna"
+   ],
+   "title": "Discovery of cross-reactive probes and polymorphic CpGs in the Illumina Infinium HumanMethylation450 microarray",
+   "year": 2013,
+   "venue": "Epigenetics",
+   "volume": "8",
+   "issue": "2",
+   "pages": "203-209",
+   "publisher": "Informa UK Limited",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2013,
+    2014
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "conesa2016rnaseq",
+   "kind": "article",
+   "cited_as": [
+    "Conesa\\b[^;()]{0,90}?\\(?2016\\b"
+   ],
+   "doi": "10.1186/s13059-016-0881-8",
+   "authors": [
+    "Conesa, Ana",
+    "Madrigal, Pedro",
+    "Tarazona, Sonia",
+    "Gomez-Cabrero, David",
+    "Cervera, Alejandra",
+    "McPherson, Andrew",
+    "Szcześniak, Michał Wojciech",
+    "Gaffney, Daniel J.",
+    "Elo, Laura L.",
+    "Zhang, Xuegong",
+    "Mortazavi, Ali"
+   ],
+   "title": "A survey of best practices for RNA-seq data analysis",
+   "year": 2016,
+   "venue": "Genome Biology",
+   "volume": "17",
+   "issue": "1",
+   "pages": "13",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "davis2018decontam",
+   "kind": "article",
+   "cited_as": [
+    "Davis\\b[^;()]{0,90}?\\(?2018\\b"
+   ],
+   "doi": "10.1186/s40168-018-0605-2",
+   "authors": [
+    "Davis, Nicole M.",
+    "Proctor, Diana M.",
+    "Holmes, Susan P.",
+    "Relman, David A.",
+    "Callahan, Benjamin J."
+   ],
+   "title": "Simple statistical identification and removal of contaminant sequences in marker-gene and metagenomics data",
+   "year": 2018,
+   "venue": "Microbiome",
+   "volume": "6",
+   "issue": "1",
+   "pages": "226",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2018
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "dillies2013",
+   "kind": "article",
+   "cited_as": [
+    "Dillies\\b[^;()]{0,90}?\\(?2013\\b"
+   ],
+   "doi": "10.1093/bib/bbs046",
+   "authors": [
+    "Dillies, M.-A.",
+    "Rau, A.",
+    "Aubert, J.",
+    "Hennequet-Antier, C.",
+    "Jeanmougin, M.",
+    "Servant, N.",
+    "Keime, C.",
+    "Marot, G.",
+    "Castel, D.",
+    "Estelle, J.",
+    "Guernec, G.",
+    "Jagla, B.",
+    "Jouneau, L.",
+    "Laloe, D.",
+    "Le Gall, C.",
+    "Schaeffer, B.",
+    "Le Crom, S.",
+    "Guedj, M.",
+    "Jaffrezic, F.",
+    "on behalf of The French StatOmique Consortium"
+   ],
+   "title": "A comprehensive evaluation of normalization methods for Illumina high-throughput RNA sequencing data analysis",
+   "year": 2013,
+   "venue": "Briefings in Bioinformatics",
+   "volume": "14",
+   "issue": "6",
+   "pages": "671-683",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2012,
+    2013
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "du2010mvalue",
+   "kind": "article",
+   "cited_as": [
+    "Du\\b[^;()]{0,90}?\\(?2010\\b"
+   ],
+   "doi": "10.1186/1471-2105-11-587",
+   "authors": [
+    "Du, Pan",
+    "Zhang, Xiao",
+    "Huang, Chiang-Ching",
+    "Jafari, Nadereh",
+    "Kibbe, Warren A",
+    "Hou, Lifang",
+    "Lin, Simon M"
+   ],
+   "title": "Comparison of Beta-value and M-value methods for quantifying methylation levels by microarray analysis",
+   "year": 2010,
+   "venue": "BMC Bioinformatics",
+   "volume": "11",
+   "issue": "1",
+   "pages": "587",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2010
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "edgar2002geo",
+   "kind": "article",
+   "cited_as": [
+    "Edgar\\b[^;()]{0,90}?\\(?2002\\b"
+   ],
+   "doi": "10.1093/nar/30.1.207",
+   "authors": [
+    "Edgar, R."
+   ],
+   "title": "Gene Expression Omnibus: NCBI gene expression and hybridization array data repository",
+   "year": 2002,
+   "venue": "Nucleic Acids Research",
+   "volume": "30",
+   "issue": "1",
+   "pages": "207-210",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2002
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "eldjarn2023",
+   "kind": "article",
+   "cited_as": [
+    "Eldjarn\\b[^;()]{0,90}?\\(?2023\\b"
+   ],
+   "doi": "10.1038/s41586-023-06563-x",
+   "authors": [
+    "Eldjarn, Grimur Hjorleifsson",
+    "Ferkingstad, Egil",
+    "Lund, Sigrun H.",
+    "Helgason, Hannes",
+    "Magnusson, Olafur Th.",
+    "Gunnarsdottir, Kristbjorg",
+    "Olafsdottir, Thorunn A.",
+    "Halldorsson, Bjarni V.",
+    "Olason, Pall I.",
+    "Zink, Florian",
+    "Gudjonsson, Sigurjon A.",
+    "Sveinbjornsson, Gardar",
+    "Magnusson, Magnus I.",
+    "Helgason, Agnar",
+    "Oddsson, Asmundur",
+    "Halldorsson, Gisli H.",
+    "Magnusson, Magnus K.",
+    "Saevarsdottir, Saedis",
+    "Eiriksdottir, Thjodbjorg",
+    "Masson, Gisli",
+    "Stefansson, Hreinn",
+    "Jonsdottir, Ingileif",
+    "Holm, Hilma",
+    "Rafnar, Thorunn",
+    "Melsted, Pall",
+    "Saemundsdottir, Jona",
+    "Norddahl, Gudmundur L.",
+    "Thorleifsson, Gudmar",
+    "Ulfarsson, Magnus O.",
+    "Gudbjartsson, Daniel F.",
+    "Thorsteinsdottir, Unnur",
+    "Sulem, Patrick",
+    "Stefansson, Kari"
+   ],
+   "title": "Large-scale plasma proteomics comparisons through genetics and disease associations",
+   "year": 2023,
+   "venue": "Nature",
+   "volume": "622",
+   "issue": "7982",
+   "pages": "348-358",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2023
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "fan2019serrf",
+   "kind": "article",
+   "cited_as": [
+    "Fan\\b[^;()]{0,90}?\\(?2019\\b"
+   ],
+   "doi": "10.1021/acs.analchem.8b05592",
+   "authors": [
+    "Fan, Sili",
+    "Kind, Tobias",
+    "Cajka, Tomas",
+    "Hazen, Stanley L.",
+    "Tang, W. H. Wilson",
+    "Kaddurah-Daouk, Rima",
+    "Irvin, Marguerite R.",
+    "Arnett, Donna K.",
+    "Barupal, Dinesh K.",
+    "Fiehn, Oliver"
+   ],
+   "title": "Systematic Error Removal Using Random Forest for Normalizing Large-Scale Untargeted Lipidomics Data",
+   "year": 2019,
+   "venue": "Analytical Chemistry",
+   "volume": "91",
+   "issue": "5",
+   "pages": "3590-3596",
+   "publisher": "American Chemical Society (ACS)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2019
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "gloor2017",
+   "kind": "article",
+   "cited_as": [
+    "Gloor\\b[^;()]{0,90}?\\(?2017\\b"
+   ],
+   "doi": "10.3389/fmicb.2017.02224",
+   "authors": [
+    "Gloor, Gregory B.",
+    "Macklaim, Jean M.",
+    "Pawlowsky-Glahn, Vera",
+    "Egozcue, Juan J."
+   ],
+   "title": "Microbiome Datasets Are Compositional: And This Is Not Optional",
+   "year": 2017,
+   "venue": "Frontiers in Microbiology",
+   "volume": "8",
+   "issue": "",
+   "pages": "2224",
+   "publisher": "Frontiers Media SA",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2017
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "hicks2015quantile",
+   "kind": "article",
+   "cited_as": [
+    "Hicks\\b[^;()]{0,90}?\\(?2015\\b"
+   ],
+   "doi": "10.1186/s13059-015-0679-0",
+   "authors": [
+    "Hicks, Stephanie C.",
+    "Irizarry, Rafael A."
+   ],
+   "title": "quantro: a data-driven approach to guide the choice of an appropriate normalization method",
+   "year": 2015,
+   "venue": "Genome Biology",
+   "volume": "16",
+   "issue": "1",
+   "pages": "117",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2015
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "houseman2012",
+   "kind": "article",
+   "cited_as": [
+    "Houseman\\b[^;()]{0,90}?\\(?2012\\b"
+   ],
+   "doi": "10.1186/1471-2105-13-86",
+   "authors": [
+    "Houseman, Eugene Andres",
+    "Accomando, William P",
+    "Koestler, Devin C",
+    "Christensen, Brock C",
+    "Marsit, Carmen J",
+    "Nelson, Heather H",
+    "Wiencke, John K",
+    "Kelsey, Karl T"
+   ],
+   "title": "DNA methylation arrays as surrogate measures of cell mixture distribution",
+   "year": 2012,
+   "venue": "BMC Bioinformatics",
+   "volume": "13",
+   "issue": "1",
+   "pages": "86",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2012
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "jaffe2014",
+   "kind": "article",
+   "cited_as": [
+    "Jaffe\\b[^;()]{0,90}?\\(?2014\\b"
+   ],
+   "doi": "10.1186/gb-2014-15-2-r31",
+   "authors": [
+    "Jaffe, Andrew E",
+    "Irizarry, Rafael A"
+   ],
+   "title": "Accounting for cellular heterogeneity is critical in epigenome-wide association studies",
+   "year": 2014,
+   "venue": "Genome Biology",
+   "volume": "15",
+   "issue": "2",
+   "pages": "R31",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2014
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "katz2022",
+   "kind": "article",
+   "cited_as": [
+    "Katz\\b[^;()]{0,90}?\\(?2022\\b"
+   ],
+   "doi": "10.1126/sciadv.abm5164",
+   "authors": [
+    "Katz, Daniel H.",
+    "Robbins, Jeremy M.",
+    "Deng, Shuliang",
+    "Tahir, Usman A.",
+    "Bick, Alexander G.",
+    "Pampana, Akhil",
+    "Yu, Zhi",
+    "Ngo, Debby",
+    "Benson, Mark D.",
+    "Chen, Zsu-Zsu",
+    "Cruz, Daniel E.",
+    "Shen, Dongxiao",
+    "Gao, Yan",
+    "Bouchard, Claude",
+    "Sarzynski, Mark A.",
+    "Correa, Adolfo",
+    "Natarajan, Pradeep",
+    "Wilson, James G.",
+    "Gerszten, Robert E."
+   ],
+   "title": "Proteomic profiling platforms head to head: Leveraging genetics and clinical traits to compare aptamer- and antibody-based methods",
+   "year": 2022,
+   "venue": "Science Advances",
+   "volume": "8",
+   "issue": "33",
+   "pages": "eabm5164",
+   "publisher": "American Association for the Advancement of Science (AAAS)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2022
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "kirwan2013",
+   "kind": "article",
+   "cited_as": [
+    "Kirwan\\b[^;()]{0,90}?\\(?2013\\b"
+   ],
+   "doi": "10.1007/s00216-013-6856-7",
+   "authors": [
+    "Kirwan, J. A.",
+    "Broadhurst, D. I.",
+    "Davidson, R. L.",
+    "Viant, M. R."
+   ],
+   "title": "Characterising and correcting batch variation in an automated direct infusion mass spectrometry (DIMS) metabolomics workflow",
+   "year": 2013,
+   "venue": "Analytical and Bioanalytical Chemistry",
+   "volume": "405",
+   "issue": "15",
+   "pages": "5147-5157",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2013
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "kirwan2022",
+   "kind": "article",
+   "cited_as": [
+    "Kirwan\\b[^;()]{0,90}?\\(?2022\\b"
+   ],
+   "doi": "10.1007/s11306-022-01926-3",
+   "authors": [
+    "Kirwan, Jennifer A.",
+    "Gika, Helen",
+    "Beger, Richard D.",
+    "Bearden, Dan",
+    "Dunn, Warwick B.",
+    "Goodacre, Royston",
+    "Theodoridis, Georgios",
+    "Witting, Michael",
+    "Yu, Li-Rong",
+    "Wilson, Ian D.",
+    "the metabolomics Quality Assurance and Quality Control Consortium (mQACC)"
+   ],
+   "title": "Quality assurance and quality control reporting in untargeted metabolic phenotyping: mQACC recommendations for analytical quality management",
+   "year": 2022,
+   "venue": "Metabolomics",
+   "volume": "18",
+   "issue": "9",
+   "pages": "70",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2022
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "law2014voom",
+   "kind": "article",
+   "cited_as": [
+    "Law\\b[^;()]{0,90}?\\(?2014\\b"
+   ],
+   "doi": "10.1186/gb-2014-15-2-r29",
+   "authors": [
+    "Law, Charity W",
+    "Chen, Yunshun",
+    "Shi, Wei",
+    "Smyth, Gordon K"
+   ],
+   "title": "voom: precision weights unlock linear model analysis tools for RNA-seq read counts",
+   "year": 2014,
+   "venue": "Genome Biology",
+   "volume": "15",
+   "issue": "2",
+   "pages": "R29",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2014
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "lewis2016",
+   "kind": "article",
+   "cited_as": [
+    "Lewis\\b[^;()]{0,90}?\\(?2016\\b"
+   ],
+   "doi": "10.1021/acs.analchem.6b01481",
+   "authors": [
+    "Lewis, Matthew R.",
+    "Pearce, Jake T. M.",
+    "Spagou, Konstantina",
+    "Green, Martin",
+    "Dona, Anthony C.",
+    "Yuen, Ada H. Y.",
+    "David, Mark",
+    "Berry, David J.",
+    "Chappell, Katie",
+    "Horneffer-van der Sluis, Verena",
+    "Shaw, Rachel",
+    "Lovestone, Simon",
+    "Elliott, Paul",
+    "Shockcor, John",
+    "Lindon, John C.",
+    "Cloarec, Olivier",
+    "Takats, Zoltan",
+    "Holmes, Elaine",
+    "Nicholson, Jeremy K."
+   ],
+   "title": "Development and Application of Ultra-Performance Liquid Chromatography-TOF MS for Precision Large Scale Urinary Metabolic Phenotyping",
+   "year": 2016,
+   "venue": "Analytical Chemistry",
+   "volume": "88",
+   "issue": "18",
+   "pages": "9004-9013",
+   "publisher": "American Chemical Society (ACS)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "li2010mach",
+   "kind": "article",
+   "cited_as": [
+    "Li\\b[^;()]{0,90}?\\(?2010\\b"
+   ],
+   "doi": "10.1002/gepi.20533",
+   "authors": [
+    "Li, Yun",
+    "Willer, Cristen J.",
+    "Ding, Jun",
+    "Scheet, Paul",
+    "Abecasis, Gonçalo R."
+   ],
+   "title": "MaCH: using sequence and genotype data to estimate haplotypes and unobserved genotypes",
+   "year": 2010,
+   "venue": "Genetic Epidemiology",
+   "volume": "34",
+   "issue": "8",
+   "pages": "816-834",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2010
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "lin2020ancombc",
+   "kind": "article",
+   "cited_as": [
+    "Lin\\b[^;()]{0,90}?\\(?2020\\b"
+   ],
+   "doi": "10.1038/s41467-020-17041-7",
+   "authors": [
+    "Lin, Huang",
+    "Peddada, Shyamal Das"
+   ],
+   "title": "Analysis of compositions of microbiomes with bias correction",
+   "year": 2020,
+   "venue": "Nature Communications",
+   "volume": "11",
+   "issue": "1",
+   "pages": "3514",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2020
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "livak2001",
+   "kind": "article",
+   "cited_as": [
+    "Livak\\b[^;()]{0,90}?\\(?2001\\b"
+   ],
+   "doi": "10.1006/meth.2001.1262",
+   "authors": [
+    "Livak, Kenneth J.",
+    "Schmittgen, Thomas D."
+   ],
+   "title": "Analysis of Relative Gene Expression Data Using Real-Time Quantitative PCR and the 2−ΔΔCT Method",
+   "year": 2001,
+   "venue": "Methods",
+   "volume": "25",
+   "issue": "4",
+   "pages": "402-408",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2001
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "love2014deseq2",
+   "kind": "article",
+   "cited_as": [
+    "Love\\b[^;()]{0,90}?\\(?2014\\b"
+   ],
+   "doi": "10.1186/s13059-014-0550-8",
+   "authors": [
+    "Love, Michael I",
+    "Huber, Wolfgang",
+    "Anders, Simon"
+   ],
+   "title": "Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2",
+   "year": 2014,
+   "venue": "Genome Biology",
+   "volume": "15",
+   "issue": "12",
+   "pages": "550",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2014
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "marchini2010",
+   "kind": "article",
+   "cited_as": [
+    "Marchini\\b[^;()]{0,90}?\\(?2010\\b"
+   ],
+   "doi": "10.1038/nrg2796",
+   "authors": [
+    "Marchini, Jonathan",
+    "Howie, Bryan"
+   ],
+   "title": "Genotype imputation for genome-wide association studies",
+   "year": 2010,
+   "venue": "Nature Reviews Genetics",
+   "volume": "11",
+   "issue": "7",
+   "pages": "499-511",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2010
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "mccall2014",
+   "kind": "article",
+   "cited_as": [
+    "McCall\\b[^;()]{0,90}?\\(?2014\\b"
+   ],
+   "doi": "10.1093/bioinformatics/btu239",
+   "authors": [
+    "McCall, Matthew N.",
+    "McMurray, Helene R.",
+    "Land, Hartmut",
+    "Almudevar, Anthony"
+   ],
+   "title": "On non-detects in qPCR data",
+   "year": 2014,
+   "venue": "Bioinformatics",
+   "volume": "30",
+   "issue": "16",
+   "pages": "2310-2316",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2014
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "mccall2010frma",
+   "kind": "article",
+   "cited_as": [
+    "McCall\\b[^;()]{0,90}?\\(?2010\\b"
+   ],
+   "doi": "10.1093/biostatistics/kxp059",
+   "authors": [
+    "McCall, M. N.",
+    "Bolstad, B. M.",
+    "Irizarry, R. A."
+   ],
+   "title": "Frozen robust multiarray analysis (fRMA)",
+   "year": 2010,
+   "venue": "Biostatistics",
+   "volume": "11",
+   "issue": "2",
+   "pages": "242-253",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2010
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "mcmurdie2014",
+   "kind": "article",
+   "cited_as": [
+    "McMurdie\\b[^;()]{0,90}?\\(?2014\\b"
+   ],
+   "doi": "10.1371/journal.pcbi.1003531",
+   "authors": [
+    "McMurdie, Paul J.",
+    "Holmes, Susan"
+   ],
+   "title": "Waste Not, Want Not: Why Rarefying Microbiome Data Is Inadmissible",
+   "year": 2014,
+   "venue": "PLoS Computational Biology",
+   "volume": "10",
+   "issue": "4",
+   "pages": "e1003531",
+   "publisher": "Public Library of Science (PLoS)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2014
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "pidsley2016epic",
+   "kind": "article",
+   "cited_as": [
+    "Pidsley\\b[^;()]{0,90}?\\(?2016\\b"
+   ],
+   "doi": "10.1186/s13059-016-1066-1",
+   "authors": [
+    "Pidsley, Ruth",
+    "Zotenko, Elena",
+    "Peters, Timothy J.",
+    "Lawrence, Mitchell G.",
+    "Risbridger, Gail P.",
+    "Molloy, Peter",
+    "Van Djik, Susan",
+    "Muhlhausler, Beverly",
+    "Stirzaker, Clare",
+    "Clark, Susan J."
+   ],
+   "title": "Critical evaluation of the Illumina MethylationEPIC BeadChip microarray for whole-genome DNA methylation profiling",
+   "year": 2016,
+   "venue": "Genome Biology",
+   "volume": "17",
+   "issue": "1",
+   "pages": "208",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "redestig2009",
+   "kind": "article",
+   "cited_as": [
+    "Redestig\\b[^;()]{0,90}?\\(?2009\\b"
+   ],
+   "doi": "10.1021/ac901143w",
+   "authors": [
+    "Redestig, Henning",
+    "Fukushima, Atsushi",
+    "Stenlund, Hans",
+    "Moritz, Thomas",
+    "Arita, Masanori",
+    "Saito, Kazuki",
+    "Kusano, Miyako"
+   ],
+   "title": "Compensation for Systematic Cross-Contribution Improves Normalization of Mass Spectrometry Based Metabolomics Data",
+   "year": 2009,
+   "venue": "Analytical Chemistry",
+   "volume": "81",
+   "issue": "19",
+   "pages": "7974-7980",
+   "publisher": "American Chemical Society (ACS)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2009
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "salter2014",
+   "kind": "article",
+   "cited_as": [
+    "Salter\\b[^;()]{0,90}?\\(?2014\\b"
+   ],
+   "doi": "10.1186/s12915-014-0087-z",
+   "authors": [
+    "Salter, Susannah J",
+    "Cox, Michael J",
+    "Turek, Elena M",
+    "Calus, Szymon T",
+    "Cookson, William O",
+    "Moffatt, Miriam F",
+    "Turner, Paul",
+    "Parkhill, Julian",
+    "Loman, Nicholas J",
+    "Walker, Alan W"
+   ],
+   "title": "Reagent and laboratory contamination can critically impact sequence-based microbiome analyses",
+   "year": 2014,
+   "venue": "BMC Biology",
+   "volume": "12",
+   "issue": "1",
+   "pages": "87",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2014
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "siskos2017",
+   "kind": "article",
+   "cited_as": [
+    "Siskos\\b[^;()]{0,90}?\\(?2017\\b"
+   ],
+   "doi": "10.1021/acs.analchem.6b02930",
+   "authors": [
+    "Siskos, Alexandros P.",
+    "Jain, Pooja",
+    "Römisch-Margl, Werner",
+    "Bennett, Mark",
+    "Achaintre, David",
+    "Asad, Yasmin",
+    "Marney, Luke",
+    "Richardson, Larissa",
+    "Koulman, Albert",
+    "Griffin, Julian L.",
+    "Raynaud, Florence",
+    "Scalbert, Augustin",
+    "Adamski, Jerzy",
+    "Prehn, Cornelia",
+    "Keun, Hector C."
+   ],
+   "title": "Interlaboratory Reproducibility of a Targeted Metabolomics Platform for Analysis of Human Serum and Plasma",
+   "year": 2017,
+   "venue": "Analytical Chemistry",
+   "volume": "89",
+   "issue": "1",
+   "pages": "656-665",
+   "publisher": "American Chemical Society (ACS)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016,
+    2017
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "sun2018pqtl",
+   "kind": "article",
+   "cited_as": [
+    "Sun\\b[^;()]{0,90}?\\(?2018\\b"
+   ],
+   "doi": "10.1038/s41586-018-0175-2",
+   "authors": [
+    "Sun, Benjamin B.",
+    "Maranville, Joseph C.",
+    "Peters, James E.",
+    "Stacey, David",
+    "Staley, James R.",
+    "Blackshaw, James",
+    "Burgess, Stephen",
+    "Jiang, Tao",
+    "Paige, Ellie",
+    "Surendran, Praveen",
+    "Oliver-Williams, Clare",
+    "Kamat, Mihir A.",
+    "Prins, Bram P.",
+    "Wilcox, Sheri K.",
+    "Zimmerman, Erik S.",
+    "Chi, An",
+    "Bansal, Narinder",
+    "Spain, Sarah L.",
+    "Wood, Angela M.",
+    "Morrell, Nicholas W.",
+    "Bradley, John R.",
+    "Janjic, Nebojsa",
+    "Roberts, David J.",
+    "Ouwehand, Willem H.",
+    "Todd, John A.",
+    "Soranzo, Nicole",
+    "Suhre, Karsten",
+    "Paul, Dirk S.",
+    "Fox, Caroline S.",
+    "Plenge, Robert M.",
+    "Danesh, John",
+    "Runz, Heiko",
+    "Butterworth, Adam S."
+   ],
+   "title": "Genomic atlas of the human plasma proteome",
+   "year": 2018,
+   "venue": "Nature",
+   "volume": "558",
+   "issue": "7708",
+   "pages": "73-79",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2018
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "sun2023ukbppp",
+   "kind": "article",
+   "cited_as": [
+    "Sun\\b[^;()]{0,90}?\\(?2023\\b"
+   ],
+   "doi": "10.1038/s41586-023-06592-6",
+   "authors": [
+    "Sun, Benjamin B.",
+    "Chiou, Joshua",
+    "Traylor, Matthew",
+    "Benner, Christian",
+    "Hsu, Yi-Hsiang",
+    "Richardson, Tom G.",
+    "Surendran, Praveen",
+    "Mahajan, Anubha",
+    "Robins, Chloe",
+    "Vasquez-Grinnell, Steven G.",
+    "Hou, Liping",
+    "Kvikstad, Erika M.",
+    "Burren, Oliver S.",
+    "Davitte, Jonathan",
+    "Ferber, Kyle L.",
+    "Gillies, Christopher E.",
+    "Hedman, Åsa K.",
+    "Hu, Sile",
+    "Lin, Tinchi",
+    "Mikkilineni, Rajesh",
+    "Pendergrass, Rion K.",
+    "Pickering, Corran",
+    "Prins, Bram",
+    "Baird, Denis",
+    "Chen, Chia-Yen",
+    "Ward, Lucas D.",
+    "Deaton, Aimee M.",
+    "Welsh, Samantha",
+    "Willis, Carissa M.",
+    "Lehner, Nick",
+    "Arnold, Matthias",
+    "Wörheide, Maria A.",
+    "Suhre, Karsten",
+    "Kastenmüller, Gabi",
+    "Sethi, Anurag",
+    "Cule, Madeleine",
+    "Raj, Anil",
+    "Kang, Hyun Ming",
+    "Burkitt-Gray, Lucy",
+    "Melamud, Eugene",
+    "Black, Mary Helen",
+    "Fauman, Eric B.",
+    "Howson, Joanna M. M.",
+    "Kang, Hyun Min",
+    "McCarthy, Mark I.",
+    "Nioi, Paul",
+    "Petrovski, Slavé",
+    "Scott, Robert A.",
+    "Smith, Erin N.",
+    "Szalma, Sándor",
+    "Waterworth, Dawn M.",
+    "Mitnaul, Lyndon J.",
+    "Szustakowski, Joseph D.",
+    "Gibson, Bradford W.",
+    "Miller, Melissa R.",
+    "Whelan, Christopher D.",
+    "Alnylam Human Genetics",
+    "AstraZeneca Genomics Initiative",
+    "Biogen Biobank Team",
+    "Bristol Myers Squibb",
+    "Genentech Human Genetics",
+    "GlaxoSmithKline Genomic Sciences",
+    "Pfizer Integrative Biology",
+    "Population Analytics of Janssen Data Sciences",
+    "Regeneron Genetics Center"
+   ],
+   "title": "Plasma proteomic associations with genetics and health in the UK Biobank",
+   "year": 2023,
+   "venue": "Nature",
+   "volume": "622",
+   "issue": "7982",
+   "pages": "329-338",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2023
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "sysiaho2007",
+   "kind": "article",
+   "cited_as": [
+    "Sysi-Aho\\b[^;()]{0,90}?\\(?2007\\b"
+   ],
+   "doi": "10.1186/1471-2105-8-93",
+   "authors": [
+    "Sysi-Aho, Marko",
+    "Katajamaa, Mikko",
+    "Yetukuri, Laxman",
+    "Orešič, Matej"
+   ],
+   "title": "Normalization method for metabolomics data using optimal selection of multiple internal standards",
+   "year": 2007,
+   "venue": "BMC Bioinformatics",
+   "volume": "8",
+   "issue": "1",
+   "pages": "93",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2007
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "toker2016",
+   "kind": "article",
+   "cited_as": [
+    "Toker\\b[^;()]{0,90}?\\(?2016\\b"
+   ],
+   "doi": "10.12688/f1000research.9471.2",
+   "authors": [
+    "Toker, Lilah",
+    "Feng, Min",
+    "Pavlidis, Paul"
+   ],
+   "title": "Whose sample is it anyway? Widespread misannotation of samples in transcriptomics studies",
+   "year": 2016,
+   "venue": "F1000Research",
+   "volume": "5",
+   "issue": "",
+   "pages": "2103",
+   "publisher": "F1000 Research Ltd",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "vandeputte2016",
+   "kind": "article",
+   "cited_as": [
+    "Vandeputte\\b[^;()]{0,90}?\\(?2016\\b"
+   ],
+   "doi": "10.1136/gutjnl-2015-309618",
+   "authors": [
+    "Vandeputte, Doris",
+    "Falony, Gwen",
+    "Vieira-Silva, Sara",
+    "Tito, Raul Y",
+    "Joossens, Marie",
+    "Raes, Jeroen"
+   ],
+   "title": "Stool consistency is strongly associated with gut microbiota richness and composition, enterotypes and bacterial growth rates",
+   "year": 2016,
+   "venue": "Gut",
+   "volume": "65",
+   "issue": "1",
+   "pages": "57-62",
+   "publisher": "BMJ",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2015,
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "vandesompele2002",
+   "kind": "article",
+   "cited_as": [
+    "Vandesompele\\b[^;()]{0,90}?\\(?2002\\b"
+   ],
+   "doi": "10.1186/gb-2002-3-7-research0034",
+   "authors": [
+    "Vandesompele, Jo",
+    "De Preter, Katleen",
+    "Pattyn, Filip",
+    "Poppe, Bruce",
+    "Van Roy, Nadine",
+    "De Paepe, Anne",
+    "Speleman, Frank"
+   ],
+   "title": "Accurate normalization of real-time quantitative RT-PCR data by geometric averaging of multiple internal control genes",
+   "year": 2002,
+   "venue": "Genome Biology",
+   "volume": "3",
+   "issue": "7",
+   "pages": "research0034.1",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2002
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "wagner2012tpm",
+   "kind": "article",
+   "cited_as": [
+    "Wagner\\b[^;()]{0,90}?\\(?2012\\b"
+   ],
+   "doi": "10.1007/s12064-012-0162-3",
+   "authors": [
+    "Wagner, Günter P.",
+    "Kin, Koryu",
+    "Lynch, Vincent J."
+   ],
+   "title": "Measurement of mRNA abundance using RNA-seq data: RPKM measure is inconsistent among samples",
+   "year": 2012,
+   "venue": "Theory in Biosciences",
+   "volume": "131",
+   "issue": "4",
+   "pages": "281-285",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2012
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "wehrens2016",
+   "kind": "article",
+   "cited_as": [
+    "Wehrens\\b[^;()]{0,90}?\\(?2016\\b"
+   ],
+   "doi": "10.1007/s11306-016-1015-8",
+   "authors": [
+    "Wehrens, Ron",
+    "Hageman, Jos. A.",
+    "van Eeuwijk, Fred",
+    "Kooke, Rik",
+    "Flood, Pádraic J.",
+    "Wijnker, Erik",
+    "Keurentjes, Joost J. B.",
+    "Lommen, Arjen",
+    "van Eekelen, Henriëtte D. L. M.",
+    "Hall, Robert D.",
+    "Mumm, Roland",
+    "de Vos, Ric C. H."
+   ],
+   "title": "Improved batch correction in untargeted MS-based metabolomics",
+   "year": 2016,
+   "venue": "Metabolomics",
+   "volume": "12",
+   "issue": "5",
+   "pages": "88",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "zeeberg2004",
+   "kind": "article",
+   "cited_as": [
+    "Zeeberg\\b[^;()]{0,90}?\\(?2004\\b"
+   ],
+   "doi": "10.1186/1471-2105-5-80",
+   "authors": [
+    "Zeeberg, Barry R",
+    "Riss, Joseph",
+    "Kane, David W",
+    "Bussey, Kimberly J",
+    "Uchio, Edward",
+    "Linehan, W Marston",
+    "Barrett, J Carl",
+    "Weinstein, John N"
+   ],
+   "title": "Mistaken Identifiers: Gene name errors can be introduced inadvertently when using Excel in bioinformatics",
+   "year": 2004,
+   "venue": "BMC Bioinformatics",
+   "volume": "5",
+   "issue": "1",
+   "pages": "80",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2004
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "zhou2017manifests",
+   "kind": "article",
+   "cited_as": [
+    "Zhou\\b[^;()]{0,90}?\\(?2017\\b"
+   ],
+   "doi": "10.1093/nar/gkw967",
+   "authors": [
+    "Zhou, Wanding",
+    "Laird, Peter W.",
+    "Shen, Hui"
+   ],
+   "title": "Comprehensive characterization, annotation and innovative use of Infinium DNA methylation BeadChip probes",
+   "year": 2017,
+   "venue": "Nucleic Acids Research",
+   "volume": "45",
+   "issue": "4",
+   "pages": "e22",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": [
+    "'Zhou, Laird & Shen 2017, Nucleic Acids Res 45:e22 (manifests': year 2017, the record 2016 (the registry keeps year 2017, volume 45, issue 4, pages e22: Crossref's record carries only the online date (24 October 2016) and no volume or issue; PubMed (through Europe PMC) gives Nucleic Acids Res 45(4):e22, February 2017.)"
+   ],
+   "overrides": {
+    "fields": {
+     "year": 2017,
+     "volume": "45",
+     "issue": "4",
+     "pages": "e22"
+    },
+    "why": "Crossref's record carries only the online date (24 October 2016) and no volume or issue; PubMed (through Europe PMC) gives Nucleic Acids Res 45(4):e22, February 2017."
+   },
+   "crossref_original": {
+    "year": 2016,
+    "volume": "",
+    "issue": "",
+    "pages": "gkw967"
+   }
+  },
+  {
+   "key": "eldridge2021rob2crt",
+   "kind": "web",
+   "cited_as": [
+    "Eldridge\\b[^;()]{0,90}?\\(?2021\\b"
+   ],
+   "doi": null,
+   "title": "Revised Cochrane risk of bias tool for randomized trials (RoB 2): additional considerations for cluster-randomized trials (RoB 2 CRT)",
+   "year": 2021,
+   "authors": [
+    "Eldridge, Sandra",
+    "Campbell, Marion K.",
+    "Campbell, Michael J.",
+    "Drahota, Amy K.",
+    "Giraudeau, Bruno",
+    "Reeves, Barnaby C.",
+    "Siegfried, Nandi",
+    "Higgins, Julian P. T."
+   ],
+   "publisher": "Cochrane Methods (riskofbias.info)",
+   "url": "https://www.riskofbias.info/welcome/rob-2-0-tool/rob-2-for-cluster-randomized-trials",
+   "no_doi": "Guidance published as a web document; it has no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "ema2015covariates",
+   "kind": "standard",
+   "cited_as": [
+    "EMA Guideline on adjustment for baseline covariates"
+   ],
+   "doi": null,
+   "title": "Guideline on adjustment for baseline covariates in clinical trials (EMA/CHMP/295050/2013)",
+   "year": 2015,
+   "authors": [
+    "European Medicines Agency"
+   ],
+   "publisher": "European Medicines Agency",
+   "url": "https://www.ema.europa.eu/en/adjustment-baseline-covariates-clinical-trials-scientific-guideline",
+   "no_doi": "A regulatory guideline; it has no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "fda2023covariates",
+   "kind": "standard",
+   "cited_as": [
+    "(?:(?:US )?FDA(?: 2023,| guidance:) )?Adjusting for Covariates in Randomized Clinical Trials"
+   ],
+   "doi": null,
+   "title": "Adjusting for Covariates in Randomized Clinical Trials for Drugs and Biological Products: Guidance for Industry",
+   "year": 2023,
+   "authors": [
+    "U.S. Food and Drug Administration"
+   ],
+   "publisher": "U.S. Food and Drug Administration",
+   "url": "https://www.fda.gov/regulatory-information/search-fda-guidance-documents/adjusting-covariates-randomized-clinical-trials-drugs-and-biological-products",
+   "no_doi": "A regulatory guidance; it has no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "fda_bam_ch3",
+   "kind": "web",
+   "cited_as": [
+    "(?:FDA's )?Bacteriological Analytical Manual"
+   ],
+   "doi": null,
+   "title": "Bacteriological Analytical Manual, Chapter 3: Aerobic Plate Count",
+   "year": 2001,
+   "authors": [
+    "Maturin, Larry",
+    "Peeler, James T."
+   ],
+   "publisher": "U.S. Food and Drug Administration",
+   "url": "https://www.fda.gov/food/laboratory-methods-food/bam-chapter-3-aerobic-plate-count",
+   "no_doi": "A laboratory manual published as a web page; it has no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "nhanes_guidelines_2011_2016",
+   "kind": "web",
+   "cited_as": [
+    "(?:(?:NCHS,? )?NHANES )?Analytic Guidelines,? 2011"
+   ],
+   "doi": null,
+   "title": "National Health and Nutrition Examination Survey: Analytic Guidelines, 2011–2014 and 2015–2016",
+   "year": 2018,
+   "authors": [
+    "National Center for Health Statistics"
+   ],
+   "publisher": "Centers for Disease Control and Prevention",
+   "url": "https://wwwn.cdc.gov/nchs/data/nhanes/analyticguidelines/11-16-analytic-guidelines.pdf",
+   "no_doi": "An agency web document; it has no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "nhanes_dxa_mi",
+   "kind": "web",
+   "cited_as": [
+    "CDC, NHANES 1999–2006 DXA",
+    "NCHS, NHANES DXA multiple imputation"
+   ],
+   "doi": null,
+   "title": "NHANES 1999–2006 Dual Energy X-ray Absorptiometry (DXA) Multiple Imputation Data Files and Technical Documentation",
+   "authors": [
+    "National Center for Health Statistics"
+   ],
+   "publisher": "Centers for Disease Control and Prevention",
+   "url": "https://wwwn.cdc.gov/nchs/nhanes/dxa/dxa.aspx",
+   "no_doi": "An agency web document; it has no DOI.",
+   "verified_by": "url",
+   "disagreements": [],
+   "note": "The page is undated; the contracts cite the data files as of 2008.",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "nhanes_documentation",
+   "kind": "web",
+   "cited_as": [
+    "NHANES (?:DBQ|DEMO) documentation",
+    "NHANES codebooks"
+   ],
+   "doi": null,
+   "title": "NHANES Questionnaires, Datasets, and Related Documentation",
+   "year": 2024,
+   "authors": [
+    "National Center for Health Statistics"
+   ],
+   "publisher": "Centers for Disease Control and Prevention",
+   "url": "https://wwwn.cdc.gov/nchs/nhanes/Default.aspx",
+   "no_doi": "An agency web page; it has no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "nci_usual_intake_macros",
+   "kind": "software",
+   "cited_as": [
+    "NCI MIXTRAN and DISTRIB macros"
+   ],
+   "doi": null,
+   "title": "MIXTRAN and DISTRIB SAS macros, version 2.1 (the NCI method)",
+   "year": 2017,
+   "authors": [
+    "National Cancer Institute"
+   ],
+   "publisher": "National Cancer Institute, Division of Cancer Control and Population Sciences",
+   "url": "https://epi.grants.cancer.gov/diet/usualintakes/macros.html",
+   "no_doi": "Software distributed from a web page; it has no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "r_survey",
+   "kind": "software",
+   "cited_as": [
+    "R survey\\b"
+   ],
+   "doi": null,
+   "title": "survey: Analysis of Complex Survey Samples. R package version 4.5",
+   "year": 2025,
+   "authors": [
+    "Lumley, Thomas"
+   ],
+   "publisher": "Comprehensive R Archive Network (CRAN)",
+   "url": "https://CRAN.R-project.org/package=survey",
+   "no_doi": "An R package on CRAN; CRAN assigns no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "pmp_bioc",
+   "kind": "software",
+   "cited_as": [
+    "pmp \\(Bioconductor\\)"
+   ],
+   "doi": "10.18129/B9.bioc.pmp",
+   "verified_by": "datacite",
+   "authors": [
+    "Jankevics, Andris",
+    "Weber, Ralf Johannes Maria"
+   ],
+   "title": "pmp",
+   "year": 2020,
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "Bioconductor",
+   "years_seen": [
+    2020
+   ],
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  }
+ ]
+}
