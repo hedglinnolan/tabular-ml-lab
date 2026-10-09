@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import time
 
+import numpy as np
 import pandas as pd
 
 from turbotab.server.tests.conftest import SAMPLES, open_by_path, wait_for
@@ -203,3 +204,243 @@ def test_a_sensitivity_analysis_that_keeps_no_row_is_refused_over_http(client, t
                 if e["label"] == "Leave out the analysis “centenarians”")
     assert [a["label"] for a in left["analyses"]] == ["over 50"]
     assert post(client, pid, left).status_code == 200
+
+
+def test_a_refused_revert_over_http_never_offers_the_answer_already_recorded(client, tmp_path):
+    """The verifier's revert, through the server, on the renal table: complete cases keep 10 rows
+    and are recorded, then a fill, then `sbp`'s code 999 as blank (accepted: the fill keeps every
+    row). Reverting the fill brings complete cases back over the repaired values, 4 rows, and is
+    refused (409). None of its exits is the fill already recorded (taking it changed nothing), and
+    each one the record accepts."""
+    from turbotab.core.tests.test_row_floor import renal
+
+    pid = renal_project(client, tmp_path, renal())
+    assert post(client, pid, {"kind": "set_missing", "strategy": "complete_case"}).status_code == 200
+    fill = {"kind": "set_missing", "strategy": "impute"}
+    assert post(client, pid, fill).status_code == 200
+    filled = client.get(f"/api/projects/{pid}").json()["decisions"][-1]
+    wait_for(client, pid, {"findings": "fresh", "working": "fresh", "cohort": "fresh"}, timeout=180)
+    found = {f["id"]: f for f in
+             client.get(f"/api/projects/{pid}/stages/findings").json()["artifact"]["findings"]}
+    repair = next(o["decision"] for o in found["sentinel_missing__sbp"]["repairs"]
+                  if o["key"] == "set_missing")
+    assert post(client, pid, repair).status_code == 200
+    wait_for(client, pid, {"working": "fresh"}, timeout=180)
+    reverted = post(client, pid, {"kind": "revert", "decision_id": filled["id"]})
+    assert reverted.status_code == 409, reverted.text[:600]
+    error = reverted.json()["error"]
+    assert error["code"] == "too_few_rows"
+    ways = [e["decision"] for e in error["exits"] if e["decision"] is not None]
+    assert ways, error["exits"]
+    recorded = {k: v for k, v in filled["decision"].items() if v not in (None, [], False)}
+    for way in ways:
+        assert {k: v for k, v in way.items() if v not in (None, [], False)} != recorded, way
+        previewed = client.post(f"/api/projects/{pid}/preview", json=way)
+        assert previewed.status_code == 200, previewed.text[:600]
+
+
+def test_combining_records_into_too_few_units_is_refused_when_it_is_recorded(client, tmp_path):
+    """The integrator's residue: an answer that changes the working table's rows was counted only
+    when the cohort and design stages ran. Four people seen five times each: 20 records, and
+    combining each person's records into one row leaves 4 rows, where the design needs 6. The
+    aggregation answer was accepted (200) and the cohort stage then failed. Its preview and its
+    recording are refused now (409), counted on the table the working stage would build, with
+    analyzing each record as its own row among the exits, which the record accepts."""
+    from turbotab.server.tests.conftest import answer_settled, prepare
+
+    rng = np.random.default_rng(3)
+    people = np.repeat([f"P{i:02d}" for i in range(4)], 5)
+    frame = pd.DataFrame({
+        "participant_id": people,
+        "visit_date": np.tile(pd.date_range("2024-01-01", periods=5, freq="30D").strftime("%Y-%m-%d"), 4),
+        "sbp_mm": np.round(rng.normal(130, 12, 20), 1),
+        "ldl_mmol": np.round(rng.normal(3.2, 0.6, 20), 2),
+        "glucose_mmol": np.round(rng.normal(5.6, 0.7, 20), 2),
+    })
+    assert frame.groupby("participant_id").ngroups == 4 and len(frame) == 20  # the reference
+    path = tmp_path / "visits.csv"
+    frame.to_csv(path, index=False)
+    pid = open_by_path(client, path)
+    wait_for(client, pid, {"ingest": "fresh"})
+    for d in ({"kind": "set_lens", "lenses": ["clinical"]},
+              {"kind": "set_target", "column": "glucose_mmol"},
+              {"kind": "set_purpose", "purpose": "prediction"},
+              {"kind": "set_grain", "grain": "repeated", "id_column": "participant_id"},
+              {"kind": "set_repeat_kind", "repeat_kind": "repeats"},
+              {"kind": "set_unit", "unit": "unit"}):
+        prepare(client, pid, d)
+        assert answer_settled(client, pid, None, d).status_code == 200, d
+    combine = {"kind": "set_aggregation", "method": "mean", "outcome": "mean"}
+    prepare(client, pid, combine)
+    n_records = len(client.get(f"/api/projects/{pid}").json()["decisions"])
+    previewed = client.post(f"/api/projects/{pid}/preview", json=combine)
+    assert previewed.status_code == 409, previewed.text[:600]
+    refused = post(client, pid, combine)
+    assert refused.status_code == 409, refused.text[:600]
+    error = refused.json()["error"]
+    assert error["code"] == "too_few_rows"
+    assert error["message"] == (
+        "Recorded, this answer would leave 4 rows, one per unit, where 20 rows are analyzed now, "
+        "and the design needs at least 6. Analyze each record as its own row (the unit question), "
+        "or keep the answers as they are.")
+    assert len(client.get(f"/api/projects/{pid}").json()["decisions"]) == n_records
+    assert [e["label"] for e in error["exits"]] == ["Analyze each record as its own row",
+                                                    "Keep the answers as they are"]
+    apart = error["exits"][0]["decision"]
+    assert apart == {"kind": "set_unit", "unit": "row"}
+    assert post(client, pid, apart).status_code == 200
+
+
+def test_leaving_out_reference_rows_that_leave_too_few_is_refused_when_it_is_recorded(client,
+                                                                                      tmp_path):
+    """The other row-changing answer: a repair that leaves the pooled QC rows out of the working
+    table (WP18). Five participants beside eight pooled QCs: the outcome `Class` is recorded in
+    all 13 rows, and without the QCs 5 are left, where the design needs 6. The exclusion was
+    accepted and the cohort stage then failed; it is refused now, counted on the table the working
+    stage would build."""
+    from turbotab.server.tests.conftest import answer_settled, prepare
+
+    df = pd.read_csv(METABOLOMICS)
+    qc = df[df["sample_type"].eq("pooled_qc")].head(8)
+    people = df[~df["sample_type"].eq("pooled_qc")].head(5)
+    table = pd.concat([people, qc]).reset_index(drop=True)
+    cls = np.where(table["sample_type"].eq("pooled_qc"), "QC",
+                   np.array(["Case", "Control", "Case", "Control", "Case"] + [""] * 8))
+    table = table.drop(columns=["sample_type", "bmi", "responder"], errors="ignore")
+    table.insert(1, "Class", cls)
+    assert (table["Class"] != "QC").sum() == 5 and (table["Class"] == "QC").sum() == 8  # reference
+    path = tmp_path / "met_few.csv"
+    table.to_csv(path, index=False)
+    pid = open_by_path(client, path)
+    wait_for(client, pid, {"ingest": "fresh"})
+    for d in ({"kind": "set_lens", "lenses": ["metabolomics"]},
+              {"kind": "set_target", "column": "Class"}):
+        prepare(client, pid, d)
+        assert answer_settled(client, pid, None, d).status_code == 200, d
+    view = wait_for(client, pid, {"findings": "fresh", "cohort": "fresh"}, timeout=180)
+    assert client.get(f"/api/projects/{pid}/stages/cohort").json()["artifact"]["n_final"] == 13
+    findings = client.get(f"/api/projects/{pid}/stages/findings").json()["artifact"]["findings"]
+    exclude = next(o["decision"] for f in findings for o in f.get("repairs") or []
+                   if o["key"] == "exclude_rows")
+    assert exclude["params"]["levels"] == ["QC"]
+    previewed = client.post(f"/api/projects/{pid}/preview", json=exclude)
+    assert previewed.status_code == 409, previewed.text[:600]
+    refused = post(client, pid, exclude)
+    assert refused.status_code == 409, refused.text[:600]
+    error = refused.json()["error"]
+    assert error["code"] == "too_few_rows"
+    assert error["message"] == (
+        "Recorded, this answer would leave 5 rows once the reference rows have left the table, "
+        "where 13 rows are analyzed now, and the design needs at least 6. “`Class` is not `QC`” "
+        "would remove 8 rows. Keep the reference rows in the table.")
+    assert len(client.get(f"/api/projects/{pid}").json()["decisions"]) == len(view["decisions"])
+    assert error["exits"][-1] == {"label": "Keep the answers as they are", "decision": None}
+
+
+def test_a_repair_on_combined_rows_is_counted_on_the_units_it_leaves(client, tmp_path):
+    """The same gap on a combined table: once each person's records are one row, a repair that
+    blanks values was counted on the table as it stood (``_rewritten`` cannot map a combined
+    table's rows), so the cohort stage failed after it. Eight people seen three times each, `sbp`
+    coded 999 in every record of three of them: treating 999 as missing under complete cases
+    leaves 5 people (pandas, below), and is refused now, counted on the table the working stage
+    would build."""
+    from turbotab.server.tests.conftest import answer_settled, prepare
+
+    rng = np.random.default_rng(5)
+    people = np.repeat([f"P{i:02d}" for i in range(8)], 3)
+    frame = pd.DataFrame({
+        "participant_id": people,
+        "visit_date": np.tile(pd.date_range("2024-01-01", periods=3, freq="30D").strftime("%Y-%m-%d"), 8),
+        "sbp_mm": np.round(rng.normal(130, 12, 24), 1),
+        "ldl_mmol": np.round(rng.normal(3.2, 0.6, 24), 2),
+        "glucose_mmol": np.round(rng.normal(5.6, 0.7, 24), 2),
+    })
+    frame.loc[frame["participant_id"].isin(["P01", "P04", "P06"]), "sbp_mm"] = 999.0
+    units = frame.assign(sbp_mm=frame["sbp_mm"].mask(frame["sbp_mm"] == 999)).groupby(
+        "participant_id")[["sbp_mm", "ldl_mmol"]].mean()
+    assert int(units.notna().all(axis=1).sum()) == 5  # the reference
+    path = tmp_path / "coded.csv"
+    frame.to_csv(path, index=False)
+    pid = open_by_path(client, path)
+    wait_for(client, pid, {"ingest": "fresh"})
+    for d in ({"kind": "set_lens", "lenses": ["clinical"]},
+              {"kind": "set_target", "column": "glucose_mmol"},
+              {"kind": "set_purpose", "purpose": "prediction"},
+              {"kind": "set_grain", "grain": "repeated", "id_column": "participant_id"},
+              {"kind": "set_repeat_kind", "repeat_kind": "repeats"},
+              {"kind": "set_unit", "unit": "unit"},
+              {"kind": "set_aggregation", "method": "mean", "outcome": "mean"},
+              {"kind": "set_missing", "strategy": "complete_case"}):
+        prepare(client, pid, d)
+        assert answer_settled(client, pid, None, d).status_code == 200, d
+    wait_for(client, pid, {"findings": "fresh", "working": "fresh", "cohort": "fresh"}, timeout=180)
+    assert client.get(f"/api/projects/{pid}/stages/cohort").json()["artifact"]["n_final"] == 8
+    found = {f["id"]: f for f in
+             client.get(f"/api/projects/{pid}/stages/findings").json()["artifact"]["findings"]}
+    repair = next(o["decision"] for o in found["sentinel_missing__sbp_mm"]["repairs"]
+                  if o["key"] == "set_missing")
+    previewed = client.post(f"/api/projects/{pid}/preview", json=repair)
+    assert previewed.status_code == 409, previewed.text[:600]
+    refused = post(client, pid, repair)
+    assert refused.status_code == 409, refused.text[:600]
+    error = refused.json()["error"]
+    assert error["code"] == "too_few_rows"
+    assert error["message"] == (
+        "Recorded, this answer would leave 5 of the 8 rows analyzed now, and the design needs at "
+        "least 6. Complete cases would remove 3 rows: each of them is blank in `sbp_mm`. Fill the "
+        "blanks instead of complete cases (the missing-values question).")
+    fill = error["exits"][0]["decision"]
+    assert fill["kind"] == "set_missing" and fill["strategy"] == "impute"
+    assert post(client, pid, fill).status_code == 200
+    assert post(client, pid, repair).status_code == 200
+
+
+def statin_table() -> pd.DataFrame:
+    """The verifier's 60-row table: `statin_use` (yes/no) blank on 70% of rows, and complete cases
+    on `age_y` and `bmi` keep 4 rows."""
+    rng = np.random.default_rng(5)
+    n = 60
+    age = rng.integers(30, 80, n).astype(float)
+    bmi = rng.normal(27.0, 4.0, n).round(1)
+    age[:28] = np.nan
+    bmi[28:56] = np.nan
+    statin = np.where(rng.random(n) < 0.5, "yes", "no").astype(object)
+    statin[rng.permutation(n)[:42]] = None
+    sbp = (118 + 0.3 * np.nan_to_num(bmi, nan=27.0) + rng.normal(0, 9, n)).round(0)
+    return pd.DataFrame({"pt_code": [f"P{i:03d}" for i in range(n)], "age_y": age, "bmi": bmi,
+                         "statin_use": statin, "sbp": sbp})
+
+
+def test_the_not_asked_cautions_exits_are_each_accepted(client, tmp_path):
+    """The verifier's case: previewing a single fill offered the "not asked" caution's "Leave it
+    out first" (complete cases with `statin_use` left out), which keeps 4 rows and was itself
+    refused, 409 too_few_rows, at preview and at recording. Every exit the caution offers now
+    previews and records; leaving the column out is still offered, with the other blanks filled."""
+    from turbotab.server.tests.conftest import answer_settled, prepare
+
+    path = tmp_path / "statins.csv"
+    statin_table().to_csv(path, index=False)
+    pid = open_by_path(client, path)
+    wait_for(client, pid, {"ingest": "fresh"})
+    for d in ({"kind": "set_lens", "lenses": ["clinical"]},
+              {"kind": "set_target", "column": "sbp"},
+              {"kind": "set_purpose", "purpose": "prediction"}):
+        prepare(client, pid, d)
+        assert answer_settled(client, pid, None, d).status_code == 200
+    fill = {"kind": "set_missing", "strategy": "impute"}
+    prepare(client, pid, fill)
+    wait_for(client, pid, {"proposals": "fresh"}, timeout=180)
+    reading = client.get(f"/api/projects/{pid}/stages/proposals").json()["artifact"]["missing"]
+    assert [e["column"] for e in reading["columns"] if e["likely_not_asked"]] == ["statin_use"]
+
+    previewed = client.post(f"/api/projects/{pid}/preview", json=fill)
+    assert previewed.status_code == 200, previewed.text[:600]
+    caution = previewed.json()["caution"]
+    assert "`statin_use`" in caution["text"] and "not asked" in caution["text"]
+    exits = [e["decision"] for e in caution["exits"]]
+    assert any(d["drop_columns"] == ["statin_use"] for d in exits)
+    for d in exits:
+        taken = client.post(f"/api/projects/{pid}/preview", json=d)
+        assert taken.status_code == 200, (d, taken.text[:600])
+    leave = next(d for d in exits if d["drop_columns"] == ["statin_use"])
+    assert post(client, pid, leave).status_code == 200

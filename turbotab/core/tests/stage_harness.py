@@ -34,25 +34,50 @@ NHANES_SHA256 = "dbb2df487d50de26a223c9b7f9f214b4a55b0399db72b2047e729920d04a15d
 
 
 def nhanes_fixture() -> Path:
-    """The tracked fixture, decompressed once to a cache keyed by its bytes, under the export's
-    own name (so names, uploads and captures read as they did). It is written to a temporary name
-    and moved into place, so parallel workers never read half a file."""
+    """The tracked fixture, decompressed to a cache keyed by its bytes, under the export's own
+    name (so names, uploads and captures read as they did).
+
+    The fixture is decompressed in memory first, so a corrupt one fails before the cache is
+    touched. A cached copy is reused only when its bytes are the fixture's (a partial write or an
+    edit is written again). A new copy is written to a temporary name, made readable by every
+    user (0644: the cache sits in the shared temporary folder, and ``mkstemp`` creates 0600) and
+    moved into place, so parallel workers never read half a file; a write that fails removes its
+    temporary file. Where another user's folder can be neither read nor written, the copy goes to
+    a folder of this user's own."""
+    import getpass
     import gzip
     import hashlib
     import os
-    import shutil
+    import stat
     import tempfile
 
-    key = hashlib.sha256(NHANES_GZ.read_bytes()).hexdigest()[:16]
-    folder = Path(tempfile.gettempdir()) / f"turbotab-nhanes-{key}"
-    out = folder / NHANES_NAME
-    if not out.is_file():
-        folder.mkdir(parents=True, exist_ok=True)
-        fd, part = tempfile.mkstemp(dir=folder, suffix=".part")
-        with os.fdopen(fd, "wb") as dst, gzip.open(NHANES_GZ, "rb") as src:
-            shutil.copyfileobj(src, dst)
-        os.replace(part, out)
-    return out
+    packed = NHANES_GZ.read_bytes()
+    data = gzip.decompress(packed)
+    digest = hashlib.sha256(data).hexdigest()
+    shared = Path(tempfile.gettempdir()) / f"turbotab-nhanes-{hashlib.sha256(packed).hexdigest()[:16]}"
+    for folder in (shared, shared.with_name(f"{shared.name}-{getpass.getuser()}")):
+        out = folder / NHANES_NAME
+        try:
+            if out.is_file() and hashlib.sha256(out.read_bytes()).hexdigest() == digest:
+                mine = not hasattr(os, "getuid") or out.stat().st_uid == os.getuid()
+                if mine and stat.S_IMODE(out.stat().st_mode) != 0o644:
+                    os.chmod(out, 0o644)  # a copy an earlier harness wrote 0600
+                return out
+            folder.mkdir(parents=True, exist_ok=True)
+            fd, part = tempfile.mkstemp(dir=folder, suffix=".part")
+        except PermissionError:
+            continue  # another user's folder: this user's own
+        try:
+            with os.fdopen(fd, "wb") as dst:
+                dst.write(data)
+            os.chmod(part, 0o644)
+            os.replace(part, out)
+        except BaseException:
+            if os.path.exists(part):
+                os.unlink(part)
+            raise
+        return out
+    raise PermissionError(f"Neither {shared} nor this user's own folder beside it can be written.")
 
 
 def _nhanes() -> Path:

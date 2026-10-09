@@ -214,16 +214,17 @@ def asks_first(ctx: PreviewContext, state: Any, *, offer: bool = True) -> Any:
     return None
 
 
-def cannot_draw(decision: Any, ctx: PreviewContext, fallback: str) -> list[Any]:
+def cannot_draw(decision: Any, ctx: PreviewContext, fallback: str, **known: Any) -> list[Any]:
     """calm/FOUNDATION §5 rules 7–8: a preview that cannot draw says so in one line, naming what is
     missing and the question that settles it, never an empty canvas. Where the server would refuse
-    the answer as the project stands (the kind's own validators on the recorded state), the line is
+    the answer as the project stands (the kind's own validators on the recorded state, with what
+    else of the server's context the caller passes as ``known``: the target, the task), the line is
     that refusal, and an exit that records a decision is the caution's control; else ``fallback``.
     Returns no views."""
     from turbotab.core import decisions
 
     try:
-        decisions.validate(decision, {"state": ctx.state})
+        decisions.validate(decision, {"state": ctx.state, **known})
     except decisions.Refusal as refused:
         exits = [CautionExit(label=str(e["label"]), decision=dict(e["decision"]))
                  for e in refused.exits if e.get("decision")]
@@ -389,6 +390,15 @@ def inference_first(what: str) -> str:
     return f"{what} under inference: answer {question_name('purpose')} with inference first."
 
 
+def prediction_first(what: str) -> str:
+    """The line of a preview whose picture would be read from the outcome model while the purpose
+    is unanswered (``consequences.estimates_unseen``, its strictest case): the purpose question
+    settles it."""
+    from turbotab.core.voice import question_name
+
+    return f"{what}, shown once {question_name('purpose')} is answered with prediction."
+
+
 def estimand_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     from turbotab.core import estimand as est
 
@@ -514,6 +524,8 @@ def adjustment_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                or (c in derived and c in derived_now
                    and (derived[c].role, derived[c].adjusted)
                    != (derived_now[c].role, derived_now[c].adjusted))]
+    # The set the model adjusts for, and beside it what the surveyed population blocks (§4).
+    population_block(ctx, after, decision)
     return [LineageView(
         title=title("Which covariates the model adjusts for"),
         caption=caption("; ".join(parts) + "."),
@@ -653,12 +665,23 @@ def multiplicity_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     stage's and the feature-wise fit's). Drawn without the p-values: the method is chosen before
     they are seen (Gelman & Loken 2013, forking paths)."""
     from turbotab.core import estimand as est
+    from turbotab.core.voice import question_name
 
     after = after_state(decision, ctx)
-    if getattr(after, "purpose", None) != "inference":
+    purpose = getattr(after, "purpose", None)
+    if purpose is None:
+        return cannot_draw(decision, ctx, inference_first("A multiplicity method adjusts the "
+                                                          "exposures' tests"))
+    if purpose != "inference":
+        ctx.read["note"] = (f"Under prediction no exposure's test is reported, so this method "
+                            f"changes nothing; it applies under inference, which "
+                            f"{question_name('purpose')} settles.")
         return []
     m = len(est.family_exposures(after))
     if m < 2:
+        ctx.read["note"] = (f"With {fmt_count(m)} exposure{'' if m == 1 else 's'} there is no "
+                            f"family of tests to adjust: the method applies to two or more, which "
+                            f"{question_name('roles')} settle.")
         return []
     ranks = np.arange(1, m + 1, dtype=float)
     keep = np.unique(np.linspace(0, m - 1, min(m, POINTS)).round().astype(int))
@@ -681,6 +704,7 @@ def multiplicity_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     ctx.read["note"] = ("Drawn without the p-values: the method is declared before the results "
                         "are seen.")
     ctx.read["multiplicity"] = {"m": m}
+    population_block(ctx, after, decision)  # no test at all where the fit blocks it (§4)
     return [RelationshipView(
         title=title("The threshold each test must clear"),
         caption=caption(text),
@@ -761,9 +785,10 @@ def form_terms(design: Design, facts: Mapping[str, Any],
     return [(facts["name"], x)]
 
 
-def exposure_form_views(decision: Any, ctx: PreviewContext, after: Any = None) -> list[Any]:
+def exposure_form_views(decision: Any, ctx: PreviewContext, after: Any = None,
+                        answer: Any = None) -> list[Any]:
     """``after``: the state the answer leaves when ``decision`` is one column of a larger answer
-    (``set_forms``); else the state ``decision`` leaves."""
+    (``answer``, a ``set_forms``); else the state ``decision`` leaves."""
     from turbotab.core.methods.exposure_form import KNOT_PERCENTILES, domain_columns
 
     ids = pool(ctx)
@@ -912,6 +937,8 @@ def exposure_form_views(decision: Any, ctx: PreviewContext, after: Any = None) -
             before=now.lineage if now is not None else None,
             after=then.lineage,
         ))
+    # The form as the fit would take it, and what the surveyed population blocks of it (§4).
+    population_block(ctx, after, answer if answer is not None else decision)
     return views[:MAX_VIEWS]
 
 
@@ -933,7 +960,7 @@ def forms_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     column = exposure if exposure in forms else next(
         (c for c, f in forms.items() if f.form != "linear"), next(iter(forms)))
     one = SetExposureForm(column=column, **forms[column].model_dump())
-    return exposure_form_views(one, ctx, after=after_state(decision, ctx))
+    return exposure_form_views(one, ctx, after=after_state(decision, ctx), answer=decision)
 
 
 # ── set_modification (FORM, MODELING_SEQUENCE §1 row 7; wave 2b integration) ──
@@ -949,9 +976,14 @@ def modification_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     after = after_state(decision, ctx)
     exposure = bound_exposure(after)
     ids = pool(ctx)
-    if decision.withdraw or exposure is None or ids is None or \
-            decision.modifier not in ctx.datastore.columns:
+    if decision.withdraw:
+        ctx.read["note"] = (f"Withdrawn: {tick(decision.modifier)} no longer stratifies the "
+                            f"reported effect, which is estimated for every row together.")
         return []
+    if exposure is None or ids is None or decision.modifier not in ctx.datastore.columns:
+        return []
+    # The modifier's strata, and beside them what the surveyed population blocks (§4).
+    population_block(ctx, after, decision)
     frame = ctx.datastore.materialize([decision.modifier], ids)
     raw = frame[decision.modifier].dropna()
     numbers = pd.to_numeric(raw, errors="coerce")
@@ -1069,17 +1101,25 @@ def task_of(ctx: PreviewContext, state: Any) -> str | None:
     return task
 
 
-def population_block(ctx: PreviewContext, state: Any, decision: Any) -> bool:
+def population_block(ctx: PreviewContext, state: Any, decision: Any, *, what: str = "coefficients",
+                     marginal: bool = True, every_family: bool = False) -> bool:
     """MODELING_SEQUENCE §4, "population estimand without a design-based estimator: block and
     record", as the stages apply it under ``state``'s surveyed-population answer, each with its
     own check and words: the design itself (``methods.survey.for_fit``: a grouping whose rows
     span PSUs refuses every coefficient), then each chosen family with no design-based estimator
-    (the fit's ``models.survey.no_design_estimator``), then a marginal measure (the effects
+    (the fit's ``models.survey.no_design_estimator``; ``what`` the stage blocks of it, its
+    coefficients or a substitution curve), then, with ``marginal``, a marginal measure (the effects
     stage's ``marginal_population_block``). The first found is the preview's caution, with the
-    stage's exits and recording the answer as it is; True when one was found."""
+    stage's exits and recording the answer as it is; True when one was found.
+
+    A family is counted only where a stage records its block (:func:`family_block`): the fit, the
+    effects and the sensitivity stages block a family's coefficient table, so a family that reports
+    none (boosted trees) is counted only with ``every_family``, where the caller speaks for every
+    family's output: the swap (the substitution stage blocks each family's curve) and the choice
+    of families and of the population (the record's sentence says each one's estimates are
+    blocked, ``models.survey.models_sentence``)."""
     from turbotab.core import estimand as est
     from turbotab.core.models import get_family
-    from turbotab.core.models.survey import has_design_estimator, no_design_estimator
     from turbotab.core.stages.effects import marginal_population_block
 
     if getattr(state, "purpose", None) != "inference" or ctx.caution is not None:
@@ -1103,18 +1143,40 @@ def population_block(ctx: PreviewContext, state: Any, decision: Any) -> bool:
             family = get_family(key)
         except KeyError:
             continue
-        if not has_design_estimator(family, task):
-            info = no_design_estimator(family, task, models).info
-            reason, exits = info["refused"], info["exits"]
+        found_block = family_block(family, task, models, what=what, every_family=every_family)
+        if found_block is not None:
+            reason, exits = found_block
             break
     spec = est.current_estimand(state)
-    if (reason is None and spec is not None and str(spec.measure) in est.MARGINAL
+    if (marginal and reason is None and spec is not None and str(spec.measure) in est.MARGINAL
             and task in est.MARGINAL_TASKS and "linear" in models):
         reason, exits = marginal_population_block(state, spec)
     if reason is None:
         return False
     block_and_record(ctx, reason, exits, decision)
     return True
+
+
+def family_block(family: Any, task: str | None, models: Sequence[str], *,
+                 what: str = "coefficients",
+                 every_family: bool = False) -> tuple[str, list[dict[str, Any]]] | None:
+    """``family``'s block under the surveyed population as a stage records it, its reason and
+    exits (``models.survey.no_design_estimator``), else None: none for a family with a
+    design-based estimator. A family with a coefficient table has it blocked by the fit (and the
+    effects and sensitivity stages, which read only such families); one with no table has nothing
+    of its ``coefficients`` blocked, so it counts only with ``every_family``, said of its
+    ``estimates`` (the record's word) unless ``what`` names its curve."""
+    from turbotab.core.models.base import reports_coefficients
+    from turbotab.core.models.survey import has_design_estimator, no_design_estimator
+
+    if has_design_estimator(family, task):
+        return None
+    if not reports_coefficients(family):
+        if not every_family:
+            return None
+        what = "estimates" if what == "coefficients" else what
+    info = no_design_estimator(family, task, models, what=what).info
+    return str(info["refused"]), [dict(e) for e in info["exits"]]
 
 
 def block_and_record(ctx: PreviewContext, reason: str, exits: Sequence[Mapping[str, Any]],
@@ -1127,6 +1189,24 @@ def block_and_record(ctx: PreviewContext, reason: str, exits: Sequence[Mapping[s
         *(CautionExit(label=str(e["label"]), decision=dict(e["decision"]))
           for e in exits if e.get("decision")),
         CautionExit(label=RECORD_BLOCKED, decision=decision.model_dump(mode="json"))])
+
+
+def specifies_the_model(builder: Any) -> Any:
+    """``builder``, the preview of an answer that specifies the outcome model (what enters it, the
+    rows it is estimated on, its outcome, whether it is estimated at all), with what the surveyed
+    population blocks of that model under the state the answer leaves (§4, block and record:
+    :func:`population_block`) as the caution beside its views, unless the builder set one. The fit
+    records the same once the answer is: a grouping whose rows span PSUs refuses every
+    coefficient whatever else the answer changes."""
+    import functools
+
+    @functools.wraps(builder)
+    def views(decision: Any, ctx: PreviewContext) -> list[Any]:
+        out = builder(decision, ctx)
+        population_block(ctx, after_state(decision, ctx), decision)
+        return out
+
+    return views
 
 
 def clusters_views(decision: Any, ctx: PreviewContext) -> list[Any]:
@@ -1187,6 +1267,9 @@ def clusters_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         else:
             text = f"{span}, {where}: intervals by Taylor linearization over the survey design."
         record = {"grouped_by": None, "n_clusters": None, "covariance": "design"}
+        # The design stands; a chosen family or a measure with no design-based estimator is still
+        # blocked and recorded (§4), as the families' and the estimand's previews say.
+        population_block(ctx, after, decision)
     else:
         if column is None:
             text = (f"No grouping: the {fmt_count(len(frame))} sampled rows are read as "
@@ -1444,8 +1527,9 @@ def survey_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                           "domain": held, "mean_unweighted": mean_u, "mean_weighted": mean_w,
                           "unit": unit}
     # The design stands; what the chosen families and the declared measure cannot estimate over
-    # it is blocked and recorded (§4), and the preview says so beside the design.
-    population_block(ctx, after, decision)
+    # it is blocked and recorded (§4), and the preview says so beside the design: every family's
+    # estimates, as the record's sentence of the families says under this answer.
+    population_block(ctx, after, decision, every_family=True)
     sampled = ctx.read.get("sample")
     values = (f"a sample of {sampled[2]:,} of the {sampled[1]:,} {rows_word(ctx)} rows"
               if sampled is not None and sampled[2] < sampled[1] else
@@ -1598,6 +1682,7 @@ def categorical_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         return []
     per = {c: [m for m in arrive if m.startswith(f"{c}_")] for c in coded}
     text = "; ".join(f"{tick(c)} becomes {len(per[c])} indicators" for c in coded[:2])
+    population_block(ctx, after, decision)  # what the surveyed population blocks of the model (§4)
     return [LineageView(
         title=title("Codes enter as categories"),
         caption=caption(text + ", one per level after the first."),
@@ -1681,11 +1766,14 @@ def task_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 
 
 def sensitivity_views(decision: Any, ctx: PreviewContext) -> list[Any]:
-    """One row flow per analysis beside the primary: the rows its own rules keep."""
+    """One row flow per analysis beside the primary: the rows its own rules keep. Under the
+    surveyed population each analysis refits every family over the design, as the fit does
+    (``stages.sensitivity.fit_on_rows``), so what the fit blocks (§4) is said here too."""
     from turbotab.core import row_previews as rp
 
     if not decision.analyses:
         return []
+    population_block(ctx, after_state(decision, ctx), decision, marginal=False)
     states = [ctx.state] + [ctx.state.model_copy(update={"exclusions": list(a.rules)})
                             for a in decision.analyses]
     _, _, flows = rp._flows(ctx, states)
@@ -1763,10 +1851,10 @@ register_consequence("set_modification", modification_views)  # FORM (wave 2b in
 register_consequence("set_clusters", clusters_views)
 register_consequence("set_survey", survey_views)
 register_consequence("set_follow_up", follow_up_views)
-register_consequence("set_outcome_scale", outcome_scale_views)
+register_consequence("set_outcome_scale", specifies_the_model(outcome_scale_views))
 register_consequence("set_categorical", categorical_views)
-register_consequence("set_outcome_order", outcome_order_views)
-register_consequence("set_task", task_views)
+register_consequence("set_outcome_order", specifies_the_model(outcome_order_views))
+register_consequence("set_task", specifies_the_model(task_views))
 register_consequence("set_sensitivity", sensitivity_views)
 register_consequence("respond_diagnostic", diagnostic_views)
 

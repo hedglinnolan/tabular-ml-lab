@@ -28,6 +28,7 @@ from turbotab.core.consequences import (
     _histogram_pair, clip_words, fmt_count, lineage_of, register_consequence,
 )
 from turbotab.core.decisions import ROW_ID
+from turbotab.core.plan_previews import specifies_the_model
 
 MAX_LINEAGE = 30
 LENS_NOUN = {
@@ -310,7 +311,10 @@ def purpose_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 
 
 register_consequence("set_lens", lens_views)
-register_consequence("set_target", target_views)
-register_consequence("set_purpose", purpose_views)
+# The outcome itself, and whether its model is estimated at all (inference): beside each, what
+# the surveyed population blocks of that model (MODELING_SEQUENCE §4;
+# ``plan_previews.specifies_the_model``).
+register_consequence("set_target", specifies_the_model(target_views))
+register_consequence("set_purpose", specifies_the_model(purpose_views))
 
 __all__ = ["lens_views", "purpose_views", "target_views"]

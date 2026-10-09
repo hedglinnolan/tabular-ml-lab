@@ -36,7 +36,8 @@ from turbotab.core.consequences import (
     after_state, fmt_count, fmt_value, register_consequence,
 )
 from turbotab.core.plan_previews import (
-    caption, frame_label, histogram, names, num, points, pool, shared_edges, tick, title,
+    caption, frame_label, histogram, names, num, points, pool, population_block, shared_edges,
+    specifies_the_model, task_of, tick, title,
 )
 
 MAX_ROWS = 8
@@ -316,7 +317,16 @@ def confirm_reading_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     roles = [i for i in items if i.reading == "role"]
     if roles:
         views += roles_views(roles, ctx)
+    if any(i.reading in MODEL_READINGS for i in items):
+        # What enters the outcome model, how, and what groups its intervals: beside it, what the
+        # surveyed population blocks of that model (MODELING_SEQUENCE §4).
+        population_block(ctx, after_state(decision, ctx), decision)
     return views[:MAX_VIEWS]
+
+
+# The readings that specify the outcome model's terms and grouping, as ``set_roles``,
+# ``set_categorical`` and ``set_clusters`` do (``plan_previews.specifies_the_model``).
+MODEL_READINGS = ("role", "code_or_count", "cluster")
 
 
 def roles_views(items: Sequence[Any], ctx: PreviewContext) -> list[Any]:
@@ -402,6 +412,14 @@ def substitution_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     fr = getattr(fr, "factor", fr)
     if not fd or not fr:
         return []
+    # Under the surveyed population the substitution stage draws each family's curve over the
+    # design, or blocks and records it (MODELING_SEQUENCE §4): every curve where the design itself
+    # is refused, a family's where it has no design-based estimator, a tree model's included. The
+    # swap says the same.
+    curves = "substitution curves" if task_of(ctx, ctx.state) == "multiclass" else \
+        "substitution curve"
+    population_block(ctx, after_state(decision, ctx), decision, what=curves, marginal=False,
+                     every_family=True)
     frame = ctx.datastore.materialize([donor, recipient], ids[:MAX_ROWS])
     if decision.scale == "percent_energy":
         ctx.read["note"] = (f"Each step moves {decision.step_percent:g}% of each person's energy "
@@ -544,7 +562,7 @@ register_consequence("join_files", join_views)
 register_consequence("import_codebook", codebook_views)
 register_consequence("confirm_reading", confirm_reading_views)
 register_consequence("confirm_readings", confirm_reading_views)
-register_consequence("confirm_role", confirm_role_views)
+register_consequence("confirm_role", specifies_the_model(confirm_role_views))
 register_consequence("set_feature_table", feature_table_views)
 register_consequence("set_substitution", substitution_views)
 register_consequence("set_explain", explain_views)

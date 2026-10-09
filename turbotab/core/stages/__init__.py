@@ -539,7 +539,10 @@ def build_graph() -> Graph:
             # stays under prediction, on the training rows.
             # design 26 (the zero-row crash): rows whose outcome is one value fail here in plain
             # words, never as the fit's IndexError (``core.row_floor``).
-            Stage("design", 26, ("working", "split", "target_info"),
+            # design 27 (previews leash 2): the energy-dropped residual's gap is withheld with the
+            # purpose unanswered too, and kept beside the design (its objects) under inference, so
+            # the server serves it in the warning's place once the plan is locked (audit ME-03).
+            Stage("design", 27, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS, "levers", "selection"),
@@ -605,7 +608,12 @@ def build_graph() -> Graph:
             # degrees of freedom left offers the sample-only attestation as the table's exit.
             # fit 25 (wave 2b repairs' integration): fit 24 of REPAIR-EXPLORE and of REPAIR-MULTISUB,
             # one stage.
-            Stage("fit", 25, ("working", "design", "split", "target_info", "cohort"),
+            # fit 26 (engine residue): a held table's missing-values exits are offered only where
+            # the record accepts them (``row_floor.stage_exits``), with leaving out a column too
+            # sparse to impute, or the blank columns of imputed copies; a pure lasso with more than
+            # two classes reports each feature at the middle of its tied set
+            # (``exact_path.middle_of_ties``).
+            Stage("fit", 26, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),
@@ -640,7 +648,12 @@ def build_graph() -> Graph:
             # per class or one) is blocked with the table's refusal and exits; a family with no
             # table is refit on each copy and pooled; a design with no degrees of freedom left
             # draws no curve over the surveyed population.
-            Stage("substitution", 17, ("working", "fit", "design"),
+            # substitution 18 (previews leash 2, MS4): under the surveyed population with the design
+            # itself refused (a grouping whose rows span PSUs), every curve is blocked with the
+            # fit's refusal and exits, never drawn as these participants' curve.
+            # substitution 18 (engine residue): as fit 26, a blocked curve's missing-values exits.
+            # substitution 19 (resume integration 2): both substitution 18s.
+            Stage("substitution", 19, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
                    "column_units", *ROLE_READS, *WP17_READS),
                   substitution_stage, heavy=True, requires=("substitution",),
@@ -682,7 +695,9 @@ def build_graph() -> Graph:
             # the secondary stage's methods sentence reports only the models fit.
             # sensitivity 14 (the zero-row crash): an analysis whose rules leave too few rows, or one
             # value of the outcome, is not fit, its reason in plain words (``core.row_floor``).
-            Stage("sensitivity", 14, ("working", "design", "split", "target_info"),
+            # sensitivity 15, calibration 12, secondary 5, effects 6 (engine residue): as fit 26,
+            # the held table's missing-values exits.
+            Stage("sensitivity", 15, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),
                   label="Refitting the model on each analysis's rows"),
@@ -700,14 +715,18 @@ def build_graph() -> Graph:
             # calibration 11 (REPAIR-RC): the uncorrected estimate beside it is the primary's on
             # every participant it analyzes; a lonely PSU is drawn twice or not at all; refused
             # below the cluster floor; every block says why in the methods' words, with an exit.
-            Stage("calibration", 11,
+            # calibration 12 (previews leash 2): the refusals that read no row are one function the
+            # preview shares (``unread_refusal``); rows that are no mean of recalls said in 30 words.
+            # calibration 13 (resume integration 2): both calibration 12s (this one and the engine
+            # residue's, beside sensitivity 15 above).
+            Stage("calibration", 13,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),
                   label="Correcting intakes for day-to-day error in the recalls"),
             # ── WP17 (AUDIT_REPORT §5): the declared "further adjusted for" model ──
             # secondary 2 (MS1–MS2): as fit 18; the design and the clustering in its imputation model.
-            Stage("secondary", 4, ("working", "design", "split", "target_info"),
+            Stage("secondary", 5, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment"),
                   label="Fitting the model further adjusted for the declared covariates"),
@@ -747,7 +766,7 @@ def build_graph() -> Graph:
             # carries that question's exits, and the methods text lists only the models reported.
             # effects 5 (wave 2b, LEASH): a difference's E-value records the SD it was standardized
             # by and whose it is, and the methods text names the surveyed population's.
-            Stage("effects", 5, ("working", "design", "split", "target_info"),
+            Stage("effects", 6, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand"),
                   label="Reporting the exposure's effect across the declared models"),
