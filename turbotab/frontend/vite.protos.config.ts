@@ -1,11 +1,11 @@
 /**
  * The static build of the living-methods prototypes: `npm run build:protos`.
  *
- * protos.html → <PROTOS_OUT>/index.html (default /private/tmp/turbotab-fix/protos-dist): the
- * chooser and the three prototypes with their captured fixtures, no server and no mock worker.
- * The folder runs from any static host or from disk: relative URLs (base "./"), hash routes, one
- * script inlined into index.html (a browser refuses module scripts from file://), the stylesheet
- * beside it with the fonts inlined (a browser refuses fonts from file:// too).
+ * protos.html → <PROTOS_OUT>/index.html (default build/protos-dist beside this file, which git
+ * ignores): the chooser and the three prototypes with their captured fixtures, no server and no
+ * mock worker. The folder runs from any static host or from disk: relative URLs (base "./"), hash
+ * routes, one script inlined into index.html (a browser refuses module scripts from file://), the
+ * stylesheet beside it with the fonts inlined (a browser refuses fonts from file:// too).
  */
 import { readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -14,7 +14,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const outDir = resolve(process.env.PROTOS_OUT ?? "/private/tmp/turbotab-fix/protos-dist");
+const outDir = resolve(process.env.PROTOS_OUT ?? resolve(here, "build", "protos-dist"));
 
 /** After the bundle is written: inline the one script, drop `crossorigin`, name the page index.html. */
 function staticFolder(): Plugin {

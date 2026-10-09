@@ -1,11 +1,12 @@
 /**
  * The static build of the calm structures: `npm run build:calm`.
  *
- * calm.html → <CALM_OUT>/index.html (default /private/tmp/turbotab-fix/calm-dist): the chooser,
- * the four structures and the kit demo with the kit's captured fixture, no server and no mock
- * worker. The folder runs from any static host or from disk: relative URLs (base "./"), hash
- * routes, one script inlined into index.html (a browser refuses module scripts from file://), the
- * stylesheet beside it with the font inlined (a browser refuses fonts from file:// too).
+ * calm.html → <CALM_OUT>/index.html (default build/calm-dist beside this file, which git
+ * ignores): the chooser, the four structures and the kit demo with the kit's captured fixture, no
+ * server and no mock worker. The folder runs from any static host or from disk: relative URLs
+ * (base "./"), hash routes, one script inlined into index.html (a browser refuses module scripts
+ * from file://), the stylesheet beside it with the font inlined (a browser refuses fonts from
+ * file:// too).
  */
 import { readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -14,7 +15,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const outDir = resolve(process.env.CALM_OUT ?? "/private/tmp/turbotab-fix/calm-dist");
+const outDir = resolve(process.env.CALM_OUT ?? resolve(here, "build", "calm-dist"));
 
 /** After the bundle is written: inline the one script, drop `crossorigin`, name the page index.html. */
 function staticFolder(): Plugin {
