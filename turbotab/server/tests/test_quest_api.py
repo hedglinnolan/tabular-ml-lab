@@ -38,7 +38,7 @@ def test_the_quest_log_is_served_versioned_with_the_seven_stages_in_order(client
     r = client.get(f"/api/projects/{pid}/quest")
     assert r.status_code == 200, r.text
     log = r.json()
-    assert log["version"] == QUEST_VERSION == 1
+    assert log["version"] == QUEST_VERSION == 2
     assert [(s["key"], s["name"]) for s in log["stages"]] == SEVEN
     lens = next(l for l in log["stages"][0]["lines"] if l["key"] == "lens")
     assert lens["status"] == "open" and lens["id"] == "q:lens"

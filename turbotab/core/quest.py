@@ -60,9 +60,13 @@ Its recorded answer, while it still holds on the answers now, stands meanwhile; 
 such answer is listed as waiting and not counted, since whether it is asked at all is that
 reading's. So the bar never shows questions reopened that a recompute settles again.
 
-The Confirm sweep is answered when each of its lines carries an answer recorded by the person;
-P0.5 adds the one record that confirms a whole sweep. Progress reads the registry's lines only:
-the noticings of the understanding layer join them when they are wired (P0.9).
+**The Confirm sweep** (P0.5, ``turbotab/core/sweep.py``): a default the engine states is a Confirm
+only when another choice would change a number on this table (each default's would-change test),
+else For the record with why; the Confirm lines sit last in their stage, and Your data's sweep
+holds what the values settled. The sweep is answered when each line carries the person's own
+answer or is covered by the stage's "Confirm all" (``confirm_sweep``), which holds each default as
+it was stated, so one stated otherwise since is open again. Progress reads the registry's lines
+only: the noticings of the understanding layer join them when they are wired (P0.9).
 
 Regenerating ``quest_noticings.json`` from the crosswalk (the registry test fails while it drifts)::
 
@@ -80,7 +84,9 @@ from typing import Any, Callable, Literal, Mapping, Sequence
 from pydantic import BaseModel, ConfigDict
 
 # Bumped when the shape or the meaning of the quest log changes (GET /projects/{pid}/quest).
-QUEST_VERSION = 1
+# 2 (P0.5): a Confirm line is a default whose alternative would change a number here, else For the
+# record; Your data's readings line; the sweep's words and its "Confirm all".
+QUEST_VERSION = 2
 
 STAGES: tuple[tuple[str, str], ...] = (
     ("data", "Your data"),
@@ -98,6 +104,8 @@ Label = Literal["Decide", "Confirm", "For the record"]
 DECIDE: Label = "Decide"
 CONFIRM: Label = "Confirm"
 RECORD: Label = "For the record"
+# A stage lists its Decides, then its one Confirm sweep, then For the record (FOUNDATION §3).
+LABELS: tuple[Label, ...] = (DECIDE, CONFIRM, RECORD)
 
 NOTICINGS_FILE = Path(__file__).resolve().parent / "quest_noticings.json"
 
@@ -203,6 +211,17 @@ OTHER_KINDS: dict[str, Place] = {
 }
 # A revert sits where the record it undoes sits.
 FOLLOWS_WHAT_IT_UNDOES = "revert"
+# "Confirm all" sits in the stage whose sweep it confirms (P0.5; ``turbotab/core/sweep.py``).
+FOLLOWS_ITS_STAGE = "confirm_sweep"
+# Each stage's sweep, as the crosswalk names it (First look sets nothing for the person).
+SWEEP_ITEMS: dict[str, str] = {
+    "data": "other:confirm-sweep:data",
+    "question": "other:confirm-sweep:question",
+    "whos_in": "other:confirm-sweep:whos_in",
+    "models": "other:confirm-sweep",
+    "results": "other:confirm-sweep:results",
+    "writeup": "other:confirm-sweep:writeup",
+}
 
 
 def kind_place(kind: str) -> Place:
@@ -220,10 +239,10 @@ def kind_place(kind: str) -> Place:
 
 def kind_stages() -> dict[str, str]:
     """Every decision kind the log accepts -> its stage (``revert`` aside: it follows its
-    record)."""
+    record; and ``confirm_sweep``: it sits in the stage it confirms)."""
     from turbotab.core.decisions import SLOTS
 
-    return {kind: kind_place(kind).stage for kind in sorted(SLOTS)}
+    return {kind: kind_place(kind).stage for kind in sorted(SLOTS) if kind != FOLLOWS_ITS_STAGE}
 
 
 def answering_kinds(key: str) -> tuple[str, ...]:
@@ -654,18 +673,44 @@ class ReopenedBy(BaseModel):
     stage: str
 
 
+class ReadOption(BaseModel):
+    """Another reading of a column, and the decision that records it."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+    label: str
+    decision: dict[str, Any] | None = None
+
+
+class ReadItem(BaseModel):
+    """One reading the values settled with no question asked (``readings.read_from_data``)."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+    kind: str
+    column: str
+    value: str
+    words: str
+    evidence: str
+    options: list[ReadOption] = []
+
+
 class QuestLine(BaseModel):
-    """One line of a stage: a Router question, a declaration or a finding.
+    """One line of a stage: a Router question, a declaration, a finding or what the values settled
+    (``reading``).
 
     ``status``: ``answered``; ``open`` (answerable now); ``waiting`` (``waiting_for`` names the
     earlier answers it needs, ``computing`` the results its card waits for); ``set_for_you`` (a
-    default the engine stated, in the Confirm sweep or For the record)."""
+    default the engine stated, in the Confirm sweep or For the record). A default's ``reason`` is
+    why it was set; on a Confirm line ``would_change`` says what another choice would change here,
+    and a default For the record says in ``changes_nothing`` why no other choice changes a number
+    (P0.5). ``id`` is the card that opens its options; a reading's ``items`` carry their own."""
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
     id: str
     key: str
-    source: Literal["question", "declaration", "finding"]
+    source: Literal["question", "declaration", "finding", "reading"]
     label: Label
     name: str
     status: Literal["answered", "open", "waiting", "set_for_you"]
@@ -676,6 +721,9 @@ class QuestLine(BaseModel):
     waiting_for: list[Waiting] = []
     computing: list[str] = []
     reopened_by: ReopenedBy | None = None
+    would_change: str | None = None
+    changes_nothing: str | None = None
+    items: list[ReadItem] = []
 
 
 class Progress(BaseModel):
@@ -692,12 +740,21 @@ class Progress(BaseModel):
 
 
 class Sweep(BaseModel):
-    """The stage's one Confirm sweep: how many defaults it holds, and whether each is answered."""
+    """The stage's one Confirm sweep (P0.5): how many defaults it holds, and whether each is
+    answered, by the person's own answer or by "Confirm all" (``confirmed_by``, the
+    ``confirm_sweep`` record). ``changed``: the lines set for the person anew, or stated otherwise,
+    since that confirmation. ``id`` is the crosswalk's card; ``heading`` and ``action`` are its
+    words ("Here are the 6 other choices set for you", "Confirm all 6")."""
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
     lines: int
     answered: bool
+    id: str = ""
+    heading: str = ""
+    action: str = ""
+    confirmed_by: str | None = None
+    changed: list[str] = []
 
 
 class Reopened(BaseModel):
@@ -826,6 +883,8 @@ class _Log:
 
     def stage_of(self, record: Any) -> str | None:
         changed = self.undone(record)
+        if changed is not None and changed.kind == FOLLOWS_ITS_STAGE:
+            return changed.stage
         try:
             return kind_place(changed.kind).stage if changed is not None else None
         except KeyError:
@@ -1085,7 +1144,8 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
               stages: Mapping[str, Any] | None = None, *, findings: Any = None,
               columns: Sequence[str] | None = None,
               artifacts: Mapping[str, Any] | None = None,
-              shown_at: Mapping[str, datetime | None] | None = None) -> QuestLog:
+              shown_at: Mapping[str, datetime | None] | None = None,
+              readings: Sequence[Mapping[str, Any]] | None = None) -> QuestLog:
     """The seven stages for this project now.
 
     ``steps``: the Router's answer (``interview.route``). ``stages``: each compute stage's status.
@@ -1095,23 +1155,33 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     ``shown_at``: for each compute stage whose result is not for the answers now (not fresh, with
     an older artifact, blocked ones included), when that artifact was computed; a change after it,
     decided in another stage, is the reason, unless the stage is blocked (withdrawn). Any estimate
-    stage among them keeps Results reached."""
+    stage among them keeps Results reached. ``readings``: what the values settled with no question
+    asked (``readings.read_from_data``), Your data's line in its sweep.
+
+    P0.5 (``turbotab/core/sweep.py``): a default stated for the person is a Confirm only when
+    another choice would change a number here, else For the record with why; the Confirm lines
+    sit last in their stage, after its Decides, and "Confirm all" (``confirm_sweep``) answers them
+    while each is still stated as it was confirmed. A noticing the triage at the gate disposed of
+    (it changes no number here, or it is left as a limitation) is answered by that record."""
+    from turbotab.core import sweep as sweeps
+
     stages = stages or {}
     shown_at = shown_at or {}
     log = _Log(list(records))
     by_key = {_get(s, "key"): s for s in steps}
     facts = Facts(columns=tuple(columns or ()), artifacts=dict(artifacts or {}))
     placed = [*_question_lines(state, steps, log), *_declaration_lines(state, by_key, log, facts),
-              *_finding_lines(state, findings, by_key)]
+              *_finding_lines(state, findings, by_key), *sweeps.reading_lines(state, readings)]
     _hold_the_families(placed)
+    sweeps.weigh(placed, state, facts)
+    sweeps.cover_noticings(placed, state, log)
     frontier = _frontier(steps, stages, shown_at)
     out = []
     for key, name in STAGES:
-        mine = sorted((l for stage, l in placed if stage == key), key=lambda l: (l.order, l.name))
+        mine = sorted((l for stage, l in placed if stage == key),
+                      key=lambda l: (LABELS.index(l.label), l.order, l.name))
         reached = STAGE_INDEX[key] <= frontier
-        confirms = [l for l in mine if l.label == CONFIRM]
-        sweep = (Sweep(lines=len(confirms), answered=all(l.status == "answered" for l in confirms))
-                 if confirms else None)
+        sweep = sweeps.sweep_of(key, mine, state, log)
         progress = None
         if reached:
             decide = [l for l in mine if l.label == DECIDE and l.counted]
@@ -1128,9 +1198,10 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
 
 __all__ = [
     "COMPUTE", "DECLARATIONS", "Declaration", "EXPLORE_FINDINGS", "FINDING_ROUTES",
-    "FOLLOWS_WHAT_IT_UNDOES", "Facts", "NORMALIZATION", "OTHER_KINDS", "Place", "Progress",
-    "QUESTIONS", "QUEST_VERSION", "QuestLine", "QuestLog", "QuestStage", "READ_BY_GATE",
-    "Reopened", "ReopenedBy", "STAGES", "STAGE_NAMES", "STATED", "Sweep", "TIER_RULINGS",
+    "FOLLOWS_ITS_STAGE", "FOLLOWS_WHAT_IT_UNDOES", "Facts", "LABELS", "NORMALIZATION",
+    "OTHER_KINDS", "Place", "Progress", "QUESTIONS", "QUEST_VERSION", "QuestLine", "QuestLog",
+    "QuestStage", "READ_BY_GATE", "ReadItem", "ReadOption", "Reopened", "ReopenedBy", "STAGES",
+    "STAGE_NAMES", "STATED", "SWEEP_ITEMS", "Sweep", "TIER_RULINGS",
     "Waiting", "answer_holds", "answering_kinds", "contract_tier", "finding_place", "kind_place",
     "kind_stages", "noticing_place", "noticing_places", "noticing_stage", "noticing_stages",
     "quest_log", "question_reads", "record_stage", "stage_reads", "written_slots",

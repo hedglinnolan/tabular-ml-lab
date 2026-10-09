@@ -112,10 +112,16 @@ def test_every_router_question_sits_in_one_of_the_seven_stages():
 
 def test_every_decision_kind_sits_in_one_stage_and_a_revert_where_its_record_does():
     kinds = decision_kinds()
-    assert set(quest.kind_stages()) == kinds - {"revert"}
+    # "Confirm all" (P0.5) sits in the stage whose sweep it confirms, as a record of its own says.
+    assert set(quest.kind_stages()) == kinds - {"revert", "confirm_sweep"}
     assert set(quest.kind_stages().values()) <= set(SEVEN)
     with pytest.raises(KeyError):
         quest.kind_place("revert")
+    swept = record(1, {"kind": "confirm_sweep", "stage": "whos_in"})
+    assert quest.record_stage(swept, [swept]) == "whos_in"
+    assert set(quest.SWEEP_ITEMS) == set(SEVEN) - {"first_look"}
+    for home, item in quest.SWEEP_ITEMS.items():
+        assert (items()[item]["stage"], items()[item]["objective"]) == (home, "Confirm")
     # A kind that answers a Router question and is placed on its own card is placed in that
     # question's stage, so it has one stage either way.
     from turbotab.core.sequence import question_of
@@ -293,7 +299,7 @@ def test_progress_counts_each_decide_once_and_the_confirm_sweep_once():
     whos_in = stage(log, "whos_in")
     # Decide: exclusions, missing, split (answered); Confirm: the grain and the repeat kind as
     # stated (one sweep, open); For the record: no grouping to offer.
-    assert whos_in.sweep == quest.Sweep(lines=2, answered=False)
+    assert (whos_in.sweep.lines, whos_in.sweep.answered) == (2, False)
     assert whos_in.progress == quest.Progress(answered=3, required=4, complete=False)
     assert line(log, "clusters").label == "For the record"
     assert stage(log, "models").progress.answered == 0

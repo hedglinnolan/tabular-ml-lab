@@ -7,6 +7,7 @@ from starlette.concurrency import run_in_threadpool
 from turbotab.core.plan_lock import PlanExport
 from turbotab.core.provenance import MethodsText
 from turbotab.core.quest import QuestLog
+from turbotab.core.sweep import ForTheRecord, Triage
 from turbotab.server.routes import get_service, get_settings, refusal, require_local
 from turbotab.server.schemas import (
     CreateProject,
@@ -121,6 +122,35 @@ def quest(request: Request, pid: str) -> QuestLog:
     (``within``), why, in plain words. ``version`` changes when the shape or the meaning of this
     log does."""
     return get_service(request).quest(pid)
+
+
+@router.get(
+    "/projects/{pid}/record",
+    response_model=ForTheRecord,
+    responses={404: refusal("No such project")},
+)
+def for_the_record(request: Request, pid: str) -> ForTheRecord:
+    """Each stage's For the record lines (SIZING P0.5), collapsed in the quest log and never
+    counted: what was read (the ingest's facts and warnings, the profile's basis), why a question
+    was not asked, the defaults no other choice changes a number on here (with why), and the
+    answers TurboTab recorded itself. A stage not reached yet has none."""
+    return get_service(request).record(pid)
+
+
+@router.get(
+    "/projects/{pid}/triage",
+    response_model=Triage,
+    responses={404: refusal("No such project")},
+)
+def triage(request: Request, pid: str) -> Triage:
+    """The triage of the open noticings at the gate (SIZING P0.5; calm/FOUNDATION §7): before the
+    plan is fixed under Estimate and Describe (and while the goal is unanswered), before the
+    held-out rows open under Predict. Each open noticing carries the recommended disposition
+    ("doesn't change your numbers here", "could bias the estimate", "act on it") and its reason;
+    blockers come first and must be resolved. ``POST …/decisions`` with ``{"kind":
+    "confirm_sweep", "stage": <the gate's stage>, "sweep": "noticings"}`` records every
+    disposition, with any the person changed in ``lines``."""
+    return get_service(request).triage(pid)
 
 
 @router.get(

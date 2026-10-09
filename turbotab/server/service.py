@@ -37,6 +37,7 @@ from turbotab.core.graph import (
 from turbotab.core.interview import InterviewStep, route
 from turbotab.core.jobs import PRELOAD, JobRunner, JobView
 from turbotab.core.quest import QuestLog, quest_log
+from turbotab.core.sweep import ForTheRecord, Triage, for_the_record, triage
 from turbotab.core.stages import GRAPH_FACTORY
 from turbotab.core.workspace import ProjectMeta, Workspace
 from turbotab.server.errors import ApiError
@@ -56,7 +57,7 @@ SOURCE_FILE = "source.json"
 # the project until the purpose becomes inference, when the plan lock records it.
 SHOWN_UNDER_PREDICTION = "estimates_shown.json"
 # Decision kinds the server records itself and a client never posts: the analysis-plan lock.
-SYSTEM_KINDS = ("lock_plan",)
+SYSTEM_KINDS = decisions.SYSTEM_KINDS
 MAX_REMEMBERED_JOBS = 10_000
 
 
@@ -111,6 +112,10 @@ class DecisionContext:
     # The project's folder: a join reads its added files, a codebook import its staged codebook
     # (DATAIN, V2 definition of done §1).
     project_dir: str | None = None
+    # The quest log and the triage at the gate as the project stands: what "Confirm all" records
+    # (P0.5, ``turbotab/core/sweep.py``).
+    quest: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
+    triage: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
 
 
 def _target_needs_columns(decision: Any, ctx: Any) -> None:
@@ -353,6 +358,17 @@ class IngestFacts:
     n_cols: int
     columns: list[str]
     column_info: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class _QuestInputs:
+    """The quest log and what it was read from: the triage and For the record read the same."""
+
+    log: QuestLog
+    state: ProjectState
+    records: list[Any]
+    steps: list[Any]
+    findings: Any
 
 
 PREVIEW_CELLS = 20_000_000  # the before-frame's budget: rows x columns
@@ -829,15 +845,19 @@ class ProjectService:
         """The readings the values settled with no question asked ("read from your data",
         BLUEPRINT §14.3): read from the roles, outcome and proposals stages (fresh, else the
         newest computed) and the working table's values."""
-        from turbotab.core.readings import read_from_data, read_from_values_sentence
+        from turbotab.core.readings import read_from_values_sentence
 
         self.workspace.get(pid)
-        state = self.log(pid).state()
-        items = read_from_data(state, store=self._store_or_none(pid),
-                               **{name: self._shown(pid, stage) for name, stage in
-                                  (("roles", "roles"), ("target_info", "target_info"),
-                                   ("proposals", "proposals"))})
+        items = self._read_from_data(pid, self.log(pid).state())
         return {"read_from_data": items, "sentence": read_from_values_sentence(items)}
+
+    def _read_from_data(self, pid: str, state: ProjectState) -> list[dict[str, Any]]:
+        from turbotab.core.readings import read_from_data
+
+        return read_from_data(state, store=self._store_or_none(pid),
+                              **{name: self._shown(pid, stage) for name, stage in
+                                 (("roles", "roles"), ("target_info", "target_info"),
+                                  ("proposals", "proposals"))})
 
     def quest(self, pid: str) -> QuestLog:
         """The quest log's seven stages (SIZING P0.4; ``turbotab/core/quest.py``): each stage's
@@ -845,7 +865,25 @@ class ProjectService:
         stage is not fresh and an older artifact exists (a blocked stage's too: the registry gives
         it no reason, since it is never computed again, but an estimate among them keeps Results
         reached); the reason reads when that artifact was computed. The usual-intake line applies
-        where the stage's newest artifact offers the distribution."""
+        where the stage's newest artifact offers the distribution. Your data's sweep holds what the
+        values settled (P0.5), as ``GET /readings`` lists it."""
+        return self._quest(pid).log
+
+    def triage(self, pid: str) -> Triage:
+        """The triage of the open noticings at the gate (P0.5; ``turbotab/core/sweep.py``): each
+        open finding with the engine's recommended disposition, blockers first."""
+        q = self._quest(pid)
+        return triage(q.state, q.log, q.findings, q.records)
+
+    def record(self, pid: str) -> ForTheRecord:
+        """Each reached stage's For the record lines (P0.5): the ingest's facts and warnings, the
+        profile's basis, why a question was not asked, the defaults that change nothing here, and
+        what the engine recorded itself."""
+        q = self._quest(pid)
+        return for_the_record(q.log, q.steps, q.records, ingest=self._shown(pid, "ingest"),
+                              profile=self._shown(pid, "profile"))
+
+    def _quest(self, pid: str) -> _QuestInputs:
         self.workspace.get(pid)
         stages = self.engine.status(pid)
         records = self.log(pid).records()
@@ -866,8 +904,10 @@ class ProjectService:
             if older is not None:
                 made = read_meta(cache, name, older).get("created_at")
                 shown_at[name] = datetime.fromisoformat(made) if made else None
-        return quest_log(state, records, steps, stages, findings=findings, columns=columns,
-                         artifacts=artifacts, shown_at=shown_at)
+        log = quest_log(state, records, steps, stages, findings=findings, columns=columns,
+                        artifacts=artifacts, shown_at=shown_at,
+                        readings=self._read_from_data(pid, state))
+        return _QuestInputs(log=log, state=state, records=records, steps=steps, findings=findings)
 
     def _store_or_none(self, pid: str) -> Any:
         try:
@@ -958,6 +998,8 @@ class ProjectService:
             stage=stages.get,
             bundle=lambda stage: self._fresh(pid, stage),
             project_dir=str(self.workspace.project_dir(pid)),
+            quest=lambda: self.quest(pid),
+            triage=lambda: self.triage(pid),
         )
 
     def decide(self, pid: str, decision: Any, *, system: bool = False) -> dict[str, Any]:

@@ -1736,6 +1736,43 @@ class SetUpdating(_DecisionModel):
     method: Literal["none", "shrinkage"] = "none"
 
 
+# P0.5 (calm/FOUNDATION §3, §7): "Confirm all", one record for a quest stage's sweep. ``defaults``:
+# the choices set for the person whose alternative would change a number here, each line the
+# default as stated (``value``), so a default stated otherwise later is no longer covered.
+# ``noticings``: the triage of open noticings at the gate (before the lock; under prediction,
+# before the held-out rows open), each line a finding and its disposition. ``lines`` are the
+# server's, read from the quest log as it stands (``turbotab/core/sweep.py``); a client sends only
+# the dispositions it changed.
+QuestStageKey = Literal["data", "question", "first_look", "whos_in", "models", "results",
+                        "writeup"]
+SweepKind = Literal["defaults", "noticings"]
+Disposition = Literal["no_change", "could_bias", "act_on_it"]
+
+
+class SweptLine(_Value):
+    id: str  # the line's crosswalk card (a finding's line: ``finding:<id>``)
+    key: str
+    value: str  # the default as stated, or the noticing's disposition
+
+
+class SweepConfirmation(_Value):
+    stage: QuestStageKey
+    sweep: SweepKind = "defaults"
+    lines: list[SweptLine] = Field(default_factory=list)
+
+
+class ConfirmSweep(_DecisionModel):
+    kind: Literal["confirm_sweep"] = "confirm_sweep"
+    stage: QuestStageKey
+    sweep: SweepKind = "defaults"
+    lines: list[SweptLine] = Field(default_factory=list)
+
+
+def sweep_key(stage: str, sweep: str = "defaults") -> str:
+    """Where a stage's confirmation is kept (``ProjectState.sweeps``): one entry per sweep."""
+    return stage if sweep == "defaults" else f"{stage}:{sweep}"
+
+
 class OpenSeal(_DecisionModel):
     """Open the held-out rows: once, at the end. Held-out scores are withheld until then.
 
@@ -1779,6 +1816,11 @@ class Reseal(_DecisionModel):
         if value is not None and not value.strip():
             raise ValueError("a reason must say something")
         return value.strip() if value is not None else None
+
+
+# Decision kinds the server records itself and a client never posts: the analysis-plan lock. What
+# they record is an answer the engine filled in, shown For the record (FOUNDATION §10).
+SYSTEM_KINDS: tuple[str, ...] = ("lock_plan",)
 
 
 class LockPlan(_DecisionModel):
@@ -2003,6 +2045,7 @@ Decision = Annotated[
         SetExplain,
         SetForms, SetModification,
         ViewOutcome, SetLevers, SetSelection, SetIntendedUse, SetUpdating,
+        ConfirmSweep,
     ],
     Field(discriminator="kind"),
 ]
@@ -2162,6 +2205,8 @@ class ProjectState(BaseModel):
     selection: SelectionSpec | None = None
     intended_use: IntendedUseSpec | None = None
     updating: UpdatingSpec | None = None
+    # P0.5: each quest stage's "Confirm all" (``sweep_key``: the stage, or "<stage>:noticings")
+    sweeps: dict[str, SweepConfirmation] | None = None
 
     @field_validator("form_domains", mode="after")
     @classmethod
@@ -2643,6 +2688,8 @@ register_kind(SetSelection, "selection",
 register_kind(SetIntendedUse, "intended_use",
               value=lambda d: IntendedUseSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetUpdating, "updating", value=lambda d: UpdatingSpec(**d.model_dump(exclude={"kind"})))
+register_kind(ConfirmSweep, "sweeps", key=lambda d: sweep_key(d.stage, d.sweep),
+              value=lambda d: SweepConfirmation(**d.model_dump(exclude={"kind"})))
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
@@ -5458,6 +5505,9 @@ from turbotab.core import time_varying as _time_varying  # noqa: E402,F401
 # refusals, completions, sentences and contracts.
 from turbotab.core.methods import exposure_form as _exposure_form  # noqa: E402,F401
 from turbotab.core.methods import interaction as _interaction  # noqa: E402,F401
+# P0.5: "Confirm all" on a quest stage's sweep, and on the triage of open noticings (its lines read
+# from the quest log as it stands, its refusals and its sentence).
+from turbotab.core import sweep as _sweep  # noqa: E402,F401
 # Rows enough to analyze: an answer that would leave fewer rows than the design needs is refused
 # with what removes them (registered for every kind, so last: every kind is known by then).
 from turbotab.core import row_floor as _row_floor  # noqa: E402,F401

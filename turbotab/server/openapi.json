@@ -506,6 +506,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetUpdating-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmSweep-Input"
                   }
                 ],
                 "discriminator": {
@@ -571,7 +574,8 @@
                     "set_levers": "#/components/schemas/SetLevers-Input",
                     "set_selection": "#/components/schemas/SetSelection-Input",
                     "set_intended_use": "#/components/schemas/SetIntendedUse-Input",
-                    "set_updating": "#/components/schemas/SetUpdating-Input"
+                    "set_updating": "#/components/schemas/SetUpdating-Input",
+                    "confirm_sweep": "#/components/schemas/ConfirmSweep-Input"
                   }
                 },
                 "title": "Decision"
@@ -702,6 +706,112 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/QuestLog"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/record": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "For The Record",
+        "description": "Each stage's For the record lines (SIZING P0.5), collapsed in the quest log and never\ncounted: what was read (the ingest's facts and warnings, the profile's basis), why a question\nwas not asked, the defaults no other choice changes a number on here (with why), and the\nanswers TurboTab recorded itself. A stage not reached yet has none.",
+        "operationId": "for_the_record_api_projects__pid__record_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForTheRecord"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/triage": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Triage",
+        "description": "The triage of the open noticings at the gate (SIZING P0.5; calm/FOUNDATION §7): before the\nplan is fixed under Estimate and Describe (and while the goal is unanswered), before the\nheld-out rows open under Predict. Each open noticing carries the recommended disposition\n(\"doesn't change your numbers here\", \"could bias the estimate\", \"act on it\") and its reason;\nblockers come first and must be resolved. ``POST …/decisions`` with ``{\"kind\":\n\"confirm_sweep\", \"stage\": <the gate's stage>, \"sweep\": \"noticings\"}`` records every\ndisposition, with any the person changed in ``lines``.",
+        "operationId": "triage_api_projects__pid__triage_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Triage"
                 }
               }
             }
@@ -1166,6 +1276,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetUpdating-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmSweep-Input"
                   }
                 ],
                 "discriminator": {
@@ -1231,7 +1344,8 @@
                     "set_levers": "#/components/schemas/SetLevers-Input",
                     "set_selection": "#/components/schemas/SetSelection-Input",
                     "set_intended_use": "#/components/schemas/SetIntendedUse-Input",
-                    "set_updating": "#/components/schemas/SetUpdating-Input"
+                    "set_updating": "#/components/schemas/SetUpdating-Input",
+                    "confirm_sweep": "#/components/schemas/ConfirmSweep-Input"
                   }
                 },
                 "title": "Decision"
@@ -4175,6 +4289,100 @@
         "title": "ConfirmRole",
         "description": "One column's role, confirmed on its own after its evidence was read (BLUEPRINT §14 rule 2:\na proposal below high \"needs its own confirmation; it never rides along in a bulk 'confirm\nall'\"). One column per record, so an individual confirmation is individual by construction."
       },
+      "ConfirmSweep-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "confirm_sweep",
+            "title": "Kind",
+            "default": "confirm_sweep"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "data",
+              "question",
+              "first_look",
+              "whos_in",
+              "models",
+              "results",
+              "writeup"
+            ],
+            "title": "Stage"
+          },
+          "sweep": {
+            "type": "string",
+            "enum": [
+              "defaults",
+              "noticings"
+            ],
+            "title": "Sweep",
+            "default": "defaults"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/SweptLine"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "stage"
+        ],
+        "title": "ConfirmSweep"
+      },
+      "ConfirmSweep-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "confirm_sweep",
+            "title": "Kind",
+            "default": "confirm_sweep"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "data",
+              "question",
+              "first_look",
+              "whos_in",
+              "models",
+              "results",
+              "writeup"
+            ],
+            "title": "Stage"
+          },
+          "sweep": {
+            "type": "string",
+            "enum": [
+              "defaults",
+              "noticings"
+            ],
+            "title": "Sweep",
+            "default": "defaults"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/SweptLine"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "stage",
+          "sweep",
+          "lines"
+        ],
+        "title": "ConfirmSweep"
+      },
       "CovariateAnswers-Input": {
         "properties": {
           "causes_exposure": {
@@ -4634,6 +4842,9 @@
               },
               {
                 "$ref": "#/components/schemas/SetUpdating-Output"
+              },
+              {
+                "$ref": "#/components/schemas/ConfirmSweep-Output"
               }
             ],
             "title": "Decision",
@@ -4644,6 +4855,7 @@
                 "confirm_reading": "#/components/schemas/ConfirmReading",
                 "confirm_readings": "#/components/schemas/ConfirmReadings",
                 "confirm_role": "#/components/schemas/ConfirmRole",
+                "confirm_sweep": "#/components/schemas/ConfirmSweep-Output",
                 "defer_finding": "#/components/schemas/DeferFinding",
                 "dismiss_finding": "#/components/schemas/DismissFinding-Output",
                 "import_codebook": "#/components/schemas/ImportCodebook-Output",
@@ -5509,6 +5721,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetUpdating-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmSweep-Output"
                   }
                 ],
                 "discriminator": {
@@ -5518,6 +5733,7 @@
                     "confirm_reading": "#/components/schemas/ConfirmReading",
                     "confirm_readings": "#/components/schemas/ConfirmReadings",
                     "confirm_role": "#/components/schemas/ConfirmRole",
+                    "confirm_sweep": "#/components/schemas/ConfirmSweep-Output",
                     "defer_finding": "#/components/schemas/DeferFinding",
                     "dismiss_finding": "#/components/schemas/DismissFinding-Output",
                     "import_codebook": "#/components/schemas/ImportCodebook-Output",
@@ -6181,6 +6397,29 @@
         ],
         "title": "FollowUpSpec",
         "description": "How long each row of a time-to-event outcome was observed (WP12,\n``turbotab/core/models/survival.py``): at risk from ``entry`` (0 when not named) to ``time``,\nwhen the event happened or follow-up ended without it, both on one time scale."
+      },
+      "ForTheRecord": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/RecordStage"
+            },
+            "type": "array",
+            "title": "Stages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "stages"
+        ],
+        "title": "ForTheRecord",
+        "description": "Each stage's For the record lines (FOUNDATION §3: collapsed, never counted). A stage not\nreached yet has none: what it would say may still change."
       },
       "FrameRow": {
         "properties": {
@@ -10044,6 +10283,20 @@
                 "type": "null"
               }
             ]
+          },
+          "sweeps": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/SweepConfirmation"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sweeps"
           }
         },
         "type": "object",
@@ -10107,7 +10360,8 @@
           "levers",
           "selection",
           "intended_use",
-          "updating"
+          "updating",
+          "sweeps"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -10240,7 +10494,8 @@
             "enum": [
               "question",
               "declaration",
-              "finding"
+              "finding",
+              "reading"
             ],
             "title": "Source"
           },
@@ -10322,6 +10577,36 @@
                 "type": "null"
               }
             ]
+          },
+          "would_change": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Would Change"
+          },
+          "changes_nothing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changes Nothing"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReadItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "default": []
           }
         },
         "type": "object",
@@ -10338,17 +10623,20 @@
           "reason",
           "waiting_for",
           "computing",
-          "reopened_by"
+          "reopened_by",
+          "would_change",
+          "changes_nothing",
+          "items"
         ],
         "title": "QuestLine",
-        "description": "One line of a stage: a Router question, a declaration or a finding.\n\n``status``: ``answered``; ``open`` (answerable now); ``waiting`` (``waiting_for`` names the\nearlier answers it needs, ``computing`` the results its card waits for); ``set_for_you`` (a\ndefault the engine stated, in the Confirm sweep or For the record)."
+        "description": "One line of a stage: a Router question, a declaration, a finding or what the values settled\n(``reading``).\n\n``status``: ``answered``; ``open`` (answerable now); ``waiting`` (``waiting_for`` names the\nearlier answers it needs, ``computing`` the results its card waits for); ``set_for_you`` (a\ndefault the engine stated, in the Confirm sweep or For the record). A default's ``reason`` is\nwhy it was set; on a Confirm line ``would_change`` says what another choice would change here,\nand a default For the record says in ``changes_nothing`` why no other choice changes a number\n(P0.5). ``id`` is the card that opens its options; a reading's ``items`` carry their own."
       },
       "QuestLog": {
         "properties": {
           "version": {
             "type": "integer",
             "title": "Version",
-            "default": 1
+            "default": 2
           },
           "stages": {
             "items": {
@@ -10526,6 +10814,76 @@
         "title": "ReadFromData",
         "description": "One reading the values settled with no question asked (BLUEPRINT §14.3, amendment:\nsettlement is visible), with its evidence and the answers that change it."
       },
+      "ReadItem": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "words": {
+            "type": "string",
+            "title": "Words"
+          },
+          "evidence": {
+            "type": "string",
+            "title": "Evidence"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/ReadOption"
+            },
+            "type": "array",
+            "title": "Options",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "value",
+          "words",
+          "evidence",
+          "options"
+        ],
+        "title": "ReadItem",
+        "description": "One reading the values settled with no question asked (``readings.read_from_data``)."
+      },
+      "ReadOption": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "decision"
+        ],
+        "title": "ReadOption",
+        "description": "Another reading of a column, and the decision that records it."
+      },
       "ReadingItem": {
         "properties": {
           "reading": {
@@ -10587,6 +10945,89 @@
         ],
         "title": "ReadingsCard",
         "description": "The readings card's \"read from your data\": every reading the values settled, never a\nrequired tap, and the methods record's line for them."
+      },
+      "RecordLine": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ingest",
+              "profile",
+              "not_applicable",
+              "set_for_you",
+              "filled",
+              "noted"
+            ],
+            "title": "Kind"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "decision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "key",
+          "id",
+          "text",
+          "decision_id"
+        ],
+        "title": "RecordLine",
+        "description": "One collapsed line: ``ingest`` (what was read and its warnings), ``profile`` (what the\ncolumn summaries read), ``not_applicable`` (why a question was not asked), ``set_for_you`` (a\ndefault no other choice changes a number on here, with why), ``filled`` (an answer the engine\nrecorded itself), ``noted`` (what was looked at or noticed with nothing to decide)."
+      },
+      "RecordStage": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/RecordLine"
+            },
+            "type": "array",
+            "title": "Lines",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "lines"
+        ],
+        "title": "RecordStage"
       },
       "Refusal": {
         "properties": {
@@ -17236,15 +17677,119 @@
           "answered": {
             "type": "boolean",
             "title": "Answered"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "default": ""
+          },
+          "heading": {
+            "type": "string",
+            "title": "Heading",
+            "default": ""
+          },
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "default": ""
+          },
+          "confirmed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed By"
+          },
+          "changed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Changed",
+            "default": []
           }
         },
         "type": "object",
         "required": [
           "lines",
-          "answered"
+          "answered",
+          "id",
+          "heading",
+          "action",
+          "confirmed_by",
+          "changed"
         ],
         "title": "Sweep",
-        "description": "The stage's one Confirm sweep: how many defaults it holds, and whether each is answered."
+        "description": "The stage's one Confirm sweep (P0.5): how many defaults it holds, and whether each is\nanswered, by the person's own answer or by \"Confirm all\" (``confirmed_by``, the\n``confirm_sweep`` record). ``changed``: the lines set for the person anew, or stated otherwise,\nsince that confirmation. ``id`` is the crosswalk's card; ``heading`` and ``action`` are its\nwords (\"Here are the 6 other choices set for you\", \"Confirm all 6\")."
+      },
+      "SweepConfirmation": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "enum": [
+              "data",
+              "question",
+              "first_look",
+              "whos_in",
+              "models",
+              "results",
+              "writeup"
+            ],
+            "title": "Stage"
+          },
+          "sweep": {
+            "type": "string",
+            "enum": [
+              "defaults",
+              "noticings"
+            ],
+            "title": "Sweep",
+            "default": "defaults"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/SweptLine"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "stage",
+          "sweep",
+          "lines"
+        ],
+        "title": "SweepConfirmation"
+      },
+      "SweptLine": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "key",
+          "value"
+        ],
+        "title": "SweptLine"
       },
       "TableFocusView": {
         "properties": {
@@ -17763,6 +18308,167 @@
           "diagnostics_seen"
         ],
         "title": "TimeVaryingSpec"
+      },
+      "Triage": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "gate": {
+            "type": "string",
+            "title": "Gate"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TriageItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "default": []
+          },
+          "blockers": {
+            "type": "integer",
+            "title": "Blockers",
+            "default": 0
+          },
+          "confirmable": {
+            "type": "boolean",
+            "title": "Confirmable",
+            "default": false
+          },
+          "answered": {
+            "type": "boolean",
+            "title": "Answered",
+            "default": false
+          },
+          "confirmed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "stage",
+          "gate",
+          "items",
+          "blockers",
+          "confirmable",
+          "answered",
+          "confirmed_by"
+        ],
+        "title": "Triage",
+        "description": "The triage at the gate: its stage and crosswalk card, each open noticing (blockers first),\nhow many block, whether it can be confirmed now (no blocker, something to triage), whether\nevery noticing has a recorded disposition, and the record that holds them."
+      },
+      "TriageItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "line": {
+            "type": "string",
+            "title": "Line"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns",
+            "default": []
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
+          "recommended": {
+            "type": "string",
+            "enum": [
+              "no_change",
+              "could_bias",
+              "act_on_it"
+            ],
+            "title": "Recommended"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "blocker": {
+            "type": "boolean",
+            "title": "Blocker"
+          },
+          "recorded": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "no_change",
+                  "could_bias",
+                  "act_on_it"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "line",
+          "stage",
+          "summary",
+          "severity",
+          "columns",
+          "question",
+          "recommended",
+          "label",
+          "reason",
+          "blocker",
+          "recorded"
+        ],
+        "title": "TriageItem",
+        "description": "One open noticing at the gate: where it is decided (``line``, ``stage``, the ``question``\nit routes to), the engine's recommended disposition with its plain label and reason, whether\nit blocks (it must be resolved before the triage is confirmed), and the disposition recorded\nby the last confirmation, if any."
       },
       "UpdatingSpec": {
         "properties": {
@@ -21546,6 +22252,54 @@
           "columns"
         ],
         "title": "CompleteCaseLoss",
+        "type": "object"
+      },
+      "ConfirmSweep": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "confirm_sweep",
+            "default": "confirm_sweep",
+            "title": "Kind",
+            "type": "string"
+          },
+          "stage": {
+            "enum": [
+              "data",
+              "question",
+              "first_look",
+              "whos_in",
+              "models",
+              "results",
+              "writeup"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "sweep": {
+            "default": "defaults",
+            "enum": [
+              "defaults",
+              "noticings"
+            ],
+            "title": "Sweep",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/SweptLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "stage",
+          "sweep",
+          "lines"
+        ],
+        "title": "ConfirmSweep",
         "type": "object"
       },
       "CovariateAnswers": {
