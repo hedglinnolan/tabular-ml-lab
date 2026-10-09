@@ -58,7 +58,7 @@ jobs:
 
       - name: Fast core and server tests
         # Everything under turbotab/core and turbotab/server except the acceptance suite, whose
-        # journeys fit many models, and the ten tests marked slow (turbotab/conftest.py); the
+        # journeys fit many models, and the ten tests marked slow; the
         # nightly runs those. On failure, the failing tests become annotations, which anyone can
         # read (logs need admin).
         run: |

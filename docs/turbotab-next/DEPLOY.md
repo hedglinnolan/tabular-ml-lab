@@ -175,7 +175,7 @@ to update the versions.
 **Fast**, on every push to `turbotab-next` or `ci/**` and every pull request to `main`, in about ten
 minutes. It runs `npm run check` (type checks, lint, vitest) and the core and server tests except
 the acceptance suite (`turbotab/core/tests/acceptance`) and the ten tests marked `slow` (over 35
-seconds each; `turbotab/conftest.py`). It builds the image, makes an account, and
+seconds each). It builds the image, makes an account, and
 checks that requests without a session get 401. It then signs in over HTTP, checks
 `/api/health`, uploads a CSV and waits until it is read. It also starts the launcher on macOS and
 Windows (Python 3.12), twice each: once to set up, check health and an upload, and stop cleanly;
