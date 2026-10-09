@@ -21,6 +21,15 @@ Rules every builder keeps:
   columns only, with a count of the rest.
 - **Captions are facts about their data** ("protein_g correlates 0.71 with kcal; after adjustment,
   0.00"), ≤ 20 words; titles ≤ 8 words. A test enforces the budgets.
+- **No outcome-model estimate before the lock.** Under inference nothing estimated from the
+  outcome model (a coefficient, a test, a fit statistic, a diagnostic of the fitted model) appears
+  before the analysis plan is locked (calm/FOUNDATION §5 rule 6; :mod:`turbotab.core.plan_lock`):
+  seeing estimates while choosing invites choosing by the estimate. A builder asks
+  :func:`estimates_unseen` before it reads the outcome against anything, or a stage that holds
+  estimates; ``tests/acceptance/test_previews_leash.py`` walks every kind to hold it.
+- **Never an empty canvas.** A builder that cannot draw says why in one line (``ctx.read
+  ["note"]``), naming what is missing and the question that settles it, or offers the control that
+  does (``ctx.caution``); the generic "nothing can be shown" line is the planner's last resort.
 
 **The scaling strategy — a closed vocabulary plus a generic diff.** Every modeling decision, now or
 in any later milestone, changes some combination of five things: which rows are in, which columns
@@ -489,6 +498,14 @@ MAX_POINTS = 800
 RANK_COLUMNS = 500  # at most this many changed columns are ranked by shift
 DIFF_CHUNK = 2_000  # columns compared at once
 RELATIONSHIP_DELTA = 0.2
+
+
+def estimates_unseen(state: Any) -> bool:
+    """Under inference, before the analysis plan is locked: no outcome-model estimate may appear
+    (calm/FOUNDATION §5 rule 6). The plan locks the first time an estimate is displayed
+    (:mod:`turbotab.core.plan_lock`), so before then a preview that showed one would be its first
+    sight, while the plan can still be changed."""
+    return getattr(state, "purpose", None) == "inference" and not getattr(state, "plan_locked", None)
 
 
 def clip_words(text: str, limit: int) -> str:
@@ -1036,7 +1053,8 @@ __all__ = [
     "LineageFrame", "LineageLink", "LineageNode", "LineageView", "Mark", "PreviewContext",
     "PreviewResult", "RelationshipFrame", "RelationshipView", "RowFlowFrame", "RowFlowView",
     "RowStep", "SEAL_CELLS", "SealCells", "TableFocusView", "TableFrame", "TableRow",
-    "after_state", "clip_words", "diff_views", "fmt_count", "fmt_value", "lineage_of",
+    "after_state", "clip_words", "diff_views", "estimates_unseen", "fmt_count", "fmt_value",
+    "lineage_of",
     "load_builders", "plan", "register_consequence", "register_transform", "registered_kinds",
     "stage_context", "words",
 ]

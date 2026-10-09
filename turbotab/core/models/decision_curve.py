@@ -235,6 +235,8 @@ def subgroup_labels(values: Any, how: str) -> np.ndarray:
     s = pd.Series(np.asarray(values, dtype=object))
     if how == "thirds":
         x = pd.to_numeric(s, errors="coerce").to_numpy(dtype=float)
+        if not np.isfinite(x).any():  # no value to cut (no rows, or every one blank)
+            return np.full(len(x), "(blank)", dtype=object)
         cuts = np.quantile(x[np.isfinite(x)], [1 / 3, 2 / 3])
         group = np.searchsorted(cuts, x, side="left")
         names = np.asarray([f"≤ {cuts[0]:.4g}", f"{cuts[0]:.4g}–{cuts[1]:.4g}", f"> {cuts[1]:.4g}"],

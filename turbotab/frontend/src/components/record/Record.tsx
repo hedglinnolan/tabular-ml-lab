@@ -676,6 +676,19 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
     />
   );
 
+  /** A step that needs the fit, opened over a fit that failed or was stopped (the Router no longer
+   *  waits on it): the failure and its two levers, never a card for a fit that will not come. */
+  const fitFailure = (key: QuestionKey): ReactNode =>
+    rootFailure(stages, "fit") !== null || stages.fit?.cancelled ? (
+      <StageFailure
+        pid={pid}
+        view={view}
+        stage="fit"
+        after={<>{titleOf(entries, key)} waits on it.</>}
+        testId={`step-failure-${key}`}
+      />
+    ) : null;
+
   // ─── one slot per step, in the Router's order ─────────────────────────────
   /** What is true of a recorded answer now that its sentence cannot say. */
   const sentenceNote = (key: QuestionKey, rec: DecisionRecord): ReactNode => {
@@ -807,7 +820,7 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
   const slotBody = (st: InterviewStep): ReactNode => {
     const key = st.key;
     if (key === "open_seal") {
-      if (st.status === "open") return openSeal();
+      if (st.status === "open") return fitFailure(key) ?? openSeal();
       if (st.status === "answered") {
         const rec = currentRecord(key);
         return rec ? settled(key, rec) : null;
@@ -815,6 +828,7 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
     } else if (reopened[key] && st.status !== "waiting") return ask(key);
     switch (st.status) {
       case "open":
+        if (key === "substitution") return fitFailure(key) ?? ask(key);
         return key === "open_seal" ? null : ask(key);
       case "answered": {
         const rec = currentRecord(key);

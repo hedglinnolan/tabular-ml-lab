@@ -1575,6 +1575,45 @@ def _revert_keeps_the_seal(decision: Revert, ctx: Any) -> None:
             raise _redraw_refusal(clause, records)
 
 
+# Python's own error classes: a stage that raised one stopped on a fault, not on a reason it put in
+# words (the zero-row crash's single-valued outcome surfaced as "IndexError: list index out of range").
+INTERNAL_ERRORS = ("IndexError", "KeyError", "TypeError", "AttributeError", "ZeroDivisionError",
+                   "AssertionError", "NameError", "UnboundLocalError", "RecursionError")
+
+
+def _fit_failure(ctx: Any) -> str | None:
+    """Why the fit will not finish for the current answers, in plain words: the first stage on its
+    way that failed (a dependent's error names it, "Needs 'design', which failed."), or that it
+    was stopped; None while it is computing, or when ``ctx`` cannot say (``stage``)."""
+    import re
+
+    status_of = _ctx(ctx, "stage")
+    if not callable(status_of):
+        return None
+    name = "fit"
+    for _ in range(32):  # the graph's depth bounds the walk
+        status = status_of(name)
+        if status is None:
+            return None
+        if getattr(status, "cancelled", False) and getattr(status, "status", None) != "error":
+            return "It was stopped before it finished."
+        if getattr(status, "status", None) != "error":
+            return None
+        error = str(getattr(status, "error", None) or "").strip()
+        upstream = re.match(r"^Needs '([a-z_]+)', which failed\.?$", error)
+        if upstream is None:
+            if error.split(":", 1)[0] in INTERNAL_ERRORS:
+                # Python's own words ("List index out of range.") are no reason a reader can act
+                # on: say it is TurboTab's, and keep the words for whoever fixes it.
+                return (f"It stopped on an error inside TurboTab that has no plain reason yet "
+                        f"(`{error}`).")
+            said = re.sub(r"^[A-Z][A-Za-z]+: ", "", error) or "The server gave no reason"
+            said = said[:1].upper() + said[1:]
+            return said if said.endswith(".") else said + "."
+        name = upstream.group(1)
+    return None
+
+
 def _open_seal_once_on_a_fresh_fit(decision: Any, ctx: Any) -> None:
     state = _ctx(ctx, "state")
     if state is None:
@@ -1604,6 +1643,16 @@ def _open_seal_once_on_a_fresh_fit(decision: Any, ctx: Any) -> None:
     except Exception:  # noqa: BLE001 - an artifact that cannot be read is not a fresh fit
         fit = None
     if not isinstance(fit, Mapping):
+        failed = _fit_failure(ctx)
+        if failed is not None:
+            # Never "wait for the fit" over a fit that will not finish (the zero-row crash).
+            raise Refusal(
+                "fit_failed",
+                f"The models were not fitted for the current answers. {failed} The held-out rows "
+                f"open only on a finished, current fit.",
+                exits=[{"label": "Change the answer behind it, or run the fit again",
+                        "decision": None}],
+            )
         raise Refusal(
             "fit_not_fresh",
             "The models are not fitted for the current answers yet; the held-out rows open only on "

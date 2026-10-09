@@ -340,6 +340,15 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
         coded = time_to_event_outcome(state, frame, coded)
     y_values = np.asarray(coded)
     position = pd.Series(np.arange(len(frame)), index=frame.index)
+    # An analysis whose rules leave too few rows, or one value of the outcome, is said in plain
+    # words, never scikit-learn's "Found array with 0 sample(s)" (``core.row_floor`` refuses such
+    # an answer when it is recorded; a table that changed under it can still leave one).
+    from turbotab.core.row_floor import thin_analysis
+
+    for a, rows in zip(analyses, rows_by):
+        if rows is not None and not a.get("refused"):
+            a["refused"] = thin_analysis(frame, target, rows, "eligible rows" if inference
+                                         else "eligible rows outside the held-out set")
     # Under a survey design every analysis is a domain of the one design (WP10), as the primary is.
     if inference:
         from turbotab.core.models.inference import resolve_clusters
@@ -359,9 +368,9 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
         for a, rows in zip(analyses, rows_by):
             done += 1
             ctx.progress(0.1 + 0.85 * done / total, f"{family.label}: {a['label']}")
-            if rows is None:
-                fits.append({"label": a["label"], "n_rows": 0, "coefficients": None,
-                             "concerns": [a["refused"]]})
+            if a.get("refused"):
+                fits.append({"label": a["label"], "n_rows": 0 if rows is None else int(len(rows)),
+                             "coefficients": None, "concerns": [a["refused"]]})
                 continue
             part = frame.loc[rows]
             y_part = y_values[position.loc[rows].to_numpy()]

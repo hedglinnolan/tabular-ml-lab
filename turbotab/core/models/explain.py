@@ -350,8 +350,8 @@ def anatomy(pipeline: Any, raw_columns: Sequence[str], task: str) -> Anatomy:
                    sources=sources, group=group, task=task, as_raw=frozenset(unchanged))
 
 
-LINEAR_MODELS = ("LinearRegression", "LogisticRegression", "ElasticNetCV", "Float32ElasticNetCV",
-                 "LogisticRegressionCV")
+LINEAR_MODELS = ("LinearRegression", "LogisticRegression", "ElasticNetCV", "PooledElasticNetCV",
+                 "Float32ElasticNetCV", "LogisticRegressionCV")
 
 
 def model_kind(model: Any) -> str | None:

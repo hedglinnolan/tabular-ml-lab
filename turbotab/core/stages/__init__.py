@@ -446,7 +446,9 @@ def build_graph() -> Graph:
             # follow-up ended by it, on a line of its own.
             # cohort 8 (FORM): the consumers-only domain of a food with many non-consumers leaves
             # the non-consumers on a line of their own (an estimand change, STROBE-nut nut-14).
-            Stage("cohort", 8, ("working", "target_info"),
+            # cohort 9 (the zero-row crash): fewer rows than the design needs fail here, with what
+            # removed them, so no stage downstream is handed an empty frame (``core.row_floor``).
+            Stage("cohort", 9, ("working", "target_info"),
                   ("target", *ROLE_READS, "exclusions", "missing", "findings", "purpose",
                    *WP17_READS, "follow_up", "task", "form_domains"), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),
@@ -532,7 +534,12 @@ def build_graph() -> Graph:
             # artifact (canonical Parquet, read by no stage downstream), so the export hashes it
             # and a replay compares it byte for byte (V2 definition of done §3.6).
             # design 24 (wave 2b integration): design 23 of EXPLORE and of EXPORT on one engine.
-            Stage("design", 24, ("working", "split", "target_info"),
+            # design 25 (previews leash): under inference the energy-dropped residual's warning
+            # quotes no coefficient (no outcome-model estimate before the plan's lock); the gap
+            # stays under prediction, on the training rows.
+            # design 26 (the zero-row crash): rows whose outcome is one value fail here in plain
+            # words, never as the fit's IndexError (``core.row_floor``).
+            Stage("design", 26, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS, "levers", "selection"),
@@ -673,7 +680,9 @@ def build_graph() -> Graph:
             # sensitivity 13, secondary 4 (wave 1b repairs integrated): each analysis's imputation
             # as REPAIR-MI's fit 22 draws it, a time-invariance question held as the fit holds it;
             # the secondary stage's methods sentence reports only the models fit.
-            Stage("sensitivity", 13, ("working", "design", "split", "target_info"),
+            # sensitivity 14 (the zero-row crash): an analysis whose rules leave too few rows, or one
+            # value of the outcome, is not fit, its reason in plain words (``core.row_floor``).
+            Stage("sensitivity", 14, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),
                   label="Refitting the model on each analysis's rows"),

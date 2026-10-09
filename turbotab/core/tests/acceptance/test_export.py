@@ -2,8 +2,8 @@
 ends every journey", and §3.6, "Reproducible").
 
 Two journeys through the real server (``server_drive``) on the NHANES export (``stage_harness.
-NHANES``, untracked: these tests skip where it is absent), each answered from the fixture's declared
-truth (``truths.FIXTURE_TRUTHS``), never a constant:
+NHANES``, the tracked fixture: these tests skip where it is absent), each answered from the
+fixture's declared truth (``truths.FIXTURE_TRUTHS``), never a constant:
 
 * **inference** — fasting glucose on sugar, a substitution at fixed total energy (the standard
   model), the adjustment set by the disjunctive cause criterion, a linear model, complete cases, an

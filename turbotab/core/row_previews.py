@@ -27,10 +27,10 @@ from turbotab.core.consequences import (
     PreviewContext, RowFlowView, RowStep, TableFocusView, TableRow, _histogram_pair, clip_words,
     fmt_count, fmt_value, lineage_of, register_consequence,
 )
-from turbotab.core.decisions import ROW_ID, MissingSpec, ProjectState, missing_strategy
+from turbotab.core.decisions import ROW_ID, MissingSpec, ProjectState
 from turbotab.core.stages.rows import (
-    PREDICTOR_ROLES, _missing_mask, cohort_flow, cohort_inputs, domain_of, draw_split, landmark_of,
-    predictors, repair_rules, rule_drops, rule_keep,
+    PREDICTOR_ROLES, cohort_flow, cohort_flows, domain_of, draw_split, landmark_of, predictors,
+    repair_rules, rule_drops, rule_keep,
 )
 
 MAX_FOCUS_COLUMNS = 12
@@ -82,29 +82,9 @@ def _steps(steps: Sequence[dict[str, Any]], sealed: bool) -> list[RowStep]:
 
 
 def _flows(ctx: PreviewContext, states: Sequence[ProjectState]) -> tuple[Any, Any, list[tuple[list, Any]]]:
-    """Materialize once what every state's flow reads, on the pool; run each flow."""
-    ingest = _ingest(ctx)
-    needed: list[str] = []
-    gappy: list[str] = []
-    for st in states:
-        n, _, g = cohort_inputs(st, ingest)
-        needed += n
-        gappy += g
-    needed, gappy = list(dict.fromkeys(needed)), list(dict.fromkeys(gappy))
-    frame = ctx.datastore.materialize(needed, _pool(ctx))
-    mask = _missing_mask(ctx.datastore, gappy, frame.index) if gappy else None
-    results = []
-    for st in states:
-        _, _, g = cohort_inputs(st, ingest)
-        # The cohort's own flow (``stages.rows.compute_cohort``), the landmark's line included: a
-        # time-to-event outcome's follow-up counted from a landmark drops the rows not at risk then;
-        # and (wave 2b, FORM) the declared exposure's consumers-only domain, an estimand change.
-        steps, kept = cohort_flow(frame, target=st.target, rules=st.exclusions,
-                                  missing=missing_strategy(st), predictor_columns=g,
-                                  missing_frame=mask, repairs=repair_rules(st),
-                                  landmark=landmark_of(st), domain=domain_of(st))
-        results.append((steps, kept))
-    return frame, mask, results
+    """Materialize once what every state's flow reads, on the pool; run each flow
+    (``stages.rows.cohort_flows``, the cohort's own flow)."""
+    return cohort_flows(ctx.datastore, states, _ingest(ctx), _pool(ctx))
 
 
 def _pool_words(ctx: PreviewContext) -> str:

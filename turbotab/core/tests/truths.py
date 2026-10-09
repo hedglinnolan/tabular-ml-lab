@@ -156,9 +156,9 @@ FIXTURE_TRUTHS: dict[str, dict[str, str]] = {
         "code_or_count:prior_admissions_12mo": "amount", "code_or_count:sodium_mmol_l": "amount",
         "code_or_count:length_of_stay_days": "amount", "sex_coding:sex": "female=F,male=M",
     },
-    # The real NHANES export (untracked, ``stage_harness.NHANES``): energy the first day's recall in
-    # kcal; age in whole years and HDL and triglycerides in whole mg/dL, amounts; the cycle's year a
-    # code for the survey cycle.
+    # The real NHANES export (fixtures/nhanes.csv.gz, ``stage_harness.NHANES``): energy the first
+    # day's recall in kcal; age in whole years and HDL and triglycerides in whole mg/dL, amounts;
+    # the cycle's year a code for the survey cycle.
     "_tt_tmp_nhanes.csv": {
         "unit:kcal": "kcal", "day_count:kcal": "1", "code_or_count:age": "amount",
         "code_or_count:hdl": "amount", "code_or_count:triglycerides": "amount",

@@ -14,7 +14,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { api } from "../../../api/client";
 import { keys } from "../../../api/queries";
 import { QUESTION_KEYS, type InterviewStep, type QuestionKey, type TeachingEntry } from "../../../api/m1-types";
-import type { Decision, ProjectView, TargetInfoArtifact } from "../../../api/schema";
+import type { Decision, ProjectView, StageStatus, TargetInfoArtifact } from "../../../api/schema";
 import { artifactAt, expandView, viewsOf, type M3Fixture } from "../../../mocks/m3";
 import { StageFocusProvider } from "../../../state/focus";
 import { Record } from "../Record";
@@ -158,6 +158,54 @@ describe("a recorded answer can be taken back (INBOX 41)", () => {
     renderRecord(v, j.f);
     expect(screen.queryByRole("button", { name: "Undo opening the seal" })).toBeNull();
     expect(screen.getByRole("button", { name: "Undo the purpose" })).toBeInTheDocument();
+  });
+});
+
+describe("a step over a fit that will not come (the zero-row crash)", () => {
+  // The Router no longer holds the seal's step or the substitution behind a fit that failed or was
+  // stopped (turbotab/core/interview.py): the step opens, and the Record shows why it cannot be
+  // taken, with the failure's two levers, never a card for a fit that will not come.
+  const REASON =
+    "The answers recorded leave 4 of the 120 rows in the table to analyze, and the design needs at least 6.";
+  const withFit = (view: ProjectView, fit: Partial<StageStatus>, design?: Partial<StageStatus>) => ({
+    ...view,
+    stages: {
+      ...view.stages,
+      ...(design ? { design: { ...view.stages.design!, ...design } } : {}),
+      fit: { ...view.stages.fit!, ...fit },
+    },
+  });
+
+  it("shows the seal's step as the failure that stopped the fit, in plain words", () => {
+    const { view, f } = openViewFor("open_seal");
+    renderRecord(
+      withFit(
+        view,
+        { status: "error", fresh: false, error: "Needs 'design', which failed." },
+        { status: "error", fresh: false, error: `ValueError: ${REASON}` },
+      ),
+      f,
+    );
+    const step = screen.getByTestId("step-failure-open_seal");
+    expect(step).toHaveTextContent(REASON);
+    expect(step).not.toHaveTextContent("ValueError");
+    expect(step).toHaveAttribute("data-stage", "design");
+    expect(screen.queryByTestId("open-seal-step")).toBeNull();
+  });
+
+  it("says a stopped fit was stopped, at the substitution too", () => {
+    const { view, f } = openViewFor("substitution");
+    renderRecord(withFit(view, { status: "stale", fresh: false, cancelled: true }), f);
+    const step = screen.getByTestId("step-failure-substitution");
+    expect(step).toHaveTextContent("You stopped");
+    expect(step).toHaveAttribute("data-kind", "stopped");
+  });
+
+  it("asks the step as usual over a fresh fit", () => {
+    const { view, f } = openViewFor("open_seal");
+    renderRecord(view, f);
+    expect(screen.queryByTestId("step-failure-open_seal")).toBeNull();
+    expect(screen.getByTestId("open-seal-step")).toBeInTheDocument();
   });
 });
 

@@ -11,7 +11,7 @@ codebook import also count the server's own work before the preview: the complet
 file or the codebook against every row (``decisions.validate``).
 
 Where a preview reads a sample, the basis states the rule; these assertions hold the statement.
-Skipped where the export is not on the machine (it is untracked).
+Skipped where the export is not on the machine (``stage_harness.NHANES``).
 """
 from __future__ import annotations
 
