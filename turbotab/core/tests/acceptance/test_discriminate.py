@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import math
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -385,53 +386,53 @@ def drive_unsettled(drive: Any, plan: dict[str, dict[str, Any]], *, roles: dict[
     return proposals
 
 
-class _RouterThatHoldsRolesOnce:
-    """A drive whose server holds the roles answer behind the task question once, as the CI run of
-    turbotab-next 90d7a9cb recorded (the outcome's reading recomputing after the Router had shown
-    the roles open), then takes it. Only the calls ``drive_unsettled`` makes."""
+def test_the_roles_answer_waits_out_the_outcome_being_read_again(tmp_path, monkeypatch):
+    """The flaky CI failure of ``test_a5`` (turbotab-next 90d7a9cb): the roles answer was refused
+    once, "The task question comes before this one and is not answered yet". A decision re-reads
+    the outcome (``target_info``), and while it computes, a regression task whose scale is
+    unanswered waits for it (``interview`` marks it undecided) and the Router holds every later
+    answer behind it (``sequence``: not_yet). The view the drive read a moment earlier had shown
+    the roles open. Here the real server is made to be re-reading the outcome when the first roles
+    answer arrives, as on CI: the server refuses it not_yet, and the drive waits and answers again,
+    as every other post of the harness does (``_post_when_reached``)."""
+    from turbotab.core import interview
 
-    class _Client:
-        def __init__(self) -> None:
-            self.posted: list[int] = []
+    real = interview.pending_stages
+    reading_again = threading.Event()
 
-        def post(self, url: str, json: dict[str, Any]) -> Any:
-            held = not self.posted
-            self.posted.append(409 if held else 200)
+    def pending_stages(stages, deps=None):
+        found = real(stages, deps)
+        return found | {"target_info"} if reading_again.is_set() else found
 
-            class Response:
-                status_code = 409 if held else 200
-                text = "{}"
+    monkeypatch.setattr(interview, "pending_stages", pending_stages)
+    plan = answers("next_day_kcal", ["clinical"],
+                   grain={"kind": "set_grain", "grain": "repeated", "id_column": "participant_id"},
+                   repeat_kind={"kind": "set_repeat_kind", "repeat_kind": "time_points",
+                                "time_column": "night"},
+                   unit={"kind": "set_unit", "unit": "row"})
+    truth = Truth({"code_or_count:caffeine_mg": "amount", **HOURS_CAUSAL}, fixture="p10")
+    with local_server(tmp_path / "home") as client:
+        drive = open_project(client, write(hours_table(), tmp_path, "hours.csv"), truth)
+        post, answered = client.post, []
 
-                @staticmethod
-                def json() -> dict[str, Any]:
-                    return {"error": {"code": "not_yet"}} if held else {}
+        def post_roles_while_the_outcome_is_read_again(url, **kwargs):
+            if (kwargs.get("json") or {}).get("kind") != "set_roles" or answered:
+                return post(url, **kwargs)
+            reading_again.set()
+            try:
+                response = post(url, **kwargs)
+            finally:
+                reading_again.clear()
+            answered.append(response)
+            return response
 
-            return Response()
-
-    def __init__(self) -> None:
-        self.c, self.pid, self.truth = self._Client(), "p0", {}
-
-    def view(self) -> dict[str, Any]:
-        return {"state": {}}
-
-    def reach(self, key: str, timeout: float = 0) -> dict[str, Any]:
-        return {"key": key, "status": "open" if key == "roles" else "answered"}
-
-    def artifact(self, stage: str) -> dict[str, Any]:
-        return {"columns": [{"column": "hours", "proposed": "measurement"}]}
-
-    def post(self, body: dict[str, Any]) -> Any:
-        return self.c.post("", json=body)
-
-
-def test_the_unsettled_drive_waits_out_the_task_question_recomputing_before_the_roles():
-    """The flaky CI failure (``test_a5``): the roles answer was refused once, "The task question
-    comes before this one and is not answered yet", because the outcome was being read again after
-    the Router had shown the roles open. Every other post of the harness waits for the Router
-    (``_post_when_reached``); the roles answer of the unsettled drive now does too."""
-    drive = _RouterThatHoldsRolesOnce()
-    drive_unsettled(drive, {}, roles={"hours": "exposure"}, stop_before="survey")
-    assert drive.c.posted == [409, 200]
+        monkeypatch.setattr(client, "post", post_roles_while_the_outcome_is_read_again)
+        drive_unsettled(drive, plan, roles={"hours": "exposure", "night": "time"})
+        roles = drive.view()["state"]["roles"]
+    held = answered[0]
+    assert held.status_code == 409 and held.json()["error"]["code"] == "not_yet", held.text[:600]
+    assert "task question comes before this one" in held.json()["error"]["message"], held.text[:600]
+    assert (roles["hours"], roles["night"]) == ("exposure", "time"), roles
 
 
 def fit_refused_without_a_number(drive: Any, body: dict[str, Any]) -> dict[str, Any]:
