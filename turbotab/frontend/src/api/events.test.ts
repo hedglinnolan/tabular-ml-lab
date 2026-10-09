@@ -32,6 +32,8 @@ function record(seq: number): DecisionRecord {
     sentence: null,
     post_seal: false,
     after_estimates: false,
+    recorded_by: "you",
+    early: null,
     decision: { kind: "set_target", column: `c${seq}` },
   };
 }
@@ -110,6 +112,7 @@ function view(): ProjectView {
       intended_use: null,
       updating: null,
       sweeps: null,
+      design: null,
     },
     decisions: [record(1)],
     stages: {

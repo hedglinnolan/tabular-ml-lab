@@ -1382,13 +1382,25 @@ def site_views(decision: Any, ctx: PreviewContext, after: Any, named: str) -> li
 def survey_column(state: Any) -> str | None:
     """The column the weighted picture is drawn on: the declared exposure, else the first
     numeric predictor."""
+    return survey_column_and_why(state)[0]
+
+
+def survey_column_and_why(state: Any) -> tuple[str | None, str]:
+    """The column the weighted picture is drawn on, and why that one (crosswalk disagreement 9: a
+    picture resting on a choice not made yet says so): the exposure declared in Models; else the
+    first column marked as studied, or the first predictor, until what you study is named."""
     from turbotab.core import estimand as est
 
     spec = est.current_estimand(state)
     if spec is not None and not spec.family:
-        return str(spec.exposure)
+        return str(spec.exposure), "the exposure you declared"
     roles = est.predictor_roles(state)
-    return next((c for c, r in roles.items() if r == "exposure"), next(iter(roles), None))
+    later = "it follows what you study once you name it in Models"
+    studied = next((c for c, r in roles.items() if r == "exposure"), None)
+    if studied is not None:
+        return studied, f"the first column you marked as studied; {later}"
+    first = next(iter(roles), None)
+    return first, f"the first predictor; {later}"
 
 
 def weighted_counts(values: np.ndarray, weights: np.ndarray, edges: Sequence[float]) -> list[int]:
@@ -1451,6 +1463,47 @@ def survey_refused_views(decision: Any, ctx: PreviewContext, found: Any,
         marks=[Mark(value=1.0, label="one PSU, as the design needs")])]
 
 
+def survey_design_views(decision: Any, ctx: PreviewContext, after: Any) -> list[Any]:
+    """Under Predict, the survey answer's picture is the design the scores read, never a predictor
+    (crosswalk disagreement 9): the rows it keeps and its degrees of freedom for the surveyed
+    population's answer (design-based cross-validation, whole PSUs within strata); the rows scored
+    unweighted for these participants'. On the training rows once they are drawn."""
+    from turbotab.core.models.survey import domain_of
+
+    pool_ids = ctx.training_row_ids if ctx.training_row_ids is not None else ctx.unsealed_row_ids()
+    n_pool = int(len(pool_ids))
+    start = RowStep(key="analyzed", label="Rows the scores are computed on", n=n_pool)
+    if decision.estimand == "sample" or not decision.weight:
+        return [RowFlowView(
+            title=title("Rows the scores are computed on"),
+            caption=caption(f"Unweighted: the scores are the procedure's performance on these "
+                            f"{fmt_count(n_pool)} rows, not the surveyed population's."),
+            emphasis=["analyzed"], before=[start], after=[start])]
+    design_cols = [c for c in (decision.weight, decision.strata, decision.psu, decision.cycle,
+                               decision.four_year_weight) if c]
+    if any(c not in ctx.datastore.columns for c in design_cols):
+        return []
+    found = fit_survey(ctx, after, None)
+    if found is None or found.refusal or found.design is None:
+        return []
+    design = found.design
+    domain = domain_of(pool_ids, design)
+    at = domain.at
+    df = int(len(np.unique(design.psu[at])) - len(np.unique(design.stratum[at])))
+    held = int(domain.keep.sum())
+    steps = [start, RowStep(key="in_design", label="With a stratum, PSU and positive weight",
+                            n=held, dropped=n_pool - held,
+                            reason="outside the survey design: no stratum, PSU or weight")]
+    ctx.read["survey"] = {"df": df, "n_psu": design.n_psu, "n_strata": design.n_strata,
+                          "domain": held, "unit": None}
+    return [RowFlowView(
+        title=title("The design the scores read"),
+        caption=caption(f"Design-based cross-validation over {fmt_count(design.n_psu)} PSUs in "
+                        f"{fmt_count(design.n_strata)} strata, every score weighted by "
+                        f"{tick(decision.weight)}; {fmt_count(df)} design degrees of freedom."),
+        emphasis=["in_design"], before=[start], after=steps)]
+
+
 def survey_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     """The exposure as these participants show it and as the surveyed population does (the design's
     weights), with the design's degrees of freedom over the analysis rows; the design is the fit's
@@ -1459,9 +1512,15 @@ def survey_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     from turbotab.core.models.survey import domain_of
 
     after = after_state(decision, ctx)
-    column = survey_column(after)
+    if getattr(after, "purpose", None) == "prediction":
+        # Crosswalk disagreement 9: under Predict there is no studied column; the preview draws the
+        # design the scores would read, its rows and its degrees of freedom.
+        return survey_design_views(decision, ctx, after)
+    column, why = survey_column_and_why(after)
     if column is None or column not in ctx.datastore.columns:
         return []
+    # The picture rests on which column is studied, which Models may still change: said beneath it.
+    ctx.read["note"] = f"Drawn on {tick(column)}, {why}."
     ids = ctx.sample_row_ids(ctx.training_row_ids) if ctx.training_row_ids is not None \
         else ctx.sample_row_ids()
     x = pd.to_numeric(ctx.datastore.materialize([column], ids)[column],

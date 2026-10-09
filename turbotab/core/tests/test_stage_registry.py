@@ -298,11 +298,15 @@ def test_progress_counts_each_decide_once_and_the_confirm_sweep_once():
                                         "survey"))
     log = quest.quest_log(state, [], steps)
     whos_in = stage(log, "whos_in")
-    # Decide: exclusions, missing, split (answered); Confirm: the grain and the repeat kind as
-    # stated (one sweep, open); For the record: no grouping to offer.
+    # Decide: exclusions, missing (answered); Confirm: the grain and the repeat kind as stated (one
+    # sweep, open); For the record: no grouping to offer, and under Estimate the split, which
+    # TurboTab records with no rows held out (P0.6, crosswalk disagreement 5).
     assert (whos_in.sweep.lines, whos_in.sweep.answered) == (2, False)
-    assert whos_in.progress == quest.Progress(answered=3, required=4, complete=False)
+    assert whos_in.progress == quest.Progress(answered=2, required=3, complete=False)
     assert line(log, "clusters").label == "For the record"
+    split = line(log, "split")
+    assert (split.id, split.label, split.counted) == (
+        "default:split_under_inference", "For the record", False)
     assert stage(log, "models").progress.answered == 0
 
 
@@ -533,12 +537,12 @@ def test_a_reached_stage_that_asks_nothing_is_complete_and_one_not_reached_is_em
 
 
 def test_progress_holds_while_the_outcome_is_read_again():
-    # Your question settled: the outcome and the goal answered, the event not asked, the task read
-    # at high confidence (stated), the follow-up not asked.
+    # Your question settled: the outcome, the design (P0.6) and the goal answered, the event not
+    # asked, the task read at high confidence (stated), the follow-up not asked.
     state = ProjectState(lens=["dietary"], target="glucose", purpose="inference")
     settled = steps_until(None, stated=("task",), not_applicable=("event", "follow_up"))
     before = stage(quest.quest_log(state, [], settled), "question").progress
-    assert (before.answered, before.required) == (2, 2)
+    assert (before.answered, before.required) == (3, 3)
     # The outcome's reading recomputes (``interview.route``): the event, the task and the
     # follow-up wait on it, since whether each is asked at all is that reading's.
     reading = [InterviewStep(key=s.key, status="waiting",

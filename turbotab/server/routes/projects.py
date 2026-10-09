@@ -92,9 +92,12 @@ def get_project(request: Request, pid: str) -> dict:
     response_model=ProjectView,
     responses={409: refusal("The decision was refused and not recorded"), 404: refusal("No such project")},
 )
-def decide(request: Request, pid: str, decision: Decision) -> dict:
-    """Record a decision. Stages downstream of the slot it writes recompute."""
-    return get_service(request).decide(pid, decision)
+def decide(request: Request, pid: str, decision: Decision, decide_now: bool = False) -> dict:
+    """Record a decision. Stages downstream of the slot it writes recompute. ``decide_now``
+    answers a later question ahead of the Router, only where its card is computed and the earlier
+    answers it reads are in (crosswalk disagreement 20); otherwise it is refused with what it is
+    waiting for, and the record names the question it was decided ahead of."""
+    return get_service(request).decide(pid, decision, early=decide_now)
 
 
 @router.get(

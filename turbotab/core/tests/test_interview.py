@@ -34,7 +34,10 @@ def test_questions_come_in_order_with_exactly_one_open():
     steps = route(ProjectState(), _stages())
     assert [s.key for s in steps] == list(QUESTION_KEYS)
     assert [s.status for s in steps].count("open") == 1 and steps[0].key == "lens" and steps[0].status == "open"
-    assert all(s.status == "waiting" and s.waiting_on[0] == "lens" for s in steps[1:])
+    # The study design is stated (observational) until answered, so it waits on nothing (P0.6).
+    assert all(s.status == "waiting" and s.waiting_on[0] == "lens" for s in steps[1:]
+               if s.key != "design")
+    assert next(s for s in steps if s.key == "design").status == "skipped"
 
 
 def test_answered_questions_name_their_record_and_the_next_one_opens():

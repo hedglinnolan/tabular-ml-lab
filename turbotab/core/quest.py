@@ -138,6 +138,9 @@ QUESTIONS: dict[str, Place] = {
     "event": Place("question", "q:event", DECIDE, 2),
     "task": Place("question", "q:task", DECIDE, 3),
     "follow_up": Place("question", "q:follow_up", DECIDE, 7),
+    # P0.6 (disagreement 10): the design slot, before the goal; observational is stated until it
+    # is answered, a Confirm line (``default:design_observational``).
+    "design": Place("question", "q:study-design", DECIDE, 17),
     "purpose": Place("question", "q:goal", DECIDE, 18),
     "grain": Place("whos_in", "q:grain", DECIDE, 1),
     "repeat_kind": Place("whos_in", "q:repeat_kind", DECIDE, 2),
@@ -168,6 +171,19 @@ QUESTIONS: dict[str, Place] = {
 # set for the person, a Confirm line; For the record where the data leave no other answer to offer
 # (the outcome's kind read at high confidence, ``default:task_settled``; no column that can group).
 STATED: dict[str, Label] = {"task": RECORD, "clusters": RECORD}
+# A question placed otherwise under one goal (``(key, purpose)``): under Estimate the split is For
+# the record in Who's in, recorded by TurboTab with no rows held out (P0.6, disagreement 5;
+# ``default:split_under_inference``).
+GOAL_PLACES: dict[tuple[str, str], Place] = {
+    ("split", "inference"): Place("whos_in", "default:split_under_inference", RECORD, 23),
+}
+# A question TurboTab answers itself once its readings settle shows that record For the record in a
+# later stage, besides its own line (P0.6, disagreement 1: "Column roles recorded as you confirmed
+# them in Your data", in Who's in).
+COMPLETED: dict[str, tuple[Place, str, str]] = {
+    "roles": (Place("whos_in", "q:roles", RECORD, 5.5), "roles_recorded",
+              "Column roles recorded as you confirmed them in Your data"),
+}
 # Kinds that answer a Router question beside the one its slot names (``sequence.question_of``): the
 # follow-up's "the same for everyone", and what the task question still asks after the task.
 ALSO_ANSWERS: dict[str, tuple[str, ...]] = {
@@ -210,6 +226,8 @@ OTHER_KINDS: dict[str, Place] = {
     "set_usual_intake": Place("models", "decision:set_usual_intake", DECIDE, 21),
     "set_multiplicity": Place("models", "decision:set_multiplicity", CONFIRM, 135),
     "set_levers": Place("models", "decision:set_levers", CONFIRM, 137),
+    # P0.6 (disagreement 5): a changed validation scheme, its own kind; the draw stays in Who's in.
+    "set_validation": Place("models", "default:validation-scheme", CONFIRM, 136),
     "lock_plan": Place("models", "other:plan-lock", RECORD, 199),
     # Results: after the fit
     "respond_diagnostic": Place("results", "decision:respond_diagnostic", DECIDE, 7),
@@ -371,7 +389,9 @@ class Declaration:
     ``reads``: the Router questions whose answers its card reads; it waits for them. ``counted``:
     whether it counts toward progress (an offer nothing records declining does not). ``holds``:
     whether its recorded answer still stands (else it is asked again). ``only_recorded``: a For the
-    record line, listed once something is recorded."""
+    record line, listed once something is recorded. ``own_record``: answered only by a record of its
+    own kind, since its slot is another answer's too (the validation scheme rides in the split's
+    record until it is changed, P0.6)."""
 
     kind: str
     name: str
@@ -380,6 +400,7 @@ class Declaration:
     counted: bool = True
     holds: Callable[[Any], bool] | None = None
     only_recorded: bool = False
+    own_record: bool = False
 
     @property
     def place(self) -> Place:
@@ -422,6 +443,10 @@ DECLARATIONS: tuple[Declaration, ...] = (
                 reads=("models",)),
     Declaration("set_explain", "the explanations", _goal("inference", "prediction"),
                 reads=("models",), counted=False),
+    # P0.6 (disagreement 5): the scheme set for you with the draw, a Models Confirm line under
+    # Predict; changing it records its own kind and keeps the draw.
+    Declaration("set_validation", "the validation scheme", _goal("prediction"), reads=("split",),
+                own_record=True),
 )
 
 
@@ -701,6 +726,18 @@ class ReadItem(BaseModel):
     words: str
     evidence: str
     options: list[ReadOption] = []
+class ChangedSince(BaseModel):
+    """An answer that returns with the reason (crosswalk disagreements 20 and 1): one decided early
+    ("Decide now") once an answer it was decided ahead of is recorded, so what its card counted
+    may have moved (``decided``); the roles TurboTab recorded from the person's confirmations once
+    a proposal moves after them (``confirmed``). ``decision_id`` is the later answer."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+    since: Literal["decided", "confirmed"]
+    decision_id: str
+    kind: str
+    reason: str
 
 
 class QuestLine(BaseModel):
@@ -732,6 +769,7 @@ class QuestLine(BaseModel):
     would_change: str | None = None
     changes_nothing: str | None = None
     items: list[ReadItem] = []
+    changed_since: ChangedSince | None = None
 
 
 class Progress(BaseModel):
@@ -933,14 +971,93 @@ def _reopened_by(log: _Log, kinds: Sequence[str], reads: frozenset[str],
     return ReopenedBy(decision_id=cause.id, kind=cause.decision.kind, stage=stage)
 
 
-def _question_lines(state: Any, steps: Sequence[Any], log: _Log) -> list[tuple[str, QuestLine]]:
+def _stated_reason(key: str) -> str | None:
+    """Why a default TurboTab recorded itself holds (the split under Estimate)."""
+    if key == "split":
+        from turbotab.core.seal import INFERENCE_SPLIT_REASON
+
+        return INFERENCE_SPLIT_REASON
+    return None
+
+
+def _changed_since_decided(key: str, writer: Any, log: _Log) -> ChangedSince | None:
+    """An answer decided early returns once an answer to a question it was decided ahead of is
+    recorded after it (crosswalk disagreement 20): its card counted before that answer."""
+    from turbotab.core.interview import QUESTION_KEYS
+    from turbotab.core.sequence import question_of
+    from turbotab.core.voice import question_name
+
+    early = getattr(writer, "early", None)
+    if not early or early not in QUESTION_KEYS or key not in QUESTION_KEYS:
+        return None
+    ahead = QUESTION_KEYS[QUESTION_KEYS.index(early):QUESTION_KEYS.index(key)]
+    kinds = {k for q in ahead for k in answering_kinds(q)}
+    cause = next((r for r in reversed(log.live) if r.seq > writer.seq
+                  and getattr(log.undone(r), "kind", None) in kinds), None)
+    if cause is None:
+        return None
+    changed = log.undone(cause)
+    name = question_name(question_of(changed.kind) or early)
+    return ChangedSince(
+        since="decided", decision_id=cause.id, kind=changed.kind,
+        reason=f"Changed since you decided: {name} was answered after you decided this early, so "
+               f"what its card counted may have moved.")
+
+
+def _changed_since_confirmed(writer: Any, log: _Log, facts: Facts) -> ChangedSince | None:
+    """The roles TurboTab recorded from the person's confirmations return once a column's proposal
+    reads otherwise after its confirmation, because of a later answer the roles' reading reads
+    (the outcome, the goal, what one row is; crosswalk disagreement 1)."""
+    from turbotab.core.readings import proposals_of
+    from turbotab.core.sequence import question_of
+    from turbotab.core.voice import question_name
+
+    recorded = dict(getattr(writer.decision, "roles", None) or {})
+    reads = stage_reads("roles") - {"roles"}
+    for proposal in proposals_of(facts.artifacts.get("roles")):
+        column, proposed = str(proposal.get("column")), proposal.get("proposed")
+        if column not in recorded or not proposed or proposed == recorded[column]:
+            continue
+        confirmed = _confirmed_at(log, column)
+        if confirmed is None:
+            continue
+        cause = log.cause(reads, after_seq=confirmed.seq)
+        if cause is None:
+            continue
+        changed = log.undone(cause)
+        question = question_of(changed.kind)
+        after = question_name(question) if question else changed.kind
+        return ChangedSince(
+            since="confirmed", decision_id=cause.id, kind=changed.kind,
+            reason=f"Changed since you confirmed: `{column}` now reads as {proposed} after "
+                   f"{after}; you confirmed it as {recorded[column]}.")
+    return None
+
+
+def _confirmed_at(log: _Log, column: str) -> Any:
+    """The latest live record that confirmed ``column``'s role on its own."""
+    for r in reversed(log.live):
+        d = r.decision
+        if d.kind == "confirm_role" and d.column == column:
+            return r
+        if d.kind == "confirm_reading" and d.reading == "role" and d.column == column:
+            return r
+        if d.kind == "confirm_readings" and any(
+                i.reading == "role" and i.column == column for i in d.items):
+            return r
+    return None
+
+
+def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
+                    facts: Facts | None = None) -> list[tuple[str, QuestLine]]:
     from turbotab.core.voice import question_name
 
     first = next((s for s in steps if _get(s, "status") in ("open", "waiting")), None)
+    purpose = getattr(state, "purpose", None)
     lines = []
     for step in steps:
         key, status = _get(step, "key"), _get(step, "status")
-        place = QUESTIONS.get(key)
+        place = GOAL_PLACES.get((key, purpose)) or QUESTIONS.get(key)
         if place is None or status == "not_applicable":
             continue
         label = place.label
@@ -967,12 +1084,25 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log) -> list[tuple[s
         if status in ("open", "waiting"):
             reopened = _reopened_by(log, answering_kinds(key), question_reads(key),
                                     answer_holds(key))
+        writer = log.by_id.get(decision_id) if decision_id else None
+        by_turbotab = getattr(writer, "recorded_by", "you") == "turbotab"
+        changed = (_changed_since_decided(key, writer, log)
+                   if status == "answered" and writer is not None else None)
+        if status == "answered" and by_turbotab and key in COMPLETED:
+            home, line_key, said = COMPLETED[key]
+            lines.append((home.stage, QuestLine(
+                id=home.item, key=line_key, source="question", label=home.label, name=said,
+                status="set_for_you", counted=False, order=home.order, decision_id=decision_id,
+                changed_since=_changed_since_confirmed(writer, log, facts or Facts()))))
+        elif status == "answered" and by_turbotab and label != DECIDE:
+            status = "skipped"  # a default TurboTab recorded: set for you, with a way to change it
         lines.append((place.stage, QuestLine(
             id=place.item, key=key, source="question", label=label, name=question_name(key),
             status="set_for_you" if status == "skipped" else status, counted=counted,
             order=place.order, decision_id=decision_id,
-            reason=_get(step, "reason") if status == "skipped" else None,
-            waiting_for=waiting_for, computing=computing, reopened_by=reopened)))
+            reason=(_get(step, "reason") or _stated_reason(key)) if status == "skipped" else None,
+            waiting_for=waiting_for, computing=computing, reopened_by=reopened,
+            changed_since=changed)))
     return lines
 
 
@@ -997,6 +1127,8 @@ def _declaration_lines(state: Any, steps: Mapping[str, Any], log: _Log,
     for decl in DECLARATIONS:
         place = decl.place
         recorded = getattr(state, SLOTS[decl.kind], None) is not None
+        if decl.own_record:
+            recorded = recorded and log.last_answer((decl.kind,)) is not None
         if decl.only_recorded:
             if not recorded:
                 continue
@@ -1086,10 +1218,14 @@ def _frontier(steps: Sequence[Any], stages: Mapping[str, Any],
     nothing). Write-up opens with Results."""
     from turbotab.core.estimand import ESTIMATE_STAGES
 
-    reached = [STAGE_INDEX[QUESTIONS[_get(s, "key")].stage] for s in steps
-               if _get(s, "key") in QUESTIONS
-               and _get(s, "status") in ("answered", "skipped", "open")]
     first = next((s for s in steps if _get(s, "status") in ("open", "waiting")), None)
+    # A default stated past the first unanswered question (the design, observational until it is
+    # answered; P0.6) is not a question the Router has reached.
+    ahead = list(steps).index(first) if first is not None else len(steps)
+    reached = [STAGE_INDEX[QUESTIONS[_get(s, "key")].stage] for i, s in enumerate(steps)
+               if _get(s, "key") in QUESTIONS
+               and (_get(s, "status") in ("answered", "open")
+                    or (_get(s, "status") == "skipped" and i < ahead))]
     if first is not None and _get(first, "key") in QUESTIONS:
         reached.append(STAGE_INDEX[QUESTIONS[_get(first, "key")].stage])
     furthest = max(reached, default=0)
@@ -1198,7 +1334,8 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     log = _Log(list(records))
     by_key = {_get(s, "key"): s for s in steps}
     facts = Facts(columns=tuple(columns or ()), artifacts=dict(artifacts or {}))
-    placed = [*_question_lines(state, steps, log), *_declaration_lines(state, by_key, log, facts),
+    placed = [*_question_lines(state, steps, log, facts),
+              *_declaration_lines(state, by_key, log, facts),
               *_finding_lines(state, findings, by_key), *sweeps.reading_lines(state, readings)]
     _hold_the_families(placed)
     sweeps.weigh(placed, state, facts)
@@ -1225,11 +1362,11 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
 
 
 __all__ = [
-    "COMPUTE", "DECLARATIONS", "Declaration", "EXPLORE_FINDINGS", "FINDING_ROUTES",
-    "FOLLOWS_ITS_STAGE", "FOLLOWS_WHAT_IT_UNDOES", "Facts", "LABELS", "NORMALIZATION",
-    "OTHER_KINDS", "Place", "Progress", "QUESTIONS", "QUEST_VERSION", "QuestLine", "QuestLog",
-    "QuestStage", "READ_BY_GATE", "ReadItem", "ReadOption", "Reopened", "ReopenedBy", "STAGES",
-    "STAGE_NAMES", "STATED", "SWEEP_ITEMS", "Sweep", "TIER_RULINGS",
+    "COMPLETED", "COMPUTE", "ChangedSince", "DECLARATIONS", "Declaration", "EXPLORE_FINDINGS",
+    "FINDING_ROUTES", "FOLLOWS_ITS_STAGE", "FOLLOWS_WHAT_IT_UNDOES", "Facts", "GOAL_PLACES",
+    "LABELS", "NORMALIZATION", "OTHER_KINDS", "Place", "Progress", "QUESTIONS", "QUEST_VERSION",
+    "QuestLine", "QuestLog", "QuestStage", "READ_BY_GATE", "ReadItem", "ReadOption", "Reopened",
+    "ReopenedBy", "STAGES", "STAGE_NAMES", "STATED", "SWEEP_ITEMS", "Sweep", "TIER_RULINGS",
     "Waiting", "answer_holds", "answering_kinds", "contract_tier", "finding_place", "kind_place",
     "kind_stages", "noticing_place", "noticing_places", "noticing_stage", "noticing_stages",
     "quest_log", "question_reads", "record_stage", "stage_reads", "written_slots",

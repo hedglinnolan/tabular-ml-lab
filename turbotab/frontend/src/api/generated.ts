@@ -117,7 +117,10 @@ export interface paths {
         put?: never;
         /**
          * Decide
-         * @description Record a decision. Stages downstream of the slot it writes recompute.
+         * @description Record a decision. Stages downstream of the slot it writes recompute. ``decide_now``
+         *     answers a later question ahead of the Router, only where its card is computed and the earlier
+         *     answers it reads are in (crosswalk disagreement 20); otherwise it is refused with what it is
+         *     waiting for, and the record names the question it was decided ahead of.
          */
         post: operations["decide_api_projects__pid__decisions_post"];
         delete?: never;
@@ -1026,6 +1029,26 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * ChangedSince
+         * @description An answer that returns with the reason (crosswalk disagreements 20 and 1): one decided early
+         *     ("Decide now") once an answer it was decided ahead of is recorded, so what its card counted
+         *     may have moved (``decided``); the roles TurboTab recorded from the person's confirmations once
+         *     a proposal moves after them (``confirmed``). ``decision_id`` is the later answer.
+         */
+        ChangedSince: {
+            /**
+             * Since
+             * @enum {string}
+             */
+            since: "decided" | "confirmed";
+            /** Decision Id */
+            decision_id: string;
+            /** Kind */
+            kind: string;
+            /** Reason */
+            reason: string;
+        };
         /** ChecklistCounts */
         ChecklistCounts: {
             /** Items */
@@ -1624,8 +1647,16 @@ export interface components {
              * @default false
              */
             after_estimates: boolean;
+            /**
+             * Recorded By
+             * @default you
+             * @enum {string}
+             */
+            recorded_by: "you" | "turbotab";
+            /** Early */
+            early: string | null;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"] | components["schemas"]["SetModelSequence-Output"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Output"] | components["schemas"]["SetTimeVarying-Output"] | components["schemas"]["SetExplain-Output"] | components["schemas"]["SetForms-Output"] | components["schemas"]["SetModification-Output"] | components["schemas"]["ViewOutcome-Output"] | components["schemas"]["SetLevers-Output"] | components["schemas"]["SetSelection-Output"] | components["schemas"]["SetIntendedUse-Output"] | components["schemas"]["SetUpdating-Output"] | components["schemas"]["ConfirmSweep-Output"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"] | components["schemas"]["SetModelSequence-Output"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Output"] | components["schemas"]["SetTimeVarying-Output"] | components["schemas"]["SetExplain-Output"] | components["schemas"]["SetForms-Output"] | components["schemas"]["SetModification-Output"] | components["schemas"]["ViewOutcome-Output"] | components["schemas"]["SetLevers-Output"] | components["schemas"]["SetSelection-Output"] | components["schemas"]["SetIntendedUse-Output"] | components["schemas"]["SetUpdating-Output"] | components["schemas"]["ConfirmSweep-Output"] | components["schemas"]["SetDesign-Output"] | components["schemas"]["SetValidation-Output"];
         };
         /**
          * DeferFinding
@@ -1763,7 +1794,7 @@ export interface components {
              * @default total
              * @enum {string}
              */
-            effect: "total" | "direct";
+            effect: "total" | "direct" | "complier" | "per_protocol";
             /** Contrast */
             contrast: ("substitution" | "addition") | null;
             /**
@@ -1845,7 +1876,7 @@ export interface components {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"] | components["schemas"]["SetModelSequence-Output"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Output"] | components["schemas"]["SetTimeVarying-Output"] | components["schemas"]["SetExplain-Output"] | components["schemas"]["SetForms-Output"] | components["schemas"]["SetModification-Output"] | components["schemas"]["ViewOutcome-Output"] | components["schemas"]["SetLevers-Output"] | components["schemas"]["SetSelection-Output"] | components["schemas"]["SetIntendedUse-Output"] | components["schemas"]["SetUpdating-Output"] | components["schemas"]["ConfirmSweep-Output"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"] | components["schemas"]["SetModelSequence-Output"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Output"] | components["schemas"]["SetTimeVarying-Output"] | components["schemas"]["SetExplain-Output"] | components["schemas"]["SetForms-Output"] | components["schemas"]["SetModification-Output"] | components["schemas"]["ViewOutcome-Output"] | components["schemas"]["SetLevers-Output"] | components["schemas"]["SetSelection-Output"] | components["schemas"]["SetIntendedUse-Output"] | components["schemas"]["SetUpdating-Output"] | components["schemas"]["ConfirmSweep-Output"] | components["schemas"]["SetDesign-Output"] | components["schemas"]["SetValidation-Output"]) | null;
         };
         /** ExplainSpec */
         ExplainSpec: {
@@ -2508,7 +2539,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "lens" | "orientation" | "target" | "event" | "task" | "follow_up" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "exclusions" | "missing" | "split" | "estimand" | "adjustment" | "time_varying" | "energy_adjustment" | "form" | "modification" | "causal" | "models" | "substitution" | "open_seal";
+            key: "lens" | "orientation" | "target" | "event" | "task" | "follow_up" | "design" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "exclusions" | "missing" | "split" | "estimand" | "adjustment" | "time_varying" | "energy_adjustment" | "form" | "modification" | "causal" | "models" | "substitution" | "open_seal";
             /**
              * Status
              * @enum {string}
@@ -3457,6 +3488,8 @@ export interface components {
             sweeps: {
                 [key: string]: components["schemas"]["SweepConfirmation"];
             } | null;
+            /** Design */
+            design: ("observational" | "parallel_trial" | "cluster_randomized_trial" | "case_control" | "matched_sets" | "crossover" | "repeated_measures_trial") | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -3557,6 +3590,7 @@ export interface components {
              * @default []
              */
             items: components["schemas"]["ReadItem"][];
+            changed_since: components["schemas"]["ChangedSince"] | null;
         };
         /**
          * QuestLog
@@ -4640,6 +4674,46 @@ export interface components {
              */
             days: number;
         };
+        /**
+         * SetDesign
+         * @description How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked
+         *     in Your question before the goal, observational stated until answered. Every design is a named
+         *     value (``turbotab.core.designs``); one this version does not analyze is refused with its code,
+         *     its reason and the observational exit (V2X_SEAMS seam guard 6).
+         */
+        "SetDesign-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_design";
+            /**
+             * Design
+             * @default observational
+             * @enum {string}
+             */
+            design: "observational" | "parallel_trial" | "cluster_randomized_trial" | "case_control" | "matched_sets" | "crossover" | "repeated_measures_trial";
+        };
+        /**
+         * SetDesign
+         * @description How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked
+         *     in Your question before the goal, observational stated until answered. Every design is a named
+         *     value (``turbotab.core.designs``); one this version does not analyze is refused with its code,
+         *     its reason and the observational exit (V2X_SEAMS seam guard 6).
+         */
+        "SetDesign-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_design";
+            /**
+             * Design
+             * @default observational
+             * @enum {string}
+             */
+            design: "observational" | "parallel_trial" | "cluster_randomized_trial" | "case_control" | "matched_sets" | "crossover" | "repeated_measures_trial";
+        };
         /** SetEnergyAdjustment */
         "SetEnergyAdjustment-Input": {
             /**
@@ -4707,7 +4781,7 @@ export interface components {
              * @default total
              * @enum {string}
              */
-            effect: "total" | "direct";
+            effect: "total" | "direct" | "complier" | "per_protocol";
             /** Contrast */
             contrast?: ("substitution" | "addition") | null;
             /**
@@ -4742,7 +4816,7 @@ export interface components {
              * @default total
              * @enum {string}
              */
-            effect: "total" | "direct";
+            effect: "total" | "direct" | "complier" | "per_protocol";
             /** Contrast */
             contrast: ("substitution" | "addition") | null;
             /**
@@ -6039,7 +6113,11 @@ export interface components {
         };
         /**
          * SetSurvey
-         * @description Whose estimate it is under a survey design (``SurveySpec``).
+         * @description Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was
+         *     answered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer
+         *     says whose performance the scores estimate, which is not the estimand inference asks for, so
+         *     an answer given under one stands only under that one; a record from before the stamp
+         *     (``None``) stands under either, as it did.
          */
         "SetSurvey-Input": {
             /**
@@ -6067,10 +6145,16 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+            /** Goal */
+            goal?: ("prediction" | "inference") | null;
         };
         /**
          * SetSurvey
-         * @description Whose estimate it is under a survey design (``SurveySpec``).
+         * @description Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was
+         *     answered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer
+         *     says whose performance the scores estimate, which is not the estimand inference asks for, so
+         *     an answer given under one stands only under that one; a record from before the stamp
+         *     (``None``) stands under either, as it did.
          */
         "SetSurvey-Output": {
             /**
@@ -6098,6 +6182,8 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+            /** Goal */
+            goal: ("prediction" | "inference") | null;
         };
         /** SetTarget */
         SetTarget: {
@@ -6428,6 +6514,104 @@ export interface components {
             ear_symmetric: boolean;
         };
         /**
+         * SetValidation
+         * @description A changed validation scheme (crosswalk disagreement 5): how the training rows compare the
+         *     models (the folds and the kind of validation), recorded on its own so that the draw's record,
+         *     its time and with it the holdout's status stay where the draw put them. ``set_split`` keeps the
+         *     draw (the holdout and the seed) and carries the scheme set for you, which Models' Confirm sweep
+         *     shows (``default:validation-scheme``). Changed after the held-out rows were opened it is block
+         *     and record: ``acknowledged`` keeps it, and the scores at the opening stay the reported result.
+         */
+        "SetValidation-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_validation";
+            /**
+             * Folds
+             * @default 5
+             */
+            folds: number;
+            /**
+             * Validation
+             * @default kfold
+             * @enum {string}
+             */
+            validation: "kfold" | "repeated_kfold" | "bootstrap" | "internal_external";
+            /**
+             * Repeats
+             * @default 10
+             */
+            repeats: number;
+            /**
+             * N Boot
+             * @default 500
+             */
+            n_boot: number;
+            /** Cluster */
+            cluster?: string | null;
+            /**
+             * Nested Cv
+             * @default false
+             */
+            nested_cv: boolean;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /**
+         * SetValidation
+         * @description A changed validation scheme (crosswalk disagreement 5): how the training rows compare the
+         *     models (the folds and the kind of validation), recorded on its own so that the draw's record,
+         *     its time and with it the holdout's status stay where the draw put them. ``set_split`` keeps the
+         *     draw (the holdout and the seed) and carries the scheme set for you, which Models' Confirm sweep
+         *     shows (``default:validation-scheme``). Changed after the held-out rows were opened it is block
+         *     and record: ``acknowledged`` keeps it, and the scores at the opening stay the reported result.
+         */
+        "SetValidation-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_validation";
+            /**
+             * Folds
+             * @default 5
+             */
+            folds: number;
+            /**
+             * Validation
+             * @default kfold
+             * @enum {string}
+             */
+            validation: "kfold" | "repeated_kfold" | "bootstrap" | "internal_external";
+            /**
+             * Repeats
+             * @default 10
+             */
+            repeats: number;
+            /**
+             * N Boot
+             * @default 500
+             */
+            n_boot: number;
+            /** Cluster */
+            cluster: string | null;
+            /**
+             * Nested Cv
+             * @default false
+             */
+            nested_cv: boolean;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /**
          * Source
          * @description A source a declaration cites: a key into ``models.sources.SOURCES`` (MODEL_FAMILY_CONTRACT
          *     §7's verified list, until SIZING X4's citation registry), and where in it.
@@ -6741,7 +6925,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "lens" | "orientation" | "repairs" | "target" | "event" | "task" | "follow_up" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "exclusions" | "missing" | "split" | "estimand" | "adjustment" | "time_varying" | "energy_adjustment" | "form" | "modification" | "causal" | "models" | "substitution" | "open_seal";
+            key: "lens" | "orientation" | "repairs" | "target" | "event" | "task" | "follow_up" | "design" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "exclusions" | "missing" | "split" | "estimand" | "adjustment" | "time_varying" | "energy_adjustment" | "form" | "modification" | "causal" | "models" | "substitution" | "open_seal";
             /** Title */
             title: string;
             /** Question */
@@ -9936,7 +10120,7 @@ export interface components {
             /** Summary */
             summary: string;
             /** Routes To */
-            routes_to: ("lens" | "orientation" | "target" | "event" | "task" | "follow_up" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "exclusions" | "missing" | "split" | "estimand" | "adjustment" | "time_varying" | "energy_adjustment" | "form" | "modification" | "causal" | "models" | "substitution" | "open_seal") | null;
+            routes_to: ("lens" | "orientation" | "target" | "event" | "task" | "follow_up" | "design" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "exclusions" | "missing" | "split" | "estimand" | "adjustment" | "time_varying" | "energy_adjustment" | "form" | "modification" | "causal" | "models" | "substitution" | "open_seal") | null;
             /** Lever Label */
             lever_label: string | null;
             /** Group */
@@ -13571,6 +13755,27 @@ export interface components {
              */
             days: number;
         };
+        /**
+         * SetDesign
+         * @description How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked
+         *     in Your question before the goal, observational stated until answered. Every design is a named
+         *     value (``turbotab.core.designs``); one this version does not analyze is refused with its code,
+         *     its reason and the observational exit (V2X_SEAMS seam guard 6).
+         */
+        SetDesign: {
+            /**
+             * Kind
+             * @default set_design
+             * @constant
+             */
+            kind: "set_design";
+            /**
+             * Design
+             * @default observational
+             * @enum {string}
+             */
+            design: "observational" | "parallel_trial" | "cluster_randomized_trial" | "case_control" | "matched_sets" | "crossover" | "repeated_measures_trial";
+        };
         /** SetEnergyAdjustment */
         SetEnergyAdjustment: {
             /**
@@ -13625,7 +13830,7 @@ export interface components {
              * @default total
              * @enum {string}
              */
-            effect: "total" | "direct";
+            effect: "total" | "direct" | "complier" | "per_protocol";
             /**
              * Contrast
              * @default null
@@ -14349,7 +14554,11 @@ export interface components {
         };
         /**
          * SetSurvey
-         * @description Whose estimate it is under a survey design (``SurveySpec``).
+         * @description Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was
+         *     answered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer
+         *     says whose performance the scores estimate, which is not the estimand inference asks for, so
+         *     an answer given under one stands only under that one; a record from before the stamp
+         *     (``None``) stands under either, as it did.
          */
         SetSurvey: {
             /**
@@ -14393,6 +14602,11 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+            /**
+             * Goal
+             * @default null
+             */
+            goal: ("prediction" | "inference") | null;
         };
         /** SetTemporal */
         SetTemporal: {
@@ -14568,6 +14782,59 @@ export interface components {
              * @default false
              */
             ear_symmetric: boolean;
+        };
+        /**
+         * SetValidation
+         * @description A changed validation scheme (crosswalk disagreement 5): how the training rows compare the
+         *     models (the folds and the kind of validation), recorded on its own so that the draw's record,
+         *     its time and with it the holdout's status stay where the draw put them. ``set_split`` keeps the
+         *     draw (the holdout and the seed) and carries the scheme set for you, which Models' Confirm sweep
+         *     shows (``default:validation-scheme``). Changed after the held-out rows were opened it is block
+         *     and record: ``acknowledged`` keeps it, and the scores at the opening stay the reported result.
+         */
+        SetValidation: {
+            /**
+             * Kind
+             * @default set_validation
+             * @constant
+             */
+            kind: "set_validation";
+            /**
+             * Folds
+             * @default 5
+             */
+            folds: number;
+            /**
+             * Validation
+             * @default kfold
+             * @enum {string}
+             */
+            validation: "kfold" | "repeated_kfold" | "bootstrap" | "internal_external";
+            /**
+             * Repeats
+             * @default 10
+             */
+            repeats: number;
+            /**
+             * N Boot
+             * @default 500
+             */
+            n_boot: number;
+            /**
+             * Cluster
+             * @default null
+             */
+            cluster: string | null;
+            /**
+             * Nested Cv
+             * @default false
+             */
+            nested_cv: boolean;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /** Setting */
         Setting: {
@@ -16235,7 +16502,9 @@ export interface operations {
     };
     decide_api_projects__pid__decisions_post: {
         parameters: {
-            query?: never;
+            query?: {
+                decide_now?: boolean;
+            };
             header?: never;
             path: {
                 pid: string;
@@ -16244,7 +16513,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"] | components["schemas"]["SetBatch-Input"] | components["schemas"]["SetMultiplicity-Input"] | components["schemas"]["SetScales-Input"] | components["schemas"]["SetUsualIntake-Input"] | components["schemas"]["SetModelSequence-Input"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Input"] | components["schemas"]["SetTimeVarying-Input"] | components["schemas"]["SetExplain-Input"] | components["schemas"]["SetForms-Input"] | components["schemas"]["SetModification-Input"] | components["schemas"]["ViewOutcome-Input"] | components["schemas"]["SetLevers-Input"] | components["schemas"]["SetSelection-Input"] | components["schemas"]["SetIntendedUse-Input"] | components["schemas"]["SetUpdating-Input"] | components["schemas"]["ConfirmSweep-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"] | components["schemas"]["SetBatch-Input"] | components["schemas"]["SetMultiplicity-Input"] | components["schemas"]["SetScales-Input"] | components["schemas"]["SetUsualIntake-Input"] | components["schemas"]["SetModelSequence-Input"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Input"] | components["schemas"]["SetTimeVarying-Input"] | components["schemas"]["SetExplain-Input"] | components["schemas"]["SetForms-Input"] | components["schemas"]["SetModification-Input"] | components["schemas"]["ViewOutcome-Input"] | components["schemas"]["SetLevers-Input"] | components["schemas"]["SetSelection-Input"] | components["schemas"]["SetIntendedUse-Input"] | components["schemas"]["SetUpdating-Input"] | components["schemas"]["ConfirmSweep-Input"] | components["schemas"]["SetDesign-Input"] | components["schemas"]["SetValidation-Input"];
             };
         };
         responses: {
@@ -16708,7 +16977,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"] | components["schemas"]["SetBatch-Input"] | components["schemas"]["SetMultiplicity-Input"] | components["schemas"]["SetScales-Input"] | components["schemas"]["SetUsualIntake-Input"] | components["schemas"]["SetModelSequence-Input"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Input"] | components["schemas"]["SetTimeVarying-Input"] | components["schemas"]["SetExplain-Input"] | components["schemas"]["SetForms-Input"] | components["schemas"]["SetModification-Input"] | components["schemas"]["ViewOutcome-Input"] | components["schemas"]["SetLevers-Input"] | components["schemas"]["SetSelection-Input"] | components["schemas"]["SetIntendedUse-Input"] | components["schemas"]["SetUpdating-Input"] | components["schemas"]["ConfirmSweep-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"] | components["schemas"]["SetBatch-Input"] | components["schemas"]["SetMultiplicity-Input"] | components["schemas"]["SetScales-Input"] | components["schemas"]["SetUsualIntake-Input"] | components["schemas"]["SetModelSequence-Input"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Input"] | components["schemas"]["SetTimeVarying-Input"] | components["schemas"]["SetExplain-Input"] | components["schemas"]["SetForms-Input"] | components["schemas"]["SetModification-Input"] | components["schemas"]["ViewOutcome-Input"] | components["schemas"]["SetLevers-Input"] | components["schemas"]["SetSelection-Input"] | components["schemas"]["SetIntendedUse-Input"] | components["schemas"]["SetUpdating-Input"] | components["schemas"]["ConfirmSweep-Input"] | components["schemas"]["SetDesign-Input"] | components["schemas"]["SetValidation-Input"];
             };
         };
         responses: {

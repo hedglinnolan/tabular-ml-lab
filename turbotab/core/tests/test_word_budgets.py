@@ -414,6 +414,9 @@ def representative_decisions():
         d.ConfirmSweep(stage="models", sweep="noticings", lines=[
             d.SweptLine(id="finding:binary_text__age", key="binary_text__age", value="could_bias"),
             d.SweptLine(id="finding:note", key="note", value="no_change")]),
+        # P0.6: the design slot, and a changed validation scheme on its own record
+        d.SetDesign(design="observational"),
+        d.SetValidation(validation="repeated_kfold", folds=5, repeats=10),
     ]
 
 

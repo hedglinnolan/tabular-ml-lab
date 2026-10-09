@@ -73,6 +73,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
+from turbotab.core.designs import EFFECTS
+
 VANDERWEELE = "VanderWeele 2019, Eur J Epidemiol 34:211–219"
 VALERI = "Valeri & VanderWeele 2013, Psychol Methods 18:137–150"
 PROBAST = "PROBAST explanation and elaboration (Moons et al. 2019), item 4.6"
@@ -1088,8 +1090,11 @@ def estimand_card(state: Any, task: str | None, prevalence: float | None = None)
         "effects": [
             {"effect": "total", "label": "Total effect",
              "consequence": "Everything the exposure changes downstream counts; mediators stay out."},
-            {"effect": "direct", "label": "Direct effect",
-             "consequence": "Holds the mediators fixed; their confounders must be adjusted too."}],
+            # V2X_SEAMS seam guard 6: offered as "Not available yet", with its reason and the
+            # whole effect as its exit (``designs.EFFECTS``).
+            {"effect": "direct", "label": EFFECTS["direct"].label, "available": False,
+             "reason": EFFECTS["direct"].reason, "exit": {"effect": "total"},
+             "consequence": "Not available yet: the whole effect is estimated instead."}],
         "contrasts": [
             {"contrast": "substitution", "label": "Substitution",
              "consequence": "More of it in place of other calories, total energy held fixed."},
@@ -1763,6 +1768,20 @@ def _marks_no_group(columns: Sequence[str]) -> Any:
 # set_estimand
 
 
+def _deferred_effect_is_refused(decision: Any, ctx: Any) -> None:
+    """V2X_SEAMS seam guard 6: "only the direct part" (a mediation estimand), the complier effect
+    and the per-protocol effect are named values, each refused with its ``*_v2x`` code, its reason
+    and the whole effect as the exit (the crosswalk's Settled here, "A direct effect is 'Not
+    available yet'"). A log that recorded the direct effect still loads, and its questions
+    (:func:`direct_questions`) are kept for the mediation milestone."""
+    from turbotab.core.designs import effect_refusal
+
+    found = effect_refusal(decision)
+    if found is not None:
+        code, reason, exits = found
+        raise _refusal(code, reason, exits)
+
+
 def _estimand_is_for_inference(decision: Any, ctx: Any) -> None:
     if _get(_state(ctx), "purpose") == "prediction":
         raise _not_inference("which exposure and which effect")
@@ -2249,6 +2268,7 @@ def _register() -> None:
     register_validator("set_clusters", _clusters_name_a_grouping)
     register_validator("set_clusters", _no_grouping_is_recorded)
     register_completion("set_clusters", _no_grouping_names_what_it_denies)
+    register_validator("set_estimand", _deferred_effect_is_refused)
     register_validator("set_estimand", _estimand_is_for_inference)
     register_validator("set_estimand", _estimand_names_a_predictor)
     register_validator("set_estimand", _estimand_measure_is_fitted)

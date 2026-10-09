@@ -3589,7 +3589,7 @@ Each method v2 offers (V2_DEFINITION_OF_DONE §2 lists it, or a question the Rou
 
 ## Decisions that record no method
 
-Every other decision kind the decision log accepts records a contract's method (its `decision`, or one it records without naming it: `set_batch` for `batch`, `set_multiplicity` for `multiplicity`, `set_forms` for `functional_form`) or a gap above. These record none:
+Every other decision kind the decision log accepts records a contract's method (its `decision`, or one it records without naming it: `set_batch` for `batch`, `set_multiplicity` for `multiplicity`, `set_forms` for `functional_form`, `set_validation` for `proper_primary`) or a gap above. These record none:
 
 | Decision | Why it is not a method |
 |---|---|
@@ -3598,6 +3598,7 @@ Every other decision kind the decision log accepts records a contract's method (
 | `set_event` | names the outcome's event level: the research question |
 | `set_task` | states what kind of outcome it is (a number, yes/no, ordered levels, classes, a time to event): what is modeled, read from the data and confirmed |
 | `set_purpose` | declares inference or prediction: the research question |
+| `set_design` | declares how people were assigned or sampled: the study design, which only observational studies take in this version (the designed-experiments milestone routes the others) |
 | `set_roles` | gives each column its role in the research question |
 | `confirm_role` | confirms a role the app proposed below high confidence: a reading |
 | `confirm_reading` | confirms what a column holds (BLUEPRINT §14): a reading |

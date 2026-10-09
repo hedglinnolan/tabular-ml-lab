@@ -635,9 +635,12 @@ def test_3_the_winners_own_score_as_the_result_is_refused_with_its_exit(tmp_path
     validate(d.SelectModels(models=["boosted_trees"]), {**ctx, "state": other})
 
     # (1) and (4): a new seed, a new fold count, the nested cross-validation offer: the same rows.
+    # The last two keep the draw and change only the scheme, so they are its own kind (P0.6,
+    # ``set_validation``).
     for split in (SplitSpec(holdout=0.0, seed=2), SplitSpec(holdout=0.0, seed=1, folds=10),
                   SplitSpec(holdout=0.0, seed=1, nested_cv=True)):
-        decision = d.SetSplit(**split.model_dump())
+        decision = (d.SetSplit(**split.model_dump()) if split.seed != 1 else
+                    d.SetValidation(**split.model_dump(exclude={"holdout", "seed"})))
         validate(decision, ctx)  # the families stay, so nothing is refused
         resealed = state.model_copy(update={"split": split})
         with pytest.raises(Refusal) as refused:
@@ -1188,8 +1191,13 @@ def test_7_performance_sentences_describe_the_procedure_and_flag_p_much_greater_
                               "Tibshirani 2023): 800 refits of each family")
     assert offer["seconds"] is not None and offer["estimate"]
     assert "p_much_greater_n" in {c["relation"] for c in data["chain"]}
-    ran = st.model_copy(update={"split": d.SplitSpec(**{k: v for k, v in offer["decision"].items()
-                                                        if k != "kind"})})
+    # The offer is a changed scheme (P0.6, ``set_validation``), written onto the draw.
+    assert offer["decision"]["kind"] == "set_validation"
+    ran = d.fold([d.DecisionRecord(id="r1", seq=1, at="2026-10-09T00:00:00Z",
+                                   decision=d.SetSplit(**st.split.model_dump())),
+                  d.DecisionRecord(id="r2", seq=2, at="2026-10-09T00:00:01Z",
+                                   decision=d.parse_decision(offer["decision"]))])
+    ran = st.model_copy(update={"split": ran.split})
     assert ran.split.nested_cv is True
     *_, fit2 = _stages(wide, ran, tmp_path / "nested")
     data2 = fit2.data
@@ -1233,8 +1241,13 @@ def test_7_with_several_families_the_label_says_what_nested_cross_validation_wid
     assert links["p_much_greater_n"]["then"] == (
         f"the intervals are labeled {TOO_NARROW}, and the nested cross-validation interval is "
         f"offered for each family's own score")
-    ran = st.model_copy(update={"split": d.SplitSpec(**{k: v for k, v in offer["decision"].items()
-                                                        if k != "kind"})})
+    # The offer is a changed scheme (P0.6, ``set_validation``), written onto the draw.
+    assert offer["decision"]["kind"] == "set_validation"
+    ran = d.fold([d.DecisionRecord(id="r1", seq=1, at="2026-10-09T00:00:00Z",
+                                   decision=d.SetSplit(**st.split.model_dump())),
+                  d.DecisionRecord(id="r2", seq=2, at="2026-10-09T00:00:01Z",
+                                   decision=d.parse_decision(offer["decision"]))])
+    ran = st.model_copy(update={"split": ran.split})
     *_, fit2 = _stages(wide, ran, tmp_path / "nested")
     data2 = fit2.data
     assert data2["nested_offer"] is None
@@ -1505,11 +1518,14 @@ def test_3_every_back_door_to_the_winners_own_score_is_closed_through_the_server
     # (1) a new seed and fold count, no rows held out: the same rows, so the comparison stands.
     _accepted(client, pid, {"kind": "set_split", "holdout": 0.0, "seed": 2, "folds": 4})
     _refused(client, pid, {"kind": "select_models", "models": ["elastic_net"]}, "compared_families_stay")
-    # (4) the nested cross-validation offer's own decision is a set_split: the same.
-    _accepted(client, pid, {"kind": "set_split", "holdout": 0.0, "seed": 2, "folds": 4,
-                            "nested_cv": True})
+    # (4) the nested cross-validation offer's own decision is a changed scheme (P0.6,
+    # ``set_validation``; a split that keeps the draw and changes only the scheme is pointed
+    # there): the same rows.
+    _refused(client, pid, {"kind": "set_split", "holdout": 0.0, "seed": 2, "folds": 4,
+                           "nested_cv": True}, "scheme_is_its_own")
+    _accepted(client, pid, {"kind": "set_validation", "folds": 4, "nested_cv": True})
     _refused(client, pid, {"kind": "select_models", "models": ["linear"]}, "compared_families_stay")
-    _accepted(client, pid, {"kind": "set_split", "holdout": 0.0, "seed": 2, "folds": 4})
+    _accepted(client, pid, {"kind": "set_validation", "folds": 4})
     # (2) a revert of the two-family selection cannot unsee its scores.
     error = _refused(client, pid, {"kind": "revert", "decision_id": two}, "compared_families_stay")
     assert error["exits"][0]["decision"]["models"] == ["linear", "elastic_net"]

@@ -351,10 +351,14 @@ def test_1_the_app_asks_population_or_this_sample_and_records_the_attestation(cl
     assert round(fiber["estimate"], 4) == -0.0414
     assert model["inference"]["covariance"] == "HC3"
 
-    # Under prediction: not asked, and every model says its scores are unweighted.
+    # Under prediction it is asked too (P0.6, crosswalk disagreement 9; ruling 13): whose
+    # performance the scores estimate. These participants': every model says its scores are
+    # unweighted.
     pid = open_project(client, tables["I4"], "LBXCRP", "prediction", DIET_ROLES)
-    skipped = step(client, pid, "survey")
-    assert skipped["status"] == "not_applicable" and "not weighted" in skipped["reason"]
+    assert step(client, pid, "survey")["status"] == "open"
+    options = {o["key"]: o for o in survey_options(client, pid)}
+    assert "design-based cross-validation" in options["population:WTDRD1"]["consequence"]
+    accepted(client, pid, options["sample"]["decision"])
     model = finish(client, pid)
     assert any("Scores are unweighted" in c for c in model["concerns"]), model["concerns"]
 
@@ -384,9 +388,14 @@ def test_1_until_it_is_answered_the_inference_table_is_blocked(client, tables):
     the table is refused with the reason and the way forward until the question is answered
     (block and record, BLUEPRINT §11.3)."""
     pid = open_project(client, tables["I4"], "LBXCRP", "prediction", DIET_ROLES)
+    # Under prediction the survey question is asked too (P0.6): answered there, it says whose
+    # performance the scores estimate, which is not whose estimate inference reports, so once the
+    # purpose is inference it is asked again, with nothing withdrawn by hand.
+    accepted(client, pid, {"kind": "set_survey", "estimand": "sample"})
     finish(client, pid)
     code, body = post(client, pid, {"kind": "set_purpose", "purpose": "inference"})
     assert code == 200, body
+    assert body["state"]["survey"] is None
     assert step(client, pid, "survey")["status"] == "open"
     wait_for(client, pid, {"fit": "fresh"}, timeout=240)
     model = linear_model(client, pid)

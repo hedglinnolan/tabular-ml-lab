@@ -23,7 +23,8 @@ from pydantic import BaseModel, ConfigDict
 # The interview's questions, in asking order (M2_CONTRACT §1): what a finding may route to.
 # Opening the seal is the Router's last step (M2_CONTRACT §12.1).
 QuestionKey = Literal[
-    "lens", "orientation", "target", "event", "task", "follow_up", "purpose", "grain",
+    "lens", "orientation", "target", "event", "task", "follow_up", "design", "purpose",
+    "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "exclusions",
     "missing", "split", "estimand", "adjustment", "time_varying", "energy_adjustment", "form",
     "modification", "causal",
@@ -31,7 +32,8 @@ QuestionKey = Literal[
     "substitution", "open_seal",
 ]
 QUESTION_KEYS: tuple[str, ...] = (
-    "lens", "orientation", "target", "event", "task", "follow_up", "purpose", "grain",
+    "lens", "orientation", "target", "event", "task", "follow_up", "design", "purpose",
+    "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "exclusions",
     "missing", "split", "estimand", "adjustment", "time_varying", "energy_adjustment", "form",
     "modification", "causal",
@@ -41,7 +43,8 @@ QUESTION_KEYS: tuple[str, ...] = (
 # What is taught, in the sequence's order: every question, plus the one card that is not a
 # question — the repairs offered before the outcome.
 TeachingKey = Literal[
-    "lens", "orientation", "repairs", "target", "event", "task", "follow_up", "purpose", "grain",
+    "lens", "orientation", "repairs", "target", "event", "task", "follow_up", "design", "purpose",
+    "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "exclusions",
     "missing", "split", "estimand", "adjustment", "time_varying", "energy_adjustment", "form",
     "modification", "causal",
@@ -49,7 +52,8 @@ TeachingKey = Literal[
     "substitution", "open_seal",
 ]
 TEACHING_KEYS: tuple[str, ...] = (
-    "lens", "orientation", "repairs", "target", "event", "task", "follow_up", "purpose", "grain",
+    "lens", "orientation", "repairs", "target", "event", "task", "follow_up", "design", "purpose",
+    "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "exclusions",
     "missing", "split", "estimand", "adjustment", "time_varying", "energy_adjustment", "form",
     "modification", "causal",

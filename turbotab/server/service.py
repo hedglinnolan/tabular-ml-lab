@@ -11,6 +11,7 @@ import os
 import shutil
 import tempfile
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from collections import OrderedDict
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -61,6 +62,10 @@ SHOWN_UNDER_PREDICTION = "estimates_shown.json"
 LOCK_SHOWN = "lock_shown.json"
 # Decision kinds the server records itself and a client never posts: the analysis-plan lock.
 SYSTEM_KINDS = decisions.SYSTEM_KINDS
+# P0.6: the Router questions TurboTab answers itself once reached, and the slot each writes.
+SLOTS_OF_COMPLETIONS = {"roles": "roles", "split": "split"}
+# What a Router step waits on while TurboTab records its answer itself (P0.6).
+RECORDING = "recording"
 MAX_REMEMBERED_JOBS = 10_000
 
 
@@ -123,6 +128,9 @@ class DecisionContext:
     # (P0.5, ``turbotab/core/sweep.py``).
     quest: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
     triage: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
+    # "Decide now" (crosswalk disagreement 20): the answer asks to be taken ahead of the Router,
+    # which ``sequence.decide_now_refusal`` allows only where its needs are met.
+    early: bool = False
 
 
 def _target_needs_columns(decision: Any, ctx: Any) -> None:
@@ -341,8 +349,15 @@ class ServerBus(EventBus):
         super().__init__()
         self._owners: OrderedDict[str, str] = OrderedDict()
         self._owners_lock = threading.Lock()
+        # P0.6: told of each stage event, so the service records what is due once a stage the
+        # Router waits on is computed. It only schedules work: the engine publishes holding its
+        # own locks.
+        self.on_stage: Callable[[str, dict[str, Any]], None] | None = None
 
     def publish(self, pid: str, event_type: str, data: dict[str, Any]) -> None:
+        hook = self.on_stage
+        if event_type == "stage" and hook is not None:
+            hook(pid, data)
         if event_type == "job" and data.get("job_id"):
             with self._owners_lock:
                 self._owners[str(data["job_id"])] = pid
@@ -476,8 +491,22 @@ class ProjectService:
         self._artifacts: OrderedDict[tuple[str, str, str], Any] = OrderedDict()
         self._frames: OrderedDict[tuple[Any, ...], Any] = OrderedDict()
         self._locking = threading.Lock()  # one analysis-plan lock per project, however many reads
+        # P0.6: one completion at a time, recorded with the answers and when a stage the Router
+        # waits on is computed (the bus's stage events), on the completer's own thread; never by
+        # a read.
+        self._completing = threading.RLock()
+        self._completer = ThreadPoolExecutor(1, thread_name_prefix="turbotab-complete")
+        self._scheduled: set[str] = set()
+        self._scheduled_lock = threading.Lock()
+        self._completion_refused: dict[str, tuple[str, int]] = {}
+        self._closed = False
+        self.bus.on_stage = self._stage_event
 
     def close(self) -> None:
+        with self._scheduled_lock:
+            self._closed = True
+        self.bus.on_stage = None
+        self._completer.shutdown(wait=True, cancel_futures=True)
         self.engine.shutdown()
         if self._owns_runner:
             self.runner.shutdown()
@@ -846,13 +875,104 @@ class ProjectService:
         stages = self.engine.status(pid)
         records = self.log(pid).records()
         state = decisions.fold(records)
+        steps = self.interview(pid, state, stages, records)
         return {
             "summary": self.summary(meta, stages["ingest"]),
             "state": state,
             "decisions": records,
             "stages": stages,
-            "interview": self.interview(pid, state, stages, records),
+            "interview": steps,
         }
+
+    def _completion_due(self, pid: str, state: ProjectState, stages: dict[str, StageStatus],
+                        steps: list[InterviewStep], records: list[Any],
+                        roles: Any = None) -> tuple[str, dict[str, Any]] | None:
+        """P0.6: the answer TurboTab records itself now that the Router reached its question (the
+        display-order rule's second condition: recorded and shown, For the record, with a way to
+        change it), as ``(question, decision)``; None when nothing is due. Pure: it reads the
+        Router's answer, never records.
+
+        * **The roles** (crosswalk disagreement 1): once every predictor's role is settled through
+          the person's own confirmations in Your data (``readings.roles_completion``). While one
+          waits nothing is recorded, and the Router holds at the roles.
+        * **The split under Estimate** (disagreement 5): no rows held out, the scheme set for you
+          (``seal.INFERENCE_SPLIT_REASON``), recorded at the end of Who's in.
+
+        A completion the log refused for this log is not due again until the log changes."""
+        from turbotab.core.interview import first_unanswered
+        from turbotab.core.readings import roles_completion
+
+        first = first_unanswered(steps)
+        if first is None or first.status != "open":
+            return None
+        body: dict[str, Any] | None = None
+        if first.key == "split" and state.purpose == "inference" and state.split is None:
+            body = {"kind": "set_split", "holdout": 0.0, "seed": 0}
+        elif first.key == "roles" and not state.roles:
+            status = stages.get("roles")
+            if roles is None and status is not None and status.status == "fresh" and status.key:
+                roles = self._artifact(pid, "roles", status.key, public=True)
+            body = roles_completion(state, roles) if roles is not None else None
+        if body is None or self._completion_refused.get(pid) == (first.key, len(records)):
+            return None
+        return first.key, body
+
+    def _complete(self, pid: str) -> bool:
+        """Record what is due (``_completion_due``) for ``pid``; True when a record was made. Run
+        with each answer the person records and when a stage the Router waits on is computed,
+        never by a read."""
+        with self._completing:
+            try:
+                self.workspace.get(pid)
+            except ApiError:
+                return False
+            records = self.log(pid).records()
+            state = decisions.fold(records)
+            if state.roles and not (state.purpose == "inference" and state.split is None):
+                return False  # nothing left that TurboTab records itself
+            stages = self.engine.status(pid)
+            steps = self.interview(pid, state, stages, records, recording=False)
+            due = self._completion_due(pid, state, stages, steps, records)
+            if due is None:
+                return False
+            key, body = due
+            try:
+                self.decide(pid, body, system=True, unless_set=SLOTS_OF_COMPLETIONS[key])
+            except Refusal as refused:
+                log.info("%s of %s not completed: %s", key, pid, refused.code)
+                self._completion_refused[pid] = (key, len(records))
+                return False
+            return True
+
+    def _schedule_completion(self, pid: str) -> None:
+        """Check ``pid``'s completions on the completer's thread (a stage the Router waits on was
+        computed). While one is scheduled the Router shows its step as being recorded."""
+        with self._scheduled_lock:
+            if self._closed or pid in self._scheduled:
+                return
+            self._scheduled.add(pid)
+        try:
+            self._completer.submit(self._complete_scheduled, pid)
+        except RuntimeError:  # shut down
+            with self._scheduled_lock:
+                self._scheduled.discard(pid)
+
+    def _complete_scheduled(self, pid: str) -> None:
+        try:
+            while self._complete(pid):  # one completion can bring the next one's question
+                pass
+        except Exception:  # noqa: BLE001 - a completion that fails leaves the question open
+            log.exception("completions of %s", pid)
+        finally:
+            with self._scheduled_lock:
+                self._scheduled.discard(pid)
+
+    def _stage_event(self, pid: str, data: dict[str, Any]) -> None:
+        """A stage was computed: the Router may have reached a question TurboTab answers itself.
+        Only schedules (the engine publishes holding its own locks); the check is the
+        completer's."""
+        if data.get("status") == "fresh":
+            self._schedule_completion(pid)
 
     def readings(self, pid: str) -> dict[str, Any]:
         """The readings the values settled with no question asked ("read from your data",
@@ -909,6 +1029,11 @@ class ProjectService:
                    if ingest.status == "fresh" and ingest.key else None)
         artifacts = ({"usual_intake": self._shown(pid, "usual_intake")}
                      if "dietary" in (state.lens or ()) else {})
+        roles = stages.get("roles")
+        if roles is not None and roles.status == "fresh" and roles.key:
+            # P0.6: the roles TurboTab recorded return when a proposal moves after the person
+            # confirmed it (``quest.ChangedSince``).
+            artifacts["roles"] = self._artifact(pid, "roles", roles.key, public=True)
         cache = self.workspace.cache_dir(pid)
         shown_at: dict[str, datetime | None] = {}
         for name, status in stages.items():
@@ -931,8 +1056,10 @@ class ProjectService:
             return None
 
     def interview(self, pid: str, state: ProjectState, stages: dict[str, StageStatus],
-                  records: list[Any]) -> list[InterviewStep]:
-        """The Router's answer (turbotab/core/interview.py) for this project now."""
+                  records: list[Any], *, recording: bool = True) -> list[InterviewStep]:
+        """The Router's answer (turbotab/core/interview.py) for this project now. ``recording``:
+        a question TurboTab is recording itself on the completer's thread (P0.6) waits on that
+        record (``waiting_on`` ``RECORDING``), so no client answers it in the meantime."""
         artifacts: dict[str, Any] = {}
         # What the Router reads, when fresh (WP17: the roles stage's proposals name the groupings
         # the cluster question asks about; WP18: the proposals for the ask card, whose "read from
@@ -970,7 +1097,17 @@ class ProjectService:
         from turbotab.core.ask import AskContext
 
         ask = AskContext(state, artifacts, column_info=column_info, store=store)
-        return route(state, stages, artifacts, records, ask=ask)
+        steps = route(state, stages, artifacts, records, ask=ask)
+        if not recording:
+            return steps
+        with self._scheduled_lock:
+            scheduled = pid in self._scheduled
+        due = (self._completion_due(pid, state, stages, steps, records, artifacts.get("roles"))
+               if scheduled else None)
+        if due is None:
+            return steps
+        return [s.model_copy(update={"status": "waiting", "waiting_on": [RECORDING]})
+                if s.key == due[0] else s for s in steps]
 
     # ── deciding ──
 
@@ -1018,12 +1155,23 @@ class ProjectService:
             triage=lambda: self.triage(pid),
         )
 
-    def decide(self, pid: str, decision: Any, *, system: bool = False) -> dict[str, Any]:
+    def decide(self, pid: str, decision: Any, *, system: bool = False,
+               early: bool = False, unless_set: str | None = None) -> dict[str, Any]:
         """Validate and record ``decision``. ``system``: recorded by the server itself (the
-        analysis-plan lock, when an estimate is first displayed), never by a client."""
+        analysis-plan lock, when an estimate is first displayed; P0.6's completions), never by a
+        client. ``early``: "Decide now" (crosswalk disagreement 20), answered ahead of the Router
+        where its card is computed and the answers it reads are in; the record names the question
+        it was decided ahead of."""
         self.workspace.get(pid)
-        ctx = replace(self.decision_context(pid), sealed_scores=lambda: self._fresh_sealed_scores(pid))
+        ctx = replace(self.decision_context(pid), early=early,
+                      sealed_scores=lambda: self._fresh_sealed_scores(pid))
         parsed = self._validate(pid, decision, ctx)  # raises Refusal
+        ahead_of = None
+        if early:
+            from turbotab.core.sequence import decided_ahead_of, question_of
+
+            question = question_of(parsed.kind)
+            ahead_of = decided_ahead_of(question, ctx.interview()) if question else None
         if parsed.kind in SYSTEM_KINDS and not system:
             # Audit WP16 (the routing gate's p14): a lock posted as a decision is refused. P0.8:
             # the plan locks when Fit is pressed (``press_fit``), a job command, not a decision.
@@ -1035,24 +1183,33 @@ class ProjectService:
                 "as made after the estimates were seen.",
                 exits=[{"label": "Answer the remaining questions, then press Fit",
                         "decision": None}])
+        by = {"recorded_by": "turbotab" if system else "you", "early": ahead_of,
+              "unless_set": unless_set}
         if system or self._unseen_lock(pid, self.log(pid).records()) is None:
-            record = self._append(pid, ctx, parsed)
+            record = self._append(pid, ctx, parsed, **by)
         else:
             with self._locking:  # Cancel and the first estimate served wait for it
-                record = self._append(pid, ctx, parsed, client=True)
+                record = self._append(pid, ctx, parsed, client=True, **by)
         self.bus.publish(pid, "decision", record.model_dump(mode="json"))
         self.engine.on_decision(pid)
         self._restart_stopped(pid, parsed.kind)
         if parsed.kind == "set_purpose" and parsed.purpose == "inference":
             self._lock_after_prediction(pid)
+        if not system:
+            # P0.6: what this answer makes due is recorded with it, before the answer returns.
+            while self._complete(pid):
+                pass
         return self.view(pid)
 
-    def _append(self, pid: str, ctx: DecisionContext, parsed: Any, client: bool = False) -> Any:
+    def _append(self, pid: str, ctx: DecisionContext, parsed: Any, client: bool = False,
+                **by: Any) -> Any:
         """Record ``parsed``. The log leads the sentence with what had been seen: held-out scores,
         or the inference estimates (``decisions.disclose``; audit WP16). A client's decision made
         under a lock no estimate has been served under was not made after the estimates were seen
         (calm/FOUNDATION §7): a change to the plan withdraws that lock first, so Fit is asked for
-        again; any other decision is recorded unmarked, and the lock stands."""
+        again; any other decision is recorded unmarked, and the lock stands. ``by``: who recorded
+        it, the question a "Decide now" answer was decided ahead of, and the slot that must still
+        be empty (``DecisionLog.append``)."""
         log = self.log(pid)
         records = log.records()
         seen: bool | None = None
@@ -1067,7 +1224,7 @@ class ProjectService:
         facts = SentenceFacts(ctx, parsed, records)
         return log.append(  # raises Refusal for a revert it cannot make
             parsed, sentence=lambda d, before: voice.sentence_for(d, before, facts),
-            after_estimates=seen)
+            after_estimates=seen, **by)
 
     def _validate(self, pid: str, decision: Any, ctx: DecisionContext) -> Any:
         """``decisions.validate``; a refusal that quotes cross-validated scores (naming the final
