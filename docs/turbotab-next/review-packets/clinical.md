@@ -390,6 +390,7 @@ Every lens offers these; their full contracts are in the methods reference.
 | Multiple imputation compatible with the analysis model | `multiple_imputation_compatible` | in_fold | model | `set_missing` |
 | Passive multiple imputation (chained equations, terms derived per copy) | `multiple_imputation_passive` | in_fold | model | `set_missing` |
 | Single-level multiple imputation on clustered rows | `multiple_imputation_single_level` | in_fold | model | `set_missing` |
+| Subgroups of similar people (cluster analysis) | `subgroups` | in_fold | training_fold | not declared |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) | `exposure_transform` | in_fold | training_fold | not declared |
 | The functional form of a continuous exposure or confounder | `functional_form` | in_fold | training_fold | `set_exposure_form` |
 | Splines for every continuous predictor, knots by a stated rule | `spline_rule` | in_fold | training_fold | `set_levers` |
@@ -603,6 +604,7 @@ flowchart LR
   n_rubins_rules(["rubins_rules"]):::named
   n_combined_copies(["combined_copies"]):::named
   n_regression_calibration["Regression calibration from repeated 24-hour recalls"]:::other
+  n_subgroups["Subgroups of similar people (cluster analysis)"]:::other
   n_every_family_and_display(["every family and display"]):::named
   n_families_with_no_design_based_estimator(["families with no design-based estimator"]):::named
   n_the_substitution_band_from_row_resampling(["the substitution band from row resampling"]):::named
@@ -626,6 +628,7 @@ flowchart LR
   n_imputed_copies_pooled -->|implies| n_rubins_rules
   n_imputed_copies_pooled -.->|conflicts| n_combined_copies
   n_regression_calibration -->|implies| n_survey_population
+  n_subgroups -->|implies| n_survey_population
   n_survey_population -->|implies| n_every_family_and_display
   n_survey_population -.->|conflicts| n_families_with_no_design_based_estimator
   n_survey_population ==>|invalidates| n_the_substitution_band_from_row_resampling
@@ -666,6 +669,7 @@ The relations, with the sentence the app states when each fires:
 | `imputed_copies_pooled` | implies | `rubins_rules` | any option; when imputed copies kept as records, under inference | inference | each copy analyzed with its own outcome and pooled by Rubin's rules |
 | `multiclass_substitution` | implies | `survey_population` | any option; when the survey answer "the surveyed population" | inference | Each class's curve comes from the survey-weighted multinomial fit, averaged with the weights, and its band is Taylor linearization over the survey design; refits on bootstrap resamples of rows are not drawn. |
 | `regression_calibration` | implies | `survey_population` | any option; when the surveyed-population answer | inference | The calibration and the outcome model are survey-weighted, and PSUs are resampled within strata (Rao & Wu 1988, J Am Stat Assoc 83:231); with no stratum of two PSUs it is blocked and recorded, the sample-only attestation its exit. |
+| `subgroups` | implies | `survey_population` | `kmeans_silhouette`; when the surveyed-population answer | prediction, inference | With survey weights, k-means weighs each person by their weight in the standardization, its objective and the silhouette, none changed by the weights' scale, and the stability uses the rescaled bootstrap: PSUs within strata, the weights rescaled (Rao, Wu & Yue 1992, Surv Methodol 18:209). |
 | `survey_cox` | implies | `adjusted Wald F for joint tests` | any option | inference | A spline's overall and nonlinear tests are adjusted Wald F tests on (q, d − q + 1) degrees of freedom (Korn & Graubard 1990). |
 | `survey_cox` | implies | `design-based intervals` | any option | inference | Every interval is design-based: Taylor linearization over the strata and PSUs, on t with the design's degrees of freedom (the PSUs minus the strata that hold the analysis rows). |
 | `survey_cox` | implies | `lonely PSUs centered` | any option | inference | A stratum with a single PSU is centered at the mean PSU total of the strata that hold analysis rows (R survey's lonely.psu "adjust"), and the table names it. |
@@ -725,6 +729,7 @@ The option each method offers first for each purpose, its rung, and the reason i
 | Multiple imputation compatible with the analysis model (`multiple_imputation_compatible`) | refused under prediction (`compatible`): Not here: it uses the outcome, which a new row does not have | `compatible` (recommended): Sound: SMC-FCS where the model holds a spline, a log, a ratio or a logistic or Cox outcome, chained equations where it is linear in the imputed values (Bartlett et al. 2015) |
 | Passive multiple imputation (chained equations, terms derived per copy) (`multiple_imputation_passive`) | refused under prediction (`passive`): Not here: it uses the outcome, which a new row does not have | `passive` (blocked until recorded): Unsound with a declared nonlinear term: passive imputation draws each value from a model linear in it and only then derives the declared nonlinear terms, so the curvature and the nonlinearity tests would be biased toward the null (Bartlett et al. 2015) |
 | Single-level multiple imputation on clustered rows (`multiple_imputation_single_level`) | refused under prediction (`single_level`): Not here: it uses the outcome, which a new row does not have | `single_level` (blocked until recorded): Unsound on clustered rows: imputing clustered rows one at a time gives a unit's time-invariant values different draws on its different rows and erases the correlation within units (Lüdtke, Robitzsch & Grund 2017) |
+| Subgroups of similar people (cluster analysis) (`subgroups`) | `kmeans_silhouette` (recommended): Sound as a feature when refitted inside each training fold; numbers only; survey weights, passed to each fold's fit as sample weights, enter its standardization, objective and silhouette | `kmeans_silhouette` (available): Under inference the subgroups are described beside the analysis (sizes, profiles, stability); a difference in the outcome between subgroups found in the same data is not a confirmatory test; sound as a description |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | ranked by the data: §3.4 | ranked by the data: §3.4 |
 | The functional form of a continuous exposure or confounder (`functional_form`) | `spline` (recommended): Sound: nests the line | ranked by the data: §3.4 |
 | Splines for every continuous predictor, knots by a stated rule (`spline_rule`) | `rule` (recommended): Sound: the rule is stated in advance and the resampling repeats it | not offered under inference: Not offered: under inference each form is declared before the estimates (set_exposure_form), never chosen by the data |

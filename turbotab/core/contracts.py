@@ -258,6 +258,8 @@ DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.export.contract",
     # D5: Bland–Altman agreement (engine only; D1 wires it into Describe)
     "turbotab.core.methods.agreement",
+    # D4: subgroups of similar people (cluster analysis), an engine method core
+    "turbotab.core.methods.subgroups",
 )
 
 

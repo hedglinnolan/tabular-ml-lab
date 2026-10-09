@@ -33,5 +33,7 @@ clubSandwich
 glmnet
 BlandAltmanLeh
 SimplyAgree
+mclust
+fpc
 sva
 limma
