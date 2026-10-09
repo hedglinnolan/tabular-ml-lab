@@ -3,8 +3,8 @@
 A :class:`~turbotab.core.models.base.Source` names one of these keys, and ``register_family``
 refuses a key that is not here. Each entry is MODEL_FAMILY_CONTRACT §7's verified reference,
 copied as §7 lists it; a source joins only once §7 lists it, and only when a declaration cites it.
-SIZING X4's citation registry (``refs.bib``, every DOI checked against Crossref) replaces this list
-when it lands.
+Each key is also a record of SIZING X4's citation registry (:mod:`turbotab.core.export.citations`,
+every DOI checked against Crossref), under the same key; ``test_citations`` holds them together.
 """
 from __future__ import annotations
 

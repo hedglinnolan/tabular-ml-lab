@@ -12,5 +12,7 @@ reproduces the model matrix and the estimates").
 * ``checklists`` — STROBE-nut and TRIPOD+AI, quoted from their sources and filled from the record;
 * ``matrix`` — the model matrix's hashes; ``record`` — the provenance record;
 * ``bundle`` — the zip; ``replay`` — ``python -m turbotab.replay``;
-* ``contract`` — the export's method contract (BLUEPRINT §13).
+* ``contract`` — the export's method contract (BLUEPRINT §13);
+* ``citations`` — the citation registry and ``refs.bib`` (SIZING X4), re-verified against
+  Crossref by ``python -m turbotab.core.export.citations_check``.
 """
