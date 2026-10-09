@@ -16833,7 +16833,8 @@
         },
         "type": "object",
         "required": [
-          "key"
+          "key",
+          "where"
         ],
         "title": "Source",
         "description": "A source a declaration cites: a key into ``models.sources.SOURCES`` (MODEL_FAMILY_CONTRACT\n§7's verified list, until SIZING X4's citation registry), and where in it."

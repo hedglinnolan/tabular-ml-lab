@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Callable, Literal, Mapping, Protocol, Sequence, get_args, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, with_config
 
 from turbotab.core.decisions import Lens, Purpose, Task
 
@@ -86,6 +86,9 @@ SOLVABLE: tuple[str, ...] = ()  # the solvable-settings harness (C13, MC-14) hol
 REVIEW_LENSES = ("shared", *get_args(Lens))
 
 
+# Served inside FamilyInfo, whose response always carries ``where``: the schema says so itself,
+# since pydantic 2.14 passes FamilyInfo's setting down to the dataclass and 2.13 does not.
+@with_config(ConfigDict(json_schema_serialization_defaults_required=True))
 @dataclass(frozen=True)
 class Source:
     """A source a declaration cites: a key into ``models.sources.SOURCES`` (MODEL_FAMILY_CONTRACT
