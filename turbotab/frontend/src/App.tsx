@@ -30,6 +30,29 @@ const LAB_SCREENS: Partial<Record<LabRoute, LazyExoticComponent<ComponentType>>>
         "m3-lab": lazy(() =>
           import("./screens/M3LabScreen").then((m) => ({ default: m.M3LabScreen })),
         ),
+        "methods-protos": lazy(() =>
+          import("./explore/methods-shared/Chooser").then((m) => ({ default: m.MethodsChooser })),
+        ),
+        "methods-document": lazy(() =>
+          import("./explore/methods-document/MethodsDocScreen").then((m) => ({
+            default: m.MethodsDocScreen,
+          })),
+        ),
+        "methods-questlog": lazy(() =>
+          import("./explore/methods-questlog/QuestScreen").then((m) => ({ default: m.QuestScreen })),
+        ),
+        "methods-map": lazy(() =>
+          import("./explore/methods-map/MethodsMapScreen").then((m) => ({
+            default: m.MethodsMapScreen,
+          })),
+        ),
+        // The calm structures (static build: calm.html); here the chooser links stay in /lab/calm.
+        calm: lazy(() => import("./explore/calm-kit/LabCalm").then((m) => ({ default: m.LabCalmChooser }))),
+        "calm-qa": lazy(() => import("./explore/calm-qa/Screen").then((m) => ({ default: m.Screen }))),
+        "calm-paper": lazy(() => import("./explore/calm-paper/Screen").then((m) => ({ default: m.Screen }))),
+        "calm-quest": lazy(() => import("./explore/calm-quest/Screen").then((m) => ({ default: m.Screen }))),
+        "calm-map": lazy(() => import("./explore/calm-map/Screen").then((m) => ({ default: m.Screen }))),
+        "calm-kit": lazy(() => import("./explore/calm-kit/KitDemo").then((m) => ({ default: m.KitDemo }))),
       }
     : {};
 

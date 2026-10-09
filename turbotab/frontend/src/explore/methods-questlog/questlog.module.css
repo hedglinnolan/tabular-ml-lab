@@ -1,0 +1,1636 @@
+/*
+ * Quest log: the methods section as an objective list (left rail), the current objective as one
+ * focused card (center), the canvas (right). Tokens only (DESIGN_LANGUAGE §02); serif is the
+ * app's voice, sans the user's controls, mono the data (§03).
+ */
+
+.screen {
+  min-height: 100vh;
+  background: var(--ground);
+}
+
+.window {
+  display: grid;
+  grid-template-columns: 288px minmax(0, 1fr) minmax(0, 560px);
+  max-width: 1440px;
+  margin: 0 auto;
+  height: calc(100vh - var(--header-h) - var(--banner-h));
+}
+
+.window[data-doc] {
+  grid-template-columns: 288px minmax(0, 1fr) minmax(0, 640px);
+}
+
+/* ── the rail: the objective list ─────────────────────────────────────────── */
+
+.rail {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-right: 1px solid var(--line);
+  padding: 16px 14px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.railHead {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.kicker {
+  font-family: var(--sans);
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kickerNow {
+  composes: kicker;
+  color: var(--accent);
+}
+
+.railTitle {
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+}
+
+.bar {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+}
+
+.tick {
+  flex: 1 1 0;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.tick[data-tier="stated"] {
+  background: var(--ok);
+}
+
+.tick[data-tier="engine"] {
+  background: var(--faint);
+}
+
+.tick[data-tier="asked"] {
+  background: var(--accent);
+}
+
+.tick[data-tier="author"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--faint);
+}
+
+.tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tally b {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.tallyOpen b {
+  color: var(--accent);
+}
+
+.sections {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.section {
+  border-radius: 8px;
+}
+
+.sectionButton {
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  padding: 6px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.sectionButton:hover {
+  background: var(--surface-2);
+}
+
+.sectionButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.section[data-current] > .sectionButton {
+  background: var(--accent-tint);
+}
+
+.sectionName {
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+}
+
+.section[data-state="waiting"] .sectionName {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.badge {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+.badgeOpen {
+  composes: badge;
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
+.badgeWait {
+  composes: badge;
+  color: var(--muted);
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+.badgeDone {
+  composes: badge;
+  color: var(--ok);
+  font-weight: 600;
+  padding-right: 2px;
+}
+
+.badgeYours {
+  composes: badge;
+  color: var(--muted);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.glyph {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.sentenceLine {
+  margin: 0 6px 6px 32px;
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.sentenceLine :global(.v) {
+  font-size: 10.5px;
+}
+
+.waitLine {
+  margin: 0 6px 6px 32px;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.objectives {
+  list-style: none;
+  margin: 2px 0 8px 32px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.objective {
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 7px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.objective:hover {
+  background: var(--surface-2);
+}
+
+.objective[data-now] {
+  background: var(--surface);
+  box-shadow: inset 2px 0 0 var(--accent), var(--shadow);
+  font-weight: 600;
+}
+
+.objective[data-tier="waiting"],
+.objective[data-tier="silent"] {
+  color: var(--muted);
+}
+
+.objMark {
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1;
+  text-align: center;
+}
+
+.objMark[data-tier="stated"] {
+  color: var(--ok);
+}
+
+.objMark[data-tier="engine"] {
+  color: var(--faint);
+}
+
+.objMark[data-tier="asked"] {
+  color: var(--accent);
+}
+
+.objMark[data-tier="waiting"],
+.objMark[data-tier="author"] {
+  color: var(--faint);
+}
+
+.objNote {
+  font-size: 11.5px;
+  color: var(--faint);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.objNoteOpen {
+  composes: objNote;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.railFoot {
+  position: sticky;
+  bottom: -20px;
+  margin: auto -14px -20px -20px;
+  padding: 10px 14px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  background: var(--ground);
+}
+
+.railButton {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.railButton:hover {
+  border-color: var(--accent);
+}
+
+.railButtonPrimary {
+  composes: railButton;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.key {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  opacity: 0.7;
+}
+
+/* ── the center: the current objective ─────────────────────────────────────── */
+
+.center {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 26px 28vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.crumb {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ref {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lift);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  padding: 18px 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.draft {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: var(--fs-question);
+  line-height: 1.45;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+.draftMuted {
+  color: var(--muted);
+}
+
+.blank {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1.5px dashed var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.blankFilled {
+  composes: blank;
+  border-style: solid;
+  background: var(--accent-tint);
+}
+
+.phrase {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1.5px;
+  cursor: pointer;
+}
+
+.phraseOpen {
+  background: var(--accent-tint);
+  box-shadow: 0 0 0 2px var(--accent-tint);
+  border-radius: 3px;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 4px;
+  text-decoration-thickness: 2px;
+}
+
+.why {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.subhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.subTitle {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hint {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+/* rows of a slot (readings, groups, options) */
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.row {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 7px 10px 7px 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: start;
+  background: var(--surface);
+}
+
+.row[data-focus] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.row[data-settled] {
+  border-color: var(--line-soft);
+  border-left: 3px solid var(--ok);
+  background: var(--surface);
+}
+
+.rowMain {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rowQ {
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.evidence {
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.evidence :global(.v) {
+  font-size: 10.5px;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.conf {
+  display: inline-block;
+  vertical-align: 2px;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.conf[data-level="low"],
+.conf[data-level="medium"] {
+  border-color: var(--warn-line);
+  color: var(--warn);
+  background: var(--warn-tint);
+}
+
+.rowActions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.btn {
+  all: unset;
+  box-sizing: border-box;
+  font-family: var(--sans);
+  font-size: var(--fs-control);
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  border-color: var(--accent);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btnPrimary {
+  composes: btn;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.btnQuiet {
+  composes: btn;
+  border-color: transparent;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chips :global(.v) {
+  font-size: 11px;
+}
+
+.attention {
+  position: relative;
+}
+
+.attention::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.group {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.groupFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.group[data-focus] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.groupHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.groupName {
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.derived {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-ink);
+}
+
+.triad {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.q3 {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.q3Label {
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.25;
+}
+
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+  align-self: flex-start;
+}
+
+.segBtn {
+  all: unset;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  min-width: 18px;
+  text-align: center;
+  padding: 1px 7px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.segBtn + .segBtn {
+  border-left: 1px solid var(--line);
+}
+
+.segBtn[aria-pressed="true"] {
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+}
+
+.colRows {
+  display: grid;
+  grid-template-columns: 136px repeat(3, minmax(0, 1fr));
+  gap: 4px 8px;
+  align-items: center;
+}
+
+.colHead {
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+/* options of a phrase or a sub-slot */
+
+.options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.option {
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: baseline;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.option:hover,
+.option[data-focus] {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+
+.option[data-refused] {
+  cursor: default;
+}
+
+.option[data-refused] .optionLabel {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--faint);
+}
+
+.optionLabel {
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.optionWhy {
+  grid-column: 2 / 4;
+  font-family: var(--serif);
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.optionTag {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.optionTagNow {
+  composes: optionTag;
+  color: var(--ok);
+}
+
+.optionTagGuess {
+  composes: optionTag;
+  color: var(--accent-ink);
+}
+
+.radio {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--faint);
+  align-self: center;
+}
+
+.radio[data-on] {
+  border-color: var(--accent);
+  background: radial-gradient(var(--accent) 45%, transparent 50%);
+}
+
+.radio[data-recorded] {
+  border-color: var(--ok);
+  background: radial-gradient(var(--ok) 45%, transparent 50%);
+}
+
+.pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pickChip {
+  all: unset;
+  box-sizing: border-box;
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.pickChip:hover,
+.pickChip[data-focus] {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+
+.pickChip[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  background: var(--accent-tint);
+}
+
+.pickLabel {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  color: var(--muted);
+  margin: 4px 0 2px;
+}
+
+.slotGrid {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 10px 14px;
+  align-items: start;
+}
+
+.slotName {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+  padding-top: 7px;
+}
+
+/* teaching: first encounter in full, later encounters condensed */
+
+.teach {
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.teachHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.teachNew {
+  font-family: var(--sans);
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.teachTerm {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.teachBody {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.teachMore {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.concepts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.concept {
+  all: unset;
+  font-family: var(--serif);
+  font-size: 13.5px;
+  color: var(--ink);
+  text-decoration: underline dotted var(--muted);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.concept[aria-expanded="true"] {
+  text-decoration-color: var(--accent);
+}
+
+.conceptCard {
+  border-left: 2px solid var(--line);
+  padding: 4px 0 4px 10px;
+  font-family: var(--serif);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.conceptCard small {
+  display: block;
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--faint);
+  margin-top: 3px;
+}
+
+/* the unlocked block confirm */
+
+.unlock {
+  border-radius: var(--radius);
+  border: 1px solid var(--accent);
+  background: var(--accent-tint);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.unlockHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.unlockTitle {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.settles {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px 10px;
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 13.5px;
+  align-items: baseline;
+}
+
+.settles dt {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.settles dd {
+  margin: 0;
+}
+
+.receipt {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+  border-left: 3px solid var(--ok);
+  padding: 2px 0 2px 10px;
+}
+
+.receipt :global(.v) {
+  font-size: 11px;
+}
+
+.next {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px dashed var(--line);
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.next b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.footNote {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--faint);
+}
+
+/* ── the document ──────────────────────────────────────────────────────────── */
+
+.doc {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 68ch;
+}
+
+.docHead {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.docTitle {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.docSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.docSectionHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.docSectionTitle {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.docPara {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.docPara :global(.v) {
+  font-size: 11.5px;
+}
+
+.docEngine {
+  color: var(--muted);
+}
+
+.docSlot {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px dashed var(--faint);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.docYours {
+  display: block;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  border: 1px dashed var(--faint);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.docYours b {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.docSlotOpen {
+  composes: docSlot;
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.fold {
+  all: unset;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.locked {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--ok-tint);
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.lockedTag {
+  font-family: var(--sans);
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ok);
+  white-space: nowrap;
+}
+
+/* ── the canvas ────────────────────────────────────────────────────────────── */
+
+.canvas {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 22px 20px 18px;
+  border-left: 1px solid var(--line);
+}
+
+.composed {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--faint);
+  margin: 0;
+}
+
+.canvas [data-testid="player"] {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.estimandLine {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.resCard {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.resTitle {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.t2 {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--sans);
+  font-size: 12.5px;
+}
+
+.t2 th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.t2 td {
+  padding: 6px 6px;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: top;
+}
+
+.t2 td.num {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.t2 th.num {
+  text-align: right;
+}
+
+.t2 tr[data-primary] td {
+  font-weight: 700;
+  background: var(--accent-tint);
+}
+
+.t2Adj {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.caption {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.caption :global(.v) {
+  font-size: 10.5px;
+}
+
+.spec {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.specAxis {
+  stroke: var(--line);
+}
+
+.specZero {
+  stroke: var(--muted);
+  stroke-dasharray: 3 3;
+}
+
+.specCi {
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.specDot {
+  fill: var(--ink);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.specPrimary .specCi {
+  stroke: var(--accent);
+}
+
+.specPrimary .specDot {
+  fill: var(--accent);
+}
+
+.specLabel {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  fill: var(--ink);
+}
+
+.specSub {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  fill: var(--muted);
+}
+
+.specNum {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  fill: var(--muted);
+}
+
+.specTick {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--faint);
+}
+
+.appendix {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+/* ── narrow (1024): the rail keeps its objectives, the canvas narrows ──────── */
+
+@media (max-width: 1180px) {
+  .window,
+  .window[data-doc] {
+    grid-template-columns: 236px minmax(0, 1fr) minmax(0, 400px);
+  }
+  .center {
+    padding: 14px 16px 28vh;
+  }
+  .rail {
+    padding: 12px 10px 14px 14px;
+  }
+  .sentenceLine {
+    -webkit-line-clamp: 1;
+  }
+  .colRows {
+    grid-template-columns: 104px repeat(3, minmax(0, 1fr));
+  }
+  .triad {
+    grid-template-columns: 1fr;
+  }
+  .canvas {
+    padding: 12px 14px 16px 12px;
+  }
+}
+
+/* ── phone (≤ 900): one column, the quest log above its card, the canvas below ─
+   Three fixed columns cannot share 390px: the card, where every objective is answered, would get
+   none. The rail keeps the whole list in its own scroll so the card stays near the top. */
+
+@media (max-width: 900px) {
+  .window,
+  .window[data-doc] {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+  .rail {
+    max-height: 42vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 12px 16px;
+  }
+  .center {
+    overflow: visible;
+    padding: 14px 16px 24px;
+  }
+  .canvas {
+    overflow-x: auto;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 12px 16px 40px;
+  }
+  /* Table 2 scrolls in its own box; its caption and buttons keep the card's width. */
+  .t2 {
+    display: block;
+    overflow-x: auto;
+  }
+  .footActions {
+    flex-wrap: wrap;
+  }
+}
+
+/* sub-slots as side-by-side option cards (effect, contrast, measure) */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px;
+}
+
+.optCard {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.optCard[data-on] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: var(--accent-tint);
+}
+
+.optCard[data-refused] {
+  cursor: default;
+  border-style: dashed;
+}
+
+.optCard[data-refused] .optionLabel {
+  color: var(--muted);
+}
+
+.optHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.optWhy {
+  font-family: var(--serif);
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.answer {
+  white-space: nowrap;
+}
+
+.answer b {
+  font-weight: 700;
+  color: var(--accent-ink);
+  padding: 0 5px;
+  border-radius: 5px;
+  background: var(--accent-tint);
+  margin-left: 3px;
+}
+
+/* ── the walk: controls that record, and what they disable ─────────────────── */
+
+.btn:disabled,
+.btnPrimary:disabled,
+.btnQuiet:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn:disabled:hover {
+  border-color: var(--line);
+}
+
+.headActions,
+.footActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A multi-select option's box (the screens beside the primary, the model families). */
+.check {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  border: 1.5px solid var(--faint);
+  align-self: center;
+}
+
+.check[data-on] {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--surface);
+}
+
+.check[data-recorded] {
+  border-color: var(--ok);
+  background: var(--ok);
+  box-shadow: inset 0 0 0 2px var(--surface);
+}
+
+.option:focus-visible,
+.optCard:focus-visible,
+.pickChip:focus-visible,
+.segBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The unguessed covariates: each answer the scenario records, its three questions in a row. */
+.asked {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0 2px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.asked .colRows {
+  grid-template-columns: max-content max-content;
+  justify-content: start;
+  column-gap: 14px;
+}
+
+.resFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.resFoot .footNote {
+  flex: 1 1 220px;
+}
+
+/* The field's guess beside a chip: suggested, never pre-selected. */
+.guessDot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+
+/* A stated phrase in the methods section opens its slot. */
+button.phrase {
+  all: unset;
+  display: inline;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1.5px;
+}
+
+button.phrase:hover {
+  background: var(--accent-tint);
+  border-radius: 3px;
+}
+
+button.phrase:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.objective[data-objective] .objMark {
+  color: var(--accent);
+}
+
