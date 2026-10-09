@@ -213,3 +213,23 @@ def test_opening_the_seal_is_the_last_step_once_the_fit_is_fresh():
     # behind an unanswered question it waits on that question, like any other
     early = _by_key(route(ProjectState(**{**base, "models": None}), _stages()))
     assert early["open_seal"].status == "waiting" and early["open_seal"].waiting_on[0] == "models"
+
+
+def test_no_step_waits_on_a_fit_that_failed_or_was_stopped():
+    """The zero-row crash: the seal's step waited for good on a fit that had failed (its design
+    handed no rows). A failed or stopped fit holds no step back, as any other stage: the step
+    opens, and opening says why it cannot be taken; a fit on its way is still waited for."""
+    base = dict(lens=["dietary"], target="hba1c", task="regression", purpose="prediction",
+                grain=ONE_ROW, roles=DIET_ROLES, exclusions=[], missing="impute",
+                split={"holdout": 0.2}, energy_adjustment={"method": "none"}, models=["linear"])
+    seal = ProjectState(**base, substitution={"donor": "fat_g", "recipient": "carbohydrate_g",
+                                              "step_kcal": 100})
+    for failed in (_stages(fit="error"), _stages(design="error", fit="error")):
+        step = _by_key(route(seal, failed))["open_seal"]
+        assert step.status == "open" and step.waiting_on == []
+    stopped = _stages()
+    stopped["fit"] = {"status": "stale", "cancelled": True}
+    assert _by_key(route(seal, stopped))["open_seal"].status == "open"
+    assert _by_key(route(seal, _stages(fit="running")))["open_seal"].waiting_on == ["fit"]
+    substitution = _by_key(route(ProjectState(**base), _stages(fit="error")))["substitution"]
+    assert substitution.status == "open" and substitution.waiting_on == []

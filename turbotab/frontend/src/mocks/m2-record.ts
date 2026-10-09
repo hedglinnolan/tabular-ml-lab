@@ -25,7 +25,7 @@ import type {
 } from "../api/schema";
 import { rng, type MockColumn, type MockDataset } from "./datasets";
 import type { MockProject } from "./db";
-import { liveWriters } from "./m1-router";
+import { holdsBack, liveWriters } from "./m1-router";
 import { columnInfo, findColumn, histogram, isNumericDtype, nMissing, nUnique } from "./stats";
 
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
@@ -871,7 +871,8 @@ export function m2Mock(foldOf: (records: DecisionRecord[]) => ProjectState): M2M
         }
         return { ...next, deferred_findings: held.get(st.key) ?? [] };
       });
-      // §12.1: the Router's last step is opening the seal, once a fit is fresh.
+      // §12.1: the Router's last step is opening the seal, once a fit is fresh; a fit that failed
+      // or was stopped holds it no longer, and opening it says why (fit_failed).
       const opened = p.records.find((r) => r.decision.kind === "open_seal");
       const firstUnanswered = out.find(
         (st) => st.key !== "open_seal" && (st.status === "open" || st.status === "waiting"),
@@ -911,7 +912,7 @@ export function m2Mock(foldOf: (records: DecisionRecord[]) => ProjectState): M2M
             followup: null,
             ask: null,
           };
-        if (stages.fit?.status !== "fresh")
+        if (holdsBack(stages.fit))
           return {
             key,
             status: "waiting",
@@ -1009,6 +1010,12 @@ export function m2Mock(foldOf: (records: DecisionRecord[]) => ProjectState): M2M
             return refuse(
               "nothing_sealed",
               "Every row trains under cross-validation alone, so there are no held-out rows to open.",
+            );
+          if (stages.fit?.status === "error" || stages.fit?.cancelled)
+            return refuse(
+              "fit_failed",
+              "The models were not fitted for the current answers. The held-out rows open only on a finished, current fit.",
+              [{ label: "Change the answer behind it, or run the fit again", decision: null }],
             );
           if (stages.fit?.status !== "fresh")
             return refuse(

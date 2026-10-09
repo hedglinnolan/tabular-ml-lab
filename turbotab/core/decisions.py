@@ -5303,3 +5303,6 @@ from turbotab.core import time_varying as _time_varying  # noqa: E402,F401
 # refusals, completions, sentences and contracts.
 from turbotab.core.methods import exposure_form as _exposure_form  # noqa: E402,F401
 from turbotab.core.methods import interaction as _interaction  # noqa: E402,F401
+# Rows enough to analyze: an answer that would leave fewer rows than the design needs is refused
+# with what removes them (registered for every kind, so last: every kind is known by then).
+from turbotab.core import row_floor as _row_floor  # noqa: E402,F401

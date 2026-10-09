@@ -468,6 +468,11 @@ def design_stage(ctx: StageContext) -> Bundle:
     inference = state.purpose == "inference"
     design_ids = assignment.index.to_numpy() if inference else train_ids
     rows_word = "analyzed rows" if inference else "training rows"
+    if not len(design_ids):
+        # The cohort refuses too few rows with what removed them (``core.row_floor``); never
+        # scikit-learn's "Found array with 0 sample(s)" from a design handed none.
+        raise ValueError(f"There are no {rows_word} to build the models on; the row flow says "
+                         f"which answers removed them.")
     adj = state.energy_adjustment
     ctx.progress(0.05, f"Reading the {rows_word}")
     y_rows = None
@@ -475,6 +480,17 @@ def design_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.methods.batch import design_refusal as batch_refusal
 
     with open_store(ctx) as store:
+        # One value of the outcome on these rows is said here, in plain words (the fit failed on
+        # it with an IndexError); recorded answers that leave it are refused first
+        # (``core.row_floor``), but the held-out draw can still take every other value.
+        from turbotab.core.row_floor import one_value_refusal, outcome_values
+
+        if state.target in store.columns:
+            one = one_value_refusal(
+                outcome_values(store.materialize([state.target], design_ids), state.target,
+                               design_ids), state.target, len(design_ids), rows_word)
+            if one:
+                raise ValueError(one)
         # MS7: the batch column a reference ComBat step reads, whether or not a model sees it.
         X = modeling_frame(store, list(dict.fromkeys([*input_columns(predictors, adj),
                                                       *batch_inputs(state)])), design_ids)

@@ -64,8 +64,9 @@ Rules:
   within every unit. It is answered by the lane for the current exposure, and the weights' lane
   only once its truncation is declared after the diagnostics.
 * ``open_seal`` is the last step (M2_CONTRACT §12.1): asked once the fit is fresh (it waits on the
-  fit until then), ``not_applicable`` when nothing is held out, and answered once opened. Its slot
-  is ``seal_opened``.
+  fit while the fit is computing; a fit that failed or was stopped holds it no longer, and opening
+  is refused with the failure), ``not_applicable`` when nothing is held out, and answered once
+  opened. Its slot is ``seal_opened``.
 * A skip's ``reason`` is the clause after the client's own "Not asked:" label, so it never begins
   with those words itself.
 * ``task`` (audit WP18, RO-10) stays open while its answer is incomplete (``followup``): a positive,
@@ -77,10 +78,10 @@ Rules:
   as a wall at upload (``turbotab.core.ask``).
 * At most one question is ``open``: the first applicable unanswered one. It is ``waiting``
   instead while a stage it needs is still being computed (``waiting_on`` names the stage) —
-  ``substitution`` waits until ``fit`` is fresh. Every later unanswered question is ``waiting``
-  on the earliest unanswered question before it (plus any stage of its own still computing).
-  A stage that failed or was stopped does not hold a question back: the question opens and the
-  pipeline panel shows the failure.
+  ``substitution`` and ``open_seal`` wait until ``fit`` is fresh. Every later unanswered question
+  is ``waiting`` on the earliest unanswered question before it (plus any stage of its own still
+  computing). A stage that failed or was stopped does not hold a question back, the fit those two
+  wait for included: the question opens and the pipeline panel shows the failure.
 """
 from __future__ import annotations
 
@@ -601,7 +602,12 @@ def route(
             # the question asks anything, and about which columns, is the card's.
             own.append("forms")
         fresh_stage = MUST_BE_FRESH.get(key)
-        if fresh_stage and _get(stages.get(fresh_stage), "status") != "fresh" and fresh_stage not in own:
+        fresh = stages.get(fresh_stage) if fresh_stage else None
+        if (fresh_stage and _get(fresh, "status") not in ("fresh", "error")
+                and not _get(fresh, "cancelled", False) and fresh_stage not in own):
+            # A fit that failed (or waits on a stage that did) or was stopped holds nothing back,
+            # like any other stage: the step opens and says why it cannot be taken (the zero-row
+            # crash's seal step waited on a failed fit for good).
             own.append(fresh_stage)
         if first_unanswered is None:
             first_unanswered = key
