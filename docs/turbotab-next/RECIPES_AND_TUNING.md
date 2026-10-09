@@ -1,6 +1,6 @@
 # Recipes and tuning
 
-**Status: DRAFT 3, for Nolan's review.** The orchestrator wrote draft 1 on 2026-10-06, acting as methods expert, to answer Nolan's two questions of 2026-10-05. Draft 2, written the same day, took in every blocker and major from three reviews (methods; product and leash; engine) and the cheap minors. Draft 3, written on 2026-10-08, folds in every ruling made since: Nolan's of 2026-10-06 and 2026-10-07, the crosswalk's and the UI's of 2026-10-08, the definition of done's amendment of 2026-10-08 (the model-family contract in, package C6c out) and its seam guards. It settles the one methods question the rulings left to the orchestrator: how "Try both" runs below an effective size of 300 (§4.6). "What changed in draft 3" and "What changed after review" close the document.
+**Status: DRAFT 3, for Nolan's review.** The orchestrator wrote draft 1 on 2026-10-06, acting as methods expert, to answer Nolan's two questions of 2026-10-05. Draft 2, written the same day, took in every blocker and major from three reviews (methods; product and leash; engine) and the cheap minors. Draft 3, written on 2026-10-08, folds in every ruling made since: Nolan's of 2026-10-06 and 2026-10-07, the crosswalk's and the UI's of 2026-10-08, the definition of done's amendment of 2026-10-08 (the model-family contract in, package C6c out) and its seam guards. It settles the one methods question the rulings left to the orchestrator: how "Try both" runs below an effective size of 300 (§4.6). The same day it took in a review of draft 3 (two majors and eleven minors, each checked against its source first). "What changed in draft 3", "What changed after review of draft 3", "Review notes not taken" and "What changed after review (draft 2)" close the document.
 
 **What it governs.**
 - **BLUEPRINT:** North star 5, §4 (the stage graph), §11.3 (the leash), §11.4 (stated, asked and silent tiers) and §13 (the method contract and its relations).
@@ -71,7 +71,7 @@ Yes. Defaults have their downsides and overrides have theirs. Neither is a reaso
    - a change to the shared steps (who is kept, the fill, Explore's levers, the selection step, the energy model, the forms) is disclosed, not corrected. Its earlier scores stay in the comparison for reference only, labeled "revised after first results" (§3.2).
 
    A holdout drawn before any score is seen removes both limits. Before the first fit, the app suggests one when you expect to try several versions.
-4. **Unsound overrides get the leash, and leakage stays impossible by construction.** Values copied from a tuning result on these rows count as tuned on these rows (§3.5).
+4. **Unsound overrides get the leash, and leakage stays impossible by construction.** Values copied from a tuning result on these rows count as tuned on these rows, and so does fixing the option the folds already chose (§3.5).
 
 **A third path:** besides "keep the default" and "change it", there is **"Try both; keep what predicts better."** The alternatives join the tuning search inside each training fold, so the reported score already includes the choice. It is the tree models' default for blanks: each training fold chooses between keeping blanks as blanks and filling them (§2.3).
 
@@ -357,6 +357,8 @@ The lineage note says which. When the final refit chose the fill, a later blank 
 ### 2.4 How a recipe is declared (`base.py`)
 
 ```python
+from dataclasses import dataclass, field
+
 RecipeSlotName = Literal["missing", "scale", "encoding", "transform", "outliers"]
 
 @dataclass(frozen=True)
@@ -375,12 +377,12 @@ class RecipeSlot:
     slot: RecipeSlotName
     default: Mapping[str, str]    # purpose -> option key: the one option used where the folds
                                   # cannot choose (§4.6), and under inference
-    default_choose: Mapping[str, tuple[str, ...]] = {}
+    reason: str                   # ≤ 22 words
+    options: tuple[RecipeOption, ...]
+    default_choose: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
                                   # purpose -> the options a "Try both" default tries, in order;
                                   # the first is `default` and wins ties. Trees' missing slot:
                                   # {"prediction": ("native", "fill")}
-    reason: str                   # ≤ 22 words
-    options: tuple[RecipeOption, ...]
     searchable: bool = False      # may join "Try both; keep what predicts better"
 
 class FamilyBase:
@@ -418,7 +420,7 @@ class FamilyBase:
 
 - **Lineage.** The trunk is drawn once. A family that departs gets a short spur where it departs, grouped by shared departure: "blanks kept or filled, chosen in each fold · boosted trees, random forest, XGBoost". Pointing at a family lights its path in the choice color.
 - **Model-matrix preview.** `previews.models_preview` compares each family's `family_spec` with the shared spec, not step names, because routing changes no step name. Its caption names the difference in 20 words or fewer. Under "Try both" it names both inputs: "Boosted trees try 42 columns with 1,204 blanks in 6, or 48 columns filled with 6 markers." `table_focus` shows five rows of the touched columns, with blank cells reading "blank". It shows predictor values of training rows only, never the outcome.
-- **The set_recipe preview** also returns the edited family's input profile and assessment (the contract's MC-6), so a held change shows how the shelf would order the families before it is recorded.
+- **The set_recipe preview** also returns the edited family's input profile and assessment (the contract's MC-6), so a held change shows how the shelf would order the families before it is recorded. Like the profile, it stops before the first step that reads the outcome's values (§2.6), so a preview never runs the selection step, the screen or the inner-CV forms.
 - **`DesignModel`** gains:
   - `recipe: list[RecipeLine]` (slot, option, label, term, reason, changed, when, silent);
   - `variant` (§3.2);
@@ -444,6 +446,13 @@ The shelf orders the families on the families question, a Decide in Models. It f
 - **a "Try both" slot, the trees' default:** one profile per option. The card shows both options' measures, and the score is the lower of the two assessments, because the shelf cannot know which option the folds will pick.
 
 The profile's rows are the training rows, so its count matches the line "Ranked for N training rows"; n_plan (§4.2) stays the tuning plan's size.
+
+**Where the profile stops** (the contract's C4 and MC-4). "The input each family would actually receive" never means running a step that reads the outcome to build the profile. Each step declares `reads_outcome`: `"none"`, `"counts"` or `"values"`.
+- **Steps that read only the outcome's counts** (the spline rule's k, the imbalance correction's class counts) are fed those counts, and the profile continues past them.
+- **The profile stops at the first step that reads the outcome's values:** the selection step, the omics screen, the inner-CV forms, and, under inference, multiple imputation. Its measures are taken on the matrix entering that step, labeled "before selection" (or "before the fill"); widths after it come from the step's declared size rule, and the card says "by rule".
+- **Under inference,** the measures that read predictor values use one fill that ignores the outcome, labeled so, and blank counts come from the blank mask, never from a fill.
+
+The `set_recipe` preview stops at the same place (the contract's MC-6).
 
 **What "outcome-blind" means here** (ruled on 2026-10-08):
 - **no relation between a predictor and the outcome, and no score.** The profile builder takes no outcome argument;
@@ -515,6 +524,7 @@ class DeclareVersion(_DecisionModel):           # prediction with no holdout (§
 **Slots.**
 - `set_recipe` and `set_tuning` write slots keyed by family (`register_kind(..., key=lambda d: d.family)`); D2 adds the track to the key.
 - `declare_version` writes one slot per track's outcome.
+- **"Lighter" is a `set_tuning`.** Choosing it in the Fit action's confirmation (§6.2) records `set_tuning(mode="lighter")` for each listed family before the job starts. The tuning line then reads "Tuning: lighter · changed by you" in the Models Confirm sweep, and the methods text states it.
 
 **Stamps.**
 - Completions fill `stamp` on `select_models`, `set_split`, `set_recipe`, `set_tuning`, `declare_version`, `open_seal` and `revert`. Revert gains a completion. A shared-step answer recorded after first results gains one too, so the read-only rows can name the step that changed and the methods text can disclose it (§3.2).
@@ -540,7 +550,7 @@ class DeclareVersion(_DecisionModel):           # prediction with no holdout (§
   - So a field or slot added later with a default that reproduces today's behavior (a search strategy, a budget, a constraint, a new slot) leaves every recorded key unchanged, and no recorded version comes back as a phantom earlier version.
 - **Display** never shows the key. The current version is "Boosted trees"; its earlier versions sit under the label "revised after first results", in the comparison only (§3.7).
 - **`defaults_version`** sits inside the identity, so the same words can never name two procedures.
-- **Pre-spec records** (`scores_seen.json` listing bare family keys) map to `LEGACY_DEFAULTS`, the resolved version 1 of each existing family (today's fill and standard settings). A version seen under the old defaults therefore stays in the comparison as an earlier version, refit on the current trunk, since a pre-spec record holds no trunk key or scores. It is never silently renamed. When this happens the Models card says so once: "Boosted trees now try both ways with blanks and are tuned; the earlier version stays in the comparison."
+- **Pre-spec records** (`scores_seen.json` listing bare family keys) map to `LEGACY_DEFAULTS`, the resolved version 1 of each existing family (today's fill and standard settings). A version seen under the old defaults therefore stays in the comparison as an earlier version, refit on the current trunk, since a pre-spec record holds no trunk decision key or scores. It is never silently renamed. When this happens the Models card says so once: "Boosted trees now try both ways with blanks and are tuned; the earlier version stays in the comparison."
 - **Every fitted version carries one `role`:** `current`, `earlier`, `final` or `secondary`. A v2.x comparator (V2X_SEAMS row 10) is one more role, not a new field.
 
 **The versions shown are in the log, and a revert cannot unsee them.**
@@ -549,13 +559,18 @@ class DeclareVersion(_DecisionModel):           # prediction with no holdout (§
 - A revert of `set_recipe` is therefore allowed. The changed version, once shown, simply becomes an earlier version.
 - Replay rebuilds every earlier version from `decisions.jsonl` alone.
 
-**The versions file.** `scores_seen.json` becomes the versions file, one per track, carrying a format string (`turbotab-versions/1`; V2X_SEAMS rule 5). For every version whose scores were served it holds:
+**The versions file.** `scores_seen.json` becomes the versions file, one per track, carrying a format string (`turbotab-versions/1`; V2X_SEAMS rule 5). It holds one entry for each version whose scores were served on each trunk:
 - its `VariantSpec` and key;
 - the log sequence number at which its scores were first served, and whether its tuning result was served;
-- the **trunk key** it was scored on: the contract's `trunk` stage key (MC-3);
-- the scores served: estimate and interval per primary and secondary score.
+- the **trunk decision key** it was scored on: the sha256 of the canonical JSON of the data fingerprint and every decision slot the contract's `trunk` stage (MC-3) reads, directly or through the stages it depends on, each through its key view, so stamps never count. It leaves out the split, which has its own path (the holdout status, §3.3). It holds **no stage version**, and it follows seam guard 4's rule: a slot that is unanswered, or added later with a default that reproduces earlier behavior, is left out;
+- the **trunk stage key** (MC-3) and the TurboTab version that computed it, for identity and for a rebuild on the same engine;
+- the scores last served for it on that trunk: estimate and interval per primary and secondary score.
 
 The file is a fast mirror; the log stays the source of truth. The scores are kept here, and not only in the stage cache, which stays disposable (F16).
+
+**Why two keys.** A stage key hashes the stage's code version and every upstream key (`graph.py:stage_key`), and stage versions are bumped often (MC-3 itself bumps shelf 15→16 and design 24→25). Read-only status therefore reads the trunk decision key only, which changes when an answer changes and never when the engine does.
+
+**What an engine upgrade does.** The stage keys change, so every version on the current trunk is refit by the new engine as current, and the comparison shows its new scores. The versions file keeps the TurboTab version that computed each entry. No upgrade creates a read-only row, and none is ever labeled "revised after first results". A read-only row computed by an earlier engine keeps the scores it served, and the export names the version that computed them.
 
 **What is fitted.** The design stage builds one pipeline for each of:
 - the current version of every selected family;
@@ -570,12 +585,21 @@ The file is a fast mirror; the log stays the source of truth. The scores are kep
 
 **Cost of keeping an earlier version.** Its out-of-fold predictions are cached in the stage cache under (design stage key, `VariantSpec`, split key). It is refit only when something it depends on changes, and its refit then counts in the estimate (§4.4).
 
-**The read-only rows: a shared step changed after first results** (crosswalk ruling 6; seam hook 2; V2X_SEAMS row 11). A change to a shared step creates no version: who is kept, the track's fill, Explore's levers, the selection step, the energy model, the forms, scales, batch and normalization. Under Predict, before the opening, the comparison still keeps what was seen:
-- **Which rows.** Every entry in the versions file whose trunk key differs from the current trunk key. Nothing extra is written at the change: every served score already carries its trunk key.
-- **What they show.** The scores as served, gray, collapsed under the table with the label "revised after first results" and the step that changed (§3.7).
-- **What they never do.** They are never refit, never enter BBC-CV or the selection-corrected estimate, can never be declared final (`open_seal.variant` and `declare_version` refuse them), are never scored on the held-out rows, and are never exported as a model. Their inputs differ from the current ones, and their rows too when who is kept changed, so they are shown beside the comparison, not compared.
-- **How they survive.** The scores live in the versions file, so a cleared stage cache still serves the rows. The log folded up to the recorded sequence rebuilds their trunk, which is all v2.x needs to fit them again as kept versions (§10).
-- **What is said.** The methods text discloses the change under ruling 3 and points to the earlier scores (§3.6).
+**The read-only rows** (crosswalk ruling 6; seam hook 2; V2X_SEAMS row 11). Under Predict, before the opening, the comparison keeps what was seen in two cases where nothing is refit:
+- **A shared step changed after first results.** A change to a shared step creates no version: who is kept, the track's fill, Explore's levers, the selection step, the energy model, the forms, scales, batch and normalization.
+- **A version changed under a sealed holdout** (§3.3): the earlier version is not fitted again.
+
+**Which rows.** Every entry in the versions file whose trunk decision key differs from the current one; and, under a holdout sealed before any score, every entry on the current trunk whose version is no longer its family's current version. Nothing extra is written at the change: every served score already carries its trunk decision key.
+
+**What they show.** The scores as served, gray, collapsed with the label "revised after first results" and what changed (§3.7).
+
+**What they never do.** Both kinds are treated alike. They are never refit, never enter BBC-CV or the selection-corrected estimate, can never be declared final (`open_seal.variant` and `declare_version` refuse them), are never scored on the held-out rows, and are never exported as a model. An earlier trunk's inputs differ from the current ones, and its rows too when who is kept changed, so its rows are shown beside the comparison, not compared.
+
+**Reverting brings a row back.** Revert the shared-step answer, or give the earlier answer again, and the trunk decision key matches again: its entries are on the current trunk and are fitted as usual. Under a sealed holdout, revert the recipe or tuning change and the earlier version is current again.
+
+**How they survive.** The scores live in the versions file, so a cleared stage cache still serves the rows. Folding the log up to the recorded sequence reproduces the trunk decision key on any engine version, and rebuilds the trunk on the current engine. That is all v2.x needs to fit them again as kept versions (§10). The trunk stage key matches as well only on the same engine version, so v2.x never relies on it.
+
+**What is said.** The methods text discloses the change under ruling 3 and points to the earlier scores (§3.6).
 
 ### 3.3 The three paths
 
@@ -592,6 +616,8 @@ The file is a fast mirror; the log stays the source of truth. The scores are kep
 | `sealed` | a holdout drawn **before** the first score for this outcome was served (the split's record precedes the first served sequence) | No earlier version is fitted: the final model is declared on cross-validation before the held-out rows open, so the held-out score is untouched by the change ("the fundamental 'untouched test set' principle", Bischl et al. 2023). The earlier version's scores stay as a read-only row, as for a shared step, so nothing seen is overwritten silently (UI ruling, 2026-10-08). |
 | `after_scores` | a holdout drawn after a score was served | Treated as `none`: the earlier version is kept, and compared families stay. The held-out rows were in the scores that drove the change, so their score is labeled "these rows were in cross-validated scores seen before they were held out" and reported beside the selection-corrected estimate. Drawing such a holdout is block and record; its preview says why. |
 | `opened` | the seal was opened | Block and record. The change runs as a secondary analysis, and the version declared at the opening stays `final` (`AtOpening` and `mark_final` match on the version). |
+
+**One exception.** Fixing a slot to the option its served "Try both" search favored is not a kept version but a data-derived choice (§3.5). Fixing any other option follows this table.
 
 **A shared-step change made after first results** creates no version at any status. Before the opening it leaves read-only rows (§3.2); after the opening it runs as a secondary analysis, as any change.
 
@@ -617,21 +643,23 @@ The file is a fast mirror; the log stays the source of truth. The scores are kep
 
   Until one exit is taken, every view other than the comparison describes the current version, and its caption says so.
 
-### 3.5 Values from tuning results (the quiet leak)
+### 3.5 Values and options from tuning results (the quiet leak)
 
-**When a value counts as data-derived.** The final refit's search chooses its values on all training rows, every outer test fold included. A value is therefore *data-derived* when it is recorded after any tuning result for this outcome was served (`stamp.tuning_shown` is not empty), and it is one of:
+**When a choice counts as data-derived.** The final refit's search chooses its values, and the option of each "Try both" slot, on all training rows, every outer test fold included. The fold shares come from searches whose training rows hold the other folds' test rows. A choice is therefore *data-derived* when it is recorded after a tuning result for this outcome was served (`stamp.tuning_shown` is not empty), and it is one of:
 - a manual value;
 - a value held under `automatic`;
-- a `set_recipe` override of a slot that a served "Try both" search covered. The trees' default counts: once their fold shares were shown, setting their blanks to the option the folds preferred is data-derived.
+- a `set_recipe` override that fixes a slot this family's served "Try both" search covered to an option that search **favored**: the option its final refit chose, or any option that won at least half of its outer folds.
 
-The server decides this; the client cannot claim otherwise.
+**The trees' default is covered by this rule.** Once their fold shares were shown, fixing their blanks to the option the folds kept is data-derived. Fixing the other option is not: nothing the folds showed flatters it, since they preferred the one not chosen. It is an ordinary change after first results (§3.3(b)): the earlier version, which tried both, stays in the comparison, and BBC-CV corrects the choice among the versions shown. A researcher who wants the favored option already has it honestly, by keeping "Try both".
+
+The server decides this from the served `TuningRecord`; the client cannot claim otherwise.
 
 **What happens, by holdout status:**
 - **`none` or `after_scores`: block and record.**
-  - The version is fitted and shown, labeled "settings chosen on these rows: not an honest estimate".
+  - The version is fitted and shown, labeled "settings chosen on these rows: not an honest estimate", or, for an option, "option chosen on these rows: not an honest estimate".
   - It is excluded from BBC-CV and from the declared result.
-  - The coach line: "These values come from tuning on these rows, so this score would be too kind." (15 words)
-  - The exits: "Tune inside each fold", and, for a recipe slot, "Try both; keep what predicts better".
+  - The coach line, for values: "These values come from tuning on these rows, so this score would be too kind." (15 words) For an option: "The folds already chose this on these rows, so fixing it here would make its score too kind." (18 words)
+  - The exits: "Tune inside each fold" for values; "Keep trying both" for an option, which returns the slot to its search.
 - **`sealed`:** available. The holdout absorbs it.
 - **`opened`:** a secondary analysis, as any change.
 
@@ -646,7 +674,8 @@ The methods text is one of the two places the label "revised after first results
 | Stated default: Try both | "Whether boosted trees received blanks in 6 columns as they were, learning at each split which way they go (missing incorporated in attributes; Twala et al. 2008), or used the fill learned in each training fold with a missing indicator per column, was chosen inside each training fold, so the reported score includes the choice (nested cross-validation); the folds kept blanks in 41 of 50 folds, and the final model keeps them. The other models used the fill learned in each training fold." |
 | Blanks kept, set by the researcher | "Boosted trees received blanks in 6 columns as they were and learned at each split which way they go (missing incorporated in attributes; Twala et al. 2008); no missing indicator was added for those columns." |
 | Before any score | "Boosted trees were given the fill used by the other models instead of trying both, declared before any score was seen: ⟨note⟩." |
-| After first results, no holdout | "Boosted trees were revised after first results: after the cross-validated scores of the linear model and boosted trees were seen, boosted trees were changed to use the shared fill. The earlier version was kept in the comparison, and the result is corrected for choosing among the 3 versions shown (BBC-CV); it is not corrected for how the later version was designed after the earlier scores were seen." |
+| After first results, no holdout | "Ridge was revised after first results: after the cross-validated scores of the linear model and ridge were seen, ridge was changed to rescale measured numbers only, leaving yes/no and category columns at 0 or 1 (Gelman's two-SD scaling). The earlier version was kept in the comparison, and the result is corrected for choosing among the 3 versions shown (BBC-CV); it is not corrected for how the later version was designed after the earlier scores were seen." |
+| After first results, against the folds' choice | "Boosted trees were revised after first results: after the folds had kept blanks in 41 of 50 folds, boosted trees were changed to use the shared fill (⟨note⟩). The earlier version, which tried both, was kept in the comparison, and the result is corrected for choosing among the 3 versions shown (BBC-CV); it is not corrected for how the later version was designed after the earlier scores were seen." |
 | Holdout sealed | "…; the held-out rows were sealed before any score was seen, so the held-out score does not depend on this change, and the earlier version's cross-validated scores are reported for reference only." |
 | Holdout after scores | "…; the held-out rows were set aside after cross-validated scores on them were seen, so the earlier version was kept and their score is labeled accordingly." |
 | Seal opened | "…after the held-out rows were opened; it is a secondary analysis, and the declared result is unchanged." |
@@ -657,6 +686,7 @@ The methods text is one of the two places the label "revised after first results
 | Standard | "Boosted trees used the standard settings of scikit-learn ⟨version⟩, untuned." |
 | Manual | "Boosted trees used a learning rate of 0.05 and 63 leaves per tree, set by hand before any score was seen (source: Smith et al. 2024); their other settings were standard." |
 | Data-derived | "Boosted trees' settings were set by hand to values chosen by tuning on these rows; that version's cross-validated score is not an honest estimate and is excluded from the result." |
+| Data-derived option | "Boosted trees were set to keep blanks as blanks after the folds had kept them in 41 of 50 folds; that version's cross-validated score is not an honest estimate and is excluded from the result." |
 | Declared version | "The current version of boosted trees was declared after the scores were seen; its own cross-validated score is reported, beside the selection-corrected estimate over the 3 versions shown." |
 
 ### 3.7 The comparison table
@@ -664,7 +694,7 @@ The methods text is one of the two places the label "revised after first results
 | Column | Header | What it holds |
 |---|---|---|
 | Model | Model | the family's name; its technical name as the quiet term |
-| Inputs | What it was given | described against the trunk: "shared inputs"; "shared inputs; the folds chose: blanks kept in 41 of 50"; "shared inputs, blanks kept as blanks"; "shared inputs; changed by you: blanks filled" |
+| Inputs | What it was given | described against the trunk: "shared inputs"; "shared inputs; the folds chose: blanks kept in 41 of 50"; "shared inputs, blanks kept as blanks"; "shared inputs; changed by you: blanks filled"; "shared inputs; set by you to the folds' choice: blanks kept" |
 | Settings | Settings | "tuned in each fold"; "standard"; "set by hand"; "set by hand from tuning on these rows"; "nothing to tune" |
 | Score | the primary score in words ("Expected squared error on new people") | estimate and interval, as today |
 
@@ -674,7 +704,7 @@ The methods text is one of the two places the label "revised after first results
 
 **Revised after first results.** Two kinds of gray line carry the label, collapsed, and open on a click:
 - **Earlier versions,** under their family's current row: "Revised after first results · 2 earlier versions, kept so the final score accounts for choosing among them." (17 words)
-- **Read-only rows,** under the table, newest first, one line per earlier trunk: "Revised after first results · scores before the energy model changed, shown for reference only." (14 words) Under a sealed holdout, an earlier version reads: "Revised after first results · earlier version's scores, for reference; the held-out rows are still sealed." (15 words)
+- **Read-only rows,** under the table, newest first, one line per earlier trunk: "Revised after first results · scores before the energy model changed, shown for reference only." (14 words) Under a sealed holdout, an earlier version is a read-only row under its family's current row: "Revised after first results · earlier version's scores, for reference; the held-out rows are still sealed." (15 words)
 
 The label appears nowhere else on screen: not on a stage, not in the progress bar, not on a card (§6.0).
 
@@ -685,6 +715,8 @@ The label appears nowhere else on screen: not on a stage, not in the progress ba
 ### 4.1 The search spaces
 
 ```python
+from dataclasses import dataclass, field
+
 @dataclass(frozen=True)
 class Dimension:
     name: str             # the estimator's parameter
@@ -701,9 +733,9 @@ class TuningDecl:
     kind: Literal["none", "path", "search"]
     dimensions: tuple[Dimension, ...] = ()   # searched
     by_hand: tuple[Dimension, ...] = ()      # settable by hand, never searched (Huber's threshold)
-    standard: Mapping[str, Any] = {}         # the standard candidate
+    standard: Mapping[str, Any] = field(default_factory=dict)   # the standard settings
     standard_source: str = ""                # "scikit-learn's defaults", "ranger's defaults"
-    fixed: Mapping[str, Any] = {}            # stated, never searched
+    fixed: Mapping[str, Any] = field(default_factory=dict)      # stated, never searched
     early_stopping: Mapping[str, Any] | None = None
     out_of_bag: bool = False
     space_version: str = ""                  # "boosted_trees/1"
@@ -744,10 +776,10 @@ Halving, Hyperband, TPE and BOHB are v2.x (package C6c, displaced on 2026-10-08;
 |---|---|
 | Strategy | **`TuningPlan.strategy`** (seam hook 1; V2X_SEAMS rows 1–2). v2 has one value, `"sobol"`. The strategy owns the candidate generator and the fit count, so the estimate (§4.4) asks the strategy how many fits it will make instead of computing a formula of its own. `TuningRecord` lists the candidates in the order they were evaluated. A v2.x strategy is one more value with its own generator and count. |
 | Effective size n_eff | Numeric outcome: units. Yes/no or classes: the units in the rarest class, each unit counted by its most common class, as the stratified splits count it. Riley et al. 2021 state the concern in terms of a "small effective sample size". |
-| Plan size n_plan | n_eff of one outer training fold of the headline split: (K−1)/K of the training units, or the median training fold when the folds follow time. **Every fit uses this plan unchanged:** every outer fold of every repeat, bootstrap resamples, the folds of Bates et al.'s nested cross-validation, internal–external refits, evaluation's design-based folds, and the final refit. Only settings defined as shares of a fit's units rescale. This fixes F13 for tuned families. The same rule fixes K for path families and the early-stopping switch for the standard candidates. |
+| Plan size n_plan | n_eff of one outer training fold of the headline split: (K−1)/K of the training units, or the median training fold when the folds follow time. **Every fit uses this plan unchanged:** every outer fold of every repeat, bootstrap resamples, the folds of Bates et al.'s nested cross-validation, internal–external refits, evaluation's design-based folds, and the final refit. Only settings defined as shares of a fit's units rescale. This fixes F13 for tuned families. The same rule fixes K, its floor and the no-inner-folds switch for every family, and the early-stopping switch for the standard candidates. |
 | Standard candidates s | The standard settings once for each combination of options that the family's "Try both" slots try, counting only slots with a non-empty footprint (§2.3). Tree families under their default: s = 2. Otherwise s = 1. |
 | Candidates C | s + S, where S is the Sobol sample. n_plan below 300: S = 0, the standard candidates only (§4.6). 300–999: S = 8. 1,000 and up: S = 16. The forest uses S = 8 from 300: it is the least tunable. "Lighter" halves S. "Standard settings" sets S = 0 at every size. A "Try both" slot also maps one Sobol coordinate to its options, so the Sobol candidates try both too. |
-| Inner folds K | Searched families: 3 (a convention; every candidate meets the same splits). Path families: `inner_folds(n_plan)`, which is 5 for 100 to 5,000 and otherwise 3. When a fit holds fewer units of the rarest class, or fewer PSUs, than K, K drops to that count, down to 2 (§4.6). |
+| Inner folds K | Searched families: 3 (a convention; every candidate meets the same splits). Path families: `inner_folds(n_plan)`, which is 5 for 100 to 5,000 and otherwise 3. **One floor, set once in the plan:** every inner fold holds at least 2 units of the rarest class and, under the population answer, at least 2 PSUs. So K = min(K, ⌊m/2⌋), where m is n_plan for a yes/no or class outcome, and under the population answer the fewest PSUs in any outer training fold the stages draw (the splits are fixed before any fit). Below K = 2, that is with m under 4, the plan draws no inner folds (§4.6). A fit that holds fewer than 2 per inner fold at the plan's K (a bootstrap resample, a smaller outer fold) keeps the plan's K and draws its folds as evenly as its units allow; the `TuningRecord` counts such fits, and the methods sentence states the count once. |
 | Early stopping | On in every candidate fit when n_plan ≥ 1,500, so that the stopping set inside an inner fit holds about 100 or more units of the rarest class. Below that, the number of trees is searched. |
 | Stopping set | A tenth of the fit's units: whole units, stratified by class, the latest ones when the folds follow time. It is drawn before anything else, and no step is fitted on it (§4.3). |
 | Score | The comparison's strictly proper primary as a pooled per-row loss over the inner validation rows (`validation.loss_rows`: squared error, log loss or ranked probability score). It is survey-weighted under the population answer, and rounded to 1e-9 relative before the argmin. |
@@ -792,7 +824,7 @@ Inside a search, the helper fits one head per inner split per recipe option, and
 **Inner splits are drawn as the outer ones are:**
 - whole units, when rows repeat;
 - forward chaining by whole unit, when the folds follow time;
-- **under the population answer, whole PSUs:** `GroupKFold` over stratum × PSU labels, not stratified within strata. An NHANES training fold of a design-based fold holds one PSU per stratum, about 15 PSUs. Where a fit holds fewer than K PSUs, K drops to the PSU count (at least 2); below that nothing can be chosen, and the plan keeps the first standard candidate, stated (§4.6). The sentence says: "inner splits keep whole PSUs; with two PSUs per stratum, strata cannot be kept in every inner fold". This holds in the fit stage, in evaluation and in the final refit alike, so one procedure is scored and deployed. Models are fit unweighted, as the comparison fits them; only the inner loss is weighted;
+- **under the population answer, whole PSUs:** `GroupKFold` over stratum × PSU labels, not stratified within strata. An NHANES training fold of a design-based fold holds one PSU per stratum, about 15 PSUs, so K stays 3. The plan's K already counts the PSUs (§4.2): each inner fold holds at least 2, and with fewer than 4 PSUs in an outer training fold the plan draws no inner folds and keeps the first standard candidate, stated (§4.6). The sentence says: "inner splits keep whole PSUs; with two PSUs per stratum, strata cannot be kept in every inner fold". This holds in the fit stage, in evaluation and in the final refit alike, so one procedure is scored and deployed. Models are fit unweighted, as the comparison fits them; only the inner loss is weighted;
 - otherwise, shuffled by the seed over content keys, and stratified by class where the splitter allows.
 
 **Early stopping always draws whole units,** even under the population answer: it scores no design estimate.
@@ -854,8 +886,10 @@ So a candidate is the wrapped, recalibrated model, and the search scores exactly
 - **A fit expected to take over about 2 minutes (a convention) does not start on its own.** The hold is in the scheduler, not a stage requirement, so stages stay pure functions of the log and replay bypasses it. The fit stage waits as `stale` until Fit is pressed. Shorter fits compute live and may already be done when Fit is pressed.
 - **A pressed fit runs as a server job.** The page may be closed; a notification says when it is done, and Cancel stops it within about 2 seconds.
 - **The hold re-arms** when a new estimate exceeds 1.5 times the last one confirmed.
-- **Under Predict, pressing Fit is a job command,** not a decision: nothing enters the Record, and Results opens.
+- **Under Predict, pressing Fit is a job command,** not a decision: nothing enters the Record, and Results opens. Choosing "Lighter" in its confirmation is the one exception: it records `set_tuning(mode="lighter")` for each listed family before the job starts (§3.1).
+- **Under Predict, the server does not withhold scores until Fit.** The screen fetches them only after Fit, but a short fit computes live, so a client could fetch earlier. Every score, tuned value or fold share the server serves is stamped as shown whenever it is fetched (§3.2), so an early fetch counts exactly as one after Fit, and nothing seen escapes the record.
 - **Under Estimate and Describe, pressing Fit records the track's lock:** the existing system record `lock_plan`, so no new decision kind. The server serves no estimate stage before the lock, as `estimand.served_gate` already withholds one whose question is open. The lock is shown with its time and SHA-256 (SIZING P0.8).
+- **That guarantee needs seam guard 7.** `served_gate` withholds the stages in `ESTIMATE_STAGES`, a list kept by hand, which already leaves out `usual_intake` (INBOX: "The usual-intake stage is not one of the estimate stages"). P0.4 declares estimate stages on `Stage` and derives the list (seam guard 7). Describe's stages (the usual-intake distribution, survey-weighted means and prevalence by group, trends) are declared as estimates there, as the crosswalk's "Describe has a gate and a lock" requires, which settles that INBOX item for Describe tracks. T10 checks that none is served before `lock_plan`.
 - This amends BLUEPRINT §4 (§10).
 
 **Choices made in Models** (recipe phrases, tuning, and the per-family exceptions) are held in the stage's local state, as family choices are today (`ChoiceQuestions.tsx:533`). The stage's Confirm records them together, one `set_recipe` or `set_tuning` per family changed, and the flowchart's Fit then carries the estimate. The families question is a Decide, recorded when answered. **No recipe or tuning slot is asked.**
@@ -899,17 +933,19 @@ Under the population answer, evaluation's design-based folds (10 × 2) add about
 *The decision.* "Try both" runs at every size. Below an effective size of 300 the plan drops the Sobol candidates and keeps the standard ones (§4.2): the standard settings once with each option. Each training fold therefore still chooses between keeping blanks as blanks and the shared fill, at the standard settings, on the plan's inner folds, and the score includes the choice. Nothing else is chosen. The tuning line reads "standard settings"; the recipe line still reads "try both".
 
 *Why.*
-1. **The small-sample rule guards against a different risk.** It exists because a setting chosen from many candidates on few rows varies from sample to sample, and a shrinkage or complexity setting estimated with large uncertainty can miscalibrate the model (Riley et al. 2021; Van Calster et al. 2020). The blanks choice is between two candidates, both at the standard settings. Neither can land on an extreme setting (tiny leaves, a large step, a weak penalty), and neither changes how far the model shrinks or how complex it may grow.
+1. **The small-sample rule guards against a different risk.** It exists because a setting chosen from many candidates on few rows varies from sample to sample, and a shrinkage or complexity setting estimated with large uncertainty can miscalibrate the model (Riley et al. 2021; Van Calster et al. 2020). The blanks choice is between two candidates, both at the standard settings. Neither can land on an extreme setting (tiny leaves, a large step, a weak penalty), and neither changes how far the model shrinks. The fill option does add one indicator column per routed column, and many indicators with few rows can overfit (Van Ness et al. 2023), which is exactly this regime. The nested choice is what guards against that: the folds keep the fill only where its indicators predict better there, and the reported score includes the choice.
 2. **The risk of overfitting a choice grows with the number of candidates compared and shrinks with the sample** (Cawley & Talbot 2010). Two is the fewest there can be. When the candidates are equally good and their errors independent and normal, the best of two looks better than it is by about 0.56 standard errors on average, and the best of 18 by about 1.82 (the expected maximum of normal errors). Nesting keeps that flattery out of the reported score either way; what remains is the cost of a wrong pick.
-3. **A wrong pick between two costs little.** Both options are scored on the same inner folds, so the folds compare them on their paired difference. If that difference is estimated with standard error σ_d and the true gap is Δ, the folds pick the worse option with probability Φ(−Δ/σ_d), so the expected cost is Δ·Φ(−Δ/σ_d). That is at most about 0.17·σ_d, reached at Δ ≈ 0.75·σ_d (a derivation under the normal approximation; T8 checks it numerically). The folds err often only when the two options predict about equally well, which is when an error costs least.
+3. **A wrong pick between two rarely costs much.** Both options are scored on the same inner folds, so the folds compare them on their paired difference. If that difference is estimated with standard error σ_d and the true gap is Δ, the folds pick the worse option with probability Φ(−Δ/σ_d), so the expected cost is Δ·Φ(−Δ/σ_d). That is at most about 0.17·σ_d, reached at Δ ≈ 0.75·σ_d (a derivation under the normal approximation; T8 checks it numerically). The folds err often only when the two options predict about equally well, which is when an error costs least. "Little" is relative to σ_d, which is itself large on small tables.
+   - **Caveat.** The bound assumes the inner estimate of the gap is unbiased for the gap at the outer fold's size. The inner fits see only (K−1)/K of the fold's rows, two thirds at K = 3, so on a learning curve the option that gains more from extra rows is under-rated there. T8(c) measures the net effect on fresh data.
+   - The bound and the expected maxima enter the claims ledger (DoD gate 2) as this spec's derivations, labeled so, with T8(d) as their check.
 4. **One rule, and the ruling kept at every size.** The small-sample rule becomes "drop the random candidates", which reads the same for every family and every slot, and Nolan's default holds on small tables too.
 5. **The instability is shown, not hidden.** The fold shares say how firm the choice was, as Martin et al. 2021 recommend. An even split means the two options predict about equally well here.
 
 *The alternative not taken:* below 300, one stated option with "Try both" available. It would read consistently with "too few to rank settings", but it would settle on no evidence a question the folds can answer at little cost.
 
-*Where the folds cannot choose.* When a fit holds fewer units of the rarest class, or fewer PSUs, than the plan's inner folds, K drops to that count, down to 2 (§4.2). Below 2, no inner split can be drawn: the slot takes its first option, keeping blanks as blanks (the trees' `default`, with the sources of §2.2), and the line says so: "Too few events to choose inside each fold: blanks kept as blanks." The shelf already carries Riley's concern at such sizes.
+*Where the folds cannot choose.* The plan caps K once so that every inner fold holds at least 2 units of the rarest class, or 2 PSUs (§4.2). When even K = 2 cannot meet that, with fewer than 4 in the plan's fit, the plan draws no inner folds, in every fit: the slot takes its first option, keeping blanks as blanks (the trees' `default`, with the sources of §2.2), and the line says so: "Too few events to choose inside each fold: blanks kept as blanks." Searched families keep their standard settings. A path family cannot choose its penalty without inner folds, so at that size it is not offered, and its shelf card gives Riley's concern as the reason. The shelf already carries that concern at such sizes.
 
-*Checked.* T8(c) (slow): at an effective size of 200, "Try both" at the standard settings against each option alone, on fresh data. If "Try both" loses to the better single option by more than 2 standard errors, this rule is revisited, as the 300 threshold is.
+*Checked.* T8(c) (slow): at an effective size of 200, "Try both" at the standard settings against each option alone, on fresh data, with 6 and with 30 routed columns. It reports fresh-data loss and the calibration slope's mean and spread, since miscalibration is the harm the small-sample rule names. If "Try both" loses to the better single option by more than 2 standard errors on either measure, this rule is revisited, as the 300 threshold is.
 
 **Halving subsamples are gone.** Early-stopping sets are stratified by class, and need an effective size of at least 1,500 (§4.2).
 
@@ -1000,7 +1036,7 @@ The tuning curve and "Compare with standard settings" are v2.x (§10).
 
 | Request | Why | Exit |
 |---|---|---|
-| A per-model transform or cap on any model | It changes the estimand behind the plan's back. | The curve question; plausibility repairs |
+| A per-model transform or cap on any model | It changes what the plan set out to estimate, without the plan. | The curve question; plausibility repairs |
 | "Try both" on any model | Inference may not choose its model from the data it reports on. | Declare one option |
 
 **Impossible by construction, so no validator and no menu item:**
@@ -1017,12 +1053,13 @@ Desktop only. Two registers: plain words on the card, and the technical name as 
 
 ### 6.0 Where this sits in the quest log
 
-**The stage.** Everything here lives in **Models**, the fifth of the seven stages, once per track. Under Predict, Models runs (CROSSWALK §5):
-1. the validation scheme;
-2. selection and the in-fold levers;
-3. **the families question** (Decide), with the shelf ranked live (§2.6);
-4. the Confirm sweep, where the recipe lines, the trees' "Try both" and the tuning line sit (`decision:set_recipe`, `default:trees-try-both-blanks`, `decision:set_tuning`);
-5. the analysis flowchart, with Fit (§4.4).
+**The stage.** Everything here lives in **Models**, the fifth of the seven stages, once per track. Under Predict, the screen shows Models in this order (CROSSWALK §5, with the DoD's reorder of 2026-10-08):
+1. **the Decides that shape every family's input,** each where it applies: the energy model; scales, batch correction and the omics normalization; and the selection question, when it is asked;
+2. **the families question** (Decide), with the shelf ranked live (§2.6);
+3. **the Confirm sweep:** the validation scheme (`default:validation-scheme`), the in-fold levers (`decision:set_levers`), the track's fill (§2.3), the recipe lines (`decision:set_recipe`), the trees' "Try both" (`default:trees-try-both-blanks`) and the tuning line (`decision:set_tuning`);
+4. **the analysis flowchart,** with Fit (§4.4).
+
+The engine's order differs: the Router answers the validation scheme and the levers before the families. The display-order rule below allows the difference, and its first condition holds through "Ranked on the defaults now set": the shelf ranks on the scheme's and the levers' defaults until the sweep confirms or changes them, and re-ranks when one changes.
 
 **The three labels.** The engine's tier names (asked, stated, silent) never reach the UI.
 
@@ -1039,7 +1076,7 @@ Desktop only. Two registers: plain words on the card, and the technical name as 
 **The display-order rule** (orchestrator, 2026-10-08). The screen may show this spec's elements in an order other than the engine's because all three conditions hold:
 1. **Nothing shown depends on an unanswered decision without saying so.** The shelf ranks before the Confirm sweep and says "Ranked on the defaults now set"; before the Decide answers it needs, it says "Waiting for: [question]". The minutes on the shelf and on Fit are computed on the defaults in force and recomputed when one changes.
 2. **Every answer the engine fills in is recorded and visible.** Every recipe default, the trees' "Try both" and the tuning plan sit in Confirm, or in For the record when they change nothing here. The small-sample switch is stated in the tuning line. All of them reach the methods text and the export, through each version's `VariantSpec` and its `TuningRecord`.
-3. **No view touches rows or the outcome before its gate opens.** The model-matrix preview shows predictor values of training rows after the seal, never the outcome. The shelf reads only the outcome's counts. Tuning results, fold shares and scores appear only after Fit, and under Estimate and Describe nothing is served before the lock.
+3. **No view touches rows or the outcome before its gate opens.** The model-matrix preview shows predictor values of training rows after the seal, never the outcome. The shelf reads only the outcome's counts, and its profile stops before any step that reads the outcome's values (§2.6). Tuning results, fold shares and scores appear on screen only after Fit; under Predict the server stamps any it serves as shown, whenever they are fetched (§4.4). Under Estimate and Describe the server serves no estimate before the lock, once every estimate stage is declared (seam guard 7).
 
 ### 6.1 The recipe lines
 
@@ -1054,7 +1091,7 @@ Desktop only. Two registers: plain words on the card, and the technical name as 
 - The shared fill's line ("The other models use the fill learned in each training fold.") is silent when the table has no blanks.
 - **One quiet link, "What each model is given",** sits under the lines. It lists each chosen family's non-silent slots with their stated phrases, each clickable. This makes every override one step away, the linear model's included.
 
-**Opening a phrase takes over the card's focal region.**
+**Pointing at a phrase elaborates it in one line** (the HANDOFF ruling: hovering "elaborates slightly"). **Clicking it opens the phrase, which takes over the card's focal region.**
 - The family list collapses to the chosen names, and Escape returns to it.
 - Options open with their consequence and at most one quiet label. Arrow keys move through them.
 - The canvas layout follows the option's footprint:
@@ -1098,7 +1135,7 @@ Desktop only. Two registers: plain words on the card, and the technical name as 
 | Standard settings | "The standard settings, the same in every fold." (8) | the family's source: "scikit-learn's defaults", "ranger's defaults", "XGBoost's defaults" |
 | Set by hand | "You choose the values; the record says when and why." (10) | |
 
-**Each option's minutes sit at its right edge.** "Lighter" is not listed. It appears just in time, in the Fit action's confirmation when the fit is held: "Lighter tuning · tries 10 settings · about 18 min".
+**Each option's minutes sit at its right edge.** "Lighter" is not listed. It appears just in time, in the Fit action's confirmation when the fit is held: "Lighter tuning · tries 10 settings · about 18 min". Choosing it records `set_tuning(mode="lighter")` for the listed families before the job starts, and the tuning line in Confirm then reads "Tuning: lighter · changed by you" (§3.1).
 
 **The canvas uses the Angles layout:**
 - **"What will it try?"** shows this table's storyboard: "18 settings" → "each tried on 3 inner folds of about 9,000 people" → "the best refit on the training fold" → "repeated in each of 51 fits".
@@ -1109,21 +1146,23 @@ Desktop only. Two registers: plain words on the card, and the technical name as 
 > "Tuning tries several settings and keeps the one that scores best. If the rows that pick a setting also grade it, the grade is too kind. So tuning runs inside each training fold, and the rows held back grade the result. Most of the time goes to the 50 folds the models are compared on."
 
 **Variants of the line.**
-- **Below an effective size of 300:** "Tuning: standard settings (214 people are too few to rank settings)." Its Why? (55 words):
+- **Below an effective size of 300:** "Tuning: standard settings (214 people are too few to rank settings)." Its Why? (56 words):
 
-  > "With 214 people, the best of many settings would change from sample to sample, so each model keeps its standard settings. Whether trees keep or fill blanks is still chosen in each fold: a choice between two costs little when it goes wrong, because it goes wrong mostly when the two predict about equally well."
+  > "With 214 people, the best of many settings would change from sample to sample, so each model keeps its standard settings. Whether trees keep or fill blanks is still chosen in each fold: a choice between two rarely costs much when it goes wrong, because it goes wrong mostly when the two predict about equally well."
 - **Under inference:** silent unless a penalized family is chosen.
 
 ### 6.3 The override flow
 
 1. The default is stated, with its reason under "Why does this matter?".
-2. Pointing at a phrase previews its options on the canvas, and the shelf's order with them. Nothing is recorded.
+2. Pointing at a phrase elaborates it in one line, its reason. Clicking it expands the card to its options, with a way back (§6.1); only then does each option preview on the canvas, with the shelf's order beside it. Nothing is recorded.
 3. Choosing holds the change in the stage. The phrase shows its new value, with the quiet label "changed by you".
 4. **After first results,** the options keep their soundness order, under one line chosen by holdout status:
    - **none:** "You've seen these scores. The earlier version stays in the comparison, so the final score accounts for choosing between them." (20 words)
    - **sealed:** "The held-out rows are still sealed, so this change can't flatter the final result." (14)
    - **after scores:** "These held-out rows were in the scores you saw, so the earlier version stays." (14)
    - **opened:** "The held-out rows are open, so this runs as a secondary analysis." (12)
+
+   **The line depends on the slot as well.** On a slot whose "Try both" result was shown, the option the folds favored (§3.5) carries a different line under none or after scores: "The folds already chose this on these rows, so fixing it here would make its score too kind." (18), with the exit "Keep trying both". The slot's other options take the line for the holdout status.
 
    For a shared step changed after first results, the line reads: "You've seen these scores. They stay in the comparison for reference; this change is disclosed, not corrected." (17)
 
@@ -1191,7 +1230,7 @@ All are registered with `contracts.register_contract`, in new modules `models/re
 | `path_search` | model · model | `set_tuning` · fit | row 11 |
 | `manual_settings` | model · model | `set_tuning` · fit | row 11 |
 | `shown_versions` | evaluation · model | `set_recipe`, `set_tuning`, `declare_version` · fit | rows 11–12 |
-| `revised_trunk_rows` | evaluation · model | any shared-step answer after first results · fit | row 12 |
+| `read_only_rows` | evaluation · model | any shared-step answer after first results; a recipe or tuning change under a sealed holdout · fit | row 12 |
 
 ### 7.2 Relations
 
@@ -1211,13 +1250,14 @@ All are registered with `contracts.register_contract`, in new modules `models/re
 | `revised_label_placement` | implies | "revised after first results" → the comparison and the methods text only; never a stage badge, the progress bar or a card | voice; stage registry (P0.4) |
 | `shown_versions_stay` | implies | holdout status none or after scores → every shown version is fitted, reverts included | fold; design stage |
 | `version_key_non_default` | implies | a version → its key is computed over the fields that differ from their defaults; adding an optional field re-keys nothing | `VariantSpec` |
-| `revised_trunk_rows_kept` | implies | Predict, before the opening, a shared-step answer after first results → the earlier trunk's served scores stay as read-only rows, with their trunk key and log sequence in the versions file; never refit, in BBC-CV, final, scored on held-out rows or exported | versions file; fit stage; `open_seal` and `declare_version` validators |
+| `read_only_rows_kept` | implies | Predict, before the opening: an entry on an earlier trunk decision key, or, under a holdout sealed before any score, an earlier version on the current trunk → a read-only row, with its trunk decision key, trunk stage key and log sequence in the versions file; never refit, in BBC-CV, final, scored on held-out rows or exported; a revert brings it back | versions file; fit stage; `open_seal` and `declare_version` validators; export |
+| `read_only_by_decisions` | implies | read-only status → read from the trunk decision key, never a stage key; a stage version bump with no answer changed creates no read-only row, and every version on the current trunk is refit as current | versions file; fit stage |
 | `compared_families_stay` | conflicts (refused, exists) | dropping a family whose score was shown, unless sealed or opened → exit "Keep the compared families" | `selection._compared_families_stay` (by version) |
 | `sealed_holdout_absorbs_change` | implies | a holdout sealed before any score → no earlier version fitted; its scores stay read-only; the sentence says why | completion |
 | `holdout_after_scores_labeled` | conflicts (block and record) | a holdout drawn after scores → treated as none; its score labeled | `set_split` validator; completion |
 | `opened_change_is_secondary` | conflicts (block and record) | seal opened → the change is secondary; the opened version stays final | validator; `mark_final` |
 | `deployed_is_best_unless_declared` | implies | no holdout → BBC-CV's choice is reported and used; when it is an earlier version, the line and its exits | fit stage |
-| `values_from_tuning_data_derived` | conflicts (block and record) | values or held options recorded after a tuning result was shown, no sealed holdout → labeled; excluded from BBC-CV and the result | completion; validator |
+| `values_from_tuning_data_derived` | conflicts (block and record) | after a tuning result was shown, no sealed holdout: values set or held, or a slot fixed to an option its served "Try both" search favored (the final refit's, or one that won at least half the outer folds) → labeled; excluded from BBC-CV and the result; exits "Tune inside each fold" and "Keep trying both". Fixing an option the search did not favor is a kept version instead | completion; validator |
 | `folds_choose_nested` | implies | `choose` or `default_choose` in force → the options join the search, the standard settings once per option; shares shown | tuning |
 | `plan_frozen` | implies | a searched or path family → one plan, set from n_plan, used in every fit | design stage |
 | `plan_strategy_counts` | implies | any plan → its strategy generates the candidates and counts the fits; the estimate reads the count | `TuningPlan.strategy`; cost |
@@ -1227,9 +1267,10 @@ All are registered with `contracts.register_contract`, in new modules `models/re
 | `path_search_refits_head` | implies | a path family → the head is refit in every inner split | tuning |
 | `tuning_on_primary` | implies | any search → pooled strictly proper primary, weighted under the population answer | tuning |
 | `tuning_estimate_first` | implies | a fit over 30 s → its estimate in the preview and on Fit; over 2 min → waits for Fit on the analysis flowchart, then runs as a server job | cost; scheduler |
-| `fit_records_lock` | implies | Estimate or Describe, Fit pressed → `lock_plan` recorded; no estimate stage served before it | server; `served_gate` (P0.8) |
+| `fit_records_lock` | implies | Estimate or Describe, Fit pressed → `lock_plan` recorded; no estimate stage served before it, Describe's included | server; `served_gate` (P0.8); estimate stages declared on `Stage` (seam guard 7, P0.4) |
+| `predict_scores_stamped` | implies | Predict, any score, tuned value or fold share served → stamped as shown, before or after Fit | completion; versions file |
 | `small_n_standard_settings` | implies | effective n_plan below 300 → the standard candidates only, one per "Try both" option, stated with the count | plan |
-| `try_both_floor` | implies | fewer than 2 units of the rarest class or PSUs per inner fold → the slot's first option, stated | plan |
+| `try_both_floor` | implies | the plan's K capped once so each inner fold holds at least 2 units of the rarest class, or 2 PSUs; fewer than 4 in the plan's fit → no inner folds in any fit: each slot's first option and the standard settings, stated | plan |
 | `shrinkage_small_n` | implies | a penalized family below Riley's minimum → the concern and the fold spread | `shelf_order`; fit |
 | `penalty_at_edge` | implies | the chosen penalty at a grid edge in most folds → the concern | fit |
 | `manual_labeled` | implies | manual values → "set by hand" everywhere, with when | voice |
@@ -1239,7 +1280,7 @@ All are registered with `contracts.register_contract`, in new modules `models/re
 
 **The chain test** (BLUEPRINT §13) gains one reference chain: an NHANES-shaped prediction with blanks, families {linear, boosted trees, ridge}, rows kept, the population answer.
 - It asserts `fill_in_track_models`, `trees_try_both_default`, `trees_route_blanks`, `blank_intolerant_fill_first` (on the energy nutrients), `recipes_differ_marked`, `plan_frozen`, `tuning_nested_everywhere` and `tuning_splits_follow_outer` (whole PSUs).
-- After a scripted recipe change once first results were seen, it also asserts `choice_after_scores_disclosed`, `shown_versions_stay` and `revised_label_placement`. After a scripted change to the energy model, it asserts `revised_trunk_rows_kept`.
+- After a scripted recipe change once first results were seen, it also asserts `choice_after_scores_disclosed`, `shown_versions_stay` and `revised_label_placement`. After a scripted change to the energy model, it asserts `read_only_rows_kept`; after a scripted stage version bump, `read_only_by_decisions`.
 - Each must appear in the lineage, in the participant flow where it applies, and in the methods sentence.
 
 ### 7.3 Leash rows, added to MODELING_SEQUENCE §4
@@ -1260,8 +1301,8 @@ All are registered with `contracts.register_contract`, in new modules `models/re
 | Automatic tuning, nested | recommended from an effective size of 300 | not applicable (path search only, for a labeled shrunk table) |
 | Standard settings | available; recommended below 300 | not applicable |
 | Values by hand before any tuning result was shown | available, labeled | not applicable |
-| Values by hand or held after a tuning result was shown | block and record (no holdout, or a holdout after scores); available under a holdout sealed before any score | not applicable |
-| A recipe or tuning change after first results | available: disclosed and labeled "revised after first results"; the earlier version kept and the choice among versions corrected, unless a holdout was sealed before any score (then kept read-only) | not applicable (a secondary after the lock) |
+| Values by hand or held, or a "Try both" slot fixed to the option its folds favored, after that result was shown | block and record (no holdout, or a holdout after scores); exits "Tune inside each fold" and "Keep trying both"; available under a holdout sealed before any score | not applicable |
+| Any other recipe or tuning change after first results | available: disclosed and labeled "revised after first results"; the earlier version kept and the choice among versions corrected, unless a holdout was sealed before any score (then kept read-only) | not applicable (a secondary after the lock) |
 | A shared-step change after first results | available: disclosed, not corrected; the earlier scores kept read-only, labeled "revised after first results" | not applicable (a secondary after the lock) |
 | Drawing a holdout after scores were seen | block and record: labeled, and treated as none | not applicable |
 | A change after the seal was opened | block and record: secondary | not applicable |
@@ -1307,7 +1348,7 @@ All are Tier A unless marked.
 **T3 · Inner splits follow the outer ones.** The search logs every inner (training, validation, stopping) set.
 - **3 rows per person:** no person on both sides; stopping rows are whole persons.
 - **Time-ordered:** every inner validation unit is later than every inner training unit.
-- **NHANES-shaped design** (15 strata, 2 PSUs each, outer design K = 2): every inner split keeps whole PSUs; K equals min(3, PSUs in the fit); the weighted inner loss equals a hand computation.
+- **NHANES-shaped design** (15 strata, 2 PSUs each, outer design K = 2): every inner split keeps whole PSUs; K equals min(3, ⌊P/2⌋), P the fewest PSUs in any outer training fold, in every fit; the weighted inner loss equals a hand computation.
 - **The oversample lever with 3 rows per person:**
   - no person sits on both sides of the stopping split;
   - no stopping row is resampled;
@@ -1334,34 +1375,37 @@ All are Tier A unless marked.
 - The estimate obtains its count from `TuningPlan.strategy`, not from a formula of its own.
 - The estimated time is within a factor of 3 of the measured time.
 
-**T7 · The after-first-results paths, scripted.** Fit {linear, boosted trees}, serve the fit, then record `set_recipe(boosted_trees, overrides={"missing": "fill"})`.
+**T7 · The after-first-results paths, scripted.** Fit {linear, ridge}, serve the fit, then record `set_recipe(ridge, overrides={"scale": "two_sd"})`, a slot no served search covered.
 - (i) The stamp lists both versions even when the client sends none.
 - (ii) The sentence says "revised after first results" and "after the cross-validated scores of … were seen", and states what is not corrected.
 - (iii) The next fit has three rows, the earlier one collapsed under the label "revised after first results".
 - (iv) BBC-CV's set has three versions and matches an independent BBC-CV written from Tsamardinos et al.'s algorithm, on the same draws.
 - (v) **A revert of the change** keeps the changed version, once shown, as an earlier version, and a replay from `decisions.jsonl` alone rebuilds both.
-- (vi) **A holdout sealed before any score:** no earlier version fitted; its scores shown read-only; the sealed sentence.
+- (vi) **A holdout sealed before any score:** no earlier version fitted; its scores shown as a read-only row; the sealed sentence; `open_seal.variant` and `declare_version` refuse that row, and a revert of the change makes the earlier version current and fitted again.
 - (vii) **A holdout drawn after scores:** the earlier version is fitted and kept; no sealed sentence; dropping a compared family is still refused; the held-out score is labeled.
 - (viii) **The reported version** is BBC-CV's choice. When that is the earlier version, the line and both exits appear. `declare_version` reports the current version's own score, labeled, with the corrected estimate beside it.
 - (ix) **After the opening,** a change runs as secondary, and the opened version stays final.
 - (x) A versions file holding version keys does not make `select_models` refuse.
 - (xi) A pre-spec record listing `boosted_trees` maps to its legacy version, and keeps it as an earlier version.
-- (xii) **A shared-step change** (the energy model) after first results: the earlier trunk's rows stay read-only under the label; they are not in BBC-CV; `open_seal` and `declare_version` refuse them; they are never scored on the held-out rows nor exported. With the stage cache cleared, the rows are still served from the versions file, and folding the log to the recorded sequence reproduces the recorded trunk key.
+- (xii) **A shared-step change** (the energy model) after first results: the earlier trunk's rows stay read-only under the label; they are not in BBC-CV; `open_seal` and `declare_version` refuse them; they are never scored on the held-out rows nor exported. With the stage cache cleared, the rows are still served from the versions file, and folding the log to the recorded sequence reproduces the recorded trunk decision key, and, on the same engine version, the recorded trunk stage key. Reverting the energy-model answer puts those entries back on the current trunk, fitted as usual.
 - (xiii) **Version keys:** adding an optional field with its default to `VariantSpec`, or a recipe slot whose default reproduces today's behavior, leaves every recorded key unchanged; a version at every default keys on its family, defaults version and space version alone.
+- (xiv) **The trees' blanks fixed to the folds' choice.** On T8(b)'s generator (blanks in x₁ carry the outcome), fit {linear, boosted trees} and serve the fit with its fold shares; the test first asserts that the final refit kept blanks and that keeping blanks won more than half the outer folds, so only that option is favored. Then `set_recipe(boosted_trees, overrides={"missing": "native"})` is data-derived: fitted, labeled "option chosen on these rows: not an honest estimate", excluded from BBC-CV and the result, with the coach line, the exit "Keep trying both" and the data-derived option sentence. Under a holdout sealed before any score the same change is allowed.
+- (xv) **The trees' blanks fixed against the folds' choice.** On the same fit, `set_recipe(boosted_trees, overrides={"missing": "fill"})` is not data-derived: the earlier version, which tried both, stays fitted; BBC-CV's set has three versions; the sentence is "against the folds' choice".
+- (xvi) **An engine upgrade.** Bumping the stage version of `trunk`, `design` or `shelf` with no answer changed creates no read-only row; every version on the current trunk is refit as current; no "revised after first results" line or sentence appears.
 
 **T8 · Try both.**
 - (a) The shares across folds equal an independent count from the per-fold records, and each fold's record holds every candidate's inner loss.
 - (b) On a generator where the outcome depends on whether x₁ is blank, keeping blanks wins most folds. This is a sanity check, not a performance claim.
-- (c) (slow) **Small samples:** at an effective size of 200, on (b)'s generator and on one where blanks are uninformative, "Try both" at the standard settings against each option alone, on 20,000 fresh rows, over 200 datasets. Reported; if "Try both" is worse than the better single option by more than 2 Monte Carlo standard errors, §4.6's rule is revisited.
+- (c) (slow) **Small samples:** at an effective size of 200, on (b)'s generator and on one where blanks are uninformative, each with 6 and with 30 routed columns, "Try both" at the standard settings against each option alone, on 20,000 fresh rows, over 200 datasets. It reports fresh-data loss and the calibration slope's mean and spread across datasets. If "Try both" is worse than the better single option by more than 2 Monte Carlo standard errors on either measure, §4.6's rule is revisited.
 - (d) **The regret bound:** a numerical check that Δ·Φ(−Δ/σ_d) peaks at about 0.17·σ_d near Δ = 0.75·σ_d, against an independent root-finder.
 
 **T9 · Small samples.**
 - 5,000 units at 3% prevalence: the plan uses the standard candidates, two for the trees under "Try both", and the line counts events.
 - At an effective size of 214: the plan holds exactly the two standard candidates for boosted trees, the folds choose between them, the tuning line reads "standard settings" and the recipe line reads "try both".
-- With fewer than 2 units of the rarest class per inner fold: the slot takes "keep blanks as blanks", and the line says so.
+- With 5 units of the rarest class in the plan's fit, every fit uses K = 2. With 3, no fit draws inner folds: the slot takes "keep blanks as blanks" in every fit, and the line says so. A fit holding fewer than 4 units of the rarest class keeps K = 2, and the record counts it.
 - n = 150: ridge carries the Riley concern, and its 10th–90th percentile range of λ equals an independent computation.
 
-**T10 · Inference refusals.** Each refusal in §5 returns its exits. The causal lasso's inner folds keep units whole. A recorded `random_forest` or `boosted_trees` causal learner parses as its renamed key.
+**T10 · Inference refusals and the lock.** Each refusal in §5 returns its exits. The causal lasso's inner folds keep units whole. A recorded `random_forest` or `boosted_trees` causal learner parses as its renamed key. On a Describe track, no estimate stage (the usual-intake distribution, the survey-weighted means and prevalence) is served before `lock_plan`, and `ESTIMATE_STAGES` equals the stages declared as estimates on `Stage`.
 
 **T11 · Each family against an independent reference.**
 - Ridge: the closed form, to 1e-8.
@@ -1395,13 +1439,14 @@ All are Tier A unless marked.
 
 **T16 · Values from tuning results.**
 - On T1's null generator: copy the final refit's values into manual. The version is block-and-record, labeled, and excluded from BBC-CV and the result. The test reports the size of its optimism.
-- After "Try both" fold shares were shown, overriding the trees' blanks to the option the folds preferred is data-derived.
+- After "Try both" fold shares were shown, fixing the trees' blanks to the option the search favored is data-derived; fixing the other option is not, and its earlier version stays.
 - With a holdout sealed before any score, the same values are allowed.
 
 **T17 · One plan.**
 - At 340 effective units with 5 folds: every outer fit, bootstrap resample and the final refit carry the same `TuningPlan`.
 - At 1,600: early stopping is decided once, by the plan.
 - At 214: every fit carries the same two standard candidates.
+- At 5 units of the rarest class: every fit carries K = 2; at 3, every fit carries no inner folds, whatever its own count.
 
 ---
 
@@ -1409,15 +1454,17 @@ All are Tier A unless marked.
 
 **Sizes** follow SIZING: S = 1 (one module and its reference test), S–M = 2, M = 3 (a few modules, an explanation path or tuning), M–L = 5.5, L = 8 (a new workflow). Each package below carries SIZING's size, and each table names the SIZING package that holds it.
 
-**Order** follows BLUEPRINT §12 and SIZING's road: C6a first (the math, then the families), then C6b (recipes, versions and their tests), with RT-8 in P0.8; C6d, the screens, once C6b, C4 and the quest-log shell (P0.7) are in.
+**Order** follows BLUEPRINT §12 and SIZING's road: C6a first (the math, then the families), then C6b (recipes, versions and their tests), with RT-8 in P0.8; C6d, the screens, once C6b, SIZING C4 (Who's in) and the quest-log shell (P0.7) are in.
 
 **Package C6c is not here.** Its items left v2 on 2026-10-08 and are INBOX (§10). Its seam is kept: `TuningPlan.strategy`, below.
+
+**Scope added in draft 3, and its size.** Draft 3 added work that SIZING's packages did not count: stamps on every shared-step answer after first results; a versions file holding served scores and two trunk keys; read-only rows of two kinds, with their refusals and their revert; and the long fit as a server job with a notification. RT-6 absorbs the stamps at its size, since they are one more completion on existing kinds. The rest is not absorbed: RT-7 grows by S–M (2) for the read-only rows and the served scores, and RT-8 by S (1) for the notification. C6b becomes 32 and P0.8 becomes 7, about 3 units in all, recorded as an amendment to SIZING (§10).
 
 ### C6a · Prediction: tuning and the four families (SIZING: 32)
 
 | WP | Size | What | Where | Tests |
 |---|---|---|---|---|
-| RT-1 · The search engine | L | `TuningDecl`, `Dimension`, `TuningPlan` (frozen, effective n, and **`strategy`**, one value `"sobol"` in v2, which owns the candidate generator and the fit count); the standard candidates, one per "Try both" option, then Sobol candidates with sha256 seeds; `fit_parts` (rows an argument, stopping units first, one head per split and per option, nested splits redrawn); pooled weighted loss with rounding; K dropped to the rarest class's or the PSUs' count, and the first option below 2; out-of-bag scoring and its conditions; the path search; `TunedPipeline` (`search=None`, `at`); `TuningRecord` (candidates in evaluation order, every candidate's inner loss); cancel. `fit_pipeline` gains `design=` and dispatch; seeds threaded from the split. Fixes F11, F13 and F15. | new `models/tuning.py`; `models/inner_cv.py`; stage call sites | T2(a–e), T3, T4, T9, T13, T17 |
+| RT-1 · The search engine | L | `TuningDecl`, `Dimension`, `TuningPlan` (frozen, effective n, and **`strategy`**, one value `"sobol"` in v2, which owns the candidate generator and the fit count); the standard candidates, one per "Try both" option, then Sobol candidates with sha256 seeds; `fit_parts` (rows an argument, stopping units first, one head per split and per option, nested splits redrawn); pooled weighted loss with rounding; K capped once in the plan at 2 units of the rarest class, or 2 PSUs, per inner fold, with no inner folds (each slot's first option) when even K = 2 cannot meet it; out-of-bag scoring and its conditions; the path search; `TunedPipeline` (`search=None`, `at`); `TuningRecord` (candidates in evaluation order, every candidate's inner loss); cancel. `fit_pipeline` gains `design=` and dispatch; seeds threaded from the split. Fixes F11, F13 and F15. | new `models/tuning.py`; `models/inner_cv.py`; stage call sites | T2(a–e), T3, T4, T9, T13, T17 |
 | RT-4 · Imbalance correction | S | The early-stopping interface; stopping units before resampling; recalibration splits per fit. Fixes F12. | `methods/levers.py` | T3 |
 | RT-5a · Boosted trees tuned | S | Its `tuning` declaration; `defaults_version` "2", with "Try both" as its blanks default; `describe`. | `models/boosted_trees.py` | T1, T2(c) |
 | RT-5b · Ridge | S | The family, path declaration, full coding; `Ridge` in `explain.LINEAR_MODELS` until MC-2a replaces that list. | new `models/ridge.py`; `models/explain.py` | T2(a), T11 |
@@ -1427,27 +1474,27 @@ All are Tier A unless marked.
 | RT-5f · Elastic net on the path search | M | Full coding; per-row logistic grid; `alpha_` and `l1_ratio_` readers moved to the record; the screen refit per split. Fixes F4 and F5. | `models/elastic_net.py`; `methods/omics.py` | T2(d), T12 |
 | RT-11 · Causal lasso folds by unit | S | `inner_splits` for the lasso's folds. Fixes F9. Lands with the contract's MC-2b renaming of the learner keys that collide with families (`random_forest`, `boosted_trees`), with parse aliases and tombstones (seam guard 2). | `models/causal.make_learner` | T10 |
 
-### C6b · Prediction: recipes, versions and cost (SIZING: 30)
+### C6b · Prediction: recipes, versions and cost (SIZING: 30; 32 with this spec's amendment)
 
 | WP | Size | What | Where | Tests |
 |---|---|---|---|---|
 | RT-2 · Recipe declaration | M–L | `RecipeSlot` (with `default_choose`), `RecipeOption`, `defaults_version`; recipes in `DesignSpec`; `family_spec` inside `build_pipeline`, `family_steps` and `describe_steps`, resolving each "Try both" option's spec; `PenaltyScaler` (`center_`, `scale_`; two-SD), undone by reading `center_` and `scale_`; `MissingLevelEncoder(drop=)`; transform and cap steps; the trees' form-rule skip; lineage spur; `register_family` checks; `FamilyInfo`; teaching options for the new families. | `models/base.py`, `models/pipeline.py`, `models/explain.py` (`_undo_scaling`, `linear_equation`), `models/elastic_net.coefficients`, `models/artifacts.py`, `models/lineage.py`, `stages/__init__.py` (reads, version bumps), `teaching/content.py` | T15, T5(v) |
 | RT-3 · The trees' own blanks, tried both ways | M | `reads(spec)` and `passes` (a set; only `"blanks"` in v2) on every step; `native` computed by walking the steps; the imputer and indicators skip routed columns; the trees' `default_choose`, with indicators on the fill option; the missing slot reading the track's fill (D2 moves the fill into each track's Models); the preview of both inputs, its caption and `table_focus`; the "Keep every row" copy in Who's in, and "No restriction" on the exclusions card; the teaching note. | `models/pipeline.py`; `methods/*` steps; `models/previews.py`; `teaching/content.py`; `ChoiceQuestions.tsx` (copy only) | T5 |
 | RT-6 · Decisions and stamps | M | `SetRecipe` (`overrides`, `choose`), `SetTuning`, `DeclareVersion`, `Stamp` (with its track); completions on seven kinds (revert gains one) and on shared-step answers after first results; holdout status; the data-derived rule, the trees' default included; validators and exits, the inference refusal reading the purpose; key views; sentences, with "revised after first results"; previews with estimates, and with the edited family's profile (the contract's MC-6). The new kinds land after the decision log's format marker (seam guard 1). | `decisions.py`, `voice.py`, `models/previews.py`, `graph.py` | T7(i–ii), T10, T16 |
-| RT-7 · Versions kept and labeled "revised after first results" | L | `VariantSpec` keys over the fields that differ from their defaults (seam guard 4); `versions_shown` folded across reverts; `LEGACY_DEFAULTS`; the versions file (`turbotab-versions/1`, per track) with specs, keys, served sequences, trunk keys and served scores; the read-only rows of an earlier trunk, their trunk key and log sequence persisted there (seam guard 5), refused by `open_seal`, `declare_version` and the export; one `role` on every fitted version; `compared_families`, `vouch`, `scored_in` and `explained_in` by version; `design.objects["earlier"]`; fit and evaluation (`design_bbc`) include earlier versions; `variant` on rows; the out-of-fold cache; `declared_result` and `declare_version`; the seal by version (`open_seal.variant`, `AtOpening`, `mark_final`). | `models/selection.py`, `seal.py`, `stages/modeling.py`, `stages/evaluation.py`, the frontend's results types | T7 |
+| RT-7 · Versions kept and labeled "revised after first results" | L, plus S–M (2) | `VariantSpec` keys over the fields that differ from their defaults (seam guard 4); `versions_shown` folded across reverts; `LEGACY_DEFAULTS`; the versions file (`turbotab-versions/1`, per track) with specs, keys, served sequences, trunk decision keys, trunk stage keys with the TurboTab version, and served scores; read-only status from the trunk decision key, never a stage key; the read-only rows of both kinds (an earlier trunk; an earlier version under a sealed holdout), their keys and log sequence persisted there (seam guard 5), refused by `open_seal`, `declare_version` and the export, and brought back by a revert; one `role` on every fitted version; `compared_families`, `vouch`, `scored_in` and `explained_in` by version; `design.objects["earlier"]`; fit and evaluation (`design_bbc`) include earlier versions; `variant` on rows; the out-of-fold cache; `declared_result` and `declare_version`; the seal by version (`open_seal.variant`, `AtOpening`, `mark_final`). | `models/selection.py`, `seal.py`, `stages/modeling.py`, `stages/evaluation.py`, the frontend's results types | T7 |
 | RT-9 · Fit artifact and results data | S–M | `FittedModel.variant`, `role`, `inputs`, `settings`, `tuning`; per-fold records through a `cross_validate` hook, holding the chosen option and every candidate's inner loss; `pinned_to_full_fit` holds the tuned values and the chosen option, with its caption. | `models/artifacts.py`, `models/metrics.cross_validate`, `stages/modeling.py`, `stages/explain.py` | T8, T9 |
 | RT-10 · Contracts and relations | S | §7's contracts (scope `model` where the outcome is read), relations, the chain, methods clauses. | `models/tuning.py`, `models/recipes.py` | T4, T14 |
 | RT-12 · Export and replay of versions | M | Threads pinned and recorded; versions and the versions file in provenance; `TuningRecord` numbers among provenance estimates; pinned-replay mode, the replay of record for any strategy whose candidates depend on earlier scores; per-version matrix hashes; read-only rows rebuilt from the log. | `export/record.py`, `export/replay.py` | T13, T7(xii) |
 | RT-13 · Catalog, shelf, journeys | S, plus a heavy run | Contract catalog entries (review lenses through the contract's `review_lenses`); the four new families' base assessments (§2.6), which MC-5 extends; `first_models` checked per journey; the journeys and review packets regenerated as a run scheduled with Nolan. | `reference/catalog.py`, `reference/journeys.py` | the journeys |
 | RT-14 · Acceptance tests | M | T1 to T17. | `core/tests/acceptance/` | |
 
-### P0.8 · Fit, the hold and a visible lock (SIZING: 6)
+### P0.8 · Fit, the hold and a visible lock (SIZING: 6; 7 with this spec's amendment)
 
 | WP | Size | What | Where | Tests |
 |---|---|---|---|---|
-| RT-8 · Cost, the hold and Fit | M | Timing at `at(center)`; the fit count from the plan's strategy, with its multipliers; `outer_fits` counted across stages; the F7 fix; preview estimates; the scheduler's 2-minute hold (bypassed in replay); the Fit and Refit job payload; the server job, its notification and cancel. Counted in P0.8 only. | `models/cost.py`, `stages/modeling._estimates`, the job scheduler | T6 |
+| RT-8 · Cost, the hold and Fit | M, plus S (1) | Timing at `at(center)`; the fit count from the plan's strategy, with its multipliers; `outer_fits` counted across stages; the F7 fix; preview estimates; the scheduler's 2-minute hold (bypassed in replay); the Fit and Refit job payload; the server job, its notification and cancel. Counted in P0.8 only. | `models/cost.py`, `stages/modeling._estimates`, the job scheduler | T6 |
 
-P0.8's other M is not this spec's: under Estimate and Describe, the serving gate that withholds every estimate stage until the track's lock, the lock recorded when Fit is pressed, and the lock shown with its time and SHA-256.
+P0.8's other M is not this spec's: under Estimate and Describe, the serving gate that withholds every estimate stage until the track's lock, the lock recorded when Fit is pressed, and the lock shown with its time and SHA-256. That gate is only as complete as its list of estimate stages, so it waits on seam guard 7 in P0.4 (estimate stages declared on `Stage`, Describe's included; §4.4).
 
 ### C6d · Slice: Models under Predict (SIZING: 12)
 
@@ -1470,7 +1517,7 @@ Each is S, sits inside a package above, and is counted among the definition of d
 |---|---|---|---|
 | `TuningPlan.strategy`, owning the candidate generator and the fit count; `TuningRecord` lists candidates in evaluation order (seam guard 3; missing hook 1) | RT-1, RT-8 | successive halving, Hyperband, TPE and BOHB (rows 1–2) | T6, T13 |
 | Version keys over the fields that differ from their defaults (seam guard 4) | RT-7 | the Thorough budget, strategies, monotone constraints, native categories and the neural families' slots, with no recorded version re-keyed (rows 3, 5, 20) | T7(xiii) |
-| The read-only row's trunk key and log sequence, persisted in the versions file (seam guard 5; missing hook 2) | RT-7, with C7d | shared-step changes kept as versions (row 11); v2's own read-only rows survive a cleared cache | T7(xii) |
+| The read-only row's trunk decision key, trunk stage key and log sequence, persisted in the versions file (seam guard 5; missing hook 2) | RT-7, with C7d | shared-step changes kept as versions (row 11); v2's own read-only rows survive a cleared cache | T7(xii) |
 
 **Guards inside the packages, at no extra size:**
 - RT-1: `fit_parts` keeps its rows an argument (row 1).
@@ -1507,7 +1554,12 @@ Each is S, sits inside a package above, and is counted among the definition of d
 - **MODELING_SEQUENCE §4** gains the rows of §7.3.
 - **BLUEPRINT §4:** a heavy stage whose estimate exceeds 2 minutes waits for the user's Fit action on the analysis flowchart instead of starting on its own, and runs as a server job with a notification; replay is exempt. Under Estimate and Describe, pressing Fit records the track's lock (`lock_plan`), and no estimate stage is served before it.
 - **MODEL_FAMILY_CONTRACT C4,** to match the rulings of 2026-10-08: the readiness list names who is kept (Who's in) rather than "the missing-values answer"; the Predict track's fill is a Models Confirm, ranked on its default; scales, batch and the omics normalization come before the families question (question 4, ruled); "outcome-blind" reads as no outcome relation and no score, with the outcome's counts allowed (question 1, ruled).
+- **MODEL_FAMILY_CONTRACT C3:** steps declare `passes`, a set of the raw value kinds they pass through unchanged (only `"blanks"` in v2), instead of a `passes_blanks` flag, so native categories add `"categories"` without a second sweep of every step (V2X_SEAMS row 5; §2.3).
+- **MODEL_FAMILY_CONTRACT C6:** the standard settings are not one "candidate 0" but one standard candidate per combination of "Try both" options with a footprint, listed first, with ties going to the first (§4.1, §4.2).
 - **CROSSWALK:** `q:missing` in Who's in asks who is kept, with the option relabeled "Keep every row"; the fill becomes an item of each track's Models (ruling 5; SIZING D2).
+- **CROSSWALK, Models' Decide list:** scales, batch and the omics normalization (Decide 10–12) move ahead of the families question (Decide 6), as the DoD ruled on 2026-10-08, recorded as disagreement 21 (the contract's question 4).
+- **SIZING:** C6b becomes 32 and P0.8 becomes 7, for the scope draft 3 added to RT-7 and RT-8 (§9).
+- **V2X_SEAMS row 11 and seam guard 5:** the read-only row persists its trunk decision key as well as the trunk stage key and the log sequence. The decision key decides read-only status and survives an engine upgrade; the stage key is kept for identity and for a rebuild on the same engine (§3.2).
 - **Already made:** the 2026-10-05 amendment's "are being specified" now reads "are specified in `RECIPES_AND_TUNING.md`".
 
 ### INBOX (v2.x)
@@ -1527,7 +1579,7 @@ None of these is a recorded value in v2, so none needs a refused placeholder (V2
 
 **The kept comparisons, moved on 2026-10-07** (V2X_SEAMS §2):
 - **"Compare with standard settings" as a kept version:** one more `role`, a comparator (row 10).
-- **Shared-step changes kept as versions,** fitted and compared: rebuilt from the read-only rows' trunk key and log sequence (row 11; about an L on top of RT-7).
+- **Shared-step changes kept as versions,** fitted and compared: rebuilt by folding the log to the read-only rows' recorded sequence, which reproduces their trunk decision key on any engine version (row 11; about an L on top of RT-7).
 - **Re-tuned substitution bands:** one optional field on `set_substitution` (row 12).
 
 **Other:**
@@ -1620,12 +1672,19 @@ In-fold PCA for omics stays its own v2 item (SIZING C6e).
 **Settled by the orchestrator in draft 3** (methods calls, each with its reason in place):
 - **"Try both" below an effective size of 300** runs at the standard settings: the plan keeps the standard candidates, one per option, and drops the random ones (§4.6).
 - **The standard settings are candidates once per "Try both" option at every size,** so the small-sample rule is one rule for every slot (§4.2).
-- **Where no inner split can be drawn,** the slot takes its first option, keeping blanks as blanks, stated (§4.6).
+- **One floor for the inner folds, set once in the plan:** at least 2 units of the rarest class, or 2 PSUs, per inner fold. Where even K = 2 cannot meet it, no fit draws inner folds, and the slot takes its first option, keeping blanks as blanks, stated (§4.2, §4.6).
 - **Under a sealed holdout, a version changed after first results** is not fitted again, and its scores stay as a read-only row, so nothing seen is overwritten silently (§3.3).
-- **Read-only rows** are every served score whose trunk key is not the current one; they are never refit, corrected, declared final, scored on the held-out rows or exported (§3.2).
+- **Read-only rows** are every served score whose trunk decision key is not the current one, and, under a sealed holdout, every earlier version; they are never refit, corrected, declared final, scored on the held-out rows or exported, and a revert brings them back (§3.2).
 - **"Keep every row" keeps one meaning in Who's in:** the exclusions card's option of the same name becomes "No restriction" (§2.3).
+- **Fixing a "Try both" slot after its result was shown** is data-derived only when it fixes the option the search favored (the final refit's, or one that won at least half the outer folds). Fixing another option is a kept version, corrected by BBC-CV (§3.5).
+- **Read-only status reads the trunk's answers, not its code.** An engine upgrade refits every version as current and never creates a "revised after first results" row (§3.2).
+- **Describe's estimates wait for the lock** through seam guard 7, which settles INBOX's usual-intake item for Describe tracks (§4.4).
 
-**For Nolan.** No new question. Three settlements change what a user sees, so they are flagged for his review: "Try both" on small tables (§4.6), read-only rows under a sealed holdout (§3.3), and "No restriction" on the exclusions card (§2.3).
+**For Nolan.** No new question. Four settlements change what a user sees, so they are flagged for his review:
+- "Try both" on small tables (§4.6);
+- read-only rows under a sealed holdout, which go beyond the UI ruling's "a kept version (Predict)"; reverting the change brings the earlier version back (§3.2, §3.3);
+- "No restriction" on the exclusions card (§2.3);
+- **the trees' blanks after first results.** With "Try both" as the default, fixing the trees' blanks to the option the folds kept is block and record: its score is labeled not honest and left out of the result, with "Keep trying both" as the exit, since that already makes the same choice honestly. Fixing the other option (for example the fill, because blanks will not mean the same where the model is used) keeps the earlier version and is corrected. Under a holdout sealed before any score, either fix is simply allowed (§3.5).
 
 ---
 
@@ -1651,6 +1710,34 @@ In-fold PCA for omics stays its own v2 item (SIZING C6e).
 - **Spelling repaired:** draft 2 printed "optimiztic", "optimizm" and "sensitivity analyzes"; they read "optimistic", "optimism" and "sensitivity analyses".
 - **One label, one meaning:** the exclusions card's "Keep every row" becomes "No restriction", since the missing-values card now uses that label (§2.3).
 - **"Decisions for Nolan"** became "Rulings folded in, and what is left".
+
+---
+
+## What changed after review of draft 3
+
+**Majors.**
+- **One rule for fixing a "Try both" slot after its result was shown.** Draft 3 called any such override data-derived, yet scripted the trees' switch to the fill as a kept, corrected version. Now only fixing the option the search favored (its final refit's, or one that won at least half the outer folds) is data-derived, with its coach line, label, sentence and the exit "Keep trying both"; fixing another option is a kept version. The worked after-first-results example and T7 move to ridge's scale, which no search covers, and T7(xiv–xv) script both trees' cases. The §6.3 line now depends on the slot (§3.3, §3.5, §3.6, §6.3, §7.2, §7.3, T16).
+- **Read-only status reads the trunk's answers, not its code.** A stage key hashes stage versions, so an engine upgrade would have turned every earlier score into a false "revised after first results" row. The versions file now carries a trunk decision key (the answers the trunk reads, with no stage version and no split) beside the trunk stage key and the TurboTab version. An upgrade refits every version as current and creates no read-only row; T7(xvi) checks it, and T7(xii) checks the decision key on any engine version (§3.2, §7.2, §9, §10).
+
+**Minors.**
+- **One floor for inner folds,** set once in the plan: at least 2 units of the rarest class, or 2 PSUs, per inner fold; below K = 2, no fit draws inner folds. Fits that fall short keep the plan's K and are counted (§4.2, §4.3, §4.6, §7.2, T3, T9, T17).
+- **§4.6's reasons are exact:** the fill option adds indicator columns, and the nested choice guards them; the inner-versus-outer bias is a stated caveat; the bound enters the claims ledger; T8(c) adds the calibration slope and 6 against 30 routed columns; the card says "rarely costs much".
+- **The shelf's profile stops at the first step that reads the outcome's values,** with "before selection", "by rule" and the outcome-free fill under inference, and the `set_recipe` preview stops there too (§2.5, §2.6).
+- **§6.0 gives the screen order,** and says where the engine's differs.
+- **Predict's scores are stamped whenever served,** before or after Fit, and "Lighter" records a `set_tuning` (§3.1, §4.4, §6.2).
+- **Plain words:** the refusal no longer says "estimand". Pointing elaborates in one line, and the preview waits for the click (§5, §6.1, §6.3).
+- **§10 lists the contract's C3 and C6, the crosswalk's reorder, SIZING and V2X_SEAMS row 11 as amendments.**
+- **Describe's no-estimate-before-lock guarantee names seam guard 7,** and T10 checks it (§4.4, §9).
+- **Read-only rows of both kinds** (an earlier trunk; an earlier version under a sealed holdout) share one definition and one set of refusals, and a revert brings them back (§3.2).
+- **The spec's dataclasses would run:** defaults after non-defaults, and `field(default_factory=dict)` for mappings (§2.4, §4.1).
+- **Sizes:** RT-7 grows by 2 and RT-8 by 1 for draft 3's added scope, and "SIZING C4 (Who's in)" is named in full (§9).
+
+## Review notes not taken
+
+- **The stricter reading of §3.5,** in which every override of a slot a served search covered is data-derived, is not taken. Fixing the option the folds did not favor is not flattered by them, so labeling its score "not an honest estimate" would be a false label. The review's three fixes are applied on the narrower rule, and its flag for Nolan is reworded to match.
+- **Read-only status from log order** (a stamped shared-step answer after the served sequence), the review's first route for the second major, is not taken. Its alternative, a trunk decision key, is: with it a reverted or re-answered shared step matches again, instead of leaving a duplicate read-only row beside the same trunk.
+- **Withholding Predict's scores on the server until Fit,** the review's first route for that minor, is not taken. Fit under Predict stays a job command that records nothing, so the server would need a new marker; stamping every served score as shown keeps the record complete without one.
+- **Refusing a fit that cannot meet the plan's K** is not taken. Such a fit keeps the plan's K and is counted, so no stage fails partway.
 
 ---
 
