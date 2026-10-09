@@ -841,8 +841,11 @@ class ProjectService:
 
     def quest(self, pid: str) -> QuestLog:
         """The quest log's seven stages (SIZING P0.4; ``turbotab/core/quest.py``): each stage's
-        lines, progress and why it reopened. A result counts as out of date when its stage is not
-        fresh and an older artifact exists; the reason reads when that artifact was computed."""
+        lines, progress and why it reopened. A stage's result is not for the answers now when its
+        stage is not fresh and an older artifact exists (a blocked stage's too: the registry gives
+        it no reason, since it is never computed again, but an estimate among them keeps Results
+        reached); the reason reads when that artifact was computed. The usual-intake line applies
+        where the stage's newest artifact offers the distribution."""
         self.workspace.get(pid)
         stages = self.engine.status(pid)
         records = self.log(pid).records()
@@ -852,6 +855,8 @@ class ProjectService:
         ingest = stages["ingest"]
         columns = (self._table_facts(pid, stages, ingest.key).columns
                    if ingest.status == "fresh" and ingest.key else None)
+        artifacts = ({"usual_intake": self._shown(pid, "usual_intake")}
+                     if "dietary" in (state.lens or ()) else {})
         cache = self.workspace.cache_dir(pid)
         shown_at: dict[str, datetime | None] = {}
         for name, status in stages.items():
@@ -862,7 +867,7 @@ class ProjectService:
                 made = read_meta(cache, name, older).get("created_at")
                 shown_at[name] = datetime.fromisoformat(made) if made else None
         return quest_log(state, records, steps, stages, findings=findings, columns=columns,
-                         shown_at=shown_at)
+                         artifacts=artifacts, shown_at=shown_at)
 
     def _store_or_none(self, pid: str) -> Any:
         try:

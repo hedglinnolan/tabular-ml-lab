@@ -20,8 +20,9 @@ quest stages" and the audited disagreements); the registry test holds every plac
 * **Findings** (:func:`finding_place`): a finding is decided at the question it routes to, or the
   one it was held for (``defer_finding``); with neither, in Your data, where its repair is chosen.
   Explore's findings sit in :data:`EXPLORE_FINDINGS`.
-* **Noticings**: each catalog thread of the understanding layer sits where the crosswalk decides it
-  (``quest_noticings.json``, :func:`noticing_stage`), so the thread registry (U1) places them here.
+* **Noticings**: each catalog thread of the understanding layer sits where the crosswalk decides it,
+  with the objective of the crosswalk item that carries it (``quest_noticings.json``,
+  :func:`noticing_place`), so the thread registry (U1) places them here.
 * **Compute stages** (:data:`COMPUTE`): the quest stage that shows each one's result, so a result
   gone stale names the stage that shows it. Each estimate stage declares it serves an estimate
   (``Stage.serves``), and ``estimand.ESTIMATE_STAGES`` is read from those declarations (V2X_SEAMS
@@ -33,13 +34,31 @@ is offered; FOUNDATION §3; a declaration carries its method contracts' tier, :f
 unless the crosswalk rules otherwise, :data:`TIER_RULINGS`), with "Waiting for" on a line whose
 earlier answers are missing;
 progress as answered over required, each counted Decide one and the stage's Confirm sweep one,
-empty (``None``) for a stage not reached; and why it reopened. A stage reopens when an answer
-decided elsewhere invalidates its own: a question the Router asks again (the decisions'
-invalidation relations: a form left stale, an adjustment set missing a new covariate's answers, a
-new outcome's event), or a result computed for answers that have changed since (the stage graph's
-freshness). The reason names the stage of the answer that changed: "Your change to Who's in
-reopened 2 questions in Models." A change made in the stage itself reopens its own lines, which say
-so, but gives the stage no reason line: the person is looking at it.
+empty (``None``) for a stage not reached, and ``complete`` once every objective is answered (a
+reached stage that asks nothing, 0 of 0, is complete: its segment is full); and why it reopened.
+
+**Reached.** A stage is reached once the Router has asked a question in it or a later one.
+Results is reached once an estimate has been computed, for the answers now or for earlier ones
+(a result out of date keeps it reached, so it can say why it dropped back), or once the held-out
+rows can be opened; Write-up opens with Results.
+
+**Reopen reasons.** A stage reopens when another answer invalidates its own: a question the Router
+asks again (the decisions' invalidation relations: a form left stale, an adjustment set missing a
+new covariate's answers, a new outcome's event), or a result computed for answers that have changed
+since (the stage graph's freshness). The record named is the one that made the answer stop holding,
+found by replaying the log (a later, unrelated change never displaces it). The reason names the
+stage of the answer that changed: "Your change to Who's in reopened 2 questions in Models." A
+question reopened by another answer in its own stage says so too ("Your change to another answer
+in Your data reopened 1 question.", FOUNDATION §3's "the join added 12 columns, so what each new
+column is gets read again"; ``within``); a result its own stage's answers left out of date is not
+a drop-back (each answer redraws its stage's cards). A result whose stage is blocked (the analysis
+was withdrawn) is never computed again, so it is not out of date.
+
+**While a reading recomputes.** A question whose applicability or answer is read from a stage
+(the outcome's reading, the rows' structure, the form card) waits while that stage recomputes.
+Its recorded answer, while it still holds on the answers now, stands meanwhile; a question with no
+such answer is listed as waiting and not counted, since whether it is asked at all is that
+reading's. So the bar never shows questions reopened that a recompute settles again.
 
 The Confirm sweep is answered when each of its lines carries an answer recorded by the person;
 P0.5 adds the one record that confirms a whole sweep. Progress reads the registry's lines only:
@@ -218,19 +237,37 @@ def answering_kinds(key: str) -> tuple[str, ...]:
 # ── declarations: the decisions with no Router key that are lines of their own ─
 
 
-def _goal(*goals: str) -> Callable[[Any, Sequence[str] | None], bool]:
-    return lambda state, columns: getattr(state, "purpose", None) in goals
+@dataclass(frozen=True)
+class Facts:
+    """What a declaration's applicability reads beyond the answers: the table's columns (a batch
+    column is read by its name), and the newest artifacts of the stages that make an offer, fresh
+    or not (``usual_intake``: whether the usual-intake distribution is offered)."""
+
+    columns: Sequence[str] = ()
+    artifacts: Mapping[str, Any] = field(default_factory=dict)
+
+
+def _goal(*goals: str) -> Callable[[Any, Facts], bool]:
+    return lambda state, facts: getattr(state, "purpose", None) in goals
 
 
 def _lens(*lenses: str) -> Callable[[Any], bool]:
     return lambda state: any(lens in (getattr(state, "lens", None) or ()) for lens in lenses)
 
 
-def _always(state: Any, columns: Sequence[str] | None) -> bool:
+def _always(state: Any, facts: Facts) -> bool:
     return True
 
 
-def _batch_applies(state: Any, columns: Sequence[str] | None) -> bool:
+def _linear_family(state: Any) -> bool:
+    """The unpenalized regression family is chosen, or the families are not chosen yet (the line
+    then waits for them): regression calibration corrects its coefficient, and uniform shrinkage
+    updates it (``stages/calibration.py``: NO_LINEAR; the relation ``shrinkage_offered``)."""
+    models = getattr(state, "models", None)
+    return models is None or "linear" in models
+
+
+def _batch_applies(state: Any, facts: Facts) -> bool:
     """Under an assay lens, with a column named as a batch, a run or a plate (the name reading that
     starts the batch finding, ``methods.batch.batch_columns``; a name is a guess, so a question)."""
     if state.purpose not in ("inference", "prediction"):
@@ -240,19 +277,42 @@ def _batch_applies(state: Any, columns: Sequence[str] | None) -> bool:
     from turbotab.core.readings import BATCH_KINDS
     from turbotab.core.recognizers import acquisition_kind
 
-    return any(c != state.target and acquisition_kind(c) in BATCH_KINDS for c in columns or ())
+    return any(c != state.target and acquisition_kind(c) in BATCH_KINDS for c in facts.columns)
+
+
+def _calibration_applies(state: Any, facts: Facts) -> bool:
+    """Under inference and the dietary lens, rows that are each person's mean of their recalls
+    (repeats combined by the mean, never as time points), with the linear family (the crosswalk's
+    fires_when; the calibration stage's NOT_COMBINED, TIME_POINTS and NO_LINEAR)."""
+    if state.purpose != "inference" or not _lens("dietary")(state):
+        return False
+    aggregation, repeats = state.aggregation, state.repeat_kind
+    if aggregation is None or aggregation.method != "mean":
+        return False
+    if repeats is not None and repeats.repeat_kind == "time_points":
+        return False
+    return _linear_family(state)
+
+
+def _usual_intake_applies(state: Any, facts: Facts) -> bool:
+    """Under the dietary lens and any goal but prediction, where the usual-intake stage offers the
+    distribution (repeated recalls, enough people with two or more: ``UsualIntakeOffer.offered``),
+    or once an answer is recorded (the crosswalk: it "runs under either purpose today")."""
+    if state.purpose in (None, "prediction") or not _lens("dietary")(state):
+        return False
+    if getattr(state, "usual_intake", None):
+        return True
+    offer = (facts.artifacts.get("usual_intake") or {}).get("offer") or {}
+    return bool(offer.get("offered"))
 
 
 def _model_one_is_current(state: Any) -> bool:
-    """Model 1 holds while it is declared for the exposure (or the family) now declared."""
-    from turbotab.core.decisions import EXPOSURE_FAMILY
+    """Model 1 holds as the engine holds it (``estimand.current_model_sequence``): for the exposure
+    now declared, with every Model 1 column still in the primary adjustment set (MODELING_SEQUENCE
+    §2: another exposure, or a column leaving the set, asks it again)."""
+    from turbotab.core.estimand import current_model_sequence
 
-    spec, est = state.model_sequence, state.estimand
-    if spec is None:
-        return False
-    if est is None:
-        return True
-    return spec.exposure == (EXPOSURE_FAMILY if est.family else est.exposure)
+    return current_model_sequence(state) is not None
 
 
 def _calibration_is_current(state: Any) -> bool:
@@ -267,7 +327,7 @@ def _calibration_is_current(state: Any) -> bool:
 class Declaration:
     """A decision with no Router key that the quest log lists as a line (disagreement 11).
 
-    ``applies(state, columns)``: whether the line is in the stage for this table, goal and lens.
+    ``applies(state, facts)``: whether the line is in the stage for this table, goal and lens.
     ``reads``: the Router questions whose answers its card reads; it waits for them. ``counted``:
     whether it counts toward progress (an offer nothing records declining does not). ``holds``:
     whether its recorded answer still stands (else it is asked again). ``only_recorded``: a For the
@@ -275,7 +335,7 @@ class Declaration:
 
     kind: str
     name: str
-    applies: Callable[[Any, Sequence[str] | None], bool]
+    applies: Callable[[Any, Facts], bool]
     reads: tuple[str, ...] = ()
     counted: bool = True
     holds: Callable[[Any], bool] | None = None
@@ -294,7 +354,7 @@ DECLARATIONS: tuple[Declaration, ...] = (
     Declaration("view_outcome", "the outcome views looked at", _always, counted=False,
                 only_recorded=True),
     Declaration("set_scales", "the scales question",
-                lambda s, c: s.purpose in ("inference", "prediction") and _lens("survey")(s),
+                lambda s, f: s.purpose in ("inference", "prediction") and _lens("survey")(s),
                 reads=("roles",)),
     Declaration("set_batch", "the batch question", _batch_applies, reads=("roles",)),
     Declaration("set_selection", "the predictor-selection question", _goal("prediction"),
@@ -303,21 +363,22 @@ DECLARATIONS: tuple[Declaration, ...] = (
                 reads=("estimand", "adjustment"), holds=_model_one_is_current),
     # Once an exclusion rule is recorded: the analyses beside the primary's rows (Banna et al. 2017)
     Declaration("set_sensitivity", "the sensitivity analyses",
-                lambda s, c: s.purpose in ("inference", "prediction") and bool(s.exclusions),
+                lambda s, f: s.purpose in ("inference", "prediction") and bool(s.exclusions),
                 reads=("exclusions",)),
-    # Rows that are each person's mean of several recalls (the calibration stage's NOT_COMBINED)
     Declaration("set_measurement_error", "the regression calibration question",
-                lambda s, c: (s.purpose == "inference" and _lens("dietary")(s)
-                              and s.aggregation is not None),
-                reads=("adjustment", "models"), holds=_calibration_is_current),
-    Declaration("set_usual_intake", "the usual-intake question",
-                lambda s, c: s.purpose == "describe" and _lens("dietary")(s), reads=("purpose",)),
+                _calibration_applies, reads=("adjustment", "models"),
+                holds=_calibration_is_current),
+    # It waits for the repeats and the survey answers (its depends_on; SURVEY_UNANSWERED).
+    Declaration("set_usual_intake", "the usual-intake question", _usual_intake_applies,
+                reads=("repeat_kind", "survey")),
     Declaration("set_multiplicity", "how many tests are accounted for",
-                lambda s, c: (s.purpose == "inference" and s.estimand is not None
+                lambda s, f: (s.purpose == "inference" and s.estimand is not None
                               and bool(s.estimand.family)), reads=("estimand",)),
     Declaration("set_levers", "the rules repeated inside each fold", _goal("prediction"),
                 reads=("models",)),
-    Declaration("set_updating", "the shrinkage question", _goal("prediction"), reads=("models",)),
+    # An unpenalized regression family under prediction (the relation shrinkage_offered).
+    Declaration("set_updating", "the shrinkage question",
+                lambda s, f: s.purpose == "prediction" and _linear_family(s), reads=("models",)),
     Declaration("set_explain", "the explanations", _goal("inference", "prediction"),
                 reads=("models",), counted=False),
 )
@@ -401,14 +462,26 @@ def finding_place(finding: Mapping[str, Any], state: Any = None) -> tuple[Place,
 
 
 @lru_cache(maxsize=1)
-def noticing_stages() -> dict[str, str]:
-    """Every catalog thread (noticing) -> its stage, as the crosswalk places it."""
+def noticing_places() -> dict[str, tuple[str, str]]:
+    """Every catalog thread (noticing) -> (its stage, its objective), as the crosswalk places it:
+    the objective is the crosswalk item's that carries it (Decide, Confirm, For the record, or
+    "Shown (not an objective)" for one an exhibit shows)."""
     by_stage = json.loads(NOTICINGS_FILE.read_text("utf-8"))
-    return {thread: stage for stage, threads in by_stage.items() for thread in threads}
+    return {thread: (stage, objective) for stage, threads in by_stage.items()
+            for thread, objective in threads.items()}
+
+
+def noticing_stages() -> dict[str, str]:
+    """Every catalog thread (noticing) -> its stage."""
+    return {thread: stage for thread, (stage, _objective) in noticing_places().items()}
+
+
+def noticing_place(thread: str) -> tuple[str, str]:
+    return noticing_places()[thread]
 
 
 def noticing_stage(thread: str) -> str:
-    return noticing_stages()[thread]
+    return noticing_places()[thread][0]
 
 
 # ── compute stages ───────────────────────────────────────────────────────────
@@ -501,6 +574,49 @@ def written_slots(decision: Any) -> set[str]:
     return out
 
 
+def answer_holds(key: str) -> Callable[[Any], bool]:
+    """Whether a Router question's recorded answer stands on a state, as far as the answers alone
+    say (``interview.route``'s ``answers``): the follow-up for this outcome's kind, the estimand
+    while its exposure is in the model, the adjustment set while every covariate has its answers,
+    the causal lane for the exposure now declared, the modifiers once each is complete, each form
+    on its column's present scale; else its slot holds a value. What only an artifact can say (a
+    form card read on other rows) is not seen here."""
+    from turbotab.core import causal, estimand
+    from turbotab.core.interview import SLOT_OF
+    from turbotab.core.methods import exposure_form, interaction
+
+    by_answers: dict[str, Callable[[Any], bool]] = {
+        "follow_up": lambda s: estimand.follow_up_answer(s) is not None,
+        "estimand": lambda s: estimand.current_estimand(s) is not None,
+        "adjustment": lambda s: estimand.adjustment_answer(s) is not None,
+        "causal": lambda s: causal.current_causal(s) is not None,
+        "modification": lambda s: interaction.modification_answer(s) is not None,
+        "form": lambda s: not exposure_form.stale_forms(s),
+    }
+    slot = SLOT_OF.get(key, key)
+    return by_answers.get(key, lambda s: getattr(s, slot, None) is not None)
+
+
+# The stages whose reading says whether the Router asks a question at all, or whether its answer
+# stands (``interview.route``'s gates and answers, and the artifacts ``ProjectService.interview``
+# hands it): while one recomputes, the question waits on it and what it will be is not known yet.
+READ_BY_GATE: dict[str, frozenset[str]] = {
+    "orientation": frozenset({"oriented"}),
+    "event": frozenset({"target_info"}),
+    "task": frozenset({"target_info"}),
+    "follow_up": frozenset({"target_info"}),
+    "grain": frozenset({"structure"}),
+    "repeat_kind": frozenset({"structure"}),
+    "unit": frozenset({"structure"}),
+    "aggregation": frozenset({"structure"}),
+    "temporal": frozenset({"structure"}),
+    "clusters": frozenset({"roles"}),
+    "time_varying": frozenset({"structure", "time_varying"}),
+    "form": frozenset({"forms"}),
+    "causal": frozenset({"causal_design", "time_varying"}),
+}
+
+
 # ── the report ───────────────────────────────────────────────────────────────
 
 
@@ -549,10 +665,16 @@ class QuestLine(BaseModel):
 
 
 class Progress(BaseModel):
+    """A reached stage's objectives: each counted Decide one, its Confirm sweep one. ``complete``
+    once every one is answered. A reached stage that asks nothing (0 of 0: First look until its
+    noticings are wired, Results under Estimate, Write-up) is complete, its segment full; a stage
+    not reached has no progress at all (empty, never "0 of N")."""
+
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
     answered: int
     required: int
+    complete: bool
 
 
 class Sweep(BaseModel):
@@ -566,7 +688,8 @@ class Sweep(BaseModel):
 
 class Reopened(BaseModel):
     """Why a stage dropped back: an answer decided in another stage asked its questions again or
-    left its results computed for other answers."""
+    left its results computed for other answers; or (``within``) another answer in the stage
+    itself asked its questions again."""
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
@@ -575,6 +698,7 @@ class Reopened(BaseModel):
     kind: str
     questions: list[str] = []  # the lines asked again (their ids)
     results: list[str] = []  # the compute stages out of date
+    within: bool = False  # the answer that changed is in this stage
     sentence: str
 
 
@@ -618,17 +742,40 @@ class _Log:
     records: list[Any]
     live: list[Any] = field(default_factory=list)
     by_id: dict[str, Any] = field(default_factory=dict)
+    ordered: list[Any] = field(default_factory=list)
+    _states: dict[int, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         from turbotab.core.decisions import reverted
 
-        ordered = sorted(self.records, key=lambda r: r.seq)
+        self.ordered = sorted(self.records, key=lambda r: r.seq)
         try:
-            cancelled = reverted(ordered)
+            cancelled = reverted(self.ordered)
         except Exception:  # noqa: BLE001 - a log the fold refuses has no reasons to give
             cancelled = {}
-        self.by_id = {r.id: r for r in ordered}
-        self.live = [r for r in ordered if r.id not in cancelled]
+        self.by_id = {r.id: r for r in self.ordered}
+        self.live = [r for r in self.ordered if r.id not in cancelled]
+
+    def state_at(self, seq: int) -> Any:
+        """The state just after record ``seq``: the log as it stood then, folded (None when the
+        fold refuses it)."""
+        if seq not in self._states:
+            from turbotab.core.decisions import fold
+
+            try:
+                self._states[seq] = fold([r for r in self.ordered if r.seq <= seq])
+            except Exception:  # noqa: BLE001 - a prefix the fold refuses says nothing
+                self._states[seq] = None
+        return self._states[seq]
+
+    def holds_at(self, holds: Callable[[Any], bool], seq: int) -> bool | None:
+        state = self.state_at(seq)
+        if state is None:
+            return None
+        try:
+            return bool(holds(state))
+        except Exception:  # noqa: BLE001 - an answer the check cannot read is not known
+            return None
 
     def undone(self, record: Any) -> Any:
         """The decision a record changes: its own, or, for a revert, what it undoes."""
@@ -643,17 +790,25 @@ class _Log:
     def last_answer(self, kinds: Sequence[str]) -> Any:
         return next((r for r in reversed(self.live) if r.decision.kind in kinds), None)
 
+    def changes(self, slots: frozenset[str] | set[str], *, after_seq: int = 0,
+                after_time: datetime | None = None) -> list[Any]:
+        """The live records, after ``after_seq`` (and ``after_time``), that changed one of
+        ``slots``, oldest first."""
+        out = []
+        for r in self.live:
+            if r.seq <= after_seq or (after_time is not None and r.at <= after_time):
+                continue
+            changed = self.undone(r)
+            if changed is not None and written_slots(changed) & slots:
+                out.append(r)
+        return out
+
     def cause(self, slots: frozenset[str] | set[str], *, after_seq: int = 0,
               after_time: datetime | None = None) -> Any:
         """The latest live record, after ``after_seq`` (and ``after_time``), that changed one of
         ``slots``."""
-        for r in reversed(self.live):
-            if r.seq <= after_seq or (after_time is not None and r.at <= after_time):
-                return None
-            changed = self.undone(r)
-            if changed is not None and written_slots(changed) & slots:
-                return r
-        return None
+        found = self.changes(slots, after_seq=after_seq, after_time=after_time)
+        return found[-1] if found else None
 
     def stage_of(self, record: Any) -> str | None:
         changed = self.undone(record)
@@ -668,18 +823,35 @@ def record_stage(record: Any, records: Sequence[Any]) -> str | None:
     return _Log(list(records)).stage_of(record)
 
 
-def _reopened_by(log: _Log, kinds: Sequence[str], reads: frozenset[str]) -> ReopenedBy | None:
+def _reopened_by(log: _Log, kinds: Sequence[str], reads: frozenset[str],
+                 holds: Callable[[Any], bool] | None = None) -> ReopenedBy | None:
+    """The record that asked a line again: of the live records after its last answer that changed
+    a slot it reads, the one after which its answer stopped holding (``holds``, replayed on the log
+    as it stood after each), so a later change that left it as it was never displaces the cause;
+    the latest of them when the answers alone cannot say (an artifact reopened it)."""
     answer = log.last_answer(kinds)
     if answer is None:
         return None
-    cause = log.cause(reads, after_seq=answer.seq)
-    stage = log.stage_of(cause) if cause is not None else None
-    if cause is None or stage is None:
+    changes = log.changes(reads, after_seq=answer.seq)
+    if not changes:
+        return None
+    cause = changes[-1]
+    if holds is not None:
+        broke = None
+        for record in changes:
+            stands = log.holds_at(holds, record.seq)
+            if stands is True:
+                broke = None  # restored since: a later change is the cause
+            elif stands is False and broke is None:
+                broke = record
+        cause = broke or cause
+    stage = log.stage_of(cause)
+    if stage is None:
         return None
     return ReopenedBy(decision_id=cause.id, kind=cause.decision.kind, stage=stage)
 
 
-def _question_lines(steps: Sequence[Any], log: _Log) -> list[tuple[str, QuestLine]]:
+def _question_lines(state: Any, steps: Sequence[Any], log: _Log) -> list[tuple[str, QuestLine]]:
     from turbotab.core.voice import question_name
 
     first = next((s for s in steps if _get(s, "status") in ("open", "waiting")), None)
@@ -699,22 +871,44 @@ def _question_lines(steps: Sequence[Any], log: _Log) -> list[tuple[str, QuestLin
             waiting_for = [Waiting(key=earlier, stage=QUESTIONS[earlier].stage,
                                    name=question_name(earlier))]
             computing = waiting_on[1:]
+        decision_id, counted = _get(step, "decision_id"), label == DECIDE
+        if status == "waiting" and READ_BY_GATE.get(key, frozenset()) & set(waiting_on):
+            # Its own reading recomputes: a recorded answer that still holds stands meanwhile;
+            # else whether it is asked at all is that reading's, so it is not counted yet.
+            answer = log.last_answer(answering_kinds(key))
+            if answer is not None and answer_holds(key)(state):
+                status, decision_id, waiting_for = "answered", answer.id, []
+                computing = [s for s in waiting_on if s not in QUESTIONS]
+            else:
+                counted = False
         reopened = None
         if status in ("open", "waiting"):
-            reopened = _reopened_by(log, answering_kinds(key), question_reads(key))
+            reopened = _reopened_by(log, answering_kinds(key), question_reads(key),
+                                    answer_holds(key))
         lines.append((place.stage, QuestLine(
             id=place.item, key=key, source="question", label=label, name=question_name(key),
-            status="set_for_you" if status == "skipped" else status, counted=label == DECIDE,
-            order=place.order, decision_id=_get(step, "decision_id"),
+            status="set_for_you" if status == "skipped" else status, counted=counted,
+            order=place.order, decision_id=decision_id,
             reason=_get(step, "reason") if status == "skipped" else None,
             waiting_for=waiting_for, computing=computing, reopened_by=reopened)))
     return lines
 
 
+def _declaration_reads(decl: Declaration) -> frozenset[str]:
+    """The slots a declaration's answer rests on: the questions its card reads, and what each of
+    those rests on (:func:`question_reads`: every earlier question, and the stages its card
+    needs)."""
+    from turbotab.core.interview import SLOT_OF
+
+    out: set[str] = set()
+    for key in decl.reads:
+        out |= question_reads(key) | {SLOT_OF.get(key, key)}
+    return frozenset(out)
+
+
 def _declaration_lines(state: Any, steps: Mapping[str, Any], log: _Log,
-                       columns: Sequence[str] | None) -> list[tuple[str, QuestLine]]:
+                       facts: Facts) -> list[tuple[str, QuestLine]]:
     from turbotab.core.decisions import SLOTS
-    from turbotab.core.interview import QUESTION_KEYS, SLOT_OF
     from turbotab.core.voice import question_name
 
     lines = []
@@ -724,7 +918,7 @@ def _declaration_lines(state: Any, steps: Mapping[str, Any], log: _Log,
         if decl.only_recorded:
             if not recorded:
                 continue
-        elif not decl.applies(state, columns):
+        elif not decl.applies(state, facts):
             continue
         answered = recorded and (decl.holds is None or decl.holds(state))
         writer = log.last_answer((decl.kind,))
@@ -738,10 +932,7 @@ def _declaration_lines(state: Any, steps: Mapping[str, Any], log: _Log,
             status = "waiting" if unanswered else "open"
         reopened = None
         if not answered and writer is not None:
-            # It rests on the questions its card reads, and on every question before them.
-            last = max((QUESTION_KEYS.index(k) for k in decl.reads), default=-1)
-            reads = frozenset(SLOT_OF.get(k, k) for k in QUESTION_KEYS[:last + 1])
-            reopened = _reopened_by(log, (decl.kind,), reads)
+            reopened = _reopened_by(log, (decl.kind,), _declaration_reads(decl), decl.holds)
         lines.append((place.stage, QuestLine(
             id=place.item, key=decl.kind, source="declaration", label=place.label,
             name=decl.name, status=status, counted=decl.counted and place.label == DECIDE,
@@ -801,11 +992,14 @@ def _hold_the_families(placed: Sequence[tuple[str, QuestLine]]) -> None:
                           *(Waiting(key=l.key, stage="models", name=l.name) for l in ahead)]
 
 
-def _frontier(steps: Sequence[Any], stages: Mapping[str, Any]) -> int:
+def _frontier(steps: Sequence[Any], stages: Mapping[str, Any],
+              shown_at: Mapping[str, datetime | None]) -> int:
     """The furthest stage the Router has reached: every question answered, stated or open so far,
-    and the first one still waiting. Results opens once an estimate stage has a result for the
-    answers now (``usual_intake`` computes on the lens and goal alone, so it opens nothing), and
-    Write-up opens with Results."""
+    and the first one still waiting. Results opens once an estimate stage has a result, for the
+    answers now (fresh) or for earlier ones (``shown_at``: out of date, or withdrawn since), so a
+    change after the fit drops Results back with its reason rather than emptying it
+    (``usual_intake`` computes on the lens and goal alone, so it opens nothing); Write-up opens with
+    Results."""
     from turbotab.core.estimand import ESTIMATE_STAGES
 
     reached = [STAGE_INDEX[QUESTIONS[_get(s, "key")].stage] for s in steps
@@ -815,16 +1009,21 @@ def _frontier(steps: Sequence[Any], stages: Mapping[str, Any]) -> int:
     if first is not None and _get(first, "key") in QUESTIONS:
         reached.append(STAGE_INDEX[QUESTIONS[_get(first, "key")].stage])
     furthest = max(reached, default=0)
-    if any(_get(stages.get(name), "status") == "fresh" for name in ESTIMATE_STAGES):
+    if any(_get(stages.get(name), "status") == "fresh" or name in shown_at
+           for name in ESTIMATE_STAGES):
         furthest = max(furthest, STAGE_INDEX["results"])
     if furthest >= STAGE_INDEX["results"]:
         furthest = STAGE_INDEX["writeup"]
     return furthest
 
 
-def _sentence(changed_in: str, here: str, questions: int, results: int) -> str:
+def _sentence(changed_in: str, here: str, questions: int, results: int, *,
+              within: bool = False) -> str:
     from turbotab.core.voice import plural
 
+    if within:
+        return (f"Your change to another answer in {here} reopened {questions} "
+                f"{plural(questions, 'question')}.")
     parts = []
     if questions:
         parts.append(f"reopened {questions} {plural(questions, 'question')} in {here}")
@@ -834,7 +1033,7 @@ def _sentence(changed_in: str, here: str, questions: int, results: int) -> str:
     return f"Your change to {changed_in} {' and '.join(parts)}."
 
 
-def _reasons(stage: str, lines: Sequence[QuestLine], log: _Log,
+def _reasons(stage: str, lines: Sequence[QuestLine], log: _Log, stages: Mapping[str, Any],
              shown_at: Mapping[str, datetime | None]) -> list[Reopened]:
     found: dict[str, dict[str, Any]] = {}
 
@@ -844,44 +1043,54 @@ def _reasons(stage: str, lines: Sequence[QuestLine], log: _Log,
 
     for line in lines:
         by = line.reopened_by
-        if by is not None and by.stage != stage:
+        if by is not None:
             entry(by.decision_id, by.kind, by.stage)["questions"].append(line.id)
     for name, (home, _item) in COMPUTE.items():
-        if home != stage or name not in shown_at:
+        # Blocked: its requirement was withdrawn, so it is never computed again; not out of date.
+        if (home != stage or name not in shown_at
+                or _get(stages.get(name), "status") == "blocked"):
             continue
         cause = log.cause(stage_reads(name), after_time=shown_at[name])
         changed_in = log.stage_of(cause) if cause is not None else None
+        # Its own stage's answers redraw its cards as they are given: no drop-back.
         if cause is None or changed_in is None or changed_in == stage:
             continue
         entry(cause.id, cause.decision.kind, changed_in)["results"].append(name)
     out = []
     for record_id, e in found.items():
+        within = e["changed_in"] == stage
         out.append(Reopened(
             changed_in=e["changed_in"], decision_id=record_id, kind=e["kind"],
-            questions=e["questions"], results=e["results"],
+            questions=e["questions"], results=e["results"], within=within,
             sentence=_sentence(STAGE_NAMES[e["changed_in"]], STAGE_NAMES[stage],
-                               len(e["questions"]), len(e["results"]))))
+                               len(e["questions"]), len(e["results"]), within=within)))
     return sorted(out, key=lambda r: log.by_id[r.decision_id].seq, reverse=True)
 
 
 def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
               stages: Mapping[str, Any] | None = None, *, findings: Any = None,
               columns: Sequence[str] | None = None,
+              artifacts: Mapping[str, Any] | None = None,
               shown_at: Mapping[str, datetime | None] | None = None) -> QuestLog:
     """The seven stages for this project now.
 
     ``steps``: the Router's answer (``interview.route``). ``stages``: each compute stage's status.
     ``findings``: the findings artifact as served (``repairs.annotate``), else None. ``columns``:
-    the table's columns, for the declarations that apply by name (a batch column). ``shown_at``:
-    for each compute stage whose result is out of date (not fresh, with an older artifact), when
-    that artifact was computed; a change after it, decided in another stage, is the reason."""
+    the table's columns, for the declarations that apply by name (a batch column). ``artifacts``:
+    the newest artifacts of the stages that make an offer (``usual_intake``), fresh or not.
+    ``shown_at``: for each compute stage whose result is not for the answers now (not fresh, with
+    an older artifact, blocked ones included), when that artifact was computed; a change after it,
+    decided in another stage, is the reason, unless the stage is blocked (withdrawn). Any estimate
+    stage among them keeps Results reached."""
     stages = stages or {}
+    shown_at = shown_at or {}
     log = _Log(list(records))
     by_key = {_get(s, "key"): s for s in steps}
-    placed = [*_question_lines(steps, log), *_declaration_lines(state, by_key, log, columns),
+    facts = Facts(columns=tuple(columns or ()), artifacts=dict(artifacts or {}))
+    placed = [*_question_lines(state, steps, log), *_declaration_lines(state, by_key, log, facts),
               *_finding_lines(state, findings, by_key)]
     _hold_the_families(placed)
-    frontier = _frontier(steps, stages)
+    frontier = _frontier(steps, stages, shown_at)
     out = []
     for key, name in STAGES:
         mine = sorted((l for stage, l in placed if stage == key), key=lambda l: (l.order, l.name))
@@ -893,10 +1102,11 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
         if reached:
             decide = [l for l in mine if l.label == DECIDE and l.counted]
             swept = int(sweep is not None and sweep.answered)
-            progress = Progress(answered=sum(l.status == "answered" for l in decide) + swept,
-                                required=len(decide) + int(sweep is not None))
+            answered = sum(l.status == "answered" for l in decide) + swept
+            required = len(decide) + int(sweep is not None)
+            progress = Progress(answered=answered, required=required, complete=answered >= required)
         # A stage not reached yet has nothing to drop back from.
-        reasons = _reasons(key, mine, log, shown_at or {}) if reached else []
+        reasons = _reasons(key, mine, log, stages, shown_at) if reached else []
         out.append(QuestStage(key=key, name=name, reached=reached, progress=progress, sweep=sweep,
                               lines=mine, reopened=reasons))
     return QuestLog(stages=out, kinds=kind_stages())
@@ -904,10 +1114,10 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
 
 __all__ = [
     "COMPUTE", "DECLARATIONS", "Declaration", "EXPLORE_FINDINGS", "FINDING_ROUTES",
-    "FOLLOWS_WHAT_IT_UNDOES", "NORMALIZATION", "OTHER_KINDS", "Place", "Progress", "QUESTIONS",
-    "QUEST_VERSION", "QuestLine", "QuestLog", "QuestStage", "Reopened", "ReopenedBy", "STAGES",
-    "STAGE_NAMES", "STATED", "Sweep", "TIER_RULINGS", "Waiting", "answering_kinds",
-    "contract_tier", "finding_place", "kind_place", "kind_stages", "noticing_stage",
-    "noticing_stages", "quest_log", "question_reads", "record_stage", "stage_reads",
-    "written_slots",
+    "FOLLOWS_WHAT_IT_UNDOES", "Facts", "NORMALIZATION", "OTHER_KINDS", "Place", "Progress",
+    "QUESTIONS", "QUEST_VERSION", "QuestLine", "QuestLog", "QuestStage", "READ_BY_GATE",
+    "Reopened", "ReopenedBy", "STAGES", "STAGE_NAMES", "STATED", "Sweep", "TIER_RULINGS",
+    "Waiting", "answer_holds", "answering_kinds", "contract_tier", "finding_place", "kind_place",
+    "kind_stages", "noticing_place", "noticing_places", "noticing_stage", "noticing_stages",
+    "quest_log", "question_reads", "record_stage", "stage_reads", "written_slots",
 ]

@@ -682,7 +682,7 @@
           "projects"
         ],
         "summary": "Quest",
-        "description": "The quest log's seven stages, in order (SIZING P0.4): each stage's lines under Decide,\nConfirm and For the record, with \"Waiting for\" on a line whose earlier answers are missing;\nprogress as answered over required, null for a stage not reached; and, when an answer decided\nin another stage asked its questions again or left its results out of date, why, in plain\nwords. ``version`` changes when the shape or the meaning of this log does.",
+        "description": "The quest log's seven stages, in order (SIZING P0.4): each stage's lines under Decide,\nConfirm and For the record, with \"Waiting for\" on a line whose earlier answers are missing;\nprogress as answered over required, null for a stage not reached, with ``complete`` once every\nobjective is answered (a reached stage that asks nothing, 0 of 0, is complete: its segment is\nfull); and, when an answer decided in another stage asked its questions again or left its\nresults out of date, or another answer in the stage itself asked its questions again\n(``within``), why, in plain words. ``version`` changes when the shape or the meaning of this\nlog does.",
         "operationId": "quest_api_projects__pid__quest_get",
         "parameters": [
           {
@@ -9163,14 +9163,20 @@
           "required": {
             "type": "integer",
             "title": "Required"
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete"
           }
         },
         "type": "object",
         "required": [
           "answered",
-          "required"
+          "required",
+          "complete"
         ],
-        "title": "Progress"
+        "title": "Progress",
+        "description": "A reached stage's objectives: each counted Decide one, its Confirm sweep one. ``complete``\nonce every one is answered. A reached stage that asks nothing (0 of 0: First look until its\nnoticings are wired, Results under Estimate, Write-up) is complete, its segment full; a stage\nnot reached has no progress at all (empty, never \"0 of N\")."
       },
       "ProjectState": {
         "properties": {
@@ -10759,6 +10765,11 @@
             "title": "Results",
             "default": []
           },
+          "within": {
+            "type": "boolean",
+            "title": "Within",
+            "default": false
+          },
           "sentence": {
             "type": "string",
             "title": "Sentence"
@@ -10771,10 +10782,11 @@
           "kind",
           "questions",
           "results",
+          "within",
           "sentence"
         ],
         "title": "Reopened",
-        "description": "Why a stage dropped back: an answer decided in another stage asked its questions again or\nleft its results computed for other answers."
+        "description": "Why a stage dropped back: an answer decided in another stage asked its questions again or\nleft its results computed for other answers; or (``within``) another answer in the stage\nitself asked its questions again."
       },
       "ReopenedBy": {
         "properties": {

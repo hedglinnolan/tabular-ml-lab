@@ -47,18 +47,19 @@ def catalog_threads() -> set[str]:
             for t in json.loads(path.read_text("utf-8")).get("threads") or []}
 
 
-def crosswalk_noticings() -> dict[str, list[str]]:
-    """Each catalog thread's stage, as the crosswalk places it: an item of its own
+def crosswalk_noticings() -> dict[str, dict[str, str]]:
+    """Each catalog thread's stage and objective, as the crosswalk places it: an item of its own
     (``thread:<id>``), or carried by the item that already does its job (``threads``)."""
     known = catalog_threads()
-    where: dict[str, str] = {}
+    where: dict[str, tuple[str, str]] = {}
     for item in crosswalk()["items"]:
         carried = [*(item.get("threads") or []),
                    *([item["id"][len("thread:"):]] if item["id"].startswith("thread:") else [])]
         for thread in carried:
-            if thread in known:  # one stage per thread, however many items carry it
-                assert where.setdefault(thread, item["stage"]) == item["stage"], thread
-    return {stage: sorted(t for t, s in where.items() if s == stage) for stage in SEVEN}
+            if thread in known:  # one stage and objective per thread, however many items carry it
+                place = (item["stage"], item["objective"])
+                assert where.setdefault(thread, place) == place, thread
+    return {stage: {t: o for t, (s, o) in sorted(where.items()) if s == stage} for stage in SEVEN}
 
 
 def decision_kinds() -> set[str]:
@@ -153,11 +154,36 @@ def test_the_estimate_stages_are_the_ones_that_declare_they_serve_one():
                              "explain", "evaluation"}
 
 
-def test_every_noticing_in_the_catalogs_sits_in_one_stage():
+def test_every_noticing_in_the_catalogs_sits_in_one_stage_with_an_objective():
     placed = quest.noticing_stages()
     assert set(placed) == catalog_threads()
     assert len(catalog_threads()) == 367  # CROSSWALK "At a glance": all 367 noticings placed
     assert set(placed.values()) <= set(SEVEN)
+    # Gaps engine 1: "a stage and an objective". A thread with a crosswalk item of its own carries
+    # that item's objective.
+    objectives = {"Decide", "Confirm", "For the record", "Shown (not an objective)"}
+    assert {o for _s, o in quest.noticing_places().values()} == objectives
+    own = [i for i in crosswalk()["items"]
+           if i["id"].startswith("thread:") and i["id"][len("thread:"):] in catalog_threads()]
+    assert len(own) > 200
+    for item in own:
+        assert quest.noticing_place(item["id"][len("thread:"):]) == (item["stage"],
+                                                                     item["objective"]), item["id"]
+
+
+def test_every_finding_kind_explore_emits_is_placed():
+    # ``ExploreFinding.kind`` is a free string: the kinds are the ones the stage writes.
+    import ast
+
+    from turbotab.core.stages import explore
+
+    tree = ast.parse(Path(explore.__file__).read_text("utf-8"))
+    emitted = {kw.value.value for node in ast.walk(tree)
+               if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "ExploreFinding"
+               for kw in node.keywords
+               if kw.arg == "kind" and isinstance(kw.value, ast.Constant)}
+    assert len(emitted) >= 7
+    assert emitted == set(quest.EXPLORE_FINDINGS)
 
 
 # ── agreement with crosswalk.json ────────────────────────────────────────────
@@ -253,7 +279,7 @@ def test_a_stage_not_reached_reports_no_progress_and_waits_for_the_question_ahea
     # Your data: the lens answered; the roles, asked after Who's in's structure questions today,
     # wait; the offers (a join, a codebook) are listed and not counted.
     data = stage(log, "data")
-    assert data.progress == quest.Progress(answered=1, required=2)
+    assert data.progress == quest.Progress(answered=1, required=2, complete=False)
     assert {l.key: l.counted for l in data.lines if l.source == "declaration"} == {
         "join_files": False, "import_codebook": False}
 
@@ -268,7 +294,7 @@ def test_progress_counts_each_decide_once_and_the_confirm_sweep_once():
     # Decide: exclusions, missing, split (answered); Confirm: the grain and the repeat kind as
     # stated (one sweep, open); For the record: no grouping to offer.
     assert whos_in.sweep == quest.Sweep(lines=2, answered=False)
-    assert whos_in.progress == quest.Progress(answered=3, required=4)
+    assert whos_in.progress == quest.Progress(answered=3, required=4, complete=False)
     assert line(log, "clusters").label == "For the record"
     assert stage(log, "models").progress.answered == 0
 
@@ -315,13 +341,75 @@ def test_a_question_asked_again_by_a_change_in_another_stage_says_why():
     assert stage(log, "models").reopened == [quest.Reopened(
         changed_in="data", decision_id="r7", kind="confirm_role", questions=["q:adjustment"],
         sentence="Your change to Your data reopened 1 question in Models.")]
-    # The same question asked again by a change in Models itself: the line says so, the stage
-    # gives no reason line.
+    # The same question asked again by another answer in Models itself (FOUNDATION §3: "Your data
+    # reopened: the join added 12 columns, so what each new column is gets read again"): the stage
+    # says so too, marked as within it.
     state, records = _plan({"kind": "set_estimand", "exposure": "age", "effect": "total",
                             "measure": "mean_difference"})
     log = quest.quest_log(state, records, steps)
     assert line(log, "adjustment").reopened_by.stage == "models"
-    assert stage(log, "models").reopened == []
+    assert stage(log, "models").reopened == [quest.Reopened(
+        changed_in="models", decision_id="r7", kind="set_estimand", questions=["q:adjustment"],
+        within=True, sentence="Your change to another answer in Models reopened 1 question.")]
+
+
+EXCLUSION = {"kind": "set_exclusions", "rules": [
+    {"column": "sugar", "low": 0, "high": 500, "reason": "implausible intake"}]}
+TG_COVARIATE = {"kind": "confirm_role", "column": "tg", "role": "covariate"}
+
+
+def test_a_reopen_names_the_change_that_reopened_it_whatever_came_after():
+    # Triglycerides confirmed as a covariate (Your data) leave the adjustment set without their
+    # answers; an exclusion rule recorded next (Who's in) changes nothing the set rests on.
+    state, records = _plan(TG_COVARIATE)
+    records = [*records, record(8, EXCLUSION)]
+    log = quest.quest_log(decisions.fold(records), records, steps_until("adjustment"))
+    assert line(log, "adjustment").reopened_by == quest.ReopenedBy(
+        decision_id="r7", kind="confirm_role", stage="data")
+    assert [r.sentence for r in stage(log, "models").reopened] == [
+        "Your change to Your data reopened 1 question in Models."]
+    # The other way round, the rule first: the confirmation is still the one named.
+    records = [*_plan(EXCLUSION)[1], record(8, TG_COVARIATE)]
+    log = quest.quest_log(decisions.fold(records), records, steps_until("adjustment"))
+    assert line(log, "adjustment").reopened_by.decision_id == "r8"
+    # Undone and then broken again by another answer: the later one is the cause.
+    records = [*_plan(TG_COVARIATE)[1], record(8, {"kind": "revert", "decision_id": "r7"}),
+               record(9, {"kind": "set_estimand", "exposure": "age", "effect": "total",
+                          "measure": "mean_difference"}),
+               record(10, EXCLUSION)]
+    log = quest.quest_log(decisions.fold(records), records, steps_until("adjustment"))
+    assert line(log, "adjustment").reopened_by == quest.ReopenedBy(
+        decision_id="r9", kind="set_estimand", stage="models")
+
+
+def test_model_one_is_asked_again_as_the_engine_asks_it_again():
+    # MODELING_SEQUENCE §2: a Model 1 column that leaves the primary adjustment set re-asks it
+    # (``estimand.current_model_sequence``), whichever stage the change is made in.
+    model_one = {"kind": "set_model_sequence", "exposure": "sugar", "model_1": ["age"]}
+    steps = steps_until(None, not_applicable=("open_seal",))
+    state, records = _plan(model_one)
+    assert line(quest.quest_log(state, records, steps), "set_model_sequence").status == "answered"
+    # Age re-roled as left out, in Your data.
+    records_1 = [*records, record(8, {"kind": "confirm_role", "column": "age", "role": "excluded"})]
+    log = quest.quest_log(decisions.fold(records_1), records_1, steps)
+    model_1 = line(log, "set_model_sequence")
+    assert model_1.status == "open"
+    assert model_1.reopened_by == quest.ReopenedBy(decision_id="r8", kind="confirm_role",
+                                                   stage="data")
+    assert [r.sentence for r in stage(log, "models").reopened] == [
+        "Your change to Your data reopened 1 question in Models."]
+    # Age answered as measured after the exposure (a possible mediator), in Models.
+    records_2 = [*records, record(8, {"kind": "set_adjustment", "exposure": "sugar", "answers": {
+        "age": {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "yes"}}})]
+    log = quest.quest_log(decisions.fold(records_2), records_2, steps)
+    assert line(log, "set_model_sequence").status == "open"
+    assert [(r.within, r.kind) for r in stage(log, "models").reopened] == [
+        (True, "set_adjustment")]
+    # No exposure in the model any longer: nothing to hold Model 1 against.
+    records_3 = [*records, record(8, {"kind": "confirm_role", "column": "sugar",
+                                      "role": "excluded"})]
+    assert line(quest.quest_log(decisions.fold(records_3), records_3, steps),
+                "set_model_sequence").status != "answered"
 
 
 def test_a_result_computed_before_a_change_in_another_stage_is_out_of_date_and_says_why():
@@ -339,6 +427,128 @@ def test_a_result_computed_before_a_change_in_another_stage_is_out_of_date_and_s
     after = T0 + timedelta(minutes=7.5)
     log = quest.quest_log(state, records, steps, stages, shown_at={"cohort": after})
     assert stage(log, "whos_in").reopened == []
+
+
+def _after_the_fit(change: dict) -> tuple[ProjectState, list[DecisionRecord], list[InterviewStep]]:
+    """The plan answered and fitted at minute 7.5 under Estimate (nothing held out), then
+    ``change`` recorded at minute 8."""
+    state, records = _plan({"kind": "select_models", "models": ["linear"]})
+    records = [*records, record(8, change)]
+    return (decisions.fold(records), records,
+            steps_until(None, not_applicable=("substitution", "open_seal")))
+
+
+def test_results_stays_reached_after_the_fit_and_says_why_it_dropped_back():
+    state, records, steps = _after_the_fit(EXCLUSION)
+    fitted = T0 + timedelta(minutes=7.5)
+    # Before any estimate is computed Results is not reached: empty, with no reason.
+    log = quest.quest_log(state, records, steps, {"fit": {"status": "idle"}})
+    assert [stage(log, k).reached for k in SEVEN] == [True] * 5 + [False] * 2
+    assert stage(log, "results").progress is None
+    # Fresh for the answers now: reached, and asking nothing under Estimate, complete at 0 of 0.
+    log = quest.quest_log(state, records, steps, {"fit": {"status": "fresh"}})
+    assert stage(log, "results").reached and stage(log, "writeup").reached
+    assert stage(log, "results").progress == quest.Progress(answered=0, required=0, complete=True)
+    # The rule recorded in Who's in after the fit: the fit is out of date, and Results stays
+    # reached and says why, until it is computed again (or, with Fit held, until Fit is pressed).
+    for status in ("stale", "queued", "running"):
+        log = quest.quest_log(state, records, steps, {"fit": {"status": status}},
+                              shown_at={"fit": fitted})
+        results = stage(log, "results")
+        assert results.reached and stage(log, "writeup").reached, status
+        assert results.progress == quest.Progress(answered=0, required=0, complete=True)
+        assert results.reopened == [quest.Reopened(
+            changed_in="whos_in", decision_id="r8", kind="set_exclusions", results=["fit"],
+            sentence="Your change to Who's in made 1 result in Results out of date.")]
+
+
+def test_a_withdrawn_analysis_is_not_out_of_date():
+    # The causal lane's estimate, computed at minute 7.5; its answer is then withdrawn, so its
+    # stage is blocked and is never computed again: no reason, but Results was reached.
+    state, records, steps = _after_the_fit({"kind": "set_lens", "lenses": ["dietary", "clinical"]})
+    fitted = T0 + timedelta(minutes=7.5)
+    log = quest.quest_log(state, records, steps, {"causal": {"status": "blocked"}},
+                          shown_at={"causal": fitted})
+    assert stage(log, "results").reached and stage(log, "results").reopened == []
+    # Not blocked, the same artifact is out of date for the change in Your data.
+    log = quest.quest_log(state, records, steps, {"causal": {"status": "stale"}},
+                          shown_at={"causal": fitted})
+    assert [(r.changed_in, r.results) for r in stage(log, "results").reopened] == [
+        ("data", ["causal"])]
+
+
+def test_a_reached_stage_that_asks_nothing_is_complete_and_one_not_reached_is_empty():
+    state = ProjectState(lens=["dietary"], target="glucose", purpose="inference")
+    log = quest.quest_log(state, [], steps_until("estimand"))
+    first_look = stage(log, "first_look")
+    assert first_look.reached and first_look.lines == []
+    assert first_look.progress == quest.Progress(answered=0, required=0, complete=True)
+    assert stage(log, "results").progress is None and stage(log, "writeup").progress is None
+    log = quest.quest_log(state, [], steps_until(None, stated=("modification", "causal"),
+                                                 not_applicable=("open_seal",)))
+    assert stage(log, "whos_in").progress.complete
+
+
+def test_progress_holds_while_the_outcome_is_read_again():
+    # Your question settled: the outcome and the goal answered, the event not asked, the task read
+    # at high confidence (stated), the follow-up not asked.
+    state = ProjectState(lens=["dietary"], target="glucose", purpose="inference")
+    settled = steps_until(None, stated=("task",), not_applicable=("event", "follow_up"))
+    before = stage(quest.quest_log(state, [], settled), "question").progress
+    assert (before.answered, before.required) == (2, 2)
+    # The outcome's reading recomputes (``interview.route``): the event, the task and the
+    # follow-up wait on it, since whether each is asked at all is that reading's.
+    reading = [InterviewStep(key=s.key, status="waiting",
+                             waiting_on=["target_info"] if s.key == "event"
+                             else ["event", "target_info"])
+               if s.key in ("event", "task", "follow_up") else s for s in settled]
+    log = quest.quest_log(state, [], reading)
+    assert stage(log, "question").progress == before
+    assert not line(log, "event").counted and line(log, "event").status == "waiting"
+    # A recorded answer that still holds stands meanwhile, and counts: the task, set for the
+    # outcome now; one recorded for another outcome does not hold, so it waits uncounted.
+    records = [record(1, {"kind": "set_target", "column": "glucose"}),
+               record(2, {"kind": "set_task", "column": "glucose", "task": "regression"})]
+    state = decisions.fold(records)
+    task = line(quest.quest_log(state, records, reading), "task")
+    assert (task.status, task.counted, task.decision_id, task.computing) == (
+        "answered", True, "r2", ["target_info"])
+    records = [*records, record(3, {"kind": "set_target", "column": "hba1c"})]
+    state = decisions.fold(records)
+    task = line(quest.quest_log(state, records, reading), "task")
+    assert (task.status, task.counted) == ("waiting", False)
+
+
+def test_the_declarations_apply_where_the_engine_asks_them():
+    columns = ["SEQN", "sugar", "glucose"]
+
+    def keys(state: ProjectState, artifacts: dict | None = None) -> set[str]:
+        log = quest.quest_log(state, [], steps_until("estimand"), columns=columns,
+                              artifacts=artifacts)
+        return {l.key for s in log.stages for l in s.lines if l.source == "declaration"}
+
+    diet = ProjectState(lens=["dietary"], target="glucose", purpose="inference")
+    # Regression calibration: rows that are each person's mean of their recalls, with the linear
+    # family (or the families not chosen yet: the line waits for them).
+    mean = diet.model_copy(update={"aggregation": decisions.AggregationSpec(method="mean")})
+    assert "set_measurement_error" in keys(mean)
+    assert "set_measurement_error" not in keys(diet.model_copy(update={
+        "aggregation": decisions.AggregationSpec(method="first")}))
+    assert "set_measurement_error" not in keys(mean.model_copy(update={
+        "models": ["elastic_net"]}))
+    assert "set_measurement_error" in keys(mean.model_copy(update={"models": ["linear"]}))
+    # Usual intake: where the stage offers it, under any goal but prediction.
+    offered = {"usual_intake": {"offer": {"offered": True}}}
+    assert "set_usual_intake" not in keys(diet)
+    assert "set_usual_intake" not in keys(diet, {"usual_intake": {"offer": {"offered": False}}})
+    assert "set_usual_intake" in keys(diet, offered)
+    assert "set_usual_intake" not in keys(diet.model_copy(update={"purpose": "prediction"}),
+                                          offered)
+    # Shrinkage: an unpenalized regression family under prediction.
+    predict = ProjectState(lens=["metabolomics"], target="outcome", purpose="prediction")
+    assert "set_updating" in keys(predict)
+    assert "set_updating" in keys(predict.model_copy(update={"models": ["linear", "ridge"]}))
+    assert "set_updating" not in keys(predict.model_copy(update={"models": ["boosted_trees"]}))
 
 
 def test_a_finding_is_decided_at_its_question_or_where_it_was_held():

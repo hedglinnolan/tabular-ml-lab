@@ -114,9 +114,12 @@ def readings_card(request: Request, pid: str) -> dict:
 def quest(request: Request, pid: str) -> QuestLog:
     """The quest log's seven stages, in order (SIZING P0.4): each stage's lines under Decide,
     Confirm and For the record, with "Waiting for" on a line whose earlier answers are missing;
-    progress as answered over required, null for a stage not reached; and, when an answer decided
-    in another stage asked its questions again or left its results out of date, why, in plain
-    words. ``version`` changes when the shape or the meaning of this log does."""
+    progress as answered over required, null for a stage not reached, with ``complete`` once every
+    objective is answered (a reached stage that asks nothing, 0 of 0, is complete: its segment is
+    full); and, when an answer decided in another stage asked its questions again or left its
+    results out of date, or another answer in the stage itself asked its questions again
+    (``within``), why, in plain words. ``version`` changes when the shape or the meaning of this
+    log does."""
     return get_service(request).quest(pid)
 
 

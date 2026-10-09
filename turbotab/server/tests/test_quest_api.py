@@ -2,11 +2,13 @@
 NHANES journey (sugar → fasting glucose, under Estimate).
 
 The reasons are checked against changes a person makes on that journey: a column's role confirmed
-in Your data asks the adjustment set again in Models; an adjustment answer in Models changes who is
-in, so Who's in's participant flow is out of date (crosswalk disagreement 7); an eligibility rule in
-Who's in leaves Models' results out of date. A result is out of date only until it is computed
-again, which can take less time than a second request, so those two read the log as it stood when
-the change was recorded: with the stage statuses the decision's own response reports.
+in Your data asks the adjustment set again in Models, and stays the reason when an unrelated rule is
+recorded next; an adjustment answer in Models changes who is in, so Who's in's participant flow is
+out of date (crosswalk disagreement 7); after the fit, an eligibility rule in Who's in leaves
+Models' cards and the estimates out of date, and Results stays reached to say so. A result is out
+of date only until it is computed again, which can take less time than a second request, so those
+read the log as it stood when the change was recorded: with the stage statuses the decision's own
+response reports.
 """
 from __future__ import annotations
 
@@ -30,7 +32,9 @@ SEVEN = [("data", "Your data"), ("question", "Your question"), ("first_look", "F
 
 def test_the_quest_log_is_served_versioned_with_the_seven_stages_in_order(client):
     pid = open_by_path(client)
-    wait_for(client, pid, {"ingest": "fresh"})
+    # Which way round the table is reads the oriented stage: while it computes, whether that
+    # question is asked at all is not known, so it is not counted yet.
+    wait_for(client, pid, {"ingest": "fresh", "oriented": "fresh"})
     r = client.get(f"/api/projects/{pid}/quest")
     assert r.status_code == 200, r.text
     log = r.json()
@@ -43,7 +47,7 @@ def test_the_quest_log_is_served_versioned_with_the_seven_stages_in_order(client
     asked = [s for s in client.get(f"/api/projects/{pid}").json()["interview"]
              if s["key"] in ("lens", "orientation", "roles") and s["status"] != "not_applicable"]
     assert log["stages"][0]["reached"] and log["stages"][0]["progress"] == {
-        "answered": 0, "required": len(asked)}
+        "answered": 0, "required": len(asked), "complete": False}
     # Nothing past Your data is reached: each shows empty, never "0 of N".
     assert all(not s["reached"] and s["progress"] is None for s in log["stages"][1:])
     assert log["kinds"]["set_split"] == "whos_in" and log["kinds"]["select_models"] == "models"
@@ -105,6 +109,11 @@ def out_of_date(changed_in: str, n: int, here: str) -> str:
     return f"Your change to {changed_in} made {n} {results} in {here} out of date."
 
 
+def rule(low: float, high: float) -> dict[str, Any]:
+    return {"kind": "set_exclusions", "rules": [
+        {"column": "kcal", "low": low, "high": high, "reason": "implausible intake"}]}
+
+
 @needs_nhanes
 def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkeypatch):
     drive = open_project(client, NHANES, fixture_truth("_tt_tmp_nhanes.csv"))
@@ -116,7 +125,7 @@ def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkey
     drive.answer("grain", {"kind": "set_grain", "grain": "one_row_per_unit"})
     drive.reach("roles")
     drive.decide_roles(ROLES)
-    drive.answer("exclusions", {"kind": "set_exclusions", "rules": []})
+    drive.answer("exclusions", rule(500, 5000))
     drive.answer("missing", {"kind": "set_missing", "strategy": "complete_case"})
     drive.answer("split", {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
     answer_plan(drive, "sugar")
@@ -125,6 +134,7 @@ def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkey
     stages = quest(drive)
     assert all(s["reopened"] == [] for s in stages.values())  # nothing has changed since
     assert [stages[k]["reached"] for k, _ in SEVEN] == [True] * 5 + [False] * 2  # no estimate yet
+    assert stages["results"]["progress"] is None
     models_before = stages["models"]["progress"]
     adjustment = next(l for l in stages["models"]["lines"] if l["key"] == "adjustment")
     assert adjustment["status"] == "answered" and adjustment["reopened_by"] is None
@@ -145,6 +155,15 @@ def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkey
     assert stages["models"]["progress"]["answered"] == models_before["answered"] - 1
     assert all(s["reopened"] == [] for k, s in stages.items() if k != "models")
 
+    # A rule recorded next in Who's in changes nothing the adjustment set rests on: Your data's
+    # change is still the one named. (Posted as it is: the drive's ``decide`` would answer the open
+    # adjustment question on the way.)
+    r = settle_post(drive.c, drive.pid, rule(600, 4500), drive.truth)
+    assert r.status_code == 200, r.text[:600]
+    settle(drive)
+    stages = quest(drive)
+    assert stages["models"]["reopened"] == [reason]
+
     # 2 · Models → Who's in (disagreement 7): the answer changes what the participant flow reads,
     # so the flow drawn before it is out of date until it is drawn again.
     answer, stages = at_the_change(drive, {
@@ -161,11 +180,34 @@ def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkey
     assert all(s["reopened"] == [] for s in stages.values())
     assert stages["models"]["progress"] == models_before
 
-    # 3 · Who's in → Models: an eligibility rule leaves the shelf and the cards out of date.
-    rule, stages = at_the_change(drive, {"kind": "set_exclusions", "rules": [
-        {"column": "kcal", "low": 500, "high": 5000, "reason": "implausible intake"}]}, monkeypatch)
-    [shelf] = [r for r in stages["models"]["reopened"] if r["decision_id"] == rule]
+    # 3 · The fit: Results and Write-up are reached, and under Estimate ask nothing yet (0 of 0,
+    # complete).
+    drive.answer("energy_adjustment", {"kind": "set_energy_adjustment", "method": "standard",
+                                       "energy_column": "kcal", "nutrients": ["sugar"]})
+    drive.decide({"kind": "select_models", "models": ["linear"]})
+    settle(drive)
+    stages = quest(drive)
+    assert drive.view()["stages"]["fit"]["status"] == "fresh"
+    assert all(s["reopened"] == [] for s in stages.values())
+    for key in ("results", "writeup"):
+        assert stages[key]["reached"] and stages[key]["progress"] == {
+            "answered": 0, "required": 0, "complete": True}, key
+
+    # 4 · Who's in → Models and Results: an eligibility rule leaves the shelf, the cards and the
+    # estimates out of date. Results stays reached and says why (with Fit held, until Fit is
+    # pressed again).
+    changed, stages = at_the_change(drive, rule(700, 4000), monkeypatch)
+    [shelf] = [r for r in stages["models"]["reopened"] if r["decision_id"] == changed]
     assert shelf["changed_in"] == "whos_in" and "shelf" in shelf["results"]
     assert shelf["sentence"] == out_of_date("Who's in", len(shelf["results"]), "Models")
+    results = stages["results"]
+    assert results["reached"] and stages["writeup"]["reached"]
+    assert results["progress"] == {"answered": 0, "required": 0, "complete": True}
+    [estimates] = results["reopened"]
+    assert estimates["decision_id"] == changed and estimates["changed_in"] == "whos_in"
+    assert "fit" in estimates["results"]
+    assert estimates["sentence"] == out_of_date("Who's in", len(estimates["results"]), "Results")
     settle(drive)
-    assert all(s["reopened"] == [] for s in quest(drive).values())
+    stages = quest(drive)
+    assert all(s["reopened"] == [] for s in stages.values())
+    assert stages["results"]["reached"]
