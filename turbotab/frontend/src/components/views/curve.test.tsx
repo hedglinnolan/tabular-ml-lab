@@ -4,7 +4,7 @@ import { CurveView } from "./CurveView";
 import { BOX_BOTTOM, STRIP_GAP, STRIP_H, curveFrame, curveScales, endLabels, xDomain, yDomain, type CurveData } from "./curve";
 import { CHAR_W } from "./parts";
 import { extent, nearest } from "./scale";
-import { curveOnePoint, exposureCurve, substitutionSealed } from "./lab/fixtures";
+import { curveOnePoint, exposureCurve, substitutionSealed } from "./lab/curves.fixtures";
 
 const base: CurveData = {
   xLabel: "kcal moved",

@@ -35,7 +35,7 @@ const MIN_GAP = 30;
 /** About one tick label per this many px. */
 const PER_TICK = 84;
 /** A share of the extent added at each end. */
-const PAD = 0.06;
+const SHARE_PAD = 0.06;
 
 export function valuesOf(rows: Interval[]): number[] {
   return rows.flatMap((r) => [r.est, r.lo, r.hi]).filter((v): v is number => v !== null && Number.isFinite(v));
@@ -56,7 +56,7 @@ export function forestScale(rows: Interval[], spec: ScaleSpec): ForestScale | nu
 
   if (axis === "linear") {
     const span = hi - lo;
-    const pad = span > 0 ? span * PAD : Math.abs(lo) * 0.1 || 1;
+    const pad = span > 0 ? span * SHARE_PAD : Math.abs(lo) * 0.1 || 1;
     const domain: [number, number] = [lo - pad, hi + pad];
     const x = scaleLinear().domain(domain).range(range);
     const eps = (span || 1) * 1e-9;
@@ -67,7 +67,7 @@ export function forestScale(rows: Interval[], spec: ScaleSpec): ForestScale | nu
   const L0 = Math.log10(lo);
   const L1 = Math.log10(hi);
   const span = L1 - L0;
-  const pad = span > 0 ? span * PAD : 0.05;
+  const pad = span > 0 ? span * SHARE_PAD : 0.05;
   const domain: [number, number] = [10 ** (L0 - pad), 10 ** (L1 + pad)];
   const x = scaleLog().domain(domain).range(range);
   return { x, domain, extent: [lo, hi], ticks: settle(logTicks(lo, hi, count), reference, x) };

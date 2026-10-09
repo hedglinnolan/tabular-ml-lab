@@ -1,0 +1,195 @@
+/* The exhibit views' frame (FOUNDATION §5 rule 9): one title, one line saying what it is, the
+   legend, the drawing or its table. Every color is a token (tokens.css): canvas tokens for the
+   frame and its text, the categorical slots for entities, indigo only for what the choice touches. */
+.frame {
+  margin: 0;
+  min-width: 0;
+  color: var(--canvas-ink);
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+}
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.toggle {
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  margin-left: auto;
+  color: var(--canvas-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--canvas-line);
+}
+.toggle:hover {
+  color: var(--canvas-ink);
+}
+.caption {
+  margin: 2px 0 8px;
+  color: var(--canvas-muted);
+  font-size: 14px;
+}
+.empty {
+  margin: 4px 0;
+  color: var(--canvas-muted);
+  font-size: 15px;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+  color: var(--canvas-muted);
+  font-size: 14px;
+}
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+}
+.legend button[data-dim="true"] {
+  opacity: 0.45;
+}
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  flex: none;
+}
+.swatch[data-shape="dot"] {
+  border-radius: 50%;
+}
+.svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.axis {
+  fill: var(--canvas-muted);
+  font-size: 11px;
+  font-family: var(--font);
+}
+.axisTitle {
+  fill: var(--canvas-muted);
+  font-size: 12px;
+  font-family: var(--font);
+}
+.direct {
+  fill: var(--canvas-ink);
+  font-size: 12px;
+  font-family: var(--font);
+}
+.cellText {
+  font-size: 11px;
+  font-family: var(--font);
+  pointer-events: none;
+}
+.note {
+  fill: var(--canvas-ink);
+  font-size: 12px;
+  font-family: var(--font);
+  font-weight: 600;
+}
+.scale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0 0 6px;
+  color: var(--canvas-muted);
+  font-size: 13px;
+}
+.scale ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.scale li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.scale li i {
+  width: 16px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  box-sizing: border-box;
+}
+.table {
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.table th,
+.table td {
+  padding: 3px 14px 3px 0;
+  text-align: right;
+  border-top: 1px solid var(--canvas-line);
+  white-space: nowrap;
+}
+.table th:first-child,
+.table td:first-child {
+  text-align: left;
+}
+.table thead th {
+  border-top: 0;
+  color: var(--canvas-muted);
+  font-weight: 600;
+}
+.tableWrap {
+  overflow-x: auto;
+  min-width: 0;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.tip {
+  position: fixed;
+  z-index: 9;
+  pointer-events: none;
+  background: var(--raised);
+  color: var(--raised-ink);
+  font-size: 13px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  transform: translate(-50%, -125%);
+}
+.svg:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.halo {
+  paint-order: stroke;
+  stroke: var(--canvas);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}

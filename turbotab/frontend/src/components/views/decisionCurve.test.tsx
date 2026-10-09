@@ -2,8 +2,8 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { DecisionCurveView } from "./DecisionCurveView";
 import { decisionDomains, decisionScales, pointedRange, refusal, shadedRange, treatAllLeaves, usefulLine, type DecisionCurveData } from "./decisionCurve";
-import { decisionFromEngine } from "./adapters";
-import { decision, decisionOnePoint, decisionPointed, decisionPointedHeldOut } from "./lab/fixtures";
+import { decisionFromEngine } from "./curveAdapters";
+import { decision, decisionOnePoint, decisionPointed, decisionPointedHeldOut } from "./lab/curves.fixtures";
 
 const d: DecisionCurveData = {
   rows: [

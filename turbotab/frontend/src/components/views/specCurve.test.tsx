@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { SpecCurveView, intervalHead, specLine } from "./SpecCurveView";
 import { CURVE_H, GAP, HEAD_H, ROW_H, TOP, columnAt, mixedScales, sortSpecs, specLayout, type SpecCurveData } from "./specCurve";
-import { specCurve, specOne } from "./lab/fixtures";
+import { specCurve, specOne } from "./lab/curves.fixtures";
 
 const d: SpecCurveData = {
   estimateLabel: "Difference per g",

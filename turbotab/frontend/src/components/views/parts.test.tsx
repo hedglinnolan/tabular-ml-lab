@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { NOW, tipLeft } from "./parts";
 import { insetRange, linear, ticksIn, widen } from "./scale";
-import { LabViews } from "./lab/LabViews";
+import { ViewsLab } from "./lab/ViewsLab";
 import { entries } from "./lab/curves.lab";
 
 const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
@@ -67,14 +67,14 @@ describe("the data-now gray", () => {
 
 describe("every view in the lab", () => {
   it("draws every marker at least 9 px across (radius 4.5, the ring painted under the fill)", () => {
-    const { container } = render(<LabViews entries={entries} />);
+    const { container } = render(<ViewsLab entries={entries} />);
     const marks = [...container.querySelectorAll("circle")].filter((c) => !c.getAttribute("class")?.includes("hit"));
     expect(marks.length).toBeGreaterThan(20);
     for (const c of marks) expect(Number(c.getAttribute("r"))).toBeGreaterThanOrEqual(4.5);
   });
 
   it("gives every drawn view a table alternative, the sealed curve included", () => {
-    const { container } = render(<LabViews entries={entries} />);
+    const { container } = render(<ViewsLab entries={entries} />);
     for (const fig of container.querySelectorAll("figure:not([data-empty])")) expect(fig.querySelector('[data-testid="view-table"]')).toBeTruthy();
     expect(container.querySelectorAll('figure[data-sealed="true"] [data-testid="view-table"]').length).toBeGreaterThan(0);
   });

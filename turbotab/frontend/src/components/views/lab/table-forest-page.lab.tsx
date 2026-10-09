@@ -1,12 +1,12 @@
 /** /lab/views: the table, forest and page view kinds, each with its fixture and its states. */
 import { useState } from "react";
-import { ExhibitTable, TABLE_PURPOSE } from "../../ExhibitTable";
-import { Forest, FOREST_PURPOSE, TableWithForest } from "../../Forest";
-import { PagePreview, PAGE_PURPOSE } from "../../PagePreview";
-import { pageFromExhibits } from "../../adapters";
-import type { ForestData, Placement, TableData } from "../../types";
-import type { LabEntry } from "../entry";
-import { exhibitModel, forest, forestMulti, forestRatio, GATE, table1, table2, table2Multi, table2Ratio } from "../fixtures";
+import { ExhibitTable, TABLE_PURPOSE } from "../ExhibitTable";
+import { Forest, FOREST_PURPOSE, TableWithForest } from "../Forest";
+import { PagePreview, PAGE_PURPOSE } from "../PagePreview";
+import { pageFromExhibits } from "../adapters";
+import type { ForestData, Placement, TableData } from "../types";
+import type { LabEntry } from "./entry";
+import { exhibitModel, forest, forestMulti, forestRatio, GATE, table1, table2, table2Multi, table2Ratio } from "./fixtures";
 
 /** A table with its forest as the last column: pointing at or focusing a row lights it whole. */
 function Linked({ table, data }: { table: TableData; data: ForestData }) {

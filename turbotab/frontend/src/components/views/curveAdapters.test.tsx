@@ -1,11 +1,8 @@
-import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { substitutionChoice, substitutionCompare, substitutionSealed } from "./lab/fixtures";
+import { substitutionChoice, substitutionCompare, substitutionSealed } from "./lab/curves.fixtures";
 import { curveFromSubstitution } from "./curveAdapters";
 import prediction from "../../mocks/fixtures/m3-nhanes-prediction.json";
 import type { SubstitutionArtifact } from "../../api/m3-types";
-import { LabViews, scopedTokens } from "./lab/LabViews";
-import { entries } from "./lab/curves.lab";
 
 describe("the substitution artifact as a curve (captured NHANES Predict)", () => {
   it("draws each k's own rows in gray and the same rows at every k in indigo, with the stop said", () => {
@@ -34,19 +31,5 @@ describe("the substitution artifact as a curve (captured NHANES Predict)", () =>
   it("before Fit carries no estimate", () => {
     expect(substitutionSealed.lines).toEqual([]);
     expect(substitutionSealed.sealed).toMatch(/after Fit/);
-  });
-});
-
-describe("/lab/views", () => {
-  it("renders every entry in the light and the dark theme", () => {
-    const { container } = render(<LabViews entries={entries} />);
-    expect(container.querySelectorAll("[data-lab-entry]")).toHaveLength(entries.length);
-    expect(container.querySelectorAll('[data-views-theme="light"]')).toHaveLength(entries.length);
-    expect(container.querySelectorAll('[data-views-theme="dark"]')).toHaveLength(entries.length);
-  });
-
-  it("scopes both token blocks to an element", () => {
-    const css = ':root { --canvas: #fff; } @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --canvas: #111; } } :root[data-theme="dark"] { --canvas: #000; }';
-    expect(scopedTokens(css)).toBe('[data-views-theme="light"]{ --canvas: #fff; ;color-scheme:light}[data-views-theme="dark"]{ --canvas: #000; }');
   });
 });

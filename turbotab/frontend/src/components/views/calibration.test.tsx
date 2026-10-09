@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { CalibrationView, calibrationLine, curvePoints } from "./CalibrationView";
 import { calibrationRefusal, calibrationScales, sharedDomain, type CalibrationData } from "./calibration";
-import { calibrationBinned, calibrationChoosing, calibrationClinical, calibrationOnePoint } from "./lab/fixtures";
+import { calibrationBinned, calibrationChoosing, calibrationClinical, calibrationOnePoint } from "./lab/curves.fixtures";
 
 const d: CalibrationData = {
   kind: "risk",
