@@ -9,7 +9,9 @@ numbers it replays to (:data:`BEFORE_THE_RENAME`) were fitted by that engine fro
 from __future__ import annotations
 
 import json
+import platform
 import shutil
+import sys
 from pathlib import Path
 from typing import Literal, get_args
 
@@ -28,6 +30,12 @@ BEFORE_THE_RENAME = {
     ("random_forest", "dml_irm"): (-3.9991971766703944, 1.406598046214111),
     ("boosted_trees", "dml_plr"): (-4.160842018566974, 0.7933379957626656),
 }
+# Those numbers are exact on the machine that fitted them (macOS on arm64). A forest's and a
+# booster's floating-point sums differ in the last digits on other platforms (Linux CI fits the
+# forest's estimate 0.09% away), so there they are held to within 1%; the replay's equality with
+# the same answers recorded today is exact everywhere.
+WHERE_FITTED = sys.platform == "darwin" and platform.machine() == "arm64"
+PINNED_REL = 1e-9 if WHERE_FITTED else 1e-2
 
 
 def _copy(tmp_path: Path, source: Path = FORMAT_0) -> Path:
@@ -114,10 +122,14 @@ def test_a_format_0_log_replays_to_the_numbers_the_old_engine_fitted(tmp_path):
     old = d.DecisionLog(_copy(tmp_path)).records()
     run = GraphRun(tmp_path / "t.csv", tmp_path / "project")
     try:
+        today = d.DecisionLog(tmp_path / "today.jsonl")
+        for record in old:
+            today.append(record.decision)
         for upto, key in ((len(old) - 1, ("random_forest", "dml_irm")),
                           (len(old), ("boosted_trees", "dml_plr"))):
             [replayed] = _estimates(run, old[:upto])
-            assert replayed == pytest.approx(BEFORE_THE_RENAME[key], rel=1e-9, abs=0)
+            assert replayed == pytest.approx(BEFORE_THE_RENAME[key], rel=PINNED_REL, abs=0)
+            assert _estimates(run, today.records()[:upto]) == [replayed]
     finally:
         run.close()
 
