@@ -34,7 +34,12 @@ objective. It stops in finitely many steps at the exact minimizer, whatever the 
 It costs about what scikit-learn's defaults did, timed at one thread over a whole inner
 cross-validation: least squares on the NHANES-like 400 × 27, 0.15 s (coordinate descent at 10⁻⁴,
 0.18 s; at 10⁻¹², 1.05 s); 120 × 100 correlated, 0.9 s (2.7 s; 18.6 s); logistic on the NHANES-like
-400 × 19, 0.05 s (``saga`` at 10⁻³, 0.28 s).
+400 × 19, 0.05 s (``saga`` at 10⁻³, 0.28 s). With many classes the Hessian is most of the cost;
+the least of two runs at one thread under load (``saga`` at 10⁻³; one coefficient activated per
+solve and a full Hessian every step, as first written): eight classes on 3,000 × 70, 30 s (44 s;
+50 s), eight ordered classes 8.5 s (52 s; 48 s), six on 1,500 × 40, 0.7 s (1.7 s; 6.8 s), four on
+1,000 × 150, 19 s (41 s; 31 s). On the verifier's own eight-class table ``saga`` took 17 s and the
+first version 36 s; not every table goes the same way.
 
 The problems are scikit-learn's own. Least squares: ``(1/2n)‖y − Xw − b‖² + αρ‖w‖₁ +
 α(1 − ρ)/2 ‖w‖²``. Logistic: ``C Σ sᵢ ℓᵢ + ρ‖W‖₁ + (1 − ρ)/2 ‖W‖²``, divided here by ``C Σ sᵢ``;

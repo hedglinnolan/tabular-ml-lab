@@ -53,8 +53,9 @@ SOLVER_MAX_ITER = 100_000
 LOSS_PRECISION = 1e-9  # pooled losses are rounded to this share of the smallest before the argmin
 # The exact path's reach, timed at one thread for a whole inner cross-validation: least squares on
 # 2,000 rows × 500 columns, 12 s for six mixes × 100 penalties × five folds (coordinate descent at
-# 10⁻⁴: 18 s); logistic on 1,000 × 200, 1.4 s (saga at 10⁻³: 4.3 s), on four classes × 60 columns
-# 1.5 s (saga: 1.0 s). Beyond these a linear solve per step costs more than an iterative sweep.
+# 10⁻⁴: 18 s); logistic on 1,000 × 200, 0.4 s (saga at 10⁻³: 4.3 s to 28 s by table), on four
+# classes × 150 columns 19 s (saga: 41 s), eight classes × 70, 9 s to 30 s (saga: 44 s to 61 s;
+# 17 s on the verifier's table). Beyond these a linear solve per step costs more than a sweep.
 EXACT_MAX_COLUMNS = 500
 EXACT_MAX_COEFFICIENTS = 600
 
