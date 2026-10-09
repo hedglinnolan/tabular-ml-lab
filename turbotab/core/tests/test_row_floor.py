@@ -605,3 +605,43 @@ def test_a_sensitivity_exit_never_leaves_the_analysis_the_primary(tmp_path):
                     if a.label == "a":  # what the exit made of it is never the primary
                         assert sorted(r.model_dump_json() for r in a.rules) != sorted(
                             r.model_dump_json() for r in primary), e["label"]
+
+
+def test_a_stages_own_refusal_offers_complete_cases_only_where_the_record_accepts_them(tmp_path):
+    """The verifier's residue: under inference the fit's table held by the missing-values answer
+    (``methods.missing.missing_block``: here a single fill recorded before the purpose became
+    inference) offered "Complete cases, with their assumption stated" without counting its rows,
+    and so did the table built on the data's own imputed copies ("Complete cases within each
+    copy"). On the renal table complete cases keep 4 rows (pandas, below), and the record refuses
+    that answer. Neither offers it now, and every exit offered is accepted; with 40 complete rows
+    both offer it, and it is accepted."""
+    from types import SimpleNamespace
+
+    from turbotab.core.graph import StageContext
+    from turbotab.core.stages.modeling import _copies_for_table, _missing_for_table
+
+    preds = list(renal_state().roles)
+    for complete, offered in ((4, False), (40, True)):
+        frame = renal(complete=complete)
+        frame["copy"] = np.tile([1, 2], len(frame) // 2)
+        assert int(frame[preds].notna().all(axis=1).sum()) == complete  # the reference
+        folder = tmp_path / str(complete)
+        folder.mkdir()
+        store, bundle = toy_store(frame, folder)
+        now = renal_state(purpose="inference", missing=MissingSpec(strategy="impute"))
+        ctx = StageContext(project_id="renal", state=now, inputs={"working": bundle("working")},
+                           paths={}, settings={})
+        spec = SimpleNamespace(missing=None, levels=[], inputs=preds)
+        y = frame["egfr_decline"]
+        held = _missing_for_table(ctx, spec, frame[preds], y, "binary", ["linear"])
+        copies, _ = _copies_for_table(ctx, spec, frame, "copy", y, [])
+        record = {"state": now, "store": store, "columns": list(frame.columns),
+                  "target": "egfr_decline", "bundle": bundle}
+        with store:
+            for table in (held, copies):
+                assert table.refusal, table
+                ways = [e["decision"] for e in table.exits if e["decision"] is not None]
+                complete_cases = [w for w in ways if w.get("strategy") == "complete_case"]
+                assert bool(complete_cases) is offered, (complete, table.exits)
+                for way in ways:
+                    validate(way, record)  # every exit offered is one the record accepts

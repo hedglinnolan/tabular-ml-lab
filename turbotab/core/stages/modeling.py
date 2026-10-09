@@ -30,6 +30,7 @@ import pandas as pd
 import turbotab.core.models  # noqa: F401 - registers the families and their previews
 from turbotab.core.graph import Bundle, StageContext
 from turbotab.core.jobs import Cancelled
+from turbotab.core.row_floor import stage_exits
 from turbotab.core.stages.data import open_store
 
 SUBSTITUTION_ROWS = 5_000
@@ -1090,7 +1091,7 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
                          passive=imputing and task in ("ordinal", "multiclass"),
                          clustered=imputing and clustered)
     if held is not None:
-        return TableMissing(refusal=held[0], exits=held[1])
+        return TableMissing(refusal=held[0], exits=stage_exits(held[1], ctx))
     strategy = answer.get("strategy")
     m = int(answer.get("m") or M_DEFAULT)
     if strategy == "multiple_imputation":
@@ -1157,7 +1158,7 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
                               "decision": {**answer, "kind": "set_missing",
                                            "strategy": "complete_case"}})
             return TableMissing(refusal=f"Multiple imputation cannot run on these data: {exc}",
-                                exits=exits)
+                                exits=stage_exits(exits, ctx))
         return TableMissing(imputations=imputations)
     if strategy == "complete_case":
         if loss is None:
@@ -1239,9 +1240,9 @@ def _copies_for_table(ctx: StageContext, spec: Any, frame: pd.DataFrame, implica
             refusal=(f"The rows are the data's imputed copies, and {', '.join(f'`{c}`' for c in blanks[:3])}"
                      f" still {'has' if len(blanks) == 1 else 'have'} blanks inside them; imputing "
                      f"within each copy (nested imputation) is not built here."),
-            exits=[{"label": "Complete cases within each copy",
-                    "decision": {**(answer or {}), "kind": "set_missing",
-                                 "strategy": "complete_case"}}]), INDEPENDENT
+            exits=stage_exits([{"label": "Complete cases within each copy",
+                                "decision": {**(answer or {}), "kind": "set_missing",
+                                             "strategy": "complete_case"}}], ctx)), INDEPENDENT
     copies = supplied_copies(frame, implicate, unit, list(spec.inputs), y)
     return TableMissing(imputations=copies), INDEPENDENT
 
@@ -2510,6 +2511,7 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
             copies=imputed is not None, models=chosen, task=task)
     if held is not None:
         refused_why, refused_exits, _ = held
+        refused_exits = stage_exits(refused_exits, ctx)
         blank = substitution_curve(lambda frame: np.zeros(len(frame)), X, donor=sub.donor,
                                    recipient=sub.recipient, kcal_per_unit=kcal_per_unit, ks=ks,
                                    total_kind="variable", nested=nested, total=total_energy,

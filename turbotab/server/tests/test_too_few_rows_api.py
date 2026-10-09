@@ -393,3 +393,54 @@ def test_a_repair_on_combined_rows_is_counted_on_the_units_it_leaves(client, tmp
     assert fill["kind"] == "set_missing" and fill["strategy"] == "impute"
     assert post(client, pid, fill).status_code == 200
     assert post(client, pid, repair).status_code == 200
+
+
+def statin_table() -> pd.DataFrame:
+    """The verifier's 60-row table: `statin_use` (yes/no) blank on 70% of rows, and complete cases
+    on `age_y` and `bmi` keep 4 rows."""
+    rng = np.random.default_rng(5)
+    n = 60
+    age = rng.integers(30, 80, n).astype(float)
+    bmi = rng.normal(27.0, 4.0, n).round(1)
+    age[:28] = np.nan
+    bmi[28:56] = np.nan
+    statin = np.where(rng.random(n) < 0.5, "yes", "no").astype(object)
+    statin[rng.permutation(n)[:42]] = None
+    sbp = (118 + 0.3 * np.nan_to_num(bmi, nan=27.0) + rng.normal(0, 9, n)).round(0)
+    return pd.DataFrame({"pt_code": [f"P{i:03d}" for i in range(n)], "age_y": age, "bmi": bmi,
+                         "statin_use": statin, "sbp": sbp})
+
+
+def test_the_not_asked_cautions_exits_are_each_accepted(client, tmp_path):
+    """The verifier's case: previewing a single fill offered the "not asked" caution's "Leave it
+    out first" (complete cases with `statin_use` left out), which keeps 4 rows and was itself
+    refused, 409 too_few_rows, at preview and at recording. Every exit the caution offers now
+    previews and records; leaving the column out is still offered, with the other blanks filled."""
+    from turbotab.server.tests.conftest import answer_settled, prepare
+
+    path = tmp_path / "statins.csv"
+    statin_table().to_csv(path, index=False)
+    pid = open_by_path(client, path)
+    wait_for(client, pid, {"ingest": "fresh"})
+    for d in ({"kind": "set_lens", "lenses": ["clinical"]},
+              {"kind": "set_target", "column": "sbp"},
+              {"kind": "set_purpose", "purpose": "prediction"}):
+        prepare(client, pid, d)
+        assert answer_settled(client, pid, None, d).status_code == 200
+    fill = {"kind": "set_missing", "strategy": "impute"}
+    prepare(client, pid, fill)
+    wait_for(client, pid, {"proposals": "fresh"}, timeout=180)
+    reading = client.get(f"/api/projects/{pid}/stages/proposals").json()["artifact"]["missing"]
+    assert [e["column"] for e in reading["columns"] if e["likely_not_asked"]] == ["statin_use"]
+
+    previewed = client.post(f"/api/projects/{pid}/preview", json=fill)
+    assert previewed.status_code == 200, previewed.text[:600]
+    caution = previewed.json()["caution"]
+    assert "`statin_use`" in caution["text"] and "not asked" in caution["text"]
+    exits = [e["decision"] for e in caution["exits"]]
+    assert any(d["drop_columns"] == ["statin_use"] for d in exits)
+    for d in exits:
+        taken = client.post(f"/api/projects/{pid}/preview", json=d)
+        assert taken.status_code == 200, (d, taken.text[:600])
+    leave = next(d for d in exits if d["drop_columns"] == ["statin_use"])
+    assert post(client, pid, leave).status_code == 200
