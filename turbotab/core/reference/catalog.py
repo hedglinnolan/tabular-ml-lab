@@ -117,6 +117,8 @@ CONTRACT_LENSES: dict[str, tuple[str, ...]] = {
     "horizon_calibration": (SHARED,),
     "nested_cv_interval": (SHARED,),
     "explain": (SHARED,),
+    # subgroups of similar people (D4): an engine core every lens may describe or use as a feature
+    "subgroups": (SHARED,),
     # the export ends every journey
     "manuscript_export": (SHARED,),
 }

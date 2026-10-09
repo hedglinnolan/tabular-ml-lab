@@ -256,6 +256,8 @@ DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.methods.substitution",
     # Wave 2c, EXPORT: the export bundle and its replay
     "turbotab.core.export.contract",
+    # D4: subgroups of similar people (cluster analysis), an engine method core
+    "turbotab.core.methods.subgroups",
 )
 
 
