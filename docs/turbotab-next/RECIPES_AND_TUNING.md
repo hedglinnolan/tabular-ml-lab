@@ -806,6 +806,7 @@ Under the population answer, evaluation's design-based folds (10 × 2) add about
 - Every fit runs at a recorded `n_jobs` or `nthread`, and provenance records it.
 - Forest prediction runs single-threaded, so the trees' outputs are summed in tree order.
 - Inner losses are rounded before the argmin, so a near-tie cannot flip on floating point.
+- The elastic net's inner curve is exact at every point, for a number, a yes/no and classes alike (`models/exact_path.py`: feature-sign search, and proximal Newton for the log loss, warm-started from the strongest penalty). An iterative solver's tolerance would otherwise sit above the rounding: coordinate descent at 10⁻⁴ was 10⁻⁵ to 10⁻³ off, and `saga` at the logistic branch's 10⁻³ was 2 × 10⁻³ off. A matrix too wide for it (more than 500 columns, or 600 logistic coefficients) keeps scikit-learn's solvers, and its penalty is not promised to be the same on every platform.
 
 **What is recorded.** A `TuningRecord` (`tuning_` on the fitted pipeline) holds:
 - the plan: kind, n_plan and its unit, C, K, early stopping, seed, space version, defaults version, threads;
