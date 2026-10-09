@@ -32,6 +32,13 @@ Rules every builder keeps:
 - **Never an empty canvas.** A builder that cannot draw says why in one line (``ctx.read
   ["note"]``), naming what is missing and the question that settles it, or offers the control that
   does (``ctx.caution``); the generic "nothing can be shown" line is the planner's last resort.
+- **Block and record, as the stages do.** Under the surveyed population, a builder of an answer
+  that specifies the outcome model (what enters it, its rows, its outcome, whether it is
+  estimated) shows what the fit would block under the state the answer leaves
+  (``plan_previews.population_block``, ``specifies_the_model``): a grouping whose rows span PSUs
+  refuses every coefficient, and a family with no design-based estimator has its table blocked.
+  A family that reports no table is named only where a stage blocks something of it: its curve,
+  and its estimates in the record of the families chosen.
 
 **The scaling strategy — a closed vocabulary plus a generic diff.** Every modeling decision, now or
 in any later milestone, changes some combination of five things: which rows are in, which columns

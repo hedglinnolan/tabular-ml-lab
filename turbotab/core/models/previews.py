@@ -554,8 +554,9 @@ def models_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
     from turbotab.core.plan_previews import population_block
 
     # Under the surveyed population a family with no design-based estimator is blocked and
-    # recorded (MODELING_SEQUENCE §4): the preview says so with the fit's own words and exits.
-    population_block(ctx, after_state(decision, ctx), decision)
+    # recorded (MODELING_SEQUENCE §4): the preview says so with the fit's own words and exits, and
+    # of a family with no coefficient table, its estimates, as the record's sentence says.
+    population_block(ctx, after_state(decision, ctx), decision, every_family=True)
     return views
 
 

@@ -1102,7 +1102,7 @@ def task_of(ctx: PreviewContext, state: Any) -> str | None:
 
 
 def population_block(ctx: PreviewContext, state: Any, decision: Any, *, what: str = "coefficients",
-                     marginal: bool = True) -> bool:
+                     marginal: bool = True, every_family: bool = False) -> bool:
     """MODELING_SEQUENCE §4, "population estimand without a design-based estimator: block and
     record", as the stages apply it under ``state``'s surveyed-population answer, each with its
     own check and words: the design itself (``methods.survey.for_fit``: a grouping whose rows
@@ -1110,10 +1110,16 @@ def population_block(ctx: PreviewContext, state: Any, decision: Any, *, what: st
     (the fit's ``models.survey.no_design_estimator``; ``what`` the stage blocks of it, its
     coefficients or a substitution curve), then, with ``marginal``, a marginal measure (the effects
     stage's ``marginal_population_block``). The first found is the preview's caution, with the
-    stage's exits and recording the answer as it is; True when one was found."""
+    stage's exits and recording the answer as it is; True when one was found.
+
+    A family is counted only where a stage records its block (:func:`family_block`): the fit, the
+    effects and the sensitivity stages block a family's coefficient table, so a family that reports
+    none (boosted trees) is counted only with ``every_family``, where the caller speaks for every
+    family's output: the swap (the substitution stage blocks each family's curve) and the choice
+    of families and of the population (the record's sentence says each one's estimates are
+    blocked, ``models.survey.models_sentence``)."""
     from turbotab.core import estimand as est
     from turbotab.core.models import get_family
-    from turbotab.core.models.survey import has_design_estimator, no_design_estimator
     from turbotab.core.stages.effects import marginal_population_block
 
     if getattr(state, "purpose", None) != "inference" or ctx.caution is not None:
@@ -1137,9 +1143,9 @@ def population_block(ctx: PreviewContext, state: Any, decision: Any, *, what: st
             family = get_family(key)
         except KeyError:
             continue
-        if not has_design_estimator(family, task):
-            info = no_design_estimator(family, task, models, what=what).info
-            reason, exits = info["refused"], info["exits"]
+        found_block = family_block(family, task, models, what=what, every_family=every_family)
+        if found_block is not None:
+            reason, exits = found_block
             break
     spec = est.current_estimand(state)
     if (marginal and reason is None and spec is not None and str(spec.measure) in est.MARGINAL
@@ -1149,6 +1155,28 @@ def population_block(ctx: PreviewContext, state: Any, decision: Any, *, what: st
         return False
     block_and_record(ctx, reason, exits, decision)
     return True
+
+
+def family_block(family: Any, task: str | None, models: Sequence[str], *,
+                 what: str = "coefficients",
+                 every_family: bool = False) -> tuple[str, list[dict[str, Any]]] | None:
+    """``family``'s block under the surveyed population as a stage records it, its reason and
+    exits (``models.survey.no_design_estimator``), else None: none for a family with a
+    design-based estimator. A family with a coefficient table has it blocked by the fit (and the
+    effects and sensitivity stages, which read only such families); one with no table has nothing
+    of its ``coefficients`` blocked, so it counts only with ``every_family``, said of its
+    ``estimates`` (the record's word) unless ``what`` names its curve."""
+    from turbotab.core.models.base import reports_coefficients
+    from turbotab.core.models.survey import has_design_estimator, no_design_estimator
+
+    if has_design_estimator(family, task):
+        return None
+    if not reports_coefficients(family):
+        if not every_family:
+            return None
+        what = "estimates" if what == "coefficients" else what
+    info = no_design_estimator(family, task, models, what=what).info
+    return str(info["refused"]), [dict(e) for e in info["exits"]]
 
 
 def block_and_record(ctx: PreviewContext, reason: str, exits: Sequence[Mapping[str, Any]],
@@ -1161,6 +1189,24 @@ def block_and_record(ctx: PreviewContext, reason: str, exits: Sequence[Mapping[s
         *(CautionExit(label=str(e["label"]), decision=dict(e["decision"]))
           for e in exits if e.get("decision")),
         CautionExit(label=RECORD_BLOCKED, decision=decision.model_dump(mode="json"))])
+
+
+def specifies_the_model(builder: Any) -> Any:
+    """``builder``, the preview of an answer that specifies the outcome model (what enters it, the
+    rows it is estimated on, its outcome, whether it is estimated at all), with what the surveyed
+    population blocks of that model under the state the answer leaves (§4, block and record:
+    :func:`population_block`) as the caution beside its views, unless the builder set one. The fit
+    records the same once the answer is: a grouping whose rows span PSUs refuses every
+    coefficient whatever else the answer changes."""
+    import functools
+
+    @functools.wraps(builder)
+    def views(decision: Any, ctx: PreviewContext) -> list[Any]:
+        out = builder(decision, ctx)
+        population_block(ctx, after_state(decision, ctx), decision)
+        return out
+
+    return views
 
 
 def clusters_views(decision: Any, ctx: PreviewContext) -> list[Any]:
@@ -1481,8 +1527,9 @@ def survey_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                           "domain": held, "mean_unweighted": mean_u, "mean_weighted": mean_w,
                           "unit": unit}
     # The design stands; what the chosen families and the declared measure cannot estimate over
-    # it is blocked and recorded (§4), and the preview says so beside the design.
-    population_block(ctx, after, decision)
+    # it is blocked and recorded (§4), and the preview says so beside the design: every family's
+    # estimates, as the record's sentence of the families says under this answer.
+    population_block(ctx, after, decision, every_family=True)
     sampled = ctx.read.get("sample")
     values = (f"a sample of {sampled[2]:,} of the {sampled[1]:,} {rows_word(ctx)} rows"
               if sampled is not None and sampled[2] < sampled[1] else
@@ -1804,10 +1851,10 @@ register_consequence("set_modification", modification_views)  # FORM (wave 2b in
 register_consequence("set_clusters", clusters_views)
 register_consequence("set_survey", survey_views)
 register_consequence("set_follow_up", follow_up_views)
-register_consequence("set_outcome_scale", outcome_scale_views)
+register_consequence("set_outcome_scale", specifies_the_model(outcome_scale_views))
 register_consequence("set_categorical", categorical_views)
-register_consequence("set_outcome_order", outcome_order_views)
-register_consequence("set_task", task_views)
+register_consequence("set_outcome_order", specifies_the_model(outcome_order_views))
+register_consequence("set_task", specifies_the_model(task_views))
 register_consequence("set_sensitivity", sensitivity_views)
 register_consequence("respond_diagnostic", diagnostic_views)
 

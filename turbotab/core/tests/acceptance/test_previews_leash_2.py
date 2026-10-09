@@ -9,14 +9,19 @@ stage's own record or a hand computation.
    shown. Answered as prediction, the same walk sees the estimates a prediction may show.
 2. **Never an empty canvas, on settled states.** Under each purpose, answered or not, no answer
    the server accepts previews the planner's generic line: regression calibration says what the
-   calibration stage records, an event level what the server says of the outcome, and a
-   multiplicity method what its tests wait for.
+   calibration stage records, an event level what the server says of the outcome, a
+   multiplicity method what its tests wait for, and no lever or no selection the model as
+   declared.
 3. **Cluster units that span PSUs.** Under the surveyed population with every site's rows in more
    than one PSU, the fit refuses every coefficient; every preview of an answer that specifies the
-   outcome model shows that refusal, with the sample-only exit and recording the answer as it is.
+   outcome model (what enters it, its rows, its outcome, whether it is estimated) shows that
+   refusal, with the sample-only exit and recording the answer as it is, and recording a role, a
+   row rule or the blanks' handling meets the same refusal.
 4. **Population estimand without a design-based estimator: block and record.** With the elastic
    net chosen beside the linear model, the swap and the sensitivity analyses preview the block the
-   substitution and sensitivity stages record, with their exits.
+   substitution and sensitivity stages record, with their exits. Boosted trees report no
+   coefficient table, so no stage blocks one: only the swap (its curve) and the choice of
+   families (its estimates, as the record says) preview a block of them.
 5. **The design's warning after the lock.** The energy-dropped residual's warning withholds the
    coefficient gap until the estimates may be seen, and quotes it, as the server serves the design,
    once the plan is locked (audit ME-03); NumPy and statsmodels give the gap.
@@ -24,6 +29,7 @@ stage's own record or a hand computation.
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -186,13 +192,17 @@ def purposes(tmp_path_factory, unanswered):
         out[purpose].close()
 
 
+# Beyond the walk, the explore answers that choose nothing, which every purpose accepts.
+SETTLED_EXTRA = [d.SetLevers(), d.SetSelection(method="none")]
+
+
 @pytest.mark.parametrize("purpose", [None, "inference", "prediction"])
 def test_2_no_settled_preview_ends_on_the_generic_line(purposes, purpose):
     """Every answer of the walk the server accepts under this purpose previews something: a view,
     a caution with its controls, or one line that is not the planner's last resort."""
     project, state = purposes[purpose], L.walk_state(purpose=purpose)
     empty = []
-    for decision in L.WALK:
+    for decision in [*L.WALK, *SETTLED_EXTRA]:
         out = L.served(project, decision, state)
         if "refused" in out:
             continue
@@ -201,6 +211,47 @@ def test_2_no_settled_preview_ends_on_the_generic_line(purposes, purpose):
         if out["note"]:
             assert voice.words(out["note"]) <= PREVIEW_NOTE, (decision.kind, out["note"])
     assert empty == []
+
+
+def test_2_choosing_no_lever_or_no_selection_shows_the_model_as_declared(purposes):
+    """No lever and no selection change no column: under each purpose the preview is the model's
+    columns as declared, and under inference no selection is no sensitivity analysis either (the
+    one the server runs beside the declared model is backward elimination, asked for as such)."""
+    for purpose in (None, "inference", "prediction"):
+        project, state = purposes[purpose], L.walk_state(purpose=purpose)
+        for decision in SETTLED_EXTRA:
+            out = L.served(project, decision, state)
+            assert "refused" not in out, (purpose, decision.kind, out)
+            [only] = out["views"]
+            assert only["kind"] == "lineage" and only["before"] == only["after"], \
+                (purpose, decision.kind)
+            assert "sensitivity" not in only["caption"], (purpose, decision.kind, only["caption"])
+
+
+PREDICTION_LANE = [d.SetLevers(forms="rule"), d.SetSelection(method="elastic_net"),
+                   d.SetIntendedUse(use="risk_estimation"), d.SetUpdating(method="shrinkage")]
+
+
+def test_2_a_prediction_answer_under_inference_says_the_servers_refusal(purposes):
+    """Under inference the server refuses a lever, a selection for the reported model, an intended
+    use and an updating method (each is prediction's). Previewed on that state all the same, each
+    says the server's refusal, with its exits that record a decision as the controls, each one a
+    decision the server accepts; never the generic line or an empty canvas."""
+    project = purposes["inference"]
+    state = project.state
+    ctx = {"state": state, "columns": list(project.store.columns), "target": state.target}
+    for decision in PREDICTION_LANE:
+        with pytest.raises(d.Refusal) as refused:
+            d.validate(decision, ctx)
+        result, _ = project.preview(decision, ctx=project.context(state=state))
+        assert result.views == [] and result.note != GENERIC, decision.kind
+        assert result.caution is not None, (decision.kind, result.note)
+        assert result.caution.text == refused.value.message
+        exits = [e["decision"] for e in refused.value.exits if e.get("decision")]
+        assert [x.decision for x in result.caution.exits] == [
+            e.model_dump(mode="json") if hasattr(e, "model_dump") else e for e in exits]
+        for x in result.caution.exits:
+            d.validate(x.decision, ctx)
 
 
 CALIBRATION = d.SetMeasurementError(method="regression_calibration", exposures=["carb"])
@@ -280,10 +331,34 @@ def spanning_diet(tmp_path_factory):
 
 
 SWAP = d.SetSubstitution(donor="fat_total", recipient="carb", step_kcal=100)
-SENSITIVITY = d.SetSensitivity(analyses=[d.SensitivityAnalysis(label="800–4,000 kcal", rules=[
-    d.ExclusionRule(column="kcal", low=800, high=4000, reason="implausible intakes")])])
+KCAL = d.ExclusionRule(column="kcal", low=800, high=4000, reason="implausible intakes")
+SENSITIVITY = d.SetSensitivity(analyses=[d.SensitivityAnalysis(label="800–4,000 kcal",
+                                                                rules=[KCAL])])
+
+
+def roles(**change: str) -> dict[str, str]:
+    """The surveyed walk's roles as the roles question answers them (the outcome has none), with
+    ``change``."""
+    return {**{c: r for c, r in surveyed_state().roles.items() if c != "glucose"}, **change}
+
+
+# What enters the outcome model, the rows it is estimated on and its outcome: the answers the
+# second round's verifier found drawing as usual where the fit refuses every coefficient.
+ENTERS = [
+    d.SetRoles(roles=roles(waist="covariate")),
+    d.SetRoles(roles=roles(bmi="excluded")),
+    d.ConfirmRole(column="waist", role="covariate"),
+    d.ConfirmReadings(items=[d.ReadingItem(reading="role", column="waist", value="covariate")]),
+    d.SetMissing(strategy="multiple_imputation", m=20),
+    d.SetExclusions(rules=[KCAL]),
+    d.SetTask(column="glucose", task="regression"),
+    d.SetPurpose(purpose="inference"),
+    d.SetTarget(column="glucose"),
+    d.ConfirmReading(reading="code_or_count", column="age", value="amount"),
+]
 # Every answer that specifies the outcome model whose estimates the fit refuses.
 SPECIFYING = [
+    *ENTERS,
     d.SetAdjustment(exposure="carb", answers={"bmi": d.CovariateAnswers(**L.CONFOUNDER)}),
     d.SetExposureForm(column="carb", form="spline", knots=4),
     d.SetForms(forms={"carb": d.ExposureFormSpec(form="spline", knots=4)}),
@@ -350,6 +425,21 @@ def test_3_recorded_the_swap_and_the_sensitivity_analyses_meet_the_same_refusal(
         (info["refused"], info["exits"])] * 2
 
 
+@pytest.mark.parametrize("decision", ENTERS[:6], ids=lambda x: x.kind)
+def test_3_recorded_a_role_a_row_rule_or_the_blanks_meet_the_same_refusal(spanning_diet, decision):
+    """What the previews say is what recording does: a covariate added or left out, a role
+    confirmed, the blanks imputed or a rule on the rows, recorded, leave the fit refusing every
+    coefficient with the same words and exits."""
+    project, _ = spanning_diet
+    [model] = project.artifacts["fit"].data["models"]
+    info = model["inference"]
+    _, out = project.after(decision, upto=["fit"])
+    [fitted] = out["fit"].data["models"]
+    assert fitted["coefficients"] == []
+    assert (fitted["inference"]["refused"], fitted["inference"]["exits"]) == (info["refused"],
+                                                                             info["exits"])
+
+
 # ── 4 · population estimand without a design-based estimator: block and record ─────────────
 
 
@@ -409,6 +499,78 @@ def test_4_the_sensitivity_analyses_preview_the_block_the_sensitivity_stage_reco
         *(e["decision"] for e in info["exits"]), SENSITIVITY.model_dump(mode="json")]
     assert caution["exits"][-1]["label"] == RECORD
     assert [v["kind"] for v in result["views"]] == ["row_flow"]
+
+
+TREES = ["linear", "boosted_trees"]
+# The answers that specify the coefficient tables (what enters the model, its rows, its tests,
+# its grouping and the sensitivity analyses' refits), none of which a tree model reports.
+COEFFICIENTS = [
+    d.SetAdjustment(exposure="carb", answers={"bmi": d.CovariateAnswers(**L.CONFOUNDER)}),
+    d.SetExposureForm(column="carb", form="spline", knots=4),
+    d.SetForms(forms={"carb": d.ExposureFormSpec(form="spline", knots=4)}),
+    d.SetModification(modifier="gender"),
+    d.SetMultiplicity(method="bh"),
+    SENSITIVITY,
+    d.SetEnergyAdjustment(method="residual", **L.NUTRIENTS),
+    d.SetCategorical(columns=["gender"]),
+    d.SetEstimand(exposure="carb", contrast="substitution", measure="mean_difference"),
+    d.SetModelSequence(exposure="carb", model_1=["age"]),
+    d.SetClusters(column="site", adjust="cluster_only"),
+    *ENTERS,
+]
+
+
+@pytest.fixture(scope="module")
+def trees_diet(tmp_path_factory):
+    """``nested_diet``'s design (each site within one PSU, so the design stands) with the linear
+    model and boosted trees chosen."""
+    frame = L.with_design(L.walk_table(False), unit="site")
+    project = Project(frame, tmp_path_factory.mktemp("leash2_trees"),
+                      surveyed_state(models=TREES), upto=SURVEY_UPTO)
+    yield project
+    project.close()
+
+
+def test_4_a_family_with_no_coefficient_table_previews_only_the_blocks_recorded(trees_diet):
+    """Boosted trees report no coefficient table: recorded, the fit estimates the linear family
+    over the design and gives the trees no table to block, and the sensitivity analyses refit the
+    linear family alone. So no preview of an answer that specifies the coefficients names a block
+    of the trees' coefficients. What is recorded is said: the swap previews the block of the trees'
+    curve the substitution stage records, and choosing the families says the trees' estimates are
+    blocked, as the record's sentence does."""
+    state = trees_diet.state
+    fitted = {m["family"]: m for m in trees_diet.artifacts["fit"].data["models"]}
+    assert fitted["linear"]["coefficients"] and fitted["linear"]["inference"]["refused"] is None
+    assert not fitted["boosted_trees"].get("coefficients")
+    assert not (fitted["boosted_trees"].get("inference") or {}).get("refused")
+    said = {}
+    for decision in COEFFICIENTS:
+        out = L.served(trees_diet, decision, state)
+        assert "refused" not in out, (decision.kind, out)
+        if out["caution"] is not None:
+            said[decision.kind] = out["caution"]["text"]
+    assert said == {}
+    _, out = trees_diet.after(SENSITIVITY, upto=["sensitivity"])
+    refits = {f["family"]: f for f in out["sensitivity"].data["families"]}
+    assert all(f["inference"]["refused"] is None for f in refits["linear"]["fits"])
+    assert not any((f.get("inference") or {}).get("refused")
+                   for family in refits.values() for f in family["fits"])
+
+    result = L.served(trees_diet, SWAP, state)
+    _, out = trees_diet.after(SWAP, upto=["substitution"])
+    blocked = {m["family"]: m for m in out["substitution"]["models"]}["boosted_trees"]
+    assert blocked["refused"].startswith("Boosted trees has no design-based estimator, so its "
+                                         "substitution curve")
+    caution = result["caution"]
+    assert caution is not None and caution["text"] == blocked["refused"]
+    assert [x["decision"] for x in caution["exits"]] == [
+        *(e["decision"] for e in blocked["exits"]), SWAP.model_dump(mode="json")]
+
+    choose = d.SelectModels(models=TREES)
+    result = L.served(trees_diet, choose, state)
+    assert result["caution"]["text"].startswith("Boosted trees has no design-based estimator, so "
+                                                "its estimates would describe these participants")
+    assert "estimates were blocked" in voice.sentence_for(choose, state)
 
 
 # ── 5 · the design's warning after the lock (audit ME-03) ────────────────────────────────────
@@ -472,7 +634,8 @@ def test_5_the_design_withholds_the_gap_until_the_lock_and_serves_it_after(tmp_p
 def test_5_the_server_serves_the_gap_once_the_plan_is_locked(tmp_path):
     """Through the real server under inference: the design is served without the coefficients
     before the lock and with them after (the lock recorded as a client may record it), the gap
-    the one NumPy and statsmodels give on all 3,000 analyzed rows."""
+    the one NumPy and statsmodels give on all 3,000 analyzed rows; after a later answer, the design
+    served while it recomputes (the stale one, at its own key) quotes it too."""
     from turbotab.core.tests.acceptance import test_methods_gate as G
     from turbotab.core.tests.acceptance.server_drive import local_server, open_project
     from turbotab.core.tests.truths import Truth
@@ -512,4 +675,17 @@ def test_5_the_server_serves_the_gap_once_the_plan_is_locked(tmp_path):
         fit = drive.artifact("fit")
         assert any(m.get("coefficients") for m in fit["models"])
         assert drive.view()["state"]["plan_locked"] is True
-        assert said() == [gap_line(frame, "3,000", "analyzed rows")]
+        gap = gap_line(frame, "3,000", "analyzed rows")
+        assert said() == [gap]
+        # A later answer the design reads: while the design recomputes, the one served (stale, at
+        # its own key) quotes the gap too, and so does the fresh one.
+        drive.decide({"kind": "set_categorical", "columns": []})
+        served = []
+        end = time.monotonic() + 240
+        while not served or not served[-1][0]:
+            assert time.monotonic() < end, served
+            got = client.get(f"/api/projects/{drive.pid}/stages/design").json()
+            served.append((got["fresh"], [w for w in (got["artifact"] or {}).get("warnings", [])
+                                          if w.startswith("energy_kcal left")]))
+            time.sleep(0.05)
+        assert all(w == [gap] for _, w in served), served

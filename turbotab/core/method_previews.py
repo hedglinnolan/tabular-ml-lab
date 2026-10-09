@@ -45,7 +45,7 @@ from turbotab.core.consequences import (
 )
 from turbotab.core.plan_previews import (
     ask, block_and_record, caption, fit_design, frame_label, histogram, lineage_change, names, num,
-    points, pool, shared_edges, tick, title, whole,
+    points, pool, shared_edges, specifies_the_model, tick, title, whole,
 )
 
 TABLE_ROWS = 6
@@ -981,7 +981,7 @@ register_consequence("set_usual_intake", usual_intake_views)
 register_consequence("set_causal", causal_views)
 register_consequence("set_time_varying", time_varying_views)
 register_consequence("set_measurement_error", measurement_error_views)
-register_consequence("set_batch", batch_views)
+register_consequence("set_batch", specifies_the_model(batch_views))
 
 __all__ = ["batch_share", "calibration_numbers", "causal_numbers", "lane_weights",
            "quantile_histogram", "scale_numbers"]

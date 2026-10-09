@@ -525,7 +525,8 @@ def event_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     not among the outcome's levels as read, the line is what the server says of the answer (its
     validators, knowing the target and the task, as the server's context does), else that the
     levels are being read again."""
-    from turbotab.core.plan_previews import cannot_draw, task_of
+    from turbotab.core.consequences import after_state
+    from turbotab.core.plan_previews import cannot_draw, population_block, task_of
     from turbotab.core.stages.rows import _level_key
 
     info = _data(ctx.artifact("target_info")) or {}
@@ -543,6 +544,9 @@ def event_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     others = " and ".join(f"`{_level_key(c['value'])}` (`{int(c['count']):,}` rows)" for c in rest)
     ctx.read["note"] = (f"`{event}` (`{int(hit[0]['count']):,}` rows) becomes 1 and {others} 0; "
                         f"scores and coefficients are about `{event}`.")
+    # The level codes the outcome model's outcome: beside it, what the surveyed population blocks
+    # of that model (MODELING_SEQUENCE §4). Not where the server would refuse the level above.
+    population_block(ctx, after_state(decision, ctx), decision)
     return []
 
 
