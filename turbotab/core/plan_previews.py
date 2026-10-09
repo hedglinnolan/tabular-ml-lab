@@ -390,12 +390,14 @@ def inference_first(what: str) -> str:
     return f"{what} under inference: answer {question_name('purpose')} with inference first."
 
 
-def prediction_first(what: str) -> str:
-    """The line of a preview whose picture would be read from the outcome model while the purpose
-    is unanswered (``consequences.estimates_unseen``, its strictest case): the purpose question
-    settles it."""
+def prediction_first(what: str, state: Any = None) -> str:
+    """The line of a preview whose picture would be read from the outcome model before it may be
+    seen (``consequences.estimates_unseen``): with the purpose unanswered, its strictest case, the
+    purpose question settles it; under prediction, Fit (SIZING P0.8)."""
     from turbotab.core.voice import question_name
 
+    if getattr(state, "purpose", None) == "prediction":
+        return f"{what}, shown once Fit is pressed."
     return f"{what}, shown once {question_name('purpose')} is answered with prediction."
 
 
@@ -1799,7 +1801,7 @@ def diagnostic_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     """What the recorded response shows beside the estimate, read from the effects stage's own
     diagnostics (shown with the estimates, so nothing here is seen for the first time). Under
     inference before the plan is locked they have not been shown, so nothing is read from them."""
-    if estimates_unseen(ctx.state):
+    if estimates_unseen(ctx.state, ctx.fit_pressed):
         ctx.read["note"] = ("The checks are read with the estimates, which are not shown yet; "
                             "nothing about them is drawn before.")
         return []

@@ -627,16 +627,18 @@ def export(run: Run) -> Any:
     d = run.drive
     url = f"/api/projects/{run.pid}/export"
     r = d.c.get(url)
-    pressed = False
+    presses = 0
     for _ in range(6):
         if r.status_code == 200:
             return r
         error = (r.json() or {}).get("error") or {}
         code = error.get("code")
-        if not pressed and (code in ("plan_open", "estimates_withheld")
+        if presses < 2 and (code in ("plan_open", "estimates_withheld")
                             and any("Press Fit" in str(e.get("label")) for e in
                                     error.get("exits") or [])):
-            pressed = True
+            # Pressed again after a way forward a refused result offered: that change to the plan
+            # withdrew the lock no estimate had been shown under (calm/FOUNDATION §7).
+            presses += 1
             taken = d.c.post(f"/api/projects/{run.pid}/fit")
             run.note(f"the export waited for Fit: pressed ({taken.status_code})")
             if taken.status_code == 200 and d.view()["state"].get("purpose") == "inference":

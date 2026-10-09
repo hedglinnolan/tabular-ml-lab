@@ -199,6 +199,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/fit/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Fit
+         * @description Cancel, where Fit was on the analysis flowchart (calm/FOUNDATION §7): the estimates' work
+         *     still running stops. Before any estimate is served the press is withdrawn, and under Estimate
+         *     and Describe the plan's lock with it (kept in the record as withdrawn), so Fit is asked for
+         *     again; once an estimate has been served the lock stands. Returns the lock as the quest log
+         *     shows it.
+         */
+        post: operations["cancel_fit_api_projects__pid__fit_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/methods": {
         parameters: {
             query?: never;
@@ -1954,6 +1978,8 @@ export interface components {
             sha256: string | null;
             /** Pressed */
             pressed: boolean;
+            /** Opened */
+            opened: boolean;
             /** Held */
             held: boolean;
             /** Estimate Seconds */
@@ -2770,7 +2796,9 @@ export interface components {
          *     declared in the software before any estimate was displayed, and every later decision is marked
          *     as made after the estimates were seen. ``plan``
          *     (every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the
-         *     server. The lock is never undone.
+         *     server. A client never undoes it; the server withdraws it (a revert it records itself) only
+         *     while no estimate has been served under it, on Cancel or a change to the plan
+         *     (calm/FOUNDATION §7), and the next press of Fit records a new one.
          */
         "LockPlan-Input": {
             /**
@@ -2804,7 +2832,9 @@ export interface components {
          *     declared in the software before any estimate was displayed, and every later decision is marked
          *     as made after the estimates were seen. ``plan``
          *     (every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the
-         *     server. The lock is never undone.
+         *     server. A client never undoes it; the server withdraws it (a revert it records itself) only
+         *     while no estimate has been served under it, on Cancel or a change to the plan
+         *     (calm/FOUNDATION §7), and the next press of Fit records a new one.
          */
         "LockPlan-Output": {
             /**
@@ -10703,7 +10733,9 @@ export interface components {
          *     declared in the software before any estimate was displayed, and every later decision is marked
          *     as made after the estimates were seen. ``plan``
          *     (every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the
-         *     server. The lock is never undone.
+         *     server. A client never undoes it; the server withdraws it (a revert it records itself) only
+         *     while no estimate has been served under it, on Cancel or a change to the plan
+         *     (calm/FOUNDATION §7), and the next press of Fit records a new one.
          */
         LockPlan: {
             /**
@@ -15984,6 +16016,46 @@ export interface operations {
             };
             /** @description Nothing to fit yet, or a question the estimates rest on is open */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_fit_api_projects__pid__fit_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitLock"];
+                };
+            };
+            /** @description No such project */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

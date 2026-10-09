@@ -15,14 +15,21 @@ decision: it enters the Record only as the plan's lock, under Estimate and Descr
   - Under Predict nothing locks, and until Fit is pressed for the outcome no estimate stage is
     served, its cross-validated scores included, so no score is marked seen
     (``models.selection.note_seen``) before Models' Confirm sweep is done (disagreement 12).
+  - A question the estimates rest on that is still open speaks first (:func:`gate`), but never
+    lets through a score the press withholds.
+  - Under Estimate and Describe, and with no purpose, the explore stage's outcome relationships
+    wait for the lock too (:func:`relationships_served`; disagreement 4).
 * **The hold** (:func:`holds`; RECIPES §4.4, RT-8). A fit expected to take over about 2 minutes (a
   convention, :data:`HOLD_SECONDS`) waits for Fit in the scheduler; shorter fits compute live and
   may be done when Fit is pressed. The hold re-arms when a new estimate exceeds 1.5 times the last
-  one confirmed (:data:`REARM`). The hold is the scheduler's, not a stage requirement, so stages
-  stay pure functions of the log and a replay bypasses it.
+  one confirmed (:data:`REARM`). Every estimate stage that fits the chosen families (one that
+  reads ``models``) waits with the fit. The hold is the scheduler's, not a stage requirement, so
+  stages stay pure functions of the log and a replay bypasses it.
 * **The press** is kept beside the project (:data:`PRESS_FILE`: the outcome it was pressed for, the
   estimate it confirmed and the last record before it), as the scores seen are
-  (``selection.SEEN_FILE``): it is not a decision and never enters the log.
+  (``selection.SEEN_FILE``): it is not a decision and never enters the log. Cancel, or a change to
+  the plan, before anything was shown marks it withdrawn (:func:`withdraw_press`), and with it the
+  lock (``plan_lock.current_lock``; calm/FOUNDATION §7), so Fit is asked for again.
 * **The lock is visible** (:func:`fit_lock`): the quest log says whether the plan is locked, when,
   its SHA-256 and why, in plain words. The lock is never called prespecified or preregistered
   (``plan_lock.NEVER_SAID``).
@@ -85,13 +92,53 @@ def serving_gate(state: Any, pressed: bool) -> dict[str, Any] | None:
             "exits": [{"label": PRESS_FIT, "decision": None}]}
 
 
-def served(stage: str, artifact: Any, state: Any, *, pressed: bool) -> Any:
+def gate(question: Mapping[str, Any] | None, state: Any, pressed: bool) -> dict[str, Any] | None:
+    """The gate an estimate stage is served under: a question it rests on (``question``,
+    ``estimand.served_gate``) and Fit (:func:`serving_gate`), composed so that neither lets through
+    what the other withholds. With no purpose, the purpose's gate speaks (the strictest case);
+    otherwise an open question speaks first, its reason and exits, and while Fit is not pressed
+    every score waits with the estimates. None when both are clear."""
+    fit = serving_gate(state, pressed)
+    if fit is None:
+        return dict(question) if question is not None else None
+    if question is None or _get(state, "purpose") is None:
+        return fit
+    return {**question, "scores": True}
+
+
+def served(stage: str, artifact: Any, state: Any, *, pressed: bool,
+           question: Mapping[str, Any] | None = None) -> Any:
     """``artifact`` as an estimate stage may be served now: whole, or with every estimate (and
-    every score) withheld and the reason first (:func:`serving_gate`)."""
+    every score) withheld and the reason first (:func:`gate`)."""
     from turbotab.core.estimand import withhold
 
+    found = gate(question, state, pressed)
+    return artifact if found is None else withhold(stage, artifact, found)
+
+
+RELATIONSHIPS_AFTER_LOCK = ("How the outcome moves with this column is shown once Fit is pressed: "
+                            "pressing it locks the analysis plan, so the plan is declared before "
+                            "the outcome is read beside any column.")
+
+
+def relationships_served(artifact: Any, state: Any, pressed: bool) -> Any:
+    """The explore artifact as it may be served now (CROSSWALK, "the outcome beside a column";
+    SIZING P0.8, disagreement 4): under Estimate and Describe, and with no purpose, each outcome
+    relationship's points wait for the plan's lock with the estimates, and nothing is offered to
+    record as viewed, since nothing is shown. Under prediction they are served after the draw, on
+    the training rows. ``artifact`` is never changed in place."""
+    if not isinstance(artifact, Mapping) or _get(state, "purpose") == "prediction":
+        return artifact
     gate = serving_gate(state, pressed)
-    return artifact if gate is None else withhold(stage, artifact, gate)
+    if gate is None:
+        return artifact
+    reason = RELATIONSHIPS_AFTER_LOCK if _get(state, "purpose") is not None else PURPOSE_FIRST
+    findings = []
+    for f in artifact.get("findings") or []:
+        if isinstance(f, Mapping) and f.get("kind") == "outcome_relationship":
+            f = {**f, "points": [], "detail": reason, "record": None}
+        findings.append(f)
+    return {**artifact, "findings": findings}
 
 
 # ── the press, and the hold ──────────────────────────────────────────────────
@@ -111,21 +158,37 @@ def record_press(project_dir: str | Path, *, target: str | None, seconds: float 
     """Keep a press of Fit beside the project: the outcome, the estimate it confirmed, the last
     record before it. Written atomically; the newest press replaces the last."""
     press = {"target": target, "seconds": seconds, "seq": seq}
+    _write(project_dir, press)
+    return press
+
+
+def _write(project_dir: str | Path, press: Mapping[str, Any]) -> None:
     path = Path(project_dir) / PRESS_FILE
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(press, f, sort_keys=True)
+            json.dump(dict(press), f, sort_keys=True)
         os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
-    return press
+
+
+def withdraw_press(project_dir: str | Path) -> dict[str, Any] | None:
+    """Cancel, or a change to the plan, before anything was shown: the press is kept, marked
+    withdrawn, so Fit is asked for again and the hold re-arms (calm/FOUNDATION §7). Returns the
+    press as kept, or None when there was none."""
+    press = read_press(project_dir)
+    if press is None or press.get("withdrawn"):
+        return press
+    kept = {**press, "withdrawn": True}
+    _write(project_dir, kept)
+    return kept
 
 
 def pressed_for(press: Mapping[str, Any] | None, target: str | None) -> bool:
-    """Whether Fit was pressed for this outcome."""
-    return press is not None and press.get("target") == target
+    """Whether Fit was pressed for this outcome, and not withdrawn since."""
+    return press is not None and press.get("target") == target and not press.get("withdrawn")
 
 
 def fit_estimate(shelf: Any, models: Sequence[str] | None) -> float | None:
@@ -167,6 +230,9 @@ class FitLock(BaseModel):
     at: datetime | None  # when the lock was recorded (UTC)
     sha256: str | None  # the locked plan's SHA-256, as the lock records it
     pressed: bool  # Fit was pressed for this outcome
+    # Results was opened by a press of Fit not withdrawn since, for this outcome and goal or
+    # earlier ones: it stays reached when its results drop back, so it can say why (quest log)
+    opened: bool
     held: bool  # the fit waits for Fit: its estimate exceeds about 2 minutes
     estimate_seconds: float | None  # what fitting the chosen families will take
     reason: str  # why, in plain words
@@ -177,13 +243,14 @@ def _when(at: datetime) -> str:
 
 
 def fit_lock(state: Any, records: Sequence[Any], *, pressed: bool, held: bool,
-             estimate: float | None) -> FitLock:
-    """Whether the plan is locked, when, its fingerprint, and why, in plain words."""
+             estimate: float | None, opened: bool = False) -> FitLock:
+    """Whether the plan is locked, when, its fingerprint, and why, in plain words. ``opened``:
+    a press of Fit not withdrawn since is kept, for any outcome (:func:`opened_by`)."""
     from turbotab.core.models.cost import duration
+    from turbotab.core.plan_lock import current_lock
 
     purpose = _get(state, "purpose")
-    lock = next((r for r in sorted(records, key=lambda r: r.seq)
-                 if r.decision.kind == "lock_plan"), None)
+    lock = current_lock(records)
     locked = bool(_get(state, "plan_locked")) and lock is not None
     waits = (f" The fit waits for it: it is expected to take {duration(estimate)}."
              if held and estimate is not None else "")
@@ -210,9 +277,16 @@ def fit_lock(state: Any, records: Sequence[Any], *, pressed: bool, held: bool,
         purpose=purpose, locks=purpose not in (None, "prediction"), locked=locked,
         at=lock.at if locked else None,
         sha256=getattr(lock.decision, "digest", None) if locked else None,
-        pressed=pressed, held=held, estimate_seconds=estimate, reason=reason)
+        pressed=pressed, opened=bool(opened or pressed), held=held, estimate_seconds=estimate,
+        reason=reason)
+
+
+def opened_by(press: Mapping[str, Any] | None) -> bool:
+    """Whether a press of Fit is kept and not withdrawn, whatever outcome it was pressed for."""
+    return press is not None and not press.get("withdrawn")
 
 
 __all__ = ["FIT_FIRST", "FitLock", "HOLD_SECONDS", "LOCK_FIRST", "PRESS_FILE", "PRESS_FIT",
-           "PURPOSE_FIRST", "REARM", "fit_estimate", "fit_lock", "holds", "pressed_for",
-           "read_press", "record_press", "served", "serving_gate"]
+           "PURPOSE_FIRST", "RELATIONSHIPS_AFTER_LOCK", "REARM", "fit_estimate", "fit_lock", "gate",
+           "holds", "opened_by", "pressed_for", "read_press", "record_press", "relationships_served",
+           "served", "serving_gate", "withdraw_press"]

@@ -15,9 +15,15 @@ So the plan is locked before any inference estimate is displayed:
   once the questions the estimates rest on are answered (WP17); no estimate stage is served before
   it (a coefficient or an inference table in the fit, a substitution curve, a sensitivity
   analysis's estimate, a calibrated one, the "further adjusted for" model's, Describe's
-  usual-intake distribution: :func:`shows_estimates`). A client never posts it. It is recorded once
-  and never undone. Logs written before P0.8 recorded it the first time an estimate was served,
-  which was likewise before that estimate was displayed.
+  usual-intake distribution: :func:`shows_estimates`). A client never posts it. Logs written before
+  P0.8 recorded it the first time an estimate was served, which was likewise before that estimate
+  was displayed.
+* **Withdrawn only while nothing was shown** (calm/FOUNDATION §7). Cancel before any estimate is
+  served withdraws the lock, and so does a change to the plan made then: the lock says the plan
+  was declared before any estimate was shown, and none was. The server records the withdrawal as a
+  revert of the lock, so the record keeps the withdrawn lock with its time and fingerprint, and the
+  next press of Fit records a new one (:func:`current_lock`). Once an estimate has been served the
+  lock stands: a client never reverts it.
 * **What.** The plan is every slot the estimates read, as it stood (:func:`plan_of`): the outcome,
   the exposures and the adjustment set (the roles), the exclusions, the missing-data plan, the
   energy model, the exposure forms, the families, the secondaries, and the data coding (repairs,
@@ -114,6 +120,17 @@ def _when(at: Any) -> str | None:
     return at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def current_lock(records: Sequence[Any]) -> Any:
+    """The lock in force: the newest ``lock_plan`` record not withdrawn (reverted), or None."""
+    ordered = sorted(records, key=lambda r: r.seq)
+    try:
+        withdrawn = decisions.reverted(ordered)
+    except Refusal:
+        withdrawn = {}
+    return next((r for r in reversed(ordered)
+                 if r.decision.kind == "lock_plan" and r.id not in withdrawn), None)
+
+
 def plan_document(records: Sequence[Any]) -> PlanExport:
     """The analysis plan as the decision log holds it, a pure function of the records (no clock is
     read): once locked, the plan the lock recorded and the lock's own time; before, the plan in
@@ -122,12 +139,14 @@ def plan_document(records: Sequence[Any]) -> PlanExport:
     from turbotab.core.provenance import in_force
 
     ordered = sorted(records, key=lambda r: r.seq)
-    lock = next((r for r in ordered if r.decision.kind == "lock_plan"), None)
+    lock = current_lock(ordered)
     if lock is not None:
         plan = dict(lock.decision.plan or {})
         held = [r for r in ordered if r.seq < lock.seq]
         status, at, through = "locked", lock.at, lock.seq
-        later = [r for r in ordered if r.seq > lock.seq and r.sentence]
+        # Each later decision made after an estimate was shown (one made while nothing had been
+        # shown under the lock is not marked so; ``ProjectService.decide``).
+        later = [r for r in ordered if r.seq > lock.seq and r.after_estimates and r.sentence]
     else:
         plan = plan_of(decisions.fold(ordered))
         held, later = ordered, []
@@ -312,5 +331,5 @@ decisions.register_validator("lock_plan", _locked_once_under_inference)
 decisions.register_completion("lock_plan", _the_lock_records_the_plan)
 decisions.register_validator("revert", _the_lock_stays, first=True)
 
-__all__ = ["ESTIMATE_STAGES", "NEVER_SAID", "PlanExport", "canonical", "digest", "plan_document",
-           "plan_export", "plan_of", "plan_slots", "plan_text", "shows_estimates"]
+__all__ = ["ESTIMATE_STAGES", "NEVER_SAID", "PlanExport", "canonical", "current_lock", "digest",
+           "plan_document", "plan_export", "plan_of", "plan_slots", "plan_text", "shows_estimates"]

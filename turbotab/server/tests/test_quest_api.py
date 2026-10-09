@@ -200,6 +200,12 @@ def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkey
     assert "Pressing Fit locks it" in log["fit"]["reason"]
     assert drive.press_fit()
     assert drive.view()["state"]["plan_locked"] is True
+    # Results opens on the estimates: once one is served the lock stands (before, a change to the
+    # plan would withdraw it; calm/FOUNDATION §7).
+    from turbotab.core.plan_lock import shows_estimates
+
+    served = drive.c.get(f"/api/projects/{drive.pid}/stages/fit").json()["artifact"]
+    assert shows_estimates("fit", served)
     stages = quest(drive)
     assert all(s["reopened"] == [] for s in stages.values())
     for key in ("results", "writeup"):

@@ -140,6 +140,20 @@ def press_fit(request: Request, pid: str) -> FitLock:
     return get_service(request).press_fit(pid)
 
 
+@router.post(
+    "/projects/{pid}/fit/cancel",
+    response_model=FitLock,
+    responses={404: refusal("No such project")},
+)
+def cancel_fit(request: Request, pid: str) -> FitLock:
+    """Cancel, where Fit was on the analysis flowchart (calm/FOUNDATION §7): the estimates' work
+    still running stops. Before any estimate is served the press is withdrawn, and under Estimate
+    and Describe the plan's lock with it (kept in the record as withdrawn), so Fit is asked for
+    again; once an estimate has been served the lock stands. Returns the lock as the quest log
+    shows it."""
+    return get_service(request).cancel_fit(pid)
+
+
 @router.get(
     "/projects/{pid}/methods",
     response_model=MethodsText,

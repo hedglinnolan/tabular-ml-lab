@@ -17,7 +17,6 @@ import hashlib
 import json
 import time
 
-from turbotab.core import fit_press
 from turbotab.core.models.selection import read_seen
 from turbotab.core.plan_lock import shows_estimates
 from turbotab.server.service import ProjectService
@@ -40,6 +39,8 @@ def press(client, pid: str, status: int = 200) -> dict:
 
 
 def test_under_prediction_nothing_is_served_and_no_score_is_seen_before_fit(client):
+    from turbotab.core import fit_press
+
     service: ProjectService = client.app.state.service
     pid = sealed_project(client)
     pdir = service.workspace.project_dir(pid)
@@ -87,6 +88,8 @@ def test_under_prediction_nothing_is_served_and_no_score_is_seen_before_fit(clie
 
 
 def test_a_fit_longer_than_the_hold_waits_for_fit(client, monkeypatch):
+    from turbotab.core import fit_press
+
     monkeypatch.setattr(fit_press, "HOLD_SECONDS", 0.0)  # every measured fit is a long one
     pid = sealed_project(client)
     decide(client, pid, {"kind": "select_models", "models": ["linear"]})

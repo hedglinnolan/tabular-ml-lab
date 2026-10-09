@@ -1789,7 +1789,9 @@ class LockPlan(_DecisionModel):
     declared in the software before any estimate was displayed, and every later decision is marked
     as made after the estimates were seen. ``plan``
     (every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the
-    server. The lock is never undone.
+    server. A client never undoes it; the server withdraws it (a revert it records itself) only
+    while no estimate has been served under it, on Cancel or a change to the plan
+    (calm/FOUNDATION §7), and the next press of Fit records a new one.
     """
 
     kind: Literal["lock_plan"] = "lock_plan"
@@ -5356,6 +5358,7 @@ class DecisionLog:
         decision: Any,
         note: str | None = None,
         sentence: Callable[[Any, ProjectState], str | None] | None = None,
+        after_estimates: bool | None = None,
     ) -> DecisionRecord:
         """Append ``decision``; ``sentence(decision, state_before)`` authors the record's sentence.
 
@@ -5363,6 +5366,9 @@ class DecisionLog:
         record. A sentence that fails is logged and left unset: the answer is still recorded.
         The record is marked, and its sentence led, by what had been seen when it was made: held-out
         scores (``post_seal``) and the inference estimates (``after_estimates``; :func:`disclose`).
+        ``after_estimates``: whether the estimates had been seen, as the server knows it (False
+        under a lock no estimate has been shown under; SIZING P0.8); None, whether the plan was
+        locked before this record.
         """
         decision = parse_decision(decision)
         with self._lock:
@@ -5382,7 +5388,9 @@ class DecisionLog:
                     except Exception:  # noqa: BLE001 - a missing sentence never loses an answer
                         log.exception("no sentence for a %s decision", decision.kind)
                         text = None
-                post_seal, after_estimates = opened_ever(existing), bool(before.plan_locked)
+                post_seal = opened_ever(existing)
+                if after_estimates is None:
+                    after_estimates = bool(before.plan_locked)
                 if isinstance(text, str):
                     text = disclose(text, post_seal=post_seal, after_estimates=after_estimates)
                 record = DecisionRecord(

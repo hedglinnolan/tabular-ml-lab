@@ -56,7 +56,7 @@ from turbotab.core.tests.acceptance.test_wp16_seal_guards import (accepted, assi
                                                                    post, records, refused,
                                                                    sealed_rows, writer)
 from turbotab.server.tests.conftest import SAMPLES, declare, make_client, prepare, wait_for
-from turbotab.core.tests.acceptance.server_drive import served
+from turbotab.core.tests.acceptance.server_drive import press_fit, served
 
 CLINICAL = SAMPLES / "clinical_risk.csv"
 SPLIT = {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5}
@@ -157,12 +157,14 @@ def responses(client, pid: str) -> list[Any]:
 
 
 def opened_project(client, target: str = "readmit_30d") -> str:
-    """``clinical_risk.csv`` under prediction, 20% held out (seed 0), two families fitted."""
+    """``clinical_risk.csv`` under prediction, 20% held out (seed 0), two families fitted and Fit
+    pressed: the held-out rows open only after it (SIZING P0.8)."""
     pid = open_project(client, CLINICAL, "clinical", target, "prediction")
     models = {"kind": "select_models", "models": FAMILIES}
     prepare(client, pid, models)
     accepted(client, pid, models)
     wait_for(client, pid, {"fit": "fresh"}, timeout=240)
+    assert press_fit(client, pid)
     return pid
 
 

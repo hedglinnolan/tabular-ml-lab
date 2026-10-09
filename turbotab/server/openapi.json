@@ -792,6 +792,59 @@
         }
       }
     },
+    "/api/projects/{pid}/fit/cancel": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Cancel Fit",
+        "description": "Cancel, where Fit was on the analysis flowchart (calm/FOUNDATION §7): the estimates' work\nstill running stops. Before any estimate is served the press is withdrawn, and under Estimate\nand Describe the plan's lock with it (kept in the record as withdrawn), so Fit is asked for\nagain; once an estimate has been served the lock stands. Returns the lock as the quest log\nshows it.",
+        "operationId": "cancel_fit_api_projects__pid__fit_cancel_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitLock"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{pid}/methods": {
       "get": {
         "tags": [
@@ -6230,6 +6283,10 @@
             "type": "boolean",
             "title": "Pressed"
           },
+          "opened": {
+            "type": "boolean",
+            "title": "Opened"
+          },
           "held": {
             "type": "boolean",
             "title": "Held"
@@ -6258,6 +6315,7 @@
           "at",
           "sha256",
           "pressed",
+          "opened",
           "held",
           "estimate_seconds",
           "reason"
@@ -8428,7 +8486,7 @@
           "kind"
         ],
         "title": "LockPlan",
-        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference\nestimates were first displayed), never posted by a client: the plan in force then is what was\ndeclared in the software before any estimate was displayed, and every later decision is marked\nas made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone."
+        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference\nestimates were first displayed), never posted by a client: the plan in force then is what was\ndeclared in the software before any estimate was displayed, and every later decision is marked\nas made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. A client never undoes it; the server withdraws it (a revert it records itself) only\nwhile no estimate has been served under it, on Cancel or a change to the plan\n(calm/FOUNDATION §7), and the next press of Fit records a new one."
       },
       "LockPlan-Output": {
         "properties": {
@@ -8504,7 +8562,7 @@
           "seen_at"
         ],
         "title": "LockPlan",
-        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference\nestimates were first displayed), never posted by a client: the plan in force then is what was\ndeclared in the software before any estimate was displayed, and every later decision is marked\nas made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone."
+        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference\nestimates were first displayed), never posted by a client: the plan in force then is what was\ndeclared in the software before any estimate was displayed, and every later decision is marked\nas made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. A client never undoes it; the server withdraws it (a revert it records itself) only\nwhile no estimate has been served under it, on Cancel or a change to the plan\n(calm/FOUNDATION §7), and the next press of Fit records a new one."
       },
       "Mark": {
         "properties": {
@@ -28688,7 +28746,7 @@
       },
       "LockPlan": {
         "additionalProperties": false,
-        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference\nestimates were first displayed), never posted by a client: the plan in force then is what was\ndeclared in the software before any estimate was displayed, and every later decision is marked\nas made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone.",
+        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference\nestimates were first displayed), never posted by a client: the plan in force then is what was\ndeclared in the software before any estimate was displayed, and every later decision is marked\nas made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. A client never undoes it; the server withdraws it (a revert it records itself) only\nwhile no estimate has been served under it, on Cancel or a change to the plan\n(calm/FOUNDATION §7), and the next press of Fit records a new one.",
         "properties": {
           "kind": {
             "const": "lock_plan",

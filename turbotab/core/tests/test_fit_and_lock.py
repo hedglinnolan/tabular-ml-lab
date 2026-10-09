@@ -248,3 +248,139 @@ def test_with_no_purpose_nothing_is_locked_or_shown():
     report = fit_press.fit_lock(ProjectState(), [], pressed=False, held=False, estimate=None)
     assert report.purpose is None and not report.locked and not report.pressed
     assert "goal" in report.reason
+
+
+# ── the repair: gates composed, the lock withdrawn while unseen, Results kept ──
+
+FOLLOW_UP = {"question": "follow_up", "reason": "No estimate is shown until the follow-up is "
+             "answered.", "exits": [{"label": "Answer the follow-up", "decision": None}]}
+
+
+@pytest.mark.parametrize("purpose", ["prediction", None])
+def test_a_question_s_gate_before_fit_withholds_the_scores_too(purpose):
+    """A question gate (``estimand.served_gate``) carries no ``scores``; before Fit, or with no
+    purpose, the composed gate withholds every score whichever gate speaks first."""
+    from turbotab.core.models.selection import scored_in
+
+    fit = SHOWING["fit"]
+    state = ProjectState(purpose=purpose, target="t")
+    gate = fit_press.gate({**FOLLOW_UP, "purpose": purpose}, state, pressed=False)
+    assert gate["scores"] is True
+    assert gate["question"] == ("follow_up" if purpose else "purpose")
+    served = fit_press.served("fit", fit, state, pressed=False,
+                              question={**FOLLOW_UP, "purpose": purpose})
+    assert scored_in(served) == [] and not shows_estimates("fit", served)
+    if purpose == "prediction":  # pressed, the question alone speaks: its scores stay
+        after = fit_press.gate({**FOLLOW_UP, "purpose": purpose}, state, pressed=True)
+        assert after == {**FOLLOW_UP, "purpose": purpose}
+    assert fit_press.gate(None, state.model_copy(update={"purpose": "prediction"}),
+                          pressed=True) is None
+
+
+def test_the_relationship_points_wait_for_the_lock_under_estimate_and_with_no_purpose():
+    explore = {"findings": [
+        {"id": "explore::relationship::sugar", "kind": "outcome_relationship",
+         "points": [{"x": 1.0, "y": 2.0, "n": 10}], "detail": None,
+         "record": {"kind": "view_outcome", "view": "relationship", "columns": ["sugar"]}},
+        {"id": "explore::low_variance", "kind": "low_variance", "points": [], "detail": "caret"}]}
+    for state in (ProjectState(purpose="inference"), ProjectState()):
+        served = fit_press.relationships_served(explore, state, pressed=True)
+        first, second = served["findings"]
+        assert first["points"] == [] and first["record"] is None and first["detail"]
+        assert second == explore["findings"][1]
+    assert explore["findings"][0]["points"]  # left as computed
+    locked = ProjectState(purpose="inference", plan_locked=True)
+    assert fit_press.relationships_served(explore, locked, pressed=False) == explore
+    predicting = ProjectState(purpose="prediction")
+    assert fit_press.relationships_served(explore, predicting, pressed=False) == explore
+
+
+def test_a_withdrawn_press_counts_for_nothing_and_opens_nothing(tmp_path):
+    assert fit_press.withdraw_press(tmp_path) is None  # nothing pressed, nothing withdrawn
+    fit_press.record_press(tmp_path, target="glucose", seconds=300.0, seq=4)
+    press = fit_press.read_press(tmp_path)
+    assert fit_press.pressed_for(press, "glucose") and fit_press.opened_by(press)
+    assert not fit_press.holds(300.0, press, "glucose")
+    kept = fit_press.withdraw_press(tmp_path)
+    assert kept == {"target": "glucose", "seconds": 300.0, "seq": 4, "withdrawn": True}
+    assert fit_press.read_press(tmp_path) == kept
+    assert not fit_press.pressed_for(kept, "glucose") and not fit_press.opened_by(kept)
+    assert fit_press.holds(300.0, kept, "glucose")  # the hold re-arms
+
+
+def test_a_withdrawn_lock_is_kept_and_the_next_one_is_the_lock_in_force():
+    from turbotab.core.plan_lock import current_lock, plan_document
+
+    first_plan = {"purpose": "inference", "models": ["linear"]}
+    second_plan = {"purpose": "inference", "models": ["linear", "elastic_net"]}
+    records = [record(1, {"kind": "set_purpose", "purpose": "inference"}),
+               record(2, {"kind": "lock_plan", "plan": first_plan,
+                          "digest": canonical_sha(first_plan)}),
+               record(3, {"kind": "revert", "decision_id": "r2"}),
+               record(4, {"kind": "select_models", "models": ["linear", "elastic_net"]}),
+               record(5, {"kind": "lock_plan", "plan": second_plan,
+                          "digest": canonical_sha(second_plan)})]
+    assert current_lock(records[:2]).id == "r2"
+    assert current_lock(records[:4]) is None
+    assert decisions.fold(records[:4]).plan_locked is None
+    assert current_lock(records).id == "r5"
+    report = fit_press.fit_lock(decisions.fold(records), records, pressed=True, held=False,
+                                estimate=None)
+    assert report.locked and report.sha256 == canonical_sha(second_plan)
+    assert report.at == T0 + timedelta(minutes=5)
+    document = plan_document(records)
+    assert document.status == "locked" and document.through_record == 5
+    assert document.plan == second_plan and document.after_estimates == []
+
+
+def test_a_later_decision_is_listed_after_the_estimates_only_when_marked_so():
+    from turbotab.core.plan_lock import plan_document
+
+    plan = {"purpose": "inference"}
+    lock = record(2, {"kind": "lock_plan", "plan": plan, "digest": canonical_sha(plan)})
+    unmarked = record(3, {"kind": "set_purpose", "purpose": "inference"}).model_copy(
+        update={"sentence": "The goal is to estimate.", "after_estimates": False})
+    marked = record(4, {"kind": "set_purpose", "purpose": "inference"}).model_copy(
+        update={"sentence": "After the estimates were seen, the goal stays.",
+                "after_estimates": True})
+    records = [record(1, {"kind": "set_purpose", "purpose": "inference"}), lock, unmarked, marked]
+    assert [r["seq"] for r in plan_document(records).after_estimates] == [4]
+
+
+def test_a_decision_log_records_what_the_server_says_was_seen(tmp_path):
+    log = decisions.DecisionLog(tmp_path / "decisions.jsonl")
+    log.append({"kind": "set_purpose", "purpose": "inference"})
+    log.append({"kind": "lock_plan", "plan": {}, "digest": canonical_sha({})})
+    default = log.append({"kind": "set_lens", "lenses": ["dietary"]})
+    told = log.append({"kind": "set_lens", "lenses": ["clinical"]}, after_estimates=False)
+    assert default.after_estimates is True and told.after_estimates is False
+
+
+def test_under_prediction_the_previews_leash_holds_until_fit():
+    from turbotab.core.consequences import estimates_unseen
+    from turbotab.core.plan_previews import prediction_first
+
+    predicting = ProjectState(purpose="prediction")
+    assert estimates_unseen(predicting, False)
+    assert not estimates_unseen(predicting, True)
+    assert not estimates_unseen(predicting)  # no press kept (a stage run directly)
+    assert estimates_unseen(ProjectState(), True)  # the strictest case, pressed or not
+    assert estimates_unseen(ProjectState(purpose="inference"), True)
+    assert not estimates_unseen(ProjectState(purpose="inference", plan_locked=True), False)
+    assert prediction_first("The slope", predicting) == "The slope, shown once Fit is pressed."
+    assert "answered with prediction" in prediction_first("The slope", ProjectState())
+
+
+def test_results_stays_reached_after_a_press_when_its_results_drop_back():
+    from turbotab.core.quest import STAGE_INDEX, _frontier
+
+    shown = {"fit": T0}
+    for purpose, pressed in ((None, False), ("prediction", False)):
+        fit = fit_press.FitLock(purpose=purpose, locks=False, locked=False, at=None, sha256=None,
+                                pressed=pressed, opened=True, held=False, estimate_seconds=None,
+                                reason="")
+        assert _frontier([], {"fit": {"status": "stale"}}, shown, fit) >= STAGE_INDEX["results"]
+        never = fit.model_copy(update={"opened": False})
+        assert _frontier([], {"fit": {"status": "stale"}}, shown, never) < STAGE_INDEX["results"]
+        nothing_shown = _frontier([], {"fit": {"status": "stale"}}, {}, fit)
+        assert nothing_shown < STAGE_INDEX["results"]

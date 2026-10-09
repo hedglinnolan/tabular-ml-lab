@@ -1662,6 +1662,16 @@ def _open_seal_once_on_a_fresh_fit(decision: Any, ctx: Any) -> None:
     if not int(fit.get("n_holdout") or 0):
         raise Refusal("nothing_sealed", "This fit holds no rows out, so there is nothing to open.",
                       exits=hold)
+    gate = _ctx(ctx, "fit_gate")
+    waits = gate() if callable(gate) else None
+    if waits is not None:
+        # SIZING P0.8: the final model is named on the cross-validated scores Fit shows, so the
+        # held-out rows open only after it, and no score is quoted before.
+        raise Refusal(
+            "fit_not_yet",
+            f"The held-out rows open after Fit is pressed: the final model is named on the "
+            f"cross-validated scores it shows. {waits['reason']}",
+            exits=waits.get("exits") or [])
 
 
 # ── after the opening: the scores kept, and the rows held still (audit WP16, RO-05) ──

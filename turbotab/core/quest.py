@@ -1020,8 +1020,8 @@ def _frontier(steps: Sequence[Any], stages: Mapping[str, Any],
     """The furthest stage the Router has reached: every question answered, stated or open so far,
     and the first one still waiting. Results opens when Fit is pressed (``fit``: under Estimate and
     Describe the plan locked, under Predict Fit pressed for the outcome; never with no purpose),
-    and stays open when a change after the fit puts its results out of date, so it drops back with
-    its reason rather than emptying. Without ``fit``, Results opens once an estimate stage has a
+    and stays open when a change after the fit puts its results out of date (the outcome changed,
+    the goal withdrawn: ``fit.opened``), so it drops back with its reason rather than emptying. Without ``fit``, Results opens once an estimate stage has a
     result, for the answers now (fresh) or for earlier ones (``shown_at``: out of date, or
     withdrawn since) (``usual_intake``'s offer computes on the lens and goal alone, so it opens
     nothing). Write-up opens with Results."""
@@ -1036,6 +1036,10 @@ def _frontier(steps: Sequence[Any], stages: Mapping[str, Any],
     furthest = max(reached, default=0)
     if fit is not None:
         opened = fit.purpose is not None and (fit.locked if fit.locks else fit.pressed)
+        # Opened by a press since kept (for an earlier outcome, or before the goal was withdrawn),
+        # Results stays reached while a result it showed is out of date, and says why.
+        opened = opened or (fit.opened and any(name in shown_at for name in ESTIMATE_STAGES
+                                               if name != "usual_intake"))
     else:
         opened = any(_get(stages.get(name), "status") == "fresh" or name in shown_at
                      for name in ESTIMATE_STAGES if name != "usual_intake")
@@ -1075,11 +1079,17 @@ def _reasons(stage: str, lines: Sequence[QuestLine], log: _Log, stages: Mapping[
         if by is not None:
             entry(by.decision_id, by.kind, by.stage)["questions"].append(line.id)
     for name, (home, _item) in COMPUTE.items():
-        # Blocked: its requirement was withdrawn, so it is never computed again; not out of date.
-        if (home != stage or name not in shown_at
-                or _get(stages.get(name), "status") == "blocked"):
+        if home != stage or name not in shown_at:
             continue
-        cause = log.cause(stage_reads(name), after_time=shown_at[name])
+        reads = stage_reads(name)
+        if _get(stages.get(name), "status") == "blocked":
+            # Blocked: its requirement was withdrawn, so it is never computed again; not out of
+            # date. The goal is the exception: an estimate waits for it (P0.8), and is computed
+            # again once it is answered, so a change to the goal is why Results dropped back.
+            reads = frozenset({"purpose"}) & reads
+            if not reads:
+                continue
+        cause = log.cause(reads, after_time=shown_at[name])
         changed_in = log.stage_of(cause) if cause is not None else None
         # Its own stage's answers redraw its cards as they are given: no drop-back.
         if cause is None or changed_in is None or changed_in == stage:
