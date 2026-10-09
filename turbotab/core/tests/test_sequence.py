@@ -209,6 +209,7 @@ def test_the_event_names_a_level_of_the_binary_outcome(project):
 # ── metabolomics: orientation fires only on the turned-around copy ───────────
 
 
+@pytest.mark.slow
 def test_orientation_fires_only_on_a_feature_major_assay_table(project, tmp_path):
     plain = project("metabolomics_untargeted.csv").at(state(lens=["metabolomics"]))
     steps = plain.steps()

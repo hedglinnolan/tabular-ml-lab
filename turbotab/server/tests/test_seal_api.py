@@ -219,6 +219,7 @@ def bus_spy(client, monkeypatch):
     return published
 
 
+@pytest.mark.slow
 def test_no_held_out_score_reaches_any_response_until_the_seal_is_opened(client, bus_spy, tmp_path):
     service: ProjectService = client.app.state.service
     pid = sealed_project(client)
@@ -291,6 +292,7 @@ def test_no_held_out_score_reaches_any_response_until_the_seal_is_opened(client,
     assert seal.keys_for(service.engine.graph, state, service.fingerprint(pid)) == service.engine.keys(pid)
 
 
+@pytest.mark.slow
 def test_a_change_after_the_opening_is_marked_post_seal_and_the_results_say_so(client):
     service: ProjectService = client.app.state.service
     pid = sealed_project(client)

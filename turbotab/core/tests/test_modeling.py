@@ -135,6 +135,7 @@ class _AppClassifier(_AppFitted):
         return type("C", (ClassifierMixin, BaseEstimator), {})().__sklearn_tags__()
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("task,target", [("regression", "glucose"), ("binary", "glucose_high"),
                                          ("multiclass", "glucose_band")])
 def test_cv_metrics_equal_an_independent_cross_validate(table, task, target):
@@ -251,6 +252,7 @@ def test_binary_holdout_uses_the_second_class_as_positive(table):
 # ── leakage ──────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("purpose", ["prediction", "inference"])
 def test_every_fitted_step_sees_only_training_fold_rows(tmp_path, monkeypatch, purpose):
     """Every step of every pipeline is fit on one training fold or on all training rows, never on a
@@ -661,6 +663,7 @@ def test_a_linear_model_on_kcal_scale_inputs_gives_the_analytic_substitution_del
     assert sub["basis"] == f"Averaged over {int((split.frames['assignment']['partition'] == 'train').sum())} training rows."
 
 
+@pytest.mark.slow
 def test_substitution_names_its_assumptions_and_skips_nothing_it_can_draw(table):
     frame, paths = table
     split = mf.split_bundle(np.arange(len(frame)))

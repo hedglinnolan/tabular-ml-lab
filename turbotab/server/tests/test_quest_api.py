@@ -114,6 +114,7 @@ def rule(low: float, high: float) -> dict[str, Any]:
         {"column": "kcal", "low": low, "high": high, "reason": "implausible intake"}]}
 
 
+@pytest.mark.slow
 @needs_nhanes
 def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkeypatch):
     drive = open_project(client, NHANES, fixture_truth("_tt_tmp_nhanes.csv"))

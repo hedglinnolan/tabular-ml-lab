@@ -26,8 +26,9 @@ The first start sets TurboTab up, once:
 1. It finds Python 3.12 or newer. If there is none, it fetches one with
    [uv](https://docs.astral.sh/uv/) into `~/.turbotab/tools`.
 2. It makes a Python environment in `~/.turbotab/env` and installs
-   `turbotab/server/requirements.txt` into it. That takes a few minutes. It installs again only
-   when that file changes.
+   `turbotab/server/requirements.txt` into it, at the versions in `turbotab/server/constraints.txt`
+   (the ones the tests ran on). That takes a few minutes. It installs again only when either file
+   changes.
 3. It builds the interface into `turbotab/frontend/dist` if that folder is missing and Node.js
    20.19 or newer is installed. Without Node.js it says how to get it and starts anyway, and the
    page says how to build the interface.
@@ -146,7 +147,9 @@ TurboTab in this mode; both belong to the SSO.
 
 **Without Docker:** `TURBOTAB_HOME=/srv/turbotab TURBOTAB_USERS=/etc/turbotab/users.toml python -m
 turbotab.server --mode server --host 127.0.0.1 --port 8787`, in an environment with
-`turbotab/server/requirements.txt` installed, behind the same proxy.
+`turbotab/server/requirements.txt` installed (`pip install -c turbotab/server/constraints.txt -r
+turbotab/server/requirements.txt`), behind the same proxy. The constraints file's header says how
+to update the versions.
 
 ### Settings
 
@@ -166,9 +169,21 @@ turbotab.server --mode server --host 127.0.0.1 --port 8787`, in an environment w
 
 ## Checked by CI
 
-`.github/workflows/v2.yml` runs on every push to `turbotab-next` and every pull request to `main`.
-It runs the core and server tests and `npm run check`. It builds the image, makes an account, and
+`.github/workflows/v2.yml` has two tiers. Every Python library installs at the version in
+`turbotab/server/constraints.txt` (its header says how to update the file).
+
+**Fast**, on every push to `turbotab-next` or `ci/**` and every pull request to `main`, in about ten
+minutes. It runs `npm run check` (type checks, lint, vitest) and the core and server tests except
+the acceptance suite (`turbotab/core/tests/acceptance`) and the ten tests marked `slow` (over 35
+seconds each; `turbotab/conftest.py`). It builds the image, makes an account, and
 checks that requests without a session get 401. It then signs in over HTTP, checks
 `/api/health`, uploads a CSV and waits until it is read. It also starts the launcher on macOS and
 Windows (Python 3.12), twice each: once to set up, check health and an upload, and stop cleanly;
-once more to show that the second start skips the setup.
+once more to show that the second start skips the setup. On Windows it then runs the numerics
+check: the prediction results of every model family reproduce the committed references to 1e-9,
+and the elastic net chooses the same penalty as on Linux.
+
+**Nightly**, on a schedule (06:23 UTC), by "Run workflow" in the Actions tab, and on a push to a
+branch named `ci/full*`: the whole core and server suite, acceptance tests included (about 40
+minutes), and the mock browser tests (Playwright). GitHub runs a schedule only from the default
+branch, so the cron starts once the workflow is on `main`.
