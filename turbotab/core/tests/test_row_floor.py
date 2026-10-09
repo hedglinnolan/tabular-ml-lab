@@ -614,7 +614,8 @@ def test_a_stages_own_refusal_offers_complete_cases_only_where_the_record_accept
     and so did the table built on the data's own imputed copies ("Complete cases within each
     copy"). On the renal table complete cases keep 4 rows (pandas, below), and the record refuses
     that answer. Neither offers it now, and every exit offered is accepted; with 40 complete rows
-    both offer it, and it is accepted."""
+    both offer it, and it is accepted. Where the copies' blank columns are covariates, leaving
+    them out is offered too; an exposure is never left out."""
     from types import SimpleNamespace
 
     from turbotab.core.graph import StageContext
@@ -641,7 +642,20 @@ def test_a_stages_own_refusal_offers_complete_cases_only_where_the_record_accept
             for table in (held, copies):
                 assert table.refusal, table
                 ways = [e["decision"] for e in table.exits if e["decision"] is not None]
-                complete_cases = [w for w in ways if w.get("strategy") == "complete_case"]
+                complete_cases = [w for w in ways if w.get("strategy") == "complete_case"
+                                  and not w.get("drop_columns")]
                 assert bool(complete_cases) is offered, (complete, table.exits)
                 for way in ways:
                     validate(way, record)  # every exit offered is one the record accepts
+            # The labs as covariates, `age_years` the exposure: the copies' blank columns can be
+            # left out instead, and the record accepts it; an exposure is never left out (above).
+            covariates = renal_state(purpose="inference", missing=MissingSpec(strategy="impute"),
+                                     roles={"age_years": "exposure", "sbp": "covariate",
+                                            **{f"lab_{c}": "covariate" for c in "abcdefghijkl"}})
+            ctx2 = StageContext(project_id="renal", state=covariates,
+                                inputs={"working": bundle("working")}, paths={}, settings={})
+            labs, _ = _copies_for_table(ctx2, spec, frame, "copy", y, [])
+            left = [e["decision"] for e in labs.exits if (e["decision"] or {}).get("drop_columns")]
+            assert [e["label"] for e in labs.exits][-1] == "Leave `lab_a`, `lab_b`, `lab_c` and 9 more out"
+            assert left[0]["drop_columns"] == [f"lab_{c}" for c in "abcdefghijkl"]
+            validate(left[0], {**record, "state": covariates})

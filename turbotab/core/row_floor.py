@@ -678,21 +678,21 @@ def _accepted_exit(decision: Any, ctx: Any) -> dict[str, Any] | None:
 accepted_exit = _accepted_exit  # for the other validators' exits (``decisions._accepted_ways``)
 
 
-def _complete_cases(decision: Any) -> bool:
+def _missing_answer(decision: Any) -> bool:
     d = _dump(decision)
-    return isinstance(d, Mapping) and d.get("kind") == "set_missing" \
-        and d.get("strategy") == "complete_case"
+    return isinstance(d, Mapping) and d.get("kind") == "set_missing"
 
 
 def stage_exits(exits: Sequence[Mapping[str, Any]], ctx: Any) -> list[dict[str, Any]]:
-    """A stage's own ways forward (``{label, decision}``) less each complete-case answer the
-    record would refuse now: its rows counted on the table the stage reads
-    (``stages.data.open_store``, the working table the server's checks read), as
-    :func:`accepted_exit` counts them for the record. The fit's table held by the missing-values
-    answer, multiple imputation that cannot run, blanks inside imputed copies and the substitution
-    curve's block all run under inference, where every row is counted (BLUEPRINT §12 ruling 3)."""
+    """A stage's own ways forward (``{label, decision}``) less each missing-values answer the
+    record would refuse now (complete cases that leave too few rows, above all): its rows counted
+    on the table the stage reads (``stages.data.open_store``, the working table the server's
+    checks read), as :func:`accepted_exit` counts them for the record. The fit's table held by the
+    missing-values answer, multiple imputation that cannot run, blanks inside imputed copies and
+    the substitution curve's block all run under inference, where every row is counted (BLUEPRINT
+    §12 ruling 3)."""
     out = [dict(e) for e in exits]
-    if not any(_complete_cases(e.get("decision")) for e in out):
+    if not any(_missing_answer(e.get("decision")) for e in out):
         return out
     from turbotab.core.stages.data import open_store
 
@@ -702,7 +702,7 @@ def stage_exits(exits: Sequence[Mapping[str, Any]], ctx: Any) -> list[dict[str, 
         return out
     with store:
         record = {"state": ctx.state, "store": store}
-        return [e for e in out if not _complete_cases(e.get("decision"))
+        return [e for e in out if not _missing_answer(e.get("decision"))
                 or _accepted_exit(e["decision"], record) is not None]
 
 

@@ -605,9 +605,11 @@ def build_graph() -> Graph:
             # degrees of freedom left offers the sample-only attestation as the table's exit.
             # fit 25 (wave 2b repairs' integration): fit 24 of REPAIR-EXPLORE and of REPAIR-MULTISUB,
             # one stage.
-            # fit 26 (engine residue): a held table's complete-case exit is offered only where the
-            # record accepts it (``row_floor.stage_exits``); a pure lasso with more than two classes
-            # reports each feature at the middle of its tied set (``exact_path.middle_of_ties``).
+            # fit 26 (engine residue): a held table's missing-values exits are offered only where
+            # the record accepts them (``row_floor.stage_exits``), with leaving out a column too
+            # sparse to impute, or the blank columns of imputed copies; a pure lasso with more than
+            # two classes reports each feature at the middle of its tied set
+            # (``exact_path.middle_of_ties``).
             Stage("fit", 26, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
@@ -643,7 +645,7 @@ def build_graph() -> Graph:
             # per class or one) is blocked with the table's refusal and exits; a family with no
             # table is refit on each copy and pooled; a design with no degrees of freedom left
             # draws no curve over the surveyed population.
-            # substitution 18 (engine residue): as fit 26, a blocked curve's complete-case exit.
+            # substitution 18 (engine residue): as fit 26, a blocked curve's missing-values exits.
             Stage("substitution", 18, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
                    "column_units", *ROLE_READS, *WP17_READS),
@@ -687,7 +689,7 @@ def build_graph() -> Graph:
             # sensitivity 14 (the zero-row crash): an analysis whose rules leave too few rows, or one
             # value of the outcome, is not fit, its reason in plain words (``core.row_floor``).
             # sensitivity 15, calibration 12, secondary 5, effects 6 (engine residue): as fit 26,
-            # the held table's complete-case exit.
+            # the held table's missing-values exits.
             Stage("sensitivity", 15, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),

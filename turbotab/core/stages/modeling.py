@@ -1157,6 +1157,14 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
                 exits.append({"label": "Complete cases, with their assumption stated",
                               "decision": {**answer, "kind": "set_missing",
                                            "strategy": "complete_case"}})
+                # A column with too few values to impute from can be left out, and the copies drawn
+                # without it (where complete cases on it would leave too few rows, the only way).
+                left = [c for c in _leavable(state, getattr(exc, "columns", None) or [])
+                        if c not in (answer.get("drop_columns") or [])]
+                if left:
+                    exits.append({"label": f"Leave {', '.join(f'`{c}`' for c in left)} out",
+                                  "decision": {**answer, "kind": "set_missing", "drop_columns": [
+                                      *(answer.get("drop_columns") or []), *left]}})
             return TableMissing(refusal=f"Multiple imputation cannot run on these data: {exc}",
                                 exits=stage_exits(exits, ctx))
         return TableMissing(imputations=imputations)
@@ -1220,6 +1228,20 @@ def imputed_copies_column(state: Any) -> str | None:
     return str(rk.implicate_column)
 
 
+def _leavable(state: Any, columns: Sequence[str]) -> list[str]:
+    """Of ``columns``, those an exit may leave out of the analysis: never an exposure (by its role,
+    or the estimand's), whose effect is the table's question."""
+    from turbotab.core.estimand import exposures_of
+
+    roles = getattr(state, "roles", None) or {}
+    spec = getattr(state, "estimand", None)
+    try:
+        declared = set(exposures_of(state, spec)) if spec is not None else set()
+    except Exception:  # noqa: BLE001 - an estimand that names no exposure yet holds none back
+        declared = set()
+    return [c for c in columns if roles.get(c) != "exposure" and c not in declared]
+
+
 def _copies_for_table(ctx: StageContext, spec: Any, frame: pd.DataFrame, implicate: str, y: Any,
                       unit_columns: Sequence[str]) -> tuple[TableMissing, Any]:
     """The data's own imputed copies as the table's completed copies (each with its own outcome),
@@ -1236,13 +1258,22 @@ def _copies_for_table(ctx: StageContext, spec: Any, frame: pd.DataFrame, implica
     answer = spec.missing or (state.missing.model_dump(mode="json") if state.missing else None)
     blanks = [c for c in spec.inputs if c in frame.columns and frame[c].isna().any()]
     if blanks and (answer or {}).get("strategy") != "complete_case":
+        # leaving the blank columns out, where none is an exposure: no blank is left to remove rows
+        leave = blanks if _leavable(state, blanks) == blanks else []
         return TableMissing(
             refusal=(f"The rows are the data's imputed copies, and {', '.join(f'`{c}`' for c in blanks[:3])}"
                      f" still {'has' if len(blanks) == 1 else 'have'} blanks inside them; imputing "
                      f"within each copy (nested imputation) is not built here."),
-            exits=stage_exits([{"label": "Complete cases within each copy",
-                                "decision": {**(answer or {}), "kind": "set_missing",
-                                             "strategy": "complete_case"}}], ctx)), INDEPENDENT
+            exits=stage_exits([
+                {"label": "Complete cases within each copy",
+                 "decision": {**(answer or {}), "kind": "set_missing",
+                              "strategy": "complete_case"}},
+                *([{"label": f"Leave {', '.join(f'`{c}`' for c in leave[:3])}"
+                             f"{f' and {len(leave) - 3:,} more' if len(leave) > 3 else ''} out",
+                    "decision": {**(answer or {}), "kind": "set_missing",
+                                 "strategy": "complete_case",
+                                 "drop_columns": [*((answer or {}).get("drop_columns") or []),
+                                                  *leave]}}] if leave else [])], ctx)), INDEPENDENT
     copies = supplied_copies(frame, implicate, unit, list(spec.inputs), y)
     return TableMissing(imputations=copies), INDEPENDENT
 
