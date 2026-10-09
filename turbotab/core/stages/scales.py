@@ -455,7 +455,7 @@ def _correct_jointly(specs: Sequence[Any], copies: Sequence[pd.DataFrame],
         jointly = [x.name for x in specs if x.name != s.name]
         n_clusters = corrections[0].n_clusters
         out[s.name] = {
-            "family": "proportional_odds" if task == "ordinal" else "linear", "feature": s.name,
+            "family": family.key, "feature": s.name,  # the task's default (``default_for``)
             "naive": float(naive_row["estimate"]), "naive_ci_low": naive_row.get("ci_low"),
             "naive_ci_high": naive_row.get("ci_high"), "p": naive_row.get("p"),
             "estimate": float(estimate), "se": se, "ci_low": low, "ci_high": high,

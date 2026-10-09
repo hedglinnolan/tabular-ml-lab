@@ -628,7 +628,7 @@ def has_design_estimator(family: Any, task: str) -> bool:
     """Whether ``family`` estimates ``task`` design-based (its ``inference`` takes the design)."""
     import inspect
 
-    fn = getattr(family, "inference", None)
+    fn = family.inference
     if fn is None or task not in getattr(family, "tasks", ()):
         return False
     return "survey" in inspect.signature(fn).parameters
@@ -966,11 +966,12 @@ def models_sentence(state: Any, models: Sequence[str], task: str | None) -> str 
             family = get_family(key)
         except KeyError:
             continue
-        words = _ESTIMATOR_WORDS.get((key, task))
-        if words is not None and has_design_estimator(family, task):
-            based.append(words)
+        # A family neither table names is called what the methods text calls it (its
+        # ``methods_label``), never by its key, and sorted by its estimator, not by the tables.
+        if has_design_estimator(family, task):
+            based.append(_ESTIMATOR_WORDS.get((key, task)) or family.methods_label(task))
         else:
-            stopped.append(_BLOCKED_WORDS.get(key, f"`{key}`"))
+            stopped.append(_BLOCKED_WORDS.get(key) or family.methods_label(task))
     parts: list[str] = []
     weight = getattr(survey, "weight", None)
     if based:

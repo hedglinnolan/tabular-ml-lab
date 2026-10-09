@@ -99,7 +99,7 @@ Simon et al. (2026, a preprint) argue that a scientific theory of deep learning 
 
 ### How it is declared (`models/base.py`, new here)
 
-These members extend `models/base.py:FamilyBase`. RECIPES §2.4's `recipe`, `tuning` and `defaults_version` arrive with RECIPES RT-2, not here, so this package can land first (§5). Existing duck-typed members (`purposes`, `predicts`, `ordered_levels`, `bootstrap_optimism`, `linear_in_values`, `pools_imputations`, `preprocess`, `build_for`, `describe_step`, `inference`, `inference_matrix`) become declared members of the protocol, so `register_family` can check them.
+These members extend `models/base.py:FamilyBase`. RECIPES §2.4's `recipe`, `tuning` and `defaults_version` arrive with RECIPES RT-2, not here, so this package can land first (§5). Existing duck-typed members (`purposes`, `predicts`, `ordered_levels`, `bootstrap_optimism`, `linear_in_values`, `pools_imputations`, `preprocess`, `build_for`, `describe_step`, `inference`, `inference_matrix`) become declared members of the protocol, so `register_family` can check them. The five methods a family may add are declared as None where it adds nothing, and read that way, never with `getattr` or `hasattr`. Because `inference` is the family's table method, the C2 declaration is named `inference_decl` (amended while building MC-1).
 
 ```python
 @dataclass(frozen=True)
@@ -154,12 +154,15 @@ class FamilyBase:
     purposes: tuple[Purpose, ...]
     predicts: bool
     flexible: bool                          # declared, no longer derived from bootstrap_optimism
-    bootstrap_optimism: bool
-    inference: InferenceDecl | None = None  # None: not offered as an inference table
+    bootstrap_optimism: bool | None         # None: not applicable, it makes no predictions (C11)
+    inference_decl: InferenceDecl | None = None   # None: not offered as an inference table
     reads: tuple[str, ...] = ()             # InputProfile fields its assess reads (C4)
     sample_efficiency: tuple[Prior, ...] = ()
     same_kind_as: tuple[str, float] | None = None   # (family key, rank offset): XGBoost beside
-                                                    # boosted trees (RECIPES §2.2), read by assess
+                                                    # boosted trees, ("boosted_trees", -1.0). The
+                                                    # shelf reads that family's assessment, its
+                                                    # score plus the offset, at least 0.5 but never
+                                                    # above it (RECIPES §2.2), not this family's own
     bias_terms: tuple[Named, ...] = ()      # C5
     invariances: tuple[str, ...] = ()       # "linear_maps", "rotation_after_scaling",
                                             # "monotone_per_column", "column_scale" (C3)
@@ -176,9 +179,14 @@ class FamilyBase:
     solvable: tuple[str, ...] = ()          # keys into the solvable-settings harness (C13)
     replay_tolerance: float = 1e-12         # C12
     sources: tuple[Source, ...] = ()        # its primary sources, as a method contract has
+    cost_model: Literal["cells", "cross_product"] = "cells"   # C6: how one fit's time grows
+    preprocess = build_for = describe_step = inference = inference_matrix = None  # or methods
+
+    def methods_label(self, task) -> str: ...   # what the methods text calls it ("linear
+                                                # regression"); describe()'s label names the step
 ```
 
-`models/base.py:FamilyInfo` and `models/artifacts.py:ShelfFamily` gain the user-facing parts of these: the bias terms, invariances, inference table kind, `flexible`, `bootstrap_optimism`, the profile fields read, the measures, and a `terms` list beside `concerns` (C4). `concerns` stays `list[str]`.
+`models/base.py:FamilyInfo` and `models/artifacts.py:ShelfFamily` gain the user-facing parts of these: the bias terms, invariances, inference table kind, `flexible`, `bootstrap_optimism`, the profile fields read (`reads`), the measures, and a `terms` list beside `concerns` (C4). `concerns` stays `list[str]`. The measures arrive with MC-4's `Assessment.measures`.
 
 ---
 
@@ -231,6 +239,7 @@ class FamilyBase:
 
 **How the engine enforces it.**
 - `register_family` checks the purposes vocabulary and the interval kinds against a known set.
+- `register_family` refuses a second default for a task (`default_for`, which replaced the one-to-one `stages/scales.py:FAMILY_FOR`), and a default whose table has no intervals: the scales stage refits the default family to correct a coefficient.
 - Every interval kind a family declares needs a reference test (C13).
 - `models/survey.py:has_design_estimator` reads `design_based` instead of inspecting the `inference` signature for a `survey` parameter.
 - **Today:** `purposes` and `predicts` are read with `getattr` (`models/base.py:info`), and `register_family` checks neither.
@@ -775,14 +784,14 @@ The H statistic's stability across refits is not part of the trigger. It needs t
 | Clause | linear | elastic_net | boosted_trees | featurewise | proportional_odds | mixed | gee | cox | screened_elastic_net |
 |---|---|---|---|---|---|---|---|---|---|
 | C2 tasks and purposes | 4 tasks; both purposes | 4; both | 4; both | reg, bin; inference only; no predictions | ordinal; ordered levels | reg | reg, bin | time to event | reg, bin; prediction only |
-| C2 inference table | intervals (HC3, CR2, Firth, survey) | shrunk, no intervals | none | intervals (classical t, CR2 to 200 exposures, BH; no survey) | intervals (Wald, sandwich, survey) | intervals (Satterthwaite; no survey) | intervals (CR2; no survey) | intervals (Wald, Lin–Wei, survey) | refused |
+| C2 inference table | intervals (HC3, CR2, Firth, survey) | shrunk, no intervals | description only (curves, no table) | intervals (classical t, CR2 to 200 exposures, BH; no survey) | intervals (Wald, sandwich, survey) | intervals (Satterthwaite; no survey) | intervals (CR2; no survey) | intervals (Wald, Lin–Wei, survey) | refused |
 | C3 invariances (to declare) | linear maps | column scale | monotone per column | not applicable | linear maps | linear maps (random intercepts) | linear maps | linear maps | column scale |
 | C4 assess reads | rows, parameters, events, outcome mean and SD, units | rows, columns, purpose | rows, columns, purpose | purpose, lenses, columns vs rows | class counts, columns | units, columns, purpose | units, EPV | events, units | purpose, p vs n, then the elastic net's |
 | C6 tuning | n/a | part (F4, F5, F13) | no (F2) | n/a | n/a | n/a | n/a | n/a | part (F4) |
 | C8 diagnostics | yes | no | no | part | yes | part | part | yes | no |
 | C9 calibration | generic, plus shrinkage updating | generic | generic | n/a | generic, by level | generic | generic | at a horizon | generic |
 | C10 explanation | SHAP, equation | SHAP, path | TreeSHAP, trees | n/a | none (task refused) | blocked by the class-name gate | blocked by the class-name gate | none (task refused) | SHAP, path |
-| C11 bootstrap | decl yes | decl yes | decl no | n/a, printed "yes" | decl yes | decl yes | decl yes | decl yes | decl yes, unverified at p ≫ n |
+| C11 bootstrap | decl yes | decl yes | decl no | n/a, printed "yes" (declared None, printed "not applicable", by MC-1) | decl yes | decl yes | decl yes | decl yes | decl yes, unverified at p ≫ n |
 | C13 independent reference | yes | path only | TreeSHAP only | yes | yes | yes | yes | yes | none |
 
 The inventory behind this table cites each cell, for example `models/linear.py:Linear.assess` and `models/boosted_trees.py:BoostedTrees.assess`. The independent references are:
@@ -824,22 +833,24 @@ Each of these is a place a new family must be added by hand today. Each becomes 
 |---|---|---|---|
 | `models/explain.py:LINEAR_MODELS`, `models/explain.py:model_kind` | estimator class names | `attribution`, `architecture` and `raw_scale` | MC-2a |
 | `models/cost.py:fit_cost` | `isinstance` checks for `LinearRegression` and Newton–Cholesky `LogisticRegression` | the declared cost model (C6) | MC-2a |
-| `voice.py:_FAMILY_LABEL`, `voice.py:_family_label` | methods labels by key, `linear` by task | `describe(task, purpose)`'s label in the methods register | MC-2a |
+| `voice.py:_FAMILY_LABEL`, `voice.py:_family_label` | methods labels by key, `linear` by task | `methods_label(task)`, the methods register's name for the family (`describe(task, purpose)`'s label names the model step instead) | MC-2a |
 | `models/selection.py:is_flexible` | `flexible` derived from `bootstrap_optimism` | `flexible`, declared | MC-2a |
 | `methods/omics.py:model_clause` | elastic net and screened elastic net | `tuning.kind` and the plan's sentence | MC-2b |
 | `stages/modeling.py:fit_stage` | the collinearity concern for `linear` only | `"collinearity" in diagnostics` | MC-2b |
-| `stages/effects.py:SEQUENCE_FAMILIES`, `stages/effects.py:matrix_table` | families with a matrix table | `inference.matrix_table` | MC-2b |
+| `stages/effects.py:SEQUENCE_FAMILIES`, `stages/effects.py:matrix_table` | families with a matrix table | `inference_decl.matrix_table` | MC-2b |
 | `stages/effects.py:_Run.diagnostics` | diagnostics for `cox` and `linear` only | `diagnostics` | MC-2b |
 | `stages/evaluation.py:_shrinkage` | shrinkage updating for `linear` only | `updating` | MC-2b |
-| `methods/interaction.py:SUPPORTED` | families that test product terms | `inference.product_terms` | MC-2b |
-| `models/survey.py:_DESIGN_FAMILY`, `models/survey.py:has_design_estimator` | the design-based family, and a signature check | `inference.design_based` | MC-2b |
+| `methods/interaction.py:SUPPORTED` | families that test product terms | `inference_decl.product_terms` | MC-2b |
+| `models/survey.py:_DESIGN_FAMILY`, `models/survey.py:has_design_estimator` | the design-based family, and a signature check | `inference_decl.design_based` | MC-2b |
 | `estimand.py`, the `family_needs_featurewise` refusal | `featurewise` by key | `predicts` and `purposes` | MC-2b |
 | `decisions.py:model_families` | fallback keys | the registry, always importable | MC-2b |
-| `stages/scales.py:FAMILY_FOR` | the family a scale's analysis uses, by task | `inference.default_for` | MC-2b |
+| `stages/scales.py:FAMILY_FOR` | the family a scale's analysis uses, by task | `inference_decl.default_for` | MC-2a (done early, with the scales stage) |
 | `stages/class_substitution.py:_plain_multinomial` | an `isinstance` check for an unpenalized multinomial `LogisticRegression` | `linear_in_values` and the declared output | MC-2b |
-| `method_previews.py` (the measurement-error preview, about line 664) | `"linear" in after.models` | `linear_in_values` and `inference.table == "intervals"` | MC-2b |
+| `method_previews.py` (the measurement-error preview, about line 664) | `"linear" in after.models` | `linear_in_values` and `inference_decl.table == "intervals"` | MC-2b |
 | `teaching/content.py` (the models question's options) | family-keyed teaching text | each family's `describe()` and `bias_terms` | MC-2b |
 | `reference/catalog.py:FAMILY_LENSES` | family-keyed review lenses | `review_lenses` | MC-2b |
+
+**Found while building MC-2a.** The syntax-tree test widened to dictionaries keyed by family, lists named by family keys, lookups in them, `type(x) is`, `issubclass`, `match`, and any name whose words include `family`, `fam` or `key`. It found more places than this table holds: `models/survey.py`'s `_DESIGN_LABEL`, `_ESTIMATOR_WORDS` and `_BLOCKED_WORDS` with `models_sentence`, which reads them; `scales.py:methods_sentence`'s model by key; `reference/catalog.py:lenses_of_family`; and V2X_SEAMS row 21's `methods/interaction.py:_measure`. Its `NOT_YET` list, which pins each place's family keys and switch count, is the census of record for MC-2b. `models/survey.py:models_sentence` now names a family neither of its tables holds by its `methods_label`, never by its key. `models/wide.py`'s class check stays: the module declares the elastic net's wide model step, so the switch is the family's own.
 
 **Also renamed:** the causal lane's learner key `random_forest` (`models/causal.py:LEARNERS`, `decisions.py:CausalLearner`: 200 trees, at least 5 rows per leaf) differs from the RECIPES forest (500 trees, searched leaf and mtry). It becomes `nuisance_forest` until C6c makes the causal lane's learners read the registry's declarations, so the methods text and the no-switch test never confuse two forests.
 
@@ -1178,3 +1189,15 @@ Two reviews read draft 1: a methods review, which checked the citations on arXiv
 - **"The spec states which option drives the score"** (engine review, recipes) is answered with the lower of the two assessments, not a chosen option, because the shelf cannot know which option the folds will pick.
 - **Canatar et al.'s exact C(ρ) and Ludwig & Mullainathan's held-out procedure** were not confirmed by either review, and this revision could not read them either. The spec cites Canatar's definition only after MC-8 reads it. It attributes to Ludwig & Mullainathan only the separation of generation from testing, and grounds the held-out test's validity in its own logic.
 - **Rashomon's 50-refit floor** is taken as the methods review proposed, but marked a convention. It costs 50 refits per family, so it runs only behind "Check it across refits", with its minutes shown.
+
+## Amended while building MC-1 and MC-2a (2026-10-09)
+
+The builder and the verifier of MC-1 and MC-2a found these places where the text above and the code had to differ. Each is applied in the text above.
+- **`inference_decl`, not `inference`.** `inference` is already the family's table method, which §1 makes a declared member, so C2's declaration takes the other name.
+- **Boosted trees declare a description-only table.** §3.1 said "none". Under inference they give curves and no coefficients, which is C2's `description_only`, as §3.2 declares for the forest and XGBoost.
+- **The methods text reads `methods_label(task)`.** `describe(task, purpose)`'s label names the model step ("Histogram gradient boosting"), not what the methods register calls the family ("gradient-boosted trees").
+- **`bootstrap_optimism` may be None,** for a family that makes no predictions. The feature-wise tests declare it, and the methods reference prints "not applicable" (C11). Their curve shape stays the default, `any`, which the curve-shape test does not check.
+- **`same_kind_as` is read by the shelf now** (`models/base.py:assessment`), with RECIPES §2.2's floor of 0.5 held as one constant beside it, not in each declaration. A family it names must model every task of the family that reads it, and must not read another family itself.
+- **`cost_model`** is a family member until RT-1's tuning declaration can hold the cost model (C6). `TuningDecl` and its `Dimension` are declared in `models/tuning.py`, with `structural` and C6's checks made when a declaration is created; RT-1 builds the engine that reads them, and RT-2 gives each family its `tuning`.
+- **A knob names the estimator's own parameter,** so the elastic net's are its grids, `alphas` and `Cs`, from which its inner cross-validation chooses `alpha_` and `C_`.
+- **The no-switch test pins each listed place** to the family keys and classes it names and its switch count, so a switch added inside a listed function fails as a new place would.

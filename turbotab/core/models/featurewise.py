@@ -336,13 +336,13 @@ class FeatureWise(FamilyBase):
     # imputations: under that answer the fit holds its table with the ways forward (MS7 repair).
     pools_imputations = False
     # MODEL_FAMILY_CONTRACT §1 (§3.1's row for it). It makes no predictions, so its invariances,
-    # raw scale and attribution are not applicable.
+    # raw scale, attribution and curve shape are not applicable (C3, C5, C10), and so is Harrell's
+    # bootstrap, which has no score of its to correct: the fit skips the loop for it (C11).
     identity = Identity(kind="estimator", library="turbotab", estimator="FeatureWiseTests")
     flexible = False
-    bootstrap_optimism = True
+    bootstrap_optimism = None
     inference_decl = InferenceDecl(table="intervals", intervals=("model", "CR2"),
                                    matrix_table=True)
-    curve_shape = "straight"
     review_lenses = ("metabolomics", "genomics")
 
     def methods_label(self, task: Task | None) -> str:

@@ -24,7 +24,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Literal, Mapping, Protocol, Sequence, get_args, runtime_checkable
+from typing import Any, Callable, Literal, Mapping, Protocol, Sequence, get_args, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
@@ -204,7 +204,7 @@ class ModelFamily(Protocol):
     purposes: tuple[Purpose, ...]
     predicts: bool
     flexible: bool
-    bootstrap_optimism: bool
+    bootstrap_optimism: bool | None
     ordered_levels: bool
     linear_in_values: bool
     pools_imputations: bool
@@ -227,6 +227,18 @@ class ModelFamily(Protocol):
     replay_tolerance: float
     sources: tuple[Source, ...]
     cost_model: CostModel
+    # What a family may add, each None when it adds nothing (MODEL_FAMILY_CONTRACT §1):
+    # ``preprocess(spec)``: steps of its own after the shared ones (``models.pipeline``);
+    # ``build_for(spec, task, purpose, n_rows, n_features)``: a model step built from the design;
+    # ``describe_step(name)``: (label, detail) of one of its own steps, or None;
+    # ``inference(pipeline, X, y, *, task, clusters, ...)``: its table with intervals;
+    # ``inference_matrix(matrix, y, *, task, classes, clusters, ...)``: that table refit on a model
+    # matrix.
+    preprocess: Callable[..., list[tuple[str, Any]]] | None
+    build_for: Callable[..., Any] | None
+    describe_step: Callable[[str], tuple[str, str] | None] | None
+    inference: Callable[..., Any] | None
+    inference_matrix: Callable[..., Any] | None
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         """An unfitted sklearn estimator; the pipeline's last step."""
@@ -267,13 +279,15 @@ class FamilyInfo(BaseModel):
     predicts: bool = True
     # MODEL_FAMILY_CONTRACT §1's user-facing declarations: whether it is a flexible learner (ranked
     # after the regression families below Riley's minimum), whether Harrell's bootstrap is sound for
-    # it, the transformations its predictions do not change under, the table it gives under
-    # inference (none: it is not offered as one), and its quiet names with their sources.
+    # it (None: not applicable, it makes no predictions), the transformations its predictions do not
+    # change under, the table it gives under inference (none: it is not offered as one), its quiet
+    # names with their sources, and the input-profile fields its assessment reads (C4).
     flexible: bool = False
-    bootstrap_optimism: bool = True
+    bootstrap_optimism: bool | None = True
     invariances: list[str] = []
     inference_table: InferenceTable | None = None
     bias_terms: list[Named] = []
+    reads: list[str] = []
 
 
 # Every member of the protocol, which :func:`register_family` asks for by name (a family missing
@@ -284,7 +298,14 @@ MEMBERS = ("key", "label", "tasks", "inductive_bias", "strengths", "cautions", "
            "sample_efficiency", "same_kind_as", "bias_terms", "invariances", "curve_shape",
            "complexity", "diagnostics", "output", "updating", "raw_scale", "attribution",
            "architecture", "review_lenses", "solvable", "replay_tolerance", "sources", "cost_model",
+           "preprocess", "build_for", "describe_step", "inference", "inference_matrix",
            "build", "describe", "methods_label", "coefficients", "assess")
+# The members a family may leave as None: what it adds of its own (:class:`ModelFamily`).
+OPTIONAL_MEMBERS = ("preprocess", "build_for", "describe_step", "inference", "inference_matrix")
+# A family that reads another's assessment (``same_kind_as``) keeps at least this score, never more
+# than the family it reads: "Boosted trees' assessment less 1.0 (at least 0.5)" (RECIPES §2.2, a
+# convention).
+SAME_KIND_FLOOR = 0.5
 
 _REGISTRY: dict[str, ModelFamily] = {}
 
@@ -360,10 +381,19 @@ def contract_problems(family: ModelFamily) -> list[str]:
     if not family.purposes:
         out.append("purposes must name at least one purpose (C2)")
     outside("purposes", family.purposes, PURPOSES, "C2")
-    for flag in ("predicts", "flexible", "bootstrap_optimism", "ordered_levels",
-                 "linear_in_values", "pools_imputations"):
+    for flag in ("predicts", "flexible", "ordered_levels", "linear_in_values",
+                 "pools_imputations"):
         if not isinstance(getattr(family, flag), bool):
             out.append(f"{flag} must be True or False (C2, C11)")
+    sound = family.bootstrap_optimism
+    if family.predicts is True and not isinstance(sound, bool):
+        out.append("bootstrap_optimism must be True or False for a family that predicts (C11)")
+    if family.predicts is False and sound is not None:
+        out.append("bootstrap_optimism is None for a family that makes no predictions: there is "
+                   "no score for the bootstrap to correct, so it is not applicable (C11)")
+    for member in OPTIONAL_MEMBERS:
+        if getattr(family, member) is not None and not callable(getattr(family, member)):
+            out.append(f"{member} must be a method of the family, or None when it adds none (§1)")
     decl = family.inference_decl
     if decl is not None:
         if not isinstance(decl, InferenceDecl):
@@ -375,17 +405,35 @@ def contract_problems(family: ModelFamily) -> list[str]:
                 out.append("a table with intervals names their kinds, and only such a table "
                            "names any (C2)")
             outside("default_for", decl.default_for, sorted(tasks), "C2")
+            if decl.default_for and decl.table != "intervals":
+                out.append("a task's default inference family gives a table with intervals: the "
+                           "scales stage refits it to correct a coefficient (C2)")
+            for other in _REGISTRY.values():
+                taken = (set(decl.default_for) & set(other.inference_decl.default_for)
+                         if other.key != family.key and other.inference_decl is not None else ())
+                if taken:
+                    out.append(f"default_for {sorted(taken)}: {other.key!r} is already the default "
+                               f"inference family there, and each task has one (C2)")
             if "inference" not in family.purposes:
                 out.append("an inference table is declared, but inference is not among its "
                            "purposes (C2)")
     if family.same_kind_as is not None:
         kind_of = family.same_kind_as
-        if (not isinstance(kind_of, tuple) or len(kind_of) != 2
-                or not isinstance(kind_of[1], (int, float))):
+        if (not isinstance(kind_of, tuple) or len(kind_of) != 2 or not isinstance(kind_of[0], str)
+                or not isinstance(kind_of[1], (int, float)) or not math.isfinite(kind_of[1])):
             out.append("same_kind_as must be (family key, rank offset) (C4)")
         elif kind_of[0] == family.key or kind_of[0] not in _REGISTRY:
             out.append(f"same_kind_as names {kind_of[0]!r}, which is not another registered "
                        f"family; register that family first (C4)")
+        else:
+            read = _REGISTRY[kind_of[0]]
+            if read.same_kind_as is not None:
+                out.append(f"same_kind_as names {kind_of[0]!r}, which reads another family's "
+                           f"assessment itself; name the family whose assessment it is (C4)")
+            missing = sorted(tasks - set(read.tasks))
+            if missing:
+                out.append(f"same_kind_as names {kind_of[0]!r}, which does not model {missing}, so "
+                           f"it has no assessment to read there (C4)")
     for prior in family.sample_efficiency:
         budget("a sample-efficiency prior", prior.says, PLAIN_WORDS, "C4")
         outside("a prior's kind", [prior.kind], get_args(PriorKind), "C4")
@@ -430,9 +478,10 @@ def contract_problems(family: ModelFamily) -> list[str]:
                 out.append("its yes/no model step has no decision_function, which "
                            "Anatomy.raw_score reads (C9)")
     else:
-        if family.invariances or family.raw_scale or family.attribution != "none":
-            out.append("a family that makes no predictions declares no invariances, raw scale or "
-                       "attribution: they are not applicable (C3, C10)")
+        if (family.invariances or family.raw_scale or family.attribution != "none"
+                or family.curve_shape != "any"):
+            out.append("a family that makes no predictions declares no invariances, raw scale, "
+                       "attribution or curve shape: they are not applicable (C3, C5, C10)")
     outside("review_lenses", family.review_lenses, REVIEW_LENSES, "C14")
     outside("solvable settings", family.solvable, SOLVABLE, "C13")
     tolerance = family.replay_tolerance
@@ -476,7 +525,7 @@ def info(family: ModelFamily) -> FamilyInfo:
         predicts=family.predicts, flexible=family.flexible,
         bootstrap_optimism=family.bootstrap_optimism, invariances=list(family.invariances),
         inference_table=family.inference_decl.table if family.inference_decl else None,
-        bias_terms=list(family.bias_terms),
+        bias_terms=list(family.bias_terms), reads=list(family.reads),
     )
 
 
@@ -487,12 +536,25 @@ def inference_default(task: Task) -> ModelFamily | None:
                  if f.inference_decl is not None and task in f.inference_decl.default_for), None)
 
 
+def assessment(family: ModelFamily, situation: Situation) -> Assessment:
+    """``family``'s judgment of ``situation``: its own ``assess``, or, when it declares
+    ``same_kind_as`` (key, offset), the named family's assessment with the offset added to its
+    score, kept at :data:`SAME_KIND_FLOOR` or above but never above the family it reads, and the
+    same fit and concerns (MODEL_FAMILY_CONTRACT C4; RECIPES §2.2: XGBoost reads boosted trees')."""
+    if family.same_kind_as is None:
+        return family.assess(situation)
+    key, offset = family.same_kind_as
+    read = get_family(key).assess(situation)
+    floor = min(SAME_KIND_FLOOR, read.score)
+    return Assessment(max(read.score + offset, floor), read.fit, read.concerns)
+
+
 def rank(situation: Situation) -> list[tuple[ModelFamily, Assessment]]:
     """Every family that can model the task, best first. The shelf is never shortened."""
     order = {f.key: i for i, f in enumerate(families())}
     judged = []
     for family in families(situation.task):
-        judged_one = family.assess(situation)
+        judged_one = assessment(family, situation)
         if situation.task == "ordinal" and not family.ordered_levels:
             judged_one = Assessment(judged_one.score - ORDER_BLIND_COST, judged_one.fit,
                                     (ORDER_BLIND, *judged_one.concerns))
@@ -535,8 +597,9 @@ class FamilyBase:
     # C11: whether Harrell's bootstrap optimism correction is sound for it (``models.validation``).
     # A learner that nearly memorizes its rows scores the original rows inside each resample almost
     # perfectly, so the bootstrap understates its optimism (Coley et al. 2023): it declares False,
-    # and the fit keeps its cross-validated score as its internal validation.
-    bootstrap_optimism: bool
+    # and the fit keeps its cross-validated score as its internal validation. None: not applicable,
+    # for a family that makes no predictions and so has no score to correct.
+    bootstrap_optimism: bool | None
     ordered_levels: bool = False  # it models an ordered outcome's order (``rank`` reads this)
     # Its model is a weighted sum of the values as given, so their scale (raw counts or log) is part
     # of what it assumes; raw omics values wait for a normalization (``methods.omics``).
@@ -546,8 +609,9 @@ class FamilyBase:
     inference_decl: InferenceDecl | None = None  # C2; None: not offered as an inference table
     reads: tuple[str, ...] = ()  # C4: the input-profile fields its assess reads (MC-4)
     sample_efficiency: tuple[Prior, ...] = ()  # C4
-    # C4: (family key, rank offset). It reads that family's assessment, less the offset, instead
-    # of keeping one of its own (XGBoost beside boosted trees, RECIPES §2.2).
+    # C4: (family key, rank offset). The shelf reads that family's assessment with the offset added
+    # to its score (XGBoost beside boosted trees: ("boosted_trees", -1.0), RECIPES §2.2) instead of
+    # this family's own ``assess`` (:func:`assessment`).
     same_kind_as: tuple[str, float] | None = None
     bias_terms: tuple[Named, ...] = ()  # C5: the inductive bias's quiet names
     invariances: tuple[str, ...] = ()  # C3: INVARIANCES, the largest that holds
@@ -564,6 +628,12 @@ class FamilyBase:
     replay_tolerance: float = 1e-12  # C12: DoD gate 6's; a looser one needs Nolan's approval
     sources: tuple[Source, ...] = ()  # its primary sources, as a method contract has
     cost_model: CostModel = "cells"  # C6: how one fit's time grows (``models.cost.fit_cost``)
+    # What it adds of its own, as methods where it adds something (:class:`ModelFamily`).
+    preprocess: Callable[..., list[tuple[str, Any]]] | None = None
+    build_for: Callable[..., Any] | None = None
+    describe_step: Callable[[str], tuple[str, str] | None] | None = None
+    inference: Callable[..., Any] | None = None
+    inference_matrix: Callable[..., Any] | None = None
 
     def coefficients(self, pipeline: Any, X: Any, y: Any, *, task: Task,
                      purpose: Purpose | None, groups: Any = None) -> list[dict[str, Any]] | None:
@@ -620,7 +690,8 @@ __all__ = [
     "ARCHITECTURES", "Assessment", "CLASSES_NOT_DRAWN", "CLASS_SCALES", "DEFAULT_TASKS",
     "DIAGNOSTICS", "FamilyBase", "FamilyInfo", "Fit", "INTERVAL_KINDS", "INVARIANCES", "Identity",
     "InferenceDecl", "Knob", "MEMBERS", "ModelFamily", "NOT_DRAWN", "Named", "ORDER_BLIND",
-    "PURPOSES", "Prior", "RAW_SCALES", "Situation", "Source", "TASKS", "coefficient_rows",
-    "contract_problems", "families", "get_family", "inference_default", "info", "rank",
+    "OPTIONAL_MEMBERS", "PURPOSES", "Prior", "RAW_SCALES", "SAME_KIND_FLOOR", "Situation",
+    "Source", "TASKS", "assessment", "coefficient_rows", "contract_problems", "families",
+    "get_family", "inference_default", "info", "rank",
     "register_family", "reports_coefficients", "unregister_family",
 ]

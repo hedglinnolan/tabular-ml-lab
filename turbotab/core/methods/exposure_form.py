@@ -1823,7 +1823,7 @@ def _refit(family: Any, matrix: pd.DataFrame, y: Any, *, pipeline: Any, task: st
     """The family's inference table on ``matrix``, with the table's outcome and design."""
     import inspect
 
-    refit = getattr(family, "inference_matrix", None)
+    refit = family.inference_matrix
     if refit is None:
         return None
     classes = list(getattr(pipeline[-1], "classes_", [])) or None

@@ -354,14 +354,18 @@ def model_kind(family_key: str, anat: Anatomy) -> str | None:
     """How SHAP is computed for this family's fitted model step: ``linear`` or ``trees``, as the
     family declares its ``attribution`` (MODEL_FAMILY_CONTRACT C10), or None (not built).
 
-    None too when the fitted step is not the family's own: a yes/no model step that exposes no
-    ``decision_function`` (an Explore lever's wrapper, ``methods.levers.ImbalanceCorrected``) has
-    no margin for ``Anatomy.raw_score`` to read, and a linear step with no ``coef_`` has no
-    coefficients for the closed form."""
-    from turbotab.core.models.base import get_family
+    None too when the family declares no raw score for the task (its ``raw_scale`` says "not
+    drawn"), or when the fitted step is not the family's own: a step whose declared scale is the
+    margin but that exposes no ``decision_function`` (an Explore lever's wrapper,
+    ``methods.levers.ImbalanceCorrected``) has no margin for ``Anatomy.raw_score`` to read, and a
+    linear step with no ``coef_`` has no coefficients for the closed form."""
+    from turbotab.core.models.base import RAW_SCALES, get_family
 
-    kind = get_family(family_key).attribution
-    if kind == "none" or (anat.task == "binary" and not hasattr(anat.rest, "decision_function")):
+    family = get_family(family_key)
+    kind, scale = family.attribution, family.raw_scale.get(anat.task)
+    if kind == "none" or scale not in RAW_SCALES:
+        return None
+    if scale == "margin" and not hasattr(anat.rest, "decision_function"):
         return None
     if kind == "linear" and not hasattr(anat.model, "coef_"):
         return None

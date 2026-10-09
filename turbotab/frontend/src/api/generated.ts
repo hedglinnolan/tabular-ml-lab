@@ -1830,7 +1830,7 @@ export interface components {
              * Bootstrap Optimism
              * @default true
              */
-            bootstrap_optimism: boolean;
+            bootstrap_optimism: boolean | null;
             /**
              * Invariances
              * @default []
@@ -1843,6 +1843,11 @@ export interface components {
              * @default []
              */
             bias_terms: components["schemas"]["Named"][];
+            /**
+             * Reads
+             * @default []
+             */
+            reads: string[];
         };
         /**
          * FeatureTableSpec

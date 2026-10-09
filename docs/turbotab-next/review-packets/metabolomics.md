@@ -522,7 +522,7 @@ Reviewed in full in this packet:
 - **Inductive bias:** Each exposure tested on its own with the covariates; Benjamini–Hochberg holds the false-discovery rate.
 - **Strengths:** Valid tests with more features than rows. Holds the false-discovery rate across thousands of features (Benjamini–Hochberg).
 - **Cautions:** Each estimate ignores the other exposures: one separate question per feature. Tests only: it makes no predictions and has no cross-validated score. Intervals assume equal residual variance; robust ones fail at the thresholds it tests.
-- **Needs scaled inputs:** no; **uses rows with blanks as they are:** no; **Harrell's bootstrap optimism is sound for it:** yes.
+- **Needs scaled inputs:** no; **uses rows with blanks as they are:** no; **Harrell's bootstrap optimism is sound for it:** not applicable, as it makes no predictions.
 - **Lenses:** Metabolomics, Genomics.
 - **Question:** asked within the models question (`select_models`); the shelf ranks every family by its own assessment of the data and never shortens the list.
 

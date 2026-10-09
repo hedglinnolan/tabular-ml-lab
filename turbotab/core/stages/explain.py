@@ -97,7 +97,7 @@ def explain_stage(ctx: StageContext) -> Bundle:
         if ctx.cancelled():
             raise Cancelled()
         family = get_family(key)
-        if not getattr(family, "predicts", True) or key not in pipelines:
+        if not family.predicts or key not in pipelines:
             continue
         if key not in fitted:
             # Under inference a family with no coefficient table was fit on the training rows only;

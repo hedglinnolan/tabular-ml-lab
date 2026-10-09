@@ -1791,7 +1791,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
     for key in keys:
         family = get_family(key)
         started = time.perf_counter()
-        if not getattr(family, "predicts", True):
+        if not family.predicts:
             # WP11: a family that only tests has no cross-validated or held-out score. Under
             # inference its table, like every other, is estimated from every analyzed row with the
             # pipeline refit on them (WP8; BLUEPRINT §12 ruling 3), clustered as they repeat.
@@ -1852,7 +1852,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                     calibration_note=held_note,
                 ).model_dump(mode="json")
             optimism = None
-            if n_boot and not getattr(family, "bootstrap_optimism", True):
+            if n_boot and family.bootstrap_optimism is False:
                 # A near-interpolating family: the bootstrap would overstate it (Coley et al. 2023).
                 optimism = not_applied(family.label, n_boot, grouped_by)
                 done += n_boot
@@ -1897,7 +1897,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                     fit_table(with_units(clone(pipelines[key]), unit_of)), levels))
                              if on_all else final)
                 X_c, y_c = (X_tab, y_tab) if on_all else (X, y)
-                if clusters is not None and hasattr(family, "inference"):
+                if clusters is not None and family.inference is not None:
                     from turbotab.core.models.survey import (blocked, has_design_estimator,
                                                              no_design_estimator)
 
@@ -2049,7 +2049,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
             cal_note = f"{NOT_ASSESSED}: too few out-of-fold rows, or one class only."
         if optimism is not None and optimism.refused:
             concerns.append(optimism.refused)
-        if n_boot and getattr(family, "bootstrap_optimism", True) and resample_concern(n_boot):
+        if n_boot and family.bootstrap_optimism and resample_concern(n_boot):
             concerns.append(resample_concern(n_boot))
         if nested is not None and nested.refused:
             concerns.append(nested.refused)
@@ -2271,7 +2271,7 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
             for row in coefficients]
     adj = spec.energy_adjustment()
     if (adj is None or adj.method != "all_components" or task == "multiclass"
-            or not hasattr(family, "inference")):
+            or family.inference is None):
         return rows
     from turbotab.core.methods.energy import relative_effect_rows
     from turbotab.core.models.linear import model_matrix
@@ -2280,7 +2280,7 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
     step = getattr(final, "named_steps", {}).get("energy")
     factors = dict(getattr(getattr(step, "pooled_", step), "factors_", {}) or {})
     table = None
-    refit = getattr(family, "inference_matrix", None)
+    refit = family.inference_matrix
     if clusters is not None and refit is not None:
         classes = list(getattr(final[-1], "classes_", [])) or None
         extra = {name: value for name, value in (("outcome", outcome), ("survey", survey))

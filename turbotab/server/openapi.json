@@ -5882,7 +5882,14 @@
             "default": false
           },
           "bootstrap_optimism": {
-            "type": "boolean",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Bootstrap Optimism",
             "default": true
           },
@@ -5917,6 +5924,14 @@
             "type": "array",
             "title": "Bias Terms",
             "default": []
+          },
+          "reads": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reads",
+            "default": []
           }
         },
         "type": "object",
@@ -5935,7 +5950,8 @@
           "bootstrap_optimism",
           "invariances",
           "inference_table",
-          "bias_terms"
+          "bias_terms",
+          "reads"
         ],
         "title": "FamilyInfo",
         "description": "What ``GET /api/models`` says about one family."
