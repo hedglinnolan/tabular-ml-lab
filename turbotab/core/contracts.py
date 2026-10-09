@@ -256,6 +256,8 @@ DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.methods.substitution",
     # Wave 2c, EXPORT: the export bundle and its replay
     "turbotab.core.export.contract",
+    # D3, dietary patterns (engine only until D1 asks them)
+    "turbotab.core.methods.dietary_patterns",
 )
 
 

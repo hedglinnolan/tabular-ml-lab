@@ -323,7 +323,7 @@ Every lens offers these; their full contracts are in the methods reference.
 | Intended use, the decision curve and the threshold | `intended_use` | evaluation | training_fold | `set_intended_use` |
 | The manuscript bundle and its replay | `manuscript_export` | evaluation | descriptive | not declared |
 
-### 1.4 · Methods another lens reviews in full (20)
+### 1.4 · Methods another lens reviews in full (24)
 
 No method contract is declared for one lens: the app reaches each of these through the data it needs, not through the lens, though some are reached through findings or stages their own lens raises. Each is offered here whenever this lens's data hold what it needs, and is reviewed in full in the packet named.
 
@@ -337,6 +337,10 @@ No method contract is declared for one lens: the app reaches each of these throu
 | Rows read as imputed copies are not repeats | `copies_not_repeats` | the dietary assessment and clinical packets | reshape | rows read as imputed copies (a copy number such as NHANES's _MULT_) |
 | The data's own imputed copies, pooled by Rubin's rules | `imputed_copies_pooled` | the dietary assessment and clinical packets | reshape | the column numbering the copies; the unit the copies belong to |
 | The QC rows leave | `qc_rows_leave` | the metabolomics packet | eligibility | the pooled-QC label |
+| Dietary patterns: how the food groups are made comparable | `pattern_inputs` | the dietary assessment packet | in_fold | the food-group intake columns; total energy, for the energy-adjusted forms |
+| Dietary patterns: foods eaten together | `dietary_patterns` | the dietary assessment packet | in_fold | two or more food-group intake columns; intermediate responses on the pathway, for reduced rank regression; the survey weights, when the rows are a weighted sample |
+| Dietary patterns: how many groups of people | `pattern_clusters` | the dietary assessment packet | in_fold | the standardized food groups; a range of group numbers, or the declared one |
+| Dietary patterns: how many to keep | `pattern_count` | the dietary assessment packet | in_fold | the food groups' correlation matrix; the number read from the scree plot, for the scree rule |
 | D-ratio filter | `d_ratio_filter` | the metabolomics packet | in_fold | pooled-QC standard deviations |
 | Regression calibration from repeated 24-hour recalls | `regression_calibration` | the dietary assessment packet | in_fold | two or more recall days for some participants, combined by the mean; the outcome model's covariates (its adjustment set); the energy model's terms the recalls measure; the survey design or the clusters, for the bootstrap |
 | Values below detection | `detection_limit` | the metabolomics packet | in_fold | columns whose blanks are non-detections |

@@ -615,7 +615,7 @@ Every lens offers these; their full contracts are in the methods reference.
 | Intended use, the decision curve and the threshold | `intended_use` | evaluation | training_fold | `set_intended_use` |
 | The manuscript bundle and its replay | `manuscript_export` | evaluation | descriptive | not declared |
 
-### 1.4 · Methods another lens reviews in full (12)
+### 1.4 · Methods another lens reviews in full (16)
 
 No method contract is declared for one lens: the app reaches each of these through the data it needs, not through the lens, though some are reached through findings or stages their own lens raises. Each is offered here whenever this lens's data hold what it needs, and is reviewed in full in the packet named.
 
@@ -623,6 +623,10 @@ No method contract is declared for one lens: the app reaches each of these throu
 |---|---|---|---|---|
 | Rows read as imputed copies are not repeats | `copies_not_repeats` | the dietary assessment and clinical packets | reshape | rows read as imputed copies (a copy number such as NHANES's _MULT_) |
 | The data's own imputed copies, pooled by Rubin's rules | `imputed_copies_pooled` | the dietary assessment and clinical packets | reshape | the column numbering the copies; the unit the copies belong to |
+| Dietary patterns: how the food groups are made comparable | `pattern_inputs` | the dietary assessment packet | in_fold | the food-group intake columns; total energy, for the energy-adjusted forms |
+| Dietary patterns: foods eaten together | `dietary_patterns` | the dietary assessment packet | in_fold | two or more food-group intake columns; intermediate responses on the pathway, for reduced rank regression; the survey weights, when the rows are a weighted sample |
+| Dietary patterns: how many groups of people | `pattern_clusters` | the dietary assessment packet | in_fold | the standardized food groups; a range of group numbers, or the declared one |
+| Dietary patterns: how many to keep | `pattern_count` | the dietary assessment packet | in_fold | the food groups' correlation matrix; the number read from the scree plot, for the scree rule |
 | Regression calibration from repeated 24-hour recalls | `regression_calibration` | the dietary assessment packet | in_fold | two or more recall days for some participants, combined by the mean; the outcome model's covariates (its adjustment set); the energy model's terms the recalls measure; the survey design or the clusters, for the bootstrap |
 | Scale scores, their reliability and the correction for measurement error | `scales` | the survey instruments packet | in_fold | three or more numeric items on one response scale, each a confirmed exposure or covariate (a reflective scale's answers whole numbers; a formative index's components may be continuous scores); the instrument's key: its reverse-coded items and its response scale; for a test–retest reliability: the repeat administration's columns, or its score; for a calibration substudy: a reference measure read as an amount, blank outside the substudy |
 | Usual-intake distribution (NCI method) | `nci_usual_intake` | the dietary assessment packet | model | the dietary lens; two or more recalls for at least two people; a dietary component's recalls (a long table's repeated rows or a wide table's day columns); optional: an order column, a weekend indicator, a column marking consumers, the survey design; for a prevalence of inadequacy below an EAR: the answer that it is every participant's DRI life-stage group's EAR (and, for iron, that no participant is a menstruating woman) |
