@@ -14,15 +14,16 @@ a way forward for each (BLUEPRINT §3's refusal shape):
   which declares the result and is named below as the open plan (:data:`PLAN_QUESTIONS`); a
   regression calibration declared under another adjustment set is re-asked, so it counts too;
 * **the plan is open**:
-  - under inference, the analysis plan is not locked: it locks the first time an estimate is
-    displayed (``plan_lock``), so a bundle exported before that would report estimates no plan was
-    declared for;
+  - under inference, the analysis plan is not locked: it locks when Fit is pressed
+    (``fit_press``), and no estimate is served before it, so a bundle exported before that would
+    report estimates no plan was declared for;
   - under prediction, no result is declared: the held-out rows are drawn and still sealed, so the
     final model is not declared and no held-out score is the result yet; or nothing could be
     declared (``selection.declared_result``'s "not_declared");
 * **a result is not computed**: a stage the bundle reports (:func:`result_stages`) is still being
   computed, waits for an answer, or failed;
-* **the estimates are withheld** while a question they rest on is unanswered (WP17's gate).
+* **the estimates are withheld** while a question they rest on is unanswered (WP17's gate), or,
+  under prediction, until Fit is pressed (P0.8).
 
 A sentence of the record that counts rows (the exclusions', the complete cases') is not a reason to
 refuse when a later answer changed those rows: the methods text restates its counts on the rows as
@@ -134,10 +135,10 @@ def missing(source: Any) -> list[Missing]:
             out.append(Missing("unanswered_questions", reason, exits))
     if purpose == "inference" and not getattr(state, "plan_locked", None):
         out.append(Missing("plan_open", (
-            "The analysis plan is still open: under inference it is locked the first time an "
-            "estimate is displayed, and the export reports only estimates of a declared plan."),
-            [{"label": "Show the estimates; the first one shown locks the plan",
-              "decision": None}]))
+            "The analysis plan is still open: under inference it is locked when Fit is pressed, "
+            "before any estimate is shown, and the export reports only estimates of a declared "
+            "plan."),
+            [{"label": "Press Fit on the analysis flowchart; it locks the plan", "decision": None}]))
     elif purpose == "prediction" and isinstance(fit, dict):
         result = fit.get("result") or {}
         basis = result.get("basis")
@@ -175,9 +176,13 @@ def missing(source: Any) -> list[Missing]:
                 f"{label} is still being computed for the current answers."),
                 [{"label": "Export again once it is done", "decision": None}]))
     withheld = fit.get("withheld") if isinstance(fit, dict) else None
-    if withheld and not open_steps:
+    for_fit = isinstance(fit, dict) and fit.get("withheld_for") == "fit"
+    if withheld and not open_steps and not (for_fit and any(m.code == "plan_open" for m in out)):
+        # P0.8: before Fit is pressed under prediction the way forward is the press; under
+        # inference the open plan above already says so.
         out.append(Missing("estimates_withheld", f"The estimates are withheld: {withheld}",
-                           [{"label": "Answer the question they rest on", "decision": None}]))
+                           [{"label": "Press Fit on the analysis flowchart" if for_fit else
+                             "Answer the question they rest on", "decision": None}]))
     return out
 
 

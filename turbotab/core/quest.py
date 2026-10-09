@@ -38,9 +38,14 @@ empty (``None``) for a stage not reached, and ``complete`` once every objective 
 reached stage that asks nothing, 0 of 0, is complete: its segment is full); and why it reopened.
 
 **Reached.** A stage is reached once the Router has asked a question in it or a later one.
-Results is reached once an estimate has been computed, for the answers now or for earlier ones
-(a result out of date keeps it reached, so it can say why it dropped back), or once the held-out
-rows can be opened; Write-up opens with Results.
+Results is reached once Fit is pressed (SIZING P0.8; FOUNDATION §7): under Estimate and Describe
+once the plan is locked, under Predict once Fit is pressed for the outcome; it stays reached when
+its results go out of date, so it can say why it dropped back. Write-up opens with Results.
+Without what Fit says (``fit``), Results is reached once an estimate has been computed, for the
+answers now or for earlier ones.
+
+**The lock is visible** (``fit``, :class:`fit_press.FitLock`): whether the plan is locked, when,
+its SHA-256 and why, in plain words; whether Fit was pressed, and whether the fit waits for it.
 
 **Reopen reasons.** A stage reopens when another answer invalidates its own: a question the Router
 asks again (the decisions' invalidation relations: a form left stale, an adjustment set missing a
@@ -79,8 +84,11 @@ from typing import Any, Callable, Literal, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict
 
+from turbotab.core.fit_press import FitLock
+
 # Bumped when the shape or the meaning of the quest log changes (GET /projects/{pid}/quest).
-QUEST_VERSION = 1
+# 2 (P0.8): Results opens when Fit is pressed, and the log carries the lock (``fit``).
+QUEST_VERSION = 2
 
 STAGES: tuple[tuple[str, str], ...] = (
     ("data", "Your data"),
@@ -738,6 +746,7 @@ class QuestLog(BaseModel):
     version: int = QUEST_VERSION
     stages: list[QuestStage]
     kinds: dict[str, str]
+    fit: FitLock | None = None  # Fit and the plan's lock (SIZING P0.8)
 
 
 def _get(obj: Any, name: str, default: Any = None) -> Any:
@@ -1007,13 +1016,15 @@ def _hold_the_families(placed: Sequence[tuple[str, QuestLine]]) -> None:
 
 
 def _frontier(steps: Sequence[Any], stages: Mapping[str, Any],
-              shown_at: Mapping[str, datetime | None]) -> int:
+              shown_at: Mapping[str, datetime | None], fit: FitLock | None = None) -> int:
     """The furthest stage the Router has reached: every question answered, stated or open so far,
-    and the first one still waiting. Results opens once an estimate stage has a result, for the
-    answers now (fresh) or for earlier ones (``shown_at``: out of date, or withdrawn since), so a
-    change after the fit drops Results back with its reason rather than emptying it
-    (``usual_intake`` computes on the lens and goal alone, so it opens nothing); Write-up opens with
-    Results."""
+    and the first one still waiting. Results opens when Fit is pressed (``fit``: under Estimate and
+    Describe the plan locked, under Predict Fit pressed for the outcome; never with no purpose),
+    and stays open when a change after the fit puts its results out of date, so it drops back with
+    its reason rather than emptying. Without ``fit``, Results opens once an estimate stage has a
+    result, for the answers now (fresh) or for earlier ones (``shown_at``: out of date, or
+    withdrawn since) (``usual_intake``'s offer computes on the lens and goal alone, so it opens
+    nothing). Write-up opens with Results."""
     from turbotab.core.estimand import ESTIMATE_STAGES
 
     reached = [STAGE_INDEX[QUESTIONS[_get(s, "key")].stage] for s in steps
@@ -1023,8 +1034,12 @@ def _frontier(steps: Sequence[Any], stages: Mapping[str, Any],
     if first is not None and _get(first, "key") in QUESTIONS:
         reached.append(STAGE_INDEX[QUESTIONS[_get(first, "key")].stage])
     furthest = max(reached, default=0)
-    if any(_get(stages.get(name), "status") == "fresh" or name in shown_at
-           for name in ESTIMATE_STAGES):
+    if fit is not None:
+        opened = fit.purpose is not None and (fit.locked if fit.locks else fit.pressed)
+    else:
+        opened = any(_get(stages.get(name), "status") == "fresh" or name in shown_at
+                     for name in ESTIMATE_STAGES if name != "usual_intake")
+    if opened:
         furthest = max(furthest, STAGE_INDEX["results"])
     if furthest >= STAGE_INDEX["results"]:
         furthest = STAGE_INDEX["writeup"]
@@ -1085,7 +1100,8 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
               stages: Mapping[str, Any] | None = None, *, findings: Any = None,
               columns: Sequence[str] | None = None,
               artifacts: Mapping[str, Any] | None = None,
-              shown_at: Mapping[str, datetime | None] | None = None) -> QuestLog:
+              shown_at: Mapping[str, datetime | None] | None = None,
+              fit: FitLock | None = None) -> QuestLog:
     """The seven stages for this project now.
 
     ``steps``: the Router's answer (``interview.route``). ``stages``: each compute stage's status.
@@ -1095,7 +1111,8 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     ``shown_at``: for each compute stage whose result is not for the answers now (not fresh, with
     an older artifact, blocked ones included), when that artifact was computed; a change after it,
     decided in another stage, is the reason, unless the stage is blocked (withdrawn). Any estimate
-    stage among them keeps Results reached."""
+    stage among them keeps Results reached. ``fit``: Fit and the plan's lock
+    (``fit_press.fit_lock``), which opens Results and is reported with the log."""
     stages = stages or {}
     shown_at = shown_at or {}
     log = _Log(list(records))
@@ -1104,7 +1121,7 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     placed = [*_question_lines(state, steps, log), *_declaration_lines(state, by_key, log, facts),
               *_finding_lines(state, findings, by_key)]
     _hold_the_families(placed)
-    frontier = _frontier(steps, stages, shown_at)
+    frontier = _frontier(steps, stages, shown_at, fit)
     out = []
     for key, name in STAGES:
         mine = sorted((l for stage, l in placed if stage == key), key=lambda l: (l.order, l.name))
@@ -1123,7 +1140,7 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
         reasons = _reasons(key, mine, log, stages, shown_at) if reached else []
         out.append(QuestStage(key=key, name=name, reached=reached, progress=progress, sweep=sweep,
                               lines=mine, reopened=reasons))
-    return QuestLog(stages=out, kinds=kind_stages())
+    return QuestLog(stages=out, kinds=kind_stages(), fit=fit)
 
 
 __all__ = [

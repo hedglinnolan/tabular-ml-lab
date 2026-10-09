@@ -30,6 +30,8 @@ export type ConfirmReadings = Extract<Decision, { kind: "confirm_readings" }>;
 
 export type MethodsText = S["MethodsText"];
 export type PlanExport = S["PlanExport"];
+/** Fit and the plan's lock (SIZING P0.8): what POST /fit returns and the quest log carries. */
+export type FitLock = S["FitLock"];
 export type FamilyInfo = S["FamilyInfo"];
 
 // ── assembly: files to join and codebooks (DATAIN) ───────────────────────────

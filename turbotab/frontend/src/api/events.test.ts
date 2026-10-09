@@ -18,6 +18,7 @@ function status(stage: string, patch: Partial<StageStatus> = {}): StageStatus {
     progress: null,
     updated_at: "2026-09-27T10:00:00.000Z",
     cancelled: false,
+    held: null,
     ...patch,
   };
 }

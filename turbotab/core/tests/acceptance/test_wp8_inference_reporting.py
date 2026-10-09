@@ -42,6 +42,7 @@ from turbotab.core.stages.target import target_info_stage
 from turbotab.core.tests import modeling_fixtures as mf
 from turbotab.core.tests.acceptance.references import hc3_by_definition
 from turbotab.core.tests.stage_harness import NHANES, Ingested
+from turbotab.core.tests.acceptance.server_drive import served
 
 Z = stats.norm.ppf(0.975)
 
@@ -437,7 +438,7 @@ def _fitted_project(client, models: list[str]) -> str:
 
 
 def _fit(client, pid: str) -> dict:
-    return client.get(f"/api/projects/{pid}/stages/fit").json()["artifact"]
+    return served(client, pid, "fit")
 
 
 def test_3a_opening_the_seal_needs_a_declared_final_family_whose_holdout_is_the_result(client):

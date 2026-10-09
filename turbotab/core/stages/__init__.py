@@ -156,7 +156,7 @@ call them and shape the result into the contract's artifact.
 """
 from __future__ import annotations
 
-from turbotab.core.graph import Graph, Stage
+from turbotab.core.graph import Graph, GraphError, Stage
 from turbotab.core.stages.data import ingest_stage, profile_stage
 from turbotab.core.stages.findings import findings_stage
 from turbotab.core.stages.modeling import design_stage, fit_stage, shelf_stage, substitution_stage
@@ -191,13 +191,27 @@ from turbotab.core.methods.interaction import MODIFICATION_READS, modification_s
 
 GRAPH_FACTORY = "turbotab.core.stages:build_graph"
 # What an estimate stage serves (``Stage.serves``): withheld while a question it rests on is open,
-# and the first one served locks the plan. ``estimand.ESTIMATE_STAGES`` is read from these
-# declarations (V2X_SEAMS seam guard 7).
+# and, under Estimate and Describe, until Fit is pressed and the plan locked; under Predict until
+# Fit is pressed (``fit_press``). ``estimand.ESTIMATE_STAGES`` is read from these declarations
+# (V2X_SEAMS seam guard 7); Describe's usual-intake distribution is one (CROSSWALK "Describe has a
+# gate and a lock").
 ESTIMATE = "estimate"
 
 
+def estimates_wait_for_the_purpose(graph: Graph) -> Graph:
+    """``graph``, refused when a stage that serves an estimate does not require the purpose
+    (guarantee test 2; EXTERNAL_AUDIT_2026-10-09 §3.2): with the purpose unanswered no estimate
+    is computed, as none is served (``fit_press.serving_gate``). Requiring it is explicit, never
+    left to another requirement that happens to come after the purpose in the Router."""
+    loose = [s.name for s in graph.stages() if s.serves == ESTIMATE and "purpose" not in s.requires]
+    if loose:
+        raise GraphError(f"stage(s) {', '.join(map(repr, loose))} serve an estimate without "
+                         f"requiring the purpose")
+    return graph
+
+
 def build_graph() -> Graph:
-    return Graph(
+    return estimates_wait_for_the_purpose(Graph(
         [
             # ingest 2 (wave 1, DATAIN, V2 definition of done §1): SAS transport files are read as R
             # reads them, and the files joined to the table on a shared identifier, in answer order
@@ -622,7 +636,7 @@ def build_graph() -> Graph:
             Stage("fit", 26, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
-                  fit_stage, heavy=True, requires=("models",),
+                  fit_stage, heavy=True, requires=("models", "purpose"),
                   label="Fitting the models", serves=ESTIMATE),
             # substitution 6: a swap can move a share of energy (WP12a); a random intercept's band
             # refits one intercept per resampled unit (WP12b); a curve says it is not pooled over
@@ -662,7 +676,7 @@ def build_graph() -> Graph:
             Stage("substitution", 19, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
                    "column_units", *ROLE_READS, *WP17_READS),
-                  substitution_stage, heavy=True, requires=("substitution",),
+                  substitution_stage, heavy=True, requires=("substitution", "purpose"),
                   label="Drawing the substitution curves", serves=ESTIMATE),
             # ── M2: the seal (docs/turbotab-next/M2_CONTRACT.md §3) ──
             # seal_plan 3 (repair round): the declared purpose orders the split question (under
@@ -705,7 +719,7 @@ def build_graph() -> Graph:
             # the held table's missing-values exits.
             Stage("sensitivity", 15, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
-                  requires=("sensitivity", "models"),
+                  requires=("sensitivity", "models", "purpose"),
                   label="Refitting the model on each analysis's rows", serves=ESTIMATE),
             # calibration 4 (methods gate): the outcome keeps its own values (a True/False event).
             # calibration 5, sensitivity 7 (the readings ledger): each reads the readings' own
@@ -728,13 +742,13 @@ def build_graph() -> Graph:
             Stage("calibration", 13,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
-                  requires=("measurement_error", "models"),
+                  requires=("measurement_error", "models", "purpose"),
                   label="Correcting intakes for day-to-day error in the recalls", serves=ESTIMATE),
             # ── WP17 (AUDIT_REPORT §5): the declared "further adjusted for" model ──
             # secondary 2 (MS1–MS2): as fit 18; the design and the clustering in its imputation model.
             Stage("secondary", 5, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
-                  requires=("models", "adjustment"),
+                  requires=("models", "adjustment", "purpose"),
                   label="Fitting the model further adjusted for the declared covariates",
                   serves=ESTIMATE),
             # scales 1 (MS8): each declared scale's reliability (ω; α labeled customary) and, under
@@ -749,7 +763,7 @@ def build_graph() -> Graph:
             # scales 4 (wave 1b repairs integrated): each copy's correction fit as the fit fits a
             # copy (REPAIR-MI's copy_pipeline: no median fill inside a copy).
             Stage("scales", 4, ("working", "design", "split", "target_info", "cohort"),
-                  SCALES_READS, scales_stage, heavy=True, requires=("scales", "models"),
+                  SCALES_READS, scales_stage, heavy=True, requires=("scales", "models", "purpose"),
                   label="Estimating each scale's reliability", serves=ESTIMATE),
             # usual_intake 1 (the NCI method, V2 definition of done "Dietary, extended"): under the
             # dietary lens with repeated recalls the usual-intake distribution is offered as its own
@@ -760,7 +774,7 @@ def build_graph() -> Graph:
             Stage("usual_intake", 2, ("oriented", "findings", "structure", "working"),
                   USUAL_INTAKE_READS, usual_intake_stage, heavy=True,
                   requires=("lens", "purpose"),
-                  label="Estimating usual-intake distributions"),
+                  label="Estimating usual-intake distributions", serves=ESTIMATE),
             # ── ESTIMAND (MODELING_SEQUENCE §1 rows 2, 11, 12): the exposure's effect as declared ──
             # effects 2 (wave 1b, MS2): the declared models' imputation holds the survey design under
             # the population answer and the clustering, as the fit's does.
@@ -775,7 +789,7 @@ def build_graph() -> Graph:
             # by and whose it is, and the methods text names the surveyed population's.
             Stage("effects", 6, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
-                  requires=("models", "estimand"),
+                  requires=("models", "estimand", "purpose"),
                   label="Reporting the exposure's effect across the declared models",
                   serves=ESTIMATE),
             # ── The causal lane (V2 definition of done §2; turbotab/core/causal.py) ──
@@ -794,7 +808,7 @@ def build_graph() -> Graph:
             # causal 4 (seam guard 2): the artifact names the learner by its new key
             # (`nuisance_forest`, `untuned_boosted_trees`); every number is unchanged.
             Stage("causal", 4, ("working", "split", "target_info"), (*CAUSAL_READS, "causal"),
-                  causal_stage, heavy=True, requires=("causal", "models"),
+                  causal_stage, heavy=True, requires=("causal", "models", "purpose"),
                   label="Estimating the effect in the causal lane", serves=ESTIMATE),
             # ── V2 causal row: a time-varying exposure by g-methods (turbotab/core/time_varying.py) ──
             # It requires the unit answer, which is set only when units repeat: a table of one row
@@ -804,7 +818,7 @@ def build_graph() -> Graph:
             # counted; the MSM's ratio read as a hazard ratio for its E-value.
             Stage("time_varying", 2, ("working", "split", "target_info", "structure"),
                   TIME_VARYING_READS, time_varying_stage, heavy=True,
-                  requires=("estimand", "unit"), label="Following the exposure through time",
+                  requires=("estimand", "unit", "purpose"), label="Following the exposure through time",
                   serves=ESTIMATE),
             # ── Wave 2, EXPLAIN (V2 definition of done §2): the fitted families described ──
             # explain 2 (wave 1b, MS6): the floor quotes the fit's own primary score.
@@ -814,7 +828,7 @@ def build_graph() -> Graph:
             # read, so no floor gates a curve or quotes a score.
             Stage("explain", 4, ("working", "fit", "design", "target_info"),
                   (*EXPLAIN_READS, *ROLE_READS, *WP17_READS), explain_stage, heavy=True,
-                  requires=("explain", "models"),
+                  requires=("explain", "models", "purpose"),
                   label="Explaining each fitted model", serves=ESTIMATE),
             # ── Wave 2, FORM (MODELING_SEQUENCE §1 rows 5 and 7) ──
             # forms: the functional-form question's card, read on the analyzed rows: the declared
@@ -828,7 +842,7 @@ def build_graph() -> Graph:
             # reference on both scales (Knol & VanderWeele 2012); an estimate stage.
             Stage("modification", 1, ("working", "design", "split", "target_info"),
                   MODIFICATION_READS, modification_stage, heavy=True,
-                  requires=("modifications", "models"),
+                  requires=("modifications", "models", "purpose"),
                   label="Estimating the declared effect modification", serves=ESTIMATE),
             # ── Wave 2, EXPLORE (MODELING_SEQUENCE §0 ruling 3; §1 rows 1, 9, 11) ──
             # explore reads the training rows under prediction and every analyzed row under
@@ -849,9 +863,9 @@ def build_graph() -> Graph:
             # shrunk, and a failure said in the record, never the whole stage.
             Stage("evaluation", 3, ("working", "fit", "design", "split", "target_info"),
                   (*EVALUATION_READS, *ROLE_READS, *WP17_READS), evaluation_stage, heavy=True,
-                  requires=("models",),
+                  requires=("models", "purpose"),
                   label="Fitting the benchmark and weighing the models", serves=ESTIMATE),
         ]
-    )
+    ))
 
-__all__ = ["ESTIMATE", "GRAPH_FACTORY", "build_graph"]
+__all__ = ["ESTIMATE", "GRAPH_FACTORY", "build_graph", "estimates_wait_for_the_purpose"]

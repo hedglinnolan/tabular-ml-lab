@@ -1319,6 +1319,7 @@ export function fit(
 
     levels: null,
     withheld: null,
+    withheld_for: null,
     estimand: null,
     batch_figure: null,
     headline_metric: null,

@@ -145,7 +145,7 @@ class Journey:
         self.drive = sd.open_project(client, nhanes(), self.truth)
         self.drive.exposure = EXPOSURE
         self.pid = self.drive.pid
-        self.locked = False  # under inference the first estimate fetched records the lock
+        self.locked = False  # under inference the first estimate fetched presses Fit: the lock
 
     # reading (never records anything)
     def view(self) -> dict[str, Any]:
@@ -166,7 +166,7 @@ class Journey:
         from turbotab.core.estimand import ESTIMATE_STAGES
 
         assert self.locked or stage not in ESTIMATE_STAGES or self.purpose != "inference", (
-            f"fetching {stage} records the plan lock; only the scenario fetches it")
+            f"fetching {stage} presses Fit, which records the plan lock; only the scenario does")
         return self.drive.artifact(stage, timeout=timeout)
 
     def stage(self, stage: str) -> dict[str, Any] | None:

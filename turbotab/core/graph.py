@@ -235,6 +235,10 @@ class StageStatus(BaseModel):
     # The work for the current key (or for a stage it waits on) was cancelled by
     # request: it restarts only through Engine.ensure (POST .../stages/{stage}/run).
     cancelled: bool = False
+    # Why the scheduler holds it (``Engine``'s ``hold``): ``"fit"``, a fit expected to take over
+    # about 2 minutes waits for Fit to be pressed; ``"estimate"``, it waits while that estimate is
+    # measured (RECIPES_AND_TUNING §4.4). None when nothing holds it.
+    held: str | None = None
 
 
 class StageResult(BaseModel):
@@ -600,9 +604,26 @@ class _Project:
         self.held: set[tuple[str, str]] = set()  # cancelled by request: not rerun by itself
         self.known: set[tuple[str, str]] = set()  # artifacts known to exist
         self.has_any: set[str] = set()  # stages with at least one artifact
+        self.waiting: dict[str, str] = {}  # held by the scheduler's hold, and why
         self.published: dict[str, tuple[Any, ...]] = {}
         self.updated_at: dict[str, datetime] = {}
         self.progress_sent: dict[str, float] = {}
+
+
+@dataclass(frozen=True)
+class HoldView:
+    """A project as a hold reads it, under the scheduler's lock: its state, and each stage's
+    artifact at its current key (None when not computed) and whether it is still to come."""
+
+    pid: str
+    state: Any
+    artifact: Callable[[str], Any]
+    pending: Callable[[str], bool]
+
+
+# Whether the scheduler holds a stage that is ready to start, and why (``StageStatus.held``); None
+# when it starts. Called under the project's lock: it must not wait on the engine.
+Hold = Callable[[str, HoldView], "str | None"]
 
 
 class Engine:
@@ -610,6 +631,10 @@ class Engine:
 
     The engine does not own ``runner`` or ``bus``: :meth:`shutdown` stops the
     engine's own threads and cancels its jobs, and the caller shuts the runner.
+
+    ``hold``: the scheduler's hold (RECIPES_AND_TUNING §4.4): a stage it holds is not started
+    until a later refresh finds it released. It is the scheduler's, not a stage requirement, so
+    keys and artifacts stay pure functions of the log; with none, every stage computes live.
     """
 
     def __init__(
@@ -620,6 +645,7 @@ class Engine:
         bus: EventBus,
         project_ctx: Callable[[str], ProjectContext],
         threads: int = 4,
+        hold: Hold | None = None,
     ):
         self.graph_factory = graph_factory
         self.graph = load_graph(graph_factory)
@@ -627,6 +653,7 @@ class Engine:
         self._runner = runner
         self._bus = bus
         self._project_ctx = project_ctx
+        self._hold = hold
         self._pool = ThreadPoolExecutor(threads, thread_name_prefix="turbotab-stage")
         self._lock = threading.Lock()
         self._projects: dict[str, _Project] = {}
@@ -804,6 +831,7 @@ class Engine:
     def _schedule(self, p: _Project) -> None:
         if self._closed or p.ctx is None:
             return
+        p.waiting = {}
         for stage in self._order:
             key = p.keys.get(stage.name)
             if key is None or stage.name in p.runs:
@@ -813,7 +841,44 @@ class Engine:
             if self._has(p, stage.name, key):
                 continue
             if all(self._has(p, dep, p.keys.get(dep)) for dep in stage.deps):
+                why = self._held(p, stage.name)
+                if why is not None:
+                    p.waiting[stage.name] = why
+                    continue
                 self._start(p, stage, key)
+
+    def _held(self, p: _Project, stage: str) -> str | None:
+        """Why the hold keeps ``stage`` from starting now, or None. A hold that fails holds
+        nothing: computing stays live, and the failure is logged."""
+        if self._hold is None:
+            return None
+        assert p.ctx is not None
+        cache_root = p.ctx.cache_root
+
+        def artifact(name: str) -> Any:
+            key = p.keys.get(name)
+            if key is None or not self._has(p, name, key):
+                return None
+            return read_artifact(cache_root, name, key, public=True)
+
+        def pending(name: str) -> bool:
+            """Computing, or bound to be: not blocked, failed or stopped, nor waiting on a stage
+            that is."""
+            key = p.keys.get(name)
+            if key is None or self._has(p, name, key):
+                return False
+            if name in p.runs:
+                return True
+            if (name, key) in p.errors or (name, key) in p.held:
+                return False
+            return all(self._has(p, dep, p.keys.get(dep)) or pending(dep)
+                       for dep in self.graph[name].deps)
+
+        try:
+            return self._hold(stage, HoldView(p.pid, p.ctx.state, artifact, pending))
+        except Exception:  # noqa: BLE001 - a hold that cannot decide holds nothing
+            log.exception("the hold could not decide on %s for project %s", stage, p.pid)
+            return None
 
     def _start(self, p: _Project, stage: Stage, key: str) -> None:
         ctx = p.ctx
@@ -955,6 +1020,7 @@ class Engine:
         return StageStatus(
             status="stale" if self._has_older(p, name, key) else "idle",
             cancelled=cancelled,
+            held=p.waiting.get(name),
             **common,
         )
 

@@ -56,6 +56,7 @@ from turbotab.core.tests.acceptance.test_wp16_seal_guards import (accepted, assi
                                                                    post, records, refused,
                                                                    sealed_rows, writer)
 from turbotab.server.tests.conftest import SAMPLES, declare, make_client, prepare, wait_for
+from turbotab.core.tests.acceptance.server_drive import served
 
 CLINICAL = SAMPLES / "clinical_risk.csv"
 SPLIT = {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5}
@@ -78,7 +79,7 @@ def view_of(client, pid: str) -> dict:
 
 def served_fit(client, pid: str) -> dict:
     wait_for(client, pid, {"fit": "fresh"}, timeout=240)
-    return client.get(f"/api/projects/{pid}/stages/fit").json()["artifact"]
+    return served(client, pid, "fit")
 
 
 def disk_scores(client, pid: str) -> dict[str, dict[str, float]]:
@@ -395,7 +396,8 @@ def test_4_changes_after_the_first_coefficient_is_shown_are_recorded_after_the_e
 
     Reference: the record's own order. Every decision before the first coefficient is served to a
     client is unmarked, including one made after the fit was computed but before it was displayed;
-    serving it records the lock once, with the plan then in force and its SHA-256 (recomputed here
+    pressing Fit, before which none is served (P0.8), records the lock once, with the plan then in
+    force and its SHA-256 (recomputed here
     with hashlib); every later decision is marked ``after_estimates`` and its sentence begins
     "After the estimates were seen". The four changes test 4 names (the exposure, the adjustment
     set, the exclusions and the missing-data plan) and a transformation (Gelman & Loken's forks) are
@@ -432,7 +434,7 @@ def test_4_changes_after_the_first_coefficient_is_shown_are_recorded_after_the_e
     assert not any(r["after_estimates"] for r in records(client, pid))
     assert "lock_plan" not in [r["decision"]["kind"] for r in records(client, pid)]
 
-    fit = served_fit(client, pid)  # the first coefficient is shown
+    fit = served_fit(client, pid)  # Fit pressed: the first coefficient is shown
     assert any(c["feature"] == "fiber_g" for c in fit["models"][0]["coefficients"])
     log = records(client, pid)
     lock = log[-1]

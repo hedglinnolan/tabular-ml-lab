@@ -511,9 +511,9 @@ RELATIONSHIP_DELTA = 0.2
 
 def estimates_unseen(state: Any) -> bool:
     """No outcome-model estimate may appear (calm/FOUNDATION §5 rule 6) until the purpose is
-    answered as prediction or the analysis plan is locked. Under inference the plan locks the
-    first time an estimate is displayed (:mod:`turbotab.core.plan_lock`), so before then a preview
-    that showed one would be its first sight, while the plan can still be changed. An unanswered
+    answered as prediction or the analysis plan is locked. Under inference the plan locks when Fit
+    is pressed, and no estimate is served before it (:mod:`turbotab.core.fit_press`), so before
+    then a preview that showed one would be its first sight, while the plan can still be changed. An unanswered
     purpose is the strictest case: it may yet be answered as inference, and an estimate seen now
     would be seen before a plan that cannot then be locked as declared before any was."""
     return getattr(state, "purpose", None) != "prediction" and not getattr(state, "plan_locked", None)
@@ -966,9 +966,9 @@ def registered_kinds() -> set[str]:
 # on one in both.
 UNPREVIEWED: dict[str, str] = {
     "lock_plan": (
-        "Recorded by the server the first time an estimate is displayed, and refused when a client "
-        "posts it, so it is never an option to preview; it changes no number, only how later "
-        "records are marked."),
+        "Recorded by the server when Fit is pressed, before any estimate is displayed, and refused "
+        "when a client posts it, so it is never an option to preview; it changes no number, only "
+        "how later records are marked."),
     "reseal": (
         "Withdraws the opening of the held-out rows: their scores are withheld again. No row, column "
         "or value changes until a new split draws the rows, and that answer (set_split) previews "

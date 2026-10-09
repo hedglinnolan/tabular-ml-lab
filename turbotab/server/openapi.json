@@ -729,6 +729,69 @@
         }
       }
     },
+    "/api/projects/{pid}/fit": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Press Fit",
+        "description": "Fit, pressed on the analysis flowchart (SIZING P0.8; RECIPES_AND_TUNING §4.4): a job\ncommand, not a decision. It releases a fit the scheduler holds (one expected to take over\nabout 2 minutes) and opens Results. Under Estimate and Describe it locks the analysis plan, the\nsystem's ``lock_plan`` record, once; no estimate is served before it. Under Predict nothing\nlocks, and no score or estimate is served before it. Refused while nothing is chosen to fit or\na question the estimates rest on is open. Returns the lock as the quest log shows it.",
+        "operationId": "press_fit_api_projects__pid__fit_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitLock"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Nothing to fit yet, or a question the estimates rest on is open",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{pid}/methods": {
       "get": {
         "tags": [
@@ -6119,6 +6182,89 @@
         ],
         "title": "FitLine"
       },
+      "FitLock": {
+        "properties": {
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "locks": {
+            "type": "boolean",
+            "title": "Locks"
+          },
+          "locked": {
+            "type": "boolean",
+            "title": "Locked"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "pressed": {
+            "type": "boolean",
+            "title": "Pressed"
+          },
+          "held": {
+            "type": "boolean",
+            "title": "Held"
+          },
+          "estimate_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate Seconds"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "purpose",
+          "locks",
+          "locked",
+          "at",
+          "sha256",
+          "pressed",
+          "held",
+          "estimate_seconds",
+          "reason"
+        ],
+        "title": "FitLock",
+        "description": "Fit and the plan's lock, as the quest log shows them (FOUNDATION §7: \"Plan fixed at 14:02\",\nwith the plan's SHA-256 as its quiet label)."
+      },
       "FollowUpSpec": {
         "properties": {
           "time_column": {
@@ -8282,7 +8428,7 @@
           "kind"
         ],
         "title": "LockPlan",
-        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when inference estimates are first displayed (or by the user, before\nthat): the plan in force then is what was declared in the software before any estimate was\ndisplayed, and every later decision is marked as made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone."
+        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference\nestimates were first displayed), never posted by a client: the plan in force then is what was\ndeclared in the software before any estimate was displayed, and every later decision is marked\nas made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone."
       },
       "LockPlan-Output": {
         "properties": {
@@ -8358,7 +8504,7 @@
           "seen_at"
         ],
         "title": "LockPlan",
-        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when inference estimates are first displayed (or by the user, before\nthat): the plan in force then is what was declared in the software before any estimate was\ndisplayed, and every later decision is marked as made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone."
+        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference\nestimates were first displayed), never posted by a client: the plan in force then is what was\ndeclared in the software before any estimate was displayed, and every later decision is marked\nas made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone."
       },
       "Mark": {
         "properties": {
@@ -10348,7 +10494,7 @@
           "version": {
             "type": "integer",
             "title": "Version",
-            "default": 1
+            "default": 2
           },
           "stages": {
             "items": {
@@ -10363,13 +10509,24 @@
             },
             "type": "object",
             "title": "Kinds"
+          },
+          "fit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FitLock"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
         "required": [
           "version",
           "stages",
-          "kinds"
+          "kinds",
+          "fit"
         ],
         "title": "QuestLog",
         "description": "The seven stages, each with its lines, progress and reopen reasons; ``kinds`` places every\ndecision kind (a methods sentence's \"change\" link opens its stage, disagreement 19; a revert\nsits with the record it undoes)."
@@ -17064,6 +17221,17 @@
             "type": "boolean",
             "title": "Cancelled",
             "default": false
+          },
+          "held": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held"
           }
         },
         "type": "object",
@@ -17077,7 +17245,8 @@
           "job_id",
           "progress",
           "updated_at",
-          "cancelled"
+          "cancelled",
+          "held"
         ],
         "title": "StageStatus"
       },
@@ -25806,6 +25975,18 @@
             "default": null,
             "title": "Withheld"
           },
+          "withheld_for": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Withheld For"
+          },
           "estimand": {
             "anyOf": [
               {
@@ -25969,6 +26150,7 @@
           "levels",
           "batch_figure",
           "withheld",
+          "withheld_for",
           "estimand",
           "headline_metric",
           "headline_label",
@@ -28506,7 +28688,7 @@
       },
       "LockPlan": {
         "additionalProperties": false,
-        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when inference estimates are first displayed (or by the user, before\nthat): the plan in force then is what was declared in the software before any estimate was\ndisplayed, and every later decision is marked as made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone.",
+        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference\nestimates were first displayed), never posted by a client: the plan in force then is what was\ndeclared in the software before any estimate was displayed, and every later decision is marked\nas made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone.",
         "properties": {
           "kind": {
             "const": "lock_plan",

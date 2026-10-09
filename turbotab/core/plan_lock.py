@@ -9,14 +9,15 @@ problem is there can be a large number of potential comparisons when the details
 are highly contingent on data". The forks they name (§1.2): "choices of control variables in a
 regression, transformations, and data coding and excluding rules".
 
-So the plan is locked the first time inference estimates are displayed:
+So the plan is locked before any inference estimate is displayed:
 
-* **When.** The server records ``lock_plan`` the first time a client is served an estimate under
-  inference: a coefficient or an inference table in the fit, a substitution curve, a sensitivity
-  analysis's estimate, a calibrated one or the "further adjusted for" model's
-  (:func:`shows_estimates`). A refusal, or an estimate withheld until the exposure, its effect and
-  the adjustment set are answered (WP17), shows nothing and locks nothing. A user may also record
-  it earlier. It is recorded once and never undone.
+* **When.** The server records ``lock_plan`` when Fit is pressed (SIZING P0.8; ``fit_press``),
+  once the questions the estimates rest on are answered (WP17); no estimate stage is served before
+  it (a coefficient or an inference table in the fit, a substitution curve, a sensitivity
+  analysis's estimate, a calibrated one, the "further adjusted for" model's, Describe's
+  usual-intake distribution: :func:`shows_estimates`). A client never posts it. It is recorded once
+  and never undone. Logs written before P0.8 recorded it the first time an estimate was served,
+  which was likewise before that estimate was displayed.
 * **What.** The plan is every slot the estimates read, as it stood (:func:`plan_of`): the outcome,
   the exposures and the adjustment set (the roles), the exclusions, the missing-data plan, the
   energy model, the exposure forms, the families, the secondaries, and the data coding (repairs,
@@ -155,7 +156,7 @@ def plan_text(content: Mapping[str, Any], sha: str) -> str:
     later = len(content.get("after_estimates") or [])
     if content.get("status") == "locked":
         lead = (f"This is the analysis plan as declared in TurboTab before any estimate was "
-                f"displayed; it was locked when the first estimate was shown, on {when}.")
+                f"displayed; it was locked on {when}, before the first estimate was shown.")
         tail = (f" {later:,} decision{'s were' if later != 1 else ' was'} made after the estimates "
                 f"were seen, listed with it and marked so in the methods." if later else
                 " No decision has been made since the estimates were seen.")
@@ -237,6 +238,9 @@ def shows_estimates(stage: str, artifact: Any) -> bool:
     if stage == "evaluation":  # wave 2, EXPLORE: under inference, the selection sensitivity's tests
         estimates = artifact.get("estimates")
         return isinstance(estimates, Mapping) and bool(estimates.get("path"))
+    if stage == "usual_intake":  # Describe: a usual-intake distribution, its mean or percentiles
+        return any(a.get("mean") is not None or a.get("percentiles") or a.get("share") is not None
+                   for a in artifact.get("analyses") or [] if isinstance(a, Mapping))
     return False
 
 
@@ -271,8 +275,8 @@ def _locked_once_under_inference(decision: Any, ctx: Any) -> None:
     if state.plan_locked:
         raise Refusal(
             "plan_already_locked",
-            "The analysis plan was locked when the estimates were first displayed; every change "
-            "since is marked as made after the estimates were seen.",
+            "The analysis plan is already locked, before the estimates were displayed; every "
+            "change since is marked as made after the estimates were seen.",
         )
     if state.purpose != "inference":
         raise Refusal(

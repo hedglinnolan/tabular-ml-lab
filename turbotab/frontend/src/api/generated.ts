@@ -174,6 +174,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/fit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Press Fit
+         * @description Fit, pressed on the analysis flowchart (SIZING P0.8; RECIPES_AND_TUNING §4.4): a job
+         *     command, not a decision. It releases a fit the scheduler holds (one expected to take over
+         *     about 2 minutes) and opens Results. Under Estimate and Describe it locks the analysis plan, the
+         *     system's ``lock_plan`` record, once; no estimate is served before it. Under Predict nothing
+         *     locks, and no score or estimate is served before it. Refused while nothing is chosen to fit or
+         *     a question the estimates rest on is open. Returns the lock as the quest log shows it.
+         */
+        post: operations["press_fit_api_projects__pid__fit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/methods": {
         parameters: {
             query?: never;
@@ -1912,6 +1937,31 @@ export interface components {
             intercept: number;
         };
         /**
+         * FitLock
+         * @description Fit and the plan's lock, as the quest log shows them (FOUNDATION §7: "Plan fixed at 14:02",
+         *     with the plan's SHA-256 as its quiet label).
+         */
+        FitLock: {
+            /** Purpose */
+            purpose: string | null;
+            /** Locks */
+            locks: boolean;
+            /** Locked */
+            locked: boolean;
+            /** At */
+            at: string | null;
+            /** Sha256 */
+            sha256: string | null;
+            /** Pressed */
+            pressed: boolean;
+            /** Held */
+            held: boolean;
+            /** Estimate Seconds */
+            estimate_seconds: number | null;
+            /** Reason */
+            reason: string;
+        };
+        /**
          * FollowUpSpec
          * @description How long each row of a time-to-event outcome was observed (WP12,
          *     ``turbotab/core/models/survival.py``): at risk from ``entry`` (0 when not named) to ``time``,
@@ -2715,9 +2765,10 @@ export interface components {
          * LockPlan
          * @description The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).
          *
-         *     Recorded by the server when inference estimates are first displayed (or by the user, before
-         *     that): the plan in force then is what was declared in the software before any estimate was
-         *     displayed, and every later decision is marked as made after the estimates were seen. ``plan``
+         *     Recorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference
+         *     estimates were first displayed), never posted by a client: the plan in force then is what was
+         *     declared in the software before any estimate was displayed, and every later decision is marked
+         *     as made after the estimates were seen. ``plan``
          *     (every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the
          *     server. The lock is never undone.
          */
@@ -2748,9 +2799,10 @@ export interface components {
          * LockPlan
          * @description The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).
          *
-         *     Recorded by the server when inference estimates are first displayed (or by the user, before
-         *     that): the plan in force then is what was declared in the software before any estimate was
-         *     displayed, and every later decision is marked as made after the estimates were seen. ``plan``
+         *     Recorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference
+         *     estimates were first displayed), never posted by a client: the plan in force then is what was
+         *     declared in the software before any estimate was displayed, and every later decision is marked
+         *     as made after the estimates were seen. ``plan``
          *     (every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the
          *     server. The lock is never undone.
          */
@@ -3363,7 +3415,7 @@ export interface components {
         QuestLog: {
             /**
              * Version
-             * @default 1
+             * @default 2
              */
             version: number;
             /** Stages */
@@ -3372,6 +3424,7 @@ export interface components {
             kinds: {
                 [key: string]: string;
             };
+            fit: components["schemas"]["FitLock"] | null;
         };
         /** QuestStage */
         QuestStage: {
@@ -6259,6 +6312,8 @@ export interface components {
              * @default false
              */
             cancelled: boolean;
+            /** Held */
+            held: string | null;
         };
         /** SubstitutionSpec */
         SubstitutionSpec: {
@@ -9629,6 +9684,11 @@ export interface components {
              * @default null
              */
             withheld: string | null;
+            /**
+             * Withheld For
+             * @default null
+             */
+            withheld_for: string | null;
             /** @default null */
             estimand: components["schemas"]["EstimandAnnotation"] | null;
             /**
@@ -10638,9 +10698,10 @@ export interface components {
          * LockPlan
          * @description The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).
          *
-         *     Recorded by the server when inference estimates are first displayed (or by the user, before
-         *     that): the plan in force then is what was declared in the software before any estimate was
-         *     displayed, and every later decision is marked as made after the estimates were seen. ``plan``
+         *     Recorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference
+         *     estimates were first displayed), never posted by a client: the plan in force then is what was
+         *     declared in the software before any estimate was displayed, and every later decision is marked
+         *     as made after the estimates were seen. ``plan``
          *     (every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the
          *     server. The lock is never undone.
          */
@@ -15874,6 +15935,55 @@ export interface operations {
             };
             /** @description No such project */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    press_fit_api_projects__pid__fit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitLock"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Nothing to fit yet, or a question the estimates rest on is open */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

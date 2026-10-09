@@ -75,6 +75,10 @@ class Api:
         return self.c.get(f"/api/projects/{pid}").json()
 
     def stage(self, pid: str, name: str, timeout: float = 900) -> dict[str, Any]:
+        from turbotab.core.estimand import ESTIMATE_STAGES
+
+        if name in ESTIMATE_STAGES:  # served only after Fit (P0.8): pressed, as Results opens
+            self.c.post(f"/api/projects/{pid}/fit")
         end = time.monotonic() + timeout
         while True:
             st = self.view(pid)["stages"][name]

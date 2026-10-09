@@ -100,8 +100,8 @@ def test_7_the_text_says_what_was_declared_and_never_that_it_was_registered(tmp_
         assert "it is not a registration with any outside registry" in doc.text
     locked = plan_lock.plan_document(_log(tmp_path / "again").records())
     assert locked.text.startswith("This is the analysis plan as declared in TurboTab before any "
-                                  "estimate was displayed; it was locked when the first estimate "
-                                  "was shown, on ")
+                                  "estimate was displayed; it was locked on ")
+    assert ", before the first estimate was shown." in locked.text
     assert locked.text.endswith("1 decision was made after the estimates were seen, listed with "
                                 "it and marked so in the methods.")
 

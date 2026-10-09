@@ -20,6 +20,7 @@ const status = (s: StageStatus["status"], extra: Partial<StageStatus> = {}): Sta
   progress: null,
   updated_at: "2026-10-08T00:00:00Z",
   cancelled: false,
+  held: null,
   ...extra,
 });
 

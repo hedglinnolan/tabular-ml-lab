@@ -24,6 +24,7 @@ import type {
   CodebookPreview,
   CodebookRequest,
   FamilyInfo,
+  FitLock,
   JoinPreview,
   JoinPreviewRequest,
   MethodsText,
@@ -247,6 +248,10 @@ export const api = {
   /** The analysis plan for registration: canonical JSON with its SHA-256 (MODELING_SEQUENCE §1). */
   plan: (pid: string, signal?: AbortSignal) =>
     request<PlanExport>(`/projects/${enc(pid)}/plan`, { signal }),
+
+  /** Fit, pressed (SIZING P0.8): a job command. Under Estimate it locks the plan; until it is
+   * pressed no estimate (and, under Predict, no score) is served. */
+  pressFit: (pid: string) => request<FitLock>(`/projects/${enc(pid)}/fit`, { method: "POST" }),
 
   /** Every model family the engine can fit, with what it needs and assumes. */
   models: (signal?: AbortSignal) => request<FamilyInfo[]>("/models", { signal }),

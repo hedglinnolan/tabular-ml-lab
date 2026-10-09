@@ -148,10 +148,11 @@ def test_the_estimate_stages_are_the_ones_that_declare_they_serve_one():
 
     declared = [s.name for s in build_graph().stages() if s.serves == ESTIMATE]
     assert list(ESTIMATE_STAGES) == declared and LOCKED == ESTIMATE_STAGES
-    # CROSSWALK "Engine stages and quest stages": the twelve shown in Results, after Fit.
+    # CROSSWALK "Engine stages and quest stages": the thirteen shown in Results, after Fit, with
+    # Describe's usual-intake distribution ("Describe has a gate and a lock"; P0.8).
     assert set(declared) == {"fit", "substitution", "sensitivity", "calibration", "secondary",
                              "scales", "effects", "causal", "time_varying", "modification",
-                             "explain", "evaluation"}
+                             "explain", "evaluation", "usual_intake"}
 
 
 def test_every_noticing_in_the_catalogs_sits_in_one_stage_with_an_objective():
@@ -460,6 +461,42 @@ def test_results_stays_reached_after_the_fit_and_says_why_it_dropped_back():
         assert results.reopened == [quest.Reopened(
             changed_in="whos_in", decision_id="r8", kind="set_exclusions", results=["fit"],
             sentence="Your change to Who's in made 1 result in Results out of date.")]
+
+
+def test_results_opens_when_fit_is_pressed_not_when_an_estimate_is_computed():
+    # P0.8 (FOUNDATION §7): under Estimate, Results opens with the lock Fit records; a fit computed
+    # live before the press opens nothing. The log carries the lock as Fit reports it.
+    from turbotab.core.fit_press import fit_lock
+
+    state, records, steps = _after_the_fit(EXCLUSION)
+    fresh = {"fit": {"status": "fresh"}, "usual_intake": {"status": "fresh"}}
+    unlocked = fit_lock(state, records, pressed=False, held=False, estimate=None)
+    log = quest.quest_log(state, records, steps, fresh, fit=unlocked)
+    assert [stage(log, k).reached for k in SEVEN] == [True] * 5 + [False] * 2
+    assert log.fit == unlocked and not log.fit.locked
+    lock = record(9, {"kind": "lock_plan", "plan": {"purpose": "inference"}, "digest": "a" * 64})
+    locked_records = [*records, lock]
+    locked = decisions.fold(locked_records)
+    report = fit_lock(locked, locked_records, pressed=True, held=False, estimate=None)
+    log = quest.quest_log(locked, locked_records, steps, {"fit": {"status": "running"}},
+                          fit=report)
+    assert stage(log, "results").reached and stage(log, "writeup").reached
+    assert log.fit.locked and log.fit.sha256 == "a" * 64 and log.fit.at == lock.at
+    # Under Predict, the press for this outcome opens it; with no purpose nothing does.
+    predict = state.model_copy(update={"purpose": "prediction"})
+    for pressed, reached in ((False, False), (True, True)):
+        log = quest.quest_log(predict, records, steps, fresh,
+                              fit=fit_lock(predict, records, pressed=pressed, held=False,
+                                           estimate=None))
+        assert stage(log, "results").reached is reached, pressed
+    none = state.model_copy(update={"purpose": None})
+    log = quest.quest_log(none, records, steps, fresh,
+                          fit=fit_lock(none, records, pressed=True, held=False, estimate=None))
+    assert not stage(log, "results").reached
+    # Without what Fit says, the usual-intake offer (computed on the lens and goal alone) opens
+    # nothing, though it is declared an estimate stage.
+    log = quest.quest_log(state, records, steps, {"usual_intake": {"status": "fresh"}})
+    assert not stage(log, "results").reached
 
 
 def test_a_withdrawn_analysis_is_not_out_of_date():

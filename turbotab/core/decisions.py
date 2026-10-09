@@ -1784,9 +1784,10 @@ class Reseal(_DecisionModel):
 class LockPlan(_DecisionModel):
     """The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).
 
-    Recorded by the server when inference estimates are first displayed (or by the user, before
-    that): the plan in force then is what was declared in the software before any estimate was
-    displayed, and every later decision is marked as made after the estimates were seen. ``plan``
+    Recorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference
+    estimates were first displayed), never posted by a client: the plan in force then is what was
+    declared in the software before any estimate was displayed, and every later decision is marked
+    as made after the estimates were seen. ``plan``
     (every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the
     server. The lock is never undone.
     """
@@ -2068,7 +2069,8 @@ class ProjectState(BaseModel):
     # Whether the current outcome's seal is open: its latest opening stands and no re-seal came
     # after it (audit WP16, RO-05). None for a new outcome's seal, or after a re-seal.
     seal_opened: bool | None = None
-    # The inference analysis plan was locked when its estimates were first displayed (RO-12).
+    # The inference analysis plan was locked, when Fit was pressed, before its estimates were
+    # displayed (RO-12; P0.8).
     plan_locked: bool | None = None
     findings: dict[str, FindingDisposition] | None = None  # finding id -> its disposition
     # WP1 (audit §5): what values mean

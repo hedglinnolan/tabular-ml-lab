@@ -621,47 +621,49 @@ def refusals_in(artifact: Any) -> list[tuple[str, list[dict[str, Any]]]]:
 
 
 def export(run: Run) -> Any:
-    """The bundle, taking the export's own ways forward: under inference the first estimate shown
-    locks the plan (the effects served); under prediction the final model declared and the
+    """The bundle, taking the export's own ways forward: under inference Fit pressed, which locks
+    the plan (SIZING P0.8); under prediction Fit pressed, and the final model declared and the
     held-out rows opened (its first exit)."""
     d = run.drive
     url = f"/api/projects/{run.pid}/export"
     r = d.c.get(url)
+    pressed = False
     for _ in range(6):
         if r.status_code == 200:
             return r
         error = (r.json() or {}).get("error") or {}
         code = error.get("code")
-        if code == "plan_open" and d.view()["state"].get("purpose") == "inference":
-            from turbotab.core.estimand import ESTIMATE_STAGES
+        if not pressed and (code in ("plan_open", "estimates_withheld")
+                            and any("Press Fit" in str(e.get("label")) for e in
+                                    error.get("exits") or [])):
+            pressed = True
+            taken = d.c.post(f"/api/projects/{run.pid}/fit")
+            run.note(f"the export waited for Fit: pressed ({taken.status_code})")
+            if taken.status_code == 200 and d.view()["state"].get("purpose") == "inference":
+                from turbotab.core.estimand import ESTIMATE_STAGES
+                from turbotab.core.plan_lock import shows_estimates
 
-            view = d.view()
-            fresh = [s for s in ("effects", *ESTIMATE_STAGES)
-                     if view["stages"].get(s, {}).get("status") == "fresh"]
-            shown, refusals = [], []
-            for stage in dict.fromkeys(fresh):
-                served = d.c.get(f"/api/projects/{run.pid}/stages/{stage}").json() or {}
-                shown.append(stage)
-                refusals += refusals_in(served.get("artifact"))
-                if d.view()["state"].get("plan_locked"):
-                    break
-            run.note(f"the export waited for the plan lock: the estimates were shown "
-                     f"({', '.join(shown) or 'none fresh'}), and the first shown locks it")
-            if not d.view()["state"].get("plan_locked") and refusals:
-                # No estimate to show: a result refused inside its artifact, with its ways forward
-                # (a family that cannot pool imputations). Its ways forward are tried in order
-                # until one leaves every result computed.
-                message, exits = refusals[0]
-                run.note(f"no estimate was shown: the result was refused inside its artifact "
-                         f"(“{message}”)")
-                for e in exits:
-                    run.source = f"the result's own refusal, its way forward “{e['label']}”"
-                    post_answer(run, e["decision"])
-                    if wait_results(run):
-                        run.note(f"took the result's way forward “{e['label']}”")
-                        break
-                    run.note(f"the way forward “{e['label']}” left a result uncomputed; trying "
-                             f"the next")
+                view = d.view()
+                refusals, shown = [], False
+                for stage in ("effects", *ESTIMATE_STAGES):
+                    if view["stages"].get(stage, {}).get("status") == "fresh":
+                        served = d.c.get(f"/api/projects/{run.pid}/stages/{stage}").json() or {}
+                        refusals += refusals_in(served.get("artifact"))
+                        shown = shown or shows_estimates(stage, served.get("artifact"))
+                if refusals and not shown:
+                    # No estimate to show: a result refused inside its artifact, with its ways
+                    # forward (a family that cannot pool imputations), tried in order until one
+                    # leaves every result computed.
+                    message, exits = refusals[0]
+                    run.note(f"a result was refused inside its artifact (“{message}”)")
+                    for e in exits:
+                        run.source = f"the result's own refusal, its way forward “{e['label']}”"
+                        post_answer(run, e["decision"])
+                        if wait_results(run):
+                            run.note(f"took the result's way forward “{e['label']}”")
+                            break
+                        run.note(f"the way forward “{e['label']}” left a result uncomputed; "
+                                 f"trying the next")
         elif code == "plan_open" and any(e.get("decision") for e in error.get("exits") or []):
             chosen = next(e for e in error["exits"] if e.get("decision"))
             run.note(f"the export waited for the final model: took “{chosen['label']}”")

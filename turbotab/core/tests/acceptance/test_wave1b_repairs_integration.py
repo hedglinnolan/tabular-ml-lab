@@ -34,6 +34,7 @@ import pytest
 
 from turbotab.core import decisions as d
 from turbotab.core.tests.acceptance import estimand_fixtures as ef
+from turbotab.core.tests.acceptance.server_drive import served
 
 
 def _rec(i: int, decision: Any) -> d.DecisionRecord:
@@ -236,7 +237,7 @@ def test_an_explanation_served_before_the_fit_is_a_score_seen(client, tmp_path):
     wait_for(client, pid, {"explain": "fresh"}, timeout=600)
     folder = client.app.state.service.workspace.project_dir(pid)
     assert read_seen(folder) == {}  # nothing served yet
-    explained = client.get(f"/api/projects/{pid}/stages/explain").json()["artifact"]
+    explained = served(client, pid, "explain")
     floors = {f["family"]: f["floor"] for f in explained["families"]}
     assert set(floors) == {"linear", "elastic_net"}
     assert all(f["model"] is not None and f["metric"] == "Log loss" for f in floors.values())

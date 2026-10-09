@@ -17,6 +17,7 @@ from typing import Any, Iterator
 import pytest
 
 from turbotab.core import seal
+from turbotab.core.tests.acceptance.server_drive import press_fit
 from turbotab.server.service import ProjectService
 from turbotab.server.tests.conftest import DIETARY, answer_settled, open_by_path, prepare, wait_for
 
@@ -226,6 +227,7 @@ def test_no_held_out_score_reaches_any_response_until_the_seal_is_opened(client,
     assert refused.status_code == 409  # no fit yet: nothing to open
     decide(client, pid, {"kind": "select_models", "models": FAMILIES})
     wait_for(client, pid, {"fit": "fresh", "split": "fresh", "seal_plan": "fresh"}, timeout=180)
+    assert press_fit(client, pid)  # Results opens on Fit (P0.8); the held-out rows stay sealed
     key = service.engine.status(pid)["fit"].key
     sealed = seal.read_sealed_scores(service.workspace.cache_dir(pid), key)
     assert set(sealed) == set(FAMILIES)
@@ -296,6 +298,7 @@ def test_a_change_after_the_opening_is_marked_post_seal_and_the_results_say_so(c
     pid = sealed_project(client)
     decide(client, pid, {"kind": "select_models", "models": ["linear", "boosted_trees"]})
     wait_for(client, pid, {"fit": "fresh"}, timeout=180)
+    assert press_fit(client, pid)  # Results opens on Fit (P0.8)
     # M2_CONTRACT §12.1: once the fit is fresh, opening the seal is the Router's last question
     prepare(client, pid, {"kind": "open_seal", "family": "linear"})
     wait_for(client, pid, {"fit": "fresh"}, timeout=180)
