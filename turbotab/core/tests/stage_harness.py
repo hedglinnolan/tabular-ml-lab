@@ -28,15 +28,45 @@ def _main_checkout(repo: Path) -> Path:
     return repo
 
 
+NHANES_GZ = Path(__file__).resolve().parent / "fixtures" / "nhanes.csv.gz"
+NHANES_NAME = "_tt_tmp_nhanes.csv"  # the export's own name, which truths.FIXTURE_TRUTHS keys on
+NHANES_SHA256 = "dbb2df487d50de26a223c9b7f9f214b4a55b0399db72b2047e729920d04a15da"  # decompressed
+
+
+def nhanes_fixture() -> Path:
+    """The tracked fixture, decompressed once to a cache keyed by its bytes, under the export's
+    own name (so names, uploads and captures read as they did). It is written to a temporary name
+    and moved into place, so parallel workers never read half a file."""
+    import gzip
+    import hashlib
+    import os
+    import shutil
+    import tempfile
+
+    key = hashlib.sha256(NHANES_GZ.read_bytes()).hexdigest()[:16]
+    folder = Path(tempfile.gettempdir()) / f"turbotab-nhanes-{key}"
+    out = folder / NHANES_NAME
+    if not out.is_file():
+        folder.mkdir(parents=True, exist_ok=True)
+        fd, part = tempfile.mkstemp(dir=folder, suffix=".part")
+        with os.fdopen(fd, "wb") as dst, gzip.open(NHANES_GZ, "rb") as src:
+            shutil.copyfileobj(src, dst)
+        os.replace(part, out)
+    return out
+
+
 def _nhanes() -> Path:
-    """The real NHANES export (untracked): $TURBOTAB_NHANES_CSV, this checkout, or the main one."""
+    """The real NHANES export: $TURBOTAB_NHANES_CSV, else the tracked fixture, else the untracked
+    file in this checkout or the main one."""
     import os
 
     given = os.environ.get("TURBOTAB_NHANES_CSV")
     if given:
         return Path(given)
-    here = REPO / "_tt_tmp_nhanes.csv"
-    return here if here.is_file() else _main_checkout(REPO) / "_tt_tmp_nhanes.csv"
+    if NHANES_GZ.is_file():
+        return nhanes_fixture()
+    here = REPO / NHANES_NAME
+    return here if here.is_file() else _main_checkout(REPO) / NHANES_NAME
 
 
 NHANES = _nhanes()

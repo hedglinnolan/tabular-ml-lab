@@ -1193,7 +1193,7 @@ Each journey ran headlessly through the real server (the acceptance harness's dr
 
 ### Prediction: How well do diet and body measures predict fasting glucose?
 
-- **Fixture:** `_tt_tmp_nhanes.csv (the NHANES export, untracked)`. V2_DEFINITION_OF_DONE §1: the NHANES export runs the dietary and clinical reference journeys.
+- **Fixture:** `_tt_tmp_nhanes.csv (the NHANES export, tracked gzipped as turbotab/core/tests/fixtures/nhanes.csv.gz)`. V2_DEFINITION_OF_DONE §1: the NHANES export runs the dietary and clinical reference journeys.
 - **Lens declared:** dietary; **outcome:** `glucose`.
 - **Run:** at commit `2ba3c5727a`, with local changes on 2026-10-05, 467 s on 2 workers; engine 2.0.0.dev0.
 
@@ -1352,7 +1352,7 @@ Collins GS, Moons KGM, Dhiman P, et al. TRIPOD+AI statement: updated guidance fo
 
 ### Inference: Is a higher sugar intake, at the same total energy, associated with fasting glucose?
 
-- **Fixture:** `_tt_tmp_nhanes.csv (the NHANES export, untracked)`. V2_DEFINITION_OF_DONE §1: the NHANES export runs the dietary and clinical reference journeys.
+- **Fixture:** `_tt_tmp_nhanes.csv (the NHANES export, tracked gzipped as turbotab/core/tests/fixtures/nhanes.csv.gz)`. V2_DEFINITION_OF_DONE §1: the NHANES export runs the dietary and clinical reference journeys.
 - **Lens declared:** dietary; **outcome:** `glucose`; **exposure:** `sugar`.
 - **Run:** at commit `2ba3c5727a`, with local changes on 2026-10-05, 17 s on 2 workers; engine 2.0.0.dev0.
 

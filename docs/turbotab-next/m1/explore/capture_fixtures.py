@@ -56,8 +56,8 @@ from turbotab.core.methods.energy import (  # noqa: E402
     METHODS, EnergyAdjuster, applicable_methods, describe_method, nutrient_role,
 )
 from turbotab.core.stages.findings import findings_stage  # noqa: E402
+from turbotab.core.tests.stage_harness import NHANES as DEFAULT_NHANES  # noqa: E402
 
-DEFAULT_NHANES = Path("/Users/nhedglin/tabular-ml-lab/_tt_tmp_nhanes.csv")
 GENOMICS = ROOT / "turbotab/sample_data/genomics_expression.csv"
 PACK = ROOT / "docs/turbotab-next/reference/research/NUTRITION_PACK.md"
 OUT = Path(__file__).resolve().parent / "fixtures.json"

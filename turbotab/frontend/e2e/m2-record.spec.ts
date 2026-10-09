@@ -20,6 +20,7 @@ import { mkdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { onMock } from "./backend";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCREENS = resolve(HERE, "../../../docs/turbotab-next/m2/screens");
@@ -50,10 +51,7 @@ async function both(page: Page, name: string, at?: Locator) {
 async function open(page: Page, name: RegExp) {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Open a table to begin." })).toBeVisible();
-  const health = await page.evaluate(
-    async () => (await (await fetch("/api/health")).json()) as { version: string },
-  );
-  test.skip(!health.version.endsWith("-mock"), "these journeys run on the mock's tables");
+  test.skip(!(await onMock(page)), "these journeys run on the mock's tables");
   await page.getByRole("link", { name }).first().click();
   await expect(page).toHaveURL(/\/p\/[^/]+$/);
 }

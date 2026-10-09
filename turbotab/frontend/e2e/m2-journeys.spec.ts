@@ -28,11 +28,13 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { onMock } from "./backend";
+import { nhanesExport } from "./nhanes";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../../..");
 const SAMPLES = resolve(ROOT, "turbotab/sample_data");
-const NHANES = process.env.E2E_NHANES ?? resolve(ROOT, "_tt_tmp_nhanes.csv");
+const NHANES = nhanesExport();
 const SCREENS = resolve(ROOT, "docs/turbotab-next/m2/screens");
 const RESULTS = resolve(HERE, "../test-results");
 const MAX_SCREEN_BYTES = 300 * 1024;
@@ -160,8 +162,7 @@ async function start(page: Page, journey: string) {
   });
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference" });
   await page.goto("/");
-  const health = await page.evaluate(async () => (await (await fetch("/api/health")).json()) as { version: string });
-  test.skip(health.version.endsWith("-mock"), "the M2 journeys run against the real server");
+  test.skip(await onMock(page), "the M2 journeys run against the real server");
   timings[journey] = {};
   return { problems: watch(page), previews: previewTimes(page), t0: Date.now() };
 }

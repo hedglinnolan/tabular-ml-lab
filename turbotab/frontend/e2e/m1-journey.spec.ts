@@ -25,10 +25,11 @@ import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { nhanesExport } from "./nhanes";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REAL = !!process.env.E2E_BASE_URL;
-const NHANES = process.env.E2E_NHANES ?? "/Users/nhedglin/tabular-ml-lab/_tt_tmp_nhanes.csv";
+const NHANES = nhanesExport();
 const SCREENS = REAL
   ? resolve(HERE, "../../../docs/turbotab-next/m1/screens")
   : resolve(HERE, "../test-results/m1-journey-screens");

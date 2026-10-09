@@ -1,7 +1,7 @@
 """The NHANES fixture the previews' latency is measured on (``test_previews_4_latency.py``).
 
 The fixture is the real NHANES export the project is driven on (``_tt_tmp_nhanes.csv``: 21,849
-participants, 29 columns, NHANES 2001–2018; untracked, found by ``stage_harness._nhanes``). It has
+participants, 29 columns, NHANES 2001–2018; tracked, found by ``stage_harness._nhanes``). It has
 no survey design columns, no follow-up, no batch, no multi-item scale, no second recall and one row
 per person, so the previews that need those read columns added to its rows from a seeded stream of
 their own (``augment``): every real column and every real row stays as it is, and each added column

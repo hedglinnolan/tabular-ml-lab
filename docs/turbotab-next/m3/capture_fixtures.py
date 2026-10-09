@@ -54,13 +54,11 @@ from turbotab.core.tests.acceptance.server_drive import (  # noqa: E402
     answer_wp17,
     settle_post,
 )
+from turbotab.core.tests.stage_harness import NHANES  # noqa: E402  (the tracked fixture)
 from turbotab.core.tests.truths import Truth, fixture_truth  # noqa: E402
 
 SAMPLES = ROOT / "turbotab" / "sample_data"
 OUT = ROOT / "turbotab" / "frontend" / "src" / "mocks" / "fixtures"
-NHANES = Path("/Users/nhedglin/tabular-ml-lab/_tt_tmp_nhanes.csv")
-if not NHANES.is_file():
-    NHANES = ROOT / "_tt_tmp_nhanes.csv"
 
 MAX_LIST = 60
 MAX_KEYS = 120

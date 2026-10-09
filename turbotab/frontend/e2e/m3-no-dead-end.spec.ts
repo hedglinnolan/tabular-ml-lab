@@ -20,11 +20,13 @@ import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { onMock } from "./backend";
+import { nhanesExport } from "./nhanes";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../../..");
 const SAMPLES = resolve(ROOT, "turbotab/sample_data");
-const NHANES = process.env.E2E_NHANES ?? "/Users/nhedglin/tabular-ml-lab/_tt_tmp_nhanes.csv";
+const NHANES = nhanesExport();
 const RESULTS = resolve(HERE, "../test-results");
 
 const ANSWERABLE =
@@ -393,8 +395,7 @@ for (const journey of JOURNEYS) {
     await page.goto("/");
     // The app renders once the mock API (if any) has started: ask the backend after that.
     await expect(page.getByRole("heading", { name: "Open a table to begin." })).toBeVisible();
-    const health = await page.evaluate(async () => (await (await fetch("/api/health")).json()) as { version: string });
-    test.skip(health.version.endsWith("-mock"), "the no-dead-end journeys run against the real server");
+    test.skip(await onMock(page), "the no-dead-end journeys run against the real server");
     const problems = watch(page);
     const t0 = Date.now();
     const pid = await upload(page, journey.file);
@@ -460,8 +461,7 @@ test("the mock replays a captured journey: the lab lists it, the follow-up is an
 }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Open a table to begin." })).toBeVisible();
-  const health = await page.evaluate(async () => (await (await fetch("/api/health")).json()) as { version: string });
-  test.skip(!health.version.endsWith("-mock"), "the replay is the mock's (npm run dev:mock)");
+  test.skip(!(await onMock(page)), "the replay is the mock's (npm run dev:mock)");
   const problems = watch(page);
   await page.goto("/lab/m3");
   await expect(page.getByTestId("m3-journey-clinical")).toBeVisible();
