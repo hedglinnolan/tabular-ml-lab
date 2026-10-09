@@ -544,8 +544,8 @@ def test_3_set_scales_reliability_and_lambda_are_the_scales_stages(scl):
 
 TMLE = d.SetCausal(exposure="heavy_user", method="tmle", learner="linear", trim=0.1,
                    assumptions=F.CAUSAL_ASSUMPTIONS)
-FOREST = d.SetCausal(exposure="heavy_user", method="dml_irm", learner="random_forest", trim=0.05,
-                     assumptions=F.CAUSAL_ASSUMPTIONS)
+FOREST = d.SetCausal(exposure="heavy_user", method="dml_irm", learner="nuisance_forest",
+                     trim=0.05, assumptions=F.CAUSAL_ASSUMPTIONS)
 IRM = d.SetCausal(exposure="heavy_user", method="dml_irm", learner="linear", trim=0.05,
                   assumptions=F.CAUSAL_ASSUMPTIONS)
 

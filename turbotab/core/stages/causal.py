@@ -605,7 +605,7 @@ def _surveyed_population(state: Any) -> bool:
 def default_learner(n: int) -> str:
     """The default nuisance learner: a random forest from 500 rows, else the cross-validated
     lasso (a random forest's propensities and predictions are noisy on fewer rows)."""
-    return "random_forest" if n >= DEFAULT_FLEXIBLE_AT else "lasso"
+    return "nuisance_forest" if n >= DEFAULT_FLEXIBLE_AT else "lasso"
 
 
 def causal_stage(ctx: StageContext) -> Bundle:
