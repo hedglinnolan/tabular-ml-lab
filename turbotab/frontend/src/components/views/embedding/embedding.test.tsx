@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { EMBEDDING_ONE, EMBEDDING_PCA, syntheticCloud } from "../fixtures";
+import { EMBEDDING_ONE, EMBEDDING_OUTCOME_GATED, EMBEDDING_PCA, syntheticCloud } from "../fixtures";
 import { EMBED, layoutEmbedding, nearest, type EmbedLayout } from "./layout";
 import { EmbeddingView } from "./EmbeddingView";
 import type { EmbeddingInput } from "./types";
@@ -17,6 +17,8 @@ const two: EmbeddingInput = {
   ys: [0, 5],
   groups: [0, 1],
   grouping: { name: "batch", levels: ["B1", "B2"] },
+  columns: ["mz_0001", "mz_0002"],
+  outcome: { name: "responder", gate_open: false },
 };
 
 describe("embedding scale", () => {
@@ -79,6 +81,63 @@ describe("embedding states", () => {
     render(<EmbeddingView input={{ ...two, xs: [], ys: [], groups: [] }} />);
     expect(screen.getByRole("note")).toHaveTextContent("No rows to place");
     expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("refuses the outcome before its gate, as the grouping or an embedded column, in one line", () => {
+    expect(layoutEmbedding(EMBEDDING_OUTCOME_GATED, 400)).toEqual({ empty: expect.stringMatching(/^responder is the outcome, .* not drawn yet\.$/) });
+    expect("empty" in layoutEmbedding({ ...two, columns: ["mz_0001", "responder"] }, 400)).toBe(true);
+    expect("layout" in layoutEmbedding({ ...EMBEDDING_OUTCOME_GATED, outcome: { name: "responder", gate_open: true } }, 400)).toBe(true);
+    expect("layout" in layoutEmbedding({ ...EMBEDDING_OUTCOME_GATED, outcome: null }, 400)).toBe(true);
+    render(<EmbeddingView input={EMBEDDING_OUTCOME_GATED} />);
+    expect(screen.getByRole("note")).toHaveTextContent("responder is the outcome");
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.queryByText(/· 40/)).toBeNull();
+  });
+
+  it("names up to four groups on the drawing, with their rows, and no legend", () => {
+    const l = lay(EMBEDDING_PCA, 624);
+    expect(l.labels.map((x) => x.text)).toEqual(["B1 · 40 rows", "B2 · 40 rows"]);
+    for (const x of l.labels) {
+      const half = (x.text.length * 6.4) / 2 + 8;
+      expect(x.x - half).toBeGreaterThanOrEqual(l.plot.x0);
+      expect(x.x + half).toBeLessThanOrEqual(l.plot.x1);
+      expect(x.y).toBeGreaterThanOrEqual(l.plot.y0);
+      expect(x.y).toBeLessThanOrEqual(l.plot.y1);
+    }
+    const cloud = lay(syntheticCloud(), 624);
+    expect(cloud.labels).toHaveLength(3);
+    for (let a = 0; a < 3; a++)
+      for (let b = a + 1; b < 3; b++) {
+        const [A, B] = [cloud.labels[a]!, cloud.labels[b]!];
+        const apart = Math.abs(A.y - B.y) >= 16 || Math.abs(A.x - B.x) >= ((A.text.length + B.text.length) * 6.4) / 2 + 6;
+        expect(apart, `${A.text} / ${B.text}`).toBe(true);
+      }
+    render(<EmbeddingView input={EMBEDDING_PCA} />);
+    expect(screen.queryByRole("list", { name: "Legend" })).toBeNull();
+    expect(screen.getByText("B1 · 40 rows")).toBeInTheDocument();
+  });
+
+  it("names a single group and its grouping", () => {
+    render(<EmbeddingView input={EMBEDDING_ONE} />);
+    expect(screen.getByText("B1 · 1 row")).toBeInTheDocument();
+    expect(screen.getByText(/Colored by batch\./)).toBeInTheDocument();
+  });
+
+  it("takes a legend, counts labeled, past four groups", () => {
+    const many: EmbeddingInput = { ...two, xs: [0, 1, 2, 3, 4], ys: [0, 1, 2, 3, 4], groups: [0, 1, 2, 3, 4], grouping: { name: "g", levels: ["a", "b", "c", "d", "e"] } };
+    expect(lay(many).labels).toEqual([]);
+    render(<EmbeddingView input={many} />);
+    expect(screen.getByRole("list", { name: "Legend" })).toHaveTextContent("a · 1 row");
+  });
+
+  it("reads each point by the keyboard, left to right", () => {
+    render(<EmbeddingView input={two} />);
+    const svg = screen.getByRole("img");
+    expect(svg).toHaveAttribute("tabindex", "0");
+    fireEvent.keyDown(svg, { key: "ArrowRight" });
+    expect(screen.getByRole("status")).toHaveTextContent("Row 1 · batch: B1");
+    fireEvent.keyDown(svg, { key: "End" });
+    expect(screen.getByRole("status")).toHaveTextContent("Row 2 · batch: B2");
   });
 
   it("offers its table alternative", () => {

@@ -49,6 +49,15 @@ export const OVERLAP_ONE_GROUP: OverlapInput = {
 
 export const EMBEDDING_PCA = pca as unknown as EmbeddingInput;
 
+/**
+ * The same embedding colored by the outcome before its gate: a First look caller's mistake the
+ * view refuses in one line (FOUNDATION §5 rule 6).
+ */
+export const EMBEDDING_OUTCOME_GATED: EmbeddingInput = {
+  ...EMBEDDING_PCA,
+  grouping: { name: "responder", levels: ["no", "yes"] },
+};
+
 /** A seeded synthetic cloud of 6,000 rows in three overlapping groups: density, not points. */
 export function syntheticCloud(n = 6000, seed = 7): EmbeddingInput {
   let s = seed >>> 0;
@@ -81,7 +90,9 @@ export function syntheticCloud(n = 6000, seed = 7): EmbeddingInput {
     ys,
     groups,
     grouping: { name: "site", levels: ["North", "South", "East"] },
-    basis: `A synthetic cloud of ${n.toLocaleString("en-US")} rows, for the density drawing only`,
+    columns: ["synthetic"],
+    outcome: null,
+    basis: `${n.toLocaleString("en-US")} synthetic rows`,
   };
 }
 
@@ -96,6 +107,8 @@ export const EMBEDDING_ONE: EmbeddingInput = {
   ids: ["S01"],
   groups: [0],
   grouping: { name: "batch", levels: ["B1"] },
+  columns: ["mz_0001", "mz_0002"],
+  outcome: { name: "responder", gate_open: false },
 };
 
 export const MATRIX_CORRELATION = correlation as unknown as MatrixInput;
@@ -107,6 +120,7 @@ export const MATRIX_ONE_PAIR: MatrixInput = {
   rows: ["energy_kcal", "fat_g"],
   cols: ["energy_kcal", "fat_g"],
   order: "as in your file",
+  outcome: { name: "hba1c", gate_open: false },
   symmetric: true,
   values: [
     [1, 0.9],

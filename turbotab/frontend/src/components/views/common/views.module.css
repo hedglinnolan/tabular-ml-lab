@@ -117,23 +117,32 @@
 }
 .scale {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 10px;
   margin: 0 0 6px;
   color: var(--canvas-muted);
   font-size: 13px;
 }
 .scale ol {
   display: flex;
-  gap: 2px;
+  flex-wrap: wrap;
+  gap: 4px 10px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 .scale li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.scale li i {
   width: 16px;
   height: 10px;
   border-radius: 2px;
+  display: inline-block;
+  box-sizing: border-box;
 }
 .table {
   border-collapse: collapse;
@@ -172,4 +181,15 @@
   border-radius: 6px;
   white-space: nowrap;
   transform: translate(-50%, -125%);
+}
+.svg:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.halo {
+  paint-order: stroke;
+  stroke: var(--canvas);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }

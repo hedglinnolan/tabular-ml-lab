@@ -54,20 +54,24 @@ def embedding_pca() -> dict:
         "ids": d["sample_id"].astype(str).tolist(),
         "groups": [levels.index(b) for b in d["batch"]],
         "grouping": {"name": "batch", "levels": levels},
+        "columns": list(x.columns),
+        "outcome": {"name": "responder", "gate_open": False},
         "basis": f"{x.shape[1]} features, log-scaled and standardized, on {len(d)} samples",
         "source": "metabolomics_untargeted.csv via make_fixtures.py (no engine artifact yet)",
     }
 
 
-CORR_COLUMNS = ["age", "bmi", "energy_kcal", "protein_g", "fat_g", "carbohydrate_g", "fiber_g",
-                "sodium_mg", "protein_pct_kcal", "fat_pct_kcal", "carbohydrate_pct_kcal",
-                "alcohol_pct_kcal"]
+# The measured columns, in the file's own order (read from its header below); the ids, the recall
+# number, the date, sex (a category) and hba1c (the outcome) are left out.
+CORR_LEFT_OUT = {"participant_id", "recall_number", "recall_date", "sex", "hba1c"}
 
 
 def matrix_correlation() -> dict:
-    """Pairwise-complete Pearson correlations among the dietary recalls' columns (hba1c, the
-    outcome, is left out: the outcome beside a column waits for the lock)."""
+    """Pairwise-complete Pearson correlations among the dietary recalls' measured columns, in the
+    file's order (hba1c, the outcome, is left out: the outcome beside a column waits for the
+    lock)."""
     d = pd.read_csv(DATA / "dietary_recalls.csv")
+    CORR_COLUMNS = [c for c in d.columns if c not in CORR_LEFT_OUT]
     v = d[CORR_COLUMNS].apply(pd.to_numeric, errors="coerce")
     c = v.corr()
     ok = v.notna().astype(int)
@@ -78,6 +82,8 @@ def matrix_correlation() -> dict:
         "rows": CORR_COLUMNS,
         "cols": CORR_COLUMNS,
         "order": "as in your file",
+        "selection": "the outcome left out",
+        "outcome": {"name": "hba1c", "gate_open": False},
         "symmetric": True,
         "values": [[r6(c.loc[a, b]) for b in CORR_COLUMNS] for a in CORR_COLUMNS],
         "n": [[int(n.loc[a, b]) for b in CORR_COLUMNS] for a in CORR_COLUMNS],
@@ -104,6 +110,9 @@ def matrix_missingness() -> dict:
         "rows": rows,
         "cols": cols,
         "order": "columns as in your file; groups by batch",
+        "selection": f"in the {len(cols)} of {len(feats)} columns blank most often",
+        "outcome": {"name": "responder", "gate_open": False},
+        "groups_by": ["batch", "sample_type"],
         "symmetric": False,
         "values": values,
         "n": ns,

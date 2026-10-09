@@ -1,6 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { ENGINE_N_TRIMMED, OVERLAP_ENGINE, OVERLAP_ONE_EACH, OVERLAP_ONE_GROUP, OVERLAP_UNTRIMMED } from "../fixtures";
-import { keepLine, layoutOverlap, type OverlapLayout } from "./layout";
+import { readFileSync } from "node:fs";
+import { contrast, resolveColor, themeTokens } from "../common/contrast";
+import { DATA_CONTEXT_STRONG } from "../common/frame";
+import { ENGINE_N_TRIMMED, OVERLAP_ENGINE, OVERLAP_ONE_EACH, OVERLAP_ONE_GROUP, OVERLAP_RECORDED, OVERLAP_UNTRIMMED } from "../fixtures";
+import { keepLine, labelY, layoutOverlap, type OverlapLayout } from "./layout";
 import { OverlapView } from "./OverlapView";
 
 const lay = (input: Parameters<typeof layoutOverlap>[0], w = 400): OverlapLayout => {
@@ -53,6 +56,64 @@ describe("overlap scale", () => {
   });
 });
 
+describe("overlap marks", () => {
+  it("keeps each direct label clear of the gridlines", () => {
+    for (const w of [400, 624, 900]) {
+      const l = lay(OVERLAP_ENGINE, w);
+      for (const g of [0, 1] as const) {
+        const y = labelY(l, g);
+        for (const t of l.yTicks) {
+          const line = g === 0 ? t.up : t.down;
+          expect(line < y - 11 || line > y + 4, `width ${w}, group ${g}`).toBe(true);
+        }
+        expect(y).toBeGreaterThan(l.top);
+        expect(y).toBeLessThan(l.bottom);
+      }
+    }
+    // at 624 the 20% line sits at 38.9: the upper label moves below it
+    const l = lay(OVERLAP_ENGINE, 624);
+    expect(l.yTicks.find((t) => Math.abs(t.value - 0.2) < 1e-9)!.up).toBeCloseTo(38.87, 1);
+    expect(labelY(l, 0)).toBeCloseTo(51.87, 1);
+  });
+
+  it.each(["light", "dark"] as const)("draws recorded trimmed bars at 3:1 on the canvas in %s", (theme) => {
+    const tokens = themeTokens(readFileSync(`${process.cwd()}/src/explore/calm-kit/tokens.css`, "utf8"), theme);
+    expect(contrast(resolveColor(DATA_CONTEXT_STRONG, tokens), resolveColor("var(--canvas)", tokens))).toBeGreaterThanOrEqual(3);
+  });
+
+  it("names each group once, on the drawing, with its rows, and keys the trim", () => {
+    const { container } = render(<OverlapView input={OVERLAP_RECORDED} />);
+    expect(screen.getByText("heavy_user = 1 · 666 rows")).toBeInTheDocument();
+    expect(screen.getAllByText(/heavy_user = 1/)).toHaveLength(1);
+    expect(screen.getByRole("list", { name: "Legend" })).toHaveTextContent(/^trimmed$/);
+    const trimmed = container.querySelector("[data-trimmed] path") as SVGPathElement;
+    expect(trimmed.style.fill).toBe(DATA_CONTEXT_STRONG);
+    expect(trimmed.style.opacity).toBe("");
+    for (const line of container.querySelectorAll("g[aria-hidden] line")) expect(line.getAttribute("stroke-width")).toBe("2");
+  });
+
+  it("says one row in the singular", () => {
+    render(<OverlapView input={OVERLAP_ONE_EACH} />);
+    expect(screen.getByText("exposed · 1 row")).toBeInTheDocument();
+    expect(screen.getByText("not exposed · 1 row")).toBeInTheDocument();
+    expect(screen.queryByText(/1 rows/)).toBeNull();
+  });
+
+  it("reads each bar by the keyboard", () => {
+    render(<OverlapView input={OVERLAP_ONE_EACH} />);
+    const svg = screen.getByRole("img");
+    expect(svg).toHaveAttribute("tabindex", "0");
+    fireEvent.keyDown(svg, { key: "ArrowRight" });
+    expect(screen.getByRole("status")).toHaveTextContent("exposed · 0 to 0.25 · 0 rows, 0% of the group");
+  });
+
+  it("refuses the outcome as a covariate before its gate", () => {
+    const input = { ...OVERLAP_ONE_EACH, scale: "covariate" as const, column: "hba1c", outcome: { name: "hba1c", gate_open: false } };
+    expect(layoutOverlap(input, 400)).toEqual({ empty: expect.stringMatching(/^hba1c is the outcome/) });
+    expect("layout" in layoutOverlap({ ...input, column: "age" }, 400)).toBe(true);
+  });
+});
+
 describe("overlap states", () => {
   it("says why in one line, without a frame, when a group has no rows", () => {
     render(<OverlapView input={OVERLAP_ONE_GROUP} />);
@@ -68,7 +129,7 @@ describe("overlap states", () => {
   it("draws one row in each group", () => {
     render(<OverlapView input={OVERLAP_ONE_EACH} />);
     expect(screen.getByRole("img")).toBeInTheDocument();
-    expect(screen.getAllByText("exposed").length).toBeGreaterThan(0);
+    expect(screen.getByText("exposed · 1 row")).toBeInTheDocument();
   });
 
   it("offers its table alternative", () => {

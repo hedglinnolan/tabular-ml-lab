@@ -1,10 +1,13 @@
 /**
- * The matrix view's geometry and color steps, pure. A correlation takes a diverging scale with
- * equal steps per arm through a neutral midpoint at 0 (steel for moving opposite, clay for moving
- * together); a share of blanks takes one gray ramp from the same neutral at none (your data as it
- * is, FOUNDATION §4). Labels keep the declared order and stay inside the drawing.
+ * The matrix view's geometry and color steps, pure. Both kinds take one gray ramp, your data as it
+ * is (FOUNDATION §4): from a quiet neutral through --data-context to --data-fit, the darkest data
+ * gray. A correlation steps by its size either way, in equal fifths of |r| (its sign is printed in
+ * the cell and said on hover); a share of blanks steps from none in equal quarters. No categorical
+ * slot is spent on a scale: those name entities. Labels keep the declared order and stay inside the
+ * drawing.
  */
 import { fmtPct } from "../common/frame";
+import { gateRefusal } from "../common/gate";
 import type { MatrixInput } from "./types";
 
 export const MATRIX = {
@@ -19,10 +22,25 @@ export const MATRIX = {
   gap: 2,
 } as const;
 
-/** The color mix of each step, from the neutral midpoint (0) to the pole (4). */
-export const MIX = [0, 30, 55, 78, 100] as const;
-
 export type Step = 0 | 1 | 2 | 3 | 4;
+
+/** The fill of each step, every one from the data grays; step 0 is the neutral. */
+export const RAMP: readonly string[] = [
+  "color-mix(in oklab, var(--data-context) 25%, var(--canvas-line))",
+  "color-mix(in oklab, var(--data-context) 70%, var(--canvas-line))",
+  "color-mix(in oklab, var(--data-fit) 12%, var(--data-context))",
+  "color-mix(in oklab, var(--data-fit) 58%, var(--data-context))",
+  "var(--data-fit)",
+];
+
+/** A cell that could not be computed: no fill, an outline that holds 3:1 on the canvas in both themes. */
+export const NOT_COMPUTED = "var(--canvas-muted)";
+
+/** What each step covers, in the key's words: every bound named, so any cell's color reads back to a range. */
+export const STEP_LABELS: Record<MatrixInput["kind"], readonly string[]> = {
+  correlation: ["under .2", ".2–.4", ".4–.6", ".6–.8", ".8–1"],
+  missingness: ["none", "up to 25%", "25–50%", "50–75%", "over 75%"],
+};
 
 /** The step of a value: |r| in equal fifths, or the share of blanks in equal quarters above none. */
 export function stepOf(kind: MatrixInput["kind"], v: number): Step {
@@ -33,15 +51,16 @@ export function stepOf(kind: MatrixInput["kind"], v: number): Step {
 }
 
 export function fillOf(kind: MatrixInput["kind"], v: number): string {
-  const step = stepOf(kind, v);
-  if (step === 0) return "var(--canvas-line)";
-  const pole = kind === "missingness" ? "var(--canvas-muted)" : v < 0 ? "var(--cat-4)" : "var(--cat-5)";
-  return step === 4 ? pole : `color-mix(in oklab, ${pole} ${MIX[step]}%, var(--canvas-line))`;
+  return RAMP[stepOf(kind, v)]!;
 }
 
-/** A cell's text wears an ink token: the raised ink on the strongest steps, the canvas ink below. */
+/** The ink of a printed value: the canvas ink on the three lighter steps, the raised ink on the two darker (4.5:1 both themes). */
+export function inkOfStep(step: Step): string {
+  return step >= 3 ? "var(--raised-ink)" : "var(--canvas-ink)";
+}
+
 export function inkOf(kind: MatrixInput["kind"], v: number): string {
-  return stepOf(kind, v) >= (kind === "missingness" ? 3 : 4) ? "var(--raised-ink)" : "var(--canvas-ink)";
+  return inkOfStep(stepOf(kind, v));
 }
 
 /** A value as printed in a cell: r to two places without the leading zero, a share as a percent. */
@@ -109,16 +128,10 @@ export function layoutMatrix(input: MatrixInput, width: number): MatrixResult {
   if (values.length !== input.rows.length || values.some((row) => row.length !== input.cols.length)) {
     return { empty: "The matrix's values do not match its labels, so nothing is drawn." };
   }
+  const refused = gateRefusal(input.outcome, input.kind === "correlation" ? [...input.rows, ...input.cols] : [...input.cols, ...(input.groups_by ?? [])]);
+  if (refused) return { empty: refused };
   if (input.symmetric && input.rows.length < 2) {
     return { empty: `Only ${input.rows[0]} is here, and a column has no pair to correlate with on its own.` };
-  }
-  if (values.every((row) => row.every((x) => x === null || !Number.isFinite(x)))) {
-    return {
-      empty:
-        input.kind === "correlation"
-          ? "No pair of these columns is recorded together often enough to correlate."
-          : "No share of blanks could be computed for these columns.",
-    };
   }
 
   // The declared order, capped; a symmetric matrix drops its first row and last column (the lower
@@ -161,6 +174,16 @@ export function layoutMatrix(input: MatrixInput, width: number): MatrixResult {
       });
     });
   });
+
+  // Only the drawn cells count: a symmetric matrix's diagonal of ones is never drawn.
+  if (cells.every((c) => c.v === null)) {
+    return {
+      empty:
+        input.kind === "correlation"
+          ? "No pair of these columns is recorded together often enough to correlate."
+          : "No share of blanks could be computed for these columns.",
+    };
+  }
 
   return {
     layout: {

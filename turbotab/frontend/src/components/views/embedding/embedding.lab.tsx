@@ -1,4 +1,4 @@
-import { EMBEDDING_ONE, EMBEDDING_PCA, syntheticCloud } from "../fixtures";
+import { EMBEDDING_ONE, EMBEDDING_OUTCOME_GATED, EMBEDDING_PCA, syntheticCloud } from "../fixtures";
 import type { LabEntry } from "../lab/entry";
 import { EmbeddingView } from "./EmbeddingView";
 import { EMBEDDING_PURPOSE } from "./types";
@@ -28,5 +28,12 @@ export const entries: LabEntry[] = [
     title: "Embedding · no rows",
     source: "Hand-made: the empty case",
     render: () => <EmbeddingView input={{ ...EMBEDDING_ONE, xs: [], ys: [], groups: [] }} />,
+  },
+  {
+    ...base,
+    id: "embedding-gated",
+    title: "Embedding · colored by the outcome before its gate",
+    source: "The PCA fixture with responder, the outcome, as its grouping: refused",
+    render: () => <EmbeddingView input={EMBEDDING_OUTCOME_GATED} />,
   },
 ];

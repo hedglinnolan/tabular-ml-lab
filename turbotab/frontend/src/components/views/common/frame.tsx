@@ -5,6 +5,7 @@
  * empty frame (§5 rule 7).
  */
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { fmtInt } from "../../stage/format";
 import v from "./views.module.css";
 
 /** The categorical slots in their fixed order: sage, plum, ochre, steel, clay (FOUNDATION §4). */
@@ -12,11 +13,25 @@ export type Slot = 1 | 2 | 3 | 4 | 5;
 export const SLOTS: readonly Slot[] = [1, 2, 3, 4, 5];
 export const slotColor = (slot: Slot | null): string => (slot ? `var(--cat-${slot})` : "var(--data-context)");
 
+/**
+ * The data gray one step stronger than --data-context, for a mark that must hold 3:1 on the canvas
+ * in both themes (a recorded removal drawn as "your data now").
+ */
+export const DATA_CONTEXT_STRONG = "color-mix(in oklab, var(--data-fit) 30%, var(--data-context))";
+
+/** A count of rows in words: "1 row", "666 rows". */
+export const rowsWord = (n: number): string => `${fmtInt(n)} ${n === 1 ? "row" : "rows"}`;
+
+/** At most this many series are named by direct labels on the drawing; more take a legend (never both). */
+export const DIRECT_LABELS_UP_TO = 4;
+
 export interface LegendItem {
   key: string;
   label: string;
   /** a categorical slot, or null for gray (your data now, or "other") */
   slot: Slot | null;
+  /** a role color instead of a slot (indigo for what the choice touches), for a key, not an entity */
+  color?: string;
   shape?: "square" | "dot";
 }
 
@@ -24,19 +39,22 @@ export function Legend({
   items,
   focus = null,
   onFocus,
+  keyOnly = false,
 }: {
   items: LegendItem[];
+  /** a key to one role color (the trim's removal), shown even with one item */
+  keyOnly?: boolean;
   focus?: string | null;
   /** When given, pointing at (or focusing) an item isolates its entity in the drawing. */
   onFocus?: (key: string | null) => void;
 }) {
-  if (items.length < 2) return null; // one series: the title names it
+  if (items.length < 2 && !keyOnly) return null; // one series: the title or a direct label names it
   return (
     <ul className={v.legend} aria-label="Legend">
       {items.map((it) => {
         const body = (
           <>
-            <i className={v.swatch} data-shape={it.shape ?? "square"} style={{ background: slotColor(it.slot) }} aria-hidden="true" />
+            <i className={v.swatch} data-shape={it.shape ?? "square"} style={{ background: it.color ?? slotColor(it.slot) }} aria-hidden="true" />
             {it.label}
           </>
         );
@@ -78,6 +96,63 @@ export function useTip() {
       onPointerMove: (e: React.PointerEvent) => setTip({ text, x: e.clientX, y: e.clientY }),
       onPointerLeave: () => setTip(null),
     }),
+  };
+}
+
+/** A mark the keyboard can reach: its place in the drawing's own units, and what it says. */
+export interface KeyMark<T> {
+  id: T;
+  x: number;
+  y: number;
+  text: string;
+}
+
+/**
+ * The keyboard's path through a drawing's marks: the drawing is one tab stop, and the arrow keys
+ * (Home, End) step from mark to mark in the view's reading order, each saying what hover says;
+ * Escape or leaving clears it. `viewWidth` is the drawing's viewBox width, to place the tooltip.
+ */
+export function useKeyMarks<T>(
+  marks: KeyMark<T>[],
+  tip: ReturnType<typeof useTip>,
+  viewWidth: number,
+  onActive?: (id: T | null) => void,
+) {
+  const [at, setAt] = useState<number | null>(null);
+  const go = (el: Element, k: number | null) => {
+    setAt(k);
+    const m = k === null ? null : marks[k];
+    onActive?.(m ? m.id : null);
+    if (!m) {
+      tip.hide();
+      return;
+    }
+    const box = el.getBoundingClientRect();
+    const s = (box.width || viewWidth) / viewWidth;
+    tip.show(m.text, box.left + m.x * s, box.top + m.y * s);
+  };
+  return {
+    active: at === null ? null : (marks[at]?.id ?? null),
+    props: {
+      tabIndex: 0,
+      onKeyDown: (e: React.KeyboardEvent<SVGSVGElement>) => {
+        if (!marks.length) return;
+        const last = marks.length - 1;
+        const step: Record<string, number | null> = {
+          ArrowRight: at === null ? 0 : Math.min(last, at + 1),
+          ArrowDown: at === null ? 0 : Math.min(last, at + 1),
+          ArrowLeft: at === null ? 0 : Math.max(0, at - 1),
+          ArrowUp: at === null ? 0 : Math.max(0, at - 1),
+          Home: 0,
+          End: last,
+          Escape: null,
+        };
+        if (!(e.key in step)) return;
+        e.preventDefault();
+        go(e.currentTarget, step[e.key]!);
+      },
+      onBlur: (e: React.FocusEvent<SVGSVGElement>) => go(e.currentTarget, null),
+    },
   };
 }
 

@@ -13,10 +13,13 @@
  *  - bin edges aligned to the trim, or trimmed counts per bin, so a trim inside a bin is drawn
  *    exactly (today a bin the trim splits is drawn as kept and said in the caption);
  *  - covariate overlap (one column's distribution in each exposure group, on the same edges)
- *    for the balance views in Models; the input below already takes it (`scale: "covariate"`).
+ *    for the balance views in Models; the input below already takes it (`scale: "covariate"`,
+ *    with the column's name in `column`), and refuses the outcome as that column before its gate
+ *    (FOUNDATION §5 rule 6) given `outcome`.
  */
 import type { Purpose } from "../../stage/purposes";
 import type { Slot } from "../common/frame";
+import type { OutcomeGate } from "../common/gate";
 
 /** The view's purpose entry (FOUNDATION §5 rule 9, in the purpose registry's form, BLUEPRINT §11.2). */
 export const OVERLAP_PURPOSE: Purpose = {
@@ -47,6 +50,10 @@ export interface OverlapInput {
   /** "propensity": a chance, drawn on 0 to 1; "covariate": the column's own range and unit */
   scale: "propensity" | "covariate";
   unit?: string | null;
+  /** "covariate": the column drawn, by name, so the gate can be checked on it */
+  column?: string | null;
+  /** the outcome and its gate (FOUNDATION §5 rule 6); a propensity reads no outcome */
+  outcome?: OutcomeGate | null;
   /** ascending bin edges, one more than each group's counts */
   edges: number[];
   /** declared order: the first is drawn above the baseline, the second below */
@@ -55,7 +62,7 @@ export interface OverlapInput {
   keep: OverlapKeep | null;
   /**
    * "choice": the trim is the option pointed at, so what it removes is indigo (what the choice
-   * touches); "recorded": it is already the plan, so what it removed is gray, drawn lighter.
+   * touches); "recorded": it is already the plan, so what it removed is gray, your data now.
    */
   keep_state?: "choice" | "recorded";
 }

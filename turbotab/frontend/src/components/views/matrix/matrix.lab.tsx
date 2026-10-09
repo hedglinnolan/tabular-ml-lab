@@ -28,4 +28,11 @@ export const entries: LabEntry[] = [
     source: "Hand-made: the empty case",
     render: () => <MatrixView input={{ ...MATRIX_ONE_PAIR, rows: ["fat_g"], cols: ["fat_g"], values: [[1]], n: undefined }} />,
   },
+  {
+    ...base,
+    id: "matrix-no-pair",
+    title: "Matrix · no pair recorded together",
+    source: "Hand-made: only the diagonal computed",
+    render: () => <MatrixView input={{ ...MATRIX_ONE_PAIR, values: [[1, null], [null, 1]] }} />,
+  },
 ];

@@ -12,3 +12,4 @@ export { EMBEDDING_PURPOSE, type EmbeddingAxis, type EmbeddingInput } from "./em
 export { MatrixView } from "./matrix/MatrixView";
 export { inOrder, layoutMatrix } from "./matrix/layout";
 export { MATRIX_PURPOSE, type MatrixInput } from "./matrix/types";
+export { gateRefusal, type OutcomeGate } from "./common/gate";

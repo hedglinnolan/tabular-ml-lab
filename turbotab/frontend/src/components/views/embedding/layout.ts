@@ -5,7 +5,8 @@
  * are derived, and a number on them would imply a unit.
  */
 import type { LegendItem, Slot } from "../common/frame";
-import { fmtPct } from "../common/frame";
+import { DIRECT_LABELS_UP_TO, fmtPct, rowsWord } from "../common/frame";
+import { gateRefusal } from "../common/gate";
 import type { EmbeddingInput } from "./types";
 
 export const EMBED = {
@@ -52,11 +53,25 @@ export interface EmbedLayout {
   points: EmbedPoint[];
   cells: EmbedCell[];
   legend: (LegendItem & { count: number })[];
+  /** each series named on the drawing, near the middle of its rows, when there are at most four */
+  labels: EmbedLabel[];
   axisTitles: [string, string];
   n: number;
 }
 
+export interface EmbedLabel {
+  key: string;
+  text: string;
+  /** the text's anchor (middle) and baseline */
+  x: number;
+  y: number;
+}
+
 export type EmbedResult = { empty: string } | { layout: EmbedLayout };
+
+/** about a character's width at 12 px, and a label's line, for placing direct labels */
+export const LABEL_CHAR_PX = 6.4;
+const LABEL_LINE = 16;
 
 export const OPACITY = [0.3, 0.5, 0.75, 1] as const;
 
@@ -80,6 +95,8 @@ export function layoutEmbedding(input: EmbeddingInput, width: number, focus: str
   if (input.xs.length !== input.ys.length) {
     return { empty: "The embedding's two axes hold different numbers of rows, so nothing is drawn." };
   }
+  const refused = gateRefusal(input.outcome, [...input.columns, input.grouping?.name]);
+  if (refused) return { empty: refused };
   const levels = input.grouping?.levels.length ?? 0;
   const rows: { i: number; x: number; y: number; key: string }[] = [];
   for (let i = 0; i < input.xs.length; i++) {
@@ -150,6 +167,39 @@ export function layoutEmbedding(input: EmbeddingInput, width: number, focus: str
     }
   }
 
+  // Direct labels for up to four series: each at the middle (median) of its rows, above it, with a
+  // halo; nudged apart when two would touch, and kept inside the plot.
+  const labels: EmbedLabel[] = [];
+  const drawn = legend.filter((it) => it.count > 0);
+  if (drawn.length && drawn.length <= DIRECT_LABELS_UP_TO) {
+    const median = (a: number[]) => {
+      const s = [...a].sort((p, q) => p - q);
+      return s[Math.floor((s.length - 1) / 2)]!;
+    };
+    for (const it of drawn) {
+      const mine = rows.filter((r) => r.key === it.key);
+      const text = `${it.label} · ${rowsWord(it.count)}`;
+      const half = (text.length * LABEL_CHAR_PX) / 2 + 8; // the text and its color dot
+      const x = Math.min(plot.x1 - half, Math.max(plot.x0 + half, toX(median(mine.map((r) => r.x)))));
+      const y = Math.min(plot.y1 - 4, Math.max(plot.y0 + 12, toY(median(mine.map((r) => r.y))) - EMBED.radius - 6));
+      labels.push({ key: it.key, text, x, y });
+    }
+    for (let pass = 0; pass < 4; pass++) {
+      for (let a = 0; a < labels.length; a++) {
+        for (let b = a + 1; b < labels.length; b++) {
+          const A = labels[a]!;
+          const B = labels[b]!;
+          const wide = ((A.text.length + B.text.length) * LABEL_CHAR_PX) / 2 + 6;
+          if (Math.abs(A.x - B.x) < wide && Math.abs(A.y - B.y) < LABEL_LINE) {
+            const [hi, lo] = A.y <= B.y ? [A, B] : [B, A];
+            hi.y = Math.max(plot.y0 + 12, hi.y - LABEL_LINE / 2);
+            lo.y = Math.min(plot.y1 - 4, hi.y + LABEL_LINE);
+          }
+        }
+      }
+    }
+  }
+
   return {
     layout: {
       width,
@@ -162,6 +212,7 @@ export function layoutEmbedding(input: EmbeddingInput, width: number, focus: str
       points,
       cells,
       legend,
+      labels,
       axisTitles: [axisTitle(input, 0), axisTitle(input, 1)],
       n: rows.length,
     },

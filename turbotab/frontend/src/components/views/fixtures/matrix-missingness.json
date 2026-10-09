@@ -21,6 +21,15 @@
   "mz_0375"
  ],
  "order": "columns as in your file; groups by batch",
+ "selection": "in the 12 of 392 columns blank most often",
+ "outcome": {
+  "name": "responder",
+  "gate_open": false
+ },
+ "groups_by": [
+  "batch",
+  "sample_type"
+ ],
  "symmetric": false,
  "values": [
   [

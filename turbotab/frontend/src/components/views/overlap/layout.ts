@@ -6,6 +6,7 @@
 import { scaleLinear } from "d3-scale";
 import { fmtInt, fmtTick } from "../../stage/format";
 import { fmtPct } from "../common/frame";
+import { gateRefusal } from "../common/gate";
 import type { OverlapInput } from "./types";
 
 export const OVERLAP = { height: 260, left: 44, right: 10, top: 24, bottom: 42, gap: 1 } as const;
@@ -50,6 +51,8 @@ export type OverlapResult = { empty: string } | { layout: OverlapLayout };
 const EPS = 1e-9;
 
 export function layoutOverlap(input: OverlapInput, width: number): OverlapResult {
+  const refused = gateRefusal(input.outcome, [input.column]);
+  if (refused) return { empty: refused };
   const { edges, groups } = input;
   const k = edges.length - 1;
   if (k < 1 || groups.some((g) => g.counts.length !== k)) {
@@ -146,6 +149,20 @@ export function labelSide(bins: OverlapBin[], g: 0 | 1): "start" | "end" {
   const q = Math.max(1, Math.floor(bins.length / 4));
   const peak = (bs: OverlapBin[]) => Math.max(...bs.map((b) => b.groups[g]!.share));
   return peak(bins.slice(0, q)) <= peak(bins.slice(-q)) ? "start" : "end";
+}
+
+/**
+ * A group's direct label baseline: just inside the top (the first group) or the bottom (the
+ * second), moved clear of any gridline its text would sit on.
+ */
+export function labelY(l: OverlapLayout, g: 0 | 1): number {
+  const grid = l.yTicks.map((t) => (g === 0 ? t.up : t.down)).sort((a, b) => (g === 0 ? a - b : b - a));
+  let y = g === 0 ? l.top + 12 : l.bottom - 6;
+  for (const line of grid) {
+    // the text's box runs from 10 px above its baseline to 3 px below; keep 1 px clear of a line
+    if (line >= y - 11 && line <= y + 4) y = g === 0 ? line + 13 : line - 5;
+  }
+  return y;
 }
 
 /** One line on the trim, in plain words. */
