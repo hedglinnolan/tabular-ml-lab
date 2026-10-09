@@ -1,0 +1,385 @@
+/*
+ * The map — a figure, not an editor: hairline regions, a rail of decisions, lanes of columns.
+ * Hues are claims (DESIGN_LANGUAGE §02): --accent is what is asked now, --ok what is recorded,
+ * --warn what changed after the estimates were seen; the lanes borrow the lineage's quiet ink.
+ */
+
+.mapWrap {
+  position: relative;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.map {
+  display: block;
+  font-family: var(--sans);
+}
+
+/* regions */
+.regionBg {
+  fill: transparent;
+}
+.region[data-odd] .regionBg {
+  fill: color-mix(in srgb, var(--surface-2) 45%, transparent);
+}
+.regionRule {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.regionTitle {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  fill: var(--ink);
+}
+.regionItems {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  fill: var(--faint);
+}
+.silent {
+  cursor: pointer;
+}
+.silent text {
+  font-size: 10px;
+  fill: var(--faint);
+  text-decoration: underline dotted;
+}
+.silent:hover text,
+.silent:focus-visible text {
+  fill: var(--muted);
+}
+
+/* the rows */
+.ribbonBand {
+  fill: color-mix(in srgb, var(--c4) 22%, transparent);
+  stroke: color-mix(in srgb, var(--c4) 40%, transparent);
+  stroke-width: 0.8;
+  transition: d var(--dur-arrive) ease-out;
+}
+.ribbon[data-preview] .ribbonBand {
+  fill: color-mix(in srgb, var(--accent) 16%, transparent);
+  stroke: var(--accent);
+  stroke-dasharray: 3 3;
+}
+.ribbonSealed {
+  fill: none;
+  stroke: var(--c4);
+  stroke-width: 2;
+  stroke-dasharray: 2 3;
+}
+.ribbonLabel {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  fill: var(--muted);
+}
+.ribbonDrop {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+.ribbonNote {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--muted);
+}
+
+/* the columns */
+.laneLabel {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  fill: var(--ink);
+}
+.laneLabel[data-tone="muted"] {
+  fill: var(--faint);
+}
+.seg {
+  fill: none;
+  stroke-linecap: round;
+  transition:
+    d var(--dur-arrive) ease-out,
+    stroke var(--dur-arrive),
+    opacity var(--dur-arrive);
+}
+.seg[data-tone="ink"] {
+  stroke: color-mix(in srgb, var(--muted) 62%, transparent);
+}
+.seg[data-tone="muted"] {
+  stroke: color-mix(in srgb, var(--muted) 34%, transparent);
+}
+.seg[data-tone="accent"] {
+  stroke: var(--accent);
+}
+.seg[data-dashed] {
+  stroke-dasharray: 4 4;
+}
+.seg[data-faint] {
+  opacity: 0.55;
+}
+.seg[data-changed] {
+  stroke: var(--accent);
+  opacity: 1;
+}
+.cap line {
+  stroke: color-mix(in srgb, var(--muted) 60%, transparent);
+  stroke-width: 1.2;
+}
+.cap text {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  fill: var(--faint);
+  font-style: italic;
+}
+.cap[data-tone="accent"] text {
+  fill: var(--accent-ink);
+  font-style: normal;
+  font-weight: 600;
+}
+.cap[data-tone="ink"] text {
+  fill: var(--muted);
+  font-style: normal;
+}
+.marker rect {
+  fill: color-mix(in srgb, var(--c1) 14%, var(--surface));
+  stroke: color-mix(in srgb, var(--c1) 55%, transparent);
+  stroke-width: 0.8;
+}
+.marker text {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  fill: var(--accent-ink);
+}
+.bracket path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.6;
+}
+.bracket[data-dashed] path {
+  stroke: var(--faint);
+  stroke-dasharray: 3 3;
+}
+.bracketLabel {
+  font-size: 10.5px;
+  font-weight: 700;
+  fill: var(--ink);
+}
+.bracketSub {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  fill: var(--muted);
+}
+.resultLine {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 35%, transparent);
+  stroke-width: 2.2;
+  stroke-dasharray: 2 4;
+}
+.resultLine[data-live] {
+  stroke: var(--accent);
+  stroke-dasharray: none;
+}
+.resultLabel {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  fill: var(--accent-ink);
+}
+
+/* the decisions */
+.node {
+  cursor: pointer;
+  outline: none;
+  transition:
+    opacity var(--dur-arrive),
+    transform var(--dur-arrive) ease-out;
+}
+.node[data-dim],
+.source[data-dim] {
+  opacity: 0.22;
+}
+.hit {
+  fill: transparent;
+}
+.node:focus-visible .hit,
+.sourceHead:focus-visible .sourceBox,
+.sourceRow:focus-visible .hit {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  rx: 8;
+}
+.node[data-focus] .hit {
+  fill: var(--accent-tint);
+  stroke: var(--accent);
+  stroke-width: 1.2;
+  rx: 9;
+}
+.nodeKicker {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  fill: var(--muted);
+}
+.node[data-tier="asked"] .nodeKicker {
+  fill: var(--accent-ink);
+}
+.ring {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.halo {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.2;
+  opacity: 0.35;
+  transform-origin: 0 0;
+  animation: breathe 2.6s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.12;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.06);
+  }
+}
+/* an asked node that is not the current objective pulses more quietly */
+.halo:not([data-objective]) {
+  opacity: 0.18;
+  animation-name: breatheQuiet;
+}
+@keyframes breatheQuiet {
+  0%,
+  100% {
+    opacity: 0.05;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 0.24;
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .halo {
+    animation: none;
+    opacity: 0.35;
+  }
+  .halo:not([data-objective]) {
+    opacity: 0.15;
+  }
+  .seg,
+  .ribbonBand,
+  .node {
+    transition: none;
+  }
+}
+:global(html[data-reduced-motion]) .halo {
+  animation: none;
+}
+.dotRecorded {
+  fill: var(--ok);
+}
+.check {
+  fill: none;
+  stroke: var(--surface);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dotStated {
+  fill: var(--ok);
+  opacity: 0.75;
+}
+.ringWaiting {
+  fill: var(--surface);
+  stroke: var(--faint);
+  stroke-width: 1.4;
+  stroke-dasharray: 2.5 2.5;
+}
+.gate {
+  fill: var(--surface);
+  stroke: var(--ink);
+  stroke-width: 1.6;
+}
+.node[data-tier="gate"][data-locked] .gate {
+  fill: var(--ok);
+  stroke: var(--ok);
+}
+.result {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 1.6;
+}
+.phrase {
+  font-family: var(--serif);
+  font-size: 12.5px;
+  fill: var(--ink);
+}
+.phrase[data-tier="stated"] {
+  text-decoration: underline dotted color-mix(in srgb, var(--muted) 60%, transparent);
+  text-underline-offset: 3px;
+}
+.phrase[data-kind="guess"] {
+  font-style: italic;
+  fill: var(--accent-ink);
+}
+.phrase[data-kind="wait"] {
+  font-style: italic;
+  fill: var(--faint);
+}
+.node[data-preview] .phrase {
+  fill: var(--accent-ink);
+}
+
+/* the table */
+.sourceBox {
+  fill: var(--surface);
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.sourceHead {
+  cursor: pointer;
+  outline: none;
+}
+.sourceHead[data-focus] .sourceBox {
+  stroke: var(--accent);
+  fill: var(--accent-tint);
+}
+.sourceFile {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+.sourceDims {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--muted);
+}
+.sourceRow {
+  cursor: pointer;
+  outline: none;
+}
+.sourceRow[data-focus] .hit {
+  fill: var(--accent-tint);
+}
+.sourceKey {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  fill: var(--muted);
+}
+.sourceVal {
+  font-family: var(--serif);
+  font-size: 12px;
+  fill: var(--ink);
+  text-decoration: underline dotted color-mix(in srgb, var(--muted) 60%, transparent);
+  text-underline-offset: 3px;
+}

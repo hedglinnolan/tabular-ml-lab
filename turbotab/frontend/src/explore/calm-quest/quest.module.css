@@ -1,0 +1,80 @@
+/* The quest log's own placement: the objective line where the kit puts the chain, and one
+   section's objectives disclosed beneath it. Every look is the kit's: the chain's buttons and
+   marks (kit.module.css), the overlay's surface; only tokens, no new colors. */
+.line {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  min-width: 0;
+}
+.line nav {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.count {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* One section's objectives, disclosed under its name (the kit's overlay surface). */
+.menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  z-index: 5;
+  width: min(420px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 18px 16px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.08);
+}
+.menuHead {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 15px;
+}
+/* a question may take two lines: its mark stays on the first */
+.items button {
+  text-align: left;
+  align-items: flex-start;
+  gap: 8px;
+}
+.items button::before {
+  margin-top: 8px;
+  flex: none;
+}
+/* an objective not answered yet: the kit's hollow mark (the chain's on a phone) */
+.items button:not([data-status="done"])::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-strong);
+  flex: none;
+}
+
+/* At 900 px and narrower only the open section keeps its count, so the line fits on one row (on
+   a phone the kit's chain also leaves the other sections as marks). */
+@media (max-width: 900px) {
+  .line li:not([data-status="current"]) .count {
+    display: none;
+  }
+}
+@media (max-width: 640px) {
+  .menu {
+    left: 0 !important;
+    width: 100%;
+  }
+}

@@ -13,6 +13,16 @@ export type Route =
   | { name: "stage-lab-m2" }
   | { name: "m2-lab" }
   | { name: "m3-lab" }
+  | { name: "methods-protos" }
+  | { name: "methods-document" }
+  | { name: "methods-questlog" }
+  | { name: "methods-map" }
+  | { name: "calm" }
+  | { name: "calm-qa" }
+  | { name: "calm-paper" }
+  | { name: "calm-quest" }
+  | { name: "calm-map" }
+  | { name: "calm-kit" }
   | { name: "missing"; path: string };
 
 /**
@@ -43,6 +53,13 @@ export function parseRoute(path: string, lab = LAB): Route {
     if (/^\/lab\/stage\/m2\/?$/.test(path)) return { name: "stage-lab-m2" };
     if (/^\/lab\/m2\/?$/.test(path)) return { name: "m2-lab" };
     if (/^\/lab\/m3\/?$/.test(path)) return { name: "m3-lab" };
+    if (/^\/lab\/methods\/?$/.test(path)) return { name: "methods-protos" };
+    if (/^\/lab\/methods-document\/?$/.test(path)) return { name: "methods-document" };
+    if (/^\/lab\/methods-questlog\/?$/.test(path)) return { name: "methods-questlog" };
+    if (/^\/lab\/methods-map\/?$/.test(path)) return { name: "methods-map" };
+    if (/^\/lab\/calm\/?$/.test(path)) return { name: "calm" };
+    const calm = /^\/lab\/calm\/(qa|paper|quest|map|kit)\/?$/.exec(path);
+    if (calm) return { name: `calm-${calm[1]}` as "calm-qa" | "calm-paper" | "calm-quest" | "calm-map" | "calm-kit" };
   }
   const m = /^\/p\/([^/]+)\/?$/.exec(path);
   if (m) return { name: "project", pid: decodeURIComponent(m[1]!) };
@@ -53,7 +70,17 @@ export function useRoute(): Route {
   return parseRoute(useSyncExternalStore(subscribe, getPath, () => "/"));
 }
 
+/**
+ * A host that routes by hash (the static prototypes build, src/explore/protos-main.tsx) takes over
+ * every in-app navigation; it returns true when it handled `to`.
+ */
+let override: ((to: string) => boolean) | null = null;
+export function setNavigateOverride(fn: ((to: string) => boolean) | null): void {
+  override = fn;
+}
+
 export function navigate(to: string): void {
+  if (override?.(to)) return;
   if (to === window.location.pathname) return;
   window.history.pushState(null, "", to);
   window.dispatchEvent(new Event(EVENT));

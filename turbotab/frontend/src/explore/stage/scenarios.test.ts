@@ -105,6 +105,8 @@ describe("numbers are the fixture's", () => {
 describe("the fixture copy", () => {
   const source = resolve(here, "../../../../../docs/turbotab-next/m1/explore/fixtures.json");
   it.skipIf(!existsSync(source))("is byte-identical to docs/turbotab-next/m1/explore/fixtures.json", () => {
-    expect(readFileSync(resolve(here, "fixtures.json"))).toEqual(readFileSync(source));
+    // Buffer.equals compares the bytes at once; toEqual walks 834 KB element by element and can
+    // run past the 5-second timeout on a machine running at low priority.
+    expect(readFileSync(resolve(here, "fixtures.json")).equals(readFileSync(source))).toBe(true);
   });
 });

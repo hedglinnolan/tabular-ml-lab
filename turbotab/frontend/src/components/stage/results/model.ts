@@ -40,7 +40,7 @@ export interface Comparison {
   higherIsBetter: boolean;
 }
 
-const LOWER_BETTER = new Set(["rmse", "mae", "brier", "log_loss", "logloss"]);
+const LOWER_BETTER = new Set(["mse", "rmse", "mae", "brier", "log_loss", "logloss"]);
 
 /**
  * The comparison the Results draw. Held-out scores are read only in a phase that may show them

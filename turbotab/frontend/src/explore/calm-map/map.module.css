@@ -1,0 +1,135 @@
+/* The map's one band (at most 120 px): the stages as regions, each a name over its stretch of the
+   lineage line, and the decisions as nodes on it. It speaks in the stage bar's own marks and
+   tokens: a solid dot is stated, a hollow ring is asked, a faint ring waits; the open decision is
+   the ink one. No color, font or decoration of its own; the focus ring is base.css's. */
+.map {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0 0;
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+  min-width: 0;
+  max-height: 120px;
+}
+.region {
+  flex: var(--n) 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+}
+.name {
+  font-size: 15px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 2px;
+}
+.region[data-reach="false"] .name {
+  color: var(--faint);
+}
+.region[data-current="true"] .name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* the region's stretch of the lineage line, the decisions on it */
+.nodes {
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  justify-content: space-around;
+}
+.nodes::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1.5px solid var(--line-strong);
+}
+.nodes li {
+  display: flex;
+}
+.node,
+.stage {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.node i,
+.stage i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--muted);
+  background: var(--ground);
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+.node[data-status="stated"] i,
+.stage[data-status="stated"] i {
+  background: var(--muted);
+}
+.node[data-status="waiting"] i,
+.stage[data-status="waiting"] i {
+  border-color: var(--line-strong);
+}
+.node:disabled,
+.stage:disabled {
+  cursor: default;
+}
+.node:not(:disabled):hover i,
+.stage:not(:disabled):hover i {
+  border-color: var(--ink);
+}
+.node[data-status="stated"]:not(:disabled):hover i,
+.stage[data-status="stated"]:not(:disabled):hover i {
+  background: var(--ink);
+}
+/* the decision on the card */
+.node[aria-current="step"] i {
+  width: 16px;
+  height: 16px;
+  border-color: var(--ink);
+}
+.node[aria-current="step"][data-status="stated"] i {
+  background: var(--ink);
+}
+
+/* a whole stage as one mark: only where the band is too narrow for every decision */
+.stage {
+  display: none;
+}
+@media (max-width: 720px) {
+  .map {
+    gap: 4px;
+  }
+  .region:not([data-current="true"]) {
+    flex: none;
+  }
+  .region:not([data-current="true"]) .name,
+  .region:not([data-current="true"]) .nodes {
+    display: none;
+  }
+  .region:not([data-current="true"]) .stage {
+    display: grid;
+  }
+  .region[data-current="true"] {
+    flex: 1 1 auto;
+    padding-inline: 6px;
+  }
+}
