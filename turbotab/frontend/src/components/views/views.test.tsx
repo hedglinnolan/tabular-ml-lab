@@ -4,7 +4,7 @@ import { DOT, Forest, plotWidth, ROW, TableWithForest } from "./Forest";
 import { focusOf, PagePreview } from "./PagePreview";
 import { exhibitModel, forest, forestMulti, forestRatio, table1, table2, table2Multi } from "./lab/fixtures";
 import { pageFromExhibits } from "./adapters";
-import { forestScale } from "./scale";
+import { forestScale } from "./common/scale";
 import type { ForestData, PageData } from "./types";
 
 const GATE = "Estimates open when Fit is pressed.";

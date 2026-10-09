@@ -72,7 +72,7 @@ describe("the decision curve's gate", () => {
   it("before the gate says one line and draws nothing scored", () => {
     const { container } = render(<DecisionCurveView data={{ ...d, sealed: "The decision curve opens after Fit." }} />);
     expect(container.querySelector("svg")).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent("opens after Fit");
+    expect(screen.getByRole("note")).toHaveTextContent("opens after Fit");
   });
 });
 
@@ -83,7 +83,7 @@ describe("the decision curve view", () => {
     expect(container.querySelector('[data-ref="treat-none"]')).toBeTruthy();
     expect(container.querySelector('[data-mark="range"]')).toBeTruthy();
     expect(container.querySelectorAll("[data-line]")).toHaveLength(2);
-    expect(screen.getByTestId("view-table").querySelectorAll("tbody tr")).toHaveLength(3);
+    expect(screen.getByTestId("table-alternative").querySelectorAll("tbody tr")).toHaveLength(3);
     expect(container.textContent).toContain("Treating everyone falls below the chart past 0.3");
   });
 
@@ -120,7 +120,7 @@ describe("the decision curve view", () => {
   it("says why in one line when there is no curve", () => {
     const { container } = render(<DecisionCurveView data={null} />);
     expect(container.querySelector("svg")).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent(/yes\/no outcome/);
+    expect(screen.getByRole("note")).toHaveTextContent(/yes\/no outcome/);
   });
 
   it("reads the engine's rows (illustrative fixture)", () => {

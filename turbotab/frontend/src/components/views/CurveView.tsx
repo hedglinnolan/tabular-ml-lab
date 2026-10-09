@@ -5,9 +5,11 @@
  * entities compared take the comparison palette in fixed order.
  */
 import { useState } from "react";
-import { bandOf, nearest, pathOf, runs, type Domain } from "./scale";
+import { bandOf, nearest, pathOf, runs, type Domain } from "./common/scale";
 import { curveFrame, hasEstimate, hasStrip, readAt, visibleLines, type CurveData, type CurveLine } from "./curve";
-import { CHOICE, Crosshair, Empty, Legend, MARK_R, Numbers, NOW, Tip, TipLines, XAxis, YAxis, fmtNum, fmtTick, slotColor, useWidth, viewStyles as s, type KeyItem, type TableSpec } from "./parts";
+import { CHOICE, Crosshair, OneLine, Legend, MARK_R, Numbers, NOW, Tip, TipLines, XAxis, YAxis, fmtNum, fmtTick, slotColor, useWidth, type LegendItem, type TableSpec } from "./common/parts";
+import s from "./curves.module.css";
+import v from "./common/views.module.css";
 
 export function lineColor(l: CurveLine): string {
   if (l.role === "now") return NOW;
@@ -35,14 +37,14 @@ export function CurveView({ data, title, showChoice = true, why }: CurveViewProp
   const [ref, W] = useWidth();
   const [at, setAt] = useState<number | null>(null);
   if (!data || (!hasEstimate(data) && !data.sealed)) {
-    return <Empty kind="curve" title={title} why={why ?? "There is no curve to draw: no estimate was served for any value of the input."} />;
+    return <OneLine view="curve" title={title} text={why ?? "There is no curve to draw: no estimate was served for any value of the input."} />;
   }
   if (data.sealed && !(data.rug?.length || data.support?.x.length)) {
-    return <Empty kind="curve" title={title} why={data.sealed} />;
+    return <OneLine view="curve" title={title} text={data.sealed} />;
   }
   const lines = data.sealed ? [] : visibleLines(data, showChoice);
   const frame = curveFrame(data, lines, W);
-  if (!frame) return <Empty kind="curve" title={title} why={why ?? "There is no curve to draw."} />;
+  if (!frame) return <OneLine view="curve" title={title} text={why ?? "There is no curve to draw."} />;
   const { g, labels } = frame;
   const { box, x, y, strip } = g;
   const xs = readAt(data, lines, x.domain() as unknown as Domain);
@@ -50,7 +52,7 @@ export function CurveView({ data, title, showChoice = true, why }: CurveViewProp
     const i = data.support?.x.indexOf(v) ?? -1;
     return i >= 0 ? data.support!.share[i] : undefined;
   };
-  const key: KeyItem[] = lines.map((l) => ({ label: l.label, color: lineColor(l), mark: "line" }));
+  const key: LegendItem[] = lines.map((l) => ({ label: l.label, color: lineColor(l), mark: "line" }));
   const xName = data.xName ?? data.xLabel;
   const hasBand = lines.some((l) => l.low?.some((v) => v !== null));
   const cur = at !== null ? xs[at] : undefined;
@@ -67,7 +69,7 @@ export function CurveView({ data, title, showChoice = true, why }: CurveViewProp
     return strip && sh !== undefined ? strip.y(sh) : g.axisY;
   };
   return (
-    <figure className={s.fig} data-view="curve" data-sealed={data.sealed ? "true" : undefined}>
+    <figure className={s.fig} data-exhibit-view="curve" data-sealed={data.sealed ? "true" : undefined}>
       {title ? <h3>{title}</h3> : null}
       <Legend items={key} />
       <div className={s.plot} ref={ref}>
@@ -78,7 +80,7 @@ export function CurveView({ data, title, showChoice = true, why }: CurveViewProp
           {data.stop && !data.sealed ? (
             <g data-ref="stop">
               <line x1={x(data.stop.x)} x2={x(data.stop.x)} y1={g.plotTop} y2={g.plotBottom} style={{ stroke: "var(--canvas-muted)" }} strokeWidth={1} />
-              <text className={s.axis} x={x(data.stop.x) - 5} y={g.plotTop + 12} textAnchor="end">
+              <text className={v.axis} x={x(data.stop.x) - 5} y={g.plotTop + 12} textAnchor="end">
                 Stops
               </text>
             </g>
@@ -95,14 +97,14 @@ export function CurveView({ data, title, showChoice = true, why }: CurveViewProp
               labelled 0–100% scale under the plot (reads no outcome) */}
           {strip ? (
             <g data-mark="strip">
-              <text className={s.axis} x={box.left} y={strip.top - 7}>
+              <text className={v.axis} x={box.left} y={strip.top - 7}>
                 {STRIP_LABEL}
               </text>
-              <line className={s.grid} x1={box.left} x2={box.width - box.right} y1={strip.top} y2={strip.top} />
-              <text className={s.axis} x={box.left - 6} y={strip.top + 4} textAnchor="end">
+              <line className={v.grid} x1={box.left} x2={box.width - box.right} y1={strip.top} y2={strip.top} />
+              <text className={v.axis} x={box.left - 6} y={strip.top + 4} textAnchor="end">
                 100%
               </text>
-              <text className={s.axis} x={box.left - 6} y={strip.bottom + 4} textAnchor="end">
+              <text className={v.axis} x={box.left - 6} y={strip.bottom + 4} textAnchor="end">
                 0
               </text>
               {data.support!.x.map((v, i) => {
@@ -189,7 +191,7 @@ export function CurveView({ data, title, showChoice = true, why }: CurveViewProp
         </Tip>
       </div>
       {data.sealed ? (
-        <p className={s.empty} role="status">
+        <p className={v.empty} role="note">
           {data.sealed}
         </p>
       ) : null}

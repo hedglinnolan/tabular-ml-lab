@@ -6,7 +6,7 @@
  * slot is spent on a scale: those name entities. Labels keep the declared order and stay inside the
  * drawing.
  */
-import { fmtPct } from "../common/frame";
+import { fmtPct } from "../common/parts";
 import { gateRefusal } from "../common/gate";
 import type { MatrixInput } from "./types";
 

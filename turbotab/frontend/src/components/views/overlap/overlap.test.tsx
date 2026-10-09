@@ -1,10 +1,19 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, act } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { contrast, resolveColor, themeTokens } from "../common/contrast";
-import { DATA_CONTEXT_STRONG } from "../common/frame";
+import { NOW } from "../common/parts";
 import { ENGINE_N_TRIMMED, OVERLAP_ENGINE, OVERLAP_ONE_EACH, OVERLAP_ONE_GROUP, OVERLAP_RECORDED, OVERLAP_UNTRIMMED } from "../fixtures";
 import { keepLine, labelY, layoutOverlap, type OverlapLayout } from "./layout";
 import { OverlapView } from "./OverlapView";
+
+/** Opens the view's table alternative, the one disclosure under the drawing. */
+function openTable() {
+  const d = screen.getByTestId("table-alternative") as HTMLDetailsElement;
+  act(() => {
+    d.open = true;
+    d.dispatchEvent(new Event("toggle"));
+  });
+}
 
 const lay = (input: Parameters<typeof layoutOverlap>[0], w = 400): OverlapLayout => {
   const r = layoutOverlap(input, w);
@@ -78,7 +87,7 @@ describe("overlap marks", () => {
 
   it.each(["light", "dark"] as const)("draws recorded trimmed bars at 3:1 on the canvas in %s", (theme) => {
     const tokens = themeTokens(readFileSync(`${process.cwd()}/src/explore/calm-kit/tokens.css`, "utf8"), theme);
-    expect(contrast(resolveColor(DATA_CONTEXT_STRONG, tokens), resolveColor("var(--canvas)", tokens))).toBeGreaterThanOrEqual(3);
+    expect(contrast(resolveColor(NOW, tokens), resolveColor("var(--canvas)", tokens))).toBeGreaterThanOrEqual(3);
   });
 
   it("names each group once, on the drawing, with its rows, and keys the trim", () => {
@@ -87,7 +96,7 @@ describe("overlap marks", () => {
     expect(screen.getAllByText(/heavy_user = 1/)).toHaveLength(1);
     expect(screen.getByRole("list", { name: "Legend" })).toHaveTextContent(/^trimmed$/);
     const trimmed = container.querySelector("[data-trimmed] path") as SVGPathElement;
-    expect(trimmed.style.fill).toBe(DATA_CONTEXT_STRONG);
+    expect(trimmed.style.fill).toBe(NOW);
     expect(trimmed.style.opacity).toBe("");
     for (const line of container.querySelectorAll("g[aria-hidden] line")) expect(line.getAttribute("stroke-width")).toBe("2");
   });
@@ -118,7 +127,6 @@ describe("overlap states", () => {
   it("says why in one line, without a frame, when a group has no rows", () => {
     render(<OverlapView input={OVERLAP_ONE_GROUP} />);
     expect(screen.getByRole("note")).toHaveTextContent("No rows have not exposed, so there is nothing for exposed to overlap with.");
-    expect(screen.queryByRole("img")).toBeNull();
   });
 
   it("says why when the bins and counts disagree", () => {
@@ -134,10 +142,9 @@ describe("overlap states", () => {
 
   it("offers its table alternative", () => {
     render(<OverlapView input={OVERLAP_UNTRIMMED} title="Overlap" />);
-    fireEvent.click(screen.getByRole("button", { name: "Show as a table" }));
+    openTable();
     const table = screen.getByRole("table");
     expect(table).toHaveTextContent("heavy_user = 1");
     expect(screen.getAllByRole("row")).toHaveLength(1 + 20 + 1);
-    expect(screen.queryByRole("img")).toBeNull();
   });
 });

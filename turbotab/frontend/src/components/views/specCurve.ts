@@ -11,7 +11,7 @@
  * rule 6); shown while the plan is chosen it would invite choosing by the estimate. `sealed`
  * carries the line saying when it opens, and nothing estimated is drawn before then.
  */
-import { extent, inner, linear, PAD, ticksIn, union, type Box, type Domain } from "./scale";
+import { extent, inner, linear, PAD, ticksIn, union, type Box, type Domain } from "./common/scale";
 
 export interface SpecChoice {
   key: string;

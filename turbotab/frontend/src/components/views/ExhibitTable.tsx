@@ -24,9 +24,9 @@
 import type { Purpose } from "../stage/purposes";
 import type { ReactNode } from "react";
 import { fmtCell, isNumeric } from "./format";
-import { OneLine } from "./shared";
+import { OneLine } from "./common/parts";
 import type { Gate, TableData, TableRow } from "./types";
-import v from "./views.module.css";
+import v from "./exhibit.module.css";
 
 export const TABLE_PURPOSE: Purpose = {
   question: "matters",

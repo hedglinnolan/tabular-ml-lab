@@ -54,7 +54,7 @@ describe("the specification curve view", () => {
     expect(container.querySelector('[data-primary="true"]')).toHaveAttribute("data-spec", "a");
     expect(container.textContent).toContain("Primary");
     expect(container.querySelectorAll('[data-option="adj:full"] circle')).toHaveLength(1);
-    const table = screen.getByTestId("view-table");
+    const table = screen.getByTestId("table-alternative");
     const rows = table.querySelectorAll("tbody tr");
     expect(rows).toHaveLength(2);
     expect(rows[1]).toHaveTextContent("2 (primary)");
@@ -76,16 +76,16 @@ describe("the specification curve view", () => {
   it("before the lock says one line and draws no estimate", () => {
     const { container } = render(<SpecCurveView data={{ ...d, sealed: "The specification curve opens after Fit locks the plan." }} />);
     expect(container.querySelector("svg")).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent("opens after Fit");
+    expect(screen.getByRole("note")).toHaveTextContent("opens after Fit");
   });
 
   it("says why in one line when there is nothing, or the scales mix", () => {
     const { container, rerender } = render(<SpecCurveView data={null} />);
     expect(container.querySelector("svg")).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent(/no alternative/);
+    expect(screen.getByRole("note")).toHaveTextContent(/no alternative/);
     rerender(<SpecCurveView data={{ ...d, specs: [{ ...d.specs[0]!, scaleKey: "per g" }, { ...d.specs[1]!, scaleKey: "per kcal" }] }} />);
     expect(container.querySelector("svg")).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent(/different scales/);
+    expect(screen.getByRole("note")).toHaveTextContent(/different scales/);
   });
 
   it("reads the calm scenario's 27 fitted plans, one primary", () => {

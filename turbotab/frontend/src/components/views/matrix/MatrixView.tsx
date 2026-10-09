@@ -8,7 +8,7 @@
  */
 import { useState } from "react";
 import { fmtInt } from "../../stage/format";
-import { ViewFrame, fmtPct, rowsWord, useKeyMarks, useTip, useWidth } from "../common/frame";
+import { ViewFrame, fmtPct, rowsWord, useKeyMarks, useTip, useWidth } from "../common/parts";
 import v from "../common/views.module.css";
 import { MATRIX, NOT_COMPUTED, RAMP, STEP_LABELS, fillOf, fmtCell, inkOf, layoutMatrix } from "./layout";
 import type { MatrixInput } from "./types";

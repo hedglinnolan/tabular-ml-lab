@@ -11,8 +11,8 @@
  * open (FOUNDATION §3), so a decision curve on held-out scores is never drawn while that range is
  * pointed at: choosing it there would be choosing by the held-out score.
  */
-import { extent, inner, linear, PAD, ticksIn, type Box, type Domain } from "./scale";
-import { CHAR_W, fmtTick, type Slot } from "./parts";
+import { extent, inner, linear, PAD, ticksIn, type Box, type Domain } from "./common/scale";
+import { CHAR_W, fmtTick, type Slot } from "./common/parts";
 
 export interface DecisionCurveRow {
   threshold: number;

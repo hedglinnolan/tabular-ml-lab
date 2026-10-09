@@ -5,8 +5,10 @@
  */
 import { useState } from "react";
 import { columnAt, mixedScales, sortSpecs, specLayout, type SpecCurveData } from "./specCurve";
-import { Crosshair, Empty, FIT, MARK_R, NOW, Numbers, Tip, TipLines, YAxis, fmtNum, fmtTick, leftLabelWidth, useWidth, viewStyles as s } from "./parts";
-import type { Box } from "./scale";
+import { Crosshair, OneLine, FIT, MARK_R, NOW, Numbers, Tip, TipLines, YAxis, fmtNum, fmtTick, leftLabelWidth, useWidth } from "./common/parts";
+import s from "./curves.module.css";
+import v from "./common/views.module.css";
+import type { Box } from "./common/scale";
 
 const fmtInt = (n: number) => Math.round(n).toLocaleString("en-US");
 const ci = (lo: number | null, hi: number | null) => (lo === null || hi === null ? "" : ` (${fmtNum(lo)} to ${fmtNum(hi)})`);
@@ -32,12 +34,12 @@ export function SpecCurveView({ data, title, why }: { data: SpecCurveData | null
   const [ref, W] = useWidth();
   const [at, setAt] = useState<number | null>(null);
   if (!data || !data.specs.length) {
-    return <Empty kind="spec_curve" title={title} why={why ?? "There is no specification curve: no alternative specification was declared."} />;
+    return <OneLine view="spec_curve" title={title} text={why ?? "There is no specification curve: no alternative specification was declared."} />;
   }
-  if (data.sealed) return <Empty kind="spec_curve" title={title} why={data.sealed} />;
+  if (data.sealed) return <OneLine view="spec_curve" title={title} text={data.sealed} />;
   const mixed = mixedScales(data.specs);
   if (mixed) {
-    return <Empty kind="spec_curve" title={title} why={`These specifications estimate on different scales (${mixed.join(", ")}), so one axis cannot hold them; each scale needs its own curve.`} />;
+    return <OneLine view="spec_curve" title={title} text={`These specifications estimate on different scales (${mixed.join(", ")}), so one axis cannot hold them; each scale needs its own curve.`} />;
   }
   const d = { ...data, specs: sortSpecs(data.specs) };
   const pre = specLayout(d, W, 60)!;
@@ -56,13 +58,13 @@ export function SpecCurveView({ data, title, why }: { data: SpecCurveData | null
   const cur = at !== null ? d.specs[at] : undefined;
   const choiceLabel = (c: string, o: string) => d.choices.find((x) => x.key === c)?.options.find((x) => x.key === o)?.label ?? o;
   return (
-    <figure className={s.fig} data-view="spec_curve">
+    <figure className={s.fig} data-exhibit-view="spec_curve">
       {title ? <h3>{title}</h3> : null}
       <div className={s.plot} ref={ref}>
         <svg viewBox={`0 0 ${box.width} ${box.height}`} role="img" aria-label={`${d.estimateLabel} in each of ${n} specifications, sorted, with the choices each made`}>
           {cur ? <rect x={cx(at!) - colW / 2} y={box.top} width={colW} height={box.height - box.top - 8} style={{ fill: "var(--canvas-line)" }} opacity={0.7} /> : null}
           <YAxis y={y} ticks={l.yTicks} box={curveBox} fmt={fmtTick} title={d.estimateLabel} />
-          <line className={s.grid} x1={box.left} x2={box.width - box.right} y1={l.curveBottom} y2={l.curveBottom} />
+          <line className={v.grid} x1={box.left} x2={box.width - box.right} y1={l.curveBottom} y2={l.curveBottom} />
           {d.zero ? <line data-ref="zero" x1={box.left} x2={box.width - box.right} y1={y(0)} y2={y(0)} style={{ stroke: "var(--canvas-muted)" }} strokeWidth={1} /> : null}
           {d.specs.map((sp, i) => {
             const color = sp.primary ? FIT : NOW;
@@ -86,7 +88,7 @@ export function SpecCurveView({ data, title, why }: { data: SpecCurveData | null
               </text>
             ) : (
               <g key={`o:${row.choice}:${row.option}`} data-option={`${row.choice}:${row.option}`}>
-                <text className={s.axis} x={14} y={row.y + 4} style={{ fontSize: 12 }}>
+                <text className={v.axis} x={14} y={row.y + 4} style={{ fontSize: 12 }}>
                   <title>{row.label}</title>
                   {cut(row.label)}
                 </text>

@@ -4,8 +4,8 @@
  * (Nguyen & Holmes 2019, PLoS Comput Biol 15:e1006907, tip 4). No tick carries a number: the axes
  * are derived, and a number on them would imply a unit.
  */
-import type { LegendItem, Slot } from "../common/frame";
-import { DIRECT_LABELS_UP_TO, fmtPct, rowsWord } from "../common/frame";
+import type { LegendItem, Slot } from "../common/parts";
+import { DIRECT_LABELS_UP_TO, fmtPct, rowsWord } from "../common/parts";
 import { gateRefusal } from "../common/gate";
 import type { EmbeddingInput } from "./types";
 
@@ -52,7 +52,7 @@ export interface EmbedLayout {
   mode: "points" | "density";
   points: EmbedPoint[];
   cells: EmbedCell[];
-  legend: (LegendItem & { count: number })[];
+  legend: (LegendItem & { key: string; count: number })[];
   /** each series named on the drawing, near the middle of its rows, when there are at most four */
   labels: EmbedLabel[];
   axisTitles: [string, string];
@@ -133,10 +133,10 @@ export function layoutEmbedding(input: EmbeddingInput, width: number, focus: str
   const legend: EmbedLayout["legend"] = [];
   if (input.grouping) {
     input.grouping.levels.slice(0, 5).forEach((lv, gi) => {
-      legend.push({ key: `g${gi}`, label: lv, slot: (gi + 1) as Slot, shape: "dot", count: counts.get(`g${gi}`) ?? 0 });
+      legend.push({ key: `g${gi}`, label: lv, slot: (gi + 1) as Slot, mark: "dot", count: counts.get(`g${gi}`) ?? 0 });
     });
-    if (counts.get("other")) legend.push({ key: "other", label: "Other levels", slot: null, shape: "dot", count: counts.get("other")! });
-    if (counts.get("none")) legend.push({ key: "none", label: "Not recorded", slot: null, shape: "dot", count: counts.get("none")! });
+    if (counts.get("other")) legend.push({ key: "other", label: "Other levels", slot: null, mark: "dot", count: counts.get("other")! });
+    if (counts.get("none")) legend.push({ key: "none", label: "Not recorded", slot: null, mark: "dot", count: counts.get("none")! });
   }
 
   const mode = rows.length > EMBED.densityAbove ? "density" : "points";

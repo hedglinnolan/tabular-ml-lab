@@ -7,8 +7,10 @@
  */
 import { useState } from "react";
 import { decisionScales, directRoom, pointedRange, refusal, shadedRange, treatAllLabelAt, treatAllLeaves, usefulLine, type DecisionCurveData } from "./decisionCurve";
-import { CHOICE, Crosshair, Empty, Legend, MARK_R, Numbers, Tip, TipLines, XAxis, YAxis, fmtNum, fmtTick, leftFor, slotColor, useWidth, viewStyles as s, type KeyItem } from "./parts";
-import { inner, nearest, pathOf, runs } from "./scale";
+import { CHOICE, Crosshair, OneLine, Legend, MARK_R, Numbers, Tip, TipLines, XAxis, YAxis, fmtNum, fmtTick, leftFor, slotColor, useWidth, type LegendItem } from "./common/parts";
+import s from "./curves.module.css";
+import v from "./common/views.module.css";
+import { inner, nearest, pathOf, runs } from "./common/scale";
 
 const REF = "var(--canvas-muted)";
 
@@ -22,11 +24,11 @@ export function DecisionCurveView({ data, title, why }: DecisionCurveViewProps) 
   const [ref, W] = useWidth();
   const [at, setAt] = useState<number | null>(null);
   if (!data || !data.rows.length || !data.models.length) {
-    return <Empty kind="decision_curve" title={title} why={why ?? "There is no decision curve: it is drawn for a yes/no outcome's predicted risks."} />;
+    return <OneLine view="decision_curve" title={title} text={why ?? "There is no decision curve: it is drawn for a yes/no outcome's predicted risks."} />;
   }
-  if (data.sealed) return <Empty kind="decision_curve" title={title} why={data.sealed} />;
+  if (data.sealed) return <OneLine view="decision_curve" title={title} text={data.sealed} />;
   const refused = refusal(data);
-  if (refused) return <Empty kind="decision_curve" title={title} why={refused} />;
+  if (refused) return <OneLine view="decision_curve" title={title} text={refused} />;
   const d = data;
   const pre = decisionScales(d, W, 40)!;
   const left = leftFor(pre.yTicks, fmtTick);
@@ -57,7 +59,7 @@ export function DecisionCurveView({ data, title, why }: DecisionCurveViewProps) 
   const range = shadedRange(d);
   const pointed = pointedRange(d);
   const allLabel = treatAllLabelAt(d, x, y, { x0, y0, y1 });
-  const key: KeyItem[] = [
+  const key: LegendItem[] = [
     ...d.models.map((m) => ({ label: m.label, color: slotColor(m.slot), mark: one ? ("dot" as const) : ("line" as const) })),
     { label: "Treat everyone", color: REF, mark: one ? "dot" : "line" },
     { label: "Treat no one", color: REF, mark: "thin" },
@@ -67,7 +69,7 @@ export function DecisionCurveView({ data, title, why }: DecisionCurveViewProps) 
   const row = at !== null ? d.rows[at] : undefined;
   const clipId = `dc-clip-${Math.round(box.width)}-${d.rows.length}`;
   return (
-    <figure className={s.fig} data-view="decision_curve">
+    <figure className={s.fig} data-exhibit-view="decision_curve">
       {title ? <h3>{title}</h3> : null}
       <Legend items={key} />
       <div className={s.plot} ref={ref}>
@@ -100,7 +102,7 @@ export function DecisionCurveView({ data, title, why }: DecisionCurveViewProps) 
             )}
           </g>
           {allLabel ? (
-            <text data-label="treat-all" className={s.axis} x={allLabel.x} y={allLabel.y} textAnchor={allLabel.anchor}>
+            <text data-label="treat-all" className={v.axis} x={allLabel.x} y={allLabel.y} textAnchor={allLabel.anchor}>
               Treat everyone
             </text>
           ) : null}
@@ -123,7 +125,7 @@ export function DecisionCurveView({ data, title, why }: DecisionCurveViewProps) 
                   {e.label}
                 </text>
               ) : null))}
-              <text className={s.axis} data-label="treat-none" x={box.width - box.right + 7} y={y(0) + 4}>
+              <text className={v.axis} data-label="treat-none" x={box.width - box.right + 7} y={y(0) + 4}>
                 Treat no one
               </text>
             </>

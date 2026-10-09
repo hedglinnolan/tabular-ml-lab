@@ -7,8 +7,8 @@
  * (FOUNDATION §5 rule 6): before the gate, `sealed` says when it opens and only the input's
  * observed support is drawn, which reads no outcome.
  */
-import { extent, inner, linear, PAD, ticksIn, union, type Box, type Domain } from "./scale";
-import { CHAR_W, fmtTick, leftFor, type Slot } from "./parts";
+import { extent, inner, linear, PAD, ticksIn, union, type Box, type Domain } from "./common/scale";
+import { CHAR_W, fmtTick, leftFor, type Slot } from "./common/parts";
 
 export interface CurveLine {
   key: string;

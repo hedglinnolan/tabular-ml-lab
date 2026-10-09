@@ -6,7 +6,7 @@ import type { ModelCalibration, SubstitutionArtifact } from "../../api/m3-types"
 import type { CalibrationBin, CalibrationData } from "./calibration";
 import type { CurveData, CurveLine } from "./curve";
 import type { DecisionCurveData, DecisionCurveRow, ScoredWhere } from "./decisionCurve";
-import type { Slot } from "./parts";
+import type { Slot } from "./common/parts";
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 const SLOTS: Slot[] = [1, 2, 3, 4, 5];

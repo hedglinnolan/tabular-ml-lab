@@ -1,11 +1,11 @@
-import { render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { NOW, tipLeft } from "./parts";
+import { NOW, OneLine, TableAlternative, tipLeft } from "./parts";
 import { insetRange, linear, ticksIn, widen } from "./scale";
-import { ViewsLab } from "./lab/ViewsLab";
-import { entries } from "./lab/curves.lab";
+import { ViewsLab } from "../lab/ViewsLab";
+import { entries } from "../lab/curves.lab";
 
 const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const lum = (rgb: number[]) => {
@@ -50,7 +50,7 @@ describe("the tooltip's place", () => {
 });
 
 describe("the data-now gray", () => {
-  const tokens = readFileSync(resolve(__dirname, "../../explore/calm-kit/tokens.css"), "utf8");
+  const tokens = readFileSync(resolve(__dirname, "../../../explore/calm-kit/tokens.css"), "utf8");
   it("is at least 3:1 on the canvas in both themes, and stays apart from the fit's ink", () => {
     const light = /:root\s*\{([^}]*)\}/.exec(tokens)![1]!;
     const dark = /:root\[data-theme="dark"\]\s*\{([^}]*)\}/.exec(tokens)![1]!;
@@ -75,7 +75,27 @@ describe("every view in the lab", () => {
 
   it("gives every drawn view a table alternative, the sealed curve included", () => {
     const { container } = render(<ViewsLab entries={entries} />);
-    for (const fig of container.querySelectorAll("figure:not([data-empty])")) expect(fig.querySelector('[data-testid="view-table"]')).toBeTruthy();
-    expect(container.querySelectorAll('figure[data-sealed="true"] [data-testid="view-table"]').length).toBeGreaterThan(0);
+    for (const fig of container.querySelectorAll("figure:not([data-empty])")) expect(fig.querySelector('[data-testid="table-alternative"]')).toBeTruthy();
+    expect(container.querySelectorAll('figure[data-sealed="true"] [data-testid="table-alternative"]').length).toBeGreaterThan(0);
+  });
+});
+
+describe("the shared parts", () => {
+  it("says one line instead of an empty frame, and draws nothing", () => {
+    const { container } = render(<OneLine view="curve" text="There is no curve to draw." />);
+    expect(container.querySelector('[data-exhibit-view="curve"]')).toHaveAttribute("data-empty", "true");
+    expect(container.querySelector("svg")).toBeNull();
+    expect(container.querySelector('[role="note"]')).toHaveTextContent("There is no curve to draw.");
+  });
+
+  it("renders a lazy table alternative only once it is opened", () => {
+    const { container, getByTestId } = render(<TableAlternative>{() => <table data-testid="lazy" />}</TableAlternative>);
+    expect(container.querySelector('[data-testid="lazy"]')).toBeNull();
+    const d = getByTestId("table-alternative") as HTMLDetailsElement;
+    act(() => {
+      d.open = true;
+      d.dispatchEvent(new Event("toggle"));
+    });
+    expect(container.querySelector('[data-testid="lazy"]')).not.toBeNull();
   });
 });

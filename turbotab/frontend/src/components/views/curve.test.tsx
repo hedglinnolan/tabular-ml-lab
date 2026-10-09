@@ -2,8 +2,8 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { CurveView } from "./CurveView";
 import { BOX_BOTTOM, STRIP_GAP, STRIP_H, curveFrame, curveScales, endLabels, xDomain, yDomain, type CurveData } from "./curve";
-import { CHAR_W } from "./parts";
-import { extent, nearest } from "./scale";
+import { CHAR_W } from "./common/parts";
+import { extent, nearest } from "./common/scale";
 import { curveOnePoint, exposureCurve, substitutionSealed } from "./lab/curves.fixtures";
 
 const base: CurveData = {
@@ -97,7 +97,7 @@ describe("the curve view", () => {
 
   it("has a table alternative with every x", () => {
     render(<CurveView data={base} />);
-    const table = screen.getByTestId("view-table");
+    const table = screen.getByTestId("table-alternative");
     expect(table.querySelectorAll("tbody tr")).toHaveLength(4);
     expect(table.textContent).toContain("−1 (−1.5 to −0.5)");
   });
@@ -112,7 +112,7 @@ describe("the curve view", () => {
   it("says why in one line when there is nothing to draw", () => {
     const { container } = render(<CurveView data={null} />);
     expect(container.querySelector("svg")).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent(/no curve/);
+    expect(screen.getByRole("note")).toHaveTextContent(/no curve/);
   });
 
   it("before the gate draws only the outcome-free support, labelled, with a tooltip and a table", () => {
@@ -123,15 +123,15 @@ describe("the curve view", () => {
     expect(container.querySelectorAll('[data-mark="strip"] rect')).toHaveLength(3);
     expect(container.querySelector('[data-mark="strip"]')!.textContent).toContain("Share of rows within the observed range");
     expect(container.querySelector('[role="slider"]')).toBeTruthy(); // the crosshair reads each bar
-    const table = screen.getByTestId("view-table");
+    const table = screen.getByTestId("table-alternative");
     expect(table.querySelectorAll("tbody tr")).toHaveLength(3);
     expect(table.textContent).toContain("90%");
-    expect(screen.getByRole("status")).toHaveTextContent("The curve opens after Fit.");
+    expect(screen.getByRole("note")).toHaveTextContent("The curve opens after Fit.");
   });
 
   it("reads the captured sealed substitution as a strip of eleven bars", () => {
     const { container } = render(<CurveView data={substitutionSealed} />);
     expect(container.querySelectorAll('[data-mark="strip"] rect')).toHaveLength(11);
-    expect(screen.getByTestId("view-table").querySelectorAll("tbody tr")).toHaveLength(11);
+    expect(screen.getByTestId("table-alternative").querySelectorAll("tbody tr")).toHaveLength(11);
   });
 });

@@ -217,52 +217,6 @@
 .band[data-lit="true"] {
   fill: var(--canvas-line);
 }
-.key {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-  color: var(--canvas-muted);
-  font-size: 13.5px;
-}
-.key span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.key i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-/* ── the table alternative ─────────────────────────────────────────────────── */
-.alt summary {
-  cursor: pointer;
-  width: fit-content;
-  color: var(--canvas-muted);
-  font-size: 14px;
-}
-.alt[open] summary {
-  margin-bottom: 8px;
-}
-
-/* ── the tooltip ───────────────────────────────────────────────────────────── */
-.tip {
-  position: fixed;
-  z-index: 9;
-  pointer-events: none;
-  background: var(--raised);
-  color: var(--raised-ink);
-  font-size: 13px;
-  padding: 5px 8px;
-  border-radius: 6px;
-  white-space: nowrap;
-  transform: translate(-50%, -125%);
-}
-.tip b {
-  font-weight: 600;
-}
 
 /* ── the page ──────────────────────────────────────────────────────────────── */
 .pages {

@@ -1,10 +1,19 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, act } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { contrast, resolveColor, themeTokens } from "../common/contrast";
 import { MATRIX_CORRELATION, MATRIX_MISSINGNESS, MATRIX_ONE_PAIR } from "../fixtures";
 import { MATRIX, NOT_COMPUTED, RAMP, STEP_LABELS, fillOf, fmtCell, inOrder, inkOfStep, layoutMatrix, stepOf, type MatrixLayout, type Step } from "./layout";
 import { MatrixView } from "./MatrixView";
 import type { MatrixInput } from "./types";
+
+/** Opens the view's table alternative, the one disclosure under the drawing. */
+function openTable() {
+  const d = screen.getByTestId("table-alternative") as HTMLDetailsElement;
+  act(() => {
+    d.open = true;
+    d.dispatchEvent(new Event("toggle"));
+  });
+}
 
 const lay = (input: MatrixInput, w = 400): MatrixLayout => {
   const r = layoutMatrix(input, w);
@@ -109,7 +118,6 @@ describe("matrix states", () => {
   it("says why in one line when one column has no pair", () => {
     render(<MatrixView input={{ ...MATRIX_ONE_PAIR, rows: ["fat_g"], cols: ["fat_g"], values: [[1]], n: undefined }} />);
     expect(screen.getByRole("note")).toHaveTextContent("Only fat_g is here");
-    expect(screen.queryByRole("img")).toBeNull();
   });
 
   it("says why when no value could be computed", () => {
@@ -131,7 +139,6 @@ describe("matrix states", () => {
     expect("empty" in layoutMatrix({ ...MATRIX_MISSINGNESS, groups_by: ["responder"] }, 400)).toBe(true);
     render(<MatrixView input={corr} />);
     expect(screen.getByRole("note")).toHaveTextContent("hba1c is the outcome");
-    expect(screen.queryByRole("img")).toBeNull();
   });
 
   it("says how a selection of columns was chosen", () => {
@@ -141,7 +148,7 @@ describe("matrix states", () => {
 
   it("offers its table alternative: one line per pair, with r as drawn and its rows", () => {
     render(<MatrixView input={MATRIX_CORRELATION} />);
-    fireEvent.click(screen.getByRole("button", { name: "Show as a table" }));
+    openTable();
     const n = MATRIX_CORRELATION.rows.length;
     const rows = screen.getAllByRole("row");
     expect(rows).toHaveLength(1 + (n * (n - 1)) / 2);

@@ -26,9 +26,9 @@
 import type { Purpose } from "../stage/purposes";
 import { numberInPlacementOrder } from "./adapters";
 import { ExhibitTable } from "./ExhibitTable";
-import { TableAlternative, useTip } from "./shared";
+import { TableAlternative, useTip } from "./common/parts";
 import type { Gate, PageData, PageExhibit, Placement, TableData } from "./types";
-import v from "./views.module.css";
+import v from "./exhibit.module.css";
 
 export const PAGE_PURPOSE: Purpose = {
   question: "provenance",

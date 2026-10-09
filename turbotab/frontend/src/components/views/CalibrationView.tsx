@@ -6,8 +6,9 @@
  */
 import { useState } from "react";
 import { calibrationRefusal, calibrationScales, hasCalibration, type CalibrationData } from "./calibration";
-import { Empty, FIT, Legend, MARK_R, Numbers, Tip, TipLines, XAxis, YAxis, fmtNum, fmtTick, leftFor, useWidth, viewStyles as s, type KeyItem } from "./parts";
-import { nearest, pathOf } from "./scale";
+import { OneLine, FIT, Legend, MARK_R, Numbers, Tip, TipLines, XAxis, YAxis, fmtNum, fmtTick, leftFor, useWidth, type LegendItem } from "./common/parts";
+import s from "./curves.module.css";
+import { nearest, pathOf } from "./common/scale";
 import { plain } from "../../explore/calm-kit/text";
 
 const fmtInt = (n: number) => Math.round(n).toLocaleString("en-US");
@@ -58,11 +59,11 @@ export function CalibrationView({ data, title, why }: { data: CalibrationData | 
   const [ref, W] = useWidth();
   const [hover, setHover] = useState<{ kind: "bin" | "curve"; i: number } | null>(null);
   if (!hasCalibration(data)) {
-    return <Empty kind="calibration" title={title} why={why ?? "Calibration was not assessed: no predictions were scored against observed outcomes."} />;
+    return <OneLine view="calibration" title={title} text={why ?? "Calibration was not assessed: no predictions were scored against observed outcomes."} />;
   }
-  if (data.sealed) return <Empty kind="calibration" title={title} why={data.sealed} />;
+  if (data.sealed) return <OneLine view="calibration" title={title} text={data.sealed} />;
   const refused = calibrationRefusal(data);
-  if (refused) return <Empty kind="calibration" title={title} why={refused} />;
+  if (refused) return <OneLine view="calibration" title={title} text={refused} />;
   const d = data;
   const pre = calibrationScales(d, W, 40)!;
   const left = leftFor(pre.ticks, fmtTick);
@@ -72,7 +73,7 @@ export function CalibrationView({ data, title, why }: { data: CalibrationData | 
   const pts = curvePoints(d);
   const bins = d.bins ?? [];
   const labels = calibrationLabels(d);
-  const key: KeyItem[] = [
+  const key: LegendItem[] = [
     ...(pts.length ? [{ label: "Smoothed", color: FIT, mark: "line" as const }] : []),
     ...(bins.length ? [{ label: "Groups of rows, with intervals", color: FIT, mark: "dot" as const }] : []),
     { label: "Perfect agreement", color: "var(--canvas-muted)", mark: "thin" },
@@ -81,7 +82,7 @@ export function CalibrationView({ data, title, why }: { data: CalibrationData | 
     hover?.kind === "bin" ? { x: x(bins[hover.i]!.predicted), y: y(bins[hover.i]!.high ?? bins[hover.i]!.observed) - 4 } : hover?.kind === "curve" ? { x: x(pts[hover.i]!.x), y: y(pts[hover.i]!.y) - 6 } : null;
   const fmtV = (v: number) => fmtNum(v);
   return (
-    <figure className={s.fig} data-view="calibration">
+    <figure className={s.fig} data-exhibit-view="calibration">
       {title ? <h3>{title}</h3> : null}
       <Legend items={key} />
       <div className={s.plot} ref={ref}>

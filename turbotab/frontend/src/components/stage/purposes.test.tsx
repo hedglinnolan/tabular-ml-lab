@@ -54,8 +54,10 @@ describe("every rendered kind declares the question it answers", () => {
     expect(elements.size).toBeGreaterThan(5);
     for (const [kind, path] of elements)
       expect(STAGE_PURPOSES[kind], `data-purpose="${kind}" in ${path} has no purpose`).toBeDefined();
-    // No orphans: every registered stage kind is still rendered somewhere.
-    for (const kind of Object.keys(VIEW_PURPOSES)) expect(views.has(kind), `${kind} is registered but never rendered`).toBe(true);
+    // No orphans: every registered stage kind is still rendered somewhere (an exhibit view kind
+    // names itself with data-exhibit-view, src/components/views).
+    const exhibits = literals("data-exhibit-view");
+    for (const kind of Object.keys(VIEW_PURPOSES)) expect(views.has(kind) || exhibits.has(kind), `${kind} is registered but never rendered`).toBe(true);
     for (const kind of Object.keys(STAGE_PURPOSES))
       expect(elements.has(kind), `${kind} is registered but never rendered`).toBe(true);
   });

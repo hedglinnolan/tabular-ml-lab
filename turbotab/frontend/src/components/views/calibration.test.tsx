@@ -49,7 +49,7 @@ describe("the calibration view", () => {
     expect(screen.getByTestId("calibration-line")).toHaveTextContent(
       "Predicted 32% on average against 30% observed (calibration intercept −0.2, 95% interval −0.4 to 0; 0 when they agree). Outcomes moved 0.8 times as far as the predictions did (calibration slope, 95% interval 0.6 to 1; 1 when they agree, below 1 when predictions are too extreme). 400 rows, scored out of fold.",
     );
-    expect(screen.getByTestId("view-table").querySelectorAll("tbody tr")).toHaveLength(3); // one group, two distinct curve points
+    expect(screen.getByTestId("table-alternative").querySelectorAll("tbody tr")).toHaveLength(3); // one group, two distinct curve points
   });
 
   it("says a flagged calibration once: the engine's verdict, never the same numbers twice", () => {
@@ -80,7 +80,7 @@ describe("the calibration view", () => {
   it("says why in one line when nothing was scored", () => {
     const { container } = render(<CalibrationView data={{ ...d, curve: [], bins: [] }} />);
     expect(container.querySelector("svg")).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent(/not assessed/);
+    expect(screen.getByRole("note")).toHaveTextContent(/not assessed/);
   });
 
   it("refuses held-out scores while a choice they would inform is made, and is sealed before Fit", () => {
@@ -90,7 +90,7 @@ describe("the calibration view", () => {
     expect(container.querySelector("svg")).toBeNull();
     rerender(<CalibrationView data={{ ...d, sealed: "Calibration opens after Fit." }} />);
     expect(container.querySelector("svg")).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent("Calibration opens after Fit.");
+    expect(screen.getByRole("note")).toHaveTextContent("Calibration opens after Fit.");
   });
 
   it("reads the engine's captured and illustrative calibrations", () => {

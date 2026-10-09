@@ -10,7 +10,7 @@
  */
 import { useState } from "react";
 import { fmtInt, fmtNum } from "../../stage/format";
-import { Legend, ViewFrame, fitText, rowsWord, slotColor, useKeyMarks, useTip, useWidth, type Slot } from "../common/frame";
+import { Legend, ViewFrame, fitText, rowsWord, slotColor, useKeyMarks, useTip, useWidth, type Slot } from "../common/parts";
 import v from "../common/views.module.css";
 import { EMBED, LABEL_CHAR_PX, OPACITY, keyOf, layoutEmbedding, nearest, type EmbedLayout } from "./layout";
 import type { EmbeddingInput } from "./types";

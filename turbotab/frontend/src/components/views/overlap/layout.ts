@@ -4,8 +4,9 @@
  * tall as a bar of 10% below.
  */
 import { scaleLinear } from "d3-scale";
+import { ticksIn } from "../common/scale";
 import { fmtInt, fmtTick } from "../../stage/format";
-import { fmtPct } from "../common/frame";
+import { fmtPct } from "../common/parts";
 import { gateRefusal } from "../common/gate";
 import type { OverlapInput } from "./types";
 
@@ -115,7 +116,7 @@ export function layoutOverlap(input: OverlapInput, width: number): OverlapResult
 
   // Ticks name only values the data reaches: inside the drawn range, and shares no taller than
   // the tallest bar.
-  const xTicks = xs.ticks(5).map((t) => ({ value: t, px: xs(t), label: fmtTick(t) }));
+  const xTicks = ticksIn([lo, hi], 5).map((t) => ({ value: t, px: xs(t), label: fmtTick(t) }));
   const yTicks = ys
     .ticks(3)
     .filter((t) => t > 0 && t <= maxShare + EPS)

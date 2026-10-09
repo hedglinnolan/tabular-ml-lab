@@ -10,7 +10,7 @@
  * rows open (FOUNDATION §3), so a held-out calibration is never drawn while a choice it would
  * inform is pointed at (`choosing`).
  */
-import { extent, inner, linear, PAD, ticksIn, union, type Box, type Domain } from "./scale";
+import { extent, inner, linear, PAD, ticksIn, union, type Box, type Domain } from "./common/scale";
 import type { ScoredWhere } from "./decisionCurve";
 
 export interface Interval {

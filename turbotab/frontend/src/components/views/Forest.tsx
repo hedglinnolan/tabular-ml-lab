@@ -31,10 +31,10 @@ import type { Purpose } from "../stage/purposes";
 import { fmtTick } from "../stage/format";
 import { ExhibitTable, type TablePlot } from "./ExhibitTable";
 import { fmtEstimate } from "./format";
-import { forestScale, valuesOf, type ForestScale } from "./scale";
-import { CATEGORICAL, OneLine, TableAlternative, useTip, useWidth } from "./shared";
+import { forestScale, valuesOf, type ForestScale } from "./common/scale";
+import { CATEGORICAL, Legend, OneLine, TableAlternative, useTip, useWidth } from "./common/parts";
 import type { ForestData, ForestRow, Gate, TableData, TableRow } from "./types";
-import v from "./views.module.css";
+import v from "./exhibit.module.css";
 
 export const FOREST_PURPOSE: Purpose = {
   question: "matters",
@@ -180,17 +180,9 @@ function Sides({ sides }: { sides?: [string, string] }) {
   );
 }
 
-function Legend({ data, color }: { data: ForestData; color: (s?: string) => string }) {
-  return (
-    <div className={v.key} data-testid="forest-legend">
-      {data.series!.map((x) => (
-        <span key={x.key}>
-          <i style={{ background: color(x.key) }} />
-          {x.label}
-        </span>
-      ))}
-    </div>
-  );
+/** The series' legend: the shared one, with dots as the forest draws them. */
+function SeriesLegend({ data, color }: { data: ForestData; color: (s?: string) => string }) {
+  return <Legend testId="forest-legend" items={data.series!.map((x) => ({ key: x.key, label: x.label, color: color(x.key), mark: "dot" as const }))} />;
 }
 
 /** A series' name beside its first mark, in the ink (never the series color), or left of the
@@ -247,7 +239,7 @@ export function Forest({ data, gate, lit, onLit, width = 360 }: ForestProps) {
 
   return (
     <div className={v.view} data-exhibit-view="forest">
-      {many ? <Legend data={data} color={color} /> : null}
+      {many ? <SeriesLegend data={data} color={color} /> : null}
       <div className={v.forest} style={{ gridTemplateRows: `auto repeat(${n}, ${ROW}px) auto` }}>
         <div className={v.fhead}>{data.stub}</div>
         <div className={v.fhead}>Estimate (95% CI)</div>
@@ -381,7 +373,7 @@ export function TableWithForest({ table, forest, gate, lit, onLit, width = 720 }
   };
   return (
     <div ref={ref} className={v.view} data-exhibit-view="table-forest">
-      {many ? <Legend data={forest} color={color} /> : null}
+      {many ? <SeriesLegend data={forest} color={color} /> : null}
       <ExhibitTable data={table} gate={null} lit={lit} onLit={onLit} plot={plot} />
       {tip.node}
     </div>

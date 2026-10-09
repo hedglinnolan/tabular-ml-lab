@@ -10,7 +10,7 @@
  * once it is recorded; a one-item key names them. The arrow keys read each bar.
  */
 import { fmtInt, fmtTick } from "../../stage/format";
-import { DATA_CONTEXT_STRONG, Legend, ViewFrame, barPath, fitText, fmtPct, rowsWord, slotColor, useKeyMarks, useTip, useWidth, type Slot } from "../common/frame";
+import { NOW, Legend, ViewFrame, barPath, fitText, fmtPct, rowsWord, slotColor, useKeyMarks, useTip, useWidth, type Slot } from "../common/parts";
 import v from "../common/views.module.css";
 import { keepLine, labelSide, labelY, layoutOverlap, OVERLAP } from "./layout";
 import type { OverlapInput } from "./types";
@@ -84,7 +84,7 @@ export function OverlapView({ input, title }: { input: OverlapInput; title?: str
     </table>
   );
 
-  const trimFill = choice ? "var(--data-affected)" : DATA_CONTEXT_STRONG;
+  const trimFill = choice ? "var(--data-affected)" : NOW;
   const fillOf = (gi: number, trimmed: boolean) => (trimmed ? trimFill : slotColor(slots[gi]!));
 
   return (

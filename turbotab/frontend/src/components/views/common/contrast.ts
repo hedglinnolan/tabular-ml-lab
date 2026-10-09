@@ -60,7 +60,8 @@ export function themeTokens(css: string, theme: "light" | "dark"): Record<string
   return out;
 }
 
-/** A view's color expression, resolved: `var(--token)` or `color-mix(in oklab, A p%, B)`. */
+/** A view's color expression, resolved: `var(--token)`, or `color-mix(in oklab|srgb, A p%, B)`
+ *  (srgb mixes the gamma-encoded channels, as CSS Color 4 does). */
 export function resolveColor(expr: string, tokens: Record<string, string>): RGB {
   const s = expr.trim();
   const v = /^var\(--([\w-]+)\)$/.exec(s);
@@ -69,11 +70,12 @@ export function resolveColor(expr: string, tokens: Record<string, string>): RGB 
     if (!hex) throw new Error(`no token --${v[1]}`);
     return hexToLinear(hex);
   }
-  const mix = /^color-mix\(in oklab,\s*(var\(--[\w-]+\))\s+([\d.]+)%,\s*(var\(--[\w-]+\))\)$/.exec(s);
+  const mix = /^color-mix\(in (oklab|srgb),\s*(var\(--[\w-]+\))\s+([\d.]+)%,\s*(var\(--[\w-]+\))\)$/.exec(s);
   if (mix) {
-    const p = Number(mix[2]) / 100;
-    const a = linearToOklab(resolveColor(mix[1]!, tokens));
-    const b = linearToOklab(resolveColor(mix[3]!, tokens));
+    const p = Number(mix[3]) / 100;
+    const [A, B] = [resolveColor(mix[2]!, tokens), resolveColor(mix[4]!, tokens)];
+    if (mix[1] === "srgb") return [0, 1, 2].map((k) => toLinear(toGamma(A[k]!) * p + toGamma(B[k]!) * (1 - p))) as RGB;
+    const [a, b] = [linearToOklab(A), linearToOklab(B)];
     return oklabToLinear([0, 1, 2].map((k) => a[k]! * p + b[k]! * (1 - p)) as RGB);
   }
   throw new Error(`cannot resolve ${expr}`);

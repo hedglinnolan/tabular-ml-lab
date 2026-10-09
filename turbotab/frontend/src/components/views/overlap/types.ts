@@ -18,7 +18,7 @@
  *    (FOUNDATION §5 rule 6) given `outcome`.
  */
 import type { Purpose } from "../../stage/purposes";
-import type { Slot } from "../common/frame";
+import type { Slot } from "../common/parts";
 import type { OutcomeGate } from "../common/gate";
 
 /** The view's purpose entry (FOUNDATION §5 rule 9, in the purpose registry's form, BLUEPRINT §11.2). */

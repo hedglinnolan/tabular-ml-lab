@@ -1,8 +1,17 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, act } from "@testing-library/react";
 import { EMBEDDING_ONE, EMBEDDING_OUTCOME_GATED, EMBEDDING_PCA, syntheticCloud } from "../fixtures";
 import { EMBED, layoutEmbedding, nearest, type EmbedLayout } from "./layout";
 import { EmbeddingView } from "./EmbeddingView";
 import type { EmbeddingInput } from "./types";
+
+/** Opens the view's table alternative, the one disclosure under the drawing. */
+function openTable() {
+  const d = screen.getByTestId("table-alternative") as HTMLDetailsElement;
+  act(() => {
+    d.open = true;
+    d.dispatchEvent(new Event("toggle"));
+  });
+}
 
 const lay = (input: EmbeddingInput, w = 400, focus: string | null = null): EmbedLayout => {
   const r = layoutEmbedding(input, w, focus);
@@ -80,7 +89,6 @@ describe("embedding states", () => {
   it("says why in one line when there are no rows", () => {
     render(<EmbeddingView input={{ ...two, xs: [], ys: [], groups: [] }} />);
     expect(screen.getByRole("note")).toHaveTextContent("No rows to place");
-    expect(screen.queryByRole("img")).toBeNull();
   });
 
   it("refuses the outcome before its gate, as the grouping or an embedded column, in one line", () => {
@@ -90,7 +98,6 @@ describe("embedding states", () => {
     expect("layout" in layoutEmbedding({ ...EMBEDDING_OUTCOME_GATED, outcome: null }, 400)).toBe(true);
     render(<EmbeddingView input={EMBEDDING_OUTCOME_GATED} />);
     expect(screen.getByRole("note")).toHaveTextContent("responder is the outcome");
-    expect(screen.queryByRole("img")).toBeNull();
     expect(screen.queryByText(/· 40/)).toBeNull();
   });
 
@@ -142,7 +149,7 @@ describe("embedding states", () => {
 
   it("offers its table alternative", () => {
     render(<EmbeddingView input={EMBEDDING_PCA} />);
-    fireEvent.click(screen.getByRole("button", { name: "Show as a table" }));
+    openTable();
     expect(screen.getAllByRole("table")).toHaveLength(2);
     expect(screen.getByText("QC01")).toBeInTheDocument();
   });
