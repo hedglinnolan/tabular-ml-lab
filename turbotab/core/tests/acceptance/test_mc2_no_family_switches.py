@@ -118,6 +118,9 @@ NOT_YET: dict[Place, Pin] = {
             "linear", "proportional_odds", "cox", "mixed", "gee", "featurewise", "elastic_net",
             "boosted_trees"),
     ("core/plan_previews.py", "population_block"): pin("MC-2b (found here)", 1, "linear"),
+    ("core/quest.py", "_linear_family"):
+        pin("MC-2b (wave E1a: the quest log's mirror of calibration_stage's NO_LINEAR)", 1,
+            "linear"),
     ("core/reference/catalog.py", "FAMILY_LENSES"):
         pin("MC-2b (§3.3: review_lenses)", 1, "linear", "elastic_net", "boosted_trees",
             "featurewise", "proportional_odds", "mixed", "gee", "cox", "screened_elastic_net"),
