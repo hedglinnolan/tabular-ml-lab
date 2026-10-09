@@ -5875,6 +5875,63 @@
             "type": "boolean",
             "title": "Predicts",
             "default": true
+          },
+          "flexible": {
+            "type": "boolean",
+            "title": "Flexible",
+            "default": false
+          },
+          "bootstrap_optimism": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bootstrap Optimism",
+            "default": true
+          },
+          "invariances": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Invariances",
+            "default": []
+          },
+          "inference_table": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "intervals",
+                  "shrunk_no_intervals",
+                  "description_only"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inference Table"
+          },
+          "bias_terms": {
+            "items": {
+              "$ref": "#/components/schemas/Named"
+            },
+            "type": "array",
+            "title": "Bias Terms",
+            "default": []
+          },
+          "reads": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reads",
+            "default": []
           }
         },
         "type": "object",
@@ -5888,7 +5945,13 @@
           "needs_scaling",
           "handles_missing",
           "purposes",
-          "predicts"
+          "predicts",
+          "flexible",
+          "bootstrap_optimism",
+          "invariances",
+          "inference_table",
+          "bias_terms",
+          "reads"
         ],
         "title": "FamilyInfo",
         "description": "What ``GET /api/models`` says about one family."
@@ -8669,6 +8732,29 @@
           "acknowledged"
         ],
         "title": "MultiplicitySpec"
+      },
+      "Named": {
+        "properties": {
+          "plain": {
+            "type": "string",
+            "title": "Plain"
+          },
+          "known_as": {
+            "type": "string",
+            "title": "Known As"
+          },
+          "source": {
+            "$ref": "#/components/schemas/Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plain",
+          "known_as",
+          "source"
+        ],
+        "title": "Named",
+        "description": "A term or phenomenon in two registers (C5): the card's plain sentence, and the quiet name\nwith its source, shown on point or focus, never as a second label."
       },
       "OpenSeal-Input": {
         "properties": {
@@ -16366,6 +16452,25 @@
         ],
         "title": "SetUsualIntake",
         "description": "One dietary component's usual-intake distribution by the NCI method, or ``model=\"none\"``\n(turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of\na wide table's ``days``."
+      },
+      "Source": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "where": {
+            "type": "string",
+            "title": "Where",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "title": "Source",
+        "description": "A source a declaration cites: a key into ``models.sources.SOURCES`` (MODEL_FAMILY_CONTRACT\n§7's verified list, until SIZING X4's citation registry), and where in it."
       },
       "SplitSpec": {
         "properties": {
@@ -36299,6 +36404,21 @@
             "title": "Concerns",
             "type": "array"
           },
+          "terms": {
+            "default": [],
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Named"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Terms",
+            "type": "array"
+          },
           "inductive_bias": {
             "title": "Inductive Bias",
             "type": "string"
@@ -36334,6 +36454,7 @@
           "rank",
           "fit",
           "concerns",
+          "terms",
           "inductive_bias",
           "estimate_seconds",
           "estimate"

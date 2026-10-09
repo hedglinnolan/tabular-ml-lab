@@ -1206,7 +1206,7 @@ def test_6b_the_declared_scope_is_the_one_the_scope_test_observes():
         pipe = Pipeline([("model", LinearRegression())]).set_output(transform="pandas")
         pipe.fit(f, yy)
         anat = E.anatomy(pipe, list(f.columns), "regression")
-        return E.attributions(anat, f, f)[0]
+        return E.attributions(anat, f, f, kind="linear")[0]
 
     assert observed_scope(fit_transform, frame, np.zeros(80, dtype=bool), y.to_numpy(),
                           row=3) == "model"

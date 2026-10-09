@@ -677,7 +677,7 @@ def family_steps(spec: DesignSpec, family: ModelFamily,
     from sklearn.preprocessing import StandardScaler
 
     steps = shared_steps(spec) + explore_steps(spec, task)
-    extra = getattr(family, "preprocess", None)
+    extra = family.preprocess
     if extra is not None:
         steps.extend(extra(spec))
     if family.needs_scaling:
@@ -691,7 +691,7 @@ def build_pipeline(spec: DesignSpec, family: ModelFamily, task: Task, purpose: P
 
     steps = family_steps(spec, family, task)
     # A family whose model step depends on the design (which columns it tests) builds from the spec.
-    build_for = getattr(family, "build_for", None)
+    build_for = family.build_for
     model = (build_for(spec, task, purpose, n_rows, n_features) if build_for is not None
              else family.build(task, purpose, n_rows, n_features))
     if getattr(spec, "levers", None):  # EXPLORE: an imbalance correction, then recalibration
@@ -830,7 +830,7 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
                            "better in their explorative analysis.")
             out.append({"key": "scale", "label": "Standardize", "detail": detail})
         else:
-            custom = getattr(family, "describe_step", None)
+            custom = family.describe_step
             label, detail = (custom(name) if custom else None) or (
                 name.replace("_", " ").capitalize(), "")
             out.append({"key": name, "label": label, "detail": detail})

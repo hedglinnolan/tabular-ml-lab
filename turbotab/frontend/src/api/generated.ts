@@ -1821,6 +1821,33 @@ export interface components {
              * @default true
              */
             predicts: boolean;
+            /**
+             * Flexible
+             * @default false
+             */
+            flexible: boolean;
+            /**
+             * Bootstrap Optimism
+             * @default true
+             */
+            bootstrap_optimism: boolean | null;
+            /**
+             * Invariances
+             * @default []
+             */
+            invariances: string[];
+            /** Inference Table */
+            inference_table: ("intervals" | "shrunk_no_intervals" | "description_only") | null;
+            /**
+             * Bias Terms
+             * @default []
+             */
+            bias_terms: components["schemas"]["Named"][];
+            /**
+             * Reads
+             * @default []
+             */
+            reads: string[];
         };
         /**
          * FeatureTableSpec
@@ -2915,6 +2942,18 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+        };
+        /**
+         * Named
+         * @description A term or phenomenon in two registers (C5): the card's plain sentence, and the quiet name
+         *     with its source, shown on point or focus, never as a second label.
+         */
+        Named: {
+            /** Plain */
+            plain: string;
+            /** Known As */
+            known_as: string;
+            source: components["schemas"]["Source"];
         };
         /**
          * OpenSeal
@@ -5940,6 +5979,20 @@ export interface components {
              * @default false
              */
             ear_symmetric: boolean;
+        };
+        /**
+         * Source
+         * @description A source a declaration cites: a key into ``models.sources.SOURCES`` (MODEL_FAMILY_CONTRACT
+         *     §7's verified list, until SIZING X4's citation registry), and where in it.
+         */
+        Source: {
+            /** Key */
+            key: string;
+            /**
+             * Where
+             * @default
+             */
+            where: string;
         };
         /** SplitSpec */
         SplitSpec: {
@@ -13940,6 +13993,11 @@ export interface components {
             fit: "good" | "fair" | "poor";
             /** Concerns */
             concerns: string[];
+            /**
+             * Terms
+             * @default []
+             */
+            terms: (components["schemas"]["Named"] | null)[];
             /** Inductive Bias */
             inductive_bias: string;
             /**

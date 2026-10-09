@@ -477,7 +477,9 @@ def build_graph() -> Graph:
             # families rank first (``models.selection.shelf_order``).
             # shelf 15 (EXPLORE repair): a form rule set in Explore (``set_levers``) counts its
             # spline columns among the candidate predictor parameters Riley's minimum reads.
-            Stage("shelf", 15, ("working", "cohort", "target_info", "split"),
+            # shelf 16 (MC-1): each family carries ``terms`` beside its concerns, its concerns'
+            # quiet names (MODEL_FAMILY_CONTRACT C4), None until MC-5 writes them.
+            Stage("shelf", 16, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
                    "outcome_order", "exposure_forms", "levers",

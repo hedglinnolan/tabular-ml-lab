@@ -48,6 +48,8 @@ from turbotab.core.decisions import Purpose, Task
 from turbotab.core.models.base import (
     Assessment,
     FamilyBase,
+    Identity,
+    InferenceDecl,
     Situation,
     coefficient_rows,
     register_family,
@@ -520,6 +522,25 @@ class ProportionalOdds(FamilyBase):
     )
     needs_scaling = False
     handles_missing = False
+    # MODEL_FAMILY_CONTRACT §1 (§3.1's row for it).
+    identity = Identity(kind="estimator", library="turbotab",
+                        estimator="ProportionalOddsRegression")
+    purposes = ("prediction", "inference")
+    predicts = True
+    flexible = False
+    bootstrap_optimism = True
+    inference_decl = InferenceDecl(table="intervals", intervals=("model", "sandwich", "Taylor"),
+                                   design_based=True, product_terms=True, matrix_table=True,
+                                   default_for=("ordinal",))
+    invariances = ("linear_maps",)
+    curve_shape = "straight"
+    diagnostics = ("proportional_odds", "convergence")
+    output = "margin"
+    raw_scale = {"ordinal": "latent"}
+    review_lenses = ("shared",)
+
+    def methods_label(self, task: Task | None) -> str:
+        return "a proportional-odds (cumulative logit) model"
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         return ProportionalOddsRegression()

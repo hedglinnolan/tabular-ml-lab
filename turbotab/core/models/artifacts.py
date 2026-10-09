@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from turbotab.core.consequences import Lineage
 from turbotab.core.decisions import Task
-from turbotab.core.models.base import Fit
+from turbotab.core.models.base import Fit, Named
 from turbotab.core.models.baseline import VersusBaseline
 from turbotab.core.models.performance import (Calibration, HorizonCalibration, Interval,
                                                LevelCalibration)
@@ -30,6 +30,9 @@ class ShelfFamily(_Model):
     rank: int
     fit: Fit
     concerns: list[str]
+    # Beside each concern, in its order: its quiet name and source, or None where it has none
+    # (MODEL_FAMILY_CONTRACT C4, C5). Two-register concerns come with MC-5; until then all are None.
+    terms: list[Named | None] = []
     inductive_bias: str
     # What fitting this family takes here (M2_CONTRACT §12.6): one fit timed on a sample of the
     # training rows, scaled to the whole table and to the folds the fit makes, as the band estimate

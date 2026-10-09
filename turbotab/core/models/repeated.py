@@ -44,7 +44,15 @@ import pandas as pd
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
 
 from turbotab.core.decisions import Purpose, Task
-from turbotab.core.models.base import Assessment, FamilyBase, Situation, coefficient_rows, register_family
+from turbotab.core.models.base import (
+    Assessment,
+    FamilyBase,
+    Identity,
+    InferenceDecl,
+    Situation,
+    coefficient_rows,
+    register_family,
+)
 
 # The REML profile over γ = σ²_u / σ²_e is searched on this log10 grid, then refined by Brent's
 # method around the best grid point; γ = 0 (no between-unit variance) is checked on its own.
@@ -566,6 +574,23 @@ class Mixed(FamilyBase):
     )
     needs_scaling = False
     handles_missing = False
+    # MODEL_FAMILY_CONTRACT §1 (§3.1's row for it). It declares no attribution yet: MC-7 draws
+    # curves for every predicting family, and until then the explanations do not reach it.
+    identity = Identity(kind="estimator", library="turbotab", estimator="RandomInterceptRegressor")
+    purposes = ("prediction", "inference")
+    predicts = True
+    flexible = False
+    bootstrap_optimism = True
+    inference_decl = InferenceDecl(table="intervals", intervals=("Satterthwaite",),
+                                   matrix_table=True)
+    invariances = ("linear_maps",)  # its fixed effects, with random intercepts
+    curve_shape = "straight"
+    diagnostics = ("boundary",)
+    raw_scale = {"regression": "value"}
+    review_lenses = ("shared",)
+
+    def methods_label(self, task: Task | None) -> str:
+        return "a random-intercept mixed model"
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         return RandomInterceptRegressor()
@@ -635,6 +660,23 @@ class GEE(FamilyBase):
     )
     needs_scaling = False
     handles_missing = False
+    # MODEL_FAMILY_CONTRACT §1 (§3.1's row for it). No attribution yet, as the mixed model's.
+    identity = Identity(kind="estimator", library="statsmodels",
+                        estimator="GEERegressor; GEEClassifier (exchangeable)")
+    purposes = ("prediction", "inference")
+    predicts = True
+    flexible = False
+    bootstrap_optimism = True
+    inference_decl = InferenceDecl(table="intervals", intervals=("CR2",), matrix_table=True)
+    invariances = ("linear_maps",)
+    curve_shape = "straight"
+    diagnostics = ("convergence",)
+    output = "margin"
+    raw_scale = {"regression": "value", "binary": "margin"}
+    review_lenses = ("shared",)
+
+    def methods_label(self, task: Task | None) -> str:
+        return "generalized estimating equations"
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         return GEERegressor() if task == "regression" else GEEClassifier()

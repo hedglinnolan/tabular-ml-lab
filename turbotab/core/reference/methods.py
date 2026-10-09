@@ -310,11 +310,14 @@ def contract_section(c: Any, level: int = 3) -> list[str]:
 
 def family_section(f: Any, level: int = 3) -> list[str]:
     h = "#" * level
-    purposes = tuple(getattr(f, "purposes", PURPOSES))
+    purposes = tuple(f.purposes)
+    # MODEL_FAMILY_CONTRACT C11: None is not applicable, for a family that makes no predictions.
+    sound = {True: "yes", False: "no"}.get(f.bootstrap_optimism,
+                                           "not applicable, as it makes no predictions")
     lines = [f"{h} {f.label} (`{f.key}`)", "",
              f"- **Outcomes it models:** {', '.join(f.tasks)}.",
              f"- **Purposes it serves:** {', '.join(purposes)}"
-             + ("" if getattr(f, "predicts", True) else "; it tests and makes no predictions")
+             + ("" if f.predicts else "; it tests and makes no predictions")
              + ".",
              f"- **Inductive bias:** {f.inductive_bias}",
              "- **Strengths:** " + " ".join(f.strengths),
@@ -322,7 +325,7 @@ def family_section(f: Any, level: int = 3) -> list[str]:
              f"- **Needs scaled inputs:** {'yes' if f.needs_scaling else 'no'}; "
              f"**uses rows with blanks as they are:** {'yes' if f.handles_missing else 'no'}; "
              f"**Harrell's bootstrap optimism is sound for it:** "
-             f"{'yes' if getattr(f, 'bootstrap_optimism', True) else 'no'}.",
+             f"{sound}.",
              f"- **Lenses:** {lens_words(catalog.lenses_of_family(f.key))}.",
              "- **Question:** asked within the models question (`select_models`); the shelf ranks "
              "every family by its own assessment of the data and never shortens the list.",

@@ -1591,6 +1591,14 @@ def _register_screened_family() -> None:
             "A feature that matters only jointly with others can be screened out.",
             "Which features survive changes from fold to fold.",
         )
+        # MODEL_FAMILY_CONTRACT §1: the elastic net's declarations, but for prediction only, so it
+        # gives no table under inference, on its two tasks, and reviewed by the omics lenses.
+        inference_decl = None
+        raw_scale = {"regression": "value", "binary": "margin"}
+        review_lenses = ("metabolomics", "genomics")
+
+        def methods_label(self, task: Any) -> str:
+            return "screened elastic net"
 
         def preprocess(self, spec: Any) -> list[tuple[str, Any]]:
             screened = [c for c in spec.predictors if spec.roles.get(c) == "exposure"]

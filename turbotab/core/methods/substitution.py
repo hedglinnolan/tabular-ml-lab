@@ -1369,7 +1369,7 @@ def missing_values_block(refused: Optional[Mapping[str, Any]], *,
 
     def has_table(key: str) -> bool:
         try:
-            return hasattr(get_family(key), "inference")
+            return get_family(key).inference is not None
         except KeyError:
             return False
 
