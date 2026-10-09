@@ -866,7 +866,7 @@ export interface components {
              */
             method: "none" | "dml_plr" | "dml_irm" | "tmle" | "pds_lasso";
             /** Learner */
-            learner: ("linear" | "lasso" | "random_forest" | "boosted_trees") | null;
+            learner: ("linear" | "lasso" | "nuisance_forest" | "untuned_boosted_trees") | null;
             /**
              * Population
              * @default all
@@ -4121,7 +4121,7 @@ export interface components {
              */
             method: "none" | "dml_plr" | "dml_irm" | "tmle" | "pds_lasso";
             /** Learner */
-            learner?: ("linear" | "lasso" | "random_forest" | "boosted_trees") | null;
+            learner?: ("linear" | "lasso" | "nuisance_forest" | "untuned_boosted_trees") | null;
             /**
              * Population
              * @default all
@@ -4178,7 +4178,7 @@ export interface components {
              */
             method: "none" | "dml_plr" | "dml_irm" | "tmle" | "pds_lasso";
             /** Learner */
-            learner: ("linear" | "lasso" | "random_forest" | "boosted_trees") | null;
+            learner: ("linear" | "lasso" | "nuisance_forest" | "untuned_boosted_trees") | null;
             /**
              * Population
              * @default all
@@ -12983,7 +12983,7 @@ export interface components {
              * Learner
              * @default null
              */
-            learner: ("linear" | "lasso" | "random_forest" | "boosted_trees") | null;
+            learner: ("linear" | "lasso" | "nuisance_forest" | "untuned_boosted_trees") | null;
             /**
              * Population
              * @default all

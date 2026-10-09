@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from turbotab.core import decisions as d
 from turbotab.core.decisions import (
+    LOG_FORMAT,
     DecisionLog,
     ProjectState,
     Refusal,
@@ -144,6 +145,7 @@ def test_records_are_json_lines_with_utc_times_and_survive_reopening(tmp_path):
     first.append(SetTask(column="a", task="regression"))
     line = json.loads(path.read_text().splitlines()[0])
     assert line == {
+        "format": LOG_FORMAT,
         "id": rec.id,
         "seq": 1,
         "at": line["at"],

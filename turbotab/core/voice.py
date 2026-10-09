@@ -556,12 +556,12 @@ def _slot_value(slot: str, value: Any) -> str | None:
 
 @register_sentence("revert")
 def _revert(d: Any, state: Any, ctx: Any) -> str:
-    from turbotab.core.decisions import SLOTS, DecisionRecord, Revert, fold
+    from turbotab.core.decisions import SLOTS, DecisionRecord, Revert, fold, read_record
 
     records = []
     for r in _get(ctx, "records", ()) or ():
         try:
-            records.append(r if isinstance(r, DecisionRecord) else DecisionRecord.model_validate(r))
+            records.append(r if isinstance(r, DecisionRecord) else read_record(r))
         except Exception:
             continue
     target = next((r for r in records if r.id == d.decision_id), None)

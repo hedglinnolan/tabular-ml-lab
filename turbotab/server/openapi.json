@@ -3018,8 +3018,8 @@
                 "enum": [
                   "linear",
                   "lasso",
-                  "random_forest",
-                  "boosted_trees"
+                  "nuisance_forest",
+                  "untuned_boosted_trees"
                 ]
               },
               {
@@ -12276,8 +12276,8 @@
                 "enum": [
                   "linear",
                   "lasso",
-                  "random_forest",
-                  "boosted_trees"
+                  "nuisance_forest",
+                  "untuned_boosted_trees"
                 ]
               },
               {
@@ -12396,8 +12396,8 @@
                 "enum": [
                   "linear",
                   "lasso",
-                  "random_forest",
-                  "boosted_trees"
+                  "nuisance_forest",
+                  "untuned_boosted_trees"
                 ]
               },
               {
@@ -34378,8 +34378,8 @@
                 "enum": [
                   "linear",
                   "lasso",
-                  "random_forest",
-                  "boosted_trees"
+                  "nuisance_forest",
+                  "untuned_boosted_trees"
                 ],
                 "type": "string"
               },

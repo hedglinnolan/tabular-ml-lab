@@ -254,9 +254,10 @@ def test_4_batch_answers_within_a_second(prediction):
 @pytest.mark.parametrize("decision", [
     d.SetCausal(exposure="supplement", method="tmle", learner="linear", trim=0.05,
                 assumptions=ALL),
-    d.SetCausal(exposure="supplement", method="dml_irm", learner="random_forest", trim=0.05,
+    d.SetCausal(exposure="supplement", method="dml_irm", learner="nuisance_forest", trim=0.05,
                 assumptions=ALL),
-    d.SetCausal(exposure="supplement", method="dml_plr", learner="boosted_trees", assumptions=ALL),
+    d.SetCausal(exposure="supplement", method="dml_plr", learner="untuned_boosted_trees",
+                assumptions=ALL),
 ], ids=lambda x: x.learner)
 def test_4_causal_answers_within_a_second(causal, decision):
     _assert_fast(hover(causal, decision), "set_causal")

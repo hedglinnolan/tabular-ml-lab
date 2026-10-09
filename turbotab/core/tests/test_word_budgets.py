@@ -360,7 +360,7 @@ def representative_decisions():
         # The causal lane (turbotab/core/causal.py): none beside the primary, DML with its
         # assumptions declared, TMLE trimmed to the overlap population, post-double selection
         d.SetCausal(exposure="protein_g", method="none"),
-        d.SetCausal(exposure="protein_g", method="dml_plr", learner="random_forest",
+        d.SetCausal(exposure="protein_g", method="dml_plr", learner="nuisance_forest",
                     assumptions=["no_unmeasured_confounding", "positivity", "consistency",
                                  "time_ordering"]),
         d.SetCausal(exposure="smoker", method="tmle", learner="linear", trim=0.1,

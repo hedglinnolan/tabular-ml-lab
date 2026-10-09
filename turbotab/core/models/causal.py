@@ -73,13 +73,21 @@ import numpy as np
 from scipy import stats
 from sklearn.base import BaseEstimator, ClassifierMixin
 
-Learner = Literal["linear", "lasso", "random_forest", "boosted_trees"]
-LEARNERS: tuple[str, ...] = ("linear", "lasso", "random_forest", "boosted_trees")
+# The recorded keys (``decisions.CausalLearner``). The flexible two are named for this lane, never
+# by a model family's key; their former keys, ``random_forest`` and ``boosted_trees``, are
+# tombstones (``decisions.TOMBSTONES``) that build nothing.
+Learner = Literal["linear", "lasso", "nuisance_forest", "untuned_boosted_trees"]
+LEARNERS: tuple[str, ...] = ("linear", "lasso", "nuisance_forest", "untuned_boosted_trees")
 LEARNER_WORDS: dict[str, str] = {
     "linear": "main-terms linear and logistic regression",
     "lasso": "the cross-validated lasso (L1-penalized linear and logistic regression)",
-    "random_forest": "random forests (200 trees, at least 5 rows per leaf)",
-    "boosted_trees": "histogram gradient boosting (up to 100 trees)",
+    "nuisance_forest": "random forests (200 trees, at least 5 rows per leaf)",
+    "untuned_boosted_trees": "histogram gradient boosting (up to 100 trees)",
+}
+# Each learner's short name in a sentence: the words are read from here, never from the key.
+LEARNER_NAMES: dict[str, str] = {
+    "linear": "main-terms regression", "lasso": "lasso", "nuisance_forest": "random forest",
+    "untuned_boosted_trees": "boosted trees",
 }
 LEVEL = 0.95
 TMLE_ALPHA = 0.9995  # tmle's ``alpha``: Q is bounded to [1 − α, α] on the [0, 1] scale
@@ -399,17 +407,20 @@ def make_learner(name: str, classifier: bool, seed: int = 0) -> Any:
                 alphas=100, eps=1e-4, cv=KFold(5, shuffle=True, random_state=seed),
                 max_iter=50_000, tol=1e-7, random_state=seed))
         return _Sklearn(est, classifier)
-    if name == "random_forest":
+    if name == "nuisance_forest":
         from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
         cls = RandomForestClassifier if classifier else RandomForestRegressor
         return _Sklearn(cls(n_estimators=200, min_samples_leaf=5, random_state=seed, n_jobs=1),
                         classifier)
-    if name == "boosted_trees":
+    if name == "untuned_boosted_trees":  # scikit-learn's defaults, never tuned
         from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
 
         cls = HistGradientBoostingClassifier if classifier else HistGradientBoostingRegressor
         return _Sklearn(cls(random_state=seed), classifier)
+    from turbotab.core.decisions import refuse_retired
+
+    refuse_retired("causal_learner", name)  # a retired key names its successor
     raise ValueError(f"Unknown learner {name!r}; the causal lane learns with {', '.join(LEARNERS)}.")
 
 
@@ -418,6 +429,17 @@ Factory = Callable[[bool, int], Any]  # (classifier, seed) -> learner
 
 def learner_factory(name: str) -> Factory:
     return lambda classifier, seed: make_learner(name, classifier, seed)
+
+
+def least_squares(learner: str | Factory) -> bool:
+    """Whether ``learner`` is the least-squares learner, however it is given: the name
+    ``"linear"``, or a factory whose regressor is least squares (:class:`_OLS`). That learner fits a
+    yes/no variable by least squares where the partially linear model asks for a regression
+    (DoubleML's ``regr.lm``, the linear-probability form); every other learner fits it as a
+    classifier's probability."""
+    if isinstance(learner, str):
+        return learner == "linear"
+    return isinstance(learner(False, 0), _OLS)
 
 
 def cross_fit(factory: Factory, classifier: bool, X: np.ndarray, y: np.ndarray,
@@ -568,17 +590,17 @@ def dml_plr(y: Any, d: Any, X: Any, *, learner: str | Factory = "linear",
     n = len(y)
     w = _weights(design, n)
     factory = learner_factory(learner) if isinstance(learner, str) else learner
-    # ℓ for a yes/no outcome: a flexible learner's probability; least squares stays DoubleML's
-    # ``regr.lm`` (the linear-probability form).
-    l_classifier = bool(outcome_binary and learner != "linear" and isinstance(learner, str))
+    # A yes/no outcome or exposure is learned as a flexible learner's probability, whether the
+    # learner is named or given as a factory; least squares stays DoubleML's ``regr.lm`` (the
+    # linear-probability form).
+    flexible = not least_squares(learner)
+    l_classifier = bool(outcome_binary and flexible)
     d_binary = is_binary(d)
     thetas, ses, r2, final = [], [], [], []
     for s, rep in enumerate(splits):
         [l_hat] = cross_fit(factory, l_classifier, X, y, rep, None if design is None else design.weight,
                             seed + 1000 * s)
-        # m for a yes/no exposure: a flexible learner's probability (least squares stays
-        # DoubleML's ``regr.lm``).
-        m_classifier = bool(d_binary and learner != "linear" and isinstance(learner, str))
+        m_classifier = bool(d_binary and flexible)
         [m_hat] = cross_fit(factory, m_classifier, X, d, rep,
                             None if design is None else design.weight, seed + 1000 * s + 500)
         v = d - m_hat
@@ -816,7 +838,7 @@ def tmle(y: Any, a: Any, W: Any, *, learner: str | Factory = "linear",
             return parts.ate, math.sqrt(total_variance(parts.ic_ate / n, design))
         return parts.ate, math.sqrt(parts.var_ate)
 
-    if learner == "linear" and splits is None:
+    if splits is None and least_squares(learner):
         parts = _tmle_once(y, a, W, family=family, gbound=bound, w=w, Q=None, g=None)
         theta, se = finish(parts)
         df = design.df if designed and design.psu is not None else None
@@ -1112,10 +1134,12 @@ def trim_rows(propensity: np.ndarray, at: float) -> np.ndarray:
 
 
 __all__ = [
-    "CONTINUOUS_R2_LINE", "POSITIVITY_SHARE", "Design", "Estimate", "LEARNERS", "LEARNER_WORDS",
+    "CONTINUOUS_R2_LINE", "POSITIVITY_SHARE", "Design", "Estimate", "LEARNERS", "LEARNER_NAMES",
+    "LEARNER_WORDS",
     "LassoSelection",
     "Overlap", "Variation", "aggregate", "cross_fit", "dml_irm", "dml_plr", "hc3_ols", "is_binary",
-    "kish_ess", "learner_factory", "logistic_fit", "make_learner", "overlap", "pds_lasso",
+    "kish_ess", "learner_factory", "least_squares", "logistic_fit", "make_learner", "overlap",
+    "pds_lasso",
     "plugin_lambda", "ratio_refusals", "rigorous_lasso", "sample_splits", "starting_residuals",
     "tmle", "tmle_gbound", "total_variance", "trim_rows", "variation",
 ]

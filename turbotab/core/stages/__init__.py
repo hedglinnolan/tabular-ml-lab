@@ -791,7 +791,9 @@ def build_graph() -> Graph:
                   label="Reading the causal lane's assumptions and overlap"),
             # causal 3 (wave 2b, LEASH): the lane's E-value of a difference records the SD it was
             # standardized by and whose it is, and the methods text names the surveyed population's.
-            Stage("causal", 3, ("working", "split", "target_info"), (*CAUSAL_READS, "causal"),
+            # causal 4 (seam guard 2): the artifact names the learner by its new key
+            # (`nuisance_forest`, `untuned_boosted_trees`); every number is unchanged.
+            Stage("causal", 4, ("working", "split", "target_info"), (*CAUSAL_READS, "causal"),
                   causal_stage, heavy=True, requires=("causal", "models"),
                   label="Estimating the effect in the causal lane", serves=ESTIMATE),
             # ── V2 causal row: a time-varying exposure by g-methods (turbotab/core/time_varying.py) ──
