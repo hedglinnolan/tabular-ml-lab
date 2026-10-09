@@ -23,6 +23,7 @@ export type Route =
   | { name: "calm-quest" }
   | { name: "calm-map" }
   | { name: "calm-kit" }
+  | { name: "views-lab" }
   | { name: "missing"; path: string };
 
 /**
@@ -60,6 +61,7 @@ export function parseRoute(path: string, lab = LAB): Route {
     if (/^\/lab\/calm\/?$/.test(path)) return { name: "calm" };
     const calm = /^\/lab\/calm\/(qa|paper|quest|map|kit)\/?$/.exec(path);
     if (calm) return { name: `calm-${calm[1]}` as "calm-qa" | "calm-paper" | "calm-quest" | "calm-map" | "calm-kit" };
+    if (/^\/lab\/views\/?$/.test(path)) return { name: "views-lab" };
   }
   const m = /^\/p\/([^/]+)\/?$/.exec(path);
   if (m) return { name: "project", pid: decodeURIComponent(m[1]!) };
