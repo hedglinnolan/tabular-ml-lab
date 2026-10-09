@@ -65,6 +65,37 @@ LightGBM, ExtraTrees, kNN, SVM, naive Bayes, LDA and neural networks stay v2.x. 
   - `\todo` where only the author can write.
 - **A rare design or analysis outside v2** may appear as a "Not available yet" option, with its reason and an exit that keeps the work. Every option need not be supported.
 
+**Amended 2026-10-08 (Nolan, after the crosswalk and the model-family contract; `crosswalk/CROSSWALK.md` and `MODEL_FAMILY_CONTRACT.md` have the detail).**
+- **The model-family contract enters v2** (MC-1 to MC-13, MC-17 to MC-19; about 62 units net). Every family declares, satisfies and passes clauses C1 to C14 before it joins the shelf. That includes the four new families, which are the first built against it.
+- **The pre-fit ranking:** families are ranked live at model selection, on the input each family would actually receive (the settled shared steps plus its own recipe).
+  - The ranking is **outcome-blind**: no relationship to the outcome and no score, although the outcome's own counts (events, classes) are allowed.
+  - The corrected comparison decides the winner after Fit.
+- **Post-fit intelligence:**
+  - task-model alignment, with noise and permutation floors;
+  - the penalty-shrinkage view;
+  - the hypothesis noticing ("prediction plus explainability begets further inference"). It is always labeled exploratory and never folded into a locked primary, and in v2.0 it never adds a candidate model (that goes to INBOX);
+  - a named-phenomena registry in two registers.
+- **Order:** scales, batch correction and omics normalization move ahead of the families question, so the ranking sees each family's real input.
+- **Displaced to v2.x by this amendment** (Nolan's displacement rule): the groups kept on 2026-10-07 (package C6c, about 33 units):
+  - successive halving, Hyperband, TPE and BOHB, the Thorough budget and the tuning curve;
+  - native categories, per-family Pareto and robust scaling, and the per-model log1p;
+  - Huber under inference, and nuisance learners from the registry with their tuning.
+
+  The causal lane's learner key is renamed `nuisance_forest` meanwhile.
+- **The crosswalk's rulings:**
+  - Under Estimate, the outcome beside a column is hidden until the lock.
+  - Your data is one ledger plus a Confirm sweep.
+  - Describe may start with "No single outcome".
+  - **All 367 noticings ship in v2.0.0,** rolled out family by family with the slices.
+  - Blanks are split at the stage line: who is kept in Who's in, how kept blanks are filled in each track's Models.
+  - A shared-step change after first results keeps a read-only earlier row.
+- **UI rulings:**
+  - The manuscript rail and Write-up are one document in two views.
+  - A long fit runs as a server job with a notification.
+  - A change after results is a kept version (Predict) or a secondary analysis (Estimate). The label "revised after first results" appears only in the comparison and the methods text.
+- **The research record (approved):** every fit records its outcome-blind input descriptors, and the comparison results are kept in a versioned format. Pooling across users is opt-in, descriptors only, and needs IRB review.
+- **Testing (the orchestrator's call):** a thin headless driver ("run this plan file on this data") and a path fuzzer check the routing's invariants over thousands of generated journeys. Under the fuzzer, the reference journeys remain the numerical check.
+
 **The one-sentence test.** v2 is done when a nutrition researcher in any of the five lenses can take
 their own table from upload to a defensible description, effect estimate or prediction (from
 observational data or a designed experiment), with a methods section and a manuscript draft a reviewer
@@ -168,6 +199,11 @@ independent reference.
   - the kept comparisons ("Compare with standard settings" as a kept version, shared-step changes after scores kept as versions, re-tuned substitution bands);
   - running goals as parallel tracks (v2 runs them in sequence);
   - the research forum (publishing analyses as structured objects), an aspiration with no scope yet.
+- **added 2026-10-08:**
+  - the kept tuning and preprocessing groups (C6c; listed in the amendment above);
+  - the hypothesis noticing adding a candidate model;
+  - neural and in-context families (MLP, FT-Transformer, TabPFN-style), held to the contract's v2.x packages MC-14 to MC-16b;
+  - the headless Python and R packages and an agent skill, beyond the driver v2 needs for testing.
 
 ## 6 · The road from here to done
 
@@ -180,6 +216,8 @@ modeling sequence; the extended methods; the release track. CI is green on every
 3. **`RECIPES_AND_TUNING.md` draft 3.**
 4. **The quest-log redesign** on the crosswalk.
 5. **Core vertical slices:** each is an engine thread, its screen and a drive. They start with the understanding layer's phase 0, the shelf and tuning.
+   - The model-family contract's declarations, the live ranking and the switch retirement land first.
+   - The noticings roll out family by family alongside the slices.
 6. **Describe and the new methods.**
 7. **The designed-experiments milestone.**
 8. **The LaTeX and Word export,** with the manuscript gate.
