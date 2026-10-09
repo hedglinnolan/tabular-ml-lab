@@ -1,0 +1,194 @@
+/* The exhibit views (FOUNDATION §5 rule 9): drawn on the tapestry, so every color is a canvas or
+   data token. Text wears the ink tokens; marks wear gray (now), indigo (what the choice touches),
+   ink (the fit) or the comparison palette (an entity, in its fixed order). */
+
+.fig {
+  margin: 0;
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  color: var(--canvas-ink);
+  font-family: var(--font);
+}
+.fig h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.plot {
+  position: relative;
+  min-width: 0;
+}
+.plot svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+.axis {
+  fill: var(--canvas-muted);
+  font-size: 11px;
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+}
+.title {
+  fill: var(--canvas-muted);
+  font-size: 12px;
+  font-family: var(--font);
+}
+.label {
+  fill: var(--canvas-ink);
+  font-size: 12px;
+  font-family: var(--font);
+}
+.grid {
+  stroke: var(--canvas-line);
+  stroke-width: 1;
+}
+.overlay {
+  fill: transparent;
+  cursor: crosshair;
+  outline: none;
+}
+.hit {
+  fill: transparent;
+  stroke: transparent;
+}
+.cross {
+  stroke: var(--canvas-muted);
+  stroke-width: 1;
+  pointer-events: none;
+}
+.ring {
+  /* the ring is painted under the fill, so it shows only outside it: the colored disc keeps its
+     full radius (MARK_R, 10 px across) and the 1 px of canvas around it parts it from lines */
+  stroke: var(--canvas);
+  stroke-width: 2;
+  paint-order: stroke;
+}
+.focusRing {
+  fill: none;
+  stroke: var(--focus);
+  stroke-width: 2;
+  pointer-events: none;
+}
+.tip {
+  position: absolute;
+  z-index: 9;
+  pointer-events: none;
+  background: var(--raised);
+  color: var(--raised-ink);
+  font-size: 13px;
+  line-height: 1.35;
+  padding: 6px 9px;
+  border-radius: 6px;
+  white-space: nowrap;
+  transform: translate(-50%, calc(-100% - 12px));
+  font-variant-numeric: tabular-nums;
+}
+.tip div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tip i {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  display: inline-block;
+  flex: none;
+}
+.quiet {
+  margin: 0;
+  color: var(--canvas-muted);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.empty {
+  margin: 0;
+  color: var(--canvas-muted);
+  font-size: 15px;
+}
+.numbers summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--canvas-muted);
+  font-size: 14px;
+}
+.numbers[open] summary {
+  margin-bottom: 8px;
+}
+.numbers table {
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.numbers caption {
+  text-align: left;
+  color: var(--canvas-muted);
+  font-size: 13px;
+  padding-bottom: 4px;
+}
+.numbers th,
+.numbers td {
+  padding: 3px 14px 3px 0;
+  text-align: left;
+  border-top: 1px solid var(--canvas-line);
+  white-space: nowrap;
+}
+.numbers thead th {
+  border-top: 0;
+  color: var(--canvas-muted);
+  font-weight: 600;
+}
+.numbers tr[data-primary="true"] td,
+.numbers tr[data-primary="true"] th {
+  font-weight: 600;
+}
+.tableWrap {
+  overflow-x: auto;
+  min-width: 0;
+}
+.key {
+  display: flex;
+  gap: 4px 16px;
+  flex-wrap: wrap;
+  color: var(--canvas-muted);
+  font-size: 13.5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.key li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.key i {
+  display: inline-block;
+  flex: none;
+}
+.key i[data-mark="line"] {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+}
+.key i[data-mark="thin"] {
+  width: 14px;
+  height: 1px;
+}
+.key i[data-mark="dot"] {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.key i[data-mark="band"] {
+  width: 14px;
+  height: 10px;
+  border-radius: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .morph {
+    transition: d 0.3s ease, opacity 0.3s ease;
+  }
+}

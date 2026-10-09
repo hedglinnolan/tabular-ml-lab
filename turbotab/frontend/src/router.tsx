@@ -59,6 +59,7 @@ export function parseRoute(path: string, lab = LAB): Route {
     if (/^\/lab\/methods-questlog\/?$/.test(path)) return { name: "methods-questlog" };
     if (/^\/lab\/methods-map\/?$/.test(path)) return { name: "methods-map" };
     if (/^\/lab\/calm\/?$/.test(path)) return { name: "calm" };
+    if (/^\/lab\/views\/?$/.test(path)) return { name: "views-lab" };
     const calm = /^\/lab\/calm\/(qa|paper|quest|map|kit)\/?$/.exec(path);
     if (calm) return { name: `calm-${calm[1]}` as "calm-qa" | "calm-paper" | "calm-quest" | "calm-map" | "calm-kit" };
     if (/^\/lab\/views\/?$/.test(path)) return { name: "views-lab" };

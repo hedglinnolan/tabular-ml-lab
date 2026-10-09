@@ -129,3 +129,8 @@ const m3Stages = [
   "forms",
 ] as const;
 export const M3_STAGES: Exactly<typeof m3Stages, keyof M3StageArtifacts> = m3Stages;
+
+// ── the exhibit views' engine inputs (src/components/views) ──────────────────
+
+export type SubstitutionArtifact = S["SubstitutionArtifact"];
+export type ModelCalibration = S["Calibration"];
