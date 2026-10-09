@@ -7,10 +7,16 @@ For every record in ``data/citations.json``:
   Bioconductor), and the record's authors, year, title, venue, volume, issue and pages are
   rewritten from it. A DOI that doi.org resolves but Crossref's API does not serve (it happens) is
   checked at doi.org, and its metadata read from PubMed through Europe PMC, and the record says so;
-* an ISBN is looked up in Open Library; a URL is fetched and must answer;
+  A chapter's book and series come from its containers, and its editors from the book's own
+  record (``book_doi`` names it when Crossref's ISBN search does not find it). Markup and
+  entities are dropped, and a publisher's running head deposited as a subtitle is not kept;
+* a record without a DOI that carries an ISBN is verified by that ISBN alone: it must pass its
+  check digit and Open Library must know it. Otherwise its URL is fetched and must answer;
 * the app's own citations of the record (every ``cited_as`` match in the text the registry
   collects) are compared with the metadata, and each year, volume, first page or first author
-  that differs is listed under ``disagreements``. The citing text is never rewritten.
+  that differs is listed under ``disagreements``. The year is held to the one refs.bib prints, so
+  an online-first year Crossref also gives is listed, not taken as agreement; a record without a
+  DOI is held to its year, volume and pages too. The citing text is never rewritten.
 
 Where Crossref's own record is wrong (a deposit dated a year early, an issue with no volume), the
 record's ``overrides`` holds the corrected fields and why, with the independent source that shows
@@ -23,6 +29,7 @@ use); a 429 waits and retries. ``--offline`` recomputes only the disagreements.
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import sys
@@ -65,8 +72,16 @@ def _get(url: str, *, accept_json: bool = True, tries: int = 4) -> tuple[int, An
 # ---------------------------------------------------------------- metadata from each source
 
 def _clean(s: str) -> str:
-    s = re.sub(r"<[^>]+>", "", s or "")
+    """Text without markup: tags dropped and entities ("&amp;") decoded."""
+    s = html.unescape(re.sub(r"<[^>]+>", "", s or ""))
     return re.sub(r"\s+", " ", s).strip()
+
+
+def _running_head(subtitle: str, people: list[dict[str, Any]]) -> bool:
+    """Whether ``subtitle`` is a publisher's internal running head deposited as one ("Helsel/
+    Statistics for Environmental Data 2E"): an author's surname and a slash, not the title."""
+    head = subtitle.split("/", 1)[0].strip().lower() if "/" in subtitle else ""
+    return bool(head) and head in {_clean(a.get("family", "")).lower() for a in people}
 
 
 def _year(msg: dict[str, Any], *keys: str) -> int | None:
@@ -99,9 +114,13 @@ def from_crossref(msg: dict[str, Any]) -> dict[str, Any]:
     people = [a for a in people if a.get("family")] + [a for a in people if not a.get("family")]
     title = _clean((msg.get("title") or [""])[0])
     subtitle = _clean((msg.get("subtitle") or [""])[0]) if msg.get("subtitle") else ""
-    if subtitle and subtitle.lower() not in title.lower():
+    if subtitle and subtitle.lower() not in title.lower() and not _running_head(subtitle, people):
         title = f"{title}: {subtitle}"
-    container = _clean((msg.get("container-title") or [""])[0])
+    containers = [_clean(t) for t in msg.get("container-title") or []]
+    # A chapter's containers are its series then its book ("Lecture Notes in Computer Science",
+    # "Advances in Knowledge Discovery and Data Mining"): the book is where it appears.
+    chapter = msg.get("type") == "book-chapter" and len(containers) > 1
+    container = (containers[-1] if chapter else (containers or [""])[0])
     pages = msg.get("page") or msg.get("article-number") or ""
     out = {
         "authors": [_person(a) for a in people if _person(a)],
@@ -116,6 +135,8 @@ def from_crossref(msg: dict[str, Any]) -> dict[str, Any]:
         "years_seen": sorted({y for y in (_year(msg, k) for k in (
             "published-print", "published-online", "issued", "published")) if y}),
     }
+    if chapter:
+        out["series"] = containers[0]
     if msg.get("type") in ("book", "monograph", "edited-book", "reference-book") and msg.get("ISBN"):
         out["isbn"] = msg["ISBN"][0]
     if msg.get("edition-number") and msg["edition-number"] not in ("0", "1"):
@@ -141,9 +162,23 @@ def from_datacite(data: dict[str, Any]) -> dict[str, Any]:
             "years_seen": [a.get("publicationYear")] if a.get("publicationYear") else []}
 
 
+_COLLECTIVE = re.compile(r"(?i)^(?:on behalf of|of the|for the)\b")
+
+
+def _pubmed_person(a: dict[str, Any]) -> str:
+    """"Family, Given", or a group's name as one string. PubMed sometimes splits a byline's
+    collective ("on behalf of ... of the STRATOS Initiative") into a surname and given names;
+    joined back, it carries no comma, so BibTeX reads it as one name, not a person's."""
+    if a.get("collectiveName"):
+        return _clean(a["collectiveName"])
+    last, first = _clean(a.get("lastName", "")), _clean(a.get("firstName", ""))
+    if _COLLECTIVE.match(last) or _COLLECTIVE.match(first):
+        return re.sub(r"(?i)^on behalf of\s+", "", f"{first} {last}".strip())
+    return f"{last}, {first}".rstrip(", ")
+
+
 def from_europepmc(r: dict[str, Any]) -> dict[str, Any]:
-    authors = [f"{a.get('lastName', '')}, {a.get('firstName', '')}".rstrip(", ")
-               for a in ((r.get("authorList") or {}).get("author") or [])]
+    authors = [_pubmed_person(a) for a in ((r.get("authorList") or {}).get("author") or [])]
     j = (r.get("journalInfo") or {})
     year = int(r["pubYear"]) if r.get("pubYear") else None
     return {"authors": authors, "title": _clean(r.get("title", "")).rstrip("."), "year": year,
@@ -152,7 +187,25 @@ def from_europepmc(r: dict[str, Any]) -> dict[str, Any]:
             "pages": r.get("pageInfo", ""), "publisher": "", "years_seen": [year] if year else []}
 
 
-def verify_doi(doi: str, agency_hint: str) -> tuple[str, dict[str, Any] | None, str]:
+def book_editors(isbns: list[str], book_doi: str = "") -> list[str]:
+    """The editors of the book a chapter appears in, from the book's own Crossref record (its DOI
+    when the record names it, ``book_doi``, else found by the chapter's ISBNs); a chapter's record
+    does not carry them."""
+    if book_doi:
+        status, data = _get(f"https://api.crossref.org/works/{urllib.parse.quote(book_doi)}")
+        editors = ((data or {}).get("message") or {}).get("editor") or []
+        return [_person(e) for e in editors if _person(e)]
+    for isbn in isbns:
+        status, data = _get("https://api.crossref.org/works?rows=50&select=DOI,type,editor"
+                            f"&filter=isbn:{urllib.parse.quote(isbn)}")
+        for item in ((data or {}).get("message") or {}).get("items") or []:
+            if item.get("type") in ("book", "edited-book", "proceedings") and item.get("editor"):
+                return [_person(e) for e in item["editor"] if _person(e)]
+    return []
+
+
+def verify_doi(doi: str, agency_hint: str,
+               book_doi: str = "") -> tuple[str, dict[str, Any] | None, str]:
     """(verified_by, metadata, note) for ``doi``."""
     q = urllib.parse.quote(doi)
     if agency_hint == "datacite":
@@ -162,7 +215,10 @@ def verify_doi(doi: str, agency_hint: str) -> tuple[str, dict[str, Any] | None, 
         return "", None, f"DataCite answered {status}"
     status, data = _get(f"https://api.crossref.org/works/{q}")
     if status == 200 and data:
-        return "crossref", from_crossref(data["message"]), ""
+        meta = from_crossref(data["message"])
+        if data["message"].get("type") == "book-chapter":
+            meta["editors"] = book_editors(data["message"].get("ISBN") or [], book_doi)
+        return "crossref", meta, ""
     # Crossref's API sometimes lacks a DOI that doi.org resolves: check the handle, then PubMed.
     _, ra = _get(f"https://doi.org/ra/{q}")
     agency = (ra or [{}])[0].get("RA", "")
@@ -180,7 +236,11 @@ def verify_doi(doi: str, agency_hint: str) -> tuple[str, dict[str, Any] | None, 
 
 
 def verify_isbn(isbn: str, title: str) -> bool:
-    """Whether Open Library knows ``isbn`` as a book whose title begins as the record's does."""
+    """Whether ``isbn`` passes its checksum and Open Library knows it as a book whose title begins
+    as the record's does."""
+    if not C.isbn_valid(isbn):
+        print(f"  isbn {isbn} fails its checksum", file=sys.stderr)
+        return False
     status, data = _get(f"https://openlibrary.org/isbn/{isbn.replace('-', '')}.json")
     if status != 200 or not data:
         return False
@@ -217,6 +277,20 @@ _NOT_AUTHORS = re.compile(r"^(?:TRIPOD|STROBE|CONSORT|MIAME|MINSEQE|RECORD|CROSS
                           r"|pmp|NHANES|NCHS|CDC|NCI|EMA|FDA|US FDA|Institute of Medicine|\d)")
 
 
+# A year the text is about rather than the year it cites: one end of a range ("2011–2016") or a
+# date in the content ("top-coded at 80 from 2007").
+_CONTENT_YEAR = re.compile(r"(?:\b(?:from|in|since|through|until|to|before|after)\s|[–-])$")
+
+
+def _cited_year(text: str) -> re.Match[str] | None:
+    """The first year in a citation that dates the work cited (``_CONTENT_YEAR`` passed over)."""
+    for y in _YEAR.finditer(text):
+        if _CONTENT_YEAR.search(text[:y.start()]) or re.match(r"[–-]\d", text[y.end():]):
+            continue
+        return y
+    return None
+
+
 def _first_page(pages: str) -> str:
     return re.split(r"[–-]", pages or "")[0]
 
@@ -228,33 +302,40 @@ def _last_page(pages: str) -> str:
 
 def disagreements(rec: dict[str, Any], spans: list[str]) -> list[str]:
     """How the app's citations of ``rec`` (``spans``) differ from its verified metadata."""
-    if rec.get("verified_by") not in ("crossref", "datacite", "doi_handle"):
+    if rec.get("verified_by") not in C.VERIFIERS:
         return []
     out: list[str] = []
-    seen_years = set(rec.get("years_seen") or ([rec["year"]] if rec.get("year") else []))
+    # The text is held to the year refs.bib prints; another year Crossref gives (an online-first
+    # date) is named beside it, not taken as agreement.
+    year = rec.get("year")
+    doi_record = rec.get("verified_by") in C.DOI_VERIFIERS
+    other_years = sorted(set(rec.get("years_seen") or ()) - {year})
     first = _norm((rec.get("authors") or [""])[0].split(",")[0])
     volume = (rec.get("volume") or "").strip()
     fp, lp = _first_page(rec.get("pages", "")), _last_page(rec.get("pages", ""))
     for span in sorted(set(spans)):
         why = []
-        y = _YEAR.search(span)
-        if y and seen_years and int(y.group(1)) not in seen_years:
-            why.append(f"year {y.group(1)}, the record {rec.get('year')}"
-                       + (f" (online {sorted(seen_years)})" if len(seen_years) > 1 else ""))
+        y = _cited_year(span)
+        if y and year and int(y.group(1)) != year:
+            why.append(f"year {y.group(1)}, the record {year}"
+                       + (f" (Crossref also dates it {', '.join(map(str, other_years))})"
+                          if other_years else ""))
         vp = _VOLPAGE.search(span[y.end():] if y else span) or _VOLPAGE.search(span)
         if vp and volume:
             v, _, p1, p2 = vp.groups()
             if v != volume:
                 why.append(f"volume {v}, the record {volume}")
+            # A cited page is held to the record's, even when it is the DOI's suffix (an article
+            # number the record lacks is a gap in the record, not agreement).
             if fp and p1.lower().lstrip("e") != fp.lower().lstrip("e") and not (
-                    fp.lower().startswith(p1.lower()) or (rec.get("doi") or "").lower().endswith(
-                        p1.lower())):
+                    fp.lower().startswith(p1.lower())):
                 why.append(f"first page {p1}, the record {fp}")
             if p2 and lp and p2 != lp and not lp.endswith(p2):
                 why.append(f"last page {p2}, the record {lp}")
         lead = re.match(r"\s*(?:(?:van der|van den|van|de|Di|Van|Le) )?[A-Z][\w\-]+(?:['’][A-Z]\w+)?",
                         span)
-        if lead and first and not _NOT_AUTHORS.match(span.strip()):
+        # A page or report is cited by its title, not its authors: only a DOI record's are checked.
+        if lead and first and doi_record and not _NOT_AUTHORS.match(span.strip()):
             surname = _norm(lead.group(0))
             names = [_norm(a.split(",")[0]) for a in rec.get("authors") or []]
             if surname not in (first,) and surname not in names[:1] and not first.startswith(surname):
@@ -297,7 +378,7 @@ def run(path: Path = C.DATA_FILE, *, offline: bool = False, only: set[str] | Non
             continue
         if rec.get("doi"):
             hint = "datacite" if rec.get("verified_by") == "datacite" else "crossref"
-            by, meta, note = verify_doi(rec["doi"], hint)
+            by, meta, note = verify_doi(rec["doi"], hint, rec.get("book_doi", ""))
             if not meta:
                 print(f"FAILED {rec['key']}: {note}", file=sys.stderr)
                 rec["verified_by"], failures = "", failures + 1
@@ -313,8 +394,13 @@ def run(path: Path = C.DATA_FILE, *, offline: bool = False, only: set[str] | Non
             rec["verification_note"] = note
             if not rec["verification_note"]:
                 rec.pop("verification_note")
-        elif rec.get("isbn") and verify_isbn(rec["isbn"], rec.get("title", "")):
-            rec["verified_by"], rec["verified_on"] = "isbn", today
+        elif rec.get("isbn"):  # its ISBN is checked; a URL beside it does not stand in for it
+            if verify_isbn(rec["isbn"], rec.get("title", "")):
+                rec["verified_by"], rec["verified_on"] = "isbn", today
+            else:
+                print(f"FAILED {rec['key']}: Open Library does not know ISBN {rec['isbn']}",
+                      file=sys.stderr)
+                rec["verified_by"], failures = "", failures + 1
         elif rec.get("url") and verify_url(rec["url"]):
             rec["verified_by"], rec["verified_on"] = "url", today
         else:

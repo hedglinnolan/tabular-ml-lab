@@ -2288,7 +2288,7 @@
     "Park, Eunyoung",
     "Sotres-Alvarez, Daniela",
     "Freedman, Laurence",
-    "Of The Stratos Initiative, On Behalf Of The Measurement Error And Misclassification Topic Group Tg"
+    "Measurement Error and Misclassification Topic Group (TG4) of the STRATOS Initiative"
    ],
    "title": "Issues in Implementing Regression Calibration Analyses",
    "year": 2023,
@@ -2303,7 +2303,36 @@
    "verified_by": "doi_handle",
    "verified_on": "2026-10-09",
    "verification_note": "Crossref's REST API answered 404 for this DOI; doi.org resolves it (registration agency Crossref), and the metadata is PubMed's, read through Europe PMC.",
-   "disagreements": []
+   "disagreements": [],
+   "overrides": {
+    "fields": {
+     "authors": [
+      "Boe, Lillian A",
+      "Shaw, Pamela A",
+      "Midthune, Douglas",
+      "Gustafson, Paul",
+      "Kipnis, Victor",
+      "Park, Eunyoung",
+      "Sotres-Alvarez, Daniela",
+      "Freedman, Laurence",
+      "Measurement Error and Misclassification Topic Group (TG4) of the STRATOS Initiative"
+     ]
+    },
+    "why": "The byline ends with a group, which the publisher's deposit (PMC10666971) splits into a surname, \"of the STRATOS Initiative\", and given names, \"on behalf of the Measurement Error and Misclassification Topic Group (TG4)\"; PubMed copies the split and drops \"(TG4)\". The registry names the group as one author."
+   },
+   "crossref_original": {
+    "authors": [
+     "Boe, Lillian A",
+     "Shaw, Pamela A",
+     "Midthune, Douglas",
+     "Gustafson, Paul",
+     "Kipnis, Victor",
+     "Park, Eunyoung",
+     "Sotres-Alvarez, Daniela",
+     "Freedman, Laurence",
+     "The Measurement Error And Misclassification Topic Group Tg Of The Stratos Initiative"
+    ]
+   }
   },
   {
    "key": "tooze2006episodic",
@@ -2709,7 +2738,11 @@
    "edition": "3",
    "verified_by": "crossref",
    "verified_on": "2026-10-09",
-   "disagreements": []
+   "disagreements": [
+    "'Willett 2013 Nutritional Epidemiology ch. 4–6': year 2013, the record 2012 (Crossref also dates it 2013)",
+    "'Willett 2013, by sex': year 2013, the record 2012 (Crossref also dates it 2013)",
+    "\"Willett's textbook (2013\": year 2013, the record 2012 (Crossref also dates it 2013)"
+   ]
   },
   {
    "key": "willett2022letter",
@@ -2921,7 +2954,7 @@
    ],
    "title": "Categorisation of continuous risk factors in epidemiological publications: a survey of current practice",
    "year": 2010,
-   "venue": "Epidemiologic Perspectives &amp; Innovations",
+   "venue": "Epidemiologic Perspectives & Innovations",
    "volume": "7",
    "issue": "1",
    "pages": "9",
@@ -3295,7 +3328,7 @@
    ],
    "title": "Evaluating the Replicability of Significance Tests for Comparing Learning Algorithms",
    "year": 2004,
-   "venue": "Lecture Notes in Computer Science",
+   "venue": "Advances in Knowledge Discovery and Data Mining",
    "volume": "",
    "issue": "",
    "pages": "3-12",
@@ -3306,7 +3339,14 @@
    ],
    "verified_by": "crossref",
    "verified_on": "2026-10-09",
-   "disagreements": []
+   "disagreements": [],
+   "series": "Lecture Notes in Computer Science",
+   "editors": [
+    "Dai, Honghua",
+    "Srikant, Ramakrishnan",
+    "Zhang, Chengqi"
+   ],
+   "book_doi": "10.1007/b97861"
   },
   {
    "key": "saeb2017",
@@ -3534,7 +3574,10 @@
    ],
    "verified_by": "crossref",
    "verified_on": "2026-10-09",
-   "disagreements": []
+   "disagreements": [
+    "'Bates, Hastie & Tibshirani 2023': year 2023, the record 2024 (Crossref also dates it 2023)",
+    "'Bates, Hastie & Tibshirani, JASA 2023 (arXiv:2104.00673': year 2023, the record 2024 (Crossref also dates it 2023)"
+   ]
   },
   {
    "key": "vandengoorbergh2022imbalance",
@@ -4213,10 +4256,10 @@
    ],
    "title": "A Harmonized Data Quality Assessment Terminology and Framework for the Secondary Use of Electronic Health Record Data",
    "year": 2016,
-   "venue": "eGEMs (Generating Evidence &amp; Methods to improve patient outcomes)",
+   "venue": "eGEMs (Generating Evidence & Methods to improve patient outcomes)",
    "volume": "4",
    "issue": "1",
-   "pages": "18",
+   "pages": "1244",
    "publisher": "Ubiquity Press, Ltd.",
    "crossref_type": "journal-article",
    "years_seen": [
@@ -4224,7 +4267,18 @@
    ],
    "verified_by": "crossref",
    "verified_on": "2026-10-09",
-   "disagreements": []
+   "disagreements": [
+    "'Kahn et al. 2016, eGEMs 4:1244': first page 1244, the record 18 (the registry keeps pages 1244: eGEMs numbers its articles, and this is article 1244 (PubMed, through Europe PMC: eGEMs 4(1):1244, PMID 27713905); Crossref's page field holds 18, the article's length, and it has no article number.)"
+   ],
+   "overrides": {
+    "fields": {
+     "pages": "1244"
+    },
+    "why": "eGEMs numbers its articles, and this is article 1244 (PubMed, through Europe PMC: eGEMs 4(1):1244, PMID 27713905); Crossref's page field holds 18, the article's length, and it has no article number."
+   },
+   "crossref_original": {
+    "pages": "18"
+   }
   },
   {
    "key": "weiskopf2013dq",
@@ -4358,7 +4412,7 @@
    "authors": [
     "Helsel, Dennis R."
    ],
-   "title": "Statistics for Censored Environmental Data Using Minitab® and R: Helsel/Statistics for Environmental Data 2E",
+   "title": "Statistics for Censored Environmental Data Using Minitab® and R",
    "year": 2012,
    "venue": "",
    "volume": "",
@@ -4402,10 +4456,10 @@
    "venue": "IARC Scientific Publications",
    "volume": "32",
    "publisher": "International Agency for Research on Cancer",
-   "isbn": "978-92-832-1132-2",
+   "isbn": "978-92-832-1132-7",
    "url": "https://publications.iarc.who.int/Book-And-Report-Series/Iarc-Scientific-Publications/Statistical-Methods-In-Cancer-Research-Volume-I-The-Analysis-Of-Case-Control-Studies-1980",
    "no_doi": "An IARC Scientific Publication; it has no DOI.",
-   "verified_by": "url",
+   "verified_by": "isbn",
    "verified_on": "2026-10-09",
    "disagreements": []
   },
@@ -4564,7 +4618,7 @@
    ],
    "title": "General Pitfalls of Model-Agnostic Interpretation Methods for Machine Learning Models",
    "year": 2022,
-   "venue": "Lecture Notes in Computer Science",
+   "venue": "xxAI - Beyond Explainable AI",
    "volume": "",
    "issue": "",
    "pages": "39-68",
@@ -4575,7 +4629,16 @@
    ],
    "verified_by": "crossref",
    "verified_on": "2026-10-09",
-   "disagreements": []
+   "disagreements": [],
+   "series": "Lecture Notes in Computer Science",
+   "editors": [
+    "Holzinger, Andreas",
+    "Goebel, Randy",
+    "Fong, Ruth",
+    "Moon, Taesup",
+    "Müller, Klaus-Robert",
+    "Samek, Wojciech"
+   ]
   },
   {
    "key": "broadhurst2018qc",
@@ -6576,18 +6639,20 @@
     "(?:FDA's )?Bacteriological Analytical Manual"
    ],
    "doi": null,
-   "title": "Bacteriological Analytical Manual, Chapter 3: Aerobic Plate Count",
-   "year": 2001,
+   "title": "Bacteriological Analytical Manual, Chapter 3: Aerobic Plate Count (January 2026 Edition)",
+   "year": 2026,
    "authors": [
-    "Maturin, Larry",
-    "Peeler, James T."
+    "Zhang, Guodong",
+    "Ferguson, Martine",
+    "Blodgett, Robert J."
    ],
    "publisher": "U.S. Food and Drug Administration",
-   "url": "https://www.fda.gov/food/laboratory-methods-food/bam-chapter-3-aerobic-plate-count",
+   "url": "https://www.fda.gov/media/191248/download",
    "no_doi": "A laboratory manual published as a web page; it has no DOI.",
    "verified_by": "url",
    "verified_on": "2026-10-09",
-   "disagreements": []
+   "disagreements": [],
+   "note": "The edition the app reads (turbotab/core/stages/finding_words.py, read 2026-10-03): its countable range is 15–300 colonies per plate. FDA's chapter page (fda.gov/food/laboratory-methods-food/bam-chapter-3-aerobic-plate-count) names these authors and lists it as the current edition; the January 2001 edition, by Maturin and Peeler, is superseded."
   },
   {
    "key": "nhanes_guidelines_2011_2016",
@@ -6625,8 +6690,9 @@
    "no_doi": "An agency web document; it has no DOI.",
    "verified_by": "url",
    "disagreements": [],
-   "note": "The page is undated; the contracts cite the data files as of 2008.",
-   "verified_on": "2026-10-09"
+   "note": "The page is undated; the technical documentation it links (wwwn.cdc.gov/nchs/data/nhanes/public/1999/documents/dxa_techdoc.pdf) is dated February 2008, and the contracts cite the data files as of 2008.",
+   "verified_on": "2026-10-09",
+   "year": 2008
   },
   {
    "key": "nhanes_documentation",

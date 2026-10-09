@@ -14,11 +14,12 @@ A record is one of two things:
 * **a work with no DOI**, marked as such: a ``book``, ``chapter``, ``proceedings`` paper,
   ``report``, ``standard``, ``software``, ``web`` page or ``periodical`` article (a journal that
   registers no DOIs), with its ISBN or URL and the reason it has no DOI (``no_doi``). Nothing here
-  invents a DOI.
+  invents a DOI. An ISBN passes its check digit, and a record without a DOI that carries one is
+  verified by looking that ISBN up (``verified_by: "isbn"``), not by the URL beside it.
 
 Each record says how the app's own text cites it (``cited_as``: regular expressions, each matched
-at the start of a citation), so a citation in prose resolves to exactly one record, and a source
-string in a ``sources`` list resolves to at least one. Where the app's text disagrees with the
+at the start of a citation), so a citation in prose resolves to exactly one record, and each work
+in a ``sources`` entry (its parts between "; ", :func:`segments`) resolves to at least one. Where the app's text disagrees with the
 Crossref record (a year, a volume, a page), the record lists it under ``disagreements``; the claim
 is not rewritten here (INBOX carries each one).
 
@@ -59,7 +60,7 @@ VERIFIERS: tuple[str, ...] = (*DOI_VERIFIERS, "isbn", "url")
 INTERNAL = re.compile(
     r"^(?:MODELING_SEQUENCE|BLUEPRINT|V2 definition of done|NUTRITION_PACK|CLINICAL_SURVEY_PACK"
     r"|GENOMICS_PACK|METABOLOMICS_PACK|research/|turbotab/|tests/|ml/|docs/|Critic's "
-    r"|find_fixtures|_tt_tmp)")
+    r"|find_fixtures|_tt_tmp|[\w./]+\.(?:py|json|md)\b)")
 
 # A citation in prose: authors (a surname with optional initials, "et al.", "&" or commas), an
 # optional venue of up to six words, then a year. It finds where to look; ``cited_as`` decides.
@@ -90,6 +91,8 @@ class Citation:
     issue: str = ""
     pages: str = ""  # "1189-1232" or an article number
     publisher: str = ""
+    series: str = ""  # a chapter's book series ("Lecture Notes in Computer Science")
+    editors: tuple[str, ...] = ()  # a chapter's book's editors
     edition: str = ""
     doi: str | None = None
     isbn: str = ""
@@ -287,6 +290,22 @@ def resolve_at(text: str, pos: int, reg: dict[str, Citation] | None = None) -> l
 _STARTS = re.compile(r"(?:; |\()")
 
 
+def segments(text: str) -> list[str]:
+    """A source string's works: its parts between "; " outside parentheses ("Rubin 1987;
+    Little & Rubin 2019, ch. 10" is two; "PMC9630885; ref. 4)" inside a parenthesis stays one)."""
+    out, depth, start = [], 0, 0
+    for i, ch in enumerate(text):
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth = max(0, depth - 1)
+        elif ch == ";" and depth == 0 and text[i + 1:i + 2].isspace():
+            out.append(text[start:i])
+            start = i + 2
+    out.append(text[start:])
+    return [s.strip() for s in out if s.strip()]
+
+
 def starts(text: str) -> list[int]:
     """Where a citation may start in a source string: its start, after "; " or "(", and at each
     author-and-year citation in it."""
@@ -317,8 +336,13 @@ def problems(cited: Iterable[Cited] | None = None,
     reg = registry() if reg is None else reg
     out: list[str] = []
     for c in cited_texts() if cited is None else cited:
-        if c.whole and not is_internal(c.text) and not resolve(c.text, reg):
-            out.append(f"{c.origin}: {c.text!r} names no record")
+        if c.whole and not is_internal(c.text):
+            # Each work in the string resolves, not just the string as a whole: a second work
+            # without an author and year beside a resolved one would otherwise pass unseen.
+            for part in segments(c.text):
+                if not is_internal(part) and not resolve(part, reg):
+                    out.append(f"{c.origin}: {part!r} names no record"
+                               + (f" (in {c.text!r})" if part != c.text.strip() else ""))
         for m in mentions(c.text):
             keys = cited_keys_at(c, m.start(), reg)
             if len(keys) != 1:
@@ -343,6 +367,21 @@ def keys_cited(cited: Iterable[Cited] | None = None,
     return [k for k in reg if k in hit]
 
 
+def isbn_valid(isbn: str) -> bool:
+    """Whether ``isbn`` (hyphens allowed) is an ISBN-10 or ISBN-13 whose check digit is right."""
+    s = isbn.replace("-", "").replace(" ", "").upper()
+    if re.fullmatch(r"\d{9}[\dX]", s):
+        total = sum((10 - i) * (10 if ch == "X" else int(ch)) for i, ch in enumerate(s))
+        return total % 11 == 0
+    if re.fullmatch(r"97[89]\d{10}", s):
+        return sum((3 if i % 2 else 1) * int(ch) for i, ch in enumerate(s)) % 10 == 0
+    return False
+
+
+# A group's name stored as "Family, Given" would be read by BibTeX as a person.
+_GROUP = re.compile(r"(?i)\b(?:on behalf|of the|initiative|group|consortium|committee|society)\b")
+
+
 def record_problems(c: Citation) -> list[str]:
     """What a record lacks to count as verified (module docstring)."""
     out = []
@@ -357,6 +396,13 @@ def record_problems(c: Citation) -> list[str]:
             out.append(f"{c.key}: a record without a DOI says why it has none")
     elif not re.fullmatch(r"10\.\d{4,9}/\S+", c.doi):
         out.append(f"{c.key}: {c.doi!r} is not a DOI")
+    if c.isbn and not isbn_valid(c.isbn):
+        out.append(f"{c.key}: ISBN {c.isbn} fails its checksum")
+    if not c.doi and c.isbn and c.verified_by != "isbn":
+        out.append(f"{c.key}: a record's own ISBN is looked up (Open Library), not passed over")
+    for a in c.authors:
+        if "," in a and _GROUP.search(a):
+            out.append(f"{c.key}: the group {a!r} is written as a person")
     if c.verified_by not in VERIFIERS or not c.verified_on:
         out.append(f"{c.key}: not verified ({c.verified_by!r})")
     if c.doi and c.verified_by not in DOI_VERIFIERS:
@@ -403,6 +449,8 @@ def bibtex_entry(c: Citation) -> str:
     fields: list[tuple[str, str]] = []
     if c.authors:
         fields.append(("author", " and ".join(_name(a) for a in c.authors)))
+    if c.editors:
+        fields.append(("editor", " and ".join(_name(a) for a in c.editors)))
     fields.append(("title", _protect(c.title)))
     container = {"article": "journal", "periodical": "journal", "chapter": "booktitle",
                  "proceedings": "booktitle"}
@@ -416,8 +464,16 @@ def bibtex_entry(c: Citation) -> str:
                         ("edition", c.edition)):
         if value:
             fields.append((name, _tex(value)))
-    if c.publisher:
-        fields.append(("institution" if c.kind == "report" else "publisher", _tex(c.publisher)))
+    if c.series and c.kind == "chapter":
+        fields.append(("series", _tex(c.series)))
+    # The field each entry type names its publisher by (biblatex's data model): a journal article
+    # has none, a @misc page or program an organization, a report an institution.
+    publisher_field = {"article": None, "periodical": None, "report": "institution",
+                       "web": "organization", "software": "organization",
+                       "standard": "organization", "preprint": "organization"}.get(c.kind,
+                                                                                    "publisher")
+    if c.publisher and publisher_field:
+        fields.append((publisher_field, _tex(c.publisher)))
     if c.doi:
         fields.append(("doi", c.doi))
     if c.isbn:
@@ -449,5 +505,5 @@ def write_bib(path: Path, keys: Sequence[str] | None = None) -> Path:
 
 
 __all__ = ["Citation", "Cited", "DATA_FILE", "KINDS", "NON_DOI_KINDS", "bibtex", "bibtex_entry",
-           "cited_texts", "family_source_keys", "is_internal", "keys_cited", "mentions",
-           "problems", "record_problems", "registry", "resolve", "resolve_at", "write_bib"]
+           "cited_texts", "family_source_keys", "is_internal", "isbn_valid", "keys_cited", "mentions",
+           "problems", "record_problems", "segments", "registry", "resolve", "resolve_at", "write_bib"]
