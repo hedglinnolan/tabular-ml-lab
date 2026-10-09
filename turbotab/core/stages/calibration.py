@@ -127,9 +127,10 @@ def population_exits() -> list[dict[str, Any]]:
              "decision": {"kind": "set_measurement_error", "method": "none"}}]
 
 
-NOT_COMBINED = ("Each analysis row is one record, not the mean of a person's repeated recalls, so the "
-                "day-to-day variance cannot be estimated. Record the rows as repeats of one person "
-                "and combine them by the mean.")
+# At most 30 words: the consequence preview says it as its one line (the preview_note budget).
+NOT_COMBINED = ("Each analysis row is one record, not the mean of a person's repeated recalls, so "
+                "day-to-day variance cannot be estimated: record the rows as repeats and combine "
+                "by the mean.")
 TIME_POINTS = ("The rows repeat as time points, not as repeated recalls of one usual intake, so their "
                "spread is change over time rather than day-to-day error.")
 NONE_ERROR_PRONE = ("No column of the outcome model is measured by the recalls (no exposure, and no "
@@ -288,6 +289,27 @@ def invalidated(spec: Any, recorded: Sequence[str], state: Any) -> tuple[str, li
               "decision": again},
              {"label": "Record no calibration",
               "decision": {"kind": "set_measurement_error", "method": "none"}}])
+
+
+def unread_refusal(state: Any, working: Mapping[str, Any],
+                   structure: Any) -> dict[str, Any] | None:
+    """The stage's refusals that read no row, in its order, as its artifact's fields (``reason``,
+    ``exits``, ``blocked``, ``methods``): under prediction; declared under another adjustment set;
+    rows that are not the mean of repeated recalls; rows that repeat as time points. None when
+    none applies. The consequence preview says the same before the answer is recorded."""
+    from turbotab.core.stages.working import effective_repeat_kind
+
+    if getattr(state, "purpose", None) != "inference":
+        return {"reason": PREDICTION, "blocked": BLOCKED_PREDICTION}
+    spec_now, recorded = current_calibration(state)
+    if recorded is not None:
+        reason, exits = invalidated(spec_now, recorded, state)
+        return {"reason": reason, "exits": exits, "methods": REASKED}
+    if working.get("aggregation") is None:
+        return {"reason": NOT_COMBINED, "blocked": BLOCKED_NOT_COMBINED}
+    if effective_repeat_kind(state, structure) == "time_points":
+        return {"reason": TIME_POINTS, "blocked": BLOCKED_TIME_POINTS}
+    return None
 
 
 # ── the recalls ──────────────────────────────────────────────────────────────
@@ -662,7 +684,6 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.stages.data import open_store
     from turbotab.core.stages.modeling import (_missing_for_table, _settled_factors, _task,
                                                coded_outcome)
-    from turbotab.core.stages.working import effective_repeat_kind
 
     state = ctx.state
     spec_me = state.measurement_error
@@ -686,16 +707,9 @@ def calibration_stage(ctx: StageContext) -> Bundle:
         ctx.progress(1.0, "Done")
         return Bundle(data=artifact.model_dump(mode="json"))
 
-    if not inference:
-        return done(applies=False, reason=PREDICTION, blocked=BLOCKED_PREDICTION)
-    spec_now, recorded = current_calibration(state)
-    if recorded is not None:
-        reason, exits = invalidated(spec_now, recorded, state)
-        return done(applies=False, reason=reason, exits=exits, methods=REASKED)
-    if working.get("aggregation") is None:
-        return done(applies=False, reason=NOT_COMBINED, blocked=BLOCKED_NOT_COMBINED)
-    if effective_repeat_kind(state, structure) == "time_points":
-        return done(applies=False, reason=TIME_POINTS, blocked=BLOCKED_TIME_POINTS)
+    unread = unread_refusal(state, working, structure)
+    if unread is not None:
+        return done(applies=False, **unread)
 
     task = _task(ctx)
     design = ctx.inputs["design"]

@@ -521,16 +521,25 @@ def _plain(value: Any) -> Any:
 
 
 def event_views(decision: Any, ctx: PreviewContext) -> list[Any]:
-    """Which rows become 1 and which 0, in a note: the levels and their counts."""
+    """Which rows become 1 and which 0, in a note: the levels and their counts. Where the level is
+    not among the outcome's levels as read, the line is what the server says of the answer (its
+    validators, knowing the target and the task, as the server's context does), else that the
+    levels are being read again."""
+    from turbotab.core.plan_previews import cannot_draw, task_of
     from turbotab.core.stages.rows import _level_key
 
     info = _data(ctx.artifact("target_info")) or {}
-    classes = info.get("classes") or [] if info.get("column") == decision.column else []
+    current = info.get("column") == decision.column
+    classes = info.get("classes") or [] if current else []
     event = _level_key(decision.level)
     hit = [c for c in classes if _level_key(c.get("value")) == event]
     rest = [c for c in classes if _level_key(c.get("value")) != event]
     if not hit:
-        return []
+        target = getattr(ctx.state, "target", None)
+        return cannot_draw(decision, ctx, (
+            f"Which rows of `{decision.column}` become 1 is drawn once its levels are read again "
+            f"after the last answer."), target=target, task=task_of(ctx, ctx.state),
+            artifact=ctx.artifact)
     others = " and ".join(f"`{_level_key(c['value'])}` (`{int(c['count']):,}` rows)" for c in rest)
     ctx.read["note"] = (f"`{event}` (`{int(hit[0]['count']):,}` rows) becomes 1 and {others} 0; "
                         f"scores and coefficients are about `{event}`.")

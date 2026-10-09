@@ -36,7 +36,8 @@ from turbotab.core.consequences import (
     after_state, fmt_count, fmt_value, register_consequence,
 )
 from turbotab.core.plan_previews import (
-    caption, frame_label, histogram, names, num, points, pool, shared_edges, tick, title,
+    caption, frame_label, histogram, names, num, points, pool, population_block, shared_edges,
+    task_of, tick, title,
 )
 
 MAX_ROWS = 8
@@ -402,6 +403,12 @@ def substitution_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     fr = getattr(fr, "factor", fr)
     if not fd or not fr:
         return []
+    # Under the surveyed population the substitution stage draws each family's curve over the
+    # design, or blocks and records it (MODELING_SEQUENCE §4): every curve where the design itself
+    # is refused, a family's where it has no design-based estimator. The swap says the same.
+    curves = "substitution curves" if task_of(ctx, ctx.state) == "multiclass" else \
+        "substitution curve"
+    population_block(ctx, after_state(decision, ctx), decision, what=curves, marginal=False)
     frame = ctx.datastore.materialize([donor, recipient], ids[:MAX_ROWS])
     if decision.scale == "percent_energy":
         ctx.read["note"] = (f"Each step moves {decision.step_percent:g}% of each person's energy "

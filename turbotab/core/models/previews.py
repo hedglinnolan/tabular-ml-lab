@@ -470,6 +470,11 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
             after_label=out_name,
             story=hist_story,
         ))
+    from turbotab.core.plan_previews import population_block
+
+    # The energy model as the fit would take it, and what the surveyed population blocks of the
+    # outcome model it enters (MODELING_SEQUENCE §4): the fit's own words and exits.
+    population_block(ctx, after_state(decision, ctx), decision)
     return views[:MAX_VIEWS]
 
 

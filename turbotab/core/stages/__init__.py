@@ -539,7 +539,10 @@ def build_graph() -> Graph:
             # stays under prediction, on the training rows.
             # design 26 (the zero-row crash): rows whose outcome is one value fail here in plain
             # words, never as the fit's IndexError (``core.row_floor``).
-            Stage("design", 26, ("working", "split", "target_info"),
+            # design 27 (previews leash 2): the energy-dropped residual's gap is withheld with the
+            # purpose unanswered too, and kept beside the design (its objects) under inference, so
+            # the server serves it in the warning's place once the plan is locked (audit ME-03).
+            Stage("design", 27, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS, "levers", "selection"),
@@ -640,7 +643,10 @@ def build_graph() -> Graph:
             # per class or one) is blocked with the table's refusal and exits; a family with no
             # table is refit on each copy and pooled; a design with no degrees of freedom left
             # draws no curve over the surveyed population.
-            Stage("substitution", 17, ("working", "fit", "design"),
+            # substitution 18 (previews leash 2, MS4): under the surveyed population with the design
+            # itself refused (a grouping whose rows span PSUs), every curve is blocked with the
+            # fit's refusal and exits, never drawn as these participants' curve.
+            Stage("substitution", 18, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
                    "column_units", *ROLE_READS, *WP17_READS),
                   substitution_stage, heavy=True, requires=("substitution",),
@@ -700,7 +706,9 @@ def build_graph() -> Graph:
             # calibration 11 (REPAIR-RC): the uncorrected estimate beside it is the primary's on
             # every participant it analyzes; a lonely PSU is drawn twice or not at all; refused
             # below the cluster floor; every block says why in the methods' words, with an exit.
-            Stage("calibration", 11,
+            # calibration 12 (previews leash 2): the refusals that read no row are one function the
+            # preview shares (``unread_refusal``); rows that are no mean of recalls said in 30 words.
+            Stage("calibration", 12,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),

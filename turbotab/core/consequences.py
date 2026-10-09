@@ -24,9 +24,11 @@ Rules every builder keeps:
 - **No outcome-model estimate before the lock.** Under inference nothing estimated from the
   outcome model (a coefficient, a test, a fit statistic, a diagnostic of the fitted model) appears
   before the analysis plan is locked (calm/FOUNDATION §5 rule 6; :mod:`turbotab.core.plan_lock`):
-  seeing estimates while choosing invites choosing by the estimate. A builder asks
-  :func:`estimates_unseen` before it reads the outcome against anything, or a stage that holds
-  estimates; ``tests/acceptance/test_previews_leash.py`` walks every kind to hold it.
+  seeing estimates while choosing invites choosing by the estimate. An unanswered purpose is the
+  strictest case (it may yet be inference): nothing appears until it is answered as prediction. A
+  builder asks :func:`estimates_unseen` before it reads the outcome against anything, or a stage
+  that holds estimates; ``tests/acceptance/test_previews_leash.py`` and ``…_leash_2.py`` walk every
+  kind under each purpose to hold it.
 - **Never an empty canvas.** A builder that cannot draw says why in one line (``ctx.read
   ["note"]``), naming what is missing and the question that settles it, or offers the control that
   does (``ctx.caution``); the generic "nothing can be shown" line is the planner's last resort.
@@ -501,11 +503,13 @@ RELATIONSHIP_DELTA = 0.2
 
 
 def estimates_unseen(state: Any) -> bool:
-    """Under inference, before the analysis plan is locked: no outcome-model estimate may appear
-    (calm/FOUNDATION §5 rule 6). The plan locks the first time an estimate is displayed
-    (:mod:`turbotab.core.plan_lock`), so before then a preview that showed one would be its first
-    sight, while the plan can still be changed."""
-    return getattr(state, "purpose", None) == "inference" and not getattr(state, "plan_locked", None)
+    """No outcome-model estimate may appear (calm/FOUNDATION §5 rule 6) until the purpose is
+    answered as prediction or the analysis plan is locked. Under inference the plan locks the
+    first time an estimate is displayed (:mod:`turbotab.core.plan_lock`), so before then a preview
+    that showed one would be its first sight, while the plan can still be changed. An unanswered
+    purpose is the strictest case: it may yet be answered as inference, and an estimate seen now
+    would be seen before a plan that cannot then be locked as declared before any was."""
+    return getattr(state, "purpose", None) != "prediction" and not getattr(state, "plan_locked", None)
 
 
 def clip_words(text: str, limit: int) -> str:

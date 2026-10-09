@@ -2175,10 +2175,11 @@ def _response_fits_the_check(decision: Any, ctx: Any) -> None:
                        f"The checks are of the primary model for {_tick(exposure_key(spec))}.",
                        [{"label": f"Respond for {_tick(exposure_key(spec))}",
                          "decision": decision.model_copy(update={"exposure": exposure_key(spec)})}])
-    if _get(state, "purpose") == "inference" and not _get(state, "plan_locked"):
+    if _get(state, "purpose") != "prediction" and not _get(state, "plan_locked"):
         # The checks are the fitted outcome model's, shown with its estimates: before the plan is
         # locked nothing about them has been seen, and saying whether one failed would be the
-        # first sight of the fit (calm/FOUNDATION §5 rule 6).
+        # first sight of the fit (calm/FOUNDATION §5 rule 6). An unanswered purpose is the
+        # strictest case (``consequences.estimates_unseen``); prediction is refused above.
         raise _refusal("check_not_shown", CHECKS_UNSEEN,
                        [{"label": "Respond once the estimates are shown", "decision": None}])
     # The record says the check failed, so it must have: read as the effects stage reported it.

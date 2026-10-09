@@ -1213,6 +1213,19 @@ class ProjectService:
         target = folded.target
         return vouch(out, read_seen(self.workspace.project_dir(pid)).get(target or "", []), target)
 
+    def _served_design(self, pid: str, data: dict[str, Any], key: str) -> dict[str, Any]:
+        """The design as a client may see it (audit ME-03): under inference the energy-dropped
+        residual's coefficient gap waits for the plan's lock, which the stage does not read; once
+        the plan is locked the gap it kept beside the design is served in the warning's place
+        (``stages.modeling.design_as_served``). The whole bundle is read only then."""
+        from turbotab.core.stages.modeling import design_as_served
+
+        state = self.log(pid).state()
+        if not state.plan_locked:
+            return data
+        bundle = self._artifact(pid, "design", key)
+        return design_as_served(data, getattr(bundle, "objects", None), state)
+
     def _fresh_sealed_scores(self, pid: str) -> Any:
         """The fresh fit's held-out scores from its sealed frame (None: no fresh fit)."""
         status = self.engine.status(pid).get("fit")
@@ -1351,6 +1364,8 @@ class ProjectService:
             artifact = {"value": artifact}
         if stage == "fit" and artifact is not None:
             artifact = self._served_fit(pid, artifact, key)
+        if stage == "design" and artifact is not None and key:
+            artifact = self._served_design(pid, artifact, key)
         if artifact is not None and stage in estimand.ESTIMATE_STAGES:
             # WP17: no estimate is served while a question it rests on is unanswered (the follow-up;
             # under inference the grouping, the exposure and its effect, the adjustment set), as

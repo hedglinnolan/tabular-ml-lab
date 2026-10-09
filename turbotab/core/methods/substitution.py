@@ -86,8 +86,9 @@ import pandas as pd
 
 __all__ = ["Shift", "refit_band", "substitution_curve", "PERCENTILE_MIN_REFITS",
            "MIN_REFIT_SHARE", "CLASS_SUM_TOLERANCE", "check_sums_to_zero", "class_curves",
-           "class_estimand", "class_refit_band", "design_class_curves", "level_name",
-           "missing_values_block", "no_design_df", "pool_class_curves", "class_clause",
+           "class_estimand", "class_refit_band", "design_block", "design_class_curves",
+           "level_name", "missing_values_block", "no_design_df", "pool_class_curves",
+           "class_clause",
            "CLASS_CONTRACT"]
 
 TotalKind = Literal["fixed", "variable"]
@@ -1309,6 +1310,31 @@ NO_COPIES_NOTE = ("No curve is drawn: under multiple imputation every estimate s
                   "blanks would leave out the imputations' uncertainty (MODELING_SEQUENCE §2).")
 COMPLETE_CASES_EXIT = "Complete cases, with their assumption stated"
 TABLE_DRAWS_COPIES_EXIT = "Add the linear model, whose coefficient table draws the imputed copies"
+DESIGN_BLOCK_NOTE = ("No curve is drawn while the survey design is refused: under the surveyed "
+                     "population each curve is the design's, as the coefficient table is "
+                     "(MODELING_SEQUENCE §4).")
+
+
+def design_block(state: Any, fit_data: Optional[Mapping[str, Any]]) -> Optional[tuple]:
+    """(why, exits, note) when, under the surveyed-population answer, the fit refused the design
+    itself, so no family has a design-based curve, else None (MODELING_SEQUENCE §4, "population
+    estimand without a design-based estimator: block and record").
+
+    The design is refused before any family is fitted (``methods.survey.for_fit``: a grouping
+    whose rows span PSUs, a design the analyzed rows cannot carry), and the fit then blocks every
+    coefficient table with that refusal and its exits (``models.survey.blocked``). The caller
+    asks only where the fit kept no design for the curves (``survey_design`` None under
+    inference); every curve is blocked and recorded with the table's own refusal and exits, as
+    the coefficient table is, never drawn as these participants' curve."""
+    survey = getattr(state, "survey", None)
+    if getattr(survey, "estimand", None) != "population":
+        return None
+    for model in (fit_data or {}).get("models") or []:
+        info = model.get("inference") if isinstance(model, Mapping) else None
+        if isinstance(info, Mapping) and info.get("refused"):
+            return (str(info["refused"]), [dict(e) for e in info.get("exits") or []],
+                    DESIGN_BLOCK_NOTE)
+    return None
 
 
 def missing_values_block(refused: Optional[Mapping[str, Any]], *,

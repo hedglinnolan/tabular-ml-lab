@@ -21,7 +21,9 @@ answer does to the model the user is building, drawn on their own rows in the cl
 
 Each is prediction's choice (refused, or a sensitivity analysis, under inference), so a preview
 reads the training rows' outcome only where the stage does (an inner choice of form, a selection,
-the intercept after shrinkage), never a held-out row (``ctx.training_row_ids``).
+the intercept after shrinkage), never a held-out row (``ctx.training_row_ids``). While the purpose
+is unanswered nothing read from the outcome model is drawn (``consequences.estimates_unseen``:
+the strictest case); the preview says so and names the purpose question, which settles it.
 
 Importing this module registers the builders.
 """
@@ -34,11 +36,11 @@ import pandas as pd
 
 from turbotab.core.consequences import (
     DistributionView, LineageView, Mark, PreviewContext, RelationshipView, RowFlowView, RowStep,
-    after_state, fmt_count, register_consequence,
+    after_state, estimates_unseen, fmt_count, register_consequence,
 )
 from turbotab.core.plan_previews import (
     Design, caption, drawn, fit_design, histogram, lineage_change, moved, num, points, pool,
-    rows_word, tick, title,
+    prediction_first, rows_word, tick, title,
 )
 
 
@@ -110,8 +112,17 @@ def levers_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     outcome = _outcome(ctx, after, then.matrix.index)
     y, keep = outcome if outcome is not None else (None, None)
     views: list[Any] = []
-    lineage, steps = explored(then, task, y, keep)
-    before = explored(now, task, y, keep)[0] if now is not None else None
+    # Inner cross-validation chooses each predictor's bends by the outcome model's fit: with the
+    # purpose unanswered it is not drawn (the rule's knots and the filter read the predictors only).
+    inner = "inner_cv" in (getattr(decision, "forms", None),
+                           getattr(getattr(ctx.state, "levers", None), "forms", None))
+    steps: list[Any] = []
+    if inner and estimates_unseen(ctx.state):
+        ctx.read["note"] = prediction_first("Inner cross-validation chooses each predictor's bends "
+                                            "from the outcome model")
+    else:
+        lineage, steps = explored(then, task, y, keep)
+        before = explored(now, task, y, keep)[0] if now is not None else None
     if steps:
         arrive, leave = lineage_change(before, lineage)
         parts = []
@@ -186,6 +197,16 @@ def selection_views(decision: Any, ctx: PreviewContext) -> list[Any]:
             caption=caption(f"Every declared term stays; a labeled sensitivity analysis runs "
                             f"beside it: {label}."),
             emphasis=[], before=then.lineage, after=then.lineage)]
+    if estimates_unseen(ctx.state):
+        # The purpose unanswered: what a selection keeps is read from the outcome model.
+        if decision.method == "none":
+            return [LineageView(
+                title=title("No selection: every term enters"),
+                caption=caption("Every candidate predictor enters the model as the design builds "
+                                "it."), emphasis=[], before=then.lineage, after=then.lineage)]
+        ctx.read["note"] = prediction_first("Which columns the selection keeps is read from the "
+                                            "outcome model")
+        return []
     task = str(after.task or "regression")
     outcome = _outcome(ctx, after, then.matrix.index)
     if outcome is None:
@@ -266,7 +287,11 @@ def intended_use_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     views: list[Any] = []
     fit = ctx.artifact("fit")
     task = str(after.task or "regression")
-    if decision.use == "decision_support" and task == "binary" and fit is not None:
+    unseen = estimates_unseen(ctx.state)  # the fitted model's risks wait for the purpose
+    if unseen and decision.use == "decision_support":
+        ctx.read["note"] = prediction_first("The fitted model's risks, where the thresholds fall, "
+                                            "are read from the outcome model")
+    if decision.use == "decision_support" and task == "binary" and fit is not None and not unseen:
         found = _fitted(ctx, _reported(fit.data or {}))
         X = _inputs(ctx, found[0], ids) if found is not None else None
         if found is not None and X is not None:
@@ -333,8 +358,8 @@ def intended_use_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         if found_view is not None:
             views.append(found_view)
     if not views:
-        ctx.read["note"] = ("The decision curve is drawn on a yes/no outcome's out-of-fold risks "
-                            "once the models are fitted.")
+        ctx.read.setdefault("note", "The decision curve is drawn on a yes/no outcome's out-of-fold "
+                                    "risks once the models are fitted.")
     return views
 
 
@@ -348,6 +373,10 @@ def updating_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     after = after_state(decision, ctx)
     ids = pool(ctx)
     if ids is None or getattr(after, "purpose", None) == "inference":
+        return []
+    if estimates_unseen(ctx.state):
+        ctx.read["note"] = prediction_first("The calibration slope that shrinks the coefficients is "
+                                            "read from the outcome model")
         return []
     found = _fitted(ctx, "linear")
     if found is None:
