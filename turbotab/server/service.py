@@ -57,6 +57,8 @@ SOURCE_FILE = "source.json"
 SHOWN_UNDER_PREDICTION = "estimates_shown.json"
 # Decision kinds the server records itself and a client never posts: the analysis-plan lock.
 SYSTEM_KINDS = ("lock_plan",)
+# P0.6: the Router questions TurboTab answers itself once reached, and the slot each writes.
+SLOTS_OF_COMPLETIONS = {"roles": "roles", "split": "split"}
 MAX_REMEMBERED_JOBS = 10_000
 
 
@@ -111,6 +113,9 @@ class DecisionContext:
     # The project's folder: a join reads its added files, a codebook import its staged codebook
     # (DATAIN, V2 definition of done §1).
     project_dir: str | None = None
+    # "Decide now" (crosswalk disagreement 20): the answer asks to be taken ahead of the Router,
+    # which ``sequence.decide_now_refusal`` allows only where its needs are met.
+    early: bool = False
 
 
 def _target_needs_columns(decision: Any, ctx: Any) -> None:
@@ -447,6 +452,8 @@ class ProjectService:
         self._artifacts: OrderedDict[tuple[str, str, str], Any] = OrderedDict()
         self._frames: OrderedDict[tuple[Any, ...], Any] = OrderedDict()
         self._locking = threading.Lock()  # one analysis-plan lock per project, however many reads
+        # P0.6: one completion at a time, however many clients look at the Router at once.
+        self._completing = threading.RLock()
 
     def close(self) -> None:
         self.engine.shutdown()
@@ -817,13 +824,57 @@ class ProjectService:
         stages = self.engine.status(pid)
         records = self.log(pid).records()
         state = decisions.fold(records)
+        steps = self.interview(pid, state, stages, records)
+        if self._complete_when_reached(pid, state, stages, steps):
+            return self.view(pid)
         return {
             "summary": self.summary(meta, stages["ingest"]),
             "state": state,
             "decisions": records,
             "stages": stages,
-            "interview": self.interview(pid, state, stages, records),
+            "interview": steps,
         }
+
+    def _complete_when_reached(self, pid: str, state: ProjectState,
+                               stages: dict[str, StageStatus], steps: list[InterviewStep]) -> bool:
+        """P0.6: what TurboTab records itself once the Router reaches it (the display-order rule's
+        second condition: recorded and shown, For the record, with a way to change it). True when
+        a record was made.
+
+        * **The roles** (crosswalk disagreement 1): once every column's role is settled in Your
+          data, each proposed high or confirmed on its own (``readings.roles_completion``). While
+          one is unsettled nothing is recorded, and the Router holds at the roles.
+        * **The split under Estimate** (disagreement 5): no rows held out, the scheme set for you
+          (``seal.INFERENCE_SPLIT_REASON``), recorded at the end of Who's in."""
+        from turbotab.core.interview import first_unanswered
+        from turbotab.core.readings import roles_completion
+
+        first = first_unanswered(steps)
+        if first is None or first.status != "open":
+            return False
+        body: dict[str, Any] | None
+        if first.key == "split" and state.purpose == "inference" and state.split is None:
+            body = {"kind": "set_split", "holdout": 0.0, "seed": 0}
+        elif first.key == "roles" and not state.roles:
+            status = stages.get("roles")
+            if status is None or status.status != "fresh" or not status.key:
+                return False
+            body = roles_completion(state, self._artifact(pid, "roles", status.key, public=True))
+        else:
+            return False
+        if body is None:
+            return False
+        with self._completing:
+            now = self.log(pid).state()
+            if getattr(now, SLOTS_OF_COMPLETIONS[first.key]):
+                return False  # another request recorded it, or the person did
+            try:
+                self.decide(pid, body, system=True,
+                            unless_set=SLOTS_OF_COMPLETIONS[first.key])
+            except Refusal as refused:
+                log.info("%s of %s not completed: %s", first.key, pid, refused.code)
+                return False
+        return True
 
     def readings(self, pid: str) -> dict[str, Any]:
         """The readings the values settled with no question asked ("read from your data",
@@ -960,12 +1011,23 @@ class ProjectService:
             project_dir=str(self.workspace.project_dir(pid)),
         )
 
-    def decide(self, pid: str, decision: Any, *, system: bool = False) -> dict[str, Any]:
+    def decide(self, pid: str, decision: Any, *, system: bool = False,
+               early: bool = False, unless_set: str | None = None) -> dict[str, Any]:
         """Validate and record ``decision``. ``system``: recorded by the server itself (the
-        analysis-plan lock, when an estimate is first displayed), never by a client."""
+        analysis-plan lock, when an estimate is first displayed; P0.6's completions), never by a
+        client. ``early``: "Decide now" (crosswalk disagreement 20), answered ahead of the Router
+        where its card is computed and the answers it reads are in; the record names the question
+        it was decided ahead of."""
         self.workspace.get(pid)
-        ctx = replace(self.decision_context(pid), sealed_scores=lambda: self._fresh_sealed_scores(pid))
+        ctx = replace(self.decision_context(pid), early=early,
+                      sealed_scores=lambda: self._fresh_sealed_scores(pid))
         parsed = decisions.validate(decision, ctx)  # raises Refusal
+        ahead_of = None
+        if early:
+            from turbotab.core.sequence import decided_ahead_of, question_of
+
+            question = question_of(parsed.kind)
+            ahead_of = decided_ahead_of(question, ctx.interview()) if question else None
         if parsed.kind in SYSTEM_KINDS and not system:
             # Audit WP16 (the routing gate's p14): a lock posted by hand before any estimate was
             # displayed marked every later answer as made after the estimates were seen, which was
@@ -983,7 +1045,8 @@ class ProjectService:
         # The log leads the sentence with what had been seen: held-out scores, or the inference
         # estimates (``decisions.disclose``; audit WP16).
         record = log.append(  # raises Refusal for a revert it cannot make
-            parsed, sentence=lambda d, before: voice.sentence_for(d, before, facts))
+            parsed, sentence=lambda d, before: voice.sentence_for(d, before, facts),
+            recorded_by="turbotab" if system else "you", early=ahead_of, unless_set=unless_set)
         self.bus.publish(pid, "decision", record.model_dump(mode="json"))
         self.engine.on_decision(pid)
         self._restart_stopped(pid, parsed.kind)

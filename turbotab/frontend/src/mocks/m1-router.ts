@@ -13,6 +13,7 @@ const NEEDS: Record<QuestionKey, string[]> = {
   event: ["target_info"],
   task: ["target_info"],
   follow_up: ["target_info"],
+  design: [],
   purpose: [],
   grain: ["structure"],
   repeat_kind: ["structure"],
@@ -43,6 +44,7 @@ const SLOT_OF: Record<string, QuestionKey> = {
   set_target: "target",
   set_task: "task",
   set_purpose: "purpose",
+  set_design: "design",
   set_roles: "roles",
   set_survey: "survey",
   set_exclusions: "exclusions",
@@ -107,10 +109,8 @@ function sequenceGate(
         ? "Each unit's rows are combined, so no time points stay as rows."
         : null;
     case "survey":
-      // turbotab/core/survey.py: asked under inference when a column reads as a survey weight;
-      // the mock's tables carry none.
-      if (state.purpose === "prediction")
-        return "Under prediction the scores describe the rows they were computed on; they are not weighted to a population.";
+      // turbotab/core/survey.py: asked under every goal when a column reads as a survey weight
+      // (P0.6, crosswalk disagreement 9); the mock's tables carry none.
       if (state.purpose === null || state.roles === null) return null;
       return Object.keys(state.roles).some((c) => /^WT(DRD1|DR2D|MEC2YR|INT2YR)$/i.test(c))
         ? null
@@ -161,6 +161,11 @@ function skipGate(
   targetInfo: TargetInfoArtifact | null,
 ): string | null {
   switch (key) {
+    case "design":
+      // turbotab/core/interview.py: observational, stated until answered (P0.6).
+      return state.design === null
+        ? "Read as an observational study: people were observed as they were, not assigned or sampled by their outcome. Change it if they were randomized, sampled by the outcome or matched."
+        : null;
     case "follow_up": {
       const followed = !state.lens || state.lens.some((l) => l === "clinical" || l === "dietary");
       const task =

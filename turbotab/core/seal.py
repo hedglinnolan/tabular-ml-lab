@@ -1773,6 +1773,40 @@ def _an_opened_seal_holds_still(decision: Any, ctx: Any) -> None:
     )
 
 
+def _the_scheme_needs_a_draw(decision: Any, ctx: Any) -> None:
+    """A validation scheme compares models on the training rows the draw leaves: with no split
+    recorded there are none yet (crosswalk disagreement 5: the scheme rides in the draw's record
+    until it is changed)."""
+    state = _ctx(ctx, "state")
+    if state is None or getattr(state, "split", None) is not None:
+        return
+    raise Refusal(
+        "no_draw_yet",
+        "The validation scheme compares the models on the training rows, and which rows are held "
+        "out is not decided yet: the scheme set for you comes with that answer, and can be "
+        "changed after it.",
+        exits=[{"label": "Answer the held-out rows question first", "decision": None}])
+
+
+def _a_scheme_after_the_opening_is_recorded(decision: Any, ctx: Any) -> None:
+    """After the held-out rows are opened a changed scheme is block and record (crosswalk
+    disagreement 5; MODELING_SEQUENCE §4): it is kept only when acknowledged, its record is marked
+    as made after the opening, and the scores at the opening stay the reported result."""
+    state = _ctx(ctx, "state")
+    if state is None or not getattr(state, "seal_opened", None) or decision.acknowledged:
+        return
+    raise Refusal(
+        "scheme_after_opening",
+        "The held-out rows were opened, so their scores have been seen. A scheme changed now "
+        "compares the models after that: it is recorded as made after the opening, and the scores "
+        "at the opening stay the reported result.",
+        exits=[{"label": "Change it, recorded as made after the opening",
+                "decision": {**decision.model_dump(mode="json"), "acknowledged": True}},
+               {"label": "Keep the scheme as it was", "decision": None}])
+
+
+decisions.register_validator("set_validation", _the_scheme_needs_a_draw)
+decisions.register_validator("set_validation", _a_scheme_after_the_opening_is_recorded)
 decisions.register_validator("open_seal", _open_seal_once_on_a_fresh_fit)
 decisions.register_completion("open_seal", _the_opening_keeps_its_scores)
 decisions.register_validator("reseal", _reseal_needs_an_opened_seal)

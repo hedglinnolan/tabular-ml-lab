@@ -33,6 +33,7 @@ NUT04 = f"{_NUT}#04 · Energy adjustment — the methodological signature"
 NUT05 = f"{_NUT}#05 · Compositional structure and substitution modeling"
 NUT06 = f"{_NUT}#06 · Missing data"
 NUT08 = f"{_NUT}#08 · Feature selection and modeling"
+NUT09 = f"{_NUT}#09 · Reporting standards"
 CLIN_A12 = f"{_CLIN}#A1.2 · Reference ranges vs physiological plausibility"
 CLIN_A13 = f"{_CLIN}#A1.3 · Lab value formats and censored values"
 CLIN_A2 = f"{_CLIN}#A2 · Missing data"
@@ -387,6 +388,44 @@ TASK = {
                 "analyzed as a quantity; whether that is safe is disputed. Run the other treatment "
                 "as a sensitivity analysis.",
                 "DISPUTED", CLIN_B4),
+    ]},
+    "evidence": None,
+}
+
+# P0.6 (crosswalk disagreement 10): the design slot. Observational is stated until it is answered;
+# the designed-experiments milestone runs trials, case-control samples and matched sets, and
+# crossover trials and repeated-measures trial models go to v2.x (``turbotab.core.designs``).
+DESIGN = {
+    "key": "design",
+    "title": "How people came into the data",
+    "question": "Were people observed as they were, randomized, sampled by outcome, or matched?",
+    "one_liner": "Read as observational until you say otherwise; a trial or a case-control sample "
+                 "changes what may be adjusted and claimed.",
+    "why": "The design decides which comparisons are fair. In a randomized trial adjustment only "
+           "sharpens precision and causal wording is allowed; a case-control sample cannot give "
+           "prevalence or absolute risk; matched sets are analyzed within each set. An "
+           "observational study needs its confounders adjusted and speaks of associations.",
+    "consumer": "Who's in, the adjustment set, the claim wording and the methods read it.",
+    "options": [
+        option("observational", "Observed as they were",
+               "Confounders are adjusted; the results are worded as associations."),
+        option("parallel_trial", "Randomized groups",
+               "Not available yet: analyzed in the designed-experiments milestone."),
+        option("case_control", "Sampled by outcome",
+               "Not available yet: analyzed in the designed-experiments milestone."),
+        option("crossover", "Crossover trial",
+               "Not available yet: crossover trials go to a later version."),
+    ],
+    "terms": [
+        term("observational study", "People are measured as they are, with no exposure assigned "
+                                     "by the investigators."),
+    ],
+    "drawer": {"sections": [
+        section("The design is reported by its name",
+                "STROBE-nut adds nutrition items to STROBE for cohort, case-control and "
+                "cross-sectional studies, which state the study design by its usual name; the "
+                "methods say which one this was.",
+                "CONVENTION", NUT09),
     ]},
     "evidence": None,
 }
@@ -1597,7 +1636,7 @@ MODIFICATION = {
     "evidence": None,
 }
 
-ENTRIES = [LENS, ORIENTATION, REPAIRS, TARGET, EVENT, TASK, FOLLOW_UP, PURPOSE, GRAIN,
+ENTRIES = [LENS, ORIENTATION, REPAIRS, TARGET, EVENT, TASK, FOLLOW_UP, DESIGN, PURPOSE, GRAIN,
            REPEAT_KIND, UNIT, AGGREGATION, TEMPORAL, ROLES, CLUSTERS, SURVEY, EXCLUSIONS, MISSING,
            SPLIT, ESTIMAND_QUESTION, ADJUSTMENT, TIME_VARYING, ENERGY_ADJUSTMENT, FORM,
            MODIFICATION, CAUSAL, MODELS, SUBSTITUTION, OPEN_SEAL]

@@ -1187,8 +1187,13 @@ def test_7_performance_sentences_describe_the_procedure_and_flag_p_much_greater_
                               "Tibshirani 2023): 800 refits of each family")
     assert offer["seconds"] is not None and offer["estimate"]
     assert "p_much_greater_n" in {c["relation"] for c in data["chain"]}
-    ran = st.model_copy(update={"split": d.SplitSpec(**{k: v for k, v in offer["decision"].items()
-                                                        if k != "kind"})})
+    # The offer is a changed scheme (P0.6, ``set_validation``), written onto the draw.
+    assert offer["decision"]["kind"] == "set_validation"
+    ran = d.fold([d.DecisionRecord(id="r1", seq=1, at="2026-10-09T00:00:00Z",
+                                   decision=d.SetSplit(**st.split.model_dump())),
+                  d.DecisionRecord(id="r2", seq=2, at="2026-10-09T00:00:01Z",
+                                   decision=d.parse_decision(offer["decision"]))])
+    ran = st.model_copy(update={"split": ran.split})
     assert ran.split.nested_cv is True
     *_, fit2 = _stages(wide, ran, tmp_path / "nested")
     data2 = fit2.data
@@ -1232,8 +1237,13 @@ def test_7_with_several_families_the_label_says_what_nested_cross_validation_wid
     assert links["p_much_greater_n"]["then"] == (
         f"the intervals are labeled {TOO_NARROW}, and the nested cross-validation interval is "
         f"offered for each family's own score")
-    ran = st.model_copy(update={"split": d.SplitSpec(**{k: v for k, v in offer["decision"].items()
-                                                        if k != "kind"})})
+    # The offer is a changed scheme (P0.6, ``set_validation``), written onto the draw.
+    assert offer["decision"]["kind"] == "set_validation"
+    ran = d.fold([d.DecisionRecord(id="r1", seq=1, at="2026-10-09T00:00:00Z",
+                                   decision=d.SetSplit(**st.split.model_dump())),
+                  d.DecisionRecord(id="r2", seq=2, at="2026-10-09T00:00:01Z",
+                                   decision=d.parse_decision(offer["decision"]))])
+    ran = st.model_copy(update={"split": ran.split})
     *_, fit2 = _stages(wide, ran, tmp_path / "nested")
     data2 = fit2.data
     assert data2["nested_offer"] is None

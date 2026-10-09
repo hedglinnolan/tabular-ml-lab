@@ -448,6 +448,31 @@ def _set_purpose(d: Any, state: Any, ctx: Any) -> str:
     return f"The analysis was declared for {tick(d.purpose)}: {_PURPOSE_CLAUSE[d.purpose]}"
 
 
+@register_sentence("set_design")
+def _set_design(d: Any, state: Any, ctx: Any) -> str:
+    """Only a design this version analyzes is recorded (``designs.DESIGNS``)."""
+    if d.design == "observational":
+        return ("The study was declared observational: people were observed as they were, not "
+                "assigned or sampled by their outcome.")
+    from turbotab.core.designs import DESIGNS
+
+    return f"The study design was declared: {DESIGNS[d.design].label.lower()}."
+
+
+@register_sentence("set_validation")
+def _set_validation(d: Any, state: Any, ctx: Any) -> str:
+    """The scheme changed on its own record (crosswalk disagreement 5): said as the split's sentence
+    with the draw as it stands and the new scheme."""
+    from turbotab.core.decisions import SetSplit
+
+    split = getattr(state, "split", None)
+    drawn = SetSplit(holdout=getattr(split, "holdout", 0.0), seed=getattr(split, "seed", 0),
+                     **d.scheme())
+    said = _set_split(drawn, state, ctx)
+    body = said[0].lower() + said[1:] if said[:1].isupper() and not said[1:2].isupper() else said
+    return f"The validation scheme was changed, the held-out rows kept as drawn: {body}"
+
+
 # revert — says what the slot holds again, when the log is at hand.
 
 _SLOT_SUBJECT = {
@@ -460,6 +485,7 @@ _SLOT_SUBJECT = {
     "exclusions": "the exclusions",
     "missing": "the handling of missing values",
     "split": "the split",
+    "design": "the study design",
     "models": "the model families",
     "substitution": "the substitution",
     "orientation": "the table's orientation",
@@ -2169,6 +2195,7 @@ _QUESTION_NAME = {
     "event": "the event question",
     "task": "the task question",
     "follow_up": "the follow-up question",
+    "design": "the study-design question",
     "purpose": "the purpose question",
     "grain": "the question of whether people repeat",
     "repeat_kind": "the question of what repeats",

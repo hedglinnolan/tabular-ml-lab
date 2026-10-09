@@ -168,6 +168,15 @@ def answer_estimand(drive: Any, exposure: str, *, effect: str = "total",
 WP17_QUESTIONS = ("follow_up", "clusters", "estimand", "adjustment", "time_varying", "form")
 
 
+def on_the_way(drive: Any, key: str) -> bool:
+    """Whether a drive answers ``key`` on the way to a later question: WP17's questions, and
+    (P0.6, crosswalk disagreement 9) the survey question under prediction, which drives written
+    before it was asked there answer as the scores were then, these participants' unweighted."""
+    if key in WP17_QUESTIONS:
+        return True
+    return key == "survey" and drive.view()["state"].get("purpose") == "prediction"
+
+
 def answer_forms(drive: Any) -> None:
     """FORM (MODELING_SEQUENCE §1 row 5): the form question, as a drive written before it would
     have to answer it: each column the card asks about takes the fixture's declared form
@@ -217,6 +226,13 @@ def answer_wp17(drive: Any, key: str, *, exposure: str | None = None,
     * the time-varying exposure (V2 causal row): standard regression, the analysis every drive
       written before the question runs, with the exposure declared to precede the outcome; where
       a confounder affected by prior exposure holds it (block and record), its attestation exit."""
+    if key == "survey" and on_the_way(drive, key):
+        step = drive.reach(key, timeout=300)
+        if step["status"] in ("open", "waiting"):
+            r = drive.c.post(f"/api/projects/{drive.pid}/decisions",
+                             json={"kind": "set_survey", "estimand": "sample"})
+            assert r.status_code == 200, r.text[:600]
+        return True
     if key not in WP17_QUESTIONS:
         return False
     step = drive.reach(key, timeout=300)
@@ -307,7 +323,8 @@ class Drive:
 
         question = question_of(str(body.get("kind")))
         # (FORM: one column's form is declared whenever the user sees it, holding nothing back)
-        if question is None or question in WP17_QUESTIONS or body.get("kind") in ANSWERED_ANY_TIME:
+        if (question is None or question in WP17_QUESTIONS or question == "survey"
+                or body.get("kind") in ANSWERED_ANY_TIME):
             return False
         answered = False
         for _ in range(len(WP17_QUESTIONS) + 1):
@@ -315,7 +332,7 @@ class Drive:
             first = next((s for s in steps if s["status"] in ("open", "waiting")), None)
             # A WP17 question waiting on its stage (the proposals' cards) is waited for and
             # answered (``answer_wp17`` reaches it first).
-            if first is None or first["key"] == question or first["key"] not in WP17_QUESTIONS:
+            if first is None or first["key"] == question or not on_the_way(self, first["key"]):
                 return answered
             # The event, the task and the follow-up describe one outcome and do not hold each
             # other back (``sequence.OUTCOME_QUESTIONS``): the time-to-event exit is its own answer.
@@ -354,18 +371,29 @@ class Drive:
                 # WP18: a driver passing the task question answers what it still asks, as usual.
                 self.task_followups()
                 continue
-            if (first is not None and first["key"] in WP17_QUESTIONS and first["key"] != key
-                    and first["status"] == "open"):
+            if (first is not None and first["key"] != key and first["status"] == "open"
+                    and on_the_way(self, first["key"])):
                 answer_wp17(self, first["key"], exposure=self.exposure)
                 continue
             assert time.monotonic() < end, f"{key} held behind {first}"
             time.sleep(0.05)
 
     def answer(self, key: str, body: dict[str, Any]) -> None:
-        if self.reach(key)["status"] in ("open", "waiting"):
+        if self.reach(key)["status"] in ("open", "waiting") or self._differs(key, body):
             self.decide(body)
         if key == "task":
             self.task_followups()
+
+    def _differs(self, key: str, body: dict[str, Any]) -> bool:
+        """P0.6: under Estimate TurboTab records the split itself (no rows held out, the scheme set
+        for you), with a way to change it; a drive whose split is another records its own."""
+        if key != "split":
+            return False
+        from turbotab.core.decisions import SplitSpec
+
+        held = self.view()["state"].get("split")
+        wanted = SplitSpec(**{k: v for k, v in body.items() if k != "kind"})
+        return held is not None and SplitSpec(**held) != wanted
 
     def task_followups(self) -> None:
         """WP18 (audit RO-10): what the task question still asks after its task, answered as the

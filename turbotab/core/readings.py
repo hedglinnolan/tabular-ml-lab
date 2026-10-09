@@ -1387,6 +1387,34 @@ def rode_along(roles: Mapping[str, str], proposals: Iterable[Mapping[str, Any]])
     return out
 
 
+def roles_completion(state: Any, artifact: Any) -> dict[str, Any] | None:
+    """The roles answer TurboTab records itself once every column's role is settled (crosswalk
+    disagreement 1): each proposal the values made high, or the role the person confirmed on its
+    own (``confirm_role``, ``confirm_reading`` or ``confirm_readings``) in Your data. None while any
+    proposal below high is unconfirmed: the Router then holds at the roles and Who's in waits for
+    that column. The person's own roles answer is never replaced: this is only for the step the
+    Router reaches with no roles recorded."""
+    if getattr(state, "roles", None):
+        return None
+    proposals = proposals_of(artifact)
+    if not proposals:
+        return None
+    target = getattr(state, "target", None)
+    roles: dict[str, str] = {}
+    for p in proposals:
+        column, proposed = str(p.get("column")), p.get("proposed")
+        if column == target:
+            continue
+        own = confirmation(state, "role", column)
+        if own is not None:
+            roles[column] = str(own)
+        elif p.get("confidence") in ATTENTION or not proposed:
+            return None
+        else:
+            roles[column] = str(proposed)
+    return {"kind": "set_roles", "roles": roles} if roles else None
+
+
 def role_reading(state: Any, column: str) -> Reading | None:
     """``column``'s role as the ledger holds it: settled when the answer recorded it as the user's
     own (changed from the proposal, or proposed high from its values) or a confirmation since

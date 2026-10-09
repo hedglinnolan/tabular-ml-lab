@@ -305,7 +305,7 @@
           "projects"
         ],
         "summary": "Decide",
-        "description": "Record a decision. Stages downstream of the slot it writes recompute.",
+        "description": "Record a decision. Stages downstream of the slot it writes recompute. ``decide_now``\nanswers a later question ahead of the Router, only where its card is computed and the earlier\nanswers it reads are in (crosswalk disagreement 20); otherwise it is refused with what it is\nwaiting for, and the record names the question it was decided ahead of.",
         "operationId": "decide_api_projects__pid__decisions_post",
         "parameters": [
           {
@@ -315,6 +315,16 @@
             "schema": {
               "type": "string",
               "title": "Pid"
+            }
+          },
+          {
+            "name": "decide_now",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Decide Now"
             }
           }
         ],
@@ -506,6 +516,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetUpdating-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetDesign-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetValidation-Input"
                   }
                 ],
                 "discriminator": {
@@ -571,7 +587,9 @@
                     "set_levers": "#/components/schemas/SetLevers-Input",
                     "set_selection": "#/components/schemas/SetSelection-Input",
                     "set_intended_use": "#/components/schemas/SetIntendedUse-Input",
-                    "set_updating": "#/components/schemas/SetUpdating-Input"
+                    "set_updating": "#/components/schemas/SetUpdating-Input",
+                    "set_design": "#/components/schemas/SetDesign-Input",
+                    "set_validation": "#/components/schemas/SetValidation-Input"
                   }
                 },
                 "title": "Decision"
@@ -1166,6 +1184,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetUpdating-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetDesign-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetValidation-Input"
                   }
                 ],
                 "discriminator": {
@@ -1231,7 +1255,9 @@
                     "set_levers": "#/components/schemas/SetLevers-Input",
                     "set_selection": "#/components/schemas/SetSelection-Input",
                     "set_intended_use": "#/components/schemas/SetIntendedUse-Input",
-                    "set_updating": "#/components/schemas/SetUpdating-Input"
+                    "set_updating": "#/components/schemas/SetUpdating-Input",
+                    "set_design": "#/components/schemas/SetDesign-Input",
+                    "set_validation": "#/components/schemas/SetValidation-Input"
                   }
                 },
                 "title": "Decision"
@@ -4450,6 +4476,26 @@
             "title": "After Estimates",
             "default": false
           },
+          "recorded_by": {
+            "type": "string",
+            "enum": [
+              "you",
+              "turbotab"
+            ],
+            "title": "Recorded By",
+            "default": "you"
+          },
+          "early": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Early"
+          },
           "decision": {
             "oneOf": [
               {
@@ -4634,6 +4680,12 @@
               },
               {
                 "$ref": "#/components/schemas/SetUpdating-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetDesign-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetValidation-Output"
               }
             ],
             "title": "Decision",
@@ -4662,6 +4714,7 @@
                 "set_censoring": "#/components/schemas/SetCensoring-Output",
                 "set_clusters": "#/components/schemas/SetClusters-Output",
                 "set_column_unit": "#/components/schemas/SetColumnUnit-Output",
+                "set_design": "#/components/schemas/SetDesign-Output",
                 "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
                 "set_estimand": "#/components/schemas/SetEstimand-Output",
                 "set_event": "#/components/schemas/SetEvent",
@@ -4700,6 +4753,7 @@
                 "set_unit": "#/components/schemas/SetUnit",
                 "set_updating": "#/components/schemas/SetUpdating-Output",
                 "set_usual_intake": "#/components/schemas/SetUsualIntake-Output",
+                "set_validation": "#/components/schemas/SetValidation-Output",
                 "view_outcome": "#/components/schemas/ViewOutcome-Output"
               }
             }
@@ -4715,6 +4769,8 @@
           "sentence",
           "post_seal",
           "after_estimates",
+          "recorded_by",
+          "early",
           "decision"
         ],
         "title": "DecisionRecord"
@@ -5082,7 +5138,9 @@
             "type": "string",
             "enum": [
               "total",
-              "direct"
+              "direct",
+              "complier",
+              "per_protocol"
             ],
             "title": "Effect",
             "default": "total"
@@ -5509,6 +5567,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetUpdating-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetDesign-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetValidation-Output"
                   }
                 ],
                 "discriminator": {
@@ -5536,6 +5600,7 @@
                     "set_censoring": "#/components/schemas/SetCensoring-Output",
                     "set_clusters": "#/components/schemas/SetClusters-Output",
                     "set_column_unit": "#/components/schemas/SetColumnUnit-Output",
+                    "set_design": "#/components/schemas/SetDesign-Output",
                     "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
                     "set_estimand": "#/components/schemas/SetEstimand-Output",
                     "set_event": "#/components/schemas/SetEvent",
@@ -5574,6 +5639,7 @@
                     "set_unit": "#/components/schemas/SetUnit",
                     "set_updating": "#/components/schemas/SetUpdating-Output",
                     "set_usual_intake": "#/components/schemas/SetUsualIntake-Output",
+                    "set_validation": "#/components/schemas/SetValidation-Output",
                     "view_outcome": "#/components/schemas/ViewOutcome-Output"
                   }
                 }
@@ -7153,6 +7219,7 @@
               "event",
               "task",
               "follow_up",
+              "design",
               "purpose",
               "grain",
               "repeat_kind",
@@ -10044,6 +10111,26 @@
                 "type": "null"
               }
             ]
+          },
+          "design": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "observational",
+                  "parallel_trial",
+                  "cluster_randomized_trial",
+                  "case_control",
+                  "matched_sets",
+                  "crossover",
+                  "repeated_measures_trial"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Design"
           }
         },
         "type": "object",
@@ -10107,7 +10194,8 @@
           "levers",
           "selection",
           "intended_use",
-          "updating"
+          "updating",
+          "design"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -12753,6 +12841,69 @@
         "title": "SetColumnUnit",
         "description": "A column's unit, as the user reads it from the source's data dictionary, where TurboTab\ncould only propose one: total energy in kcal or kJ (a day's, or a total over ``days`` days),\nor an age in years, months, weeks or days. Leash (BLUEPRINT §11.3): a unit not read from a\nstated suffix, a codebook or the values' own agreement is a proposal, and no screen, band or\ncount is applied in it until it is recorded here."
       },
+      "SetDesign-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_design",
+            "title": "Kind",
+            "default": "set_design"
+          },
+          "design": {
+            "type": "string",
+            "enum": [
+              "observational",
+              "parallel_trial",
+              "cluster_randomized_trial",
+              "case_control",
+              "matched_sets",
+              "crossover",
+              "repeated_measures_trial"
+            ],
+            "title": "Design",
+            "default": "observational"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "SetDesign",
+        "description": "How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked\nin Your question before the goal, observational stated until answered. Every design is a named\nvalue (``turbotab.core.designs``); one this version does not analyze is refused with its code,\nits reason and the observational exit (V2X_SEAMS seam guard 6)."
+      },
+      "SetDesign-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_design",
+            "title": "Kind",
+            "default": "set_design"
+          },
+          "design": {
+            "type": "string",
+            "enum": [
+              "observational",
+              "parallel_trial",
+              "cluster_randomized_trial",
+              "case_control",
+              "matched_sets",
+              "crossover",
+              "repeated_measures_trial"
+            ],
+            "title": "Design",
+            "default": "observational"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "design"
+        ],
+        "title": "SetDesign",
+        "description": "How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked\nin Your question before the goal, observational stated until answered. Every design is a named\nvalue (``turbotab.core.designs``); one this version does not analyze is refused with its code,\nits reason and the observational exit (V2X_SEAMS seam guard 6)."
+      },
       "SetEnergyAdjustment-Input": {
         "properties": {
           "kind": {
@@ -12915,7 +13066,9 @@
             "type": "string",
             "enum": [
               "total",
-              "direct"
+              "direct",
+              "complier",
+              "per_protocol"
             ],
             "title": "Effect",
             "default": "total"
@@ -13006,7 +13159,9 @@
             "type": "string",
             "enum": [
               "total",
-              "direct"
+              "direct",
+              "complier",
+              "per_protocol"
             ],
             "title": "Effect",
             "default": "total"
@@ -16819,6 +16974,153 @@
         "title": "SetUsualIntake",
         "description": "One dietary component's usual-intake distribution by the NCI method, or ``model=\"none\"``\n(turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of\na wide table's ``days``."
       },
+      "SetValidation-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_validation",
+            "title": "Kind",
+            "default": "set_validation"
+          },
+          "folds": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Folds",
+            "default": 5
+          },
+          "validation": {
+            "type": "string",
+            "enum": [
+              "kfold",
+              "repeated_kfold",
+              "bootstrap",
+              "internal_external"
+            ],
+            "title": "Validation",
+            "default": "kfold"
+          },
+          "repeats": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 2.0,
+            "title": "Repeats",
+            "default": 10
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 20.0,
+            "title": "N Boot",
+            "default": 500
+          },
+          "cluster": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cluster"
+          },
+          "nested_cv": {
+            "type": "boolean",
+            "title": "Nested Cv",
+            "default": false
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "SetValidation",
+        "description": "A changed validation scheme (crosswalk disagreement 5): how the training rows compare the\nmodels (the folds and the kind of validation), recorded on its own so that the draw's record,\nits time and with it the holdout's status stay where the draw put them. ``set_split`` keeps the\ndraw (the holdout and the seed) and carries the scheme set for you, which Models' Confirm sweep\nshows (``default:validation-scheme``). Changed after the held-out rows were opened it is block\nand record: ``acknowledged`` keeps it, and the scores at the opening stay the reported result."
+      },
+      "SetValidation-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_validation",
+            "title": "Kind",
+            "default": "set_validation"
+          },
+          "folds": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Folds",
+            "default": 5
+          },
+          "validation": {
+            "type": "string",
+            "enum": [
+              "kfold",
+              "repeated_kfold",
+              "bootstrap",
+              "internal_external"
+            ],
+            "title": "Validation",
+            "default": "kfold"
+          },
+          "repeats": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 2.0,
+            "title": "Repeats",
+            "default": 10
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 20.0,
+            "title": "N Boot",
+            "default": 500
+          },
+          "cluster": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cluster"
+          },
+          "nested_cv": {
+            "type": "boolean",
+            "title": "Nested Cv",
+            "default": false
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "folds",
+          "validation",
+          "repeats",
+          "n_boot",
+          "cluster",
+          "nested_cv",
+          "acknowledged"
+        ],
+        "title": "SetValidation",
+        "description": "A changed validation scheme (crosswalk disagreement 5): how the training rows compare the\nmodels (the folds and the kind of validation), recorded on its own so that the draw's record,\nits time and with it the holdout's status stay where the draw put them. ``set_split`` keeps the\ndraw (the holdout and the seed) and carries the scheme set for you, which Models' Confirm sweep\nshows (``default:validation-scheme``). Changed after the held-out rows were opened it is block\nand record: ``acknowledged`` keeps it, and the scores at the opening stay the reported result."
+      },
       "Source": {
         "properties": {
           "key": {
@@ -17448,6 +17750,7 @@
               "event",
               "task",
               "follow_up",
+              "design",
               "purpose",
               "grain",
               "repeat_kind",
@@ -25424,6 +25727,7 @@
                   "event",
                   "task",
                   "follow_up",
+                  "design",
                   "purpose",
                   "grain",
                   "repeat_kind",
@@ -34613,6 +34917,38 @@
         "title": "SetColumnUnit",
         "type": "object"
       },
+      "SetDesign": {
+        "additionalProperties": false,
+        "description": "How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked\nin Your question before the goal, observational stated until answered. Every design is a named\nvalue (``turbotab.core.designs``); one this version does not analyze is refused with its code,\nits reason and the observational exit (V2X_SEAMS seam guard 6).",
+        "properties": {
+          "kind": {
+            "const": "set_design",
+            "default": "set_design",
+            "title": "Kind",
+            "type": "string"
+          },
+          "design": {
+            "default": "observational",
+            "enum": [
+              "observational",
+              "parallel_trial",
+              "cluster_randomized_trial",
+              "case_control",
+              "matched_sets",
+              "crossover",
+              "repeated_measures_trial"
+            ],
+            "title": "Design",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "design"
+        ],
+        "title": "SetDesign",
+        "type": "object"
+      },
       "SetEnergyAdjustment": {
         "additionalProperties": false,
         "properties": {
@@ -34714,7 +35050,9 @@
             "default": "total",
             "enum": [
               "total",
-              "direct"
+              "direct",
+              "complier",
+              "per_protocol"
             ],
             "title": "Effect",
             "type": "string"
@@ -36608,6 +36946,84 @@
           "ear_symmetric"
         ],
         "title": "SetUsualIntake",
+        "type": "object"
+      },
+      "SetValidation": {
+        "additionalProperties": false,
+        "description": "A changed validation scheme (crosswalk disagreement 5): how the training rows compare the\nmodels (the folds and the kind of validation), recorded on its own so that the draw's record,\nits time and with it the holdout's status stay where the draw put them. ``set_split`` keeps the\ndraw (the holdout and the seed) and carries the scheme set for you, which Models' Confirm sweep\nshows (``default:validation-scheme``). Changed after the held-out rows were opened it is block\nand record: ``acknowledged`` keeps it, and the scores at the opening stay the reported result.",
+        "properties": {
+          "kind": {
+            "const": "set_validation",
+            "default": "set_validation",
+            "title": "Kind",
+            "type": "string"
+          },
+          "folds": {
+            "default": 5,
+            "maximum": 10,
+            "minimum": 2,
+            "title": "Folds",
+            "type": "integer"
+          },
+          "validation": {
+            "default": "kfold",
+            "enum": [
+              "kfold",
+              "repeated_kfold",
+              "bootstrap",
+              "internal_external"
+            ],
+            "title": "Validation",
+            "type": "string"
+          },
+          "repeats": {
+            "default": 10,
+            "maximum": 50,
+            "minimum": 2,
+            "title": "Repeats",
+            "type": "integer"
+          },
+          "n_boot": {
+            "default": 500,
+            "maximum": 2000,
+            "minimum": 20,
+            "title": "N Boot",
+            "type": "integer"
+          },
+          "cluster": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cluster"
+          },
+          "nested_cv": {
+            "default": false,
+            "title": "Nested Cv",
+            "type": "boolean"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "folds",
+          "validation",
+          "repeats",
+          "n_boot",
+          "cluster",
+          "nested_cv",
+          "acknowledged"
+        ],
+        "title": "SetValidation",
         "type": "object"
       },
       "Setting": {

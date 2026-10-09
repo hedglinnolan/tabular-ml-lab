@@ -29,6 +29,7 @@ const questionKeys = [
   "event",
   "task",
   "follow_up",
+  "design",
   "purpose",
   "grain",
   "repeat_kind",

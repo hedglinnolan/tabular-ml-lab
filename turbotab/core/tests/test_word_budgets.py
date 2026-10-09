@@ -407,6 +407,9 @@ def representative_decisions():
         d.SetIntendedUse(use="risk_estimation", fairness="none"),
         d.SetUpdating(method="shrinkage"),
         d.SetUpdating(method="none"),
+        # P0.6: the design slot, and a changed validation scheme on its own record
+        d.SetDesign(design="observational"),
+        d.SetValidation(validation="repeated_kfold", folds=5, repeats=10),
     ]
 
 

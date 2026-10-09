@@ -445,11 +445,19 @@ def _temporal_names_its_time_column(decision: SetTemporal, ctx: Any) -> SetTempo
 # ── answers in the Router's order (M2_CONTRACT §12.2) ─────────────────────────
 
 
+# Kinds that write a Router question's slot without answering it: a changed validation scheme
+# writes the split's scheme and keeps its draw (crosswalk disagreement 5), a Models Confirm line,
+# never the held-out rows question.
+WRITES_WITHOUT_ANSWERING = ("set_validation",)
+
+
 def question_of(kind: str) -> str | None:
     """The Router question a decision kind answers (``set_grain`` → ``grain``), or None."""
     from turbotab.core.decisions import SLOTS
     from turbotab.core.interview import QUESTION_KEYS, SLOT_OF
 
+    if kind in WRITES_WITHOUT_ANSWERING:
+        return None
     by_slot = {SLOT_OF.get(k, k): k for k in QUESTION_KEYS}
     slot = SLOTS.get(kind)
     return by_slot.get(slot) if slot is not None else None
@@ -501,6 +509,12 @@ def _answers_in_order(decision: Any, ctx: Any) -> None:
     first = first_unanswered(steps)
     if first is None or first.key == question:
         return
+    if _ctx(ctx, "early"):
+        # "Decide now" (crosswalk disagreement 20): answered early where its needs are met.
+        held = decide_now_refusal(question, steps, ctx)
+        if held is None:
+            return
+        raise held
     name = question_name(first.key)
     raise Refusal(
         "not_yet",
@@ -508,6 +522,70 @@ def _answers_in_order(decision: Any, ctx: Any) -> None:
         f"questions are asked in order because each later one depends on the earlier answers.",
         exits=[{"label": f"Answer {name} first", "decision": None}],
     )
+
+
+def card_reads(question: str) -> tuple[str, ...]:
+    """The earlier Router questions whose answers a question's card reads: those whose slots the
+    stages it needs (``interview.NEEDS``) read, upstream included (``quest.stage_reads``)."""
+    from turbotab.core.interview import NEEDS, QUESTION_KEYS, SLOT_OF
+    from turbotab.core.quest import stage_reads
+
+    reads: set[str] = set()
+    for stage in NEEDS.get(question, ()):
+        reads |= stage_reads(stage)
+    earlier = QUESTION_KEYS[:QUESTION_KEYS.index(question)]
+    return tuple(k for k in earlier if SLOT_OF.get(k, k) in reads)
+
+
+def _stage_status(ctx: Any, stage: str) -> str | None:
+    fn = _ctx(ctx, "stage")
+    if not callable(fn):
+        return None
+    try:
+        found = fn(stage)
+    except Exception:  # noqa: BLE001 - a stage that cannot be read is not computed
+        return None
+    if found is None:
+        return None
+    return found.get("status") if isinstance(found, Mapping) else getattr(found, "status", None)
+
+
+def decide_now_refusal(question: str, steps: Any, ctx: Any) -> Refusal | None:
+    """Why "Decide now" cannot answer ``question`` ahead of the Router, or None when it can
+    (crosswalk disagreement 20): only once its card is computed (every stage it needs is fresh)
+    and every earlier question its card reads is answered or set for you. Otherwise it waits, and
+    says for what; the answer's other checks (the seal, the gates) are run as usual."""
+    from turbotab.core.interview import NEEDS
+    from turbotab.core.voice import question_name
+
+    computing = [s for s in NEEDS.get(question, ()) if _stage_status(ctx, s) != "fresh"]
+    if computing:
+        return Refusal(
+            "not_yet",
+            "Waiting for its card: what it shows on your data is still being computed, so it "
+            "cannot be decided early yet.",
+            exits=[{"label": "Decide it once its card is shown", "decision": None}])
+    status = {getattr(s, "key", None): getattr(s, "status", None) for s in steps}
+    for key in card_reads(question):
+        if status.get(key) in ("open", "waiting"):
+            name = question_name(key)
+            return Refusal(
+                "not_yet",
+                f"Waiting for {name}: this card reads that answer, so it cannot be decided before "
+                f"it.",
+                exits=[{"label": f"Answer {name} first", "decision": None}])
+    return None
+
+
+def decided_ahead_of(question: str, steps: Any) -> str | None:
+    """The Router question an answer to ``question`` is decided ahead of ("Decide now"): the
+    earliest one still unanswered before it, or None when the Router has reached it."""
+    from turbotab.core.interview import QUESTION_KEYS, first_unanswered
+
+    first = first_unanswered(list(steps or ()))
+    if first is None or question not in QUESTION_KEYS or first.key not in QUESTION_KEYS:
+        return None
+    return first.key if QUESTION_KEYS.index(first.key) < QUESTION_KEYS.index(question) else None
 
 
 def _seal_needs_grain(decision: Any, ctx: Any) -> None:
@@ -554,4 +632,5 @@ register_validator("set_aggregation", _aggregation_can_order_the_records)
 register_validator("set_aggregation", _aggregation_reads_settled_readings)
 register_validator("set_temporal", _temporal_needs_time_points_as_rows)
 
-__all__ = ["ATTEST", "artifact", "question_of"]
+__all__ = ["ATTEST", "WRITES_WITHOUT_ANSWERING", "artifact", "card_reads", "decide_now_refusal",
+           "decided_ahead_of", "question_of"]
