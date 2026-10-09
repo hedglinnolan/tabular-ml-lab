@@ -47,7 +47,7 @@ Written 2026-10-08 against `turbotab-next` at `2627066d`, and patched the same d
 
   First look's own objectives are opening the highlights, and the few blockers that stop everything.
 - **Models is the heaviest stage:** 231 items, with 132 Decide and 63 Confirm. Most are noticings that land on 14 cards. A journey sees far fewer: the reference journeys answered 2 to 8 engine cards in Models (below, "The reference journeys against the load caps").
-- **Order conflicts.** In 20 places, the engine's order and the ruled stage order disagree (below). Each has a proposed fix. Several of the questions and rulings below come from them.
+- **Order conflicts.** In 21 places, the engine's order and the ruled stage order disagree (below). Each has a fix, audited on 2026-10-08 against the display-order rule: 14 of the first 20 fixes were rewritten to pass, and the 21st comes from the ruling of 2026-10-08. Several of the questions and rulings below come from them.
 
 ## Six questions for you
 
@@ -404,7 +404,7 @@ Noticings decided here (16), each on the card or question it changes. Each is an
 - Rows at risk at the landmark, and follow-up as the model reads it `preview:set_follow_up` (partial; Estimate, Predict)
 - What the goal changes downstream `preview:set_purpose` (partial)
 - 'Same for everyone' and the outcome's unit change no number, so the card quotes its sentence `preview:unpreviewed_outcome_kinds` (partial)
-- Where the decision thresholds fall on the model's risks `preview:set_intended_use` (engine only; Predict)
+- What the intended use changes: its sentence, and the rows per group when groups are named; the risks against the thresholds draw in Results (disagreement 16) `preview:set_intended_use` (engine only; Predict)
 - That column can't be the outcome (the row number, a missing column, a column an eligibility rule reads, or one that would redraw the held-out rows) `refusal:set_target` (on screen)
 - That kind does not fit these values `refusal:set_task` (on screen)
 - The event must be one of the outcome's two levels `refusal:set_event` (on screen)
@@ -473,7 +473,7 @@ Exploration, shaped by the goal.
 - Each variable: is each column what it says? `other:first-look:group:each` (partial)
 - Variables together: what moves together or duplicates? `other:first-look:group:together` (partial)
 - Over time and by batch: did how or when it was measured change it? `other:first-look:group:over_time` (partial)
-- The outcome: a door, not a group to browse. Its own distribution (O1) and 'With one column…' (O3); every view is recorded; under inference never pointed at or ranked `other:first-look:outcome-door` (partial; Estimate, Predict, Describe)
+- The outcome: a door, not a group to browse. Its own distribution (O1) opens after Who's in (Estimate, Describe) or the draw (Predict); 'With one column…' (O3) after Fit (Estimate, Describe) or the draw (Predict); every view is recorded; under Estimate never pointed at or ranked `other:first-look:outcome-door` (partial; Estimate, Predict, Describe)
 - The outcome's distribution: a histogram, or the share of each class (the rarer class's share) `noticing:explore::outcome_distribution` (engine only; Estimate, Predict)
 - How the outcome moves with one continuous predictor (binned means or event share over its tenths) `noticing:explore::relationship` (engine only; Estimate, Predict)
 - A finding's evidence drawn on the canvas: why it was raised, on the user's own rows `preview:finding-evidence` (on screen)
@@ -487,7 +487,7 @@ Exploration, shaped by the goal.
 - Layout by footprint: Focus (one column), Strip (several), Flow (which rows), Routing (roles or structure), Angles (competing conventions) `other:views:footprint-layouts` (partial)
 - The context view: the same measure split by the lens's structural variable where it differs most, or one line ('Similar for women and men') `other:views:context-view` (missing)
 - Wide data: a distribution of a per-feature statistic plus the top-12 Strip; hexbins above ~5,000 rows; cached per data state, nothing recomputed on hover `other:views:wide-aggregates` (partial)
-- The outcome group: 'Not available yet · opens once the split is recorded' `refusal:outcome-door-not-yet` (partial; Predict, Estimate)
+- The outcome group, until its gate opens: 'Opens after Who's in' (Estimate, Describe: the outcome alone), 'Opens after Fit' (Estimate, Describe: beside a column), 'Opens once the held-out rows are drawn' (Predict) `refusal:outcome-door-not-yet` (partial; Predict, Estimate, Describe)
 - An outcome view refused: no outcome chosen, no predictor named, or an unknown column `refusal:view_outcome` (engine only; Predict, Estimate)
 - A look whose readings are unsettled is not shown; its reading is asked at Your data `refusal:look-needs-a-settled-reading` (partial)
 - The findings stage fails rather than sample: findings count rows, so a sample would state wrong numbers `refusal:findings-memory-budget` (on screen)
@@ -745,18 +745,19 @@ Noticings decided here (51), each on the card or question it changes. Each is an
 3. the time-varying lane;
 4. the energy model;
 5. the forms;
-6. modifiers and the causal lane (both stated by default, so they sit in Confirm);
-7. the model families.
+6. scales, batch and the omics normalization, where they apply (no Router key; ruled ahead of the families on 2026-10-08, disagreement 21);
+7. modifiers and the causal lane (both stated by default, so they sit in Confirm);
+8. the model families.
 
-Then the declarations with no Router key: Model 1, sensitivity analyses, regression calibration, scales, batch, the omics normalization and multiplicity, and the substitution pair (disagreement 13).
+Then the declarations with no Router key: Model 1, sensitivity analyses, regression calibration and multiplicity, and the substitution pair (disagreement 13).
 
-**Under an assay lens, either goal:** how raw counts or intensities are normalized (`decision:omics-normalization`; it moved here from Your data's repair, which keeps only the reading), then the in-fold steps in the Confirm sweep.
+**Under an assay lens, either goal:** how raw counts or intensities are normalized (`decision:omics-normalization`; it moved here from Your data's repair, which keeps only the reading), before the model families (disagreement 21), then the in-fold steps in the Confirm sweep.
 
 **Predict:**
-1. the validation scheme;
-2. selection and the in-fold levers;
+1. scales, batch and the omics normalization, where they apply (disagreement 21);
+2. selection, when it is asked;
 3. the model families;
-4. recipes and tuning.
+4. in the Confirm sweep: the validation scheme (disagreement 5), the in-fold levers, recipes and tuning, on which the shelf ranks as the defaults now set (MODEL_FAMILY_CONTRACT C4).
 
 **Describe:** usual intake, weighted means and prevalence, patterns, clustering, agreement.
 
@@ -774,13 +775,13 @@ Under Estimate and Describe, nothing is served before you press Fit, and pressin
 3. Does [sugar] change over time for each person, and how should its history be followed? `q:time_varying` (partial; Estimate)
 4. How should the analysis account for how much people eat overall? `q:energy_adjustment` (partial; Estimate, Predict; dietary)
 5. Should [sugar] and each number you adjust for enter as a straight line or a curve? `q:form` (partial; Estimate)
-6. Which models should be fit? (inference: which model fits this question) `q:models` (partial; Estimate, Predict)
-7. Which columns should Model 1 adjust for? (this field's Model 1: age, sex and total energy) `decision:set_model_sequence` (engine only; Estimate)
-8. Which removal rules should be reported beside the main analysis, as checks? `decision:set_sensitivity` (engine only; Estimate, Predict)
-9. Correct the intakes in the model for day-to-day swings in the recalls, all of them together, as a secondary analysis? `decision:set_measurement_error` (engine only; Estimate; dietary)
-10. Which questionnaire items make up each scale, and should its score be corrected for unreliability? `decision:set_scales` (engine only; Estimate, Predict; survey)
-11. How should the batch column be handled? `decision:set_batch` (engine only; Estimate, Predict; metabolomics, genomics)
-12. These columns are raw counts or intensities: how are they normalized? `decision:omics-normalization` (partial; Estimate, Predict; metabolomics, genomics)
+6. Which questionnaire items make up each scale, and should its score be corrected for unreliability? `decision:set_scales` (engine only; Estimate, Predict; survey)
+7. How should the batch column be handled? `decision:set_batch` (engine only; Estimate, Predict; metabolomics, genomics)
+8. These columns are raw counts or intensities: how are they normalized? `decision:omics-normalization` (partial; Estimate, Predict; metabolomics, genomics)
+9. Which models should be fit? (inference: which model fits this question) `q:models` (partial; Estimate, Predict)
+10. Which columns should Model 1 adjust for? (this field's Model 1: age, sex and total energy) `decision:set_model_sequence` (engine only; Estimate)
+11. Which removal rules should be reported beside the main analysis, as checks? `decision:set_sensitivity` (engine only; Estimate, Predict)
+12. Correct the intakes in the model for day-to-day swings in the recalls, all of them together, as a secondary analysis? `decision:set_measurement_error` (engine only; Estimate; dietary)
 13. Which calories should replace which (for example, 100 kcal of sugar swapped for protein)? `decision:substitution-pair` (on screen; Estimate, Predict; dietary)
 14. How sensitive is the result to the outcomes that are missing? `decision:trial-missing-outcome-sensitivity` (new scope; Estimate)
 15. Cases were sampled by outcome: report odds ratios only; recalibrate predictions to the population's prevalence `decision:case-control` (new scope; Estimate, Predict)
@@ -1735,72 +1736,145 @@ These need a fit, so First look never shows them. They label an exhibit, or add 
 
 Each item gives the disagreement, its evidence, and the fix. The fixes are folded into `SIZING.md` (package P0.6 and the slices).
 
+### The display-order audit (2026-10-08)
+
+The orchestrator's display-order rule (2026-10-08): the screen order may differ from the engine order only if
+1. nothing shown depends on an unanswered decision without saying so;
+2. any answer the engine fills in is recorded and visible, in Confirm or For the record;
+3. no view touches rows or the outcome before its gate opens.
+
+Never quietly. Each fix was checked against the three conditions and against the crosswalk's rulings (the six questions, Settled here, and the UI rulings of 2026-10-08), with the engine code that decides it. Each item's *Against the rule* line gives the verdict on each condition, numbered as above. A fix that failed was rewritten to pass, and disagreement 21 was added from the ruling of 2026-10-08.
+
+The gates the third condition means:
+- **The held-out rows** (Predict): nothing reads them before the opening (`q:open_seal`).
+- **The outcome alone:** under Estimate, after Who's in, on the rows analyzed, recorded; under Predict, after the draw, on the training rows (question 1). The outcome card itself reads only what defines the outcome (disagreement 3).
+- **The outcome beside a column:** under Estimate, after the lock, labeled exploratory; under Predict, after the draw, on the training rows (question 1). A paper with an Estimate track follows the Estimate rule. So does a Describe track, whose estimates by group pair the outcome with a column and wait for its lock (Settled here).
+- **Estimates and scores:** under Estimate and Describe, after Fit locks the track's plan; under Predict, after Fit is pressed (disagreement 12).
+
+| Conflict | Verdict | What changed |
+|---|---|---|
+| 1 · The roles answer in Your data | fixed | A ledger line that a later answer re-reads says so (1). The server records the roles when the Router reaches them, and Who's in shows that record (2). |
+| 2 · Readings asked where they are used | fixed | Once chosen, the outcome is drawn only on its own card, and after the draw no route reads a held-out row (3). |
+| 3 · The outcome's reading and Who's in | fixed | "Which value counts" stays in Who's in, where the engine can record it; the outcome card says it waits there and counts rows, not people (1). |
+| 4 · First look before the seal | fixed | Question 1 applied: the outcome beside a column waits for the lock under Estimate and Describe, and the server withholds it (3). Each look says which rows it read (1). |
+| 5 · The split, two decisions in one | fixed | The server records the split under Estimate, For the record; the scheme set for you rides in the draw's record and shows in Models' Confirm (2). |
+| 6 · "Confirm last" and the seal | pass | Nothing. |
+| 7 · Who's in and Models answers | fixed | Question 5 applied: the fill is chosen in each track's Models and never reopens Who's in. The provisional flowchart names what it waits for (1). |
+| 8 · The clusters question's model term | fixed | The term set for you is recorded in the grouping answer and shows in Models' Confirm; its view moves with it (2). |
+| 9 · The survey question under Predict | fixed | The preview names the column it draws and why; under Predict it draws the design, not a predictor (1). |
+| 10 · The design slot | pass | Nothing. |
+| 11 · Models decisions with no Router key | fixed | Each declares the answers its card reads and shows "Waiting for" until they are in (1). |
+| 12 · Estimates before Fit | fixed | Under Predict too, no score is served before Fit is pressed, so none is marked seen (3). |
+| 13 · Substitution after the lock | pass | Clarified: the Router change that lets the pair be declared before Fit. |
+| 14 · After-fit displays as plan changes | fixed | The exempt records stay listed as companions chosen after the fit; the mark for changes after the opening still applies (2). |
+| 15 · A change after the lock | pass | Clarified for Describe and for Predict, as ruled. |
+| 16 · Intended use in three stages | fixed | The risks view moves to Results (1). With no rows held out, a threshold set after the curve is stated outside the corrected score. |
+| 17 · Reference rows in two stages | pass | Nothing. |
+| 18 · The Router's order inside Models | pass | Clarified: 21 carries the ruled move it does not cover. |
+| 19 · The methods order | fixed | Unready sections say what they wait for (1), and the rail reads only what the server serves (3). |
+| 20 · Looking ahead | fixed | "Decide now" answers early only where its needs are met, and says what it was counted before (1). The cross-reference is corrected. |
+| 21 · Scales, batch and normalization after the families | fixed | New, from the ruling of 2026-10-08: moved ahead of the families; the shelf waits for them where they apply. |
+
+Of the twenty fixes, fourteen were rewritten and six pass (13, 15 and 18 with a clarifying line); disagreement 21 is new. Every change rides in a package the fix already names (P0.4, P0.6, P0.7, P0.8, C1, C2, C3a, C3b, C4, C6d, C7b, C7d, C8, D2), and none adds a package.
+
+### The disagreements
+
 1. **The roles answer is refused in Your data.**
    - *Evidence:* `roles` is the thirteenth key of `interview.py:QUESTION_KEYS`, after the outcome, the goal and the row block, and `sequence.py:_answers_in_order` refuses it with `not_yet`. The roles stage also reads the target, purpose, grain, follow-up, outcome scale and task (`stages/__init__.py`, `Stage("roles", …)`).
-   - *Fix (engine):* record `set_roles` as a completion once every predictor's role is settled through `confirm_role` and `confirm_readings`. Neither is a Router slot, so neither is refused for order. A proposal that changes after Your question or Who's in returns as "changed since you confirmed", with the reason.
-   - *Fix (interface):* Your data shows the column ledger, and no roles question (question 2).
+   - *Against the rule:* (1) failed: the ledger shows proposals that the outcome, the goal or the grain will re-read, and the fix said so only after a change. (2) failed: the fix had the engine record the roles without saying when or where; a server record passes the same order check (`server/service.py:decide` runs `decisions.validate`), so it can be made only when the Router reaches the roles step. (3) holds: roles read no outcome value.
+   - *Fix (engine):* record `set_roles` as a completion when the Router reaches the roles step and every predictor's role is settled through `confirm_role` and `confirm_readings`. Neither is a Router slot, so neither is refused for order. The record shows For the record in Who's in: "Column roles recorded as you confirmed them in Your data". A proposal that changes after Your question or Who's in returns as "changed since you confirmed", with the reason.
+   - *Fix (interface):* Your data shows the column ledger, and no roles question (question 2). A line whose proposal a later answer re-reads says so before it is confirmed: "May change once you choose the outcome" (a follow-up time, a log outcome's source), "… once you choose the goal" (a batch column, a grouping), "… once you say what one row is" (a repeating ID).
 2. **Readings are asked where they are used, not at upload.**
    - *Evidence:* `ask.py:CONSUMERS` puts the ask card on combining, survey, exclusions, estimand, adjustment, energy and models.
-   - *Fix:* as in question 2. The engine needs a per-column ledger endpoint: every reading kind, its state, and the consumer that needs it (Gaps).
+   - *Against the rule:* (1) holds: Decide asks a reading that changes a number on some path under the lens, which no later answer narrows. (2) holds: readings settled by their values are a Confirm line with their evidence (`default:read-from-data`). (3) failed: a ledger draws every column, so once the outcome is chosen it draws the outcome beside the others, and the routes it would read ignore the goal and the seal (`server/routes/data.py:columns`, `histogram` and `table` read the whole store).
+   - *Fix:* as in question 2. The engine needs a per-column ledger endpoint: every reading kind, its state, and the consumer that needs it (Gaps). Once the outcome is chosen, the ledger, First look's index and any row window draw it only on its own card: its row reads "The outcome · on its own card" in the ledger, and "The outcome · opens in its group" in the index. After the draw (Predict), they read the training rows only and say so, as previews do (`consequences.PreviewContext.training_row_ids`).
 3. **The outcome's reading depends on Who's in.**
    - *Evidence:* `target_info` reads the working table that grain, unit and combining reshape (`stages/__init__.py`), and the combining question needs the outcome (`sequence.py:_aggregation_knows_the_outcome`). A combining answer can change the outcome's kind.
-   - *Fix:* when the structure stage reads repeated rows, ask "which value of the outcome counts" on the outcome card. A Who's in answer that changes the outcome's kind reopens Your question with the reason.
+   - *Against the rule:* (1) failed: the fix asked "which value of the outcome counts" on the outcome card, but that answer is `set_aggregation`, which the Router holds behind the goal, the grain, the repeats and the unit (`interview.py:QUESTION_KEYS`) and which `sequence.py:_aggregation_knows_the_outcome` refuses until one row is the unit. The card would show a question it cannot record. (2) holds. (3) holds: the outcome card's views define the outcome (its levels, kind, unit and blanks; `Stage("target_info", …)`), reading the outcome alone on every row, as the draw itself does (`seal.py:draw_columns`), and they say so. First look's view of the outcome alone is the one that waits for Who's in (question 1).
+   - *Fix:* when the structure stage reads the outcome changing within units (its `outcome.varies`), the outcome card says so and counts rows, not people: "[glucose] changes within [812] people; which value counts is asked in Who's in, with how their rows combine." Who's in's combining card asks it, with the engine's three exits (first, last, or the mean of a number). A Who's in answer that changes the outcome's kind reopens Your question with the reason.
 4. **First look comes before the seal, but the engine explores after it.**
    - *Evidence:* the explore stage requires `target` and `split`, and depends on `cohort` (`stages/__init__.py`, `Stage("explore", …)`). MODELING_SEQUENCE §1 row 1 places Explore after the seal.
-   - *Fix:* the pre-seal notices stage (UNDERSTANDING_LAYER U4) computes First look's outcome-free looks from the oriented table. Explore's outcome-free findings move into it: low variance, more predictors than rows, collinear pairs, and quality by group. The outcome's views open after Who's in, as question 1 decides.
+   - *Against the rule:* (1) failed: computed from the oriented table, the outcome-free looks count rows before Who's in decides who is in and what one row is, and the fix did not have them say so (today `stages/explore.py:explore_stage` counts the cohort's rows). A look resting on an unconfirmed reading is already withheld (`refusal:look-needs-a-settled-reading`). (2) holds. (3) failed twice. "The outcome's views open after Who's in" let the outcome beside a column open before the lock under Estimate, against question 1. And the explore artifact carries every relationship's points before any view is opened (`stages/explore.py:explore_stage`, `relationship_points`), while the server withholds only estimate stages and held-out scores (`server/service.py:_serve`), so a client holds the outcome beside each column whether or not a view is drawn.
+   - *Fix:* the pre-seal notices stage (UNDERSTANDING_LAYER U4) computes First look's outcome-free looks from the oriented table. Explore's outcome-free findings move into it: low variance, more predictors than rows, collinear pairs, and quality by group. Each look says which rows it read ("every row in the file, before Who's in"); after the draw (Predict) it reads the training rows only. Each returns in Models recomputed on the rows analyzed, as "changed since you looked". The outcome door follows question 1 and unlocks visibly:
+     - **Estimate, and Describe:** "The outcome · opens after Who's in" for the outcome alone, on the rows analyzed; "With one column · opens after Fit" for the outcome beside a column, labeled exploratory.
+     - **Predict:** "opens once the held-out rows are drawn", then both views on the training rows.
+     - **No single outcome** (question 3): no door.
+
+     Every view opened is recorded (`decision:view_outcome`). Under Estimate and Describe the server withholds the relationship findings' points until the track's lock, as `estimand.withhold` holds an estimate. The noticings born from the outcome beside a column (`thread:shared-curvature-seen-in-explore`, `thread:shared-subgroup-seen-in-explore`) therefore fire before Fit only under Predict.
 5. **The split is two decisions in one kind, placed twice.**
    - *Evidence:* `decisions.py:SetSplit` and `SplitSpec` hold both the holdout and the validation scheme. The Router asks the split after missing values, before the estimand.
-   - *Fix (engine):* separate the draw (Who's in) from the validation scheme (a Models Confirm), as two kinds, or by re-recording the split with the same draw. Under Estimate the split question becomes For the record (`seal.py:INFERENCE_SPLIT_REASON`).
+   - *Against the rule:* (1) holds: the scheme is a Models Confirm after the draw it reads, and the shelf ranks on it as a default and says so (MODEL_FAMILY_CONTRACT C4, "Ranked on the defaults now set"). (2) failed: under Estimate the split becomes For the record, yet the explore stage requires a recorded split (`Stage("explore", …)`), and the fix did not say who records it; under Predict the scheme set for you had no record of its own. (3) holds.
+   - *Fix (engine):* separate the draw (Who's in) from the validation scheme (a Models Confirm), as two kinds, or by re-recording the split with the same draw. A re-record that keeps the holdout and the seed draws the same rows, and it is accepted even after the opening, since `seal.py:_membership_change` compares only the holdout, the seed and what the draw reads. Until the scheme is changed, the draw's record carries the scheme set for you, and Models' Confirm sweep shows it (`default:validation-scheme`). Under Estimate the server records the split itself when the Router reaches it, with no rows held out (`seal.py:INFERENCE_SPLIT_REASON`), shown For the record in Who's in (`default:split_under_inference`), with a way to change it.
 6. **"Confirm last" collides with the seal under Predict.**
    - *Evidence:* the draw reads the stated grain, the repeat kind and the time column, and changes after the draw are refused (`seal.py:DECISION_A`, `DRAW_READS`).
+   - *Against the rule:* (1) holds: the sweep runs just before the seal, so the draw waits on nothing unsaid. (2) holds: the grain, repeat kind and time column set for you are listed in the sweep (`default:grain_stated`, `default:repeat_kind_stated`, `default:temporal_time_column`, `default:seal_basis`), and the seal's own sentence records the basis and chronology it drew by (`voice.py:_set_split` reads the seal plan's). (3) holds.
    - *Fix:* under Predict, Who's in runs its Confirm sweep just before the seal, and the seal is the stage's last Decide.
 7. **Who's in depends on Models answers.**
    - *Evidence:* imputation compatible with the analysis model reads the declared forms and the energy model (`decisions.py:_imputation_fits_the_analysis`; `methods/missing.py:missing_block`). Complete cases are counted on the covariates the adjustment set keeps (`decisions.py:left_out`). The cohort reads `form_domains` and the landmark (`stages/rows.py:domain_of`, `landmark_of`).
-   - *Fix:* label the participant flowchart provisional at the end of Who's in, and draw its final counts on the analysis flowchart. A Models answer that invalidates the imputation reopens Who's in with the reason.
+   - *Against the rule:* (1) failed in part: "provisional" said the counts would change, not what they wait for. (2) holds. (3) holds: the cohort reads the outcome only to drop rows where it is blank (`default:outcome_measured`). *Rulings:* the fix failed question 5. It reopened Who's in when a Models answer invalidated the imputation, but the fill is now chosen in each track's Models.
+   - *Fix:* the participant flowchart closes Who's in labeled with what it waits for: "Provisional · the counts change with what you adjust for, the forms and the landmark". The analysis flowchart draws the final counts. Who's in decides who is kept and what each blank means; how kept blanks are filled is chosen in each track's Models (question 5), where `decisions.py:_imputation_fits_the_analysis` checks the fill against that track's forms and energy model. So a Models answer never reopens Who's in for the fill. One that changes who is kept (the landmark, a consumers-only domain, the columns complete cases read) redraws the counts on the analysis flowchart, with its reason. The fill's lines still listed in Who's in (`default:missing_m`, `default:imputation_model_compatible`, `default:imputation_levels_clustered`, `default:below_detection_fill`, `refusal:missing_compatibility`) move to each track's Models with D2.
 8. **The clusters question decides a model term in Who's in.**
    - *Evidence:* under inference its options are fixed effects plus CR2, cluster only, or none (`estimand.py:grouping_card`).
-   - *Fix:* Who's in asks only whether people are grouped, and by what. How the model handles the grouping moves to the Models Confirm sweep.
+   - *Against the rule:* (1) holds once the card says where the term is set. (2) failed: with the term out of Who's in, the fix did not say what records the term in force; `decisions.py:SetClusters` holds the column and the term (`adjust`) in one record. (3) holds.
+   - *Fix:* Who's in asks only whether people are grouped, and by what; the card says "How the model accounts for the groups is set in Models". The answer is recorded with the term set for you in `adjust` (the grouping card's first option for the goal), and Models' Confirm sweep shows it (`default:interval-method`). A change there records the grouping again with the same column. The view of the fixed effects added moves to that line; Who's in's preview keeps the rows per group.
 9. **Survey under Predict has no question.**
    - *Evidence:* `interview.py:_survey_gate` and `survey.py:not_applicable_reason` make it not applicable under prediction. Yet `set_survey` drives design-based cross-validation (`survey.py:_asked_under_inference`, ruling 13), and only Explore offers it.
-   - *Fix:* ask the survey question under every goal. Under Predict it asks whose performance the scores estimate.
+   - *Against the rule:* (1) failed: the card's preview draws one column, unweighted and weighted, chosen as the declared exposure, else the first column marked as studied, else the first predictor (`plan_previews.py:survey_column`, `survey_views`). In Who's in under Estimate what you study is not yet declared, and under Predict there is none, so the picture rests on an unanswered choice without saying so. (2) holds: the answer is a `set_survey` record under every goal. (3) holds: it reads no outcome, and after the draw it reads the training rows.
+   - *Fix:* ask the survey question under every goal. Under Predict it asks whose performance the scores estimate, and its preview draws the design (the rows it reads and its degrees of freedom), not a predictor. Under Estimate and Describe the weighted picture names its column and why: "Drawn on [sugar], the first column you marked as studied; it follows what you study once you name it in Models."
 10. **The design has no slot.**
     - *Evidence:* there is no design kind, `decisions.py:Purpose` has two values, and `GrainAnswer` lost Classic's `DESIGN_NOT_DESCRIBED` escape hatch (`turbotab/grain.py`).
+    - *Against the rule:* (1) holds: the routing it feeds comes after it. (2) holds: observational is set for you, written in the Record as the design's sentence and listed in Your question's Confirm sweep (`default:design_observational`). (3) holds.
     - *Fix:* add `q:study-design` in Your question, before the goal, with observational stated by default. It routes Who's in (no exclusion after randomization; analysis sets) and Models (precision adjustment).
 11. **Ten Models decisions have no Router key.**
     - *Evidence:* `set_model_sequence`, `set_sensitivity`, `set_measurement_error`, `set_scales`, `set_batch`, `set_usual_intake`, `set_intended_use`, `set_selection`, `set_levers` and `set_explain` are absent from `interview.py:QUESTION_KEYS`.
-    - *Fix:* the stage registry gates each by its applicability, as the Router does, and lists it among its stage's objectives. The Router itself needs no change.
+    - *Against the rule:* (1) failed: applicability is not readiness. With no Router key, `sequence.py:_answers_in_order` never holds these (`sequence.py:question_of` returns None), and several read answers that may still be open: Model 1 and regression calibration read what you adjust for, sensitivity analyses read the screens, and selection reads the roles. The engine's previews already refuse to draw without them (`plan_previews.py:model_sequence_views` says to answer the effect and the adjustment set first), but the card could still be answered. (2) holds: their defaults are Confirm lines. (3) holds: their previews read the outcome only under Predict, on the training rows (`explore_previews.py`), and quote no estimate before the lock.
+    - *Fix:* the stage registry gates each by its applicability, as the Router does, and declares the answers its card reads. It lists each among its stage's objectives, showing "Waiting for: [question]" until those answers are in (disagreement 20). The Router itself needs no change.
 12. **Estimates are served, and the plan locks, before Fit is pressed.**
     - *Evidence:* `server/service.py:_lock_when_shown` locks on the first served artifact of `estimand.py:ESTIMATE_STAGES`, and the fit stage requires only `models`.
-    - *Fix (engine):* under Estimate and Describe, `stage_result` withholds every estimate stage until the track's plan is locked, as `estimand.served_gate` withholds one whose question is open. Pressing Fit records the lock, the existing system `lock_plan`, after the open-noticings gate. Pressing Fit stays a job command and computing stays live for short fits (`RECIPES_AND_TUNING.md` §4.4; ruling 2). Under Predict, pressing Fit opens Results and locks nothing.
+    - *Against the rule:* (1) holds: before Fit the analysis flowchart shows the plan and its time, not a result. (2) holds: the lock is the existing system record, shown with its time and SHA-256 (P0.8). (3) failed under Predict: short fits compute before the press, and the server serves their scores to any client that asks (`server/service.py:_serve` withholds only the held-out scores and an estimate resting on an open question). Scores could reach Models before its Confirm sweep, and serving them marks them seen (`models/selection.py:note_seen`), so the sweep's recipes and tuning would count as chosen after scores (`RECIPES_AND_TUNING.md` §3.5).
+    - *Fix (engine):* under Estimate and Describe, `stage_result` withholds every estimate stage until the track's plan is locked, as `estimand.served_gate` withholds one whose question is open. Pressing Fit records the lock, the existing system `lock_plan`, after the open-noticings gate. Under Predict, pressing Fit opens Results and locks nothing; until the press, the server serves no estimate stage, so nothing is marked seen. The press is kept beside the project, as the estimates shown under prediction are (`server/service.py:SHOWN_UNDER_PREDICTION`), never in the Record. Pressing Fit stays a job command, and computing stays live for short fits (`RECIPES_AND_TUNING.md` §4.4; ruling 2).
     - *Corrected:* the first draft held every estimate stage until a new "Fit" decision kind. That contradicted §4.4 ("nothing enters the Record"; "the hold is in the scheduler, not a stage requirement") and is withdrawn (Settled here).
 13. **Substitution is always asked after the lock.**
     - *Evidence:* `interview.py:MUST_BE_FRESH["substitution"]` is `"fit"`, and its slots are in `plan_lock.py:plan_slots`.
-    - *Fix:* declare the pair in Models, before Fit, with its preview (`data_previews.py:substitution_views`). Results draws the curve. The pair's preview, its refusal and its step and band now live in Models (`preview:substitution_views`, `refusal:substitution_blocked`, `default:substitution_step_and_band`).
+    - *Against the rule:* (1) holds once the card stops waiting on the fit, which `interview.py:NEEDS` and `MUST_BE_FRESH` make it do today (the fix below). (2) holds: the step and the band are a Confirm line (`default:substitution_step_and_band`). (3) holds: the preview moves each person's donor and recipient and reads no outcome (`data_previews.py:substitution_views`); the curve is an estimate stage, served after the lock.
+    - *Fix:* declare the pair in Models, before Fit, with its preview (`data_previews.py:substitution_views`); the Router's `NEEDS` and `MUST_BE_FRESH` drop `fit` for it, so its card reads the energy sources from the design. Results draws the curve. The pair's preview, its refusal and its step and band now live in Models (`preview:substitution_views`, `refusal:substitution_blocked`, `default:substitution_step_and_band`).
 14. **Sanctioned after-fit displays count as plan changes.**
     - *Evidence:* `explain` is in `ESTIMATE_STAGES`, and the diagnostic responses and model updating are plan slots.
-    - *Fix:* exempt `set_explain`, `respond_diagnostic` and `set_updating` from the after-estimates mark, and label them as companion displays.
+    - *Against the rule:* (1) holds. (2) failed in part: exempt from the after-estimates mark (`decisions.py:disclose`) and given no other home, the three would drop out of Write-up's list of decisions made after the estimates were seen (`result:after-estimates-section`). (3) holds: each is shown beside the primary, never in its place (`stages/effects.py`, the diagnostics contract).
+    - *Fix:* exempt `set_explain`, `respond_diagnostic` and `set_updating` from the after-estimates mark, and label them as companion displays. They stay in Write-up's list of decisions made after the estimates were seen, on one line: "Companion displays chosen after the fit; none changes the primary". The mark for changes after the opening still applies: shrinkage chosen after the held-out rows open is a secondary (disagreement 16 sets it before the opening).
 15. **A change after the lock overwrites the primary.**
     - *Evidence:* `decisions.py:disclose` marks the record, and every estimate stage recomputes on the new state.
-    - *Fix (engine):* compute the estimate stages on the locked plan's state, and again on the changed state. The change is the labeled secondary.
+    - *Against the rule:* (1), (2) and (3) hold: the primary stays on screen while the change computes beside it. *Rulings:* clarified below for Describe and Predict.
+    - *Fix (engine):* compute the estimate stages on the locked plan's state, and again on the changed state. The change is the labeled secondary. A Describe track does the same (Settled here). Under Predict nothing locks: a change after first results keeps a version (a recipe or tuning change, RECIPES RT-7) or a read-only earlier row (a shared-step change, question 6), and "revised after first results" appears only in the comparison and the methods text (UI rulings, 2026-10-08).
 16. **Intended use straddles three stages.**
     - *Evidence:*
       - MODELING_SEQUENCE §1 row 2 places it under the estimand;
       - it is offered as an Explore lever (`stages/explore.py:_use_lever`);
       - its preview needs a fit (`explore_previews.py:intended_use_views`);
       - the threshold must be fixed before the opening (row 12a).
-    - *Fix:* ask intended use in Your question, as Predict's shape. Fix the threshold range and the recalibration in Results, just before the opening.
+    - *Against the rule:* (1) failed: the preview draws the model's risks against the thresholds only once a fit exists (`explore_previews.py:intended_use_views`), so in Your question it would draw nothing for an option whose picture waits on a later fit. (2) holds: the threshold range and the in-fold threshold set for you are a Confirm line in Results (`default:decision_threshold`). (3) holds: the risks are drawn after Fit, on the training rows. Held-out rows cover a threshold chosen after the curve; with none held out nothing covers it, so the fix states it.
+    - *Fix:* ask intended use in Your question, as Predict's shape. Its card quotes its sentence, and the rows per group when groups are named. The risks against the thresholds draw in Results, where the threshold range and the recalibration are fixed, just before the opening (`preview:updating_and_intended_use`). With no rows held out (cross-validation only, or a Predict track after a track that read its outcome), the range is declared from the decision's harms before the curve is drawn; a range or recalibration chosen after it is stated outside the corrected score (`result:hand_levers`).
 17. **Reference rows and QC drift correction sit in two stages.**
     - *Evidence:* they are repairs before the seal, in Your data (`reference_rows.py:_before_the_seal`), but their leaving is a participant-flow step (`stages/rows.py:cohort_flow`, `reference:i`).
+    - *Against the rule:* (1) holds: they are decided before anything reads the outcome's kind. (2) holds. (3) holds: the drift correction and the QC filters fit on the pooled QC injections, not on participants' values, and the rows leave before the draw (`stages/__init__.py`, working 8).
     - *Fix:* decide them in Your data, because they must leave before the outcome's kind is read, and draw them as the first step of the participant flow.
 18. **The Router's order inside Models differs from the ruled list.**
     - *Evidence:* the time-varying question comes before the energy model and the forms (`interview.py:QUESTION_KEYS`).
+    - *Against the rule:* (1), (2) and (3) hold: the Router's order is the engine's dependency order, so no card waits on a later one. It does not order the declarations with no Router key; the ruled move of scales, batch and the omics normalization is disagreement 21.
     - *Fix:* adopt the Router's order in the quest log. It costs nothing.
 19. **The methods section is ordered by guideline, not by stage.**
     - *Evidence:* `export/methods.py:SECTION_OF`.
-    - *Fix:* the stage registry maps every decision kind to its stage, so a sentence's "change" link opens the right card.
+    - *Against the rule:* (1) failed in part: the rail shows the methods in every stage, in the guideline's order, so it shows sections whose decisions are not reached; BLUEPRINT §11.4 has them say what they wait for, and the fix did not carry it. (2) holds: a default set for you is a sentence in the Record, and one that changes no number is listed only in the export. (3) failed in part: the rail is on screen in every stage, so its Results part must read only what the server serves, or it would show estimates before the lock or scores before Fit.
+    - *Fix:* the stage registry maps every decision kind to its stage, so a sentence's "change" link opens the right card. After the lock or the opening, the link says the change runs beside the first result (disagreement 15). A section whose decisions are not reached reads "Waiting for: [stage]". The rail's Results part reads only served artifacts (`server/service.py:_serve`), so the gates of disagreements 4 and 12 hold there too.
 20. **The Router answers in order; the quest log lets you look ahead.**
     - *Evidence:* `sequence.py:_answers_in_order` refuses an answer to a question still waiting behind an earlier one (`refusal:not-yet`).
-    - *Fix (interface):* every stage can be opened and read. A question whose earlier answers are missing shows "Waiting for: [the question]", with a link to it, and is not answerable. The one exception is "Decide now" from First look (disagreement 9's Router exception, P0.6).
+    - *Against the rule:* (1) failed for the exception: as written, "Decide now" could open a later question as answerable while earlier answers its card reads were open, with no word of what it was counted before. The cross-reference to disagreement 9 was wrong: the exception is P0.6's. (2) holds. (3) holds: a question opened early keeps its own gates (`refusal:rule_on_outcome`; the draw stays last).
+    - *Fix (interface):* every stage can be opened and read. A question whose earlier answers are missing shows "Waiting for: [the question]", with a link to it, and is not answerable. The one exception is "Decide now" from First look (P0.6; Gaps, engine 10). It answers early only a question whose card is computed (its `interview.py:NEEDS` stages are fresh) and whose earlier questions it reads are answered or set for you. Otherwise it shows the same "Waiting for". A question answered early says what its counts were taken before, and returns as "changed since you decided" when a later answer moves them.
+21. **Scales, batch and the omics normalization come after the families question.** Added by the audit.
+    - *Evidence:* before the audit, Models' Decide order put them after `q:models`, yet they change each family's input more than anything else (MODEL_FAMILY_CONTRACT C4, question 4). None has a Router key (`interview.py:QUESTION_KEYS`), and the design stage reads `scales` and `batch` (`stages/__init__.py`, `Stage("design", …)`).
+    - *Ruled* (DoD amendment of 2026-10-08, "Order"): they move ahead of the families question, so the ranking sees each family's real input.
+    - *Against the rule:* (1) holds as the contract words it: until they are answered the shelf names each one still open ("Ranked on the defaults now set; scales not yet answered", MODEL_FAMILY_CONTRACT C4). After the move it waits for them instead, since with no Router key nothing else holds `q:models` behind them. (2) holds: where none applies, nothing is set for you. (3) holds: none reads the outcome. The batch step is fitted in each training fold without it (`method_previews.py:batch_views`), and a batch confounded with the outcome is First look's blocker, a verdict, not a view.
+    - *Fix:* the stage registry (P0.4) orders them before `q:models`; they are now Models' Decide 6 to 8, under either goal, where they apply. The shelf's readiness predicate (MODEL_FAMILY_CONTRACT C4) waits for them and shows "Waiting for: [question]"; everything in the Confirm sweep is ranked on the defaults now set, said once.
 
 ### Engine stages and quest stages
 
@@ -1815,12 +1889,12 @@ The engine computes 30 stages (`stages/__init__.py:build_graph`). A stage goes s
 | `structure` | the oriented table, the date reading | Who's in (grain, repeats) | Who's in |
 | `working` | repairs, grain, unit, combining | Your data, Who's in | every later stage reads it |
 | `target_info` | outcome, kind, unit, scale | Your question | Your question |
-| `roles` | roles and readings; also the outcome, goal, grain, follow-up | Your data (disagreement 1) | Your data |
+| `roles` | roles and readings; also the outcome, goal, grain, follow-up | Your data; recorded when the Router reaches it (disagreement 1) | Your data |
 | `proposals` | roles, outcome, goal, units, repeats, Model 1 | Your data, Models | the adjustment card's guesses |
 | `cohort` | outcome, roles, exclusions, missing values, the adjustment set, forms, landmark | Who's in; goes stale on Models (disagreement 7) | the participant flow |
 | `seal_plan` | roles, kind, event, goal, clusters | Who's in | the split question's options |
 | `split` | the split | Who's in (the draw), Models (the validation scheme) | the seal |
-| `explore` | outcome, split | First look | the outcome door (computed after the seal; disagreement 4) |
+| `explore` | outcome, split | First look | the outcome door: the outcome alone after Who's in (Estimate, Describe) or the draw (Predict); beside a column after the lock (Estimate, Describe) or the draw (Predict); its outcome-free findings move to the pre-seal notices stage (disagreement 4) |
 | `shelf` | roles, cohort, split | Models | which models fit |
 | `forms` | goal, cohort | Models | the form card |
 | `design` | models, roles | Models | the analysis flowchart |
@@ -1901,7 +1975,8 @@ P0.4's stage registry maps these as well as the questions, so a drop-back can na
     - the survey question under Predict;
     - a Router exception that lets "Decide now" open a later question whose needs are met;
     - substitution before Fit;
-    - the after-estimates exemptions.
+    - the after-estimates exemptions, kept listed as companions;
+    - added by the display-order audit: the split recorded by the server under Estimate; the clusters term recorded with the grouping; a readiness list for the Models decisions with no Router key, and scales, batch and the normalization ahead of the families; under Estimate and Describe, the outcome-beside-a-column findings withheld until the lock; under Predict, no score served before Fit is pressed (disagreements 5, 8, 11, 21, 4 and 12).
 11. **Data in:**
     - stacking files with a shared schema;
     - a sheet and member picker (only the first Excel sheet and the first XPT member are read);

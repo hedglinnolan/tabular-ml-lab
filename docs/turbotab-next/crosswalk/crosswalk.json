@@ -8,7 +8,8 @@
   "Each item lives in exactly one stage: the stage where the user decides it. A noticing shown earlier carries noticed_at; later appearances are returns_at.",
   "All 367 catalog threads are covered: either as their own thread: item, or inside the engine item that already represents them (threads field).",
   "Containers (Models' noticing cards, Results' context-line groups, First look's Settled lines) are in groups, not items.",
-  "Patched the same day after the completeness critic's review (29 gaps): each gap verified against the source first; those not taken are listed at the end of CROSSWALK.md."
+  "Patched the same day after the completeness critic's review (29 gaps): each gap verified against the source first; those not taken are listed at the end of CROSSWALK.md.",
+  "Audited on 2026-10-08 (turbotab-next at 1a86e3c7) against the orchestrator's display-order rule: each order conflict's fix judged on its three conditions and the crosswalk's rulings, citing the engine code; the fixes that failed were rewritten (order_audit; CROSSWALK.md, 'The display-order audit'). The items they touch carry display_gate."
  ],
  "schema": {
   "id": "Stable id: q: (a Router question), decision:, default:, noticing:, reading:, refusal:, preview:, exhibit:, result:, flowchart:, export:, gate:, other:, record:; thread:<catalog id> for a noticing from the understanding catalogs. sentinel:<family code> for a family sentinel (UNDERSTANDING_LAYER §3.3, U10).",
@@ -35,7 +36,9 @@
   "first_look_group": "For a noticing shown in First look: its group (Who is in the data, What is missing, Each variable, Variables together, Over time and by batch, The outcome).",
   "exhibit": "For an exhibit, including the four flowcharts made before training: pre_included, placement_default, placement_allowed, why, and drafted wordings by claim strength.",
   "family": "For a catalog thread: its family (UNDERSTANDING_LAYER §3.1; Appendix A, or for the 34 threads the completeness review added, the family its failure_prevented text names; family_source says so).",
-  "families": "For an item carrying catalog threads: the families of those threads."
+  "families": "For an item carrying catalog threads: the families of those threads.",
+  "display_gate": "Added by the display-order audit (2026-10-08): what the line says while an answer it depends on is open or its gate is shut, and when it opens; or what records an answer the engine fills in and where that shows. Cites the disagreement it comes from.",
+  "order_audit": "Top level, not an item field: the display-order rule, the gates it names, and each order conflict's verdict on the rule's three conditions, what changed, and the items touched."
  },
  "stages": [
   {
@@ -118,7 +121,7 @@
    "key": "first_look",
    "name": "3 · First look",
    "map_title": "First look",
-   "order_notes": "First look sits after Your question and before Who's in. Its objectives come in this order.\n\n(1) Arrival is read-only. The index shows every column in column order, with the outcome hidden. 'Worth a look' shows at most three highlights, ranked by tier, then reach, share, excess and column order. Nothing is asked until an item is opened.\n\n(2) Decide, T1 first. A blocker replaces the primary action with 'Decide this first', because nothing downstream is valid until it is answered. Examples: a batch perfectly confounded with the outcome; a run that cannot be QC-corrected as exported; a table the wrong way round.\n\n(3) Decide, T2, through the first-visit walk: 'Look at the first' → 'Next · 2 of 3' → 'Continue to Who's in'. Each item either opens 'Decide now' (only where the routed question's NEEDS are met) or is carried forward as an open noticing reading 'Comes up at Who's in / Models'. It resurfaces there attributed, and must be decided or dismissed before the lock or the seal.\n\n(4) The six groups, in the fixed STRATOS order: Who is in the data → What is missing → Each variable → Variables together → Over time and by batch. They can be browsed at will. The order never changes, so a map learned in one lens carries to the others.\n\n(5) The outcome door comes last, and its rule depends on the goal:\n- Predict: opens only after the split, on training rows.\n- Estimate an effect: a counted door, never on the default path, never ranked.\n- Describe: no rule yet.\n- Several goals: the strictest goal's rule governs.\nIt comes last because O1/O3 views are the forking-path risk. Outcome-free looks may shape the plan; outcome looks may not.\n\n(6) Confirm: normally empty here. First look owns no number-changing default that has an alternative. The rows a look reads and the references beside each measure are For the record. A thread item labeled Confirm is a default owned by its consumer, so it is swept at Who's in or Models.\n\n(7) For the record:\n- readings settled at Your data or Your question, shown as 'Settled' lines;\n- checked-clean lines per group;\n- the rows-read basis;\n- view_outcome records and Explore's methods sentence.\n\nHow the thread items are labeled:\n- engine_source is docs/turbotab-next/understanding/catalogs/<file>#<id>.\n- objective comes from the thread's tier: asked or surfaced → Decide; stated → Confirm; silent → For the record; O3 → Shown.\n- notes give the view class and the quest stages its feeds return at. O0 is outcome-free, O1 the outcome alone, O2 outcome × design, O3 outcome × predictor.\n- goals come from each consumer's per-purpose text. 'describe' was added by rule for outcome-free data-fact threads, because the engine has no Describe purpose.\n- status:\n  - partial: the detector exists and surfaces today as a finding card or a Router question, but not as a First look look;\n  - built-engine-only: it exists only in stages the frontend never fetches (explore, calibration…);\n  - missing: new;\n  - new-scope: designed-experiment and dietary-pattern threads.\n- Every thread reopens the same way. A data-changing decision re-measures it ('Changed since you looked'). A settled thread whose numbers move past its tolerance is asked again.\n\nCounts: 241 threads are noticed here and 64 are listed as settled earlier. 41 are noticed on a later card and 21 are born late; both lists are under boundary_issues. Together these cover all 367 catalog ids.",
+   "order_notes": "First look sits after Your question and before Who's in. Its objectives come in this order.\n\n(1) Arrival is read-only. The index shows every column in column order, with the outcome hidden. 'Worth a look' shows at most three highlights, ranked by tier, then reach, share, excess and column order. Nothing is asked until an item is opened.\n\n(2) Decide, T1 first. A blocker replaces the primary action with 'Decide this first', because nothing downstream is valid until it is answered. Examples: a batch perfectly confounded with the outcome; a run that cannot be QC-corrected as exported; a table the wrong way round.\n\n(3) Decide, T2, through the first-visit walk: 'Look at the first' → 'Next · 2 of 3' → 'Continue to Who's in'. Each item either opens 'Decide now' (only where the routed question's NEEDS are met) or is carried forward as an open noticing reading 'Comes up at Who's in / Models'. It resurfaces there attributed, and must be decided or dismissed before the lock or the seal.\n\n(4) The six groups, in the fixed STRATOS order: Who is in the data → What is missing → Each variable → Variables together → Over time and by batch. They can be browsed at will. The order never changes, so a map learned in one lens carries to the others.\n\n(5) The outcome door comes last, and its rule depends on the goal:\n- Predict: opens only after the split, on training rows.\n- Estimate an effect (question 1, ruled 2026-10-08): the outcome alone after Who's in, on the rows analyzed; the outcome beside a column after the lock, labeled exploratory; never on the default path, never ranked.\n- Describe: as Estimate, since its estimates by group wait for the track's lock (display-order audit, disagreement 4).\n- Several goals: the strictest goal's rule governs.\nIt comes last because O1/O3 views are the forking-path risk. Outcome-free looks may shape the plan; outcome looks may not.\n\n(6) Confirm: normally empty here. First look owns no number-changing default that has an alternative. The rows a look reads and the references beside each measure are For the record. A thread item labeled Confirm is a default owned by its consumer, so it is swept at Who's in or Models.\n\n(7) For the record:\n- readings settled at Your data or Your question, shown as 'Settled' lines;\n- checked-clean lines per group;\n- the rows-read basis;\n- view_outcome records and Explore's methods sentence.\n\nHow the thread items are labeled:\n- engine_source is docs/turbotab-next/understanding/catalogs/<file>#<id>.\n- objective comes from the thread's tier: asked or surfaced → Decide; stated → Confirm; silent → For the record; O3 → Shown.\n- notes give the view class and the quest stages its feeds return at. O0 is outcome-free, O1 the outcome alone, O2 outcome × design, O3 outcome × predictor.\n- goals come from each consumer's per-purpose text. 'describe' was added by rule for outcome-free data-fact threads, because the engine has no Describe purpose.\n- status:\n  - partial: the detector exists and surfaces today as a finding card or a Router question, but not as a First look look;\n  - built-engine-only: it exists only in stages the frontend never fetches (explore, calibration…);\n  - missing: new;\n  - new-scope: designed-experiment and dietary-pattern threads.\n- Every thread reopens the same way. A data-changing decision re-measures it ('Changed since you looked'). A settled thread whose numbers move past its tolerance is asked again.\n\nCounts: 241 threads are noticed here and 64 are listed as settled earlier. 41 are noticed on a later card and 21 are born late; both lists are under boundary_issues. Together these cover all 367 catalog ids.",
    "boundary_issues": [
     "Biggest conflict, Explore after the seal. In the engine, Explore is step 1 of everything after the seal:\n- MODELING_SEQUENCE.md §1 row 1;\n- the explore contract needs 'the drawn seal';\n- stages/__init__.py Stage('explore') depends on working, cohort, split and target_info, and requires target and split.\nThe ruled First look (stage 3) comes before Who's in (stage 4), where the split is drawn. So Explore's outcome-free findings (low_variance, wide, collinear, quality_by_group, survey_design) cannot appear on the first visit until they move to a pre-seal stage. Its outcome views become a revisit after Who's in.",
     "Under inference the brief opens the outcome door from the start. The engine cannot: it reads 'every analyzed row' from the cohort (the exclusions and missing-values answers) and from the split. Both are Who's in decisions, and the split is asked under inference too (seal.py). Either the door waits for Who's in under both goals, or a new scope reads the oriented rows before eligibility.",
@@ -203,7 +206,7 @@
    "key": "models",
    "name": "5 · Models",
    "map_title": "5 · Models (inference: exposure and effect, adjustment set, time-varying lane, energy model, forms, modifiers, causal lane, model families, declared secondaries, plan lock; prediction: split/validation, intended use, selection and in-fold levers, model families, recipes, tuning, long-fit hold; Describe track's estimators; designed-experiments milestone; analysis flowchart and Fit; the Confirm sweep)",
-   "order_notes": "Inside Models the objectives run Decide, then the open-noticings gate, then Confirm, then the flowchart and Fit. The Decide questions follow the engine's dependency order, because each card is computed from the answers before it. The ruled list differs from that order in places; the Router's order is used here.\n\n**Inference track (QUESTION_KEYS):**\n1. estimand\n2. adjustment\n3. time_varying: the Router asks it here, before the energy model.\n4. energy_adjustment\n5. form: its card is read on the exposure's final scale, after the domain transforms (MODELING_SEQUENCE §1 rows 4-5).\n6. modification: stated; Confirm.\n7. causal: stated; Confirm. causal_design needs estimand and adjustment.\n8. models: the shelf counts the form terms.\n9. Declarations with no Router key: Model 1 (set_model_sequence), multiplicity, sensitivity analyses, regression calibration, scales and batch. Each needs the estimand and the adjustment set. Calibration also records the adjustment set it was declared under.\n\n**Prediction track:**\n1. The split and validation scheme: the Router asks it right after missing values. See the boundary issues.\n2. The energy model, dietary lens only.\n3. The form, stated.\n4. Intended use, then selection, then the in-fold levers.\n5. Models, with Riley's minimum first.\n6. Recipes, then tuning. Both are missing.\n\n**Describe track:** usual intake and the Describe estimators.\n\n**End of every track:**\n1. One card lists the open noticings that feed the plan. The rule (2026-10-06) is that each must be decided or dismissed before the lock or the seal.\n2. The Confirm sweep comes last among the objectives, by ruling, and only for defaults with an alternative that changes a number.\n3. The analysis flowchart follows, with Fit. Under inference, pressing Fit is the first time an estimate is displayed, so it fires the engine's automatic plan lock. Under prediction, Fit carries the time estimate and the hold for fits over 2 minutes.\n\nFor the record items (intervals, quintiles beside the curve, withheld scores, benchmarks, the secondary model from the answers, the plan export) sit in the collapsed list and count toward nothing. Designed-experiment items replace the adjustment card when the design is randomized. The design question itself must come earlier; see the boundary issues.",
+   "order_notes": "Inside Models the objectives run Decide, then the open-noticings gate, then Confirm, then the flowchart and Fit. The Decide questions follow the engine's dependency order, because each card is computed from the answers before it. The ruled list differs from that order in places; the Router's order is used here.\n\n**Inference track (QUESTION_KEYS):**\n1. estimand\n2. adjustment\n3. time_varying: the Router asks it here, before the energy model.\n4. energy_adjustment\n5. form: its card is read on the exposure's final scale, after the domain transforms (MODELING_SEQUENCE §1 rows 4-5).\n6. modification: stated; Confirm.\n7. causal: stated; Confirm. causal_design needs estimand and adjustment.\n8. models: the shelf counts the form terms.\n9. Declarations with no Router key: Model 1 (set_model_sequence), multiplicity, sensitivity analyses, regression calibration, scales and batch. Each needs the estimand and the adjustment set. Calibration also records the adjustment set it was declared under.\n\n**Prediction track:**\n1. The split and validation scheme: the Router asks it right after missing values. See the boundary issues.\n2. The energy model, dietary lens only.\n3. The form, stated.\n4. Intended use, then selection, then the in-fold levers.\n5. Models, with Riley's minimum first.\n6. Recipes, then tuning. Both are missing.\n\n**Describe track:** usual intake and the Describe estimators.\n\n**End of every track:**\n1. One card lists the open noticings that feed the plan. The rule (2026-10-06) is that each must be decided or dismissed before the lock or the seal.\n2. The Confirm sweep comes last among the objectives, by ruling, and only for defaults with an alternative that changes a number.\n3. The analysis flowchart follows, with Fit. Under inference, pressing Fit is the first time an estimate is displayed, so it fires the engine's automatic plan lock. Under prediction, Fit carries the time estimate and the hold for fits over 2 minutes.\n\nFor the record items (intervals, quintiles beside the curve, withheld scores, benchmarks, the secondary model from the answers, the plan export) sit in the collapsed list and count toward nothing. Designed-experiment items replace the adjustment card when the design is randomized. The design question itself must come earlier; see the boundary issues.\n\nDisplay-order audit (2026-10-08): scales, batch and the omics normalization now come before the families under either goal (DoD amendment of 2026-10-08; disagreement 21), and the objectives' order follows (items 6 to 8, the families 9). Under Predict the validation scheme, the in-fold levers, recipes and tuning sit in the Confirm sweep, ranked on as the defaults now set (MODEL_FAMILY_CONTRACT C4; disagreement 5).",
    "boundary_issues": [
     "**The split and seal are placed twice.** The ruled list puts 'the seal under prediction' in Who's in and also 'the split and seal' in Models. The engine has one kind for both, `set_split` (the holdout draw plus the validation scheme), and the Router asks it after missing values, before the estimand. The shelf, design, fit and explore stages depend on the split, and First look's outcome views need it under prediction (explore requires split; FIRST_LOOK_BRIEF §1.1). So First look (stage 3) cannot open its outcome group until a stage-4/5 answer exists. Suggestion: draw the seal in Who's in and make the validation scheme a Models Confirm. That needs `set_split` split in two, or re-recorded.",
     "**The Who's in participant flow depends on Models answers.** The cohort stage reads the adjustment answers: complete cases are counted on the covariates kept (WP17_READS). It also reads `form_domains`, so a consumers-only domain removes non-consumers on a line of their own, and the follow-up landmark. The flowchart at the end of Who's in therefore changes after Models. Who's in must reopen or mark the flowchart provisional.",
@@ -1733,7 +1736,8 @@
     "whos_in",
     "models"
    ],
-   "order": 28
+   "order": 28,
+   "display_gate": "Your data asks every reading that changes a number on some path under the lens; the card returns at a later card only for a column that enters the model there (question 2; disagreement 2)."
   },
   {
    "id": "q:roles",
@@ -1762,7 +1766,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 29
+   "order": 29,
+   "display_gate": "Not asked as a question (question 2). Your data's ledger shows each column's proposed role, and a line that a later answer re-reads says so before it is confirmed: 'May change once you choose the outcome' (a follow-up time, a log outcome's source), '… once you choose the goal' (a batch column, a grouping), '… once you say what one row is' (a repeating ID). The server records set_roles itself when the Router reaches the roles step and every predictor's role is settled through confirm_role and confirm_readings (a server record passes the same order check, sequence.py:_answers_in_order); Who's in shows it For the record: 'Column roles recorded as you confirmed them in Your data'. Disagreement 1."
   },
   {
    "id": "decision:confirm_role",
@@ -1790,7 +1795,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 30
+   "order": 30,
+   "display_gate": "A proposal a later answer re-reads (the outcome, the goal, the grain; stages/__init__.py Stage('roles') reads them) carries 'May change once …' before it is confirmed, and returns as 'changed since you confirmed', with the reason (disagreement 1)."
   },
   {
    "id": "reading:code-or-amount",
@@ -3470,7 +3476,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 75
+   "order": 75,
+   "display_gate": "Not shown once the ledger replaces the roles question: the server records the roles when the Router reaches them (disagreement 1)."
   },
   {
    "id": "refusal:revert-unsettles",
@@ -4329,7 +4336,8 @@
    "returns_at": [
     "models"
    ],
-   "order": 20
+   "order": 20,
+   "display_gate": "Asked in Your question as Predict's shape; its card quotes its sentence, and the rows per group when groups are named. The threshold range and the recalibration are fixed in Results, before the opening (disagreements 11 and 16)."
   },
   {
    "id": "q:moment_of_use",
@@ -4955,7 +4963,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 34
+   "order": 34,
+   "display_gate": "Set for you until the design is answered: written in the Record as the design's sentence and listed in Your question's Confirm sweep; the routing in Who's in and Models reads it (disagreement 10)."
   },
   {
    "id": "default:follow_up_one_period",
@@ -5365,7 +5374,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 48
+   "order": 48,
+   "display_gate": "Reads the outcome alone on every row of the working table, before Who's in, and says so: it defines the outcome, as the draw reads it (seal.py:draw_columns). When the structure stage reads the outcome changing within units, it counts rows, not people, and says which value counts is asked in Who's in (disagreement 3)."
   },
   {
    "id": "preview:set_task",
@@ -5571,7 +5581,7 @@
    "stage": "question",
    "stage_name": "2 · Your question",
    "kind": "preview",
-   "title_plain": "Where the decision thresholds fall on the model's risks",
+   "title_plain": "What the intended use changes: its sentence, and the rows per group when groups are named; the risks against the thresholds draw in Results (disagreement 16)",
    "engine_source": "turbotab/core/explore_previews.py:intended_use_views",
    "objective": "Shown (not an objective)",
    "goals": [
@@ -5580,16 +5590,17 @@
    "lenses": [
     "all"
    ],
-   "fires_when": "Pointing at an intended-use option once a fit exists.",
+   "fires_when": "Pointing at an intended-use option in Your question; the risks view waits for a fit and draws in Results.",
    "status": "built-engine-only",
    "tapestry": "Focus (distribution with threshold marks)",
-   "notes": "It needs a fit, so it cannot draw in Your question.",
+   "notes": "It needs a fit for the risks (explore_previews.py:intended_use_views), so in Your question it draws only the rows per group, or quotes its sentence; the risks view draws with preview:updating_and_intended_use.",
    "merged_from": [
     "question|preview:set_intended_use"
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 57
+   "order": 57,
+   "display_gate": "Never an empty canvas: the risks against the thresholds draw in Results, before the opening, on the training rows (disagreement 16)."
   },
   {
    "id": "refusal:set_target",
@@ -5930,7 +5941,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 4
+   "order": 4,
+   "display_gate": "Answers early only a question whose card is computed (its interview.py NEEDS stages are fresh) and whose earlier questions it reads are answered or set for you; otherwise 'Waiting for: [question]'. An early answer says what its counts were taken before, and returns as 'changed since you decided' when a later answer moves them (P0.6; disagreement 20)."
   },
   {
    "id": "decision:view_outcome",
@@ -5957,7 +5969,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 5
+   "order": 5,
+   "display_gate": "Recorded on opening each outcome view, under every goal. Under Estimate and Describe the views of the outcome beside a column open only after the lock (disagreement 4)."
   },
   {
    "id": "default:first-look:rows-read",
@@ -6112,7 +6125,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 11
+   "order": 11,
+   "display_gate": "Once the outcome is chosen, its row reads 'The outcome · opens in its group' and nothing here draws it, nor does Your data's ledger or a row window. After the draw (Predict) the index reads the training rows only and says so. Today server/routes/data.py:columns, histogram and table read the whole store (disagreement 2)."
   },
   {
    "id": "other:first-look:group:who",
@@ -6249,7 +6263,7 @@
    "stage": "first_look",
    "stage_name": "3 · First look",
    "kind": "other",
-   "title_plain": "The outcome: a door, not a group to browse. Its own distribution (O1) and 'With one column…' (O3); every view is recorded; under inference never pointed at or ranked",
+   "title_plain": "The outcome: a door, not a group to browse. Its own distribution (O1) opens after Who's in (Estimate, Describe) or the draw (Predict); 'With one column…' (O3) after Fit (Estimate, Describe) or the draw (Predict); every view is recorded; under Estimate never pointed at or ranked",
    "engine_source": "turbotab/core/stages/explore.py:explore_stage (rows: training under prediction, every analyzed row under inference); stages/__init__.py Stage('explore', deps working, cohort, split, target_info; requires target, split)",
    "objective": "Shown (not an objective)",
    "goals": [
@@ -6257,23 +6271,25 @@
     "prediction",
     "describe"
    ],
-   "fires_when": "Predict: \"Not available yet · opens once the split is recorded\", then training rows only. Estimate an effect: by question 1, either the outcome alone (O1) only until the lock (recommended) or a counted door in column order, nothing amber. Describe: the outcome alone. Several goals: the strictest rule.",
+   "fires_when": "Question 1 (ruled 2026-10-08). Estimate and Describe: the outcome alone after Who's in, on the rows analyzed; the outcome beside a column after Fit locks the track's plan, labeled exploratory. Predict: once the held-out rows are drawn, both on the training rows. Several goals: the strictest rule. 'No single outcome': no door.",
    "depends_on": [
     "q:target",
     "q:split",
     "stage:cohort (exclusions, missing)",
-    "decision:view_outcome"
+    "decision:view_outcome",
+    "other:fit (the lock, Estimate and Describe)"
    ],
    "reopens_when": "A new split or re-seal, a new outcome, or a changed cohort",
    "status": "partial",
    "tapestry": "Focus (its distribution); relationship (binned means over tenths); search 'Look at one feature…' at width",
-   "notes": "Engine computes it after the seal and nothing routes or renders it. The artifact ships outcome points before any view is opened (thumbnails would leak). Brief §9 Q1 (door vs hide until the lock) is not recorded as ruled",
+   "notes": "Engine computes it after the seal and nothing routes or renders it. The artifact ships outcome points before any view is opened (thumbnails would leak), so the server withholds them under Estimate and Describe until the lock (disagreement 4). Brief §9 Q1 is ruled: hidden until the lock under Estimate (question 1).",
    "merged_from": [
     "first_look|other:first-look:outcome-door"
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 17
+   "order": 17,
+   "display_gate": "Unlocks visibly: 'The outcome · opens after Who's in' and 'With one column · opens after Fit' (Estimate, Describe); 'Opens once the held-out rows are drawn' (Predict). Under Estimate and Describe the relationship points are withheld by the server until the track's lock, as estimand.withhold holds an estimate (disagreement 4)."
   },
   {
    "id": "noticing:explore::outcome_distribution",
@@ -6302,7 +6318,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 18
+   "order": 18,
+   "display_gate": "Estimate and Describe: opens after Who's in, on the rows analyzed, recorded. Predict: after the draw, on the training rows, recorded (question 1; disagreement 4)."
   },
   {
    "id": "noticing:explore::relationship",
@@ -6324,14 +6341,15 @@
     "decision:view_outcome"
    ],
    "status": "built-engine-only",
-   "tapestry": "The outcome · Focus (relationship); the \"With one column…\" list in the table's column order, what you study never singled out or listed first. Under Estimate it opens only if question 1 keeps a door before the lock.",
+   "tapestry": "The outcome · Focus (relationship); the \"With one column…\" list in the table's column order, what you study never singled out or listed first. Under Estimate and Describe it opens only after Fit locks the track's plan, labeled exploratory (question 1).",
    "notes": "O3. Lever: prediction set_levers forms rule/inner_cv in-fold first, a by-hand spline after; inference set_exposure_form. No 13th curve can be fetched; no categorical, multiclass, ordinal or time-to-event views",
    "merged_from": [
     "first_look|noticing:explore::relationship"
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 19
+   "order": 19,
+   "display_gate": "Estimate and Describe: hidden until the track's lock, then labeled exploratory; the server withholds its points until then (today stages/explore.py:explore_stage ships them in the artifact and server/service.py:_serve passes them). Predict: after the draw, on the training rows. Opening it records decision:view_outcome (disagreement 4)."
   },
   {
    "id": "preview:finding-evidence",
@@ -6609,28 +6627,31 @@
    "stage": "first_look",
    "stage_name": "3 · First look",
    "kind": "refusal",
-   "title_plain": "The outcome group: 'Not available yet · opens once the split is recorded'",
+   "title_plain": "The outcome group, until its gate opens: 'Opens after Who's in' (Estimate, Describe: the outcome alone), 'Opens after Fit' (Estimate, Describe: beside a column), 'Opens once the held-out rows are drawn' (Predict)",
    "engine_source": "turbotab/core/stages/__init__.py Stage('explore', requires target, split; deps cohort, split)",
    "objective": "Shown (not an objective)",
    "goals": [
     "prediction",
-    "inference"
+    "inference",
+    "describe"
    ],
-   "fires_when": "Before Who's in records the split (and the cohort's exclusions and missing answers)",
+   "fires_when": "Estimate and Describe: before Who's in is done (the outcome alone) and before the track's lock (beside a column). Predict: before the held-out rows are drawn.",
    "depends_on": [
     "q:split",
     "q:exclusions",
-    "q:missing"
+    "q:missing",
+    "other:fit (the lock, Estimate and Describe)"
    ],
    "status": "partial",
    "tapestry": "The outcome row in the card, gray, with its reason",
-   "notes": "Matches the brief under prediction; under inference the brief opens the door from the start, which the engine cannot",
+   "notes": "Matches the brief under prediction. Under inference question 1 (ruled 2026-10-08) keeps the outcome beside a column hidden until the lock; the outcome alone waits for Who's in, where the server records the split (disagreement 5).",
    "merged_from": [
     "first_look|refusal:outcome-door-not-yet"
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 31
+   "order": 31,
+   "display_gate": "The door's visible unlock: each line names the gate it waits for (disagreement 4)."
   },
   {
    "id": "refusal:view_outcome",
@@ -6926,7 +6947,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 4
+   "order": 4,
+   "display_gate": "Asks which value of the outcome counts when it changes within units, with the engine's exits (sequence.py:_aggregation_knows_the_outcome); the outcome card says it waits here. A combining answer that changes the outcome's kind reopens Your question with the reason (disagreement 3)."
   },
   {
    "id": "q:temporal",
@@ -7022,7 +7044,8 @@
    "order": 6,
    "families": [
     "S4"
-   ]
+   ],
+   "display_gate": "Asks only whether people are grouped, and by what, and says 'How the model accounts for the groups is set in Models'. The answer is recorded with the term set for you in SetClusters.adjust (the grouping card's first option for the goal; estimand.py:grouping_card) and shown in Models' Confirm (default:interval-method) (disagreement 8)."
   },
   {
    "id": "q:survey",
@@ -7114,7 +7137,8 @@
    "order": 7,
    "families": [
     "S5"
-   ]
+   ],
+   "display_gate": "Asked under every goal. Under Predict it asks whose performance the scores estimate, and its preview draws the design (the rows it reads, its degrees of freedom), not a predictor (disagreement 9)."
   },
   {
    "id": "new:describe_whos_in",
@@ -7289,7 +7313,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 13
+   "order": 13,
+   "display_gate": "Who's in decides who is kept and what each blank means; how kept blanks are filled is chosen in each track's Models (question 5; D2), so a Models answer never reopens it for the fill (disagreement 7)."
   },
   {
    "id": "noticing:complete_case_loss",
@@ -7391,7 +7416,8 @@
    "cross_refs": [],
    "returns_at": [],
    "order": 16,
-   "tapestry": "One line over the missing-values Flow; Routing: the imputation model's inputs beside the analysis model's terms, the mismatched term (spline, quintiles, energy log) lit."
+   "tapestry": "One line over the missing-values Flow; Routing: the imputation model's inputs beside the analysis model's terms, the mismatched term (spline, quintiles, energy log) lit.",
+   "display_gate": "Listed in Who's in here; its home is each track's Models (question 5), where the model it must match is known (decisions.py:_imputation_fits_the_analysis). It moves there with D2 (disagreement 7)."
   },
   {
    "id": "refusal:predictors_after_outcome",
@@ -7593,7 +7619,8 @@
    "returns_at": [
     "models"
    ],
-   "order": 23
+   "order": 23,
+   "display_gate": "Predict: the draw only, Who's in's last Decide, after its Confirm sweep; the stated grain, repeats and time column it reads are in the seal's own sentence (voice.py:_set_split). The validation scheme it carries is a Models Confirm (default:validation-scheme). Estimate: For the record; the server records set_split with no rows held out when the Router reaches it (disagreements 5 and 6)."
   },
   {
    "id": "decision:withdraw_seal",
@@ -10304,7 +10331,8 @@
    "cross_refs": [],
    "returns_at": [],
    "order": 80,
-   "tapestry": "Focus: the share of incomplete rows that sets m (m at least that percentage, White et al. 2011); one line with the time it adds."
+   "tapestry": "Focus: the share of incomplete rows that sets m (m at least that percentage, White et al. 2011); one line with the time it adds.",
+   "display_gate": "Listed in Who's in here; its home is each track's Models (question 5), where the model it must match is known (decisions.py:_imputation_fits_the_analysis). It moves there with D2 (disagreement 7)."
   },
   {
    "id": "default:imputation_model_compatible",
@@ -10326,7 +10354,8 @@
    "cross_refs": [],
    "returns_at": [],
    "order": 81,
-   "tapestry": "Routing: the imputation model's inputs beside the analysis model's terms (the spline, the energy model), matched term by term."
+   "tapestry": "Routing: the imputation model's inputs beside the analysis model's terms (the spline, the energy model), matched term by term.",
+   "display_gate": "Listed in Who's in here; its home is each track's Models (question 5), where the model it must match is known (decisions.py:_imputation_fits_the_analysis). It moves there with D2 (disagreement 7)."
   },
   {
    "id": "default:imputation_levels_clustered",
@@ -10347,7 +10376,8 @@
    "cross_refs": [],
    "returns_at": [],
    "order": 82,
-   "tapestry": "Routing: values that never change within a person imputed once per person, values that change imputed per row."
+   "tapestry": "Routing: values that never change within a person imputed once per person, values that change imputed per row.",
+   "display_gate": "Listed in Who's in here; its home is each track's Models (question 5), where the model it must match is known (decisions.py:_imputation_fits_the_analysis). It moves there with D2 (disagreement 7)."
   },
   {
    "id": "default:below_detection_fill",
@@ -10374,7 +10404,8 @@
    "cross_refs": [],
    "returns_at": [],
    "order": 83,
-   "tapestry": "Focus: the column's distribution with the detection limit drawn and the values below it shown as censored, not as a spike at the median."
+   "tapestry": "Focus: the column's distribution with the detection limit drawn and the values below it shown as censored, not as a spike at the median.",
+   "display_gate": "Listed in Who's in here; its home is each track's Models (question 5), where the model it must match is known (decisions.py:_imputation_fits_the_analysis). It moves there with D2 (disagreement 7)."
   },
   {
    "id": "default:survey_weight_choice",
@@ -10910,7 +10941,8 @@
    "returns_at": [
     "models"
    ],
-   "order": 97
+   "order": 97,
+   "display_gate": "Recorded by the server when the Router reaches the split under Estimate, and shown here with a way to change it; the explore stage requires a recorded split (disagreement 5)."
   },
   {
    "id": "default:landmark_rows",
@@ -11017,7 +11049,8 @@
       "draft": "Written by you; it must pass the manuscript gate (every number traces to the record)."
      }
     ]
-   }
+   },
+   "display_gate": "Closes Who's in labeled with what it waits for: 'Provisional · the counts change with what you adjust for, the forms and the landmark' (decisions.py:left_out; stages/rows.py:domain_of, landmark_of). The analysis flowchart draws the final counts (disagreement 7)."
   },
   {
    "id": "flowchart:consort",
@@ -11208,7 +11241,8 @@
    "order": 103,
    "families": [
     "E3"
-   ]
+   ],
+   "display_gate": "Computed by the pre-seal notices stage (UNDERSTANDING_LAYER U4) from the oriented table: on every row before the draw, saying so ('every row in the file, before Who's in'), and on the training rows after it (Predict). It returns in Models recomputed on the rows analyzed, as 'changed since you looked' (disagreement 4)."
   },
   {
    "id": "default:survey_domain",
@@ -12501,7 +12535,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 132
+   "order": 132,
+   "display_gate": "Who's in keeps the rows per group; the view of the fixed effects added moves to Models' Confirm line (default:interval-method) (disagreement 8)."
   },
   {
    "id": "preview:survey_views",
@@ -12522,7 +12557,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 133
+   "order": 133,
+   "display_gate": "Names its column and why: 'Drawn on [sugar], the first column you marked as studied; it follows what you study once you name it in Models' (plan_previews.py:survey_column falls back to the first predictor). Under Predict it draws the design instead (disagreement 9)."
   },
   {
    "id": "preview:exclusions_views",
@@ -12622,7 +12658,8 @@
    "returns_at": [
     "models"
    ],
-   "order": 137
+   "order": 137,
+   "display_gate": "In the quest log a question not yet reached shows 'Waiting for: [the question]' with a link, and is not answerable (disagreement 20)."
   },
   {
    "id": "refusal:grain",
@@ -13187,7 +13224,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 6
+   "order": 9,
+   "display_gate": "The shelf waits for the Decide answers before it, scales, batch and the omics normalization included where they apply, showing 'Waiting for: [question]'. Everything in the Confirm sweep (the validation scheme, the levers, recipes, tuning) is ranked on as the defaults now set, said once (MODEL_FAMILY_CONTRACT C4; disagreements 20 and 21)."
   },
   {
    "id": "decision:set_model_sequence",
@@ -13217,7 +13255,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 7
+   "order": 10,
+   "display_gate": "No Router key, so the stage registry lists it with 'Waiting for: [question]' until the answers its card reads are in: what you study and what you adjust for (plan_previews.py:model_sequence_views already refuses to draw without them) (disagreement 11)."
   },
   {
    "id": "decision:set_sensitivity",
@@ -13259,7 +13298,8 @@
    ],
    "noticed_at": "whos_in",
    "returns_at": [],
-   "order": 8
+   "order": 11,
+   "display_gate": "No Router key, so the stage registry lists it with 'Waiting for: [question]' until the answers its card reads are in: who is eligible (the screens) (disagreement 11)."
   },
   {
    "id": "decision:set_measurement_error",
@@ -13291,7 +13331,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 9
+   "order": 12,
+   "display_gate": "No Router key, so the stage registry lists it with 'Waiting for: [question]' until the answers its card reads are in: what you study and what you adjust for (disagreement 11)."
   },
   {
    "id": "decision:set_scales",
@@ -13322,7 +13363,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 10
+   "order": 6,
+   "display_gate": "Ahead of the families question (DoD amendment of 2026-10-08, 'Order'; disagreement 21), where it applies, so the shelf ranks each family's real input; no Router key, so the shelf's readiness predicate waits for it (MODEL_FAMILY_CONTRACT C4). Its card waits for the column readings it acts on (disagreement 11)."
   },
   {
    "id": "decision:set_batch",
@@ -13353,7 +13395,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 11
+   "order": 7,
+   "display_gate": "Ahead of the families question (DoD amendment of 2026-10-08, 'Order'; disagreement 21), where it applies, so the shelf ranks each family's real input; no Router key, so the shelf's readiness predicate waits for it (MODEL_FAMILY_CONTRACT C4). Its card waits for the column readings it acts on (disagreement 11)."
   },
   {
    "id": "decision:omics-normalization",
@@ -13386,7 +13429,8 @@
    "merged_from": [],
    "cross_refs": [],
    "stage_name": "5 · Models",
-   "order": 12
+   "order": 8,
+   "display_gate": "Ahead of the families question (DoD amendment of 2026-10-08, 'Order'; disagreement 21), where it applies, so the shelf ranks each family's real input; no Router key, so the shelf's readiness predicate waits for it (MODEL_FAMILY_CONTRACT C4). Its card waits for the column readings it acts on (disagreement 11)."
   },
   {
    "id": "decision:substitution-pair",
@@ -13418,7 +13462,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 13
+   "order": 13,
+   "display_gate": "Declared before Fit once interview.py NEEDS and MUST_BE_FRESH drop 'fit' for it, its card reading the energy sources from the design; the preview reads no outcome (data_previews.py:substitution_views), and the curve is served after the lock (disagreement 13)."
   },
   {
    "id": "decision:trial-missing-outcome-sensitivity",
@@ -13555,7 +13600,8 @@
    "order": 17,
    "families": [
     "E1"
-   ]
+   ],
+   "display_gate": "Computed by the pre-seal notices stage (UNDERSTANDING_LAYER U4) from the oriented table: on every row before the draw, saying so ('every row in the file, before Who's in'), and on the training rows after it (Predict). It returns in Models recomputed on the rows analyzed, as 'changed since you looked' (disagreement 4)."
   },
   {
    "id": "noticing:explore::collinear",
@@ -13605,7 +13651,8 @@
    "order": 18,
    "families": [
     "K5"
-   ]
+   ],
+   "display_gate": "Computed by the pre-seal notices stage (UNDERSTANDING_LAYER U4) from the oriented table: on every row before the draw, saying so ('every row in the file, before Who's in'), and on the training rows after it (Predict). It returns in Models recomputed on the rows analyzed, as 'changed since you looked' (disagreement 4)."
   },
   {
    "id": "decision:set_selection",
@@ -13634,7 +13681,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 19
+   "order": 19,
+   "display_gate": "No Router key, so the stage registry lists it with 'Waiting for: [question]' until the answers its card reads are in: the column roles and, under Predict, the draw (disagreement 11)."
   },
   {
    "id": "decision:new-families",
@@ -13718,7 +13766,8 @@
    "order": 21,
    "families": [
     "K3"
-   ]
+   ],
+   "display_gate": "No Router key, so the stage registry lists it with 'Waiting for: [question]' until the answers its card reads are in: the goal and the dietary lens (disagreement 11)."
   },
   {
    "id": "decision:describe-estimates",
@@ -13958,14 +14007,15 @@
    ],
    "reopens_when": "the hold re-arms when a new estimate exceeds 1.5 times the last confirmed (spec)",
    "status": "partial",
-   "notes": "Estimates exist and show on the shelf; fits start live as soon as select_models is recorded (fit requires only models); the scheduler hold and a Fit command are missing. Under inference pressing Fit is the first estimate display, which locks the plan. Patched: pressing Fit is a job command, not a decision (RECIPES_AND_TUNING §4.4). Under Estimate and Describe the server serves no estimate stage before the track's lock, and pressing Fit records the existing system lock_plan after the open-noticings gate; short fits may compute before the press, long fits wait for it (ruling 2). See CROSSWALK.md, Settled here, and disagreement 12.",
+   "notes": "Estimates exist and show on the shelf; fits start live as soon as select_models is recorded (fit requires only models); the scheduler hold and a Fit command are missing. Under inference pressing Fit is the first estimate display, which locks the plan. Patched: pressing Fit is a job command, not a decision (RECIPES_AND_TUNING §4.4). Under Estimate and Describe the server serves no estimate stage before the track's lock, and pressing Fit records the existing system lock_plan after the open-noticings gate; short fits may compute before the press, long fits wait for it (ruling 2). See CROSSWALK.md, Settled here, and disagreement 12. Audit 2026-10-08: under Predict too, the server serves no estimate stage (fit scores included) before the press, so nothing is marked seen (models/selection.py:note_seen); the press is kept beside the project, never in the Record (disagreement 12).",
    "merged_from": [
     "models|other:fit"
    ],
    "cross_refs": [],
    "returns_at": [],
    "order": 27,
-   "tapestry": "Flow joined to Routing: the analysis flowchart (flowchart:analysis) with the Fit button on it and its time estimate; under Estimate one line says Fit fixes the plan and shows the first estimates."
+   "tapestry": "Flow joined to Routing: the analysis flowchart (flowchart:analysis) with the Fit button on it and its time estimate; under Estimate one line says Fit fixes the plan and shows the first estimates.",
+   "display_gate": "Estimate and Describe: no estimate stage is served before the press, which records the system lock_plan after the open-noticings gate. Predict: no estimate stage, fit scores included, is served before the press; the press is kept beside the project as server/service.py:SHOWN_UNDER_PREDICTION is, never in the Record (disagreement 12)."
   },
   {
    "id": "thread:survey-skip-pattern-blanks",
@@ -18655,7 +18705,8 @@
    ],
    "noticed_at": "whos_in",
    "returns_at": [],
-   "order": 136
+   "order": 136,
+   "display_gate": "Rides in the draw's set_split record until changed. A change re-records set_split with the same holdout and seed, which draws the same rows and is accepted even after the opening (seal.py:_membership_change). The shelf ranks on it as a default now set (disagreement 5)."
   },
   {
    "id": "decision:set_levers",
@@ -18695,7 +18746,8 @@
    ],
    "noticed_at": "first_look",
    "returns_at": [],
-   "order": 137
+   "order": 137,
+   "display_gate": "No Router key, so the stage registry lists it with 'Waiting for: [question]' until the answers its card reads are in: the column roles and, under Predict, the draw (disagreement 11). A Confirm line, ranked on as a default now set."
   },
   {
    "id": "decision:set_recipe",
@@ -19122,7 +19174,8 @@
    "order": 151,
    "families": [
     "K5"
-   ]
+   ],
+   "display_gate": "Computed by the pre-seal notices stage (UNDERSTANDING_LAYER U4) from the oriented table: on every row before the draw, saying so ('every row in the file, before Who's in'), and on the training rows after it (Predict). It returns in Models recomputed on the rows analyzed, as 'changed since you looked' (disagreement 4)."
   },
   {
    "id": "thread:clin-informative-test-ordering",
@@ -20942,7 +20995,8 @@
    "returns_at": [],
    "order": 194,
    "notes": "Relabeled Confirm (crosswalk patch): cluster-robust, HC3 or design-based intervals differ, and the clusters model term moves here (disagreement 8).",
-   "tapestry": "Routing: what sets the interval (the grouping, the survey design, separation), each into its interval method."
+   "tapestry": "Routing: what sets the interval (the grouping, the survey design, separation), each into its interval method.",
+   "display_gate": "Shows the grouping term recorded with the Who's in answer; a change records set_clusters again with the same column (disagreement 8)."
   },
   {
    "id": "other:confirm-sweep",
@@ -22090,7 +22144,8 @@
       "draft": "Written by you; it must pass the manuscript gate (every number traces to the record)."
      }
     ]
-   }
+   },
+   "display_gate": "Draws the participant flow's final counts, each change since Who's in with its reason (disagreement 7)."
   },
   {
    "id": "refusal:plan_already_locked",
@@ -22171,7 +22226,8 @@
    "families": [
     "E2"
    ],
-   "family": "E2"
+   "family": "E2",
+   "display_gate": "Born from the outcome beside a column, so before Fit it fires only under Predict (the training rows, after the draw). Under Estimate and Describe it can be born only after the lock, from the door, as an exploratory note beside the result (question 1; disagreement 4)."
   },
   {
    "id": "thread:shared-subgroup-seen-in-explore",
@@ -22226,7 +22282,8 @@
    "families": [
     "E2"
    ],
-   "family": "E2"
+   "family": "E2",
+   "display_gate": "Born from the outcome beside a column, so before Fit it fires only under Predict (the training rows, after the draw). Under Estimate and Describe it can be born only after the lock, from the door, as an exploratory note beside the result (question 1; disagreement 4)."
   },
   {
    "id": "thread:diet-energy-related-outcome",
@@ -22845,7 +22902,8 @@
    "order": 7,
    "families": [
     "E3"
-   ]
+   ],
+   "display_gate": "Exempt from the after-estimates mark as a companion display, never in the primary's place; still listed in Write-up's 'Decisions made after the estimates were seen' on one line ('Companion displays chosen after the fit; none changes the primary'). The mark for changes after the opening still applies (disagreement 14)."
   },
   {
    "id": "exhibit:secondary_further_adjusted",
@@ -23466,7 +23524,8 @@
    "returns_at": [
     "writeup"
    ],
-   "order": 18
+   "order": 18,
+   "display_gate": "Estimate and Describe: the primary on the locked plan stays on screen and the change computes beside it. Predict: a kept version (RECIPES RT-7) or a read-only earlier row (question 6), 'revised after first results' only in the comparison and the methods text (disagreement 15)."
   },
   {
    "id": "exhibit:performance_table",
@@ -23628,7 +23687,8 @@
    "order": 21,
    "families": [
     "E2"
-   ]
+   ],
+   "display_gate": "Exempt from the after-estimates mark as a companion display, never in the primary's place; still listed in Write-up's 'Decisions made after the estimates were seen' on one line ('Companion displays chosen after the fit; none changes the primary'). The mark for changes after the opening still applies (disagreement 14). It is fixed before the opening (disagreement 16)."
   },
   {
    "id": "decision:nested_cv_offer",
@@ -24812,7 +24872,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 45
+   "order": 45,
+   "display_gate": "Asked in Results after Fit. Exempt from the after-estimates mark as a companion display, and still listed in Write-up's 'Decisions made after the estimates were seen' on one line (disagreements 11 and 14)."
   },
   {
    "id": "exhibit:shap_importance",
@@ -25461,7 +25522,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 60
+   "order": 60,
+   "display_gate": "With no rows held out (cross-validation only, or a Predict track after a track that read its outcome), the range is declared from the decision's harms before the curve is drawn; a range or recalibration chosen after it is stated outside the corrected score (result:hand_levers) (disagreement 16)."
   },
   {
    "id": "default:explain_curve_method",
@@ -26451,7 +26513,8 @@
    ],
    "noticed_at": "models",
    "returns_at": [],
-   "order": 86
+   "order": 86,
+   "display_gate": "Joined by the lock gate (Estimate, Describe) and the Fit press (Predict): nothing in Models or the rail shows an estimate or a score before them (disagreements 12 and 19)."
   },
   {
    "id": "refusal:open_seal_refusals",
@@ -26640,7 +26703,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 92
+   "order": 92,
+   "display_gate": "Also draws the risks against the thresholds (moved from Your question), on the training rows, before the opening (disagreement 16)."
   },
   {
    "id": "result:estimand_caption",
@@ -27153,7 +27217,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 15
+   "order": 15,
+   "display_gate": "Lists the companion displays (explanations, diagnostic responses, updating) on one line, so their exemption from the mark hides nothing (disagreement 14)."
   },
   {
    "id": "default:restated-counts",
@@ -28084,7 +28149,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 45
+   "order": 45,
+   "display_gate": "A section whose decisions are not reached reads 'Waiting for: [stage]'. The Results part reads only served artifacts (server/service.py:_serve), so the lock and Fit gates hold here too. After the lock or the opening a sentence's change link says the change runs beside the first result (disagreement 19)."
   },
   {
    "id": "other:manuscript-rail",
@@ -28113,7 +28179,8 @@
    ],
    "cross_refs": [],
    "returns_at": [],
-   "order": 46
+   "order": 46,
+   "display_gate": "A section whose decisions are not reached reads 'Waiting for: [stage]'. The Results part reads only served artifacts (server/service.py:_serve), so the lock and Fit gates hold here too. After the lock or the opening a sentence's change link says the change runs beside the first result (disagreement 19)."
   },
   {
    "id": "other:manuscript-full-width",
@@ -29553,5 +29620,553 @@
    "status": "partial",
    "notes": "Threads: clin-diagnosis-changes-exposure, clin-expected-directions, clin-single-reading-dilution, clin-treated-measurements, diet-borrowed-validity-coefficients, diet-changed-because-of-disease, diet-compositional-shares, diet-day-to-day-variance, diet-delivered-already-adjusted, diet-energy-budget-gap, diet-energy-carries-the-nutrient, diet-error-grows-with-intake, diet-food-and-its-nutrients, diet-former-consumers-in-reference, diet-kcal-per-unit-of-each-source, diet-mass-at-zero, diet-meaningful-increment, diet-nested-parts, diet-patterns, diet-quantiles-sort-by-sex-and-size, diet-ratio-features-share-the-outcome, diet-recall-day-before-the-draw, diet-single-baseline-long-follow-up, diet-substitution-support, diet-supplements-in-totals, genomics-allele-harmonization, genomics-few-transcripts-take-the-reads, genomics-genes-are-the-outcomes, genomics-imputed-dosages, genomics-methylation-beta, genomics-microbiome-composition, genomics-qpcr-ct-values, genomics-sex-from-expression, metab-affinity-proteomics, metab-already-transformed, metab-annotation-confidence, metab-detectable-effect, metab-dilution-linearity, metab-enrichment-background, metab-group-specific-detection, metab-low-biological-icc, metab-metabolome-role, metab-normalizer-carries-biology, metab-outcome-defined-by-a-feature, metab-ratio-features, metab-wide-noise-ceiling, shared-bounded-outcome, shared-case-control-sampling, shared-count-outcome-exposure-time, shared-exposure-family, shared-interaction-support, shared-mixed-units, shared-model-no-better-than-baseline, shared-null-is-inconclusive, shared-ordered-or-multiclass-outcome, shared-ordered-text-predictor, shared-outcome-scale-skew, shared-overfit-calibration-slope, shared-sex-coding, shared-tails-and-support, shared-top-coded, shared-units-by-magnitude, shared-zero-mass-outcome, shared-zero-mass-predictor, survey-acquiescence, survey-dif, survey-dimensionality, survey-floor-ceiling, survey-former-users-in-the-reference, survey-heaped-answers, survey-instrument-published-scoring, survey-mode-proxy-nonequivalence, survey-ordinal-outcome, survey-ordinal-predictor-spacing, survey-recall-period-mismatch, survey-reverse-keying, survey-same-sitting-reverse-causation, survey-score-direction, survey-top-codes, survey-wording-method-factor. Support masks (MIN_SEGMENT_ROWS), units only when recorded, and substitution captions exist; most label rules do not."
   }
- ]
+ ],
+ "order_audit": {
+  "date": "2026-10-08",
+  "against": "turbotab-next at 1a86e3c7",
+  "rule": {
+   "source": "the orchestrator, 2026-10-08",
+   "text": "The screen order may differ from the engine order only if all three conditions hold. Never quietly.",
+   "conditions": {
+    "1": "Nothing shown depends on an unanswered decision without saying so.",
+    "2": "Any answer the engine fills in is recorded and visible (Confirm or For the record).",
+    "3": "No view touches rows or the outcome before its gate opens."
+   }
+  },
+  "gates": {
+   "held_out_rows": "Predict: nothing reads them before the opening (q:open_seal).",
+   "outcome_alone": "Estimate: after Who's in, on the rows analyzed, recorded. Predict: after the draw, on the training rows (question 1). The outcome card reads only what defines the outcome (disagreement 3).",
+   "outcome_beside_a_column": "Estimate: after the lock, labeled exploratory. Predict: after the draw, on the training rows (question 1). A paper with an Estimate track follows the Estimate rule; so does a Describe track, whose estimates by group wait for its lock (Settled here).",
+   "estimates_and_scores": "Estimate and Describe: after Fit locks the track's plan. Predict: after Fit is pressed (disagreement 12)."
+  },
+  "summary": "Of the twenty fixes, fourteen were rewritten and six pass (13, 15 and 18 with a clarifying line); disagreement 21 is new, from the DoD amendment of 2026-10-08.",
+  "conflicts": [
+   {
+    "n": 1,
+    "title": "The roles answer is refused in Your data",
+    "verdict": "fixed",
+    "conditions": {
+     "1": {
+      "verdict": "failed",
+      "why": "proposals a later answer re-reads were not marked before confirming"
+     },
+     "2": {
+      "verdict": "failed",
+      "why": "the completion had no time or line; a server record passes the Router's order check, so it is made when the Router reaches the roles step"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "roles read no outcome value"
+     }
+    },
+    "changed": "Ledger lines a later answer re-reads say so; the server records set_roles when the Router reaches it, shown For the record in Who's in.",
+    "items": [
+     "q:roles",
+     "refusal:roles-not-yet",
+     "decision:confirm_role"
+    ]
+   },
+   {
+    "n": 2,
+    "title": "Readings are asked where they are used, not at upload",
+    "verdict": "fixed",
+    "conditions": {
+     "1": {
+      "verdict": "holds",
+      "why": "Decide asks readings that change a number on some path under the lens"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "readings settled by values are a Confirm line"
+     },
+     "3": {
+      "verdict": "failed",
+      "why": "a ledger would draw the outcome beside every column; server/routes/data.py:columns, histogram and table ignore the goal and the seal"
+     }
+    },
+    "changed": "Once chosen, the outcome is drawn only on its own card; after the draw the routes read the training rows only.",
+    "items": [
+     "decision:readings-ask-card",
+     "preview:first-look:index"
+    ]
+   },
+   {
+    "n": 3,
+    "title": "The outcome's reading depends on Who's in",
+    "verdict": "fixed",
+    "conditions": {
+     "1": {
+      "verdict": "failed",
+      "why": "set_aggregation cannot be recorded on the outcome card (Router order; sequence.py:_aggregation_knows_the_outcome)"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "nothing filled in"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "the outcome card's views define the outcome, on every row as the draw reads it (seal.py:draw_columns), and say so"
+     }
+    },
+    "changed": "Which value counts stays in Who's in; the outcome card says it waits there and counts rows, not people.",
+    "items": [
+     "preview:set_target",
+     "q:aggregation"
+    ]
+   },
+   {
+    "n": 4,
+    "title": "First look comes before the seal, but the engine explores after it",
+    "verdict": "fixed",
+    "conditions": {
+     "1": {
+      "verdict": "failed",
+      "why": "the outcome-free looks counted rows before Who's in without saying so; a look on an unconfirmed reading is already withheld (refusal:look-needs-a-settled-reading)"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "nothing filled in"
+     },
+     "3": {
+      "verdict": "failed",
+      "why": "the outcome beside a column could open before the lock under Estimate (question 1), and stages/explore.py:explore_stage ships relationship points that server/service.py:_serve passes"
+     }
+    },
+    "changed": "Question 1 applied, Describe following Estimate; the server withholds relationship points until the lock; each look says which rows it read; noticings born from O3 views fire before Fit only under Predict.",
+    "items": [
+     "other:first-look:outcome-door",
+     "noticing:explore::relationship",
+     "noticing:explore::outcome_distribution",
+     "refusal:outcome-door-not-yet",
+     "noticing:explore::wide",
+     "noticing:explore::collinear",
+     "noticing:explore::low_variance",
+     "noticing:explore::quality_by_group",
+     "thread:shared-curvature-seen-in-explore",
+     "thread:shared-subgroup-seen-in-explore",
+     "decision:view_outcome"
+    ]
+   },
+   {
+    "n": 5,
+    "title": "The split is two decisions in one kind, placed twice",
+    "verdict": "fixed",
+    "conditions": {
+     "1": {
+      "verdict": "holds",
+      "why": "the scheme is a Models Confirm after the draw; the shelf says it ranks on defaults"
+     },
+     "2": {
+      "verdict": "failed",
+      "why": "under Estimate no one recorded the split the explore stage requires; under Predict the scheme set for you had no record"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "no outcome or held-out row read"
+     }
+    },
+    "changed": "The server records the split under Estimate, For the record; the scheme rides in the draw's record and shows in Models' Confirm; a re-record with the same holdout and seed draws the same rows.",
+    "items": [
+     "q:split",
+     "default:split_under_inference",
+     "default:validation-scheme"
+    ]
+   },
+   {
+    "n": 6,
+    "title": "'Confirm last' collides with the seal under Predict",
+    "verdict": "pass",
+    "conditions": {
+     "1": {
+      "verdict": "holds",
+      "why": "the sweep runs just before the seal"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "the stated grain, repeats and time column are Confirm lines and are in the seal's sentence (voice.py:_set_split)"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "no outcome read by the sweep"
+     }
+    },
+    "changed": "Nothing.",
+    "items": [
+     "q:split"
+    ]
+   },
+   {
+    "n": 7,
+    "title": "Who's in depends on Models answers",
+    "verdict": "fixed",
+    "conditions": {
+     "1": {
+      "verdict": "failed in part",
+      "why": "'provisional' did not name what the counts wait for"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "nothing filled in"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "the cohort reads the outcome only to drop rows where it is blank"
+     }
+    },
+    "changed": "Question 5 applied: the fill is chosen in each track's Models and never reopens Who's in; the flowchart names what it waits for; the fill's lines move to Models with D2.",
+    "items": [
+     "exhibit:participant_flowchart",
+     "flowchart:analysis",
+     "q:missing",
+     "default:missing_m",
+     "default:imputation_model_compatible",
+     "default:imputation_levels_clustered",
+     "default:below_detection_fill",
+     "refusal:missing_compatibility"
+    ]
+   },
+   {
+    "n": 8,
+    "title": "The clusters question decides a model term in Who's in",
+    "verdict": "fixed",
+    "conditions": {
+     "1": {
+      "verdict": "holds",
+      "why": "once the card says where the term is set"
+     },
+     "2": {
+      "verdict": "failed",
+      "why": "nothing said what records the term in force (decisions.py:SetClusters.adjust)"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "no outcome read"
+     }
+    },
+    "changed": "The term set for you is recorded in the grouping answer and shows in Models' Confirm; its view moves with it.",
+    "items": [
+     "q:clusters",
+     "preview:clusters_views",
+     "default:interval-method"
+    ]
+   },
+   {
+    "n": 9,
+    "title": "Survey under Predict has no question",
+    "verdict": "fixed",
+    "conditions": {
+     "1": {
+      "verdict": "failed",
+      "why": "the preview draws a column chosen by an unanswered or absent choice (plan_previews.py:survey_column)"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "set_survey is recorded under every goal"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "no outcome read; training rows after the draw"
+     }
+    },
+    "changed": "The preview names its column and why; under Predict it draws the design, not a predictor.",
+    "items": [
+     "q:survey",
+     "preview:survey_views"
+    ]
+   },
+   {
+    "n": 10,
+    "title": "The design has no slot",
+    "verdict": "pass",
+    "conditions": {
+     "1": {
+      "verdict": "holds",
+      "why": "its routing comes after it"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "observational is set for you, a sentence in the Record and a Confirm line"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "no outcome read"
+     }
+    },
+    "changed": "Nothing.",
+    "items": [
+     "default:design_observational"
+    ]
+   },
+   {
+    "n": 11,
+    "title": "Ten Models decisions have no Router key",
+    "verdict": "fixed",
+    "conditions": {
+     "1": {
+      "verdict": "failed",
+      "why": "applicability is not readiness; sequence.py:_answers_in_order never holds them"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "their defaults are Confirm lines"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "their previews read the outcome only under Predict on the training rows and quote no estimate before the lock"
+     }
+    },
+    "changed": "Each declares the answers its card reads and shows 'Waiting for' until they are in.",
+    "items": [
+     "decision:set_model_sequence",
+     "decision:set_sensitivity",
+     "decision:set_measurement_error",
+     "decision:set_scales",
+     "decision:set_batch",
+     "decision:set_usual_intake",
+     "q:intended_use",
+     "decision:set_selection",
+     "decision:set_levers",
+     "decision:set_explain"
+    ]
+   },
+   {
+    "n": 12,
+    "title": "Estimates are served, and the plan locks, before Fit is pressed",
+    "verdict": "fixed",
+    "conditions": {
+     "1": {
+      "verdict": "holds",
+      "why": "before Fit the flowchart shows the plan and its time"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "the lock is the existing system record, shown with its time and SHA-256"
+     },
+     "3": {
+      "verdict": "failed",
+      "why": "under Predict short fits' scores are served before the press and marked seen (models/selection.py:note_seen)"
+     }
+    },
+    "changed": "Under Predict too, no estimate stage is served before the press, kept beside the project, never in the Record.",
+    "items": [
+     "other:fit",
+     "refusal:served-gate"
+    ]
+   },
+   {
+    "n": 13,
+    "title": "Substitution is always asked after the lock",
+    "verdict": "pass",
+    "conditions": {
+     "1": {
+      "verdict": "holds",
+      "why": "once the card stops waiting on the fit (interview.py NEEDS and MUST_BE_FRESH)"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "the step and band are a Confirm line"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "the preview reads no outcome; the curve is served after the lock"
+     }
+    },
+    "changed": "Clarified: the Router change that lets the pair be declared before Fit.",
+    "items": [
+     "decision:substitution-pair"
+    ]
+   },
+   {
+    "n": 14,
+    "title": "Sanctioned after-fit displays count as plan changes",
+    "verdict": "fixed",
+    "conditions": {
+     "1": {
+      "verdict": "holds",
+      "why": "nothing waits"
+     },
+     "2": {
+      "verdict": "failed in part",
+      "why": "exempt from the mark with no home, they would leave Write-up's list of decisions made after the estimates"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "each is shown beside the primary, never in its place"
+     }
+    },
+    "changed": "The exempt records stay listed as companions chosen after the fit; the mark for changes after the opening still applies.",
+    "items": [
+     "decision:set_explain",
+     "decision:respond_diagnostic",
+     "decision:set_updating",
+     "result:after-estimates-section"
+    ]
+   },
+   {
+    "n": 15,
+    "title": "A change after the lock overwrites the primary",
+    "verdict": "pass",
+    "conditions": {
+     "1": {
+      "verdict": "holds",
+      "why": "the primary stays on screen"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "the change is recorded and labeled"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "no gate crossed"
+     }
+    },
+    "changed": "Clarified for Describe (Settled here) and for Predict (RT-7 versions; question 6; the UI rulings).",
+    "items": [
+     "decision:post_lock_secondary"
+    ]
+   },
+   {
+    "n": 16,
+    "title": "Intended use straddles three stages",
+    "verdict": "fixed",
+    "conditions": {
+     "1": {
+      "verdict": "failed",
+      "why": "the risks view needs a fit (explore_previews.py:intended_use_views), so it would draw nothing in Your question"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "the range and the in-fold threshold set for you are a Confirm line in Results"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "the risks draw after Fit on the training rows; with no rows held out, a threshold chosen after the curve is stated"
+     }
+    },
+    "changed": "The risks view moves to Results; with no rows held out, a threshold set after the curve is stated outside the corrected score.",
+    "items": [
+     "q:intended_use",
+     "preview:set_intended_use",
+     "default:decision_threshold",
+     "preview:updating_and_intended_use"
+    ]
+   },
+   {
+    "n": 17,
+    "title": "Reference rows and QC drift correction sit in two stages",
+    "verdict": "pass",
+    "conditions": {
+     "1": {
+      "verdict": "holds",
+      "why": "decided before the outcome's kind is read"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "nothing filled in"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "fitted on the pooled QC injections; the rows leave before the draw"
+     }
+    },
+    "changed": "Nothing.",
+    "items": []
+   },
+   {
+    "n": 18,
+    "title": "The Router's order inside Models differs from the ruled list",
+    "verdict": "pass",
+    "conditions": {
+     "1": {
+      "verdict": "holds",
+      "why": "the Router's order is the dependency order"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "nothing filled in"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "no gate crossed"
+     }
+    },
+    "changed": "Clarified: disagreement 21 carries the ruled move it does not cover.",
+    "items": []
+   },
+   {
+    "n": 19,
+    "title": "The methods section is ordered by guideline, not by stage",
+    "verdict": "fixed",
+    "conditions": {
+     "1": {
+      "verdict": "failed in part",
+      "why": "the rail shows sections not yet reached without saying what they wait for"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "defaults set for you are sentences; silent ones only in the export"
+     },
+     "3": {
+      "verdict": "failed in part",
+      "why": "the rail is on screen in every stage, so it must read only served results"
+     }
+    },
+    "changed": "Unready sections say what they wait for; the rail reads only what the server serves; after the lock a change link says it runs beside the first result.",
+    "items": [
+     "other:manuscript-rail",
+     "result:methods-text"
+    ]
+   },
+   {
+    "n": 20,
+    "title": "The Router answers in order; the quest log lets you look ahead",
+    "verdict": "fixed",
+    "conditions": {
+     "1": {
+      "verdict": "failed",
+      "why": "'Decide now' could open a question as answerable while answers its card reads were open; the cross-reference to disagreement 9 was wrong"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "early answers are records"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "a question opened early keeps its own gates"
+     }
+    },
+    "changed": "'Decide now' answers early only where its needs are met, and says what its counts were taken before; the cross-reference is corrected.",
+    "items": [
+     "decision:first-look:decide-now",
+     "refusal:not-yet"
+    ]
+   },
+   {
+    "n": 21,
+    "title": "Scales, batch and the omics normalization come after the families question",
+    "verdict": "fixed",
+    "conditions": {
+     "1": {
+      "verdict": "holds",
+      "why": "until answered, the shelf names each one still open (MODEL_FAMILY_CONTRACT C4); after the move it waits for them, since with no Router key nothing else holds the shelf"
+     },
+     "2": {
+      "verdict": "holds",
+      "why": "nothing is set for you where none applies"
+     },
+     "3": {
+      "verdict": "holds",
+      "why": "none reads the outcome (method_previews.py:batch_views fits the batch step without it)"
+     }
+    },
+    "changed": "New, from the DoD amendment of 2026-10-08 ('Order'): moved ahead of the families (Models' Decide 6 to 8); the shelf waits for them where they apply.",
+    "items": [
+     "decision:set_scales",
+     "decision:set_batch",
+     "decision:omics-normalization",
+     "q:models"
+    ]
+   }
+  ]
+ }
 }
