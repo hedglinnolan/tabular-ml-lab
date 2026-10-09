@@ -1,7 +1,9 @@
 """D4, subgroups of similar people: every number held to an independent reference.
 
 R is the reference (``r_reference.run_r``): ``stats::kmeans`` and ``cluster::silhouette`` for
-k-means and its rule, run on the rows repeated by their integer weights for the weighted form;
+k-means and its rule; ``survey::svymean`` and ``survey::svyvar`` for the weighted standardization,
+the rows repeated by their integer weights for the weighted k-means objective, the weighted
+silhouette written out in R, and ``survey::svytotal`` for the rescaled bootstrap's variance;
 ``cluster::clusGap`` and ``cluster::maxSE`` for the gap statistic; ``cluster::daisy`` and
 ``cluster::pam`` for the Gower distance and k-medoids; ``mclust::mclustBIC`` for the mixture's BIC;
 ``fpc::clusterboot`` for the bootstrap Jaccard, fed the very resamples it drew. Hand computations
@@ -32,6 +34,7 @@ def _has(*packages: str) -> bool:
 
 needs_mclust = pytest.mark.skipif(not _has("mclust"), reason="R package mclust not installed")
 needs_fpc = pytest.mark.skipif(not _has("fpc"), reason="R package fpc not installed")
+needs_survey = pytest.mark.skipif(not _has("survey"), reason="R package survey not installed")
 
 
 def blobs(n_each=(50, 40, 30), d=4, spread=2.2, seed=7) -> pd.DataFrame:
@@ -95,26 +98,41 @@ out(list(z = x[1:3, ], rows = o))
 
 
 @needs_r
-def test_weighted_kmeans_equals_the_rows_repeated_in_r(tmp_path):
-    """Survey weights in k-means count each person as their weight: with integer weights the
-    standardization, the within sum of squares and the silhouette equal R's on the repeated
-    rows."""
+@needs_survey
+def test_weighted_kmeans_is_design_based_against_r(tmp_path):
+    """Survey weights, read as how many people each participant stands for: the standardization is
+    ``survey::svymean`` and ``svyvar``'s; the weighted within sum of squares is the one R's
+    ``kmeans`` minimizes on the rows repeated by their integer weights (identical rows always share
+    a subgroup), over the mean weight; the silhouette is each person's weighted mean distance to
+    the others in their subgroup against the nearest other subgroup, written out in R on R's own
+    partitions; and both choose the same k."""
     df = blobs((30, 25, 20), d=3, seed=11)
     w = np.random.default_rng(5).integers(1, 4, len(df))
     df["w"] = w
     plan = S.declare("kmeans", "silhouette", k_range=(2, 5), n_boot=0, n_init=50)
     res = S.run(df, ["x1", "x2", "x3"], plan, weights="w")
     r = run_r("""
-library(cluster)
+library(cluster); suppressPackageStartupMessages(library(survey))
 d <- read.csv(data_csv)
-big <- d[rep(seq_len(nrow(d)), d$w), c("x1", "x2", "x3")]
-x <- scale(as.matrix(big))
+des <- svydesign(ids = ~1, weights = ~w, data = d)
+m <- coef(svymean(~x1 + x2 + x3, des)); v <- diag(as.matrix(svyvar(~x1 + x2 + x3, des)))
+z <- sweep(sweep(as.matrix(d[, c("x1", "x2", "x3")]), 2, m), 2, sqrt(v), "/")
+D <- as.matrix(dist(z)); w <- d$w
+wsil <- function(cl) sapply(seq_along(cl), function(i) {
+  others <- cl == cl[i]; others[i] <- FALSE
+  if (!any(others)) return(0)
+  a <- sum(w[others] * D[i, others]) / sum(w[others])
+  b <- min(sapply(setdiff(unique(cl), cl[i]), function(g) {
+    s <- cl == g; sum(w[s] * D[i, s]) / sum(w[s]) }))
+  (b - a) / max(a, b) })
+idx <- rep(seq_len(nrow(d)), w)
 set.seed(2)
 o <- lapply(2:5, function(k) {
-  km <- kmeans(x, k, nstart = 200, iter.max = 100)
-  list(k = k, wss = km$tot.withinss, sil = mean(silhouette(km$cluster, dist(x))[, 3]))
+  km <- kmeans(z[idx, ], k, nstart = 200, iter.max = 100)
+  cl <- km$cluster[match(seq_len(nrow(d)), idx)]
+  list(k = k, wss = km$tot.withinss / mean(w), sil = weighted.mean(wsil(cl), w))
 })
-out(list(center = attr(x, "scaled:center"), sd = attr(x, "scaled:scale"), rows = o))
+out(list(center = unname(m), sd = unname(sqrt(v)), rows = o))
 """, {"data": df}, tmp_path)
     _, mean, sd = S.standardize(df[["x1", "x2", "x3"]].to_numpy(), w.astype(float))
     np.testing.assert_allclose(mean, r["center"], rtol=1e-12)
@@ -125,6 +143,45 @@ out(list(center = attr(x, "scaled:center"), sd = attr(x, "scaled:scale"), rows =
         assert ours["silhouette"] == pytest.approx(row["sil"], abs=1e-12), row["k"]
     assert res.weighted and res.k == max(r["rows"], key=lambda o: o["sil"])["k"]
     assert sum(res.shares) == pytest.approx(1.0)
+
+
+def test_the_weighted_silhouette_by_hand():
+    """Three people on a line at 0, 1 and 4, weights 1, 3 and 2, subgroups {0, 1} and {4}: the
+    person at 0 has a = 1 (the one other in the subgroup), b = 4, s = 3/4; the person at 1 has
+    a = 1, b = 3, s = 2/3; the person at 4 is alone, s = 0. The weighted mean is
+    (1·3/4 + 3·2/3 + 2·0) / 6 = 11/24, whatever the weights are multiplied by."""
+    X = np.array([[0.0], [1.0], [4.0]])
+    labels = np.array([0, 0, 1])
+    for c in (1.0, 0.01, 1e4):
+        w = c * np.array([1.0, 3.0, 2.0])
+        s = S.silhouette(labels, X=X, w=w)
+        np.testing.assert_allclose(s, [3 / 4, 2 / 3, 0.0], rtol=1e-14)
+        assert np.average(s, weights=w) == pytest.approx(11 / 24, rel=1e-14)
+
+
+def test_multiplying_every_weight_by_one_constant_changes_nothing():
+    """A survey weight counts people relative to the others: the same weights times 0.3, 0.01,
+    1000 or scaled to sum to 1 give the same subgroups, rule scores, shares and stability (weights
+    summing to 1 once gave NaN centers and a KeyError), and equal weights of any size give the
+    unweighted silhouette exactly."""
+    df = blobs((40, 30, 20), d=3, seed=2)
+    w = np.random.default_rng(9).integers(1, 5, len(df)).astype(float)
+    plan = S.declare("kmeans", "silhouette", k_range=(2, 5), n_boot=8, n_init=5)
+    cols = ["x1", "x2", "x3"]
+    base = S.run(df.assign(w=w), cols, plan, weights="w")
+    for c in (0.3, 0.01, 1000.0, 1 / w.sum()):
+        other = S.run(df.assign(w=w * c), cols, plan, weights="w")
+        assert other.k == base.k and np.array_equal(other.labels, base.labels), c
+        np.testing.assert_allclose(other.table["silhouette"], base.table["silhouette"],
+                                   rtol=1e-12, atol=1e-14)
+        np.testing.assert_allclose(other.shares, base.shares, rtol=1e-12)
+        np.testing.assert_allclose(other.stability.mean_jaccard, base.stability.mean_jaccard,
+                                   rtol=1e-12)
+    plain = S.run(df, cols, S.declare("kmeans", "silhouette", k_range=(2, 5), n_boot=0,
+                                      n_init=5))
+    flat = S.run(df.assign(w=0.01), cols, S.declare("kmeans", "silhouette", k_range=(2, 5),
+                                                    n_boot=0, n_init=5), weights="w")
+    np.testing.assert_allclose(flat.table["silhouette"], plain.table["silhouette"], atol=1e-13)
 
 
 # ── the gap statistic, against R ────────────────────────────────────────────
@@ -271,6 +328,47 @@ out(list(bic = lapply(colnames(b), function(m) unname(b[, m])), models = colname
     assert (S.SHAPES[res.shape], res.k) == (model, int(k))
 
 
+def unequal_blobs() -> pd.DataFrame:
+    """Three unequal, stretched groups in four columns on scales 0.1 to 10 (n = 240)."""
+    rng = np.random.default_rng(20261009)
+    X = np.vstack([
+        rng.multivariate_normal([0, 0, 0, 0], np.diag([1, 0.5, 1, 1]), 110),
+        rng.multivariate_normal([3, 2, -1, 0.5], [[1, .6, 0, 0], [.6, 1, 0, 0], [0, 0, .5, 0],
+                                                  [0, 0, 0, 1]], 80),
+        rng.multivariate_normal([-2, 4, 2, -1], np.eye(4) * 0.4, 50)]) * [1, 10, 0.1, 3]
+    return pd.DataFrame(X, columns=["a", "b", "c", "d"])
+
+
+@needs_r
+@needs_mclust
+def test_the_mixture_choice_matches_mclust_where_em_optima_differ(tmp_path):
+    """EM stops in local optima, and sklearn's and mclust's stop in different ones once k passes
+    the groups the data hold: here cells with k of 4 or more sit up to a couple of dozen BIC
+    units either side of mclust's best of 21 starts. What the rule reads holds: the chosen model,
+    its k and its BIC are mclust's, and every cell up to the true k agrees."""
+    df = unequal_blobs()
+    res = S.run(df, list(df.columns), S.declare("gmm", k_range=(1, 6), seed=1, n_init=10,
+                                                n_boot=0))
+    r = run_r("""
+suppressPackageStartupMessages(library(mclust))
+x <- scale(as.matrix(read.csv(data_csv)))
+fit <- function(init) mclustBIC(x, G = 1:6, modelNames = c("VII", "VVI", "EEE", "VVV"),
+  initialization = init)
+b <- fit(list())
+for (s in 1:20) b <- mclustBICupdate(b, fit(list(hcPairs = hcRandomPairs(x, seed = s))))
+out(list(bic = lapply(colnames(b), function(m) unname(b[, m])), models = colnames(b),
+         best = names(summary(b))[1]))
+""", {"data": df}, tmp_path)
+    t = res.table.set_index(["mclust", "k"])
+    model, k = r["best"].split(",")
+    assert (S.SHAPES[res.shape], res.k) == (model, int(k)) == ("VVI", 3)
+    bics = dict(zip(r["models"], r["bic"]))
+    assert -t.loc[(model, int(k)), "bic"] == pytest.approx(bics[model][int(k) - 1], abs=1e-3)
+    for m, column in bics.items():
+        for kk in (1, 2, 3):
+            assert -t.loc[(m, kk), "bic"] == pytest.approx(column[kk - 1], abs=0.05), (m, kk)
+
+
 # ── stability, against fpc::clusterboot ─────────────────────────────────────
 
 
@@ -359,6 +457,68 @@ def test_jaccard_by_hand():
     np.testing.assert_allclose(jac[:, 0], [0.5, 0.75])
 
 
+def test_the_weighted_jaccard_by_hand():
+    """With survey weights the Jaccard counts weights: rows 0–5 weigh 1, 1, 4, 1, 1, 2; the
+    resample keeps 0, 1, 3, 4, 5 and finds {0} and {1, 3, 4, 5}. Subgroup 0 on the resample is
+    {0, 1} (weight 2): against {0}, 1/2; against {1, 3, 4, 5} (weight 5), 1/6; so 1/2. Subgroup 1
+    is {3, 4, 5} (weight 4) inside {1, 3, 4, 5}: 4/5."""
+    labels = np.array([0, 0, 0, 1, 1, 1])
+    w = np.array([1.0, 1.0, 4.0, 1.0, 1.0, 2.0])
+    seen = []
+
+    def refit(rows, rw):
+        seen.append(rw)
+        return np.array([0, 1, 1, 1, 1])
+
+    jac = S.bootstrap_jaccard(labels, refit, [np.array([0, 1, 3, 4, 5])], w=w * 7,
+                              draw_weights=[np.ones(5)])
+    np.testing.assert_allclose(jac[:, 0], [0.5, 0.8])
+    assert len(seen) == 1
+
+
+def test_the_rescaled_bootstrap_weights_by_hand():
+    """Rao, Wu & Yue (1992): a stratum of n_h PSUs draws n_h − 1 of them with replacement, and a
+    drawn PSU's people weigh w · n_h / (n_h − 1) · (times drawn); a stratum of one PSU keeps it."""
+    strata = np.array([0, 0, 0, 0, 0, 0, 1, 1])
+    psu = np.array([0, 0, 1, 1, 2, 2, 0, 0])
+    w = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
+    for rows, rw in S.replicate_weights(w, 50, np.random.default_rng(3), strata=strata, psu=psu):
+        factor = np.zeros(len(w))
+        factor[rows] = rw / w[rows]
+        assert set(rows) >= {6, 7} and np.allclose(factor[6:], 1.0)  # the lone PSU, kept
+        per_psu = factor[[0, 2, 4]]
+        assert np.allclose(factor[[1, 3, 5]], per_psu)  # whole PSUs
+        assert np.allclose(per_psu / 1.5, np.round(per_psu / 1.5))  # 3/2 per draw
+        assert per_psu.sum() / 1.5 == pytest.approx(2)  # n_h − 1 = 2 draws
+        assert set(rows) == set(np.flatnonzero(factor > 0))
+
+
+@needs_r
+@needs_survey
+def test_the_rescaled_bootstrap_variance_is_the_design_variance(tmp_path):
+    """The rescaled bootstrap's variance of a weighted total is, in expectation, the usual
+    with-replacement design variance (Rao, Wu & Yue 1992), which ``survey::svytotal`` reports:
+    4,000 replicates land within 8% of it (the Monte Carlo error is about 2%)."""
+    df = blobs()
+    n = len(df)
+    df["w"] = 1.0 + np.arange(n) % 3
+    df["stratum"] = np.arange(n) % 4
+    df["psu"] = (np.arange(n) // 4) % 5
+    reps = S.replicate_weights(df["w"].to_numpy(), 4000, np.random.default_rng(1),
+                               strata=df["stratum"].to_numpy(), psu=df["psu"].to_numpy())
+    y = df["x1"].to_numpy()
+    totals = np.array([(rw * y[rows]).sum() for rows, rw in reps])
+    r = run_r("""
+suppressPackageStartupMessages(library(survey))
+d <- read.csv(data_csv)
+des <- svydesign(ids = ~psu, strata = ~stratum, weights = ~w, nest = TRUE, data = d)
+t <- svytotal(~x1, des)
+out(list(total = as.numeric(coef(t)), var = as.numeric(SE(t))^2))
+""", {"data": df}, tmp_path)
+    assert totals.mean() == pytest.approx(r["total"], rel=0.02, abs=0.05 * np.sqrt(r["var"]))
+    assert totals.var(ddof=0) == pytest.approx(r["var"], rel=0.08)
+
+
 # ── what the engine promises ────────────────────────────────────────────────
 
 
@@ -413,6 +573,71 @@ def test_survey_weights_without_a_design_based_form_are_refused_with_exits(metho
     labels = [x["label"] for x in e.value.exits]
     assert any("Weighted k-means" in x for x in labels)
     assert any("sample-only" in x for x in labels)
+
+
+def _coded(n=90, seed=3) -> pd.DataFrame:
+    df = mixed(n, seed)
+    df["race"] = np.random.default_rng(seed).integers(1, 6, n)  # codes 1–5, read as nothing yet
+    df["w"] = 0.5 + np.random.default_rng(seed + 1).random(n)
+    return df
+
+
+EXIT_CASES = [  # (method, rule, columns, weighted): each refused, each exit followed
+    ("kmeans", "silhouette", ["age", "bmi", "smoke"], False),
+    ("kmeans", "silhouette", ["age", "bmi", "smoke"], True),
+    ("kmeans", "gap", ["age", "bmi", "smoke"], False),
+    ("kmeans", "gap", ["age", "bmi", "smoke"], True),
+    ("kmeans", "gap", ["age", "bmi"], True),
+    ("gmm", "bic", ["age", "bmi", "smoke"], False),
+    ("gmm", "bic", ["age", "bmi", "smoke"], True),
+    ("gmm", "bic", ["age", "bmi"], True),
+    ("kmeans", "silhouette", ["smoke", "region"], False),
+    ("pam_gower", "silhouette", ["age", "bmi", "smoke", "region", "activity"], True),
+    ("pam_gower", "silhouette", ["smoke", "region"], True),
+    ("kmeans", "silhouette", ["age", "bmi", "race"], False),
+    ("kmeans", "silhouette", ["age", "bmi", "race"], True),
+    ("gmm", "bic", ["age", "bmi", "race"], False),
+    ("pam_gower", "silhouette", ["age", "smoke", "race"], False),
+    ("kmeans", "silhouette", ["race"], False),
+]
+
+
+@pytest.mark.parametrize("method,rule,columns,weighted", EXIT_CASES)
+def test_every_exit_runs_without_another_refusal(method, rule, columns, weighted):
+    """An exit is a way forward: following any exit a refusal offers (``follow_exit``) runs.
+    Weights with k-medoids on columns holding categories once offered weighted k-means with the
+    categories still in, which the category rule then refused."""
+    df = _coded()
+    plan = S.declare(method, rule, k_range=(2, 3), n_init=2, n_boot=0, shapes=("diag",))
+    options = {"weights": "w"} if weighted else {}
+    with pytest.raises(S.SubgroupsRefused) as e:
+        S.run(df, columns, plan, **options)
+    assert e.value.exits
+    for exit in e.value.exits:
+        new, cols, opts = S.follow_exit(exit, plan, columns, **options)
+        result = S.run(df, cols, new, **opts)
+        assert result.k >= 1, exit["label"]
+        if weighted and "weights" not in exit:
+            assert result.weighted and (new.method, new.rule) == ("kmeans", "silhouette")
+
+
+def test_whole_number_codes_are_asked_about_not_read_as_amounts():
+    """Race coded 1 to 5 is not an amount: a column of 3 to 10 whole-number values whose reading
+    is not settled is refused, with its readings as the exits; settled (from the readings ledger)
+    it runs as what it is."""
+    df = _coded()
+    with pytest.raises(S.SubgroupsRefused, match="whole-number") as e:
+        S.run(df, ["age", "bmi", "race"], S.declare("kmeans", n_boot=0, n_init=2))
+    kinds = [next(k for k in ("numeric", "categorical", "drop") if k in x) for x in e.value.exits]
+    assert kinds == ["numeric", "categorical", "drop"]
+    assert e.value.exits[1]["method"] == "pam_gower"
+    assert S.read_features(df, ["age", "race"]).ambiguous == ("race",)
+    assert S.read_features(df, ["age", "race"], numeric=["race"]).ambiguous == ()
+    assert S.read_features(df, ["age", "race"], categorical=["race"]).categorical == ("race",)
+    df["children"] = np.arange(len(df)) % 12  # twelve values: read as a count
+    assert S.read_features(df, ["age", "children"]).ambiguous == ()
+    with pytest.raises(ValueError, match="both"):
+        S.read_features(df, ["race"], numeric=["race"], categorical=["race"])
 
 
 def test_weighted_kmeans_resamples_psus_within_strata():
@@ -507,3 +732,56 @@ def test_the_contract_is_registered_with_labels_and_sources():
     for r in c.relations:
         module, name = r.enforced_by.split(":")
         assert hasattr(importlib.import_module(module), name), r.enforced_by
+
+
+def test_membership_takes_each_folds_survey_weights():
+    """Under Predict the training fold's survey weights reach the fit (``sample_weight``, routed by
+    the pipeline): the fitted standardization and centers are the weighted run's, the methods with
+    no design-based form refuse them, and they route through cross-validation fold by fold."""
+    import sklearn
+    from sklearn.linear_model import LinearRegression
+    from sklearn.model_selection import cross_val_score
+    from sklearn.pipeline import make_pipeline
+
+    df = blobs((30, 25, 20), d=3, seed=4)
+    w = np.random.default_rng(2).integers(1, 5, len(df)).astype(float)
+    est = S.SubgroupMembership("kmeans", k_range=(2, 4), n_init=5).fit(df, sample_weight=w)
+    ran = S.run(df.assign(w=w), list(df.columns), S.declare("kmeans", k_range=(2, 4), n_init=5,
+                                                             n_boot=0), weights="w")
+    _, mean, sd = S.standardize(df.to_numpy(), w)
+    np.testing.assert_allclose(est.mean_, mean)
+    np.testing.assert_allclose(est.sd_, sd)
+    np.testing.assert_allclose(est.centers_, ran.centers)
+    assert est.result_.weighted
+    with pytest.raises(S.SubgroupsRefused, match="BIC"):
+        S.SubgroupMembership("gmm", k_range=(2, 3), n_init=2).fit(df, sample_weight=w)
+    y = df["x1"].to_numpy() + np.random.default_rng(1).normal(size=len(df))
+    pipe = make_pipeline(S.SubgroupMembership("kmeans", k_range=(2, 3), n_init=2),
+                         LinearRegression())
+    with sklearn.config_context(enable_metadata_routing=False):
+        scores = cross_val_score(pipe, df, y, cv=3,
+                                 params={"subgroupmembership__sample_weight": w})
+    assert np.isfinite(scores).all()
+
+
+def test_each_refusal_names_the_function_that_raises_it():
+    """A refusing relation's ``enforced_by`` is the function that raises its refusal, and the one
+    for weighted k-means is the run that hands the weights to every step."""
+    import importlib
+    import inspect
+
+    from turbotab.core.contracts import contract, contracts
+
+    c = contracts()[S.CONTRACT] if S.CONTRACT in contracts() else contract(S.CONTRACT)
+    by_id = {r.name: r for r in c.relations}
+    assert by_id["categories_refused"].enforced_by.endswith(":_refuse")
+    assert by_id["weights_refused"].enforced_by.endswith(":_refuse")
+    assert by_id["codes_asked"].enforced_by.endswith(":_refuse")
+    assert by_id["weighted_kmeans"].enforced_by.endswith(":run")
+    for r in c.relations:
+        if r.rung == "refused":
+            module, name = r.enforced_by.split(":")
+            assert "SubgroupsRefused(" in inspect.getsource(
+                getattr(importlib.import_module(module), name)), r.name
+    words = c.option("kmeans_silhouette").sound["prediction"]
+    assert "sample weights" in words

@@ -13,7 +13,10 @@ What it does, in the order it runs:
     "smallest k with Gap(k) ≥ Gap(k+1) − s(k+1)" rule, squared Euclidean distances, reference
     data drawn along the principal components);
   - ``gmm``: a Gaussian mixture, *k* and the covariance shape by BIC (Schwarz 1978; Fraley &
-    Raftery 2002), the shapes named as mclust names them (VII, VVI, EEE, VVV);
+    Raftery 2002), the shapes named as mclust names them (VII, VVI, EEE, VVV). EM finds local
+    optima: the chosen model and its BIC agree with mclust's best of its randomized starts, but a
+    cell far from the chosen one (a larger *k*) may sit a few BIC units either side of mclust's,
+    each program stopping in a different optimum;
   - ``pam_gower``: k-medoids (PAM, Kaufman & Rousseeuw 1990, BUILD then SWAP as R's
     ``cluster::pam`` runs them) on the Gower distance (Gower 1971), the one method here that reads
     categories: a category is a match or a mismatch, an ordered one its rank, a number its
@@ -28,12 +31,22 @@ What it does, in the order it runs:
   people, is averaged over the resamples, and the resamples where it dissolved (≤ 0.5) or was
   recovered (> 0.75) are counted.
 * **Survey weights** are honored where the method has a weighted form and refused with an exit
-  where it does not. k-means takes the weights in its objective, its standardization and its
-  silhouette (each person counts as the number of people their weight stands for, so integer
-  weights give exactly what the rows repeated would), and its stability resamples PSUs within
-  strata. The gap statistic's structureless reference, the mixture's BIC and the medoids have no
-  design-based form: each is refused under weights, with the weighted k-means and the sample-only
-  description as the exits.
+  where it does not. A survey weight is how many people in the population a participant stands
+  for, so every weighted number here is the same when every weight is multiplied by one constant
+  (the weights are read relative to their mean). k-means takes the weights in its standardization
+  (the weighted mean and SD, as ``survey::svyvar`` estimates them), its objective and its
+  silhouette (each person's mean distance to the *others* in their subgroup, weighted: equal
+  weights give Rousseeuw's silhouette exactly), and its stability uses the rescaled bootstrap for
+  complex surveys (Rao, Wu & Yue 1992): n_h − 1 PSUs drawn within each stratum, the weights
+  rescaled, and the Jaccard counted in weights. The gap statistic's structureless reference, the
+  mixture's BIC and the medoids have no design-based form: each is refused under weights, with
+  the weighted k-means and the sample-only description as the exits.
+* **Every exit runs.** Each refusal's exits are built for the plan at hand, so following one
+  (:func:`follow_exit`) never walks into another refusal of the same run: an exit that keeps the
+  weights never offers a method the weights refuse.
+* **Whole-number codes are asked about.** A column of 3 to 10 whole-number values (race coded
+  1–5, a Likert score) may be codes or amounts; it is refused until its reading is settled
+  (``numeric=`` or ``categorical=``, from the readings ledger), never silently read as amounts.
 * **No outcome is used.** The outcome named to :func:`run` is refused as a feature. Under Predict,
   membership as a feature is :class:`SubgroupMembership`, an estimator fitted inside each training
   fold (rule, standardization, centers and all) and applied to the held-out fold.
@@ -69,6 +82,8 @@ GOWER = "Gower 1971, Biometrics 27:857"
 HENNIG = "Hennig 2007, Comput Stat Data Anal 52:258"
 HUANG = "Huang 1998, Data Min Knowl Discov 2:283"
 NEWBY_TUCKER = "Newby & Tucker 2004, Nutr Rev 62:177"
+RAO_WU_YUE = "Rao, Wu & Yue 1992, Surv Methodol 18:209"
+LUMLEY = "Lumley 2004, J Stat Softw 9(8):1"
 
 METHODS: tuple[str, ...] = ("kmeans", "gmm", "pam_gower")
 RULES: dict[str, tuple[str, ...]] = {"kmeans": ("silhouette", "gap"), "gmm": ("bic",),
@@ -96,8 +111,7 @@ DISSOLVED = 0.5  # Hennig 2007: a Jaccard of 0.5 or less, the subgroup has disso
 RECOVERED = 0.75  # above 0.75 it was found again
 PAM_MAX_ROWS = 4000  # PAM holds every pair's distance; past this it would not fit in memory
 
-SAMPLE_ONLY = {"label": "Describe these participants only (unweighted, sample-only)",
-               "method": None, "weights": None}
+CODE_VALUES = (3, 10)  # whole numbers with this many values may be codes: asked, not assumed
 
 
 class SubgroupsRefused(ValueError):
@@ -180,6 +194,9 @@ class Features:
     numeric: tuple[str, ...]
     categorical: tuple[str, ...]  # unordered: a match or a mismatch
     ordinal: tuple[str, ...]  # ordered categories: their rank
+    # whole-number columns of 3 to 10 values whose reading is not settled: codes or amounts? (held
+    # among the numbers until answered; ``run`` refuses while any is here)
+    ambiguous: tuple[str, ...] = ()
 
     @property
     def columns(self) -> tuple[str, ...]:
@@ -191,13 +208,16 @@ class Features:
 
 
 def read_features(frame: pd.DataFrame, columns: Sequence[str], *, categorical: Sequence[str] = (),
+                  numeric: Sequence[str] = (),
                   outcome: str | Sequence[str] | None = None) -> Features:
     """Sort ``columns`` into numbers, categories and ordered categories, refusing what clustering
     cannot honestly read: the outcome, a blank value, a column with one value.
 
     A column is a category when it is text, yes/no, a pandas category, has only two values (a
     0/1 code is a category, not an amount), or is named in ``categorical`` (its settled reading);
-    an ordered pandas category is ordinal."""
+    an ordered pandas category is ordinal. A column named in ``numeric`` is an amount. A column of
+    3 to 10 whole-number values named in neither may be codes (race coded 1–5) or amounts (a
+    count): it is listed as ``ambiguous``, and :func:`run` asks before reading it."""
     outcomes = {outcome} if isinstance(outcome, str) else set(outcome or ())
     columns = list(dict.fromkeys(columns))
     if not columns:
@@ -226,19 +246,28 @@ def read_features(frame: pd.DataFrame, columns: Sequence[str], *, categorical: S
             f"{_listed(flat)} {'is' if one else 'are'} the same for everyone, so "
             f"{'it' if one else 'they'} cannot tell people apart.",
             [{"label": f"Group without {_listed(flat)}", "drop": flat}])
-    named = set(categorical)
-    numeric, cats, ords = [], [], []
+    named, amounts = set(categorical), set(numeric)
+    both = sorted(named & amounts)
+    if both:
+        raise ValueError(f"{both} named both a category and a number")
+    numeric, cats, ords, ambiguous = [], [], [], []
+    lo, hi = CODE_VALUES
     for c in columns:
         s = frame[c]
         if isinstance(s.dtype, pd.CategoricalDtype) and s.dtype.ordered:
             ords.append(c)
+        elif c in amounts:
+            numeric.append(c)
         elif (c in named or isinstance(s.dtype, pd.CategoricalDtype)
               or pd.api.types.is_bool_dtype(s) or not pd.api.types.is_numeric_dtype(s)
               or s.nunique() == 2):
             cats.append(c)
         else:
             numeric.append(c)
-    return Features(tuple(numeric), tuple(cats), tuple(ords))
+            v = s.to_numpy(dtype=float)
+            if lo <= s.nunique() <= hi and np.all(v == np.round(v)):
+                ambiguous.append(c)
+    return Features(tuple(numeric), tuple(cats), tuple(ords), tuple(ambiguous))
 
 
 def _listed(items: Sequence[str]) -> str:
@@ -255,21 +284,24 @@ def _weights(frame: pd.DataFrame, weights: str | Sequence[float] | np.ndarray | 
         raise SubgroupsRefused("Every weight must be a positive number.",
                                [{"label": "Keep the rows with a positive weight",
                                  "rows": "positive_weight"}])
-    return w
+    return w / w.mean()  # a weight counts relative to the others: scale-free from here on
 
 
 def standardize(X: np.ndarray, w: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray,
                                                                       np.ndarray]:
-    """z-scores as R's ``scale()`` makes them (the standard deviation with n − 1); with weights,
-    each row counts as its weight, so integer weights match the rows repeated."""
+    """z-scores as R's ``scale()`` makes them (the standard deviation with n − 1). With survey
+    weights, the weighted mean and the design-based SD ``survey::svyvar`` estimates (Lumley 2004):
+    Σw(x − m)² / Σw · n/(n − 1), n the number of rows, so multiplying every weight by one constant
+    changes nothing and equal weights give ``scale()``."""
     X = np.asarray(X, dtype=float)
     if w is None:
         mean = X.mean(axis=0)
         sd = X.std(axis=0, ddof=1)
     else:
-        W = w.sum()
+        w = np.asarray(w, dtype=float)
+        n, W = len(w), w.sum()
         mean = (w[:, None] * X).sum(axis=0) / W
-        sd = np.sqrt((w[:, None] * (X - mean) ** 2).sum(axis=0) / (W - 1))
+        sd = np.sqrt((w[:, None] * (X - mean) ** 2).sum(axis=0) / W * n / (n - 1))
     return (X - mean) / sd, mean, sd
 
 
@@ -474,14 +506,20 @@ def silhouette(labels: np.ndarray, *, X: np.ndarray | None = None, D: np.ndarray
     """Each row's silhouette width (Rousseeuw 1987; ``cluster::silhouette``) on the Euclidean
     distance of ``X`` or the dissimilarities ``D``: s = (b − a) / max(a, b), with a the mean
     distance to the others in its own subgroup and b the smallest mean distance to another; 0 in
-    a subgroup of one. With weights each row counts as its weight (integer weights give exactly
-    what the rows repeated would)."""
+    a subgroup of one. With survey weights each mean is weighted: a is the weighted mean distance
+    to the *others* in the subgroup, Σ_{j≠i} w_j d_ij / Σ_{j≠i} w_j, and b the weighted mean
+    distance to another subgroup's members, so multiplying every weight by one constant changes
+    nothing and equal weights give Rousseeuw's widths exactly. (WeightedCluster's ``ASW`` divides
+    by W − 1, which reads the weights as counts of repeated rows and changes with their scale; its
+    ``ASWw`` divides by W, counting the person at distance 0 from themself, which gives a lone
+    person a width of 1 (Studer 2013, LIVES Working Paper 24, R WeightedCluster).)"""
     labels = np.asarray(labels)
     n = len(labels)
     w = np.ones(n) if w is None else np.asarray(w, dtype=float)
     groups = np.unique(labels)
     member = labels[:, None] == groups[None, :]  # row × subgroup
     W = (w[:, None] * member).sum(axis=0)
+    N = member.sum(axis=0)  # people, to tell a subgroup of one
     out = np.empty(n)
     for start in range(0, n, chunk):
         rows = slice(start, min(n, start + chunk))
@@ -493,12 +531,14 @@ def silhouette(labels: np.ndarray, *, X: np.ndarray | None = None, D: np.ndarray
             d = cdist(X[rows], X)
         S = d @ (w[:, None] * member)  # row × subgroup: weighted distance sums
         own = member[rows]
-        Wown = W[np.argmax(own, axis=1)]
-        a = np.where(Wown > 1, S[own] / np.where(Wown > 1, Wown - 1, 1), 0.0)
+        g = np.argmax(own, axis=1)
+        alone = N[g] < 2
+        others = np.where(alone, 1.0, W[g] - w[rows])  # the weight of the others in the subgroup
+        a = np.where(alone, 0.0, S[own] / others)
         mean_other = np.where(own, np.inf, S / W[None, :])
         b = mean_other.min(axis=1)
         top = np.maximum(a, b)
-        s = np.where((Wown > 1) & (top > 0), (b - a) / np.where(top > 0, top, 1), 0.0)
+        s = np.where(~alone & (top > 0), (b - a) / np.where(top > 0, top, 1), 0.0)
         out[rows] = s
     return out
 
@@ -571,20 +611,59 @@ def resamples(n: int, B: int, rng: np.random.Generator, *, strata: np.ndarray | 
     return out
 
 
-def bootstrap_jaccard(labels: np.ndarray, refit: Callable[[np.ndarray], np.ndarray],
-                      draws: Sequence[np.ndarray]) -> np.ndarray:
+def replicate_weights(w: np.ndarray, B: int, rng: np.random.Generator, *,
+                      strata: np.ndarray | None = None, psu: np.ndarray | None = None
+                      ) -> list[tuple[np.ndarray, np.ndarray]]:
+    """``B`` replicates of the rescaled bootstrap for complex surveys (Rao, Wu & Yue 1992; R's
+    ``survey::as.svrepdesign(type = "subbootstrap")``): in each stratum of n_h PSUs, n_h − 1 are
+    drawn with replacement, and a drawn PSU's people get the weight w · n_h / (n_h − 1) · (times
+    drawn), so each replicate weight's expectation is the weight itself. A stratum of one PSU keeps
+    it, at its weight. With no design, each person is a PSU in one stratum. Each replicate is the
+    people drawn (in the order first drawn) and their replicate weights."""
+    w = np.asarray(w, dtype=float)
+    n = len(w)
+    strata = np.zeros(n, dtype=int) if strata is None else np.asarray(strata)
+    psu = np.arange(n) if psu is None else np.asarray(psu)
+    units: list[list[np.ndarray]] = []
+    for h in pd.unique(strata):
+        in_h = strata == h
+        units.append([np.flatnonzero(in_h & (psu == p)) for p in pd.unique(psu[in_h])])
+    out = []
+    for _ in range(B):
+        factor = np.zeros(n)
+        order: list[np.ndarray] = []
+        for stratum in units:
+            n_h = len(stratum)
+            if n_h == 1:
+                factor[stratum[0]] = 1.0
+                order.append(stratum[0])
+                continue
+            for i in rng.integers(0, n_h, n_h - 1):
+                factor[stratum[i]] += n_h / (n_h - 1)
+                order.append(stratum[i])
+        rows = pd.unique(np.concatenate(order))
+        out.append((rows, w[rows] * factor[rows]))
+    return out
+
+
+def bootstrap_jaccard(labels: np.ndarray, refit: Callable[..., np.ndarray],
+                      draws: Sequence[np.ndarray], *, w: np.ndarray | None = None,
+                      draw_weights: Sequence[np.ndarray] | None = None) -> np.ndarray:
     """Subgroup × resample: each original subgroup's Jaccard similarity with the most similar
     subgroup found again on the resample, both restricted to the resampled rows (Hennig 2007;
     ``fpc::clusterboot(bootmethod = "boot")``). ``refit(rows)`` clusters those rows again and
-    returns their labels."""
+    returns their labels; with ``draw_weights`` (the replicate weights of
+    :func:`replicate_weights`) it is called ``refit(rows, weights)``. With survey weights ``w``
+    the Jaccard counts weights, not people: |A ∩ B|_w / |A ∪ B|_w."""
     labels = np.asarray(labels)
     groups = np.unique(labels)
     out = np.zeros((len(groups), len(draws)))
     for b, rows in enumerate(draws):
-        again = np.asarray(refit(rows))
-        mine = labels[rows][:, None] == groups[None, :]
-        theirs = again[:, None] == np.unique(again)[None, :]
-        inter = mine.T.astype(float) @ theirs.astype(float)
+        again = np.asarray(refit(rows) if draw_weights is None else refit(rows, draw_weights[b]))
+        wr = np.ones(len(rows)) if w is None else np.asarray(w, dtype=float)[rows]
+        mine = (labels[rows][:, None] == groups[None, :]) * wr[:, None]
+        theirs = (again[:, None] == np.unique(again)[None, :]) * wr[:, None]
+        inter = mine.T @ (theirs > 0)
         union = mine.sum(0)[:, None] + theirs.sum(0)[None, :] - inter
         jac = np.where(union > 0, inter / np.where(union > 0, union, 1), 0.0)
         out[:, b] = jac.max(axis=1) if jac.size else 0.0
@@ -598,6 +677,7 @@ class Stability:
     recovered: tuple[int, ...]  # resamples with a Jaccard above 0.75
     n_boot: int
     by_design: bool  # PSUs resampled within strata
+    rescaled: bool = False  # survey weights: the rescaled bootstrap, the Jaccard in weights
 
     def words(self, i: int) -> str:
         j = self.mean_jaccard[i]
@@ -646,25 +726,28 @@ class Subgroups:
 
 
 def run(frame: pd.DataFrame, columns: Sequence[str], plan: Plan, *,
-        categorical: Sequence[str] = (), outcome: str | Sequence[str] | None = None,
+        categorical: Sequence[str] = (), numeric: Sequence[str] = (),
+        outcome: str | Sequence[str] | None = None,
         weights: str | Sequence[float] | np.ndarray | None = None,
         strata: str | None = None, psu: str | None = None) -> Subgroups:
     """Find subgroups of similar people by the declared ``plan``, never reading the outcome."""
     if not isinstance(plan, Plan):
         raise TypeError("run takes a declared plan (subgroups.declare), so k's rule comes first")
-    features = read_features(frame, columns, categorical=categorical, outcome=outcome)
+    features = read_features(frame, columns, categorical=categorical, numeric=numeric,
+                             outcome=outcome)
     w = _weights(frame, weights)
     _refuse(plan, features, w is not None)
     n = len(frame)
     if plan.k_max >= n:
+        fewer = min(n - 1, max(2, n // 10))
         raise SubgroupsRefused(f"{n} people cannot be split into up to {plan.k_max} subgroups.",
-                               [{"label": "Search fewer subgroups", "k_max": max(2, n // 10)}])
+                               [{"label": "Search fewer subgroups",
+                                 "k_range": [plan.k_min, fewer]}] if plan.k_min <= fewer else [])
     if plan.method == "pam_gower" and n > PAM_MAX_ROWS:
         raise SubgroupsRefused(
             f"k-medoids compares every pair of people, and {n} people are more than its "
             f"{PAM_MAX_ROWS} allow here.",
-            [{"label": "Group by the numbers only with k-means", "method": "kmeans",
-              "drop": list(features.non_numeric)}] if features.numeric else [])
+            [_numbers_only(plan, features, "kmeans", "silhouette")] if features.numeric else [])
     seeds = {"starts": plan.seed, "gap_reference": [plan.seed, 1], "bootstrap": [plan.seed, 2]}
     shape = None
     medoids: tuple[int, ...] = ()
@@ -710,9 +793,9 @@ def run(frame: pd.DataFrame, columns: Sequence[str], plan: Plan, *,
                 k = tibs_se_max(table["gap"], table["se"])
             labels, centers = fits[k][0], fits[k][1]
 
-            def refit(rows: np.ndarray) -> np.ndarray:
-                return _kmeans(Z[rows], k, None if w is None else w[rows], plan.seed,
-                               plan.n_init)[0]
+            def refit(rows: np.ndarray, rw: np.ndarray | None = None) -> np.ndarray:
+                # under weights, the replicate's rescaled weights (Rao, Wu & Yue 1992)
+                return _kmeans(Z[rows], k, rw, plan.seed, plan.n_init)[0]
         else:
             rows = []
             models = {}
@@ -741,14 +824,18 @@ def run(frame: pd.DataFrame, columns: Sequence[str], plan: Plan, *,
     if plan.n_boot and k > 1:
         rng = np.random.default_rng([plan.seed, 2])
         by_design = strata is not None or psu is not None
-        draws = resamples(n, plan.n_boot, rng,
-                          strata=None if strata is None else frame[strata].to_numpy(),
-                          psu=None if psu is None else frame[psu].to_numpy())
-        jac = bootstrap_jaccard(labels, refit, draws)
+        design = {"strata": None if strata is None else frame[strata].to_numpy(),
+                  "psu": None if psu is None else frame[psu].to_numpy()}
+        if w is None:
+            jac = bootstrap_jaccard(labels, refit, resamples(n, plan.n_boot, rng, **design))
+        else:
+            reps = replicate_weights(w, plan.n_boot, rng, **design)
+            jac = bootstrap_jaccard(labels, refit, [r for r, _ in reps], w=w,
+                                    draw_weights=[rw for _, rw in reps])
         stability = Stability(tuple(float(x) for x in jac.mean(axis=1)),
                               tuple(int(x) for x in (jac <= DISSOLVED).sum(axis=1)),
                               tuple(int(x) for x in (jac > RECOVERED).sum(axis=1)),
-                              plan.n_boot, by_design)
+                              plan.n_boot, by_design, w is not None)
     ww = np.ones(n) if w is None else w
     sizes = tuple(int((labels == g).sum()) for g in range(k))
     shares = tuple(float(ww[labels == g].sum() / ww.sum()) for g in range(k))
@@ -757,39 +844,130 @@ def run(frame: pd.DataFrame, columns: Sequence[str], plan: Plan, *,
                      medoids, centers, seeds, model, relabel)
 
 
+def _range_for(plan: Plan, rule: str) -> list[int]:
+    """The declared range of k, made valid for ``rule`` (the silhouette needs two subgroups)."""
+    lo, hi = plan.k_min, plan.k_max
+    if rule == "silhouette":
+        lo = max(2, lo)
+    elif rule == "gap":
+        lo = 1
+    return [lo, max(lo, hi)]
+
+
+def _switch(plan: Plan, method: str, rule: str) -> dict[str, Any]:
+    if (method, rule) == (plan.method, plan.rule):
+        return {}
+    return {"method": method, "rule": rule, "k_range": _range_for(plan, rule)}
+
+
+def _numbers_only(plan: Plan, features: Features, method: str, rule: str,
+                  weighted: bool = False) -> dict[str, Any]:
+    cats = list(features.non_numeric)
+    label = ("Weighted k-means with the silhouette rule (each person counts as the people their "
+             "weight stands for)" if weighted else
+             "Group by the numbers only" if (method, rule) == (plan.method, plan.rule) else
+             "Group by the numbers only with k-means")
+    if weighted and cats:
+        label += ", by the numbers only"
+    if cats:
+        label += f", without {_listed(cats)}"
+    out: dict[str, Any] = {"label": label, **_switch(plan, method, rule)}
+    if cats:
+        out["drop"] = cats
+    return out
+
+
+def _sample_only(plan: Plan, method: str | None = None, rule: str | None = None
+                 ) -> dict[str, Any]:
+    label = "Describe these participants only (unweighted, sample-only)"
+    if method == "pam_gower" and plan.method != "pam_gower":
+        label += ", with k-medoids on the Gower distance, which reads categories"
+    return {"label": label, "weights": None,
+            **(_switch(plan, method, rule) if method and rule else {})}
+
+
 def _refuse(plan: Plan, features: Features, weighted: bool) -> None:
-    if plan.method in ("kmeans", "gmm") and features.non_numeric:
-        cats = list(features.non_numeric)
-        exits = [{"label": "Use k-medoids with the Gower distance, which reads categories as "
-                           "matches and mismatches", "method": "pam_gower"}]
+    """Refuse what the plan cannot honestly run, each refusal with exits built for this plan so
+    that following one (:func:`follow_exit`) never walks into another of these refusals: the
+    reading of whole-number codes first, then categories, then survey weights."""
+    weighted_ok = plan.method == "kmeans" and plan.rule == "silhouette"
+    if features.ambiguous:
+        amb = list(features.ambiguous)
+        one = len(amb) == 1
+        exits: list[dict[str, Any]] = [
+            {"label": f"Read {_listed(amb)} as amounts (a count or a score)", "numeric": amb}]
+        if plan.method == "pam_gower":
+            exits.append({"label": f"Read {_listed(amb)} as codes for categories",
+                          "categorical": amb})
+        elif not weighted:
+            exits.append({"label": f"Read {_listed(amb)} as codes for categories, with k-medoids "
+                                   "on the Gower distance, which reads categories",
+                          "categorical": amb, **_switch(plan, "pam_gower", "silhouette")})
+        if len(features.columns) > len(amb):
+            exits.append({"label": f"Group without {_listed(amb)}", "drop": amb})
+        raise SubgroupsRefused(
+            f"{_listed(amb)} {'holds' if one else 'hold'} only a few whole-number values: "
+            f"{'it' if one else 'they'} may be codes for categories (race coded 1 to 5), which "
+            "would be read as amounts, or amounts (a count). Say which.", exits)
+    cats = list(features.non_numeric)
+    if plan.method in ("kmeans", "gmm") and cats:
+        exits = []
         if features.numeric:
-            exits.insert(0, {"label": f"Group by the numbers only, without {_listed(cats)}",
-                             "drop": cats})
+            exits.append(_numbers_only(plan, features, "kmeans", "silhouette", True)
+                         if weighted and not weighted_ok else
+                         _numbers_only(plan, features, plan.method, plan.rule))
+        if weighted:  # k-medoids is refused under weights: only without them
+            exits.append(_sample_only(plan, "pam_gower", "silhouette"))
+        else:
+            exits.append({"label": "Use k-medoids with the Gower distance, which reads "
+                                   "categories as matches and mismatches",
+                          **_switch(plan, "pam_gower", "silhouette")})
         raise SubgroupsRefused(
             f"{_listed(cats)} {'is a category' if len(cats) == 1 else 'are categories'}: "
             f"{'k-means' if plan.method == 'kmeans' else 'a Gaussian mixture'} measures distance "
             "on numbers, and coding a category as 0/1 columns would make its distances "
             f"arbitrary ({HUANG}).", exits)
-    if not weighted:
+    if not weighted or weighted_ok:
         return
-    weighted_kmeans = {"label": "Weighted k-means with the silhouette rule (each person counts "
-                                "as the people their weight stands for)",
-                       "method": "kmeans", "rule": "silhouette"}
+    exits = ([_numbers_only(plan, features, "kmeans", "silhouette", True)]
+             if features.numeric else [])
+    exits.append(_sample_only(plan))
     if plan.method == "gmm":
         raise SubgroupsRefused(
             "A Gaussian mixture's BIC is a likelihood's, and survey weights make no likelihood: "
-            "there is no design-based BIC to choose the number of subgroups by.",
-            [weighted_kmeans, SAMPLE_ONLY])
+            "there is no design-based BIC to choose the number of subgroups by.", exits)
     if plan.method == "pam_gower":
         raise SubgroupsRefused(
             "k-medoids has no design-based form here: a medoid is one participant, and weights "
-            "would only change which one.",
-            [weighted_kmeans, SAMPLE_ONLY] if features.numeric else [SAMPLE_ONLY])
-    if plan.rule == "gap":
-        raise SubgroupsRefused(
-            "The gap statistic compares the data with structureless data drawn in their box; "
-            "that reference has no design-based form, so it cannot use survey weights.",
-            [weighted_kmeans, SAMPLE_ONLY])
+            "would only change which one.", exits)
+    raise SubgroupsRefused(
+        "The gap statistic compares the data with structureless data drawn in their box; "
+        "that reference has no design-based form, so it cannot use survey weights.", exits)
+
+
+def follow_exit(exit: Mapping[str, Any], plan: Plan, columns: Sequence[str],
+                **options: Any) -> tuple[Plan, list[str], dict[str, Any]]:
+    """What following a refusal's exit asks: the plan re-declared with the exit's method, rule and
+    range (its seed, starts and resamples kept), the columns without those it drops, and
+    :func:`run`'s keyword options with its readings added (``numeric``, ``categorical``) and the
+    weights and design removed when it describes the sample only. An exit naming a step or rows
+    (``step``, ``rows``) is outside this run and is returned unchanged."""
+    method = exit.get("method", plan.method)
+    rule = exit.get("rule", plan.rule if method == plan.method else None)
+    k_range = tuple(exit.get("k_range", (plan.k_min, plan.k_max)))
+    new = declare(method, rule, k_range=k_range, seed=plan.seed, n_init=plan.n_init,
+                  n_boot=plan.n_boot, shapes=plan.shapes or ("spherical", "diag", "tied",
+                                                             "full"), gap_b=plan.gap_b)
+    drop = set(exit.get("drop", ()))
+    cols = [c for c in columns if c not in drop]
+    opts = dict(options)
+    for reading in ("numeric", "categorical"):
+        if reading in exit:
+            opts[reading] = list(opts.get(reading, ())) + list(exit[reading])
+    if "weights" in exit and exit["weights"] is None:
+        for key in ("weights", "strata", "psu"):
+            opts.pop(key, None)
+    return new, cols, opts
 
 
 def _largest_first(labels: np.ndarray, w: np.ndarray | None) -> tuple[np.ndarray, dict[int, int]]:
@@ -844,8 +1022,9 @@ def methods_sentence(result: Subgroups) -> str:
             "gap": f"the gap statistic with the one-standard-error rule ({TIBSHIRANI})",
             "bic": f"the lowest BIC across covariance structures "
                    f"{', '.join(SHAPES[s] for s in p.shapes)} ({SCHWARZ})"}[p.rule]
-    weights = (" Survey weights entered the standardization, the k-means objective and the "
-               "silhouette." if result.weighted else "")
+    weights = (" Survey weights entered the standardization (the design-based standard "
+               f"deviation; {LUMLEY}), the k-means objective and the silhouette, each unchanged by "
+               "the weights' scale." if result.weighted else "")
     chosen = (f"{result.k} subgroups" if result.k > 1 else "a single group (no subgroups)")
     shape = f", covariance structure {SHAPES[result.shape]}" if result.shape else ""
     starts = ("the algorithm is deterministic" if p.method == "pam_gower"
@@ -856,8 +1035,15 @@ def methods_sentence(result: Subgroups) -> str:
          f"{chosen}{shape} ({starts}).{weights}")
     if result.stability is not None:
         st = result.stability
-        how = ("primary sampling units resampled within strata" if st.by_design
-               else "participants resampled with replacement")
+        if st.rescaled:
+            how = ("the rescaled bootstrap for complex surveys: "
+                   + ("primary sampling units resampled within strata, n_h − 1 from a stratum of "
+                      "n_h" if st.by_design else "n − 1 participants drawn with replacement")
+                   + f", with the weights rescaled ({RAO_WU_YUE}); Jaccard similarities in "
+                   "survey weights")
+        else:
+            how = ("primary sampling units resampled within strata" if st.by_design
+                   else "participants resampled with replacement")
         js = ", ".join(f"{j:.2f}" for j in st.mean_jaccard)
         s += (f" Stability was assessed by {st.n_boot} bootstrap resamples ({how}) as each "
               f"subgroup's mean Jaccard similarity with its closest subgroup in the resample "
@@ -884,7 +1070,7 @@ class SubgroupMembership:
     def __init__(self, method: str = "kmeans", rule: str | None = None,
                  k_range: tuple[int, int] | None = None, seed: int = 0, n_init: int = 25,
                  shapes: Sequence[str] = ("spherical", "diag", "tied", "full"),
-                 categorical: Sequence[str] = ()):
+                 categorical: Sequence[str] = (), numeric: Sequence[str] = ()):
         self.method = method
         self.rule = rule
         self.k_range = k_range
@@ -892,21 +1078,28 @@ class SubgroupMembership:
         self.n_init = n_init
         self.shapes = shapes
         self.categorical = categorical
+        self.numeric = numeric
 
     def get_params(self, deep: bool = True) -> dict[str, Any]:
         return {k: getattr(self, k) for k in ("method", "rule", "k_range", "seed", "n_init",
-                                              "shapes", "categorical")}
+                                              "shapes", "categorical", "numeric")}
 
     def set_params(self, **params: Any) -> "SubgroupMembership":
         for k, v in params.items():
             setattr(self, k, v)
         return self
 
-    def fit(self, X: pd.DataFrame, y: Any = None) -> "SubgroupMembership":
+    def fit(self, X: pd.DataFrame, y: Any = None,
+            sample_weight: np.ndarray | None = None) -> "SubgroupMembership":
+        """Fit on the training rows. ``sample_weight`` (the training fold's survey weights, routed
+        by the pipeline) enters the standardization, the k-means objective and the silhouette;
+        the methods with no design-based form refuse it, as :func:`run` does."""
         X = pd.DataFrame(X)
         plan = declare(self.method, self.rule, k_range=self.k_range, seed=self.seed,
                        n_init=self.n_init, n_boot=0, shapes=self.shapes)
-        result = run(X, list(X.columns), plan, categorical=self.categorical)
+        w = None if sample_weight is None else np.asarray(sample_weight, dtype=float)
+        result = run(X, list(X.columns), plan, categorical=self.categorical,
+                     numeric=self.numeric, weights=w)
         self.plan_, self.result_, self.k_ = plan, result, result.k
         f = result.features
         if plan.method == "pam_gower":
@@ -914,7 +1107,7 @@ class SubgroupMembership:
             self.medoid_rows_ = X.iloc[list(result.medoids)][list(f.columns)].copy()
         else:
             raw = X[list(f.numeric)].to_numpy(dtype=float)
-            Z, self.mean_, self.sd_ = standardize(raw)
+            Z, self.mean_, self.sd_ = standardize(raw, w)
             if plan.method == "kmeans":
                 self.centers_ = result.centers
             else:
@@ -941,8 +1134,9 @@ class SubgroupMembership:
         return pd.DataFrame((lab[:, None] == np.arange(self.k_)[None, :]).astype(float),
                             columns=self.feature_names_out_, index=index)
 
-    def fit_transform(self, X: pd.DataFrame, y: Any = None) -> pd.DataFrame:
-        return self.fit(X, y).transform(X)
+    def fit_transform(self, X: pd.DataFrame, y: Any = None,
+                      sample_weight: np.ndarray | None = None) -> pd.DataFrame:
+        return self.fit(X, y, sample_weight=sample_weight).transform(X)
 
     def get_feature_names_out(self, input_features: Any = None) -> np.ndarray:
         return np.asarray(self.feature_names_out_, dtype=object)
@@ -992,8 +1186,9 @@ def _register_contract() -> None:
                    "number by the average silhouette width",
                    f"The most used method in dietary-pattern cluster analyses ({NEWBY_TUCKER}); "
                    f"{HARTIGAN_WONG}; the silhouette, {ROUSSEEUW}",
-                   "Sound as a feature when refitted inside each training fold; numbers only, "
-                   "and survey weights enter its objective",
+                   "Sound as a feature when refitted inside each training fold; numbers only; "
+                   "survey weights, passed to each fold's fit as sample weights, enter its "
+                   "standardization, objective and silhouette",
                    f"{under_inference}; sound as a description", "recommended"),
             option("kmeans_gap",
                    "Groups around average profiles (k-means), the number by the gap statistic",
@@ -1052,7 +1247,14 @@ def _register_contract() -> None:
                      when=("kmeans_silhouette", "kmeans_gap", "gmm_bic"),
                      exits=("group by the numbers only", "k-medoids on the Gower distance"),
                      condition="a text, yes/no, two-valued or declared-category column",
-                     enforced_by=f"{_HERE}:read_features", id="categories_refused"),
+                     enforced_by=f"{_HERE}:_refuse", id="categories_refused"),
+            Relation("conflicts", "whole-number codes read as amounts",
+                     "A column of a few whole-number values (race coded 1 to 5) is asked about, "
+                     "never read as amounts until its reading is settled.", rung="refused",
+                     exits=("read it as amounts", "read it as codes for categories",
+                            "group without it"),
+                     condition="3 to 10 whole-number values, read neither as codes nor amounts",
+                     enforced_by=f"{_HERE}:_refuse", id="codes_asked"),
             Relation("conflicts", "the outcome as a grouping column",
                      "The outcome never defines the subgroups.", rung="refused",
                      exits=("group by the other columns",),
@@ -1074,10 +1276,12 @@ def _register_contract() -> None:
                      condition="two or more subgroups", enforced_by=f"{_HERE}:bootstrap_jaccard",
                      id="stability"),
             Relation("implies", "survey_population",
-                     "With survey weights, k-means weighs each person by their weight and the "
-                     "stability resamples PSUs within strata.",
+                     "With survey weights, k-means weighs each person by their weight in the "
+                     "standardization, its objective and the silhouette, none changed by the "
+                     "weights' scale, and the stability uses the rescaled bootstrap: PSUs "
+                     f"within strata, the weights rescaled ({RAO_WU_YUE}).",
                      when=("kmeans_silhouette",), condition="the surveyed-population answer",
-                     enforced_by=f"{_HERE}:resamples", id="weighted_kmeans"),
+                     enforced_by=f"{_HERE}:run", id="weighted_kmeans"),
             Relation("conflicts", "survey weights without a design-based form",
                      "The gap statistic, the mixture's BIC and k-medoids have no design-based "
                      "form and are refused under survey weights.", rung="refused",
@@ -1085,10 +1289,11 @@ def _register_contract() -> None:
                      exits=("weighted k-means with the silhouette rule",
                             "describe these participants only (unweighted)"),
                      condition="the surveyed-population answer",
-                     enforced_by=f"{_HERE}:run", id="weights_refused"),
+                     enforced_by=f"{_HERE}:_refuse", id="weights_refused"),
         ),
         sources=(MACQUEEN, HARTIGAN, HARTIGAN_WONG, ROUSSEEUW, TIBSHIRANI, SCHWARZ, FRALEY_RAFTERY,
-                 SCRUCCA, KAUFMAN_ROUSSEEUW, GOWER, HENNIG, HUANG, NEWBY_TUCKER),
+                 SCRUCCA, KAUFMAN_ROUSSEEUW, GOWER, HENNIG, HUANG, NEWBY_TUCKER, RAO_WU_YUE,
+                 LUMLEY),
         place="the Describe goal (D1) and, as a feature, the prediction pipeline's in-fold steps",
         leash={"prediction": "available", "inference": "available"},
         short="subgroup membership", clause=_clause, sentence=f"{_HERE}:methods_sentence"))
@@ -1098,6 +1303,7 @@ _register_contract()
 
 
 __all__ = ["CONTRACT", "Features", "GowerSpec", "Plan", "Stability", "SubgroupMembership",
-           "Subgroups", "SubgroupsRefused", "bootstrap_jaccard", "declare", "gap_statistic",
-           "gmm_parameters", "gower", "gower_spec", "methods_sentence", "pam", "profiles",
-           "read_features", "resamples", "run", "silhouette", "standardize", "tibs_se_max"]
+           "Subgroups", "SubgroupsRefused", "bootstrap_jaccard", "declare", "follow_exit",
+           "gap_statistic", "gmm_parameters", "gower", "gower_spec", "methods_sentence", "pam",
+           "profiles", "read_features", "replicate_weights", "resamples", "run", "silhouette",
+           "standardize", "tibs_se_max"]
