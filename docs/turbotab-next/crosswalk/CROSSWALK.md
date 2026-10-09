@@ -55,7 +55,7 @@ Written 2026-10-08 against `turbotab-next` at `2627066d`, and patched the same d
 1. Under Estimate, the outcome beside a column is **hidden until the lock**. Recommended.
 2. Your data shows **one ledger with a Confirm sweep**, and Decide asks only the readings that change a number. Recommended.
 3. Describe **can start with no single outcome**, through a new answer to the outcome question. Recommended.
-4. **All 367 noticings ship in v2.0.0.** This was NOT the recommendation: it keeps the full rollout of about 236 units, so the sizing stays at about 734 units.
+4. ~~All 367 noticings ship in v2.0.0.~~ **Re-ruled 2026-10-09** after the external audit: as recommended. The journey noticings, blockers and family checks ship; the rest are deferred, each stated or in INBOX (T2s), and the sizing drops to about 640 units.
 5. Blanks are **split at the stage line**: who is kept is decided in Who's in, and how kept blanks are filled in each track's Models. Recommended.
 6. A shared-step change after first results under Predict keeps the earlier scores as a **read-only row**, labeled "revised after first results". Recommended.
 

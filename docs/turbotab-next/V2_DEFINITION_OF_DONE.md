@@ -86,7 +86,7 @@ LightGBM, ExtraTrees, kNN, SVM, naive Bayes, LDA and neural networks stay v2.x. 
   - Under Estimate, the outcome beside a column is hidden until the lock.
   - Your data is one ledger plus a Confirm sweep.
   - Describe may start with "No single outcome".
-  - **All 367 noticings ship in v2.0.0,** rolled out family by family with the slices.
+  - ~~All 367 noticings ship in v2.0.0~~. **Re-ruled 2026-10-09:** v2.0.0 ships the thread machinery, the blockers, the 17 family checks and every noticing that fires on the reference journeys, rolled out family by family with the slices. The roughly 138 that no reference journey triggers are deferred to later 2.0.x/v2.x releases, each family once it has realistic test data; until then each is stated in the supplement or listed in INBOX, enforced by the coverage test (U13). In SIZING, T2+ (108 units) becomes T2s (about 14).
   - Blanks are split at the stage line: who is kept in Who's in, how kept blanks are filled in each track's Models.
   - A shared-step change after first results keeps a read-only earlier row.
 - **UI rulings:**
