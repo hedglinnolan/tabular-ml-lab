@@ -29,7 +29,7 @@ def _one_thread():
         yield
 
 N = 200
-FLEXIBLE = ("lasso", "random_forest", "boosted_trees")
+FLEXIBLE = ("lasso", "nuisance_forest", "untuned_boosted_trees")
 
 
 def _data(seed: int = 11) -> dict[str, np.ndarray]:
@@ -120,13 +120,13 @@ def _value(model, Xt):
     return model.predict(Xt)
 
 
-def test_a_boosted_trees_factory_cross_fits_a_yes_no_outcome_and_exposure_as_probabilities():
+def test_an_untuned_boosted_trees_factory_cross_fits_a_yes_no_outcome_and_exposure_as_probabilities():
     from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
 
     data = _data()
     y, d, X = data["y_binary"], data["d_binary"], data["X"]
     splits = est.sample_splits(N, 5, 1, seed=3)
-    found = est.dml_plr(y, d, X, learner=_factory("boosted_trees"), splits=splits,
+    found = est.dml_plr(y, d, X, learner=_factory("untuned_boosted_trees"), splits=splits,
                         outcome_binary=True, seed=7)
 
     def classifier(seed):
@@ -161,7 +161,7 @@ def test_a_least_squares_factory_keeps_the_linear_probability_form():
 
 
 @pytest.mark.parametrize("score", ["ATE", "ATT"])
-@pytest.mark.parametrize("name", ("linear", "lasso", "boosted_trees"))
+@pytest.mark.parametrize("name", ("linear", "lasso", "untuned_boosted_trees"))
 def test_the_interactive_model_gives_a_factory_the_named_learners_estimate(name, score):
     data = _data()
     splits = est.sample_splits(N, 5, 1, seed=3)
@@ -175,7 +175,7 @@ def test_the_interactive_model_gives_a_factory_the_named_learners_estimate(name,
         assert named.extra.get("risk_ratio") == given.extra.get("risk_ratio")
 
 
-@pytest.mark.parametrize("name", ("linear", "lasso", "boosted_trees"))
+@pytest.mark.parametrize("name", ("linear", "lasso", "untuned_boosted_trees"))
 def test_tmle_gives_a_factory_the_named_learners_estimate(name):
     data = _data()
     splits = est.sample_splits(N, 5, 1, seed=3)
