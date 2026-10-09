@@ -730,6 +730,9 @@ def test_3f_feature_wise_tests_run_end_to_end_under_inference(client, depth_csv)
     assert "Penalized coefficients are shrunk and carry no confidence intervals." in \
         families["elastic_net"]["concerns"]
     accepted(client, pid, {"kind": "select_models", "models": ["featurewise"]})
+    # Under Estimate TurboTab records the split with no rows held out (P0.6); a holdout is drawn
+    # here so that the table is seen to read the held-out rows too.
+    accepted(client, pid, {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5})
     wait_for(client, pid, {"fit": "fresh"}, timeout=300)
     model = artifact(client, pid, "fit")["models"][0]
     assert model["family"] == "featurewise" and model["cv"] == {} and model["holdout"] is None

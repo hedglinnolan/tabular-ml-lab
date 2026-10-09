@@ -1004,6 +1004,14 @@ UNPREVIEWED: dict[str, str] = {
         "Confirms the choices already set for the person, as stated, or the triage of the open "
         "noticings: every answer stays as it is, so nothing on the canvas changes; each line "
         "previews its own alternatives when it is opened."),
+    "set_design": (
+        "Names the study design. Observational is the design analyzed here and changes no row, "
+        "column or value; each other design is refused with its reason until it is built, so "
+        "there is nothing to draw."),
+    "set_validation": (
+        "Changes how the training rows are folded to compare the models; the draw and its held-out "
+        "rows stay where they are, no column or value changes, and the scores it moves are shown "
+        "only once Fit is pressed."),
 }
 
 

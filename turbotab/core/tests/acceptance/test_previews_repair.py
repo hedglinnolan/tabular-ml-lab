@@ -107,7 +107,7 @@ def no_psu(tmp_path_factory):
 
 def population(state: d.ProjectState) -> d.ProjectState:
     """``state`` with the surveyed-population answer recorded."""
-    spec = d.SurveySpec(**POPULATION.model_dump(exclude={"kind"}))
+    spec = d.SurveySpec(**POPULATION.model_dump(exclude={"kind", "goal"}))
     return state.model_copy(update={"survey": spec})
 
 
@@ -297,7 +297,7 @@ def test_3_survey_without_a_psu_counts_the_design_by_the_unit_as_the_fit_does(no
     assert ctx.read["survey"]["df"] == record["df"] == 24 - 8
     assert view(result, "distribution").caption.endswith("`16` design degrees of freedom.")
     answered = no_psu.project.state.model_copy(update={
-        "survey": d.SurveySpec(**NO_PSU.model_dump(exclude={"kind"}))})
+        "survey": d.SurveySpec(**NO_PSU.model_dump(exclude={"kind", "goal"}))})
     clusters, _ = no_psu.preview("clusters", CLUSTER_ONLY, state=answered)
     assert view(clusters, "distribution").caption == (
         "`24` groups of 16–36 rows, each a sampling unit: intervals by Taylor linearization over "
@@ -499,8 +499,11 @@ def test_server_a_grouping_spanning_psus_previews_the_block_the_fit_records(tmp_
             "`10` of `24` `site` groups have rows in more than one PSU, up to `15`."]
         refusal = found["caution"]["text"]
         assert refusal.startswith("10 `site` units have rows in more than one PSU")
+        # The exit that keeps the answer is the answer as validated: it names the goal it is
+        # answered under (crosswalk disagreement 9).
         assert [x["decision"] for x in found["caution"]["exits"]] == [
-            {"kind": "set_survey", "estimand": "sample"}, POPULATION.model_dump(mode="json")]
+            {"kind": "set_survey", "estimand": "sample"},
+            {**POPULATION.model_dump(mode="json"), "goal": "inference"}]
         d.decide(POPULATION.model_dump(mode="json"))
         d.answer("exclusions", {"kind": "set_exclusions", "rules": []})
         d.answer("missing", {"kind": "set_missing", "strategy": "complete_case"})

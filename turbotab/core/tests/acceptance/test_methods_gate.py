@@ -70,7 +70,10 @@ def _answer_until(drive: Any, stop: str, answers: dict[str, dict[str, Any]]) -> 
              "energy_adjustment", "models"]
     for key in order:
         step = drive.reach(key)
-        if step["status"] in ("open", "waiting"):
+        # P0.6: under Estimate TurboTab records the split itself (no rows held out); a drive whose
+        # split is another records its own (``Drive._differs``).
+        if step["status"] in ("open", "waiting") or (key in answers
+                                                      and drive._differs(key, answers[key])):
             assert key in answers, f"no answer for the open step {key}"
             if answers[key]["kind"] == "set_roles":
                 # The author's roles, each confirmed on its own (BLUEPRINT §14, the leash).

@@ -1548,6 +1548,8 @@ def survey_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     if found is None:
         return []
     if found.refusal:
+        # The refusal's picture is the design's, not the studied column's: no "drawn on" note.
+        ctx.read.pop("note", None)
         return survey_refused_views(decision, ctx, found, unit)
     design = found.design
     position = pd.Index(design.row_ids).get_indexer(np.asarray(ids, dtype=np.int64))
