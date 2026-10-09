@@ -1,0 +1,102 @@
+# TurboTab v2: the exact versions CI, the Docker image and the launchers install (audit of
+# 2026-10-09, recommendation 10). This is a pip constraints file: it limits versions and installs
+# nothing by itself, so it also covers the test-only libraries of requirements-dev.txt. The floors
+# in requirements.txt say what TurboTab needs; this file says what was tested, so a library's new
+# release can no longer change a result, or the committed OpenAPI document, between two pushes.
+#
+#   python -m pip install -c turbotab/server/constraints.txt -r turbotab/server/requirements.txt
+#
+# One file serves Linux, macOS and Windows on Python 3.12 and newer (the lines with a `;` apply to
+# one platform). To update it, resolve afresh, run the nightly tier of .github/workflows/v2.yml
+# (the full suite and the browser tests; start it with "Run workflow") on the result, and commit
+# the file with whatever the new versions required:
+#
+#   uv pip compile turbotab/server/requirements.txt turbotab/server/requirements-dev.txt \
+#       --universal --python-version 3.12 --no-header --no-annotate -o /tmp/constraints.body
+#
+# then replace everything below this header with that output. To move one library only, edit its
+# line and check that the install command below still resolves. To bring a development
+# environment to these versions:
+#
+#   python -m pip install -c turbotab/server/constraints.txt \
+#       -r turbotab/server/requirements.txt -r turbotab/server/requirements-dev.txt
+
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.15.1
+autograd==1.9.1
+autograd-gamma==0.5.0
+certifi==2026.7.22
+click==8.5.0
+cloudpickle==3.1.2
+colorama==0.4.6 ; sys_platform == 'win32'
+contourpy==1.4.0
+cycler==0.12.1
+duckdb==1.5.6
+et-xmlfile==2.0.0
+execnet==2.1.2
+fastapi==0.143.0
+fonttools==4.66.1
+formulaic==1.2.2
+h11==0.16.0
+httpcore==1.0.9
+httptools==0.8.0
+httpx==0.28.1
+idna==3.20
+iniconfig==2.3.1
+interface-meta==2.0.1
+joblib==1.6.0
+kiwisolver==1.5.1
+lifelines==0.30.3
+lightgbm==4.7.0
+matplotlib==3.11.2
+mypy-extensions==1.1.0
+narwhals==2.26.0
+numpy==2.5.3
+nvidia-nccl-cu13==2.32.3 ; sys_platform == 'linux'
+openpyxl==3.1.5
+opentelemetry-api==1.45.1
+packaging==26.3
+pandas==2.3.3
+pandera==0.34.1
+patsy==1.0.3
+pillow==12.3.0
+pluggy==1.6.0
+pmsampsize==0.1.0
+polars==2.0.0
+polars-runtime-32==2.0.0
+pyarrow==26.0.0
+pydantic==2.14.0
+pydantic-core==2.50.0
+pygments==2.21.0
+pyparsing==3.3.3
+pytest==9.1.1
+pytest-xdist==3.8.0
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.4
+python-multipart==0.0.32
+pytz==2026.5
+pyyaml==6.0.3
+rnanorm==2.2.0
+samplics==0.6.1
+scikit-learn==1.9.1
+scipy==1.18.1
+shap==0.53.0
+six==1.17.0
+slicer==0.0.8
+starlette==1.7.0
+statsmodels==0.14.6
+tabulate==0.9.0
+threadpoolctl==3.7.0
+tqdm==4.70.1
+typeguard==4.6.0
+typing-extensions==4.16.0
+typing-inspect==0.9.0
+typing-inspection==0.4.4
+tzdata==2026.5
+uvicorn==0.54.0
+uvloop==0.23.0 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'
+watchfiles==1.3.0
+websockets==17.2
+wrapt==2.5.0
+xgboost==3.4.1
