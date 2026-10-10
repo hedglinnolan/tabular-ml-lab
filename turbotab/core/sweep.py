@@ -60,6 +60,7 @@ from turbotab.core.materiality import (
     TriageRow,
     finding_done,
     in_triage,
+    invariance,
     limitation_owed,
     triage_rows,
     would_change,
@@ -469,27 +470,89 @@ def gate_passed(state: Any) -> bool:
     return bool(_get(state, "seal_opened" if gate_stage(state) == "results" else "plan_locked"))
 
 
+def _modifiers(state: Any) -> set[str]:
+    """The declared effect modifiers and second factors still standing (a withdrawn one is None,
+    or kept only to count its test)."""
+    return {str(c) for c, spec in (_get(state, "modifications") or {}).items()
+            if spec is not None and not _get(spec, "withdrawn")}
+
+
+# The roles that put a column in the model as an adjustment term, with a coefficient of its own.
+ADJUSTMENT_ROLES = ("covariate", "energy")
+
+
+def adjustment_only(state: Any, column: str) -> bool:
+    """Whether ``column`` reaches the focal estimate only as an adjustment term: under Estimate or
+    Describe with what you study known, its role is a covariate or total energy (a term with a
+    coefficient of its own), it is not the outcome, not what you study, not a declared modifier,
+    and no answer names it but its role. Any other role (a design, time, cluster or flag column,
+    one left out) has no coefficient whose sign a recoding flips, and is not covered. Unanswered
+    roles or purpose, or Predict (no focal estimate), are the strictest case: False."""
+    roles = _get(state, "roles")
+    purpose = _get(state, "purpose")
+    exposures = set(_exposures(state))
+    if not roles or purpose is None or purpose == "prediction" or not exposures:
+        return False
+    if roles.get(column) not in ADJUSTMENT_ROLES:
+        return False
+    if column == _get(state, "target") or column in exposures or column in _modifiers(state):
+        return False
+    from turbotab.core.estimand import fixed_effects_column
+
+    if column == fixed_effects_column(state):
+        return False
+    values = state.model_dump(mode="json") if hasattr(state, "model_dump") else dict(state)
+    return not any(_names(v, column) for slot, v in values.items()
+                   if slot not in WHAT_A_COLUMN_IS and slot != "modifications" and v is not None)
+
+
+def _decided_at(question: str, open_questions: set[str]) -> str:
+    from turbotab.core.voice import question_name
+
+    where = f"{question_name(question)} in {STAGE_NAMES[QUESTIONS[question].stage]}"
+    if question in open_questions:
+        return f"It is decided at {where}, still to come."
+    return (f"It is decided at {where}, already answered: change that answer there if it should "
+            f"act on this.")
+
+
 def recommend(state: Any, finding: Mapping[str, Any], open_questions: set[str]
               ) -> tuple[Disposition, bool, str]:
     """The engine's recommended disposition for an open finding, whether it blocks, and why.
 
-    A critical finding blocks or refuses part of the analysis (UNDERSTANDING_LAYER §2.2, T1): it is
-    acted on first. One routed to a question still to be answered is decided there. A note (info)
-    changes no number, nor does a finding about columns no analysis reads. Otherwise it concerns
-    what the analysis reads, and left as it is it could bias the estimate (or, under prediction,
-    the score): a limitation sentence, unless the person acts on it."""
+    The rules, in order (WAVE_C6A_PLAN §3 row Q-a):
+
+    1. A critical finding blocks or refuses part of the analysis (UNDERSTANDING_LAYER §2.2, T1):
+       it is acted on first.
+    2. A repair that only recodes a column (``repairs.Family.reparameterizes``), renaming the two
+       values it is written with and no others (no second spelling, no blank), on columns that
+       reach the focal estimate only as adjustment terms (:func:`adjustment_only`) changes no
+       number here, exactly: the model matrix spans the same space either way
+       (Frisch–Waugh–Lovell; ``materiality.invariance``).
+    3. A finding with a repair is decided in Your data, where the repair is chosen; one routed to
+       a question, open or answered, is decided at that question. Either way it is acted on
+       there, and the reason names the stage and the question.
+    4. A note (info) changes no number, nor does a finding about columns no analysis reads.
+       Otherwise it concerns what the analysis reads, and left as it is it could bias the
+       estimate (or, under prediction, the score): a limitation sentence, unless the person acts
+       on it."""
     severity = str(finding.get("severity") or "info")
     if severity == "critical":
         return "act_on_it", True, ("It blocks or refuses part of the analysis, so it is resolved "
                                    "before any estimate.")
+    columns = [str(c) for c in finding.get("affected_columns") or []]
+    recoded = reparameterized(state, finding)
+    if recoded is not None:
+        return "no_change", False, recoded.words
+    repaired = _repaired(finding)
     routed = finding.get("routes_to")
-    if routed in open_questions:
-        from turbotab.core.voice import question_name
-
-        return "act_on_it", False, f"It is decided at {question_name(str(routed))}, still to come."
+    if routed in QUESTIONS:
+        return "act_on_it", False, _decided_at(str(routed), open_questions)
+    if repaired:
+        return "act_on_it", False, (f"It is decided in {STAGE_NAMES['data']}, where its repair is "
+                                    f"chosen.")
     if severity == "info":
         return "no_change", False, "A note about the data: no number rests on it."
-    columns = [str(c) for c in finding.get("affected_columns") or []]
     read = [c for c in columns if analysis_reads(state, c)]
     what = "score" if _get(state, "purpose") == "prediction" else "estimate"
     if columns and not read:
@@ -497,6 +560,41 @@ def recommend(state: Any, finding: Mapping[str, Any], open_questions: set[str]
     about = f"It concerns {_tick(read)}, which the analysis reads" if read else \
         "It concerns the whole table, which every number reads"
     return "could_bias", False, f"{about}; left as it is, it could bias the {what}."
+
+
+def family_for(finding_id: str) -> Any:
+    from turbotab.core.repairs import family_for as repair_family  # repairs imports this module
+
+    return repair_family(finding_id)
+
+
+def _repaired(finding: Mapping[str, Any]) -> bool:
+    """A repair this engine applies was offered for it (its family declares one)."""
+    return family_for(str(finding.get("id"))) is not None and bool(finding.get("repairs"))
+
+
+def _relabels(options: Sequence[Mapping[str, Any]]) -> bool:
+    """Every offered option only renames the column's values as written (its params say so:
+    ``repairs._relabels``, two spellings and no blank). Unsaid is not a relabeling."""
+    return bool(options) and all(
+        (_get(_get(o, "decision") or {}, "params") or {}).get("relabels") is True for o in options)
+
+
+def reparameterized(state: Any, finding: Mapping[str, Any]) -> Movement | None:
+    """Where ``finding``'s repair only renames the values, as written, of columns that reach the
+    focal estimate as adjustment terms alone: the predicted movement of the repair on that
+    estimate, exactly 0 by theorem (``materiality.invariance``). None where the rule does not
+    hold: a family that is not a recoding, a column as written that is more than two spellings or
+    holds a blank (the repair then changes the model matrix's space), or a focal column."""
+    family = family_for(str(finding.get("id")))
+    columns = [str(c) for c in finding.get("affected_columns") or []]
+    if family is None or not family.reparameterizes or not _relabels(finding.get("repairs") or []) \
+            or not columns or not all(adjustment_only(state, c) for c in columns):
+        return None
+    focal = _tick(_exposures(state))
+    return invariance(f"Coding {_tick(columns)} the other way round only flips the sign of its own "
+                      f"coefficient; the estimate for {focal}, its interval and the fitted values "
+                      f"stay exactly as they are.")
 
 
 def _open_questions(lines: Iterable[QuestLine]) -> set[str]:
@@ -525,7 +623,7 @@ def _noticing_item(n: Noticing, state: Any, held: Mapping[str, SweptLine], chang
     """A measured noticing at the gate (``materiality.recommend``): its disposition from the band
     of its predicted movement, and the one recorded while it stands."""
     disposition, reason, owed = recommend_noticing(n, purpose=_get(state, "purpose"))
-    stands = _stands(held.get(n.thread), (disposition, False, reason))
+    stands = _stands(held.get(n.thread), (disposition, n.blocker, reason))
     if n.thread in held and not stands:
         changed.append(n.thread)
     label = DISPOSITION_WORDS[disposition]
@@ -537,7 +635,7 @@ def _noticing_item(n: Noticing, state: Any, held: Mapping[str, SweptLine], chang
         id=n.thread, line=f"noticing:{n.thread}", stage=n.stage, summary=n.summary,
         severity="noticing", columns=list(n.subject),
         question=n.question if n.question in QUESTIONS and not n.answered else None,
-        recommended=disposition, label=label, reason=reason, blocker=False,
+        recommended=disposition, label=label, reason=reason, blocker=n.blocker,
         recorded=held[n.thread].value if stands else None, family=n.family,
         band=n.predicted.band, measure=n.predicted.label, calibrated=n.predicted.calibrated,
         limitation=owed, done=n.done)
@@ -573,6 +671,8 @@ def triage(state: Any, log: QuestLog, findings: Any, records: Sequence[Any] = ()
             label = "Could bias the score"
         done = finding_done(state, finding.get("affected_columns") or []) \
             if disposition == "could_bias" else None
+        # A recoding exact by theorem carries its movement: band 0, the theorem its quiet label.
+        exact = reparameterized(state, finding) if disposition == "no_change" else None
         items.append(TriageItem(
             id=fid, line=line.id if line.id.startswith("finding:") else f"finding:{fid}",
             stage=where, summary=line.name, severity=str(finding.get("severity") or "info"),
@@ -582,7 +682,9 @@ def triage(state: Any, log: QuestLog, findings: Any, records: Sequence[Any] = ()
             recorded=held[fid].value if stands else None,
             # Nolan's rule (2026-10-09): a limitation sentence only when it could bias and nothing
             # was done; a declared sensitivity analysis on its columns counts as done.
-            limitation=disposition == "could_bias" and limitation_owed(1, done), done=done))
+            limitation=disposition == "could_bias" and limitation_owed(1, done), done=done,
+            band=exact.band if exact else None, measure=exact.label if exact else None,
+            calibrated=exact.calibrated if exact else None))
     items += [_noticing_item(n, state, held, changed) for n in noticed if in_triage(n)]
     # Blockers first, then by band (a finding, unmeasured, sits with "could bias").
     items.sort(key=lambda i: (not i.blocker, -(1 if i.band is None else i.band)))

@@ -4241,35 +4241,14 @@ def _ticked(text: str, columns: Sequence[str]) -> str:
 
 
 def model_families() -> dict[str, set[str]]:
-    """Model family key -> the tasks it can model, from ``turbotab.core.models`` when present.
+    """Model family key -> the tasks it can model, read from the registry
+    (``turbotab.core.models``; the omics chain's family is registered first)."""
+    import turbotab.core.models  # noqa: F401 - registers the families
+    from turbotab.core.contracts import contracts
+    from turbotab.core.models.base import families
 
-    The registry is the modeling agent's (M1_CONTRACT.md §7); until it is importable the M1
-    families stand in, so a validator never refuses a family that exists.
-    """
-    fallback = {key: {"regression", "binary", "multiclass"}
-                for key in ("linear", "elastic_net", "boosted_trees")}
-    try:
-        import importlib
-
-        module = importlib.import_module("turbotab.core.models")
-    except Exception:
-        return fallback
-    found: Any = None
-    for name in ("FAMILIES", "REGISTRY", "families", "all_families", "registry"):
-        value = getattr(module, name, None)
-        if value is None:
-            continue
-        found = value() if callable(value) and not isinstance(value, Mapping) else value
-        break
-    if found is None:
-        return fallback
-    items = found.values() if isinstance(found, Mapping) else found
-    out: dict[str, set[str]] = {}
-    for family in items:
-        key = _ctx(family, "key")
-        if key:
-            out[str(key)] = {str(t) for t in (_ctx(family, "tasks") or ())}
-    return out or fallback
+    contracts()
+    return {f.key: {str(t) for t in f.tasks} for f in families()}
 
 
 def _models_can_fit_the_task(decision: SelectModels, ctx: Any) -> None:

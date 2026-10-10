@@ -175,6 +175,7 @@ def test_a_family_registered_later_previews_and_traces_itself_with_no_new_code(p
         inductive_bias = "Smooth curves for age; straight lines for everything else."
         strengths = ("Bends where the data bend.",)
         cautions = ("Knots are a choice.",)
+        consequence = "A smooth curve for age and straight lines for the rest."
         # what every family declares (MODEL_FAMILY_CONTRACT §1)
         identity = Identity(kind="estimator", library="scikit-learn", estimator="LinearRegression")
         purposes = ("prediction",)

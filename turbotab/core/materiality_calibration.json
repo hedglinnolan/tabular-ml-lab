@@ -264,6 +264,14 @@
         "cry_wolf": 0
       }
     },
+    "invariance": {
+      "regime": "predicted",
+      "theorem": "Frisch–Waugh–Lovell",
+      "band_1": 0.1,
+      "band_2": 0.5,
+      "calibrated": true,
+      "reason": "Exact by theorem, not a proxy (SURFACING_POLICY §2.6 as amended; WAVE_C6A_PLAN §7 ruling 2): an alternative that leaves the model matrix's column space unchanged (a two-valued column that is not focal coded the other way round, or adjustment terms written another way) leaves the focal coefficient, its standard error and the fitted values exactly where they are, because the focal coefficient depends on the other columns only through the space they span (Frisch & Waugh 1933; Lovell 1963). Its movement is 0 by proof, so it needs no calibration cases, is never floored at band 1, and calibrate keeps this entry as it is. Its thresholds are τ₀ and τ₁, never reached."
+    },
     "sensitivity": {
       "regime": "realized",
       "band_1": 0.1,

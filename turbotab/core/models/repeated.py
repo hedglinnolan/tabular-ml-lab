@@ -588,6 +588,9 @@ class Mixed(FamilyBase):
     diagnostics = ("boundary",)
     raw_scale = {"regression": "value"}
     review_lenses = ("shared",)
+    consequence = ("A random intercept per unit: model-based intervals when rows repeat, even within "
+                   "few units.")
+    card_label = "Mixed model"
 
     def methods_label(self, task: Task | None) -> str:
         return "a random-intercept mixed model"
@@ -674,6 +677,9 @@ class GEE(FamilyBase):
     output = "margin"
     raw_scale = {"regression": "value", "binary": "margin"}
     review_lenses = ("shared",)
+    consequence = ("Population-average effects, with intervals robust to how a unit's repeated rows "
+                   "correlate.")
+    card_label = "GEE"
 
     def methods_label(self, task: Task | None) -> str:
         return "generalized estimating equations"

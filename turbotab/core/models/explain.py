@@ -17,7 +17,9 @@ units for a numeric outcome, the log-odds of the event for a yes/no one.
 * a linear model (least squares, logistic, the elastic net): the exact closed form under
   independent features, ``φ_j(x) = β_j (z_j − E[z_j])`` with ``E`` over the rows the model was fit
   on (Lundberg & Lee 2017, Linear SHAP);
-* boosted trees: path-dependent TreeSHAP, computed exactly from the trees' leaf paths. Each leaf's
+* a tree family (boosted trees): path-dependent TreeSHAP, computed exactly from the trees' leaf
+  paths, which the family gives through its ``trees`` member (:class:`TreeEnsemble`; a family with
+  a compiled TreeSHAP gives it through ``tree_shap``). Each leaf's
   path-dependent value function is a product over the distinct features on its path,
   ``v(S) = value · Π_{d∈S} o_d · Π_{d∉S} z_d`` (``o_d``: the row satisfies every split on ``d``
   along the path; ``z_d``: the product of the training-cover fractions of those splits), so its
@@ -64,8 +66,8 @@ inference none is offered as an effect estimate: the effect is the declared esti
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import Any, Callable, Literal, Mapping, NamedTuple, Sequence
 
 import numpy as np
 import pandas as pd
@@ -140,19 +142,41 @@ class LeafPaths:
 
 @dataclass(frozen=True)
 class TreeEnsemble:
-    """An additive ensemble of trees: ``raw(x) = base[k] + Σ_t tree_t,k(x)`` for output ``k``."""
+    """An additive ensemble of trees: ``out(x) = base[k] + Σ_t tree_t,k(x)`` for output ``k``, as a
+    tree family's ``trees`` member gives its fitted step (MODEL_FAMILY_CONTRACT C10).
+
+    * ``trees``: each tree's leaf paths (:func:`leaf_paths`), ``[output][tree]``.
+    * ``tables``: each tree's nodes, ``[output][tree]``, as structured arrays with scikit-learn's
+      ``TreePredictor.nodes`` field names: ``value``, ``count`` (the training cover: rows, or a
+      hessian sum), ``feature_idx``, ``num_threshold``, ``missing_go_to_left``, ``left``, ``right``,
+      ``depth`` and ``is_leaf`` (``is_categorical`` optional), the root at 0. :func:`leaf_paths`
+      reads one; :func:`tree_structure` reads the first output's.
+    * ``rule``: how a row meets a split: ``"le"`` goes left when its value is ``<=`` the threshold
+      (scikit-learn), ``"lt"`` when it is ``<`` (XGBoost). A blank goes where
+      ``missing_go_to_left`` says under either.
+    * ``scale``: what ``out`` is: ``"margin"``, the model's raw score (the prediction for a number,
+      the log-odds for a yes/no outcome, ``Anatomy.raw_score``); ``"probability"``, a class
+      probability (a forest's averaged leaves: for a yes/no outcome, one output, the class coded 1).
+      :func:`attributions` computes values on either; :func:`explain` presents margin values only,
+      and says a probability scale's are not built here until RT-5d decides how they are shown.
+    """
 
     base: np.ndarray  # (K,)
     trees: list[list[LeafPaths]]  # [output][tree]
+    tables: list[list[np.ndarray]] = field(default_factory=list)  # [output][tree]
+    rule: Literal["le", "lt"] = "le"
+    scale: Literal["margin", "probability"] = "margin"
 
 
 def leaf_paths(nodes: np.ndarray) -> LeafPaths:
-    """The leaf paths of a scikit-learn histogram gradient-boosting tree (``TreePredictor.nodes``).
+    """The leaf paths of one tree from its node table (:class:`TreeEnsemble`'s ``tables``,
+    scikit-learn's ``TreePredictor.nodes``).
 
-    A row goes left when its value is ``<= num_threshold``, and a blank goes where
-    ``missing_go_to_left`` says (scikit-learn's ``_predictor.pyx``). A feature split twice on one
-    path keeps the product of its cover fractions and the intersection of its intervals, as
-    TreeSHAP's unwinding of a repeated feature does."""
+    A split on threshold t sends a row left on the interval below t and right above it; whether t
+    itself goes left (``"le"``) or right (``"lt"``) is the ensemble's ``rule``, read by
+    :func:`tree_shap`. A blank goes where ``missing_go_to_left`` says (scikit-learn's
+    ``_predictor.pyx``). A feature split twice on one path keeps the product of its cover fractions
+    and the intersection of its intervals, as TreeSHAP's unwinding of a repeated feature does."""
     values, features, zero, lower, upper, missing = [], [], [], [], [], []
     stack: list[tuple[int, dict[int, tuple[float, float, float, bool]]]] = [(0, {})]
     while stack:
@@ -187,15 +211,11 @@ def leaf_paths(nodes: np.ndarray) -> LeafPaths:
 
 
 def hgb_ensemble(model: Any) -> TreeEnsemble:
-    """A fitted ``HistGradientBoostingRegressor`` / ``…Classifier`` as leaf paths, on its raw
-    (margin) scale: the outcome's for a regression, the log-odds for a binary classifier."""
-    base = np.atleast_1d(np.asarray(model._baseline_prediction, dtype=float).ravel())
-    outputs = len(model._predictors[0])
-    trees: list[list[LeafPaths]] = [[] for _ in range(outputs)]
-    for iteration in model._predictors:
-        for k, predictor in enumerate(iteration):
-            trees[k].append(leaf_paths(predictor.nodes))
-    return TreeEnsemble(base=base, trees=trees)
+    """A fitted histogram gradient-boosting model as a :class:`TreeEnsemble`: the boosted trees'
+    ``trees`` member (``models.boosted_trees.hgb_ensemble``), named here as before."""
+    from turbotab.core.models.boosted_trees import hgb_ensemble as boosted
+
+    return boosted(model)
 
 
 def _shapley_weights(k: int) -> np.ndarray:
@@ -227,7 +247,9 @@ def _path_shapley(one: np.ndarray, zero: np.ndarray) -> np.ndarray:
 
 def tree_shap(ensemble: TreeEnsemble, Z: Any, *, chunk: int = 256) -> tuple[np.ndarray, np.ndarray]:
     """Path-dependent TreeSHAP values of every row of ``Z`` (n, p): ``(phi (n, p, K), expected
-    (K,))``, with ``expected + phi.sum(axis=1) == raw prediction`` for every row."""
+    (K,))``, with ``expected + phi.sum(axis=1)`` equal to the ensemble's output for every row, on
+    its ``scale``. A row meets each split by the ensemble's ``rule``."""
+    below = ensemble.rule == "lt"  # the threshold itself goes right
     X = np.asarray(Z, dtype=float)
     n, p = X.shape
     blank = np.isnan(X)
@@ -260,7 +282,10 @@ def tree_shap(ensemble: TreeEnsemble, Z: Any, *, chunk: int = 256) -> tuple[np.n
                 x = X[:, feats]  # (n, L, k)
                 nan = blank[:, feats]
                 with np.errstate(invalid="ignore"):
-                    inside = (x > lower[None]) & (x <= upper[None])
+                    if below:
+                        inside = (x >= lower[None]) & (x < upper[None])
+                    else:
+                        inside = (x > lower[None]) & (x <= upper[None])
                 one = np.where(nan, missing[None], inside).astype(float)
                 contrib = _path_shapley(one, zero) * values[None, :, None]
                 np.add.at(flat.T, feats.ravel(), contrib.reshape(n, -1).T)
@@ -372,24 +397,53 @@ def model_kind(family_key: str, anat: Anatomy) -> str | None:
     return kind
 
 
+class Attributed(NamedTuple):
+    """SHAP values of the explained rows (rows × model-matrix columns), the expected value they are
+    measured from, and the scale both are on (:class:`TreeEnsemble`'s ``scale``; ``"margin"``, the
+    model's raw score, for a linear model)."""
+
+    phi: pd.DataFrame
+    expected: float
+    scale: str = "margin"
+
+
+def _family(family: Any) -> Any:
+    from turbotab.core.models.base import get_family
+
+    return get_family(family) if isinstance(family, str) else family
+
+
 def attributions(anat: Anatomy, A: pd.DataFrame, background: pd.DataFrame | None = None,
-                 *, kind: str) -> tuple[pd.DataFrame, float] | None:
+                 *, kind: str, family: Any = None) -> Attributed | None:
     """SHAP values of every row of ``A`` (the model's inputs), one column per model-matrix column,
-    on the model's own scale, and the expected value they are measured from; None when the family
-    has no SHAP computation here or several outputs.
+    and the expected value they are measured from (:class:`Attributed`); None when the family has
+    no SHAP computation here or several outputs.
 
     ``background``: the inputs of the rows the model was fit on; its mean matrix row is ``E[z]``
     in the linear closed form (TreeSHAP's covers are the trees' own training counts). ``kind``:
-    the family's attribution (:func:`model_kind`)."""
+    the family's attribution (:func:`model_kind`). ``family`` (a key or the family; read for
+    trees): its ``trees`` member gives the fitted step's :class:`TreeEnsemble`, and its
+    ``tree_shap``, when it gives values, replaces the engine's own :func:`tree_shap`. The values
+    are on the ensemble's scale: the model's raw score, or for a yes/no outcome a forest's
+    probability of the class coded 1."""
     if kind not in METHOD_WORDS:
         return None
     Z = anat.matrix(A)
     names = [str(c) for c in Z.columns]
     if kind == "trees":
-        phi, expected = tree_shap(hgb_ensemble(anat.model), Z.to_numpy(dtype=float))
+        fam = _family(family)
+        if fam is None or fam.trees is None:
+            raise ValueError("TreeSHAP reads the family's trees member: name a tree family")
+        ensemble = fam.trees(anat.model)
+        if ensemble.scale == "probability" and anat.task != "binary":
+            return None  # a class probability is drawn for a yes/no outcome only
+        matrix = Z.to_numpy(dtype=float)
+        compiled = fam.tree_shap(anat.model, matrix) if fam.tree_shap is not None else None
+        phi, expected = compiled if compiled is not None else tree_shap(ensemble, matrix)
         if phi.shape[2] != 1:
             return None
-        return pd.DataFrame(phi[:, :, 0], index=A.index, columns=names), float(expected[0])
+        return Attributed(pd.DataFrame(phi[:, :, 0], index=A.index, columns=names),
+                          float(expected[0]), ensemble.scale)
     coef = np.atleast_2d(np.asarray(anat.model.coef_, dtype=float))
     if coef.shape[0] != 1:
         return None
@@ -397,7 +451,8 @@ def attributions(anat: Anatomy, A: pd.DataFrame, background: pd.DataFrame | None
     mean = Zb.to_numpy(dtype=float).mean(axis=0)
     phi = linear_shap(coef, Z.to_numpy(dtype=float), mean)[:, :, 0]
     intercept = float(np.atleast_1d(np.asarray(anat.model.intercept_, dtype=float))[0])
-    return pd.DataFrame(phi, index=A.index, columns=names), intercept + float(coef[0] @ mean)
+    return Attributed(pd.DataFrame(phi, index=A.index, columns=names),
+                      intercept + float(coef[0] @ mean))
 
 
 def grouped(phi: pd.DataFrame, group: Mapping[str, str]) -> pd.DataFrame:
@@ -887,9 +942,11 @@ def _undo_scaling(anat: Anatomy, coef: np.ndarray, intercept: float) -> tuple[np
 
 def linear_equation(anat: Anatomy, A_fit: pd.DataFrame, *, target: str, scale: str,
                     outcome_unit: str | None, units: Mapping[str, str],
-                    roles: Mapping[str, Role]) -> Equation:
+                    roles: Mapping[str, Role], family: Any) -> Equation:
     """The fitted equation of a linear model, on the columns the model reads (its scaling undone),
-    with units where they are settled; the largest terms first."""
+    with units where they are settled; the largest terms first. A zero coefficient is "shrunk to
+    zero" when the family (a key or the family) declares a shrinkage architecture (C10), and "of
+    zero" otherwise."""
     model = anat.model
     coef = np.atleast_2d(np.asarray(model.coef_, dtype=float))[0]
     intercept = float(np.atleast_1d(np.asarray(model.intercept_, dtype=float))[0])
@@ -939,19 +996,23 @@ def linear_equation(anat: Anatomy, A_fit: pd.DataFrame, *, target: str, scale: s
     text = " ".join(parts)
     if zeros:
         text += (f"; {zeros:,} coefficient{'s' if zeros != 1 else ''} shrunk to zero"
-                 if hasattr(model, "alpha_") or hasattr(model, "C_") else
+                 if "shrinkage" in _family(family).architecture else
                  f"; {zeros:,} coefficient{'s' if zeros != 1 else ''} of zero")
     return Equation(outcome=target, scale=scale, outcome_unit=outcome_unit, intercept=intercept,
                     terms=terms, n_terms=len(columns), zeros=zeros, text=text)
 
 
-def tree_structure(anat: Anatomy, columns: Sequence[str], levels: int = TREE_LEVELS
-                   ) -> TreeStructure:
-    """The first tree's top ``levels`` levels, and which inputs the trees split on near the root."""
+def tree_structure(anat: Anatomy, columns: Sequence[str], levels: int = TREE_LEVELS, *,
+                   family: Any) -> TreeStructure:
+    """The first tree's top ``levels`` levels, and which inputs the trees split on near the root,
+    read off the node tables of the family's ``trees`` (a key or the family; the first output's
+    trees)."""
     from collections import defaultdict
 
-    model = anat.model
-    trees = [p[0].nodes for p in model._predictors]
+    ensemble = _family(family).trees(anat.model)
+    if not ensemble.tables or not ensemble.tables[0]:
+        raise ValueError("the family's trees carry no node tables to draw")
+    trees = list(ensemble.tables[0])
     first = trees[0]
     shown: list[TreeNode] = []
     queue = [0]
@@ -1195,16 +1256,20 @@ def _work(fam: FamilyFit, s: Setting, sample: np.ndarray) -> _Work | FamilyExpla
                                  reason=f"{fam.label}: its SHAP values are not built here.")
     A_all = anat.inputs(s.X)
     A = A_all.iloc[sample]
-    found = attributions(anat, A, A_all, kind=kind)
+    found = attributions(anat, A, A_all, kind=kind, family=fam.key)
     if found is None:
         return FamilyExplanation(family=fam.key, label=fam.label, explained=False,
                                  reason=f"{fam.label}: explanations are built for one output "
                                         f"(a numeric or yes/no outcome).")
-    phi, base = found
-    phi = grouped(phi, anat.group)
+    if found.scale != "margin":
+        # Values on a probability scale (a forest's) are not presented here yet: their label, the
+        # predictions beside them and the curves and interactions on one scale are RT-5d's call.
+        return FamilyExplanation(family=fam.key, label=fam.label, explained=False,
+                                 reason=f"{fam.label}: its SHAP values are not built here.")
+    phi = grouped(found.phi, anat.group)
     return _Work(fam=fam, anat=anat, kind=kind, A_all=A_all, A=A, phi=phi,
-                 ranked=importance(phi).sort_values(ascending=False, kind="stable"), base=base,
-                 floor=floor_of(fam, s), refits=[])
+                 ranked=importance(phi).sort_values(ascending=False, kind="stable"),
+                 base=found.expected, floor=floor_of(fam, s), refits=[])
 
 
 def _refits(w: _Work, s: Setting, sample: np.ndarray, refit: Refit,
@@ -1221,7 +1286,8 @@ def _refits(w: _Work, s: Setting, sample: np.ndarray, refit: Refit,
         model = refit(reseeded(clone(w.fam.unfitted), r), s.X.iloc[idx], np.asarray(s.y)[idx], units)
         anat = anatomy(model, list(s.X.columns), s.task)
         A = anat.inputs(X_ex)
-        found = attributions(anat, A, anat.inputs(s.X.iloc[idx]), kind=w.kind)
+        found = attributions(anat, A, anat.inputs(s.X.iloc[idx]), kind=w.kind,
+                             family=w.fam.key)
         if found is None:
             continue
         w.refits.append((anat, A))
@@ -1289,9 +1355,11 @@ def _architecture(w: _Work, s: Setting, outcome_unit: str | None, units: Mapping
     declared = get_family(w.fam.key).architecture  # MODEL_FAMILY_CONTRACT C10
     if "trees" in declared:
         columns = [str(c) for c in w.anat.matrix(w.A.iloc[:1]).columns]
-        return Architecture(kind="trees", trees=tree_structure(w.anat, columns))
+        return Architecture(kind="trees", trees=tree_structure(w.anat, columns,
+                                                               family=w.fam.key))
     equation = linear_equation(w.anat, w.A_all, target=s.target, scale=scale,
-                               outcome_unit=outcome_unit, units=units, roles=roles)
+                               outcome_unit=outcome_unit, units=units, roles=roles,
+                               family=w.fam.key)
     if "shrinkage" in declared:
         return Architecture(kind="shrinkage", equation=equation,
                             path=shrinkage_path(w.anat, w.A_all, s.y))
@@ -1764,7 +1832,8 @@ def decision_sentence(d: Any, state: Any) -> str:
 __all__ = [
     "ADJUSTMENT_TERM", "CONTRACT", "DESCRIBES", "ExplainArtifact", "FamilyFit", "Setting",
     "SINGLE_FILL", "UNDER_INFERENCE", "ale_curve", "ale_grid", "attributions", "anatomy",
-    "decision_sentence", "equation_units", "explain", "h_statistics", "hgb_ensemble",
+    "Attributed", "LeafPaths", "TreeEnsemble", "decision_sentence", "equation_units", "explain",
+    "h_statistics", "hgb_ensemble", "leaf_paths",
     "linear_equation", "linear_shap", "partial_dependence_at_rows", "pd_curve", "resample",
     "shrinkage_path", "spearman", "tree_shap", "tree_structure",
 ]

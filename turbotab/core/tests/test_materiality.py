@@ -499,11 +499,11 @@ def test_a_finding_owes_a_limitation_only_when_nothing_was_done():
     findings = {"findings": [f for f in FINDINGS["findings"] if f["severity"] != "critical"]}
     state = planned()
     t = sweep.triage(state, log_of(state, findings=findings), findings)
-    age = next(i for i in t.items if i.id == "binary_text__age")
+    age = next(i for i in t.items if i.id == "heaping__age")
     assert age.recommended == "could_bias" and age.limitation and age.done is None
     declared = planned(sensitivity=[decisions.SensitivityAnalysis(label="Adults", rules=[AGE_RULE])])
     t = sweep.triage(declared, log_of(declared, findings=findings), findings)
-    age = next(i for i in t.items if i.id == "binary_text__age")
+    age = next(i for i in t.items if i.id == "heaping__age")
     assert age.recommended == "could_bias" and not age.limitation and "Adults" in age.done
     assert next(i for i in t.items if i.id == "note__SEQN").limitation is False
 

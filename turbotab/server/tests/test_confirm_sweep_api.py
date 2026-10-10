@@ -133,11 +133,13 @@ def test_each_stage_sweeps_what_would_change_a_number_and_confirm_all_is_recorde
     t = drive.c.get(f"/api/projects/{drive.pid}/triage").json()
     assert (t["stage"], t["gate"]) == ("models", "gate:open-noticings-before-lock")
     assert all(i["blocker"] == (i["severity"] == "critical") for i in t["items"])
-    # Gender is a confounder in the author's reading, so it is in the model: a finding about it,
-    # left as it is, could bias the estimate.
+    # Gender is a confounder in the author's reading, so it is in the model as an adjustment term
+    # only: which of its two values is 1 changes no number for sugar, exactly (WAVE_C6A_PLAN Q-a:
+    # the model matrix spans the same space either way, Frisch–Waugh–Lovell).
     assert TRUTH["adjust:gender"] == "yes,yes,no"
     gender = next(i for i in t["items"] if i["id"] == "binary_text__gender")
-    assert gender["recommended"] == "could_bias" and "`gender`" in gender["reason"]
+    assert gender["recommended"] == "no_change" and "`gender`" in gender["reason"]
+    assert gender["band"] == 0 and gender["calibrated"]
     assert t["confirmable"] == (t["blockers"] == 0)
     r = post(drive, {"kind": "confirm_sweep", "stage": "models", "sweep": "noticings"})
     assert r.status_code == 200, r.text[:600]

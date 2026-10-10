@@ -36,15 +36,16 @@ The invariants held now (the rest need the ledger, the caps or the timing harnes
   (``fold_onto``) agrees with the log's fold outside the conditional slots it documents.
 * **I10** tier is mode-independent: the Decide and Confirm sets are the same in every mode
   (``surfacing.disclosure``), and at most one line is drawn at level 3.
-* **I11** progress is monotone except by a stated reopening, after every action, the changes and
-  reverts included: a stage's answered count never falls, and a change or a revert never makes a
-  complete stage ask again, without a Reopened record in it (a forward step, a first answer or a
-  reading settling, can find more for a stage to ask, which §7.2's answered/required would call a
-  fall; it is not a reopening; an answered line that left because it no longer applies, or is no
-  longer counted, takes its count with it); a line answered before is answered still, or names
-  why itself (``reopened_by``, ``changed_since``, a
-  Reopened record or the sweep's ``changed`` listing it), or left the log because it no longer
-  applies; a reached stage stays reached unless it, or the stage now asking, says why.
+* **I11** progress is monotone except by a stated reopening (§7.2, as the orchestrator ruled it),
+  after every action, the changes and reverts included: a stage's answered count never falls
+  without a Reopened record (an answered line that left because it no longer applies, or is no
+  longer counted, takes its count with it); its required count may grow within the stage being
+  worked, the one the answer was decided in; a complete stage that gains a line (or an objective
+  that is no line, an exhibit) any other way has been reopened, and says why (a Reopened record
+  in it); a line answered before is answered still, or names why itself (``reopened_by``,
+  ``changed_since``, a Reopened record or the sweep's ``changed`` listing it), or left the log
+  because it no longer applies; a reached stage stays reached unless it, or the stage now asking,
+  says why.
 """
 from __future__ import annotations
 
@@ -692,12 +693,19 @@ def _fires_now(snap: Snapshot, line: Any) -> bool:
     return True
 
 
+def _became_estimate(prev: Snapshot, snap: Snapshot) -> bool:
+    purpose = (getattr(prev.state, "purpose", None), getattr(snap.state, "purpose", None))
+    return purpose[0] != "inference" and purpose[1] == "inference"
+
+
 def i11_monotone_progress(prev: Snapshot, snap: Snapshot) -> list[str]:
-    """§7.2 I11: a stage's answered/required never falls without a Reopened record naming the
-    cause; after a change or a revert as after any other action. Each line answered before is
-    answered still, or says itself why (``reopened_by``, ``changed_since``, its stage's sweep
-    listing it as changed), or no longer applies; a reached stage stays reached unless it, or the
-    stage now asking, holds the Reopened record that says why."""
+    """§7.2 I11: a stage's answered count never falls without a Reopened record naming the cause;
+    its required count may grow within the stage being worked; a complete stage that gains a line
+    has been reopened, and says why; after a change or a revert as after any other action. Each
+    line answered before is answered still, or says itself why (``reopened_by``,
+    ``changed_since``, its stage's sweep listing it as changed), or no longer applies; a reached
+    stage stays reached unless it, or the stage now asking, holds the Reopened record that says
+    why."""
     out = []
     after = f"after {snap.action} {snap.kind}"
     # a line is its stage, source and key (its card can change with the goal: the split under
@@ -722,6 +730,7 @@ def i11_monotone_progress(prev: Snapshot, snap: Snapshot) -> list[str]:
             out.append(f"{line.id} ({stage.key}) was answered and is {new_line.status} now, "
                        f"with nothing saying why ({after})")
     stages_now = {s.key: s for s in snap.log.stages}
+    worked = snap.log.kinds.get(snap.kind) if snap.kind else None
     for old in prev.log.stages:
         new = stages_now[old.key]
         if old.progress is None or new.progress is None:
@@ -736,25 +745,38 @@ def i11_monotone_progress(prev: Snapshot, snap: Snapshot) -> list[str]:
         gone = sum(1 for l in old.lines if l.label == "Decide" and l.counted
                    and l.status == "answered" and (l.source, l.key) not in counted)
         lost = (old.progress.answered - new.progress.answered) - gone > 0
-        # A forward step (a first answer, a reading settling) can find more for a stage to ask;
-        # a change or a revert that does is a reopening, and says so.
+        # Required may grow only within the stage being worked: the one the answer was decided
+        # in (``kinds``). A complete stage that gains a line any other way (a change, a revert,
+        # an answer decided in another stage, a reading settling) has been reopened and says
+        # why (§7.2, ruling 3). An objective that is no line (Results' exhibits under Estimate)
+        # counts as one gained: the required count grew past the lines that ask.
         before = {(l.source, l.key): l for l in old.lines}
         asks = [l for l in new.lines if l.counted and l.status != "answered"
                 and ((l.source, l.key) not in before
                      or before[(l.source, l.key)].status == "answered")]
-        reopened = (snap.reopening and old.progress.complete and not new.progress.complete
-                    and bool(asks))
-        if (lost or reopened) and not new.reopened and not (
-                new.sweep is not None and new.sweep.changed):
-            out.append(f"{old.key}'s progress fell from {old.progress.answered}/"
+        more = max(len(asks), new.progress.required - old.progress.required)
+        gained = (old.progress.complete and not new.progress.complete and more > 0
+                  and (snap.reopening or worked != old.key))
+        said = bool(new.reopened) or (new.sweep is not None and bool(new.sweep.changed))
+        if lost and not said:
+            out.append(f"{old.key}'s answered count fell from {old.progress.answered} to "
+                       f"{new.progress.answered} with no Reopened record ({after})")
+        elif gained and not said:
+            out.append(f"{old.key} was complete and gained {more} line"
+                       f"{'' if more == 1 else 's'} ({old.progress.answered}/"
                        f"{old.progress.required} to {new.progress.answered}/"
-                       f"{new.progress.required} with no Reopened record ({after})")
+                       f"{new.progress.required}) with no Reopened record ({after})")
     asking = next((s for s in snap.log.stages
                    if any(l.source == "question" and l.status in ("open", "waiting")
                           and (l.reopened_by is not None or not l.waiting_for)
                           for l in s.lines)), None)
     for old in prev.log.stages:
         if not old.reached or stages_now[old.key].reached:
+            continue
+        # Write-up is not reached under Estimate and Describe until Results is placed (Q-c; C7a
+        # adds placement, and removes this): only a goal that became Estimate closes it, which is
+        # its definition and not a reopening.
+        if old.key == "writeup" and _became_estimate(prev, snap):
             continue
         why = bool(stages_now[old.key].reopened) or (
             asking is not None and (bool(asking.reopened) or any(

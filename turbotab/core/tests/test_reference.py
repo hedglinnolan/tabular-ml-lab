@@ -63,10 +63,10 @@ def test_every_contract_and_family_has_its_lenses_and_nothing_else_does():
         "contracts with no lens: add them to turbotab/core/reference/catalog.py"
     assert sorted(set(catalog.CONTRACT_LENSES) - registered) == [], \
         "lens entries for contracts that are not registered"
-    families = {f.key for f in methods.families()}
-    assert sorted(families ^ set(catalog.FAMILY_LENSES)) == []
+    families = {f.key: tuple(f.review_lenses) for f in methods.families()}
+    assert sorted(k for k in families if catalog.lenses_of_family(k) != families[k]) == []
     allowed = {*catalog.LENSES, catalog.SHARED}
-    for table in (catalog.CONTRACT_LENSES, catalog.FAMILY_LENSES):
+    for table in (catalog.CONTRACT_LENSES, families):
         for key, lenses in table.items():
             assert lenses and set(lenses) <= allowed, key
             assert not (catalog.SHARED in lenses and len(lenses) > 1), key

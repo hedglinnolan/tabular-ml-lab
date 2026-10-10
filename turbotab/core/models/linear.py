@@ -146,6 +146,8 @@ class Linear(FamilyBase):
     attribution = "linear"
     architecture = ("equation",)
     review_lenses = ("shared",)
+    consequence = ("OLS or logistic regression: one reportable coefficient per predictor, with "
+                   "intervals for inference.")
     cost_model = "cross_product"  # least squares and Newton-Cholesky factor the p × p product
 
     def methods_label(self, task: Task | None) -> str:

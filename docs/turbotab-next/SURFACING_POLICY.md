@@ -404,6 +404,15 @@ A threshold change is a recorded methods decision with a reason. Where the calib
 case for an instrument, the proxy is marked uncalibrated and its band is capped at 1: the engine
 may say "could bias" but never "doesn't change your numbers here" from an uncalibrated proxy.
 
+**Amended 2026-10-10 (WAVE_C6A_PLAN §7 ruling 2).** An instrument that is exact by theorem is not
+floored at band 1. Examples are Frisch–Waugh–Lovell, and a reparameterization of a column that is
+not focal (not what you study, not the outcome, not a declared modifier): either leaves the model
+matrix's column space unchanged, so the focal estimate, its interval and the fitted values move by
+exactly 0. Such an instrument (`invariance` in `materiality_calibration.json`) may say "doesn't
+change your numbers here" without calibration cases. `calibrate` keeps it as it is, and the ledger
+names the theorem (the entry's `theorem`, carried on each movement it measures). Every proxy that is
+not exact keeps the floor.
+
 This is the concrete form of Nolan's thesis. Each journey adds rows that say which decisions moved
 which estimates by how much. After a dozen journeys the ledger is a small, honest, replayable
 dataset on the materiality of modeling decisions in nutrition and omics data, and it is what
@@ -700,7 +709,7 @@ Two layers, so that thousands of journeys run in minutes and a few dozen run end
 | I8 | **Determinism and replay.** The same log yields the same quest log, the same ranks, the same materiality ledger, on every platform within tolerance | the replay harness (`export/replay.py`) extended to the ledger |
 | I9 | **Stability.** A decision that writes no slot an item reads leaves that item's rank unchanged | `quest.written_slots` against `question_reads` |
 | I10 | **Tier is mode-independent.** The Decide and Confirm sets are identical across expertise modes; only `level` differs | run the same state under each mode |
-| I11 | **Progress is monotone except by reopen.** A stage's `answered/required` never falls without a `Reopened` record naming the cause | `quest.Progress`, `quest.Reopened` |
+| I11 | **Progress is monotone except by reopen.** A stage's answered count never falls without a `Reopened` record naming the cause. Its required count may grow as answers make new lines apply within the stage being worked. A complete stage that gains a line has been reopened, and says why (a `Reopened` record in it) | `quest.Progress`, `quest.Reopened`; the path fuzzer's I11 and its hand-built journeys |
 | I12 | **The triage recommendation is reproducible** from the ledger row alone, and never band 0 from an uncalibrated instrument | the calibration file |
 | I13 | **Verification never silently edits.** When `M_post` leaves the predicted band, an exhibit label and a draft sentence exist; the primary is unchanged | the exhibit model (C7a) |
 | I14 | **Quest log latency.** `quest.quest_log` under 200 ms on the NHANES journey's longest log | a timing test, like `test_previews_4_latency.py` |

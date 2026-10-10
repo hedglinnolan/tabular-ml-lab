@@ -1,7 +1,14 @@
-"""``boosted_trees``: gradient-boosted decision trees (HistGradientBoosting), missing values native."""
+"""``boosted_trees``: gradient-boosted decision trees (HistGradientBoosting), missing values native.
+
+Its fitted trees reach the explanations through its ``trees`` member (:func:`hgb_ensemble`), the
+one place that reads scikit-learn's private ``_predictors`` and ``_baseline_prediction``
+(MODEL_FAMILY_CONTRACT C10; WAVE_C6A_PLAN §2, package RT-1a).
+"""
 from __future__ import annotations
 
 from typing import Any
+
+import numpy as np
 
 from turbotab.core.decisions import Purpose, Task
 from turbotab.core.models.base import (
@@ -19,6 +26,20 @@ from turbotab.core.models.base import (
 
 SMALL_N = 500
 TINY_N = 200
+
+
+def hgb_ensemble(model: Any) -> Any:
+    """A fitted ``HistGradientBoostingRegressor`` / ``…Classifier`` as an ``explain.TreeEnsemble``
+    on its raw (margin) scale: the outcome's for a regression, the log-odds for a binary
+    classifier, one output per class for several. Its node tables are scikit-learn's own
+    (``TreePredictor.nodes``), and a row goes left when its value is ``<=`` the threshold."""
+    from turbotab.core.models.explain import TreeEnsemble, leaf_paths
+
+    base = np.atleast_1d(np.asarray(model._baseline_prediction, dtype=float).ravel())
+    outputs = len(model._predictors[0])
+    tables = [[iteration[k].nodes for iteration in model._predictors] for k in range(outputs)]
+    trees = [[leaf_paths(nodes) for nodes in per_output] for per_output in tables]
+    return TreeEnsemble(base=base, trees=trees, tables=tables, rule="le", scale="margin")
 
 
 class BoostedTrees(FamilyBase):
@@ -68,9 +89,14 @@ class BoostedTrees(FamilyBase):
     architecture = ("trees",)
     review_lenses = ("shared",)
     sources = (Source("friedman2001"),)
+    consequence = "Many shallow trees: finds curves and interactions; gives no coefficients."
 
     def methods_label(self, task: Task | None) -> str:
         return "gradient-boosted trees"
+
+    def trees(self, step: Any) -> Any:
+        """Its fitted model step's trees, for TreeSHAP and the tree view (C10)."""
+        return hgb_ensemble(step)
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         if task == "regression":

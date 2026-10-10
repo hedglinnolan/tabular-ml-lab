@@ -192,7 +192,7 @@ def test_1c_total_energy_kept_by_another_role_reads_as_the_standard_model(tmp_pa
     assert "absolute intake" not in kept["design"]["estimand"]
     assert kept["design"]["estimand"] == METHOD_TABLE["standard"]["estimand"]
     assert kept["rows"]["protein_g"]["meaning"] == (
-        "protein in place of the average of all other energy sources, total energy fixed")
+        "protein in place of the average of all other energy sources (total energy fixed)")
     assert any(w.startswith("energy_kcal reads as total energy and is in the model as")
                and "(the standard model), not an absolute intake" in w
                for w in kept["design"]["warnings"])
@@ -530,7 +530,7 @@ def test_4_with_three_sources_the_estimand_names_the_ones_left_out(tmp_path, met
     assert "in place of the average of all other energy sources" not in estimand
     fat = out["rows"]["fat_kcal" if method == "standard" else "fat_kcal_adj"]
     assert fat["estimate"] == pytest.approx(reference.params["fat_kcal"], rel=1e-8)
-    assert fat["meaning"] == "fat in place of alcohol and other energy, total energy fixed"
+    assert fat["meaning"] == "fat in place of alcohol and other energy (total energy fixed)"
 
 
 def test_4b_fiber_beside_carbohydrate_by_difference_is_warned(tmp_path):
@@ -876,13 +876,15 @@ def _nested_check(frame: pd.DataFrame, folder: Path) -> dict[str, float]:
         fat = run["rows"]["fat_total"]
         assert fat["estimate"] == pytest.approx(reference.params["fat_total"], rel=1e-8)
         if label == "parts":
-            assert fat["meaning"].startswith("remaining fat (holding fat_sat, fat_mon, fat_poly fixed)")
+            # Q-b: the parts named as nouns, as every surface names them (not as columns)
+            assert fat["meaning"].startswith("remaining fat (holding saturated fat, monounsaturated "
+                                             "fat and polyunsaturated fat fixed)")
             assert run["rows"]["carb"]["meaning"].startswith("remaining carbohydrate (holding sugar fixed)")
             assert ("fat_total sits beside its own parts fat_sat, fat_mon and fat_poly"
                     in run["design"]["estimand"])
             assert any("fat_total's coefficient is the remainder" in w for w in run["design"]["warnings"])
         else:
-            assert fat["meaning"] == "fat in place of alcohol and other energy, total energy fixed"
+            assert fat["meaning"] == "fat in place of alcohol and other energy (total energy fixed)"
             assert "remaining" not in run["design"]["estimand"]
         out[label] = float(fat["estimate"])
     return out

@@ -227,6 +227,11 @@ class Family:
     columns: Callable[[str, Mapping[str, Any]], list[str]] = lambda option, params: []
     # What an option does, as (column, token) pairs: two options with the same marks do the same.
     marks: Callable[[str, Mapping[str, Any]], set[tuple[str, str]]] = lambda option, params: set()
+    # Every option is an invertible linear recoding of the column (which of two values is 1): the
+    # model matrix spans the same space either way, so no other coefficient, fitted value or
+    # interval moves (Frisch–Waugh–Lovell); only the column's own coefficient is rewritten. The
+    # triage reads it (``sweep.recommend``): on a column that is not focal it changes no number.
+    reparameterizes: bool = False
 
 
 def _option(finding: dict[str, Any], key: str, label: str, consequence: str, sentence: str,
@@ -487,6 +492,7 @@ def _offer_binary(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) 
             or len(levels) != 2):
         return []
     counts = {str(k): int(v) for k, v in dict(p.get("counts") or {}).items()}
+    relabels = _relabels(oc.frame[column])
     order = levels
     if p.get("positive_known") and p.get("positive") in levels:  # the usual reading first
         order = [str(p["positive"])] + [v for v in levels if v != p["positive"]]
@@ -498,8 +504,18 @@ def _offer_binary(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) 
             f"{_tick(column)} becomes `1` for {_tick(one)} ({_count(counts.get(one, 0))} rows) and "
             f"`0` for {_tick(zero)} ({_count(counts.get(zero, 0))}).",
             f"{_tick(column)} was recoded with {_tick(one)} as `1` and {_tick(zero)} as `0`.",
-            "values", {"column": str(column), "one": one, "zero": zero}))
+            "values", {"column": str(column), "one": one, "zero": zero, "relabels": relabels}))
     return out
+
+
+def _relabels(s: pd.Series) -> bool:
+    """Whether the repair only renames the column's values as written: exactly two spellings and
+    no blank. Left as text, the column enters the model one-hot encoded on its raw spellings
+    (``models.pipeline``), so two spellings and no blank are one indicator either way, the same
+    space as the repaired 0/1 column (``sweep.reparameterized``). A second spelling of a level
+    ("Male", "male "), a blank token ("n/a") or a blank is not: as written each spelling is an
+    indicator of its own, and a blank is filled as text one way and as a number another."""
+    return bool(len(s)) and not s.isna().any() and int(s.astype(str).nunique()) == 2
 
 
 # DuckDB's trim takes the characters to strip; Python's str.strip() strips these four as well.
@@ -1135,7 +1151,8 @@ register_family(Family("sentinel_codes", 3, _offer_sentinels, {"set_missing": "v
 register_family(Family("energy_kj", 4, _offer_kj, {"to_kcal": "values"},
                        values=_kj_values, marks=_kj_marks), ["pack::dietary::atwater"])
 register_family(Family("binary_text", 5, _offer_binary, {"level": "values"},
-                       values=_binary_values, marks=_binary_marks), ["binary_text"])
+                       values=_binary_values, marks=_binary_marks, reparameterizes=True),
+                ["binary_text"])
 register_family(Family("infinite_values", 6, _offer_infinite, {"set_missing": "values"},
                        values=_infinite_values, marks=_infinite_marks), ["infinite_values"])
 register_family(Family("impossible_values", 7, _offer_impossible,

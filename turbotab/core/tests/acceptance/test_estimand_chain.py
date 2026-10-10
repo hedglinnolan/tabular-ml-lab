@@ -311,8 +311,11 @@ def test_a_the_record_states_each_decision_in_a_sentence(diet):
     view = diet["view"]
     [estimand] = _records(view, "set_estimand")
     assert estimand["sentence"] == (
-        "The analysis estimates the total effect of `protein_g` on `dm` (a substitution: in place "
-        "of other energy sources at fixed total energy), as a marginal risk difference per unit of "
+        # Q-b: protein is the only energy source in the model beside total energy, so its swap is
+        # for the average of all the others (ME-04), worded as the caption words it.
+        "The analysis estimates the total effect of 1 g more protein in place of the average of all "
+        "other energy sources (total energy fixed) on `dm` (a substitution), as a marginal risk "
+        "difference per unit of "
         "`protein_g`, by standardization over the analyzed rows (g-computation) from the logistic "
         "model, with a bootstrap of the whole chain for its interval, the model's conditional odds "
         "ratio reported beside it.")

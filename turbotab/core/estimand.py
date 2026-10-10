@@ -550,6 +550,39 @@ def family_contrast_applies(state: Any) -> bool:
     return any(energy_contrast_applies(state, c) for c in family_exposures(state))
 
 
+def substitution_words(state: Any, exposure: Any, *, amount: bool = True) -> str | None:
+    """The substitution ``exposure``'s estimate is, in the words every surface uses (WAVE_C6A Q-b:
+    the caption, the methods sentence, the preview, the card; Table 2's row says its phrase):
+    ``1 g more sugar in place of other carbohydrate (total carbohydrate and energy fixed)``.
+
+    Read from the adjustment set as it stands: the settled predictors the answers keep, the energy
+    answer, and the parts beside their totals (their names, each column's own confirmation standing
+    over the guess: ``readings.nesting``; the design also checks the values, a part never above
+    its total). None when the estimate is no substitution (``methods.energy.substitution_swap``)."""
+    if not exposure:
+        return None
+    from turbotab.core.methods.energy import amount_of, substitution_swap
+    from turbotab.core.methods.exposure_form import estimand_unit
+    from turbotab.core.methods.nesting import candidates
+    from turbotab.core.readings import nesting
+
+    roles = predictor_roles(state)
+    exposure = str(exposure)
+    if exposure not in roles:
+        return None
+    left = {c for c, d in derived_roles(state).items() if not d.adjusted}
+    predictors = [c for c in roles if c not in left or c == exposure]
+    found = {child: parent for parent, kids in candidates(predictors).items() for child in kids}
+    swap = substitution_swap(_get(state, "energy_adjustment"), predictors, roles, exposure,
+                             nested=nesting(state, found, columns=predictors))
+    if swap is None:
+        return None
+    # One unit of the column only while the estimate is per its plain unit: a domain transform (the
+    # residual, a score) or a form's own unit is said after it (``exposure_form.estimand_unit``).
+    raw = amount and estimand_unit(state, exposure) == f"unit of {_tick(exposure)}"
+    return swap.words(amount_of(exposure) if raw else None)
+
+
 # ── the adjustment set (MODELING_SEQUENCE §1 step 3) ─────────────────────────
 
 ROLE_WORDS = {
@@ -1063,6 +1096,22 @@ def multiplicity_statement(state: Any, spec: Any, n: int) -> str:
             f"hypotheses, {ROTHMAN}), with every member shown.{kept}")
 
 
+def _option_words(state: Any, exposure: Any) -> str | None:
+    """The substitution option's consequence (Q-b): the swap as every surface words it, within the
+    option's word budget (``teaching.BUDGETS``); its "1 g" gives way first, and a swap too long
+    even then leaves the option its general words (None)."""
+    from turbotab.core.teaching import BUDGETS
+
+    for amount in (True, False):
+        swapped = substitution_words(state, exposure, amount=amount)
+        if swapped is None:
+            return None
+        text = f"{swapped[0].upper()}{swapped[1:]}."
+        if len(text.split()) <= BUDGETS["option_consequence"]:
+            return text
+    return None
+
+
 def estimand_card(state: Any, task: str | None, prevalence: float | None = None) -> dict[str, Any] | None:
     """What the estimand question offers: the exposure candidates, the effects, the contrast for an
     energy-bearing exposure, and the measures ruling 9 labels (difference or ratio; conditional or
@@ -1079,6 +1128,13 @@ def estimand_card(state: Any, task: str | None, prevalence: float | None = None)
     target = _get(state, "target")
     recorded = _get(state, "roles") or {}
     waiting = [c for c in unsettled(state) if recorded.get(c) in PREDICTOR_ROLES and c != target]
+    # Q-b: the substitution says what it swaps for the exposure it is asked of (the one declared,
+    # else the only energy-bearing one offered), as the caption and the methods sentence will.
+    spec = _get(state, "estimand")
+    bearing = [c for c in candidates if energy_contrast_applies(state, c)]
+    asked = (_get(spec, "exposure") if spec is not None and not _get(spec, "family") else None) \
+        or (bearing[0] if len(bearing) == 1 else None)
+    swapped = _option_words(state, asked) if asked in bearing else None
     return {
         "exposures": [{"column": c, "energy_contrast": energy_contrast_applies(state, c)}
                       for c in candidates],
@@ -1104,7 +1160,7 @@ def estimand_card(state: Any, task: str | None, prevalence: float | None = None)
              "consequence": "Not available yet: the whole effect is estimated instead."}],
         "contrasts": [
             {"contrast": "substitution", "label": "Substitution",
-             "consequence": "More of it in place of other calories, total energy held fixed."},
+             "consequence": swapped or "More of it in place of other calories, total energy held fixed."},
             {"contrast": "addition", "label": "Addition",
              "consequence": "Its calories added on top, every other source held fixed."}],
         "measures": measures_offered(task, prevalence=prevalence),
@@ -1144,8 +1200,12 @@ def caption(state: Any, task: str | None = None) -> str | None:
 
         among = (f" among consumers of {_tick(exposure)}"
                  if exposure in domain_columns(state) else "")
-        text = (f"The {effect} effect of {_tick(exposure)} on {_tick(target)}{among}"
-                + (f" ({what})" if what else "")
+        # Q-b: a substitution says what it swaps, from the adjustment set (sugar in place of other
+        # carbohydrate with total carbohydrate held; the sources left out, named, without it).
+        swapped = substitution_words(state, exposure) if contrast == "substitution" else None
+        subject = (f"{swapped} on {_tick(target)}{among}" if swapped else
+                   f"{_tick(exposure)} on {_tick(target)}{among}" + (f" ({what})" if what else ""))
+        text = (f"The {effect} effect of {subject}"
                 + f", as a {MEASURE_WORDS.get(measure, measure)} per "
                   f"{estimand_unit(state, str(exposure))}")
     derived = derived_roles(state)

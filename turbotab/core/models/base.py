@@ -12,8 +12,14 @@ family by calling :func:`register_family`.
 change under, the shape its curves take, the knobs that set its complexity (:class:`Knob`), the
 checks it reports about its own fit, its output and raw scales, its explanation paths, its review
 lenses and its replay tolerance. :func:`register_family` refuses a family that leaves out a member
-of the protocol or declares a value outside its vocabulary, naming what is wrong. RECIPES §2.4's
-``recipe``, ``tuning`` and ``defaults_version`` join these with RECIPES RT-2.
+of the protocol or declares a value outside its vocabulary, naming what is wrong.
+
+**Tuning and the tree hook** (RECIPES §2.4, §4; WAVE_C6A_PLAN §2, package RT-1a): ``tuning`` (a
+:class:`~turbotab.core.models.tuning.TuningDecl`, one per task, or None), ``defaults_version``, the
+families card's ``consequence`` line, and four methods a family may add: ``settings`` (a candidate's
+values as its estimator's parameters for one fit), ``path`` (one split's whole penalty grid),
+``trees`` (its fitted trees for TreeSHAP and the tree view) and ``tree_shap`` (a compiled TreeSHAP).
+RECIPES §2.4's ``recipe`` joins with RECIPES RT-2.
 
 Code reads these declarations instead of switching on a family's key or its estimator's class.
 The switches that remain are listed, with the package that retires each, in
@@ -29,6 +35,7 @@ from typing import Any, Callable, Literal, Mapping, Protocol, Sequence, get_args
 from pydantic import BaseModel, ConfigDict, with_config
 
 from turbotab.core.decisions import Lens, Purpose, Task
+from turbotab.core.models.tuning import TuningDecl, tuning_for
 
 Fit = Literal["good", "fair", "poor"]
 TASKS: tuple[Task, ...] = ("regression", "binary", "multiclass", "ordinal", "time_to_event")
@@ -43,6 +50,7 @@ ORDER_BLIND_COST = 1.0
 INDUCTIVE_BIAS_WORDS = 20
 PLAIN_WORDS = 22  # a Named's plain sentence and a Prior's (MODEL_FAMILY_CONTRACT C5)
 KNOWN_AS_WORDS = 6  # a Named's quiet name
+CONSEQUENCE_WORDS = 20  # the families card's line: what choosing the family means
 
 # ── the contract's vocabularies (MODEL_FAMILY_CONTRACT §1) ───────────────────
 
@@ -230,18 +238,33 @@ class ModelFamily(Protocol):
     replay_tolerance: float
     sources: tuple[Source, ...]
     cost_model: CostModel
+    # C6 (RECIPES §4.1): how it is tuned, per task when the grids differ by task; None: not tuned.
+    tuning: TuningDecl | Mapping[Task, TuningDecl] | None
+    defaults_version: str  # bumped whenever a default changes; part of a version's identity
+    consequence: str  # ≤ 20 words: the families card's line (required)
     # What a family may add, each None when it adds nothing (MODEL_FAMILY_CONTRACT §1):
     # ``preprocess(spec)``: steps of its own after the shared ones (``models.pipeline``);
     # ``build_for(spec, task, purpose, n_rows, n_features)``: a model step built from the design;
     # ``describe_step(name)``: (label, detail) of one of its own steps, or None;
     # ``inference(pipeline, X, y, *, task, clusters, ...)``: its table with intervals;
     # ``inference_matrix(matrix, y, *, task, classes, clusters, ...)``: that table refit on a model
-    # matrix.
+    # matrix;
+    # ``settings(values, *, task, n_units, n_rows, y, Z, plan)``: a candidate's values (the
+    # declaration's ``fixed`` merged under them) as its estimator's own parameters for one fit, on
+    # that fit's own rows (``tuning.estimator_params``);
+    # ``path(Z, y, grid, *, task, weights=None)``: one split's whole grid, a ``tuning.PathFit``;
+    # ``trees(step)``: its fitted model step as an ``explain.TreeEnsemble``;
+    # ``tree_shap(step, Z)``: compiled TreeSHAP, ``(phi (n, p, K), expected (K,))`` on the scale
+    # ``trees(step).scale`` names, or None to use the engine's own.
     preprocess: Callable[..., list[tuple[str, Any]]] | None
     build_for: Callable[..., Any] | None
     describe_step: Callable[[str], tuple[str, str] | None] | None
     inference: Callable[..., Any] | None
     inference_matrix: Callable[..., Any] | None
+    settings: Callable[..., Mapping[str, Any]] | None
+    path: Callable[..., Any] | None
+    trees: Callable[[Any], Any] | None
+    tree_shap: Callable[[Any, Any], Any] | None
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         """An unfitted sklearn estimator; the pipeline's last step."""
@@ -301,10 +324,13 @@ MEMBERS = ("key", "label", "tasks", "inductive_bias", "strengths", "cautions", "
            "sample_efficiency", "same_kind_as", "bias_terms", "invariances", "curve_shape",
            "complexity", "diagnostics", "output", "updating", "raw_scale", "attribution",
            "architecture", "review_lenses", "solvable", "replay_tolerance", "sources", "cost_model",
+           "tuning", "defaults_version", "consequence",
            "preprocess", "build_for", "describe_step", "inference", "inference_matrix",
+           "settings", "path", "trees", "tree_shap",
            "build", "describe", "methods_label", "coefficients", "assess")
 # The members a family may leave as None: what it adds of its own (:class:`ModelFamily`).
-OPTIONAL_MEMBERS = ("preprocess", "build_for", "describe_step", "inference", "inference_matrix")
+OPTIONAL_MEMBERS = ("preprocess", "build_for", "describe_step", "inference", "inference_matrix",
+                    "settings", "path", "trees", "tree_shap")
 # A family that reads another's assessment (``same_kind_as``) keeps at least this score, never more
 # than the family it reads: "Boosted trees' assessment less 1.0 (at least 0.5)" (RECIPES §2.2, a
 # convention).
@@ -493,6 +519,178 @@ def contract_problems(family: ModelFamily) -> list[str]:
     for source in family.sources:
         cited("a primary source", source, "C1")
     outside("cost_model", [family.cost_model], get_args(CostModel), "C6")
+    if not isinstance(family.defaults_version, str) or not family.defaults_version.strip():
+        out.append("defaults_version must name the version of its defaults, as \"1\" (C6)")
+    consequence = family.consequence
+    if (not isinstance(consequence, str) or not consequence.strip()
+            or len(consequence.split()) > CONSEQUENCE_WORDS):
+        out.append(f"consequence must say what choosing it means in at most {CONSEQUENCE_WORDS} "
+                   f"words (§1)")
+    reads_trees = family.attribution == "trees" or "trees" in family.architecture
+    if reads_trees and family.trees is None:
+        out.append("its attribution or architecture reads trees, so it declares trees, the method "
+                   "that gives its fitted step as an explain.TreeEnsemble (C10)")
+    if family.trees is not None and not reads_trees:
+        out.append("trees is declared, but neither its attribution nor its architecture reads "
+                   "trees (C10)")
+    if family.tree_shap is not None and family.trees is None:
+        out.append("tree_shap is declared without trees, whose ensemble names the scale its values "
+                   "are on (C10)")
+    out.extend(_tuning_problems(family))
+    return out
+
+
+# A family's tuning names are checked on a probe: its estimator built for PROBE_ROWS × PROBE_COLUMNS,
+# and its ``settings``, when it has one, called on a synthetic fit of that size (seeded) with a plan
+# made for it, at the standard candidate and at every dimension's center.
+PROBE_ROWS, PROBE_COLUMNS = 200, 4
+PROBE_LOSS: Mapping[str, str] = MappingProxyType({"regression": "mse", "binary": "log_loss",
+                                                  "multiclass": "log_loss", "ordinal": "rps"})
+
+
+def _declared_tunings(family: ModelFamily) -> tuple[dict[str, TuningDecl], list[str]]:
+    """Each task's declaration, and what is wrong with the ``tuning`` member's shape."""
+    tuning = family.tuning
+    if tuning is None:
+        return {}, []
+    if isinstance(tuning, TuningDecl):
+        return {t: tuning for t in family.tasks}, []
+    if not isinstance(tuning, Mapping):
+        return {}, ["tuning must be a TuningDecl, a mapping from its tasks to one, or None (C6)"]
+    out: list[str] = []
+    odd = sorted(set(tuning) - set(family.tasks))
+    if odd:
+        out.append(f"tuning is declared for {odd}, which it does not model (C6)")
+    wrong = sorted(t for t, d in tuning.items() if not isinstance(d, TuningDecl))
+    if wrong:
+        out.append(f"tuning for {wrong} is not a TuningDecl (C6)")
+    return {t: tuning_for(family, t) for t in family.tasks
+            if isinstance(tuning.get(t), TuningDecl)}, out
+
+
+def _tuning_problems(family: ModelFamily) -> list[str]:
+    """C6 at registration (WAVE_C6A_PLAN §2): a path has its ``path`` method; every name the
+    declaration states is its estimator's own parameter or is resolved by ``settings``; each
+    dimension's source resolves in the citation registry."""
+    decls, out = _declared_tunings(family)
+    paths = [t for t, d in decls.items() if d.kind == "path"]
+    if paths and family.path is None:
+        out.append(f"its tuning for {paths} is a path, so it declares path, the method that runs "
+                   f"one split's whole grid (C6)")
+    if family.path is not None and not paths:
+        out.append("path is declared, but no task's tuning is a path (C6)")
+    unresolved: dict[str, list[str]] = {}
+    dropped: dict[str, list[str]] = {}
+    for task, decl in decls.items():
+        problem, odd, lost = _unresolved_names(family, task, decl)
+        if problem:
+            out.append(problem)
+        for name in lost:
+            dropped.setdefault(name, []).append(task)
+        for name in odd:
+            unresolved.setdefault(name, []).append(task)
+    if unresolved:
+        by = "its settings do not resolve them" if family.settings is not None else (
+            "it has no settings to resolve them")
+        tasks = [t for t in family.tasks if any(t in v for v in unresolved.values())]
+        out.append(f"its tuning names {sorted(unresolved)}, which are not parameters of the "
+                   f"estimator it builds for {tasks}, and {by} (C6)")
+    if dropped:
+        tasks = [t for t in family.tasks if any(t in v for v in dropped.values())]
+        out.append(f"its settings drop {sorted(dropped)} for {tasks}: moving them leaves the "
+                   f"estimator's parameters unchanged, so every candidate fits the same model (C6)")
+    out.extend(_dimension_sources(list(decls.values())))
+    return out
+
+
+def _unresolved_names(family: ModelFamily, task: str, decl: TuningDecl
+                      ) -> tuple[str | None, list[str], list[str]]:
+    """(a problem with the probe, or None; the names that do not reach the estimator; the
+    dimensions ``settings`` drops).
+
+    A dimension (searched or by hand) is resolved by ``settings`` only when moving it moves the
+    parameters: each is set, the others at their centers, near its low end and near its high end
+    (``map_unit`` at 0.05 and 0.95), and the two parameter sets must differ wherever the two values
+    do. A ``settings`` that drops a name, or holds it at one value, is refused."""
+    purpose = "prediction" if "prediction" in family.purposes else family.purposes[0]
+    try:
+        params = set(family.build(task, purpose, PROBE_ROWS, PROBE_COLUMNS).get_params())
+    except Exception as e:  # noqa: BLE001 - said, not raised
+        return f"its {task} estimator could not be built to check its tuning ({e}) (C6)", [], []
+    stop = decl.early_stopping or {}
+    odd = [stop[k] for k in ("param", "patience_param") if k in stop and stop[k] not in params]
+    if family.settings is None:
+        odd += [n for n in (*decl.names(), *decl.standard, *decl.fixed) if n not in params]
+        return None, sorted(set(odd)), []
+    import numpy as np
+
+    from turbotab.core.models.tuning import estimator_params, make_plan, map_unit
+
+    n = PROBE_ROWS
+    rng = np.random.default_rng(0)
+    Z = rng.normal(size=(n, PROBE_COLUMNS))
+    if task == "regression":
+        y = rng.normal(size=n)
+    elif task == "time_to_event":
+        y = None
+    else:
+        y = np.arange(n) % (2 if task == "binary" else 3)
+    unit = ("units" if task in ("regression", "time_to_event") else
+            "events" if task == "binary" else "rarest_class")
+    try:
+        plan = make_plan(family, task=task, loss=PROBE_LOSS.get(task, "mse"), n_plan=n,
+                         plan_rows=n, unit=unit, split_seed=0)
+        center = {d.name: map_unit(d, 0.5, n_plan=n) for d in (*decl.dimensions, *decl.by_hand)}
+        probes = [dict(plan.candidates[0].values)] if plan is not None and plan.candidates else []
+        produced: set[str] = set()
+
+        def made(values: Mapping[str, Any]) -> dict[str, Any]:
+            return dict(estimator_params(family, task, values, n_units=n, n_rows=n, y=y, Z=Z,
+                                         plan=plan))
+
+        for values in [*probes, center]:
+            produced |= set(made(values))
+        lost = []
+        for d in (*decl.dimensions, *decl.by_hand):
+            low, high = (map_unit(d, u, n_plan=n) for u in (0.05, 0.95))
+            if not _same_value(low, high) and _same_params(made({**center, d.name: low}),
+                                                           made({**center, d.name: high})):
+                lost.append(d.name)
+    except Exception as e:  # noqa: BLE001 - said, not raised
+        return (f"its settings failed on a probe of its {task} tuning ({type(e).__name__}: {e}) "
+                f"(C6)"), sorted(set(odd)), []
+    return None, sorted(set(odd) | (produced - params)), lost
+
+
+def _same_value(a: Any, b: Any) -> bool:
+    import numpy as np
+
+    try:
+        return bool(np.array_equal(np.asarray(a, dtype=object), np.asarray(b, dtype=object)))
+    except Exception:  # noqa: BLE001 - values numpy cannot compare are compared as Python's
+        return a is b or a == b
+
+
+def _same_params(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
+    return set(a) == set(b) and all(_same_value(a[k], b[k]) for k in a)
+
+
+def _dimension_sources(decls: Sequence[TuningDecl]) -> list[str]:
+    """Each dimension's source resolves in the citation registry (SIZING X4): every work in it
+    (``citations.segments``) names at least one record."""
+    from turbotab.core.export.citations import is_internal, resolve, segments
+
+    out: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for decl in decls:
+        for d in (*decl.dimensions, *decl.by_hand):
+            if (d.name, d.source) in seen:
+                continue
+            seen.add((d.name, d.source))
+            for part in segments(d.source):
+                if not is_internal(part) and not resolve(part):
+                    out.append(f"the dimension {d.name!r} cites {part!r}, which names no record of "
+                               f"the citation registry (C6)")
     return out
 
 
@@ -631,12 +829,42 @@ class FamilyBase:
     replay_tolerance: float = 1e-12  # C12: DoD gate 6's; a looser one needs Nolan's approval
     sources: tuple[Source, ...] = ()  # its primary sources, as a method contract has
     cost_model: CostModel = "cells"  # C6: how one fit's time grows (``models.cost.fit_cost``)
+    # C6: how it is tuned (``models.tuning``): a TuningDecl for every task it models, a mapping from
+    # task to TuningDecl where the grids differ by task, or None (not tuned).
+    tuning: TuningDecl | Mapping[Task, TuningDecl] | None = None
+    defaults_version: str = "1"  # bumped whenever a default changes; part of a version's identity
+    # The families card's line, ≤ 20 words: what choosing it means ("Many shallow trees: finds
+    # curves and interactions; gives no coefficients."). Required: ``register_family`` refuses a
+    # family without one, and the teaching card for the models question reads it.
+    consequence: str = ""
+    # The family's name on that card when it is shorter than ``label`` ("Mixed model" for the
+    # "Random-intercept mixed model"); the card says ``label`` when this is empty.
+    card_label: str = ""
     # What it adds of its own, as methods where it adds something (:class:`ModelFamily`).
     preprocess: Callable[..., list[tuple[str, Any]]] | None = None
     build_for: Callable[..., Any] | None = None
     describe_step: Callable[[str], tuple[str, str] | None] | None = None
     inference: Callable[..., Any] | None = None
     inference_matrix: Callable[..., Any] | None = None
+    # ``settings(values, *, task, n_units, n_rows, y, Z, plan) -> {parameter: value}``: a
+    # candidate's values, with the declaration's ``fixed`` settings merged under them, as the
+    # estimator's own parameters for one fit (``tuning.estimator_params``). It reads the fit's own
+    # rows: ``n_units`` and ``n_rows`` (a share of units to a leaf size), ``y`` (XGBoost's mean
+    # hessian at the base score), ``Z`` (the matrix after the head: the elastic net's λ_max) and
+    # ``plan`` (the cap on the leaf size at the plan's units; ``threads``). Every name it returns
+    # is a parameter of the estimator ``build`` makes. Without it, every dimension, by-hand,
+    # standard and fixed name must be one. ``register_family`` calls it on a probe
+    # (:data:`PROBE_ROWS` rows, a plan for them) at the standard candidate and at the center.
+    settings: Callable[..., Mapping[str, Any]] | None = None
+    # ``path(Z, y, grid, *, task, weights=None) -> tuning.PathFit``: a path family's whole grid on
+    # one split's matrix (``grid``: ``tuning.path_grid``), required when a task's tuning is a path.
+    path: Callable[..., Any] | None = None
+    # ``trees(step) -> explain.TreeEnsemble``: the fitted model step as leaf paths and node tables,
+    # required when its attribution or architecture is "trees".
+    trees: Callable[[Any], Any] | None = None
+    # ``tree_shap(step, Z) -> (phi (n, p, K), expected (K,)) | None``: a compiled TreeSHAP on the
+    # scale ``trees(step).scale`` names; None (the member, or its return) uses ``explain.tree_shap``.
+    tree_shap: Callable[[Any, Any], Any] | None = None
 
     def coefficients(self, pipeline: Any, X: Any, y: Any, *, task: Task,
                      purpose: Purpose | None, groups: Any = None) -> list[dict[str, Any]] | None:
@@ -690,7 +918,8 @@ def _finite(value: Any) -> float | None:
 
 
 __all__ = [
-    "ARCHITECTURES", "Assessment", "CLASSES_NOT_DRAWN", "CLASS_SCALES", "DEFAULT_TASKS",
+    "ARCHITECTURES", "Assessment", "CLASSES_NOT_DRAWN", "CLASS_SCALES", "CONSEQUENCE_WORDS",
+    "DEFAULT_TASKS",
     "DIAGNOSTICS", "FamilyBase", "FamilyInfo", "Fit", "INTERVAL_KINDS", "INVARIANCES", "Identity",
     "InferenceDecl", "Knob", "MEMBERS", "ModelFamily", "NOT_DRAWN", "Named", "ORDER_BLIND",
     "OPTIONAL_MEMBERS", "PURPOSES", "Prior", "RAW_SCALES", "SAME_KIND_FLOOR", "Situation",
