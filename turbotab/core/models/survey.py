@@ -610,33 +610,86 @@ def adjusted_wald(W: float, q: int, d: int) -> tuple[float, float, float] | None
 
 # ── families with no design-based estimator: block and record ────────────────
 
-# What the population answer offers in their place, by task: a family that has one.
-_DESIGN_FAMILY = {"regression": "linear", "binary": "linear", "multiclass": "linear",
-                  "ordinal": "proportional_odds", "time_to_event": "cox"}
-_DESIGN_LABEL = {
-    ("linear", "regression"): "survey-weighted least squares",
-    ("linear", "binary"): "survey-weighted logistic regression",
-    ("linear", "multiclass"): "survey-weighted multinomial logistic regression",
-    ("linear", "ordinal"): "survey-weighted multinomial logistic regression",
-    ("proportional_odds", "ordinal"): "the survey-weighted proportional-odds model",
-    ("cox", "time_to_event"): "survey-weighted Cox regression",
-}
 SAMPLE_EXIT = "Estimate for these participants instead: record the sample-only attestation"
 
 
 def has_design_estimator(family: Any, task: str) -> bool:
-    """Whether ``family`` estimates ``task`` design-based (its ``inference`` takes the design)."""
-    import inspect
-
-    fn = family.inference
-    if fn is None or task not in getattr(family, "tasks", ()):
-        return False
-    return "survey" in inspect.signature(fn).parameters
+    """Whether ``family`` estimates ``task`` design-based: its ``inference_decl`` declares
+    ``design_based`` (MODEL_FAMILY_CONTRACT C2) and the task is one of its own."""
+    decl = family.inference_decl
+    return decl is not None and decl.design_based and task in family.tasks
 
 
 def design_family(task: str) -> str | None:
-    """The family that estimates ``task`` over the design, offered as the exit."""
-    return _DESIGN_FAMILY.get(task)
+    """The family that estimates ``task`` over the design, offered as the exit: the task's default
+    inference family when it has a design-based estimator, else the first registered family that
+    has one for the task (registration order is the shelf's), else None."""
+    from turbotab.core.models.base import families, inference_default
+
+    default = inference_default(task)
+    if default is not None and has_design_estimator(default, task):
+        return default.key
+    return next((f.key for f in families(task) if has_design_estimator(f, task)), None)
+
+
+# How the methods text writes an estimator fit over the design, by the name it gives the estimator
+# fit without one (``methods_label``): the design changes what the estimator is called, not which
+# family fits it. An estimator this table does not hold is called by its ``methods_label``.
+_DESIGN_WORDS = {
+    "linear regression": "least squares",
+    "logistic regression": "logistic regression (pseudo-maximum likelihood)",
+    "multinomial logistic regression":
+        "multinomial logistic regression (pseudo-maximum likelihood)",
+    "multinomial logistic regression, which ignores the levels' order":
+        "multinomial logistic regression (pseudo-maximum likelihood)",
+    "a proportional-odds (cumulative logit) model":
+        "the proportional-odds model (pseudo-maximum likelihood)",
+    "Cox proportional hazards": "Cox regression (Binder's pseudo-likelihood, Efron ties)",
+}
+# An estimator with no design-based version, as the sentence names it (each one model), by its
+# ``methods_label``; one this table does not hold is called by that label.
+_NO_DESIGN_WORDS = {
+    "a random-intercept mixed model": "the random-intercept mixed model",
+    "generalized estimating equations": "the GEE model",
+    "feature-wise least-squares tests with Benjamini–Hochberg false-discovery control":
+        "feature-wise regression",
+    "elastic net": "the elastic net",
+    "gradient-boosted trees": "the gradient-boosted tree model",
+}
+
+
+def estimator_words(family: Any, task: str) -> str:
+    """``family``'s design-based estimator for ``task`` as the methods section writes it."""
+    label = family.methods_label(task)
+    return _DESIGN_WORDS.get(label) or label
+
+
+def blocked_words(family: Any, task: str) -> str:
+    """``family``, which has no design-based estimator for ``task``, as the methods sentence
+    names it when its estimates are blocked."""
+    label = family.methods_label(task)
+    return _NO_DESIGN_WORDS.get(label) or label
+
+
+def design_label(family: Any, task: str) -> str:
+    """``family``'s design-based estimator for ``task`` as an exit names it: "survey-weighted"
+    before the estimator's words, without their parenthesis ("the survey-weighted proportional-odds
+    model", "survey-weighted least squares")."""
+    words = estimator_words(family, task).split(" (")[0]
+    if words.startswith("the "):
+        return f"the survey-weighted {words[4:]}"
+    return f"survey-weighted {words}"
+
+
+def standardizes_margin(family: Any, task: str) -> bool:
+    """Whether a marginal risk difference or ratio would be standardized from ``family``'s fit
+    under the surveyed population, so that the measure itself, not the family's table, is what
+    the population answer blocks (``stages.effects.marginal_population_block``): it has a
+    design-based estimator for ``task``, it predicts, and its raw scale there is the margin (the
+    log-odds each row's risk is read from). A family with no design-based estimator is blocked
+    by its table first."""
+    return (has_design_estimator(family, task) and family.predicts
+            and family.raw_scale.get(task) == "margin")
 
 
 def no_design_estimator(family: Any, task: str, models: Sequence[str] | None = None,
@@ -651,10 +704,12 @@ def no_design_estimator(family: Any, task: str, models: Sequence[str] | None = N
               f"interval would ignore the strata and PSUs.")
     exits: list[dict[str, Any]] = []
     if replacement is not None and replacement != getattr(family, "key", None):
+        from turbotab.core.models.base import get_family
+
         chosen = list(models or [getattr(family, "key", "")])
         swapped = list(dict.fromkeys(replacement if m == getattr(family, "key", None) else m
                                      for m in chosen))
-        exits.append({"label": f"Use {_DESIGN_LABEL.get((replacement, task), replacement)}",
+        exits.append({"label": f"Use {design_label(get_family(replacement), task)}",
                       "decision": {"kind": "select_models", "models": swapped}})
     exits.append({"label": SAMPLE_EXIT, "decision": {"kind": "set_survey", "estimand": "sample"}})
     return blocked(reason, exits, estimator="not fitted: no design-based estimator for the "
@@ -665,10 +720,10 @@ def population_shelf(ranked: Sequence[tuple[Any, Any]], task: str) -> list[tuple
     """The shelf under the population answer (MS4): every family with a design-based estimator for
     ``task`` first, in its order, then the rest, each with the concern that says its estimates
     will be blocked. The shelf is never shortened (BLUEPRINT §11.3: the menu stays whole)."""
-    from turbotab.core.models.base import Assessment
+    from turbotab.core.models.base import Assessment, get_family
 
     replacement = design_family(task)
-    named = _DESIGN_LABEL.get((replacement, task), replacement) if replacement else None
+    named = design_label(get_family(replacement), task) if replacement else None
     instead = f"; {named} has one" if named else ""
     out = []
     for family, judged in ranked:
@@ -914,27 +969,6 @@ def pooled_design_caption(design: SurveyDesign, var: DesignVariance, n_rows: int
 
 # ── the methods sentences (BLUEPRINT §13: each contract's sentence) ──────────
 
-# Each design-based estimator in the words the methods section writes it, by (family, task).
-_ESTIMATOR_WORDS = {
-    ("linear", "regression"): "least squares",
-    ("linear", "binary"): "logistic regression (pseudo-maximum likelihood)",
-    ("linear", "multiclass"): "multinomial logistic regression (pseudo-maximum likelihood)",
-    ("linear", "ordinal"): "multinomial logistic regression (pseudo-maximum likelihood)",
-    ("proportional_odds", "ordinal"): "the proportional-odds model (pseudo-maximum likelihood)",
-    ("cox", "time_to_event"): "Cox regression (Binder's pseudo-likelihood, Efron ties)",
-}
-
-
-# A family with no design-based estimator, as the sentence names it (each one model).
-_BLOCKED_WORDS = {
-    "mixed": "the random-intercept mixed model",
-    "gee": "the GEE model",
-    "featurewise": "feature-wise regression",
-    "elastic_net": "the elastic net",
-    "boosted_trees": "the gradient-boosted tree model",
-}
-
-
 def _listing(items: Sequence[str]) -> str:
     items = list(items)
     if len(items) <= 1:
@@ -966,12 +1000,12 @@ def models_sentence(state: Any, models: Sequence[str], task: str | None) -> str 
             family = get_family(key)
         except KeyError:
             continue
-        # A family neither table names is called what the methods text calls it (its
-        # ``methods_label``), never by its key, and sorted by its estimator, not by the tables.
+        # Each family is called what the methods text calls its estimator, never by its key,
+        # and sorted by its declaration (``design_based``).
         if has_design_estimator(family, task):
-            based.append(_ESTIMATOR_WORDS.get((key, task)) or family.methods_label(task))
+            based.append(estimator_words(family, task))
         else:
-            stopped.append(_BLOCKED_WORDS.get(key) or family.methods_label(task))
+            stopped.append(blocked_words(family, task))
     parts: list[str] = []
     weight = getattr(survey, "weight", None)
     if based:
@@ -1307,9 +1341,9 @@ __all__ = [
     "LONELY_PSU", "LONELY_RULE", "SAMPLE_EXIT", "SURVEY_CONTRACTS", "SurveyDesign",
     "WeightedFit", "adjusted_wald", "blocked", "build_design", "curve_caption", "design_curve",
     "pooled_design_caption",
-    "design_df", "design_family", "design_fit", "design_table", "domain_of", "has_design_estimator",
-    "models_sentence", "no_design_estimator", "PopulationCurve", "population_answer",
-    "population_curve", "population_shelf", "substitution_clause", "survey_info", "survey_table",
+    "blocked_words", "design_df", "design_family", "design_fit", "design_label", "design_table",
+    "domain_of", "estimator_words", "has_design_estimator", "models_sentence", "no_design_estimator", "PopulationCurve", "population_answer",
+    "population_curve", "population_shelf", "standardizes_margin", "substitution_clause", "survey_info", "survey_table",
     "total_variance",
     "weighted_least_squares", "weighted_logistic", "weighted_multinomial",
 ]

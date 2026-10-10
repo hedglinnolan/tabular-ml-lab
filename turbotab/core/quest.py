@@ -320,12 +320,15 @@ def _always(state: Any, facts: Facts) -> bool:
 
 
 def _linear_family(state: Any) -> bool:
-    """The unpenalized regression family is chosen, or the families are not chosen yet (the line
-    then waits for them): regression calibration corrects its coefficient
-    (``stages/calibration.py``: NO_LINEAR). The stage switches on the key, so this mirror does
-    too, and both retire in MC-2b (``test_mc2_no_family_switches.NOT_YET``)."""
+    """A chosen family's coefficient is one regression calibration corrects, or the families are
+    not chosen yet (the line then waits for them): the stage's own predicate
+    (``stages.calibration.calibrated_family``; its refusal is NO_LINEAR)."""
     models = getattr(state, "models", None)
-    return models is None or "linear" in models
+    if models is None:
+        return True
+    from turbotab.core.stages.calibration import calibrated_family
+
+    return calibrated_family(models) is not None
 
 
 def _shrinkage_offered(state: Any) -> bool:

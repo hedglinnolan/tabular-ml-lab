@@ -2214,11 +2214,26 @@ def _energy_model_fits_the_contrast(decision: Any, ctx: Any) -> None:
 # select_models: an exposure family is reported by the feature-wise family
 
 
+def _estimates_each_in_turn(key: str) -> bool:
+    """Whether the family registered as ``key`` estimates each exposure in turn: it makes no
+    predictions (``predicts``), so it is no joint model of the outcome, and it serves inference
+    (``purposes``). A key no family is registered under does not."""
+    from turbotab.core.models import get_family
+
+    try:
+        family = get_family(key)
+    except KeyError:
+        return False
+    return not family.predicts and "inference" in family.purposes
+
+
 def _models_fit_the_family(decision: Any, ctx: Any) -> None:
     """Under inference, a declared exposure family (each exposure in turn, adjusted for the
-    covariates, with a false-discovery statement) is estimated by the feature-wise family alone; a
-    joint model adjusts each exposure for the others, which is another estimand."""
+    covariates, with a false-discovery statement) is estimated by a family that estimates each one
+    in turn (the feature-wise family) alone; a joint model adjusts each exposure for the others,
+    which is another estimand."""
     from turbotab.core.decisions import SelectModels
+    from turbotab.core.models import families
 
     state = _state(ctx)
     if _get(state, "purpose") != "inference":
@@ -2226,16 +2241,18 @@ def _models_fit_the_family(decision: Any, ctx: Any) -> None:
     spec = current_estimand(state)
     if spec is None or not _get(spec, "family"):
         return
-    others = [m for m in decision.models if m != "featurewise"]
+    others = [m for m in decision.models if not _estimates_each_in_turn(m)]
     if not others:
         return
+    in_turn = [f.key for f in families() if _estimates_each_in_turn(f.key)][:1]
+    fit_in_turn = [{"label": "Fit the feature-wise family",
+                    "decision": SelectModels(models=in_turn)}] if in_turn else []
     raise _refusal(
         "family_needs_featurewise",
         f"The comparison you want is each study factor in turn, adjusted for the covariates; "
         f"{_listing(others)} {'adjusts' if len(others) == 1 else 'adjust'} each study factor for the "
         f"others, which is a different comparison. The feature-wise family estimates this one.",
-        [{"label": "Fit the feature-wise family", "decision": SelectModels(models=["featurewise"])},
-         {"label": "Name one study factor instead", "decision": None}])
+        [*fit_in_turn, {"label": "Name one study factor instead", "decision": None}])
 
 
 # set_model_sequence and respond_diagnostic (MODELING_SEQUENCE §1 row 11)

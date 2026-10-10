@@ -62,11 +62,12 @@ class ClassDraw:
     estimate: float = 0.0
 
 
-def _plain_multinomial(model: Any) -> bool:
-    """Whether ``model`` is an unpenalized, unweighted multinomial logit with an intercept."""
-    from sklearn.linear_model import LogisticRegression
-
-    if not isinstance(model, LogisticRegression):
+def _plain_multinomial(family: Any, model: Any) -> bool:
+    """Whether ``model``, ``family``'s fitted model step, is an unpenalized, unweighted multinomial
+    logit with an intercept: the family declares a weighted sum of the values as given
+    (``linear_in_values``) read out as a margin (``output``, the log-odds), and the fit's own
+    settings hold no penalty, no class weights and an intercept, over three classes or more."""
+    if family is None or not family.linear_in_values or family.output != "margin":
         return False
     params = model.get_params(deep=False)
     unpenalized = (params.get("penalty") in (None, "none")
@@ -76,12 +77,14 @@ def _plain_multinomial(model: Any) -> bool:
 
 
 def class_predictor(pipeline: Any, X_rows: pd.DataFrame, y_rows: Any,
-                    classes: Sequence[Any]) -> Callable[[pd.DataFrame], np.ndarray]:
+                    classes: Sequence[Any],
+                    family: Any = None) -> Callable[[pd.DataFrame], np.ndarray]:
     """``pipeline``'s probability of each of ``classes`` (in that order) for the rows of a frame.
 
-    ``X_rows`` and ``y_rows`` are the rows the pipeline was fit on. For the linear family's
-    unpenalized multinomial logit the probabilities are its maximum-likelihood estimate on those
-    rows, refined to convergence (module docstring); for any other family they are its own."""
+    ``X_rows`` and ``y_rows`` are the rows the pipeline was fit on, and ``family`` the family that
+    fit it. For an unpenalized multinomial logit (:func:`_plain_multinomial`: the linear family's)
+    the probabilities are its maximum-likelihood estimate on those rows, refined to convergence
+    (module docstring); for any other family, or with no family named, they are its own."""
     from turbotab.core.models.linear import model_matrix
     from turbotab.core.models.survey import _softmax, weighted_multinomial
 
@@ -96,7 +99,7 @@ def class_predictor(pipeline: Any, X_rows: pd.DataFrame, y_rows: Any,
         return np.asarray(pipeline.predict_proba(frame), dtype=float)[:, index]
 
     model = pipeline.steps[-1][1] if hasattr(pipeline, "steps") else pipeline
-    if not _plain_multinomial(model):
+    if not _plain_multinomial(family, model):
         return fitted
     try:
         values = model_matrix(pipeline, X_rows).to_numpy(dtype=float)
@@ -216,7 +219,7 @@ def class_family_entries(key: str, family: Any, *, task: str, pipeline: Any, tem
     from turbotab.core.methods.substitution import class_curves, class_refit_band
 
     classes = list(pipeline.classes_)
-    predict = class_predictor(pipeline, X_fit, y_fit, classes)
+    predict = class_predictor(pipeline, X_fit, y_fit, classes, family)
     say(0.05, f"{family.label}: moving energy")
     curves = class_curves(predict, X, classes=classes, shift=shift, **curve_args)
     draw = ClassDraw(entries=_entries(key, family, curves), curve=curves)
@@ -232,7 +235,7 @@ def class_family_entries(key: str, family: Any, *, task: str, pipeline: Any, tem
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             refitted = fit_pipeline(pipe, Xb, yb, groups=inner)
-        return class_predictor(refitted, Xb, yb, classes)
+        return class_predictor(refitted, Xb, yb, classes, family)
 
     common = dict(classes=classes, shift=shift, ks=ks, live=curves["live"], groups=groups,
                   random_state=0, centers=[c["delta"] for c in curves["classes"]],
@@ -391,7 +394,7 @@ def _pooled(key: str, family: Any, *, task: str, imputed: Mapping[str, Any], tra
             shift = shift_for(state, X_k, donor=sub.donor, recipient=sub.recipient,
                               kcal_per_unit=kcal_per_unit, design_nested=nested,
                               total=total_energy, scale=scale, percent=percent)
-            predict = class_predictor(fitted, X_all, y_all, classes)
+            predict = class_predictor(fitted, X_all, y_all, classes, family)
             curves.append(class_curves(predict, X_k, classes=classes, shift=shift, **curve_args))
         shifts.append(shift)
         rows_of.append(rows)
@@ -422,7 +425,7 @@ def _pooled(key: str, family: Any, *, task: str, imputed: Mapping[str, Any], tra
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
                     refitted = fit_pipeline(pipe, Xb, yb, groups=inner)
-                return class_predictor(refitted, Xb, yb, classes)
+                return class_predictor(refitted, Xb, yb, classes, family)
 
             drawn = class_refit_band(
                 refit, X_all, ys[j], classes=classes, shift=shifts[j], ks=ks, live=live,

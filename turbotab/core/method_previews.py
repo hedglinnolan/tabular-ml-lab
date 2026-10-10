@@ -679,8 +679,9 @@ def calibration_numbers(sctx: Any, after: Any) -> dict[str, Any] | None:
     from turbotab.core.models.linear import model_matrix
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
     from turbotab.core.stages.calibration import (NO_LINEAR, NONE_ERROR_PRONE, _nonlinear,
-                                                  analysis_design, combine_rule, day_rows,
-                                                  error_prone, recall_matrix)
+                                                  analysis_design, calibrated_family,
+                                                  combine_rule, day_rows, error_prone,
+                                                  recall_matrix)
     from turbotab.core.stages.data import open_store
     from turbotab.core.voice import listing
 
@@ -688,7 +689,8 @@ def calibration_numbers(sctx: Any, after: Any) -> dict[str, Any] | None:
     design = sctx.inputs["design"]
     pipelines = design.objects["pipelines"]
     adj = after.energy_adjustment
-    if "linear" not in (after.models or []) or "linear" not in pipelines:
+    key = calibrated_family(after.models)
+    if key is None or key not in pipelines:
         return {"withheld": NO_LINEAR}
     spec = DesignSpec.from_dict(design.objects["spec"])
     energy = adj.energy_column if adj is not None and adj.method != "none" else None
@@ -720,7 +722,7 @@ def calibration_numbers(sctx: Any, after: Any) -> dict[str, Any] | None:
         def __getitem__(self, key: Any) -> Any:
             return self._inner
 
-    template = clone(pipelines["linear"])
+    template = clone(pipelines[key])
     first = _Fitted(clone(template)[:-1].fit(X_all))  # the transform steps only: outcome-free
     columns = [str(c) for c in model_matrix(first, X_all).columns]
     items = error_prone(first, columns, spec.roles, energy)
