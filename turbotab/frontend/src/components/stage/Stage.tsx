@@ -23,6 +23,7 @@ import type { Decision, ProjectView, Refusal } from "../../api/schema";
 import { useMotionPrefs, useTransitions } from "../../motion/prefs";
 import { stateSeq, useEvidence, useM1Stage, usePreview, type Answer } from "./data";
 import { ColumnsScene, ModelsScene, NowScene, ResultsScene, RowsScene, type LiveData } from "./LiveScenes";
+import { FitHeld } from "./results/Results";
 import { initial } from "./player";
 import { PreviewGrid } from "./PreviewGrid";
 import { PlayerControls, StageBar } from "./StageBar";
@@ -336,6 +337,11 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
             <p className={ack.refused ? s.ackRefused : s.ack} role="status" data-testid="stage-ack">
               <Rich text={ack.text} />
             </p>
+          ) : null}
+          {/* Fit waits for the person when it is expected to take long: it is offered wherever the
+              recorded pipeline is on the stage, never while a preview or evidence is. */}
+          {scene.kind === "now" || scene.kind === "models" || scene.kind === "results" ? (
+            <FitHeld pid={pid} status={view.stages.fit} />
           ) : null}
           <div className={s.body}>
             <AnimatePresence initial={false} mode="popLayout">

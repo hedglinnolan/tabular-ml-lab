@@ -13,8 +13,8 @@ import {
   type SplitArtifact,
   type SubstitutionArtifact,
 } from "../../../api/m1-stage-types";
-import { useCancelJob, useDecide, usePressFit } from "../../../api/queries";
-import type { ProjectView, Refusal } from "../../../api/schema";
+import { useCancelFit, useCancelJob, useDecide, usePressFit, useQuest } from "../../../api/queries";
+import type { ProjectView, Refusal, StageStatus } from "../../../api/schema";
 import { RefusalNote } from "../../record/Refusal";
 import { StaleVeil, type VeilState } from "../../../motion/StaleVeil";
 import { StageRetry } from "../../StageRetry";
@@ -78,10 +78,24 @@ function energyProvenance(view: ProjectView, design: DesignArtifact | null): str
 /**
  * Fit, pressed (SIZING P0.8; FOUNDATION §7): until it is, no estimate is served, and under
  * Estimate pressing it locks the plan. One obvious click; a refusal says what it waits for.
+ * `about`: what the engine expects the fit to take, once known; `cancellable`: the press can be
+ * withdrawn (Cancel is POST /fit/cancel) while the fit waits for it.
  */
-function FitPress({ pid, reason }: { pid: string; reason: string }) {
+function FitPress({
+  pid,
+  reason,
+  about,
+  cancellable = false,
+}: {
+  pid: string;
+  reason: string;
+  about?: string | null;
+  cancellable?: boolean;
+}) {
   const press = usePressFit(pid);
-  const refused = press.error && isRefusalError(press.error) ? press.error.refusal : null;
+  const cancel = useCancelFit(pid);
+  const failure = press.error ?? cancel.error;
+  const refused = failure && isRefusalError(failure) ? failure.refusal : null;
   return (
     <section className={s.section} data-purpose="fit_press" data-testid="fit-press">
       <p className={s.caption}>
@@ -97,13 +111,81 @@ function FitPress({ pid, reason }: { pid: string; reason: string }) {
         >
           {press.isPending ? "Fitting…" : "Fit"}
         </button>
+        {about ? (
+          <span className={s.bandNote} data-testid="fit-estimate">
+            about {about}
+          </span>
+        ) : null}
+        {cancellable ? (
+          <button
+            type="button"
+            className={s.linkButton}
+            onClick={() => cancel.mutate()}
+            disabled={cancel.isPending}
+            data-testid="cancel-fit"
+          >
+            Cancel
+          </button>
+        ) : null}
       </div>
       {refused ? (
         <p className={s.bandNote} role="alert">
           <Rich text={refused.error.message} />
         </p>
+      ) : failure && !refused ? (
+        <p className={s.bandNote} role="alert">
+          {failure.message}
+        </p>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * The fit stage when it computes nothing yet, so there is no artifact to hang Fit on (W1-B).
+ *
+ * A fit expected to take over about 2 minutes waits in the scheduler for Fit (core/fit_press.py):
+ * its status is idle with `held: "fit"`, and the lock the quest log carries says how long the
+ * engine expects it to take. Fit starts it; Cancel withdraws the press. Once pressed and running,
+ * only Cancel is offered: a long fit can be stopped. Nothing is shown otherwise.
+ */
+export function FitHeld({ pid, status }: { pid: string; status: StageStatus | undefined }) {
+  const held = status?.held === "fit";
+  const running = status?.status === "running" || status?.status === "queued";
+  const lock = useQuest(pid, held || running).data?.fit ?? null;
+  if (held) {
+    const seconds = lock?.estimate_seconds ?? null;
+    return (
+      <div className={s.results} data-testid="fit-held">
+        <FitPress
+          pid={pid}
+          reason={lock?.reason ?? "The fit waits for Fit: press it to start."}
+          about={seconds === null ? null : aboutSeconds(seconds)}
+          cancellable
+        />
+      </div>
+    );
+  }
+  if (running && lock?.pressed) return <FitRunning pid={pid} />;
+  return null;
+}
+
+function FitRunning({ pid }: { pid: string }) {
+  const cancel = useCancelFit(pid);
+  return (
+    <div className={s.results} data-testid="fit-held">
+      <div className={s.bandRow}>
+        <button
+          type="button"
+          className={s.linkButton}
+          onClick={() => cancel.mutate()}
+          disabled={cancel.isPending}
+          data-testid="cancel-fit"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }
 

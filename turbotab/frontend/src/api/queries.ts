@@ -11,7 +11,16 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { api } from "./client";
-import type { Decision, JobView, ProjectView, StageResult, StageStatus } from "./schema";
+import type {
+  ConfirmSweepInput,
+  Decision,
+  FitLock,
+  JobView,
+  ProjectView,
+  QuestLog,
+  StageResult,
+  StageStatus,
+} from "./schema";
 import type { AnyStageArtifacts, AnyStageName } from "./m1-types";
 import type { CodebookRequest, JoinPreviewRequest } from "./m3-types";
 
@@ -36,7 +45,19 @@ export const keys = {
   plan: (pid: string) => [pid, "plan"] as const,
   files: (pid: string) => [pid, "files"] as const,
   models: () => ["models"] as const,
+  // W1-A: the quest log and the record's outputs. All are derived from the decision log and the
+  // stage statuses, so a decision event (and a stage changing state) invalidates them (events.ts).
+  quest: (pid: string) => [pid, "quest"] as const,
+  record: (pid: string) => [pid, "record"] as const,
+  triage: (pid: string) => [pid, "triage"] as const,
+  materiality: (pid: string) => [pid, "materiality"] as const,
+  checklist: (pid: string) => [pid, "checklist"] as const,
 };
+
+/** The reads that follow the decision log: stale after any decision. */
+export function logDerivedKeys(pid: string) {
+  return [keys.quest(pid), keys.record(pid), keys.triage(pid), keys.materiality(pid), keys.checklist(pid)];
+}
 
 export function makeQueryClient(): QueryClient {
   return new QueryClient({
@@ -177,13 +198,37 @@ function lastSeq(view: ProjectView): number {
   return view.decisions.reduce((m, d) => Math.max(m, d.seq), 0);
 }
 
+function recorded(qc: QueryClient, pid: string, view: ProjectView): void {
+  qc.setQueryData<ProjectView>(keys.view(pid), (prev) => mergeView(prev, view));
+  // The SSE decision event does this too; a response that beats it must not leave them old.
+  for (const key of logDerivedKeys(pid)) void qc.invalidateQueries({ queryKey: key, exact: true });
+}
+
 export function useDecide(pid: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (decision: Decision) => api.decide(pid, decision),
-    onSuccess: (view) => {
-      qc.setQueryData<ProjectView>(keys.view(pid), (prev) => mergeView(prev, view));
-    },
+    onSuccess: (view) => recorded(qc, pid, view),
+  });
+}
+
+/** Answer a later question ahead of the Router (`decide_now`): refused, with what it waits for,
+ * where its card is not computed or the earlier answers it reads are not in. */
+export function useDecideNow(pid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (decision: Decision) => api.decide(pid, decision, { decideNow: true }),
+    onSuccess: (view) => recorded(qc, pid, view),
+  });
+}
+
+/** Confirm a gate's sweep (kind confirm_sweep): the defaults or the noticing dispositions as
+ * listed, with any line the person changed in `lines`. */
+export function useConfirmSweep(pid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sweep: Omit<ConfirmSweepInput, "kind">) => api.confirmSweep(pid, sweep),
+    onSuccess: (view) => recorded(qc, pid, view),
   });
 }
 
@@ -208,7 +253,28 @@ export function usePressFit(pid: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.pressFit(pid),
-    onSuccess: () => {
+    onSuccess: (lock) => {
+      keepLock(qc, pid, lock);
+      void qc.invalidateQueries({ queryKey: [pid, "stage"] });
+      void qc.invalidateQueries({ queryKey: keys.view(pid) });
+    },
+  });
+}
+
+/** The lock a Fit or Cancel returned, as the quest log shows it, until the log is read again. */
+function keepLock(qc: QueryClient, pid: string, lock: FitLock): void {
+  qc.setQueryData<QuestLog>(keys.quest(pid), (prev) => (prev ? { ...prev, fit: lock } : prev));
+  void qc.invalidateQueries({ queryKey: keys.quest(pid), exact: true });
+}
+
+/** Cancel, where Fit was: running estimates stop; before any estimate is served the press (and,
+ * under Estimate, the plan's lock) is withdrawn, so Fit is asked for again. */
+export function useCancelFit(pid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.cancelFit(pid),
+    onSuccess: (lock) => {
+      keepLock(qc, pid, lock);
       void qc.invalidateQueries({ queryKey: [pid, "stage"] });
       void qc.invalidateQueries({ queryKey: keys.view(pid) });
     },
@@ -298,4 +364,45 @@ export function useCodebook(pid: string) {
     mutationFn: (source: CodebookRequest | { file: File }) =>
       "file" in source ? api.uploadCodebook(pid, source.file) : api.codebook(pid, source),
   });
+}
+
+// ── W1-A: the quest log, the record's outputs, the export ───────────────────
+
+/** The quest log (seven stages, their lines, progress) and the plan's lock under `fit`. */
+export function useQuest(pid: string, enabled = true) {
+  return useQuery({ queryKey: keys.quest(pid), queryFn: ({ signal }) => api.quest(pid, signal), enabled });
+}
+
+/** Each stage's For the record lines. */
+export function useRecord(pid: string, enabled = true) {
+  return useQuery({ queryKey: keys.record(pid), queryFn: ({ signal }) => api.record(pid, signal), enabled });
+}
+
+/** The triage of the open noticings at the gate. */
+export function useTriage(pid: string, enabled = true) {
+  return useQuery({ queryKey: keys.triage(pid), queryFn: ({ signal }) => api.triage(pid, signal), enabled });
+}
+
+/** The materiality ledger. */
+export function useMateriality(pid: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.materiality(pid),
+    queryFn: ({ signal }) => api.materiality(pid, signal),
+    enabled,
+  });
+}
+
+/** The reporting checklist and what the export still waits for. */
+export function useChecklist(pid: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.checklist(pid),
+    queryFn: ({ signal }) => api.checklist(pid, signal),
+    enabled,
+  });
+}
+
+/** Build the manuscript bundle on request. A mutation, not a query: it is a download the person
+ * asks for, and a refusal (everything the export still waits for) comes back as a RefusalError. */
+export function useExport(pid: string) {
+  return useMutation({ mutationFn: () => api.exportBundle(pid) });
 }
