@@ -84,8 +84,9 @@ neither the arm nor the outcome, with an indicator of the missing value beside i
 category for a category), White & Thompson's (2005) conditions for mean imputation in a
 randomized trial.
 
-**Survey designs** are refused: a trial's inference rests on its randomization, not on sampling
-weights; the exit is the sample-only answer. **Under Predict** nothing here is offered: an
+**Survey designs** are refused, by the effect, the tipping point, each delta-adjusted analysis,
+the baseline table and the CONSORT flow alike: a trial's inference rests on its randomization, not
+on sampling weights; the exit is the sample-only answer. **Under Predict** nothing here is offered: an
 assigned treatment's effect is an Estimate question.
 
 **Wording.** Causal wording ("assignment to A changed the outcome by …") is written only for the
@@ -157,6 +158,10 @@ PRIMARY_EXIT = {"label": "Keep the primary analysis, its assumption stated (the 
                          "are like the observed ones with the same arm and covariates)",
                 "tipping_point": False}
 DESCRIBE_ARMS_EXIT = {"label": "Describe each arm instead", "tests": False}
+DESCRIBE_OUTCOMES_EXIT = {"label": "Describe the outcome in each arm instead, without an effect",
+                          "describe": True}
+CLUSTER_COLUMN_EXIT = {"label": "Choose the column that names every person's randomized cluster",
+                       "decision": {"kind": "confirm_role", "column": None, "role": "cluster"}}
 SECONDARY_EXIT = {"label": "Run it as a labeled secondary analysis", "secondary": True}
 LEAVE_OUT_EXIT = {"label": "Leave the covariates chosen after the data were seen out of the "
                            "primary analysis", "covariates_prespecified": True}
@@ -268,7 +273,16 @@ def _check_design(spec: TrialSpec) -> None:
 # ── reading the columns ──────────────────────────────────────────────────────
 
 
-def _yes_no(values: pd.Series) -> pd.Series:
+def _adherence_refusal(column: str, what: str) -> TrialRefused:
+    return TrialRefused(
+        f"The adherence column {column!r} must say yes or no for each person; it holds {what}, so "
+        f"who followed the protocol cannot be read from it.",
+        ({"label": f"Choose a yes/no column for adherence instead of {column}",
+          "decision": {"kind": "confirm_role", "column": None, "role": "flag"}},
+         ITT_EXIT), term="adherence is not yes/no")
+
+
+def _yes_no(values: pd.Series, column: str = "adherence") -> pd.Series:
     """A yes/no column as True / False / NA (bool, 0/1, or yes/no/true/false text)."""
     if pd.api.types.is_bool_dtype(values):
         return values.astype("boolean")
@@ -276,16 +290,14 @@ def _yes_no(values: pd.Series) -> pd.Series:
         v = pd.to_numeric(values, errors="coerce")
         bad = v.notna() & ~v.isin([0, 1])
         if bad.any():
-            raise TrialRefused("The adherence column must say yes or no for each person; it holds "
-                               "other numbers.", term="adherence is not yes/no")
+            raise _adherence_refusal(column, "other numbers")
         return v.map({1: True, 0: False}).astype("boolean")
     text = values.astype("string").str.strip().str.lower()
     mapped = text.map({"yes": True, "true": True, "1": True, "y": True,
                        "no": False, "false": False, "0": False, "n": False})
     bad = text.notna() & mapped.isna()
     if bad.any():
-        raise TrialRefused("The adherence column must say yes or no for each person; it holds "
-                           "other words.", term="adherence is not yes/no")
+        raise _adherence_refusal(column, "other words")
     return mapped.astype("boolean")
 
 
@@ -306,8 +318,13 @@ def _arms(frame: pd.DataFrame, spec: TrialSpec) -> list[str]:
                            ({"label": "Choose the control arm", "control": None},),
                            term="control arm not found")
     if len(found) < 2:
-        raise TrialRefused("Everyone randomized is in one arm, so there is nothing to compare.",
-                           term="one arm")
+        raise TrialRefused(
+            f"Everyone randomized is in one arm ({control}) of {spec.arm!r}, so there is nothing "
+            f"to compare.",
+            ({"label": "Choose the column that holds the arm each person was randomized to",
+              "decision": {"kind": "confirm_role", "column": None, "role": "exposure"}},
+             {"label": "Declare the design (a single-arm study is not a randomized comparison)",
+              "decision": {"kind": "set_design"}}), term="one arm")
     return [control] + [a for a in found if a != control]
 
 
@@ -359,11 +376,16 @@ class AnalysisSets:
     per_protocol: pd.Series | None
     outcome_observed: pd.Series
     arm: pd.Series  # the randomized arm as text (NA when not randomized)
+    # an adherence column that is not yes/no: refused for the per-protocol set only, so intention
+    # to treat (which never reads adherence) still runs
+    adherence_problem: TrialRefused | None = None
 
     def mask(self, analysis_set: str) -> pd.Series:
         if analysis_set == "itt":
             return self.itt
         if analysis_set == "per_protocol":
+            if self.adherence_problem is not None:
+                raise self.adherence_problem
             if self.per_protocol is None:
                 raise TrialRefused("The per-protocol set needs a column that says whether each "
                                    "person followed the protocol.",
@@ -381,13 +403,16 @@ def analysis_sets(frame: pd.DataFrame, spec: TrialSpec) -> AnalysisSets:
     _require(frame, spec)
     arm = frame[spec.arm].map(lambda v: _label(v) if pd.notna(v) else pd.NA)
     randomized = arm.notna()
-    pp = None
+    pp = problem = None
     if spec.adherent:
-        adh = _yes_no(frame[spec.adherent])
-        pp = randomized & adh.fillna(False).astype(bool)
+        try:
+            adh = _yes_no(frame[spec.adherent], spec.adherent)
+            pp = randomized & adh.fillna(False).astype(bool)
+        except TrialRefused as refused:
+            problem = refused
     observed = frame[spec.outcome].notna()
     return AnalysisSets(randomized=randomized, itt=randomized.copy(), per_protocol=pp,
-                        outcome_observed=observed, arm=arm)
+                        outcome_observed=observed, arm=arm, adherence_problem=problem)
 
 
 def in_analysis_set(frame: pd.DataFrame, spec: TrialSpec, analysis_set: str = "itt") -> pd.Series:
@@ -428,10 +453,19 @@ class ConsortFlow:
         return asdict(self)
 
 
-def consort_flow(frame: pd.DataFrame, spec: TrialSpec) -> ConsortFlow:
-    """The counts per arm by stage that the CONSORT flow diagram reports (E3 draws it)."""
+def consort_flow(frame: pd.DataFrame, spec: TrialSpec, *, survey_design: Any = None
+                 ) -> ConsortFlow:
+    """The counts per arm by stage that the CONSORT flow diagram reports (E3 draws it). A survey
+    design is refused as everywhere in a trial (the sample-only answer is its exit), so the flow
+    never sits beside weighted results it does not describe."""
+    _check_survey(survey_design)
     _check_design(spec)
     sets = analysis_sets(frame, spec)
+    if sets.adherence_problem is not None:
+        p = sets.adherence_problem
+        raise TrialRefused(str(p), (p.exits[0], {"label": "Draw the flow without the "
+                                                          "per-protocol set", "adherent": None}),
+                           term=p.term)
     arms = _arms(frame, spec)
     received = None if not spec.received else frame[spec.received].map(
         lambda v: _label(v) if pd.notna(v) else pd.NA)
@@ -484,11 +518,14 @@ class BaselineTable:
 
 def baseline_table(frame: pd.DataFrame, spec: TrialSpec, variables: Sequence[str], *,
                    analysis_set: str = "itt", tests: bool = False,
-                   goal: str = "inference") -> BaselineTable:
+                   goal: str = "inference", survey_design: Any = None) -> BaselineTable:
     """Each arm described at baseline: a number by its mean, SD, median and quartiles; a category
     by its count and percentage of those with a value; each with its missing count. ``tests``
-    is refused: a baseline difference between randomized arms is chance by construction."""
+    is refused: a baseline difference between randomized arms is chance by construction. A survey
+    design is refused (the table describes the randomized people, unweighted; the sample-only
+    answer is its exit)."""
     _check_goal(goal, "baseline_table")
+    _check_survey(survey_design)
     if tests:
         raise TrialRefused(
             "Baseline differences between randomized arms are described, not tested: chance "
@@ -705,8 +742,7 @@ def _separation() -> TrialRefused:
     return TrialRefused(
         "Some group of people here all had the event, or none did, so the model's risk for them "
         "runs to 0% or 100% and no finite estimate exists.",
-        ({"label": "Adjust for fewer covariates", "covariates": []},
-         {"label": "Describe the events in each arm instead", "describe": True}),
+        ({"label": "Adjust for fewer covariates", "covariates": []}, DESCRIBE_OUTCOMES_EXIT),
         term="separation in the logistic model")
 
 
@@ -761,6 +797,7 @@ class TrialEffect:
     interval: str  # how the intervals were built
     causal: bool  # causal wording allowed: intention to treat under a declared randomization
     secondary: bool = False
+    covariates_prespecified: bool = True
     clusters: dict[str, int] | None = None  # arm -> clusters analyzed
     icc: float | None = None
     icc_source: str | None = None
@@ -1008,6 +1045,12 @@ def kr_df(L: np.ndarray, kr: KenwardRoger) -> float:
     return float(4 + (q + 2) / (q * rho - 1))
 
 
+def _cluster_level(frame: pd.DataFrame, spec: TrialSpec, column: str, idx: pd.Index) -> bool:
+    """Whether ``column`` takes one value within every cluster of the analyzed rows."""
+    sub = frame.loc[idx, [spec.cluster, column]].astype({column: "string"}).fillna("(missing)")
+    return bool((sub.groupby(spec.cluster)[column].nunique() <= 1).all())
+
+
 def _cluster_codes(frame: pd.DataFrame, spec: TrialSpec, idx: pd.Index) -> np.ndarray:
     return pd.factorize(frame.loc[idx, spec.cluster].map(_label))[0].astype(np.int64)
 
@@ -1247,17 +1290,19 @@ def _prepare(frame: pd.DataFrame, spec: TrialSpec, analysis_set: str, measure: s
     for a in arms:
         n_a = int((analyzed & (sets.arm == a)).sum())
         if n_a < 2:
+            exits = ([ITT_EXIT] if analysis_set != "itt" else []) + [DESCRIBE_OUTCOMES_EXIT]
             raise TrialRefused(f"Arm {a} has {n_a} {'person' if n_a == 1 else 'people'} with an "
                                f"outcome in this analysis; each arm needs at least two.",
-                               (ITT_EXIT,) if analysis_set != "itt" else (),
-                               term="too few outcomes in an arm")
+                               exits, term="too few outcomes in an arm")
     if spec.trial_design == "cluster_randomized_trial":
         c = frame.loc[in_set.to_numpy(), spec.cluster]
         if c.isna().any():
-            raise TrialRefused("Some randomized people have no cluster named; in a "
-                               "cluster-randomized trial everyone belongs to the cluster that was "
-                               "randomized.", ({"label": "Fill in the cluster column"},),
-                               term="missing cluster")
+            raise TrialRefused(
+                f"{int(c.isna().sum())} randomized "
+                f"{'person has' if int(c.isna().sum()) == 1 else 'people have'} no cluster named "
+                f"in {spec.cluster!r}; in a cluster-randomized trial everyone belongs to the "
+                f"cluster that was randomized, and leaving them out would break intention to "
+                f"treat.", (CLUSTER_COLUMN_EXIT, DESCRIBE_OUTCOMES_EXIT), term="missing cluster")
         arm_of = pd.DataFrame({"c": c.map(_label), "a": sets.arm[in_set]})
         mixed = arm_of.groupby("c")["a"].nunique()
         if (mixed > 1).any():
@@ -1314,18 +1359,29 @@ def estimate(frame: pd.DataFrame, spec: TrialSpec, *, analysis_set: str = "itt",
             raise ValueError(f"cluster_method {method!r} is not one of {CLUSTER_METHODS}")
         level = cluster_level_columns(d.X, codes)
         df = K - len(level)
-        if min(clusters.values()) < 2 or df < 1:
+        per_arm = ", ".join(f"{v} in {a}" for a, v in clusters.items())
+        if min(clusters.values()) < 2:
+            lone = [a for a, v in clusters.items() if v < 2]
             raise TrialRefused(
-                f"{K} clusters are analyzed "
-                f"({', '.join(f'{v} in {a}' for a, v in clusters.items())})"
-                f" for {len(level)} terms that are the same for everyone in a cluster; the "
-                f"comparison needs at least two clusters per arm and more clusters than those "
-                f"terms.", ({"label": "Adjust for fewer cluster-level covariates",
-                             "covariates": []},), term="too few clusters")
+                f"{K} clusters are analyzed ({per_arm}). With one cluster in "
+                f"{' and '.join(lone)}, that arm's effect cannot be told apart from what is "
+                f"particular to its cluster, so no comparison of the arms can be made; each arm "
+                f"needs at least two clusters.",
+                (CLUSTER_COLUMN_EXIT, DESCRIBE_OUTCOMES_EXIT), term="too few clusters")
+        if df < 1:
+            level_covs = [c for c in spec.covariates if _cluster_level(frame, spec, c, d.index)]
+            exits = ([{"label": f"Leave the cluster-level covariates out "
+                                f"({', '.join(level_covs)})",
+                       "covariates": [c for c in spec.covariates if c not in level_covs]}]
+                     if level_covs else []) + [DESCRIBE_OUTCOMES_EXIT]
+            raise TrialRefused(
+                f"{K} clusters are analyzed ({per_arm}) for {len(level)} terms that are the "
+                f"same for everyone in a cluster; the comparison needs more clusters than those "
+                f"terms.", exits, term="too few clusters")
         if K < FEW_CLUSTERS:
-            noticing = (f"Only {K} clusters were randomized; the intervals rest on the "
-                        f"small-sample correction, and the fewest clusters Li & Redden (2015) "
-                        f"studied was {FEW_CLUSTERS}.")
+            concerns.append(f"Only {K} clusters were randomized; the intervals rest on the "
+                            f"small-sample correction, and the fewest clusters Li & Redden (2015) "
+                            f"studied was {FEW_CLUSTERS}.")
         if method == "mixed":
             if pr.kind == "binary":
                 raise TrialRefused(
@@ -1360,7 +1416,7 @@ def estimate(frame: pd.DataFrame, spec: TrialSpec, *, analysis_set: str = "itt",
                         "adheres may differ between the arms, so this comparison is not "
                         "protected by randomization and is reported beside intention to treat.")
     missing = {a: int((pr.in_set & ~sets.outcome_observed & (sets.arm == a)).sum()) for a in arms}
-    if sum(missing.values()) and noticing is None:
+    if sum(missing.values()):
         share = sum(missing.values()) / int(pr.in_set.sum())
         noticing = (f"{sum(missing.values())} of {int(pr.in_set.sum())} people "
                     f"({100 * share:.0f}%) have no outcome; the analysis assumes they are like "
@@ -1374,7 +1430,8 @@ def estimate(frame: pd.DataFrame, spec: TrialSpec, *, analysis_set: str = "itt",
         n_in_set={a: int((pr.in_set & (sets.arm == a)).sum()) for a in arms},
         n_missing_outcome=missing, adjusted_for=spec.adjusted_for(), filled_baselines=d.filled,
         terms=list(d.names), coefficients=[float(b) for b in coefs], interval=interval,
-        causal=analysis_set == "itt" and not secondary, secondary=secondary, clusters=clusters,
+        causal=analysis_set == "itt" and not secondary, secondary=secondary,
+        covariates_prespecified=covariates_prespecified, clusters=clusters,
         icc=None if icc is None else float(icc), icc_source=icc_source,
         cluster_size_cv=cv, correction=used, variance_components=components,
         concerns=concerns, noticing=noticing)
@@ -1533,11 +1590,18 @@ def _pool(imp: _Imputer, delta: float, arm: int, measure: str, arms: list[str]) 
 
 
 def delta_analysis(frame: pd.DataFrame, spec: TrialSpec, *, arm: Any, delta: float,
-                   m: int | None = None, seed: int = 20261009, measure: str | None = None
-                   ) -> tuple[TippingRow, list[pd.Series]]:
+                   m: int | None = None, seed: int = 20261009, measure: str | None = None,
+                   goal: str = "inference", survey_design: Any = None,
+                   analysis_set: str = "itt") -> tuple[TippingRow, list[pd.Series]]:
     """One delta-adjusted analysis: the pooled result with ``arm``'s imputed outcomes shifted by
-    ``delta``, and the m completed outcomes (indexed as the frame), for checking the pooling."""
-    pr, d, y, imp = _tipping_setup(frame, spec, m, seed, measure)
+    ``delta``, and the m completed outcomes (indexed as the frame), for checking the pooling. It
+    refuses what :func:`tipping_point` refuses (a survey design, Predict, the per-protocol set, a
+    cluster trial)."""
+    pr, d, y, imp = _tipping_setup(frame, spec, m, seed, measure, goal, survey_design,
+                                   analysis_set)
+    if _label(arm) not in pr.arms[1:]:
+        raise ValueError(f"arm {arm!r} is not one of the arms compared with the control: "
+                         f"{pr.arms[1:]}")
     k = pr.arms.index(_label(arm))
     row = _pool(imp, delta, k, pr.measure, pr.arms)
     return row, [pd.Series(c, index=d.index, name=spec.outcome) for c in imp.completed(delta, k)]
@@ -1647,25 +1711,62 @@ def _measure_text(c: Contrast) -> str:
     return _num(c.estimate)
 
 
+def _excludes_null(c: Contrast) -> bool:
+    null = 1.0 if c.measure == "risk_ratio" else 0.0
+    return c.lower > null or c.upper < null
+
+
+def _ci_text(c: Contrast) -> str:
+    """The 95% interval on the scale its estimate is printed on (percentage points for a risk
+    difference), saying so when it includes no difference."""
+    k = 100.0 if c.measure == "risk_difference" else 1.0
+    return (f"95% CI {_num(k * c.lower)} to {_num(k * c.upper)}"
+            + ("" if _excludes_null(c) else ", which includes no difference"))
+
+
+def _causal_clause(r: TrialEffect, c: Contrast) -> str:
+    """One arm against the control, worded as the effect of assignment, as a sentence. A change
+    is asserted only when the interval excludes no difference."""
+    if c.measure == "risk_ratio":
+        return (f"Assignment to {c.arm} gave {_measure_text(c)} for {r.outcome} ({_ci_text(c)}) "
+                f"compared with {c.control}.")
+    target = f"the risk of {r.outcome}" if r.outcome_type == "binary" else r.outcome
+    what = f"{_measure_text(c)} ({_ci_text(c)}) compared with {c.control}"
+    if _excludes_null(c):
+        return f"Assignment to {c.arm} changed {target} by {what}."
+    return (f"The estimated effect of assignment to {c.arm} on {target} was {what}, so a change "
+            f"is not shown.")
+
+
+def _difference_clause(r: TrialEffect, c: Contrast) -> str:
+    """One arm against the control, worded as a difference, never as an effect."""
+    if c.measure == "risk_ratio":
+        return (f"the risk ratio of {r.outcome} for {c.arm} against {c.control} was "
+                f"{_num(c.estimate)} ({_ci_text(c)})")
+    return (f"{r.outcome} differed by {_measure_text(c)} ({_ci_text(c)}) between {c.arm} and "
+            f"{c.control}")
+
+
+def _primary_contrasts(r: TrialEffect) -> list[Contrast]:
+    """Every arm against the control on the primary measure, in the arms' order."""
+    return [c for c in r.contrasts if c.measure == r.measure]
+
+
 def _says(r: TrialEffect) -> str:
-    c = r.contrast(measure=r.measure)
-    ci = (f"95% CI {_num(100 * c.lower)} to {_num(100 * c.upper)}" if c.measure ==
-          "risk_difference" else f"95% CI {_num(c.lower)} to {_num(c.upper)}")
+    cs = _primary_contrasts(r)
     if r.causal:
-        verb = "changed the risk of" if r.outcome_type == "binary" else "changed"
-        text = (f"Assignment to {c.arm} {verb} {r.outcome} by {_measure_text(c)} ({ci}) compared "
-                f"with {c.control} (intention to treat: the effect of being assigned, whether or "
-                f"not the treatment was taken).")
-        if c.measure == "risk_ratio":
-            text = (f"Assignment to {c.arm} gave {_measure_text(c)} for {r.outcome} ({ci}) "
-                    f"compared with {c.control} (intention to treat: the effect of being "
-                    f"assigned, whether or not the treatment was taken).")
-        return text
-    who = ("Among those who followed the protocol" if r.analysis_set == "per_protocol" else
-           "In this secondary analysis")
-    return (f"{who}, {r.outcome} differed by {_measure_text(c)} ({ci}) between {c.arm} and "
-            f"{c.control}; this comparison is not protected by randomization and is not read as "
-            f"an effect.")
+        return (" ".join(_causal_clause(r, c) for c in cs) + " Read as intention to treat: the "
+                "effect of being assigned, whether or not the treatment was taken.")
+    body = "; ".join(_difference_clause(r, c) for c in cs)
+    if r.analysis_set == "per_protocol":
+        return (f"Among those who followed the protocol, {body}. Who adheres may differ between "
+                f"the arms, so this comparison is not protected by randomization and is not read "
+                f"as an effect.")
+    why = ("its covariates were chosen after the data were seen, so the model was not fixed in "
+           "advance and could have been steered by the result" if not r.covariates_prespecified
+           else "it is not the analysis fixed in advance")
+    return (f"In this secondary analysis, {body}. The arms are still the randomized arms, but "
+            f"{why}; it is reported beside the primary analysis, not read as the trial's effect.")
 
 
 def _tipping_says(t: TippingPoint) -> str:
@@ -1714,10 +1815,10 @@ def trial_sentence(itt: TrialEffect | None = None, per_protocol: TrialEffect | N
                      "a category) with an indicator of the missing value (White & Thompson 2005).")
     sentence += " " + r.says
     if per_protocol is not None:
-        c = per_protocol.contrast(measure=per_protocol.measure)
-        sentence += (f" Per protocol, {_measure_text(c)} (95% CI {_num(c.lower)} to "
-                     f"{_num(c.upper)}), among those who followed the protocol; this set is not "
-                     f"protected by randomization.")
+        pp = "; ".join(f"{c.arm} against {c.control}, {_measure_text(c)} ({_ci_text(c)})"
+                       for c in _primary_contrasts(per_protocol))
+        sentence += (f" Per protocol, among those who followed the protocol: {pp}. This set is "
+                     f"not protected by randomization.")
     if tipping is not None:
         sentence += (f" Missing outcomes were multiply imputed ({tipping.m} imputations) under "
                      f"missing at random and shifted by δ to find the tipping point. "
@@ -1818,6 +1919,7 @@ def _register_contracts() -> None:
                      purposes=est_only, condition="always", enforced_by=f"{here}:consort_flow",
                      id="consort_flow"),
             refuse_prediction("set_not_predicted", "eligible"),
+            refuse_survey("set_no_survey", "consort_flow"),
         ),
         sources=(SOURCES["moher2010"], SOURCES["white2011"],
                  "Schulz et al. 2010, BMJ 340:c332 (CONSORT 2010 statement)",
@@ -1930,11 +2032,16 @@ def _register_contracts() -> None:
                      "refused with fewer than two clusters per arm or no clusters left over the "
                      "cluster-level terms", purposes=est_only, rung="refused",
                      when=("mixed_kr", "gee_corrected"),
-                     exits=("adjust for fewer cluster-level covariates",),
-                     condition="clusters ≤ cluster-level terms", enforced_by=f"{here}:estimate",
+                     exits=("choose the column of the randomized cluster",
+                            "leave the cluster-level covariates out (when they are what uses the "
+                            "clusters up)", "describe the outcome in each arm"),
+                     condition="one cluster in an arm, or clusters ≤ cluster-level terms",
+                     enforced_by=f"{here}:estimate",
                      id="cluster_floor"),
             Relation("implies", "few_clusters_noticed",
-                     "fewer than 10 clusters are noticed: the fewest Li & Redden 2015 studied",
+                     "fewer than 10 clusters are named among the concerns (the fewest Li & Redden "
+                     "2015 studied), beside the missing-outcome notice, neither displacing the "
+                     "other",
                      purposes=est_only, when=("mixed_kr", "gee_corrected"),
                      condition="fewer than 10 clusters", enforced_by=f"{here}:estimate",
                      id="few_clusters"),

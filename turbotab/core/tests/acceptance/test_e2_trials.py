@@ -683,7 +683,13 @@ def test_covariates_chosen_after_the_data_are_refused_from_the_primary_analysis(
     assert r.value.term == "post hoc covariate adjustment"
     _runs(lambda **k: T.estimate(df, SPEC, **k), r.value, covariates_prespecified=False)
     secondary = T.estimate(df, SPEC, covariates_prespecified=False, secondary=True)
-    assert not secondary.causal and "not read as an effect" in secondary.says
+    assert not secondary.causal and not secondary.covariates_prespecified
+    # the arms are still the randomized arms: what is lost is a model fixed in advance, not
+    # randomization
+    assert "still the randomized arms" in secondary.says
+    assert "chosen after the data were seen" in secondary.says
+    assert "not protected by randomization" not in secondary.says
+    assert "not read as the trial's effect" in secondary.says
 
 
 def test_adherence_or_the_arm_received_cannot_be_an_adjustment_term():
@@ -721,7 +727,7 @@ def test_the_cluster_trial_refusals_and_their_exits():
         T.tipping_point(df.assign(y=df.y.where(df.index % 9 > 0)), CSPEC)
     assert r.value.term == "multilevel imputation for a cluster-randomized trial"
     small = _cluster(K=8)
-    assert "Only 8 clusters" in T.estimate(small, CSPEC).noticing
+    assert any("Only 8 clusters" in c for c in T.estimate(small, CSPEC).concerns)
 
 
 def test_the_per_protocol_set_is_refused_without_adherence_and_for_the_tipping_point():
@@ -775,6 +781,149 @@ def test_causal_wording_only_for_intention_to_treat_and_per_protocol_never_alone
     text = T.trial_sentence(itt, pp, T.tipping_point(df, SPEC, m=20))
     assert "intention to treat" in text and "Per protocol" in text and "tipping point" in text
     assert "named before the data were seen" in text and "White & Thompson 2005" in text
+
+
+def test_every_sentence_prints_an_interval_on_its_estimate_s_scale():
+    """A risk difference is printed in percentage points, and so is its interval, in the
+    intention-to-treat sentence and in the per-protocol clause alike."""
+    df = _parallel()
+    itt = T.estimate(df, BSPEC)
+    pp = T.estimate(df, BSPEC, analysis_set="per_protocol")
+    text = T.trial_sentence(itt, pp)
+    for r in (itt, pp):
+        c = r.contrast()
+        points = f"{T._num(100 * c.estimate)} percentage points"
+        interval = f"95% CI {T._num(100 * c.lower)} to {T._num(100 * c.upper)}"
+        assert points in r.says and interval in r.says
+        assert points in text and interval in text
+        raw = f"95% CI {T._num(c.lower)} to"
+        assert raw not in text, raw
+    # the per-protocol clause names the arm and its control
+    assert f"Per protocol, among those who followed the protocol: trt against ctl, " in text
+    rr = T.estimate(df, BSPEC, measure="risk_ratio").contrast(measure="risk_ratio")
+    assert f"95% CI {T._num(rr.lower)} to {T._num(rr.upper)}" in \
+        T.estimate(df, BSPEC, measure="risk_ratio").says
+
+
+def test_a_change_is_asserted_only_when_the_interval_excludes_no_difference_and_every_arm_is_said():
+    df = _parallel(arms=("ctl", "a", "b"), n=300)
+    df.loc[df.arm == "a", "y"] -= 0.9  # arm a: no effect
+    spec = T.TrialSpec(arm="arm", control="ctl", outcome="y", strata=("site",), baseline="base",
+                       adherent="adherent")
+    r = T.estimate(df, spec)
+    a, b = r.contrast("a"), r.contrast("b")
+    assert a.lower < 0 < a.upper and (b.lower > 0 or b.upper < 0)
+    says = r.says
+    assert "Assignment to a changed" not in says
+    assert ("The estimated effect of assignment to a on y was "
+            f"{T._num(a.estimate)} (95% CI {T._num(a.lower)} to {T._num(a.upper)}, which includes "
+            "no difference) compared with ctl, so a change is not shown.") in says
+    assert (f"Assignment to b changed y by {T._num(b.estimate)} (95% CI {T._num(b.lower)} to "
+            f"{T._num(b.upper)}) compared with ctl.") in says
+    pp = T.estimate(df, spec, analysis_set="per_protocol")
+    text = T.trial_sentence(r, pp)
+    for c in pp.contrasts:
+        assert f"{c.arm} against ctl, {T._num(c.estimate)} (95% CI {T._num(c.lower)}" in text
+        assert f"between {c.arm} and ctl" in pp.says
+    # a ratio whose interval includes 1 says so too
+    bin_ = T.estimate(df, T.TrialSpec(arm="arm", control="ctl", outcome="event"),
+                      measure="risk_ratio")
+    for c in bin_.contrasts:
+        if c.measure == "risk_ratio" and c.lower < 1 < c.upper:
+            assert f"to {T._num(c.upper)}, which includes no difference)" in bin_.says
+
+
+def test_every_trial_function_refuses_a_survey_design_and_the_delta_analysis_refuses_as_the_tipping_point():
+    df = _parallel()
+    survey = object()
+    for call in (lambda: T.consort_flow(df, SPEC, survey_design=survey),
+                 lambda: T.baseline_table(df, SPEC, ["age"], survey_design=survey),
+                 lambda: T.delta_analysis(df, SPEC, arm="trt", delta=1.0, m=5,
+                                          survey_design=survey)):
+        with pytest.raises(T.TrialRefused) as r:
+            call()
+        assert r.value.term == "survey design in a randomized trial"
+        assert r.value.exits[0]["decision"] == {"kind": "set_survey", "estimand": "sample"}
+    with pytest.raises(T.TrialRefused) as r:
+        T.delta_analysis(df, SPEC, arm="trt", delta=1.0, m=5, goal="prediction")
+    assert r.value.exits[0]["goal"] == "inference"
+    with pytest.raises(T.TrialRefused) as r:
+        T.delta_analysis(df, SPEC, arm="trt", delta=1.0, m=5, analysis_set="per_protocol")
+    assert r.value.term == "tipping point outside intention to treat"
+    c = _cluster()
+    with pytest.raises(T.TrialRefused) as r:
+        T.delta_analysis(c.assign(y=c.y.where(c.index % 9 > 0)), CSPEC, arm="trt", delta=1.0)
+    assert r.value.term == "multilevel imputation for a cluster-randomized trial"
+    row, done = T.delta_analysis(df, SPEC, arm="trt", delta=1.0, m=5)
+    assert len(done) == 5 and math.isfinite(row.estimate)
+
+
+def test_each_refusal_has_exits_that_fit_its_cause():
+    df = _parallel()
+    # one arm
+    with pytest.raises(T.TrialRefused) as r:
+        T.estimate(df[df.arm.isna() | (df.arm == "ctl")], SPEC)
+    assert r.value.term == "one arm" and r.value.exits
+    assert {e["decision"]["kind"] for e in r.value.exits} == {"confirm_role", "set_design"}
+    # too few outcomes in an arm, under intention to treat
+    thin = df.copy()
+    thin.loc[(thin.arm == "trt") & thin.index.isin(thin.index[thin.arm == "trt"][1:]), "y"] = np.nan
+    with pytest.raises(T.TrialRefused) as r:
+        T.estimate(thin, SPEC)
+    assert r.value.term == "too few outcomes in an arm" and r.value.exits
+    assert r.value.exits[-1]["describe"] is True
+    # adherence that is not yes/no: per protocol refused with exits, intention to treat untouched
+    odd = df.assign(adherent=df.adherent.where(df.index % 7 > 0, "sometimes"))
+    with pytest.raises(T.TrialRefused) as r:
+        T.estimate(odd, SPEC, analysis_set="per_protocol")
+    assert r.value.term == "adherence is not yes/no" and "'adherent'" in str(r.value)
+    assert r.value.exits[0]["decision"] == {"kind": "confirm_role", "column": None,
+                                            "role": "flag"}
+    _runs(lambda **k: T.estimate(odd, SPEC, **k), r.value)
+    assert T.estimate(odd, SPEC).contrast().estimate == T.estimate(df, SPEC).contrast().estimate
+    with pytest.raises(T.TrialRefused) as r:
+        T.consort_flow(odd, SPEC)
+    assert r.value.exits[1]["adherent"] is None
+    T.consort_flow(odd, T.TrialSpec(**{**SPEC.__dict__, "adherent": r.value.exits[1]["adherent"]}))
+    # a missing cluster: the exit is a decision naming the randomized cluster
+    c = _cluster()
+    gap = c.astype({"cluster": float})
+    gap.loc[gap.index[:2], "cluster"] = np.nan
+    with pytest.raises(T.TrialRefused) as r:
+        T.estimate(gap, CSPEC)
+    assert r.value.term == "missing cluster"
+    assert r.value.exits[0]["decision"] == {"kind": "confirm_role", "column": None,
+                                            "role": "cluster"}
+    # one cluster in an arm: no covariate change helps, so none is offered
+    lone = c[c.cluster.isin([1, 2, 3, 5])]  # ctl: 1, 3, 5; trt: 2
+    with pytest.raises(T.TrialRefused) as r:
+        T.estimate(lone, CSPEC)
+    assert r.value.term == "too few clusters" and "one cluster in trt" in str(r.value)
+    assert not any("covariates" in e for e in r.value.exits)
+    assert r.value.exits[0]["decision"]["role"] == "cluster"
+    # cluster-level covariates that use the clusters up: leaving them out is the exit, and it runs
+    four = c[c.cluster.isin([1, 2, 3, 4])].copy()
+    four["urban"] = four.cluster.map({1: 1.0, 2: 0.0, 3: 0.0, 4: 0.0})
+    four["big"] = four.cluster.map({1: 0.0, 2: 1.0, 3: 0.0, 4: 0.0})
+    spec = T.TrialSpec(arm="arm", control="ctl", outcome="y", trial_design="cluster_randomized_trial",
+                       cluster="cluster", covariates=("x", "urban", "big"))
+    with pytest.raises(T.TrialRefused) as r:
+        T.estimate(four, spec)
+    assert r.value.term == "too few clusters"
+    leave = r.value.exits[0]
+    assert leave["covariates"] == ["x"] and "urban, big" in leave["label"]
+    assert T.estimate(four, T.TrialSpec(**{**spec.__dict__, "covariates": tuple(leave["covariates"])})
+                      ).clusters == {"ctl": 2, "trt": 2}
+
+
+def test_a_few_clusters_concern_never_displaces_the_missing_outcome_notice():
+    small = _cluster(K=8)
+    small.loc[small.index % 6 == 0, "y"] = np.nan
+    r = T.estimate(small, CSPEC)
+    n_missing = int(small.y.isna().sum())
+    assert r.noticing.startswith(f"{n_missing} of {len(small)} people")
+    assert "have no outcome" in r.noticing
+    assert any("Only 8 clusters" in c for c in r.concerns)
 
 
 # ── the contracts ────────────────────────────────────────────────────────────
@@ -871,6 +1020,8 @@ RELATION_TESTS = {
         "test_the_per_protocol_set_is_refused_without_adherence_and_for_the_tipping_point",
     "consort_flow": "test_the_consort_flow_counts_each_arm_by_stage_as_counted_by_hand",
     "set_not_predicted": "test_survey_weights_prediction_and_an_observational_design_are_refused",
+    "set_no_survey":
+        "test_every_trial_function_refuses_a_survey_design_and_the_delta_analysis_refuses_as_the_tipping_point",
     "no_confounder_selection":
         "test_the_adjustment_is_exactly_the_named_terms_and_nothing_is_selected",
     "strata_adjusted": "test_the_adjustment_is_exactly_the_named_terms_and_nothing_is_selected",
@@ -886,8 +1037,8 @@ RELATION_TESTS = {
         "test_survey_weights_prediction_and_an_observational_design_are_refused",
     "icc": "test_the_mixed_model_and_its_kenward_roger_intervals_match_pbkrtest",
     "cluster_is_randomized": "test_the_cluster_trial_refusals_and_their_exits",
-    "cluster_floor": "test_the_cluster_trial_refusals_and_their_exits",
-    "few_clusters": "test_the_cluster_trial_refusals_and_their_exits",
+    "cluster_floor": "test_each_refusal_has_exits_that_fit_its_cause",
+    "few_clusters": "test_a_few_clusters_concern_never_displaces_the_missing_outcome_notice",
     "kc_or_fg": "test_the_correction_follows_li_and_redden_s_rule_on_the_cluster_sizes",
     "kr_numeric_only": "test_the_cluster_trial_refusals_and_their_exits",
     "separation": "test_separation_is_refused_in_plain_words",

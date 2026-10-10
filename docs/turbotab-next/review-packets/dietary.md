@@ -127,6 +127,7 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
 | conflicts | `per_protocol_needs_adherence` (id `pp_adherence`) | `per_protocol`; when no adherence column | inference | the per-protocol set is refused without a yes/no adherence column *(rung: refused, with an exit)* Exits: intention to treat; name the adherence column. | `turbotab.core.methods.trials:analysis_sets` |
 | implies | `consort_counts` (id `consort_flow`) | any option; when always | inference | each arm's counts by stage (allocated, received, followed up, lost, analyzed; clusters in a cluster trial) are returned for the CONSORT flow | `turbotab.core.methods.trials:consort_flow` |
 | conflicts | `prediction_not_offered` (id `set_not_predicted`) | any option; when the Predict goal | prediction | not offered under Predict: an assigned treatment's effect is estimated, not predicted *(rung: refused, with an exit)* Exits: ask it under Estimate an effect. | `turbotab.core.methods.trials:eligible` |
+| conflicts | `survey_design_refused` (id `set_no_survey`) | any option; when a survey design | inference | survey weights are refused: a trial's inference rests on its randomization *(rung: refused, with an exit)* Exits: the sample-only answer. | `turbotab.core.methods.trials:consort_flow` |
 
 **Primary sources:**
 
@@ -694,8 +695,8 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
 | conflicts | `not_randomized` (id `needs_randomization`) | any option; when an observational or undeclared design | inference | refused unless the design is a declared randomized trial *(rung: refused, with an exit)* Exits: declare how people were randomized. | `turbotab.core.methods.trials:estimate` |
 | implies | `icc_reported` (id `icc`) | `mixed_kr`, `gee_corrected`; when a cluster-randomized trial | inference | the intraclass correlation is reported (Campbell et al. 2012) | `turbotab.core.methods.trials:estimate` |
 | conflicts | `arm_varies_within_cluster` (id `cluster_is_randomized`) | `mixed_kr`, `gee_corrected`; when a cluster with more than one arm | inference | refused when people in one cluster are in different arms *(rung: refused, with an exit)* Exits: declare a parallel trial; name the randomized cluster. | `turbotab.core.methods.trials:estimate` |
-| conflicts | `too_few_clusters` (id `cluster_floor`) | `mixed_kr`, `gee_corrected`; when clusters ≤ cluster-level terms | inference | refused with fewer than two clusters per arm or no clusters left over the cluster-level terms *(rung: refused, with an exit)* Exits: adjust for fewer cluster-level covariates. | `turbotab.core.methods.trials:estimate` |
-| implies | `few_clusters_noticed` (id `few_clusters`) | `mixed_kr`, `gee_corrected`; when fewer than 10 clusters | inference | fewer than 10 clusters are noticed: the fewest Li & Redden 2015 studied | `turbotab.core.methods.trials:estimate` |
+| conflicts | `too_few_clusters` (id `cluster_floor`) | `mixed_kr`, `gee_corrected`; when one cluster in an arm, or clusters ≤ cluster-level terms | inference | refused with fewer than two clusters per arm or no clusters left over the cluster-level terms *(rung: refused, with an exit)* Exits: choose the column of the randomized cluster; leave the cluster-level covariates out (when they are what uses the clusters up); describe the outcome in each arm. | `turbotab.core.methods.trials:estimate` |
+| implies | `few_clusters_noticed` (id `few_clusters`) | `mixed_kr`, `gee_corrected`; when fewer than 10 clusters | inference | fewer than 10 clusters are named among the concerns (the fewest Li & Redden 2015 studied), beside the missing-outcome notice, neither displacing the other | `turbotab.core.methods.trials:estimate` |
 | implies | `correction_by_cluster_sizes` (id `kc_or_fg`) | `gee_corrected`; when the correction left to the rule | inference | Kauermann–Carroll when the cluster sizes' coefficient of variation is below 0.6, Fay–Graubard otherwise (Li & Redden 2015) | `turbotab.core.methods.trials:estimate` |
 | conflicts | `kenward_roger_binary` (id `kr_numeric_only`) | `mixed_kr`; when a yes/no outcome | inference | the mixed model with Kenward–Roger is refused for a yes/no outcome *(rung: refused, with an exit)* Exits: estimating equations with a corrected sandwich. | `turbotab.core.methods.trials:estimate` |
 | conflicts | `separation` | `standardized_risk`, `gee_corrected`; when separation | inference | refused when the logistic model's risks run to 0% or 100% *(rung: refused, with an exit)* Exits: adjust for fewer covariates; describe the events in each arm. | `turbotab.core.methods.trials:estimate` |
@@ -1233,6 +1234,7 @@ flowchart LR
   n_per_protocol_needs_adherence(["per_protocol_needs_adherence"]):::named
   n_consort_counts(["consort_counts"]):::named
   n_prediction_not_offered(["prediction_not_offered"]):::named
+  n_survey_design_refused(["survey_design_refused"]):::named
   n_total_energy_in_the_outcome_model(["total energy in the outcome model"]):::named
   n_the_outcome_as_a_response(["the outcome as a response"]):::named
   n_patterns_derived_in_each_training_fold(["patterns derived in each training fold"]):::named
@@ -1295,7 +1297,6 @@ flowchart LR
   n_correction_by_cluster_sizes(["correction_by_cluster_sizes"]):::named
   n_kenward_roger_binary(["kenward_roger_binary"]):::named
   n_separation(["separation"]):::named
-  n_survey_design_refused(["survey_design_refused"]):::named
   n_a_curve_from_a_family_with_no_design_based_estimator(["a curve from a family with no design-based estimator"]):::named
   n_class_probabilities_sum_to_one(["class_probabilities_sum_to_one"]):::named
   n_refit_band(["refit_band"]):::named
@@ -1319,6 +1320,7 @@ flowchart LR
   n_trial_analysis_set -.->|conflicts| n_per_protocol_needs_adherence
   n_trial_analysis_set -->|implies| n_consort_counts
   n_trial_analysis_set -.->|conflicts| n_prediction_not_offered
+  n_trial_analysis_set -.->|conflicts| n_survey_design_refused
   n_pattern_inputs -->|precedes| n_dietary_patterns
   n_pattern_inputs -->|implies| n_total_energy_in_the_outcome_model
   n_dietary_patterns -.->|conflicts| n_the_outcome_as_a_response
@@ -1478,7 +1480,7 @@ The relations, with the sentence the app states when each fires:
 | `trial_effect` | implies | `baseline_outcome_adjusted` | `ancova`, `mixed_kr`; when a baseline measure named | inference | the baseline measure of the outcome is a covariate (analysis of covariance; Vickers & Altman 2001) |
 | `trial_effect` | implies | `causal_wording` | any option; when always | inference | causal wording only for intention to treat under a declared randomization, as the effect of being assigned; per protocol is worded as a difference among those who followed the protocol |
 | `trial_effect` | implies | `correction_by_cluster_sizes` | `gee_corrected`; when the correction left to the rule | inference | Kauermann–Carroll when the cluster sizes' coefficient of variation is below 0.6, Fay–Graubard otherwise (Li & Redden 2015) |
-| `trial_effect` | implies | `few_clusters_noticed` | `mixed_kr`, `gee_corrected`; when fewer than 10 clusters | inference | fewer than 10 clusters are noticed: the fewest Li & Redden 2015 studied |
+| `trial_effect` | implies | `few_clusters_noticed` | `mixed_kr`, `gee_corrected`; when fewer than 10 clusters | inference | fewer than 10 clusters are named among the concerns (the fewest Li & Redden 2015 studied), beside the missing-outcome notice, neither displacing the other |
 | `trial_effect` | implies | `icc_reported` | `mixed_kr`, `gee_corrected`; when a cluster-randomized trial | inference | the intraclass correlation is reported (Campbell et al. 2012) |
 | `trial_effect` | implies | `missing_baselines_filled` | any option; when a baseline covariate with missing values | inference | a missing baseline value takes its mean over the analysis set with a missing-value indicator (White & Thompson 2005) |
 | `trial_effect` | implies | `precision_adjustment_only` | any option; when always | inference | the adjustment is the randomization factors and the baseline covariates named before the data were seen, for precision only; nothing is searched for or selected |
@@ -1521,6 +1523,7 @@ The relations, with the sentence the app states when each fires:
 | `trial_analysis_set` | conflicts | `per_protocol_effect` | `per_protocol`; when the per-protocol effect asked for | inference | the effect of following the protocol (weighting for adherence over time) is not available yet; the per-protocol set analyzed as randomized is *(rung: refused, with an exit)* Exits: the per-protocol set, analyzed as randomized; the intention-to-treat effect. |
 | `trial_analysis_set` | conflicts | `per_protocol_needs_adherence` | `per_protocol`; when no adherence column | inference | the per-protocol set is refused without a yes/no adherence column *(rung: refused, with an exit)* Exits: intention to treat; name the adherence column. |
 | `trial_analysis_set` | conflicts | `prediction_not_offered` | any option; when the Predict goal | prediction | not offered under Predict: an assigned treatment's effect is estimated, not predicted *(rung: refused, with an exit)* Exits: ask it under Estimate an effect. |
+| `trial_analysis_set` | conflicts | `survey_design_refused` | any option; when a survey design | inference | survey weights are refused: a trial's inference rests on its randomization *(rung: refused, with an exit)* Exits: the sample-only answer. |
 | `trial_effect` | conflicts | `arm_varies_within_cluster` | `mixed_kr`, `gee_corrected`; when a cluster with more than one arm | inference | refused when people in one cluster are in different arms *(rung: refused, with an exit)* Exits: declare a parallel trial; name the randomized cluster. |
 | `trial_effect` | conflicts | `baseline_balance_tests` | any option; when tests of baseline balance asked for | inference | baseline differences between the arms are described, never tested (Moher et al. 2010, item 15; Senn 1994) *(rung: refused, with an exit)* Exits: describe each arm. |
 | `trial_effect` | conflicts | `kenward_roger_binary` | `mixed_kr`; when a yes/no outcome | inference | the mixed model with Kenward–Roger is refused for a yes/no outcome *(rung: refused, with an exit)* Exits: estimating equations with a corrected sandwich. |
@@ -1530,7 +1533,7 @@ The relations, with the sentence the app states when each fires:
 | `trial_effect` | conflicts | `prediction_not_offered` | any option; when the Predict goal | prediction | not offered under Predict: an assigned treatment's effect is estimated, not predicted *(rung: refused, with an exit)* Exits: ask it under Estimate an effect. |
 | `trial_effect` | conflicts | `separation` | `standardized_risk`, `gee_corrected`; when separation | inference | refused when the logistic model's risks run to 0% or 100% *(rung: refused, with an exit)* Exits: adjust for fewer covariates; describe the events in each arm. |
 | `trial_effect` | conflicts | `survey_design_refused` | any option; when a survey design | inference | survey weights are refused: a trial's inference rests on its randomization *(rung: refused, with an exit)* Exits: the sample-only answer. |
-| `trial_effect` | conflicts | `too_few_clusters` | `mixed_kr`, `gee_corrected`; when clusters ≤ cluster-level terms | inference | refused with fewer than two clusters per arm or no clusters left over the cluster-level terms *(rung: refused, with an exit)* Exits: adjust for fewer cluster-level covariates. |
+| `trial_effect` | conflicts | `too_few_clusters` | `mixed_kr`, `gee_corrected`; when one cluster in an arm, or clusters ≤ cluster-level terms | inference | refused with fewer than two clusters per arm or no clusters left over the cluster-level terms *(rung: refused, with an exit)* Exits: choose the column of the randomized cluster; leave the cluster-level covariates out (when they are what uses the clusters up); describe the outcome in each arm. |
 | `trial_missing_outcomes` | conflicts | `cluster_trial_imputation` | `delta_tipping_point`; when a cluster-randomized trial | inference | refused for a cluster trial: a multilevel imputation model is not built *(rung: refused, with an exit)* Exits: the primary analysis, its assumption stated. |
 | `trial_missing_outcomes` | conflicts | `per_protocol_imputation` | `delta_tipping_point`; when the per-protocol set | inference | refused for the per-protocol set: the sensitivity analysis counts every randomized person *(rung: refused, with an exit)* Exits: intention to treat. |
 | `trial_missing_outcomes` | conflicts | `prediction_not_offered` | any option; when the Predict goal | prediction | not offered under Predict: an assigned treatment's effect is estimated, not predicted *(rung: refused, with an exit)* Exits: ask it under Estimate an effect. |
