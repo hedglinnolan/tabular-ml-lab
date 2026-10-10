@@ -8093,6 +8093,33 @@
    ],
    "verified_by": "crossref",
    "verified_on": "2026-10-09"
+  },
+  {
+   "key": "gail1981likelihood",
+   "kind": "article",
+   "cited_as": [
+    "Gail\\b[^;()]{0,90}?\\(?1981\\b"
+   ],
+   "doi": "10.1093/biomet/68.3.703",
+   "authors": [
+    "GAIL, MITCHELL H.",
+    "LUBIN, JAY H.",
+    "RUBINSTEIN, LAWRENCE V."
+   ],
+   "title": "Likelihood calculations for matched case-control studies and survival studies with tied death times",
+   "year": 1981,
+   "venue": "Biometrika",
+   "volume": "68",
+   "issue": "3",
+   "pages": "703-707",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1981
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
   }
  ]
 }

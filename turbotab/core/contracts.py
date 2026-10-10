@@ -268,6 +268,8 @@ DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.methods.cycle_trends",
     # E2: randomized-trial analyses (engine only until E1 routes the declared design to them)
     "turbotab.core.methods.trials",
+    # E4: case-control samples and matched sets (engine only until E1/D1/C1 route them)
+    "turbotab.core.methods.case_control",
 )
 
 

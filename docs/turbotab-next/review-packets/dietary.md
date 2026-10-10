@@ -1041,7 +1041,7 @@ Every other family on the shelf, each in full in the methods reference:
 | Cox proportional hazards (`cox`) | time_to_event | prediction, inference | Each predictor multiplies the hazard by a constant ratio over all of follow-up; effects add on the log scale. | every lens (shared): the methods reference |
 | Screened elastic net (`screened_elastic_net`) | regression, binary | prediction | Only features with a strong marginal association survive; among them, straight-line effects shrunk toward zero. | the metabolomics and genomics packets |
 
-### 1.3 · Shared methods (43)
+### 1.3 · Shared methods (45)
 
 Every lens offers these; their full contracts are in the methods reference.
 
@@ -1072,6 +1072,8 @@ Every lens offers these; their full contracts are in the methods reference.
 | Post-double-selection lasso | `pds_lasso` | model | model | `set_causal` |
 | A time-varying exposure by g-methods | `time_varying` | model | model | `set_time_varying` |
 | Targeted maximum likelihood | `tmle` | model | model | `set_causal` |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) | `case_control_effects` | model | model | not declared |
+| Risks from a model trained on a case-control sample | `case_control_risks` | model | model | not declared |
 | Diagnostics of the primary model | `diagnostics` | evaluation | descriptive | `respond_diagnostic` |
 | The E-value of a difference, standardized by the estimand's SD | `evalue_sd` | evaluation | descriptive | not declared |
 | An exposure family and its multiplicity | `exposure_family` | evaluation | descriptive | `set_estimand` |
@@ -1775,6 +1777,8 @@ The option each method offers first for each purpose, its rung, and the reason i
 | Post-double-selection lasso (`pds_lasso`) | refused under prediction (`pds_lasso`): Refused: under prediction no coefficient is read as an effect. | ranked by the data: §3.4 (the causal lane's estimator, `causal`) |
 | A time-varying exposure by g-methods (`time_varying`) | refused under prediction (`msm_iptw`): not offered: under prediction no coefficient is read as an effect | `msm_iptw` (recommended): sound with a confounder affected by prior exposure: the weights adjust for it without blocking the earlier exposure's effect; it needs a correct exposure model and positivity |
 | Targeted maximum likelihood (`tmle`) | refused under prediction (`tmle`): Refused: under prediction no coefficient is read as an effect. | ranked by the data: §3.4 (the causal lane's estimator, `causal`) |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | ranked by the data: §3.4 | ranked by the data: §3.4 |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | ranked by the data: §3.4 | not offered under inference: Not offered under Estimate an effect: a case-control sample gives no absolute risk there; its odds ratios are its effects |
 | Diagnostics of the primary model (`diagnostics`) | not offered under prediction: Not offered: a prediction reports no effect measure. | ranked by the data: §3.4 |
 | The E-value of a difference, standardized by the estimand's SD (`evalue_sd`) | not offered under prediction: Not offered: a prediction reports no effect | ranked by the data: §3.4 |
 | An exposure family and its multiplicity (`exposure_family`) | not offered under prediction: Not offered: a prediction reports no effect measure. | `family` (available): Sound with its multiplicity method stated; this is not selection |
@@ -1820,6 +1824,17 @@ Each condition the app ranks by, and what it offers first under it, computed by 
 | The effect measure (difference or ratio; conditional or marginal) (`effect_measure`) | inference | a multiclass outcome | `relative_risk_ratio`: conditional and non-collapsible: adding a covariate that predicts the outcome changes it even without confounding |
 | The effect measure (difference or ratio; conditional or marginal) (`effect_measure`) | inference | an exposure family (each exposure in turn), a numeric outcome | `mean_difference`: collapsible: the conditional and the marginal difference agree in a linear model |
 | The effect measure (difference or ratio; conditional or marginal) (`effect_measure`) | inference | an exposure family (each exposure in turn), a yes/no outcome | `exposure_mean_difference`: the feature-wise family's: each exposure modeled on the outcome and the covariates |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | prediction | an unmatched case-control sample | `unconditional`: The logistic model, trained in each fold; its probabilities are not risks until recalibrated. |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | prediction | a frequency-matched case-control sample | `unconditional`: The logistic model, trained in each fold; its probabilities are not risks until recalibrated. |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | prediction | individually matched sets | `conditional`: Each case ranked against its own matched controls, by the conditional model fitted in each training fold. |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | inference | an unmatched case-control sample | `unconditional`: Odds ratios, by logistic regression. |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | inference | a frequency-matched case-control sample | `unconditional`: Odds ratios, by logistic regression adjusted for the matching factors. |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | inference | individually matched sets | `conditional`: Odds ratios, by conditional logistic regression within the matched sets. |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | prediction | an unmatched case-control sample, with the population prevalence stated | `prior_correction`: Risks recalibrated to the population prevalence (prior correction), the correction learned in each training fold. |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | prediction | an unmatched case-control sample, with no population prevalence | `ranking_only`: How well the model separates cases from controls; it gives no risks. |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | prediction | a frequency-matched case-control sample, with the prevalence stated within each matching stratum | `prior_correction`: Risks recalibrated to the population prevalence within each matching stratum (prior correction), the correction learned in each training fold. |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | prediction | a frequency-matched case-control sample, with one prevalence for every stratum | `ranking_only`: How well the model separates cases from controls; it gives no risks. The controls were matched to the cases on some factors, so how well those factors separate cases from controls here understates it in the population (Janes & Pepe 2008). |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | prediction | individually matched sets, with or without a prevalence | `within_set_ranking`: Each case ranked against its own matched controls, by the conditional model fitted in each training fold. |
 | Diagnostics of the primary model (`diagnostics`) | inference | a failed proportional-hazards check (a Cox fit) | `period_hazard_ratios`: the exposure's hazard ratio before and after the median event time, beside the average over follow-up |
 | Diagnostics of the primary model (`diagnostics`) | inference | a failed influence check (Cook's distance) | `without_influential`: the primary model refit without the influential rows, beside it |
 | Diagnostics of the primary model (`diagnostics`) | inference | no check failed | nothing is asked: the checks are reported beside the estimate |

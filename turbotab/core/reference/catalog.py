@@ -136,6 +136,10 @@ CONTRACT_LENSES: dict[str, tuple[str, ...]] = {
     "trial_analysis_set": ("clinical", "dietary"),
     "trial_effect": ("clinical", "dietary"),
     "trial_missing_outcomes": ("clinical", "dietary"),
+    # E4: case-control samples and matched sets, any lens (metabolomics nested case-control
+    # studies, clinical matched designs, dietary case-control studies)
+    "case_control_effects": (SHARED,),
+    "case_control_risks": (SHARED,),
 }
 
 # Every registered model family: the lenses whose packet reviews it in full, or (SHARED,). No
