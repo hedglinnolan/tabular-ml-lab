@@ -4276,6 +4276,135 @@ def _models_can_fit_the_task(decision: SelectModels, ctx: Any) -> None:
         )
 
 
+# What each purpose asks of a model, as a refusal says it ("offered only to predict").
+_GOALS = {"prediction": "to predict", "inference": "to estimate an effect"}
+
+
+def _purpose_of(ctx: Any) -> Any:
+    """The purpose ``ctx`` names, else the project state's, else None (not chosen or not known)."""
+    purpose = _ctx(ctx, "purpose")
+    if purpose is None:
+        purpose = getattr(_state(ctx), "purpose", None)
+    return purpose
+
+
+def _task_of(ctx: Any) -> Any:
+    """The task ``ctx`` names, else the project state's, else None (not known)."""
+    task = _ctx(ctx, "task")
+    if task is None:
+        task = getattr(_state(ctx), "task", None)
+    return task
+
+
+def _registered(keys: Sequence[str]) -> dict[str, Any]:
+    """The registered families among ``keys``, by key (an unknown key is refused on its own)."""
+    from turbotab.core.models.base import families
+
+    model_families()  # registers them
+    shelf = {f.key: f for f in families()}
+    return {k: shelf[k] for k in keys if k in shelf}
+
+
+def _labels(families: Sequence[Any]) -> str:
+    names = [f.label for f in families]
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def _keep_the_rest(decision: SelectModels, dropped: Sequence[str]) -> list[dict[str, Any]]:
+    rest = [m for m in decision.models if m not in dropped]
+    return ([{"label": "Keep the families that can", "decision": SelectModels(models=rest)}]
+            if rest else []) + [{"label": "Choose from the shelf", "decision": None}]
+
+
+def _models_serve_the_purpose(decision: SelectModels, ctx: Any) -> None:
+    """MODEL_FAMILY_CONTRACT C2: a family is offered only for the purposes it declares
+    (``purposes``), read from the declaration, never from its key. Robust linear regression is
+    prediction only in v2 (RECIPES §5); the feature-wise tests make no predictions.
+
+    It is registered before every method's own ``select_models`` check (omics' raw-count refusal,
+    say): a family that cannot serve the goal is refused for that first, since no repair the later
+    checks offer (normalizing the counts) would make it serve it."""
+    purpose = _purpose_of(ctx)
+    if purpose not in _GOALS:
+        return
+    chosen = _registered(decision.models)
+    excluded = [f for f in chosen.values() if purpose not in f.purposes]
+    if not excluded:
+        return
+    served = sorted({p for f in excluded for p in f.purposes}, key=list(_GOALS).index)
+    raise Refusal(
+        "model_not_for_purpose",
+        f"{_labels(excluded)} {'is' if len(excluded) == 1 else 'are'} offered only "
+        f"{' or '.join(_GOALS[p] for p in served)}, not when the goal is {_GOALS[purpose]}.",
+        exits=_keep_the_rest(decision, [f.key for f in excluded]))
+
+
+def _models_can_load(decision: SelectModels, ctx: Any) -> None:
+    """A family that cannot be fit on this computer (its ``unavailable`` member gives the reason:
+    XGBoost when its library cannot load) is refused when chosen, not only when it fits. When it
+    declares itself the same kind as another family (``same_kind_as``) that is not chosen already,
+    can be fit, and serves the purpose and the task where they are known, that family is offered
+    in its place."""
+    from turbotab.core.models.base import unavailable
+
+    chosen = _registered(decision.models)
+    missing = {k: r for k, f in chosen.items() if (r := unavailable(f)) is not None}
+    if not missing:
+        return
+    purpose, task = _purpose_of(ctx), _task_of(ctx)
+    swap: dict[str, Any] = {}
+    for key in missing:
+        kind = chosen[key].same_kind_as
+        other = _registered([kind[0]]).get(kind[0]) if kind is not None else None
+        if (other is not None and other.key not in decision.models
+                and unavailable(other) is None
+                and (purpose not in _GOALS or purpose in other.purposes)
+                and (task is None or task in other.tasks)):
+            swap[key] = other
+    exits: list[dict[str, Any]] = []
+    if swap:
+        models = [swap[m].key if m in swap else m for m in decision.models
+                  if m in swap or m not in missing]
+        instead = list({f.key: f for f in swap.values()}.values())
+        exits.append({"label": f"Use {_labels(instead)} instead",
+                      "decision": SelectModels(models=list(dict.fromkeys(models)))})
+    reasons = " ".join(r if r.endswith(".") else f"{r}." for r in missing.values())
+    raise Refusal(
+        "model_unavailable",
+        f"{_labels([chosen[k] for k in missing])} cannot be fit on this computer. {reasons}",
+        exits=exits + _keep_the_rest(decision, list(missing)))
+
+
+def _tuning_values_in_range(decision: Any, ctx: Any) -> None:
+    """RECIPES §4.1: a value set by hand (``set_tuning``'s ``values``, RT-6) outside its dimension's
+    declared range is refused, naming the range (``tuning.by_hand_problems``), as ``make_plan``
+    refuses it. With the task known its declaration is read; otherwise every one the family has."""
+    from turbotab.core.models.tuning import TuningDecl, by_hand_problems, range_words
+
+    key = str(getattr(decision, "family", ""))
+    family = _registered([key]).get(key)
+    values = dict(getattr(decision, "values", None) or {})
+    if family is None or family.tuning is None or not values:
+        return
+    tuning = family.tuning
+    task = _task_of(ctx)
+    decls = ([tuning] if isinstance(tuning, TuningDecl)
+             else [tuning[task]] if task in tuning else list(tuning.values()))
+    for decl in decls:
+        problems = by_hand_problems(decl, values)
+        if not problems:
+            continue
+        bad = [d for d in (*decl.dimensions, *decl.by_hand)
+               if d.name in values and by_hand_problems(decl, {d.name: values[d.name]})]
+        words = range_words(bad[0])
+        first = ("Set each value inside its range" if len(bad) > 1
+                 else f"Set a value {words.removeprefix('it runs ')}"
+                 if words.startswith("it runs ") else f"Choose {words.removeprefix('it is ')}")
+        raise Refusal("tuning_out_of_range", " ".join(problems),
+                      exits=[{"label": first, "decision": None},
+                             {"label": "Keep the standard setting", "decision": None}])
+
+
 def _substitution_swaps_energy(decision: SetSubstitution, ctx: Any) -> None:
     if decision.donor == decision.recipient:
         raise Refusal(
@@ -5213,6 +5342,10 @@ register_validator("set_roles", _answers_keep_settled_roles)
 register_validator("set_energy_adjustment", _energy_adjustment_fits_the_roles)
 register_validator("set_energy_adjustment", _energy_reads_settled_roles)
 register_validator("select_models", _models_can_fit_the_task)
+register_validator("select_models", _models_serve_the_purpose)
+register_validator("select_models", _models_can_load)
+# RT-6 registers the ``set_tuning`` kind; its range check is here already, and runs once it does.
+register_validator("set_tuning", _tuning_values_in_range)
 register_validator("select_models", _models_read_settled_readings)
 register_validator("set_substitution", _substitution_swaps_energy)
 register_validator("set_substitution", _substitution_has_every_energy_source)

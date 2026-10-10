@@ -626,7 +626,7 @@ def test_3_the_winners_own_score_as_the_result_is_refused_with_its_exit(tmp_path
     assert exit_["label"] == "Keep the compared families"
     assert exit_["decision"]["models"] == ["boosted_trees", "linear", "elastic_net"]
     validate(exit_["decision"], ctx)  # the exit is accepted
-    validate(d.SelectModels(models=[*families, "featurewise"]), ctx)  # adding is never refused
+    validate(d.SelectModels(models=[*families, "ridge"]), ctx)  # adding is never refused
     held = state.model_copy(update={"split": SplitSpec(holdout=0.2, seed=1)})
     validate(d.SelectModels(models=["boosted_trees"]), {**ctx, "state": held})
     inference = state.model_copy(update={"purpose": "inference"})
