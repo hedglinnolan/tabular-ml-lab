@@ -276,7 +276,10 @@ def fit_pipeline(pipeline: Any, X: Any, y: Any, *, groups: Any = None, order: An
     with ``X``. The model step's inner cross-validation gets :func:`inner_splits`; a model that
     stops early on part of its rows (boosted trees above 10,000 rows) is handed
     :func:`validation_rows` as ``X_val`` instead of drawing its own by position, and the steps before
-    it are fit on the other rows only (RECIPES F11). Returns the fitted pipeline.
+    it are fit on the other rows only (RECIPES F11). An imbalance correction around such a model
+    (``methods.levers.ImbalanceCorrected``) declares the same two parameters, so it takes this path
+    too and resamples only the rows that are not stopping rows (RECIPES F12). Returns the fitted
+    pipeline.
     """
     from sklearn.base import is_classifier
 
