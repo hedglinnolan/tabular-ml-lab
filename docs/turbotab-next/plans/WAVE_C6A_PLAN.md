@@ -464,3 +464,11 @@ Times are rough estimates for the dev machine.
     - **VAL:** selection validators;
     - **TRUST:** the critique's engine trust leaks, and the collinear tier wired;
     - **MC2-CLEAN:** the mc2b2 leftovers. Phase 4's MC-2b-3 and MC-2b-4 follow.
+14. **After phase 3 (2026-10-10).**
+    - wp7 is re-pinned for the elastic net's path search and full coding. Linear and boosted trees match to 5e-11.
+    - The refits in sensitivity, effects, the interaction and scales pass the same units (`groups=`) as the main fit, so a tuned family's inner splits keep people whole there too.
+    - `leaf_cap` counts units, not rows, when the units are known.
+    - The tuning record states the thread count the fits ran at.
+    - The design stage's lineage and exported matrix follow each family's coding.
+    - All four go to phase 4, beside MC-2b-3, MC-2b-4 and the mc2b2 leftovers.
+15. **T1 measures about 7.5 hours serial** (68 s a dataset), not 30–60 minutes. It runs with TURBOTAB_T1_JOBS in parallel, gated by TURBOTAB_SCHEDULED_RUNS=1 so the full CI tier skips it.
