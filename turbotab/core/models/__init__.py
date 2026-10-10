@@ -24,6 +24,7 @@ from turbotab.core.models.base import (
 # Registration order is the shelf's tie-break and the order GET /api/models lists them in.
 from turbotab.core.models import linear  # noqa: F401,E402 - registers
 from turbotab.core.models import elastic_net  # noqa: F401,E402 - registers
+from turbotab.core.models import ridge  # noqa: F401,E402 - registers (RT-5b)
 from turbotab.core.models import boosted_trees  # noqa: F401,E402 - registers
 from turbotab.core.models import featurewise  # noqa: F401,E402 - registers (WP11)
 from turbotab.core.models import ordinal  # noqa: F401,E402 - registers proportional_odds (WP12a)
