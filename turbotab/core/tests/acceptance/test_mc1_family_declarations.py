@@ -319,7 +319,7 @@ def _probe(key: str = "probe", **declared: Any) -> Any:
      "cites 'nobody2099', which is not a verified source"),
     ({"complexity": (Knob("alpha", "simpler", formula="no_such_formula"),)},
      "'no_such_formula', which models.formulas does not hold"),
-    ({"same_kind_as": ("xgboost", -1.0)}, "names 'xgboost', which is not another registered"),
+    ({"same_kind_as": ("lightgbm", -1.0)}, "names 'lightgbm', which is not another registered"),
     ({"raw_scale": {"regression": "value"}}, "['binary', 'multiclass', 'ordinal'] have none"),
     ({"raw_scale": {**get_family("linear").raw_scale, "binary": "not drawn: "}},
      "raw_scale['binary'] is 'not drawn: '"),
