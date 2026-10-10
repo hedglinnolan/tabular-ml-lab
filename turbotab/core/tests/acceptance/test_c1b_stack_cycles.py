@@ -167,6 +167,57 @@ def test_weights_of_different_samples_are_refused():
     assert {e["weight_kind"] for e in refused.value.exits} == {"examination", "interview"}
 
 
+def test_an_interview_four_year_weight_beside_examination_weights_is_refused_and_its_exit_runs():
+    """The 1999–2002 rows take the four-year weight, so its kind is checked with the others: an
+    interview four-year weight beside examination two-year weights would stack two samples."""
+    f1, f3 = nhanes_cycle(1, four_year=True), nhanes_cycle(3)
+    f1["WTINT4YR"] = f1["WTMEC4YR"] * 1.1
+    with pytest.raises(C.StackRefused) as refused:
+        C.stack_cycles({1: f1, 3: f3}, weight="WTMEC2YR", four_year="WTINT4YR")
+    says = str(refused.value)
+    assert "different samples" in says and "1999–2000: `WTINT4YR` (interview)" in says
+    assert "2003–2004: `WTMEC2YR` (examination)" in says
+    first = refused.value.exits[0]
+    assert first["four_year"] == "WTMEC4YR"
+    s = C.stack_cycles({1: f1, 3: f3}, weight="WTMEC2YR", **{"four_year": first["four_year"]})
+    np.testing.assert_allclose(_pooled(s, 1), f1["WTMEC4YR"].to_numpy(), rtol=1e-15)
+    # interview weights throughout, four-year included, stack
+    f1["WTINT2YR"], f3["WTINT2YR"] = f1["WTMEC2YR"] * 1.1, f3["WTMEC2YR"] * 1.1
+    s = C.stack_cycles({1: f1, 3: f3}, weight="WTINT2YR", four_year="WTINT4YR")
+    np.testing.assert_allclose(_pooled(s, 3), f3["WTINT2YR"].to_numpy() / 2, rtol=1e-15)
+
+
+def test_a_weight_whose_kind_is_not_known_is_stacked_with_a_concern_that_it_went_unchecked():
+    a, b = nhanes_cycle(9), nhanes_cycle(10, weight="WTINT2YR")
+    a["myw"] = a["WTMEC2YR"]
+    s = C.stack_cycles({9: a, 10: b}, weight={9: "myw", 10: "WTINT2YR"})
+    unchecked = [c for c in s.concerns if "could not be checked" in c]
+    assert len(unchecked) == 1 and "2015–2016: `myw`" in unchecked[0]
+    assert "WTINT2YR" not in unchecked[0]
+    known = C.stack_cycles({9: nhanes_cycle(9), 10: nhanes_cycle(10)}, weight="WTMEC2YR")
+    assert not any("could not be checked" in c for c in known.concerns)
+    # an unknown four-year weight is named too
+    f1, f3 = nhanes_cycle(1, four_year=True), nhanes_cycle(3)
+    f1["W4"] = f1["WTMEC4YR"]
+    s4 = C.stack_cycles({1: f1, 3: f3}, weight="WTMEC2YR", four_year="W4")
+    assert any("1999–2000: `W4`" in c for c in s4.concerns)
+
+
+def test_rows_without_a_stratum_psu_or_weight_are_counted_by_the_stack():
+    a, b = nhanes_cycle(8), nhanes_cycle(9)
+    a.loc[[0, 1], "SDMVSTRA"] = np.nan
+    a.loc[2, "SDMVPSU"] = np.nan
+    b.loc[[3, 4, 5], "WTMEC2YR"] = np.nan
+    s = C.stack_cycles({8: a, 9: b}, weight="WTMEC2YR")
+    said = [c for c in s.concerns if "no place in the survey design" in c]
+    assert len(said) == 1
+    assert said[0].startswith("6 rows have a blank survey layer, cluster or weight "
+                              "(2013–2014: 3; 2015–2016: 3)")
+    assert s.frame[C.STRATUM].isna().sum() == 3 and s.frame[C.WEIGHT].isna().sum() == 3
+    clean = C.stack_cycles({8: nhanes_cycle(8), 9: nhanes_cycle(9)}, weight="WTMEC2YR")
+    assert not any("no place in the survey design" in c for c in clean.concerns)
+
+
 def test_a_file_without_its_design_columns_or_weight_is_refused():
     a, b = nhanes_cycle(8), nhanes_cycle(9).drop(columns=["SDMVPSU"])
     with pytest.raises(C.StackRefused, match="cannot be placed in the survey design"):
@@ -179,17 +230,42 @@ def test_a_file_without_its_design_columns_or_weight_is_refused():
 
 
 def test_a_cycle_whose_length_is_not_known_is_refused_until_it_is_given():
-    later = nhanes_cycle(12, weight="WTMEC2YR")
+    later = nhanes_cycle(13, weight="WTMEC2YR")
     with pytest.raises(C.StackRefused) as refused:
-        C.stack_cycles({9: nhanes_cycle(9), 12: later}, weight="WTMEC2YR")
-    assert "how many years" in str(refused.value) and refused.value.exits[0]["years"] == {12: None}
-    s = C.stack_cycles({9: nhanes_cycle(9), 12: later}, weight="WTMEC2YR", years={12: 2.0})
+        C.stack_cycles({9: nhanes_cycle(9), 13: later}, weight="WTMEC2YR")
+    assert "how many years" in str(refused.value) and refused.value.exits[0]["years"] == {13: None}
+    s = C.stack_cycles({9: nhanes_cycle(9), 13: later}, weight="WTMEC2YR", years={13: 2.0})
     assert s.total_years == 4.0
+    assert s.labels == ["2015–2016", "release 13"]
+    assert any("When release 13 began is not known" in c for c in s.concerns)
     assert C.cycle_of("2015-2016").release == 9 and C.cycle_of("2017–March 2020").release == 66
     assert C.cycle_of("2017-2020 prepandemic").years == 3.2
     assert C.cycle_of(1).midpoint == 2000.0 and C.cycle_of(66).midpoint == pytest.approx(2018.6)
     with pytest.raises(C.StackRefused):
         C.cycle_of("2009-2012")
+
+
+def test_august_2021_to_august_2023_with_any_other_cycle_is_refused_as_nchs_advises():
+    """NCHS's weighting tutorial: "It is generally not recommended to combine the August
+    2021-August 2023 cycle with other cycles given the 1.5-year gap between this cycle and the
+    2017-March 2020 cycle"; release 12 per the DEMO_L documentation."""
+    recent = nhanes_cycle(12, weight="WTMEC2YR")
+    assert C.cycle_of(12).label == "August 2021–August 2023"
+    assert C.cycle_of("August 2021-August 2023").release == 12
+    assert C.cycle_of("2021–2023").release == 12
+    for files in ({10: nhanes_cycle(10), 12: recent}, {66: nhanes_cycle(66), 12: recent},
+                  {9: nhanes_cycle(9), 12: recent}):
+        for given in (None, {12: 2.0}):
+            with pytest.raises(C.StackRefused) as refused:
+                C.stack_cycles(files, weight="WTMEC2YR", years=given)
+            assert "NCHS advises against combining August 2021–August 2023" in str(refused.value)
+            alone, out = refused.value.exits
+            assert alone["label"] == "Analyze August 2021–August 2023 alone"
+            for exit_ in (alone, out):
+                kept = {k: v for k, v in files.items() if k not in exit_["drop_cycles"]}
+                C.stack_cycles(kept, weight="WTMEC2YR")
+    one = C.stack_cycles({12: recent}, weight="WTMEC2YR")
+    np.testing.assert_allclose(one.frame[C.WEIGHT], recent["WTMEC2YR"], rtol=1e-15)
 
 
 def test_a_measurement_declared_incompatible_is_refused_and_each_exit_runs():
@@ -266,7 +342,9 @@ RELATION_TESTS = {
     "four_year": "test_1999_2000_with_another_cycle_and_no_four_year_weight_is_refused_and_its_"
                  "exits_run",
     "overlap": "test_2017_2018_and_the_prepandemic_file_overlap_and_are_refused",
-    "weight_kind": "test_weights_of_different_samples_are_refused",
+    "weight_kind": "test_an_interview_four_year_weight_beside_examination_weights_is_refused_and_"
+                   "its_exit_runs",
+    "stands_alone": "test_august_2021_to_august_2023_with_any_other_cycle_is_refused_as_nchs_advises",
     "incompatible": "test_a_measurement_declared_incompatible_is_refused_and_each_exit_runs",
     "absent": "test_a_variable_a_cycle_lacks_is_refused_with_its_likely_earlier_name",
     "flags": "test_codes_and_units_that_differ_between_cycles_are_flagged_and_left_unchanged",

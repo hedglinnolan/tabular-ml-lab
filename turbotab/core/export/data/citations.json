@@ -6674,6 +6674,26 @@
    "disagreements": []
   },
   {
+   "key": "nhanes_weighting_tutorial",
+   "kind": "web",
+   "cited_as": [
+    "NHANES weighting tutorial"
+   ],
+   "doi": null,
+   "title": "NHANES Tutorials: Weighting Module (Constructing Weights for Combined NHANES Survey Cycles)",
+   "authors": [
+    "National Center for Health Statistics"
+   ],
+   "publisher": "Centers for Disease Control and Prevention",
+   "url": "https://wwwn.cdc.gov/nchs/nhanes/tutorials/weighting.aspx",
+   "no_doi": "An agency web tutorial; it has no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": [],
+   "note": "The page is undated; the passages cited discuss the August 2021-August 2023 files, first published in September 2024 (the DEMO_L documentation), so the year given is the earliest the version read can date from. Read 2026-10-09, it says \"It is generally not recommended to combine the August 2021-August 2023 cycle with other cycles given the 1.5-year gap between this cycle and the 2017-March 2020 cycle\", and that multi-year weights from 2001-2002 onward are computed \"by simply dividing the two-year sample weights by the number of two-year cycles in the analysis\".",
+   "year": 2024
+  },
+  {
    "key": "nhanes_dxa_mi",
    "kind": "web",
    "cited_as": [

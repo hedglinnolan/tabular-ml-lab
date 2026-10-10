@@ -12,9 +12,17 @@ cannot do, and leaves the fourth to the trend tests.
 **Which release each file is.** A cycle is named by its release code (``SDDSRVYR``) or its years.
 The codes are NCHS's (the DEMO documentation of each release, and Table F of the Guidelines): 1 for
 1999–2000, 2 for 2001–2002, and so on two years at a time to 10 for 2017–2018; 66 for the
-2017–March 2020 prepandemic file. A two-year label ("2015–2016") is a two-year cycle. Any other
-cycle (a code not listed, a span that is not two years) is refused until its length in years is
-given: the pooled weight needs it.
+2017–March 2020 prepandemic file; 12 for August 2021–August 2023 (the DEMO_L documentation: "NHANES
+August 2021-August 2023 public release"). A two-year label ("2015–2016") is a two-year cycle. Any
+other cycle (a code not listed, a span that is not two years) is refused until its length in years
+is given: the pooled weight needs it. A cycle whose years are given but whose start is not known is
+stacked with a concern: whether it overlaps another cycle or leaves a gap cannot be checked.
+
+**August 2021–August 2023 stands alone.** NCHS's weighting tutorial: "It is generally not
+recommended to combine the August 2021-August 2023 cycle with other cycles given the 1.5-year gap
+between this cycle and the 2017-March 2020 cycle", a gap in which the pandemic disrupted health
+care, work and schooling. Stacked with any other cycle it is refused, with two exits: analyze it
+alone, or leave it out.
 
 **The pooled weight.** Each cycle's weight W represents that cycle's period; stacked, each is scaled
 by the share of the stacked years its cycle covers, W × y_c ÷ T (y_c the cycle's years, T their
@@ -39,7 +47,12 @@ from 109263, past 2017–2018's 93703–102956 (the public DEMO files). Stacked 
 would count them twice, and the identifiers would not show it, so cycles whose periods overlap are
 refused; identifiers (``SEQN``) that appear in two cycles are refused too. A weight of another
 kind in one cycle (the interview weight beside the examination weight) describes another sample
-and is refused.
+and is refused; the four-year weight the 1999–2002 rows take is checked with the others, so an
+interview four-year weight beside examination two-year weights is refused too. A weight name the
+registry does not know cannot be checked, and the stack says so.
+
+Rows of a cycle with a blank stratum, PSU or weight have no place in the survey design; they are
+stacked, counted, and the stack says how many every estimate will leave out.
 
 **Strata and PSUs stay distinct across cycles.** A stratum is the pair (cycle, stratum), a PSU the
 triple (cycle, stratum, PSU), coded afresh, so two cycles that reuse a stratum's number are never
@@ -79,17 +92,23 @@ SOURCES = {
     "prepandemic": ("Akinbami et al. 2022, Vital Health Stat 2(190), \"Combining Survey Cycles\" "
                     "(doi:10.15620/cdc:115434)"),
     "documentation": "NHANES DEMO documentation, SDDSRVYR (the data release cycle)",
+    "tutorial": ("NHANES weighting tutorial, Constructing Weights for Combined NHANES Survey "
+                 "Cycles (NCHS)"),
 }
 
 # SDDSRVYR -> (label, first year, years covered). 1–9: Table F of the Guidelines; 10, 66: the DEMO
 # documentation of 2017–2018 ("NHANES 2017-2018 public release") and of the prepandemic file
-# ("NHANES 2017-2020 public release"; 3.2 years, Akinbami et al. 2022).
+# ("NHANES 2017-2020 public release"; 3.2 years, Akinbami et al. 2022); 12: the DEMO_L
+# documentation ("NHANES August 2021-August 2023 public release"), a two-year period from August.
 RELEASES: dict[int, tuple[str, float, float]] = {
     **{k: (f"{1999 + 2 * (k - 1)}–{2000 + 2 * (k - 1)}", float(1999 + 2 * (k - 1)), 2.0)
        for k in range(1, 11)},
     66: ("2017–March 2020", 2017.0, 3.2),
+    12: ("August 2021–August 2023", 2021.0 + 7 / 12, 2.0),
 }
 PREPANDEMIC = 66
+# The release NCHS advises against combining with any other (the weighting tutorial).
+STANDS_ALONE = 12
 # The 1999–2002 releases, whose rows take the four-year weight when 1999–2000 is stacked.
 FOUR_YEAR_RELEASES = (1, 2)
 # A two-year weight and its counterpart on the prepandemic file (the names NCHS publishes;
@@ -104,6 +123,9 @@ WEIGHT_KINDS = {
     "WTDR2D": "dietary two-day", "WTDR2DPP": "dietary two-day",
     "WTSAF2YR": "fasting subsample", "WTSAF4YR": "fasting subsample", "WTSAFPRP": "fasting subsample",
 }
+# The 1999–2002 four-year weight of each kind, offered when the one named is of another kind.
+FOUR_YEAR_OF_KIND = {"examination": "WTMEC4YR", "interview": "WTINT4YR",
+                     "dietary day-one": "WTDR4YR", "fasting subsample": "WTSAF4YR"}
 SCALE_FACTOR = 5.0  # a typical value this many times another cycle's is flagged as a unit change
 MAX_CODES = 12  # a whole-number variable with at most this many values in every cycle reads as codes
 
@@ -152,6 +174,8 @@ class Cycle:
 
 
 _SPAN = re.compile(r"^\s*(\d{4})\s*[-–—_/ ]\s*(?:([A-Za-z]+)\.?\s+)?(\d{2,4})\s*(.*)$")
+_AUG2021 = re.compile(r"^\s*(?:Aug(?:ust)?\.?\s+)?2021\s*[-–—_/]\s*(?:Aug(?:ust)?\.?\s+)?(?:20)?23\b",
+                      re.I)
 
 
 def cycle_of(key: Any, years: float | None = None) -> Cycle:
@@ -176,6 +200,9 @@ def cycle_of(key: Any, years: float | None = None) -> Cycle:
                                                                text, re.I):
         label, start, span = RELEASES[PREPANDEMIC]
         return Cycle(key, label, start, float(years) if years else span, PREPANDEMIC)
+    if _AUG2021.match(text):
+        label, start, span = RELEASES[STANDS_ALONE]
+        return Cycle(key, label, start, float(years) if years else span, STANDS_ALONE)
     m = _SPAN.match(text)
     if m:
         first, month, last = int(m.group(1)), m.group(2), m.group(3)
@@ -301,10 +328,14 @@ def stack_cycles(files: Mapping[Any, pd.DataFrame], *, weight: str | Mapping[Any
         same = sorted({c.label for c in cycles if [d.label for d in cycles].count(c.label) > 1})
         raise StackRefused(f"Two files are the same cycle ({', '.join(same)}); a cycle is "
                            "stacked once.", ({"label": "Keep one file per cycle"},))
-    order = sorted(range(len(cycles)), key=lambda i: (cycles[i].start, cycles[i].years))
+    order = sorted(range(len(cycles)),
+                   key=lambda i: (math.isnan(cycles[i].start),
+                                  0.0 if math.isnan(cycles[i].start) else cycles[i].start,
+                                  cycles[i].years))
     cycles = [cycles[i] for i in order]
     keys = [list(files)[i] for i in order]
     _refuse_overlaps(cycles, keys)
+    _refuse_standing_alone(cycles, keys)
     renames = renames or {}
     recodes = recodes or {}
     incompatible = incompatible or {}
@@ -322,11 +353,11 @@ def stack_cycles(files: Mapping[Any, pd.DataFrame], *, weight: str | Mapping[Any
                               "this stack).", {"from": old}))
     weights_used, notes = _weights_by_cycle(weight, cycles, keys, tables)
     _refuse_missing_design(cycles, tables, strata, psu)
-    _refuse_weight_kinds(cycles, weights_used)
+    four = _four_year(four_year, cycles, keys, tables)
+    unchecked = _refuse_weight_kinds(cycles, tables, weights_used, four)
     if id_column:
         _refuse_repeated_ids(cycles, keys, tables, id_column)
     total = float(sum(c.years for c in cycles))
-    four = _four_year(four_year, cycles, keys, tables)
     design_cols = {strata, psu, *weights_used.values(), *([four] if four else []),
                    *([id_column] if id_column else []), "SDDSRVYR"}
     present = [set(t.columns) for t in tables]
@@ -357,9 +388,30 @@ def stack_cycles(files: Mapping[Any, pd.DataFrame], *, weight: str | Mapping[Any
     _refuse_incompatible(cycles, keys, stacked_vars, incompatible, recodes)
     flags.extend(_noticed(cycles, tables, stacked_vars,
                           {(f.column, f.cycles[0]) for f in converted}))
-    frame, factors, collided = _assemble(cycles, tables, stacked_vars, weights_used, four, strata,
-                                         psu, id_column, total)
+    frame, factors, collided, unplaced = _assemble(cycles, tables, stacked_vars, weights_used,
+                                                   four, strata, psu, id_column, total)
     concerns = []
+    if unchecked:
+        shown = "; ".join(f"{lab}: `{name}`" for lab, name in unchecked.items())
+        concerns.append(f"The weights {shown} are not among the NHANES weights known here, so "
+                        "whether every cycle's weight describes the same sample (the examination, "
+                        "the interview, a dietary or a fasting subsample) could not be checked. "
+                        "Check that each is the same kind of weight. (Survey term: weight kind "
+                        "unverified.)")
+    if unplaced:
+        n = sum(unplaced.values())
+        by = "; ".join(f"{lab}: {k:,}" for lab, k in unplaced.items())
+        concerns.append(f"{n:,} row{'s have' if n != 1 else ' has'} a blank survey layer, cluster or "
+                        f"weight ({by}), so {'they have' if n != 1 else 'it has'} no place in the "
+                        "survey design and every estimate over the stack will leave "
+                        f"{'them' if n != 1 else 'it'} out. (Survey terms: blank `{strata}`, "
+                        f"`{psu}` or weight.)")
+    unknown_start = [c.label for c in cycles if math.isnan(c.start)]
+    if unknown_start and len(cycles) > 1:
+        concerns.append(f"When {_listed(unknown_start)} began is not known here, so whether "
+                        f"{'it overlaps' if len(unknown_start) == 1 else 'they overlap'} another "
+                        "cycle (and would count the same people or years twice) or leaves a gap "
+                        "could not be checked. Check the release documentation.")
     if collided:
         collided = sorted(collided, key=lambda v: (str(type(v)), v))
         shown = ", ".join(str(_plain(v)) for v in collided[:6]) + (" …" if len(collided) > 6 else "")
@@ -447,17 +499,54 @@ def _refuse_missing_design(cycles: list[Cycle], tables: list[pd.DataFrame], stra
                   "stage": "ingest"},))
 
 
-def _refuse_weight_kinds(cycles: list[Cycle], used: dict[str, str]) -> None:
-    kinds = {c.label: WEIGHT_KINDS.get(used[c.label].upper()) for c in cycles}
+def _refuse_weight_kinds(cycles: list[Cycle], tables: list[pd.DataFrame], used: dict[str, str],
+                         four: str | None) -> dict[str, str]:
+    """Refuse weights of different samples, the four-year weight of the 1999–2002 rows among them;
+    return the weights (cycle label -> name) whose kind is not known, which could not be checked."""
+    taken = {c.label: (four if four and c.release in FOUR_YEAR_RELEASES else used[c.label])
+             for c in cycles}
+    kinds = {lab: WEIGHT_KINDS.get(str(name).upper()) for lab, name in taken.items()}
     known = {k for k in kinds.values() if k}
     if len(known) > 1:
-        listed = "; ".join(f"{c.label}: `{used[c.label]}` ({kinds[c.label] or 'unknown'})"
+        listed = "; ".join(f"{c.label}: `{taken[c.label]}` ({kinds[c.label] or 'unknown'})"
                            for c in cycles)
+        exits: list[dict[str, Any]] = []
+        if four:
+            early = [t for c, t in zip(cycles, tables) if c.release in FOUR_YEAR_RELEASES]
+            later = {kinds[c.label] for c in cycles if c.release not in FOUR_YEAR_RELEASES} - {None}
+            for k in sorted(later):
+                match = FOUR_YEAR_OF_KIND.get(k)
+                if match and match != four and all(match in t.columns for t in early):
+                    exits.append({"label": f"Use the {k} four-year weight `{match}` on 1999–2002",
+                                  "four_year": match})
+        exits.extend({"label": f"Use the {k} weight in every cycle", "weight_kind": k}
+                     for k in sorted(known))
         raise StackRefused(
             "The cycles' weights describe different samples (" + listed + "): stacked, the "
-            "estimate would mix them. Every cycle needs the weight of the same sample.",
-            tuple({"label": f"Use the {k} weight in every cycle", "weight_kind": k}
-                  for k in sorted(known)))
+            "estimate would mix them. Every cycle needs the weight of the same sample"
+            + (", the four-year weight of the 1999–2002 rows included." if four else ".")
+            + " (Survey term: weight kinds differ.)", exits)
+    return {lab: name for lab, name in taken.items() if kinds[lab] is None}
+
+
+def _refuse_standing_alone(cycles: list[Cycle], keys: list[Any]) -> None:
+    """August 2021–August 2023 with any other cycle: refused, as NCHS advises (the weighting
+    tutorial)."""
+    if len(cycles) < 2:
+        return
+    alone = [(c, k) for c, k in zip(cycles, keys) if c.release == STANDS_ALONE]
+    if not alone:
+        return
+    c, k = alone[0]
+    others = [kk for cc, kk in zip(cycles, keys) if cc.release != STANDS_ALONE]
+    raise StackRefused(
+        f"NCHS advises against combining {c.label} with other cycles: a year and a half passed "
+        "between the end of the 2017–March 2020 file and its start, in which the pandemic "
+        "disrupted health care, work and schooling, so a stack would assume those unobserved "
+        "months looked like the observed ones (NHANES weighting tutorial, NCHS). "
+        "(Survey term: combining across the 2020–2021 gap.)",
+        ({"label": f"Analyze {c.label} alone", "drop_cycles": others},
+         {"label": f"Leave {c.label} out", "drop_cycles": [k]}))
 
 
 def _refuse_repeated_ids(cycles: list[Cycle], keys: list[Any], tables: list[pd.DataFrame],
@@ -669,8 +758,9 @@ def _noticed(cycles: list[Cycle], tables: list[pd.DataFrame], variables: Sequenc
 def _assemble(cycles: list[Cycle], tables: list[pd.DataFrame], variables: Sequence[str],
               weights: dict[str, str], four: str | None, strata: str, psu: str,
               id_column: str | None, total: float
-              ) -> tuple[pd.DataFrame, dict[str, float], list[Any]]:
+              ) -> tuple[pd.DataFrame, dict[str, float], list[Any], dict[str, int]]:
     parts, factors = [], {}
+    unplaced: dict[str, int] = {}
     seen_strata: dict[Any, str] = {}
     collided: list[Any] = []
     for c, t in zip(cycles, tables):
@@ -693,6 +783,9 @@ def _assemble(cycles: list[Cycle], tables: list[pd.DataFrame], variables: Sequen
         part[MIDPOINT] = c.midpoint
         part[SOURCE_WEIGHT] = pd.to_numeric(t[source], errors="coerce").to_numpy(dtype=float)
         part[WEIGHT] = w * (c.years / total)
+        blank = int((part[strata].isna() | part[psu].isna() | np.isnan(w)).sum())
+        if blank:
+            unplaced[c.label] = blank
         for v in pd.unique(t[strata].dropna()):
             if v in seen_strata and seen_strata[v] != c.label and v not in collided:
                 collided.append(v)
@@ -709,7 +802,7 @@ def _assemble(cycles: list[Cycle], tables: list[pd.DataFrame], variables: Sequen
     frame[PSU] = np.nan
     frame.loc[placed, STRATUM] = pd.factorize(stratum_keys)[0]
     frame.loc[placed, PSU] = pd.factorize(psu_keys)[0]
-    return frame, factors, collided
+    return frame, factors, collided, unplaced
 
 
 # ── words ────────────────────────────────────────────────────────────────────
@@ -833,10 +926,22 @@ def _register_contract() -> None:
                      "or an identifier in two cycles", enforced_by=f"{here}:stack_cycles",
                      id="overlap", purposes=both),
             Relation("conflicts", "weight_kinds_differ",
-                     "weights of different samples (examination and interview) are refused",
-                     when=("stack",), rung="refused", exits=("use one kind of weight in every cycle",),
-                     condition="two kinds of weight among the cycles",
+                     "weights of different samples (examination and interview) are refused, the "
+                     "four-year weight of the 1999–2002 rows among them; a weight whose kind is not "
+                     "known is stacked with a concern that it could not be checked",
+                     when=("stack",), rung="refused",
+                     exits=("use one kind of weight in every cycle",
+                            "name the four-year weight of the same kind"),
+                     condition="two kinds of weight among the cycles, the four-year weight included",
                      enforced_by=f"{here}:stack_cycles", id="weight_kind", purposes=both),
+            Relation("conflicts", "combined_across_the_pandemic_gap",
+                     "the 2021–2023 cycle (release 12) stacked with any other cycle is refused, as "
+                     "the NHANES weighting tutorial advises: a year and a half of unobserved "
+                     "pandemic months lies between it and the prepandemic file",
+                     when=("stack",), rung="refused",
+                     exits=("analyze the 2021–2023 cycle alone", "leave it out"),
+                     condition="the 2021–2023 cycle and another cycle",
+                     enforced_by=f"{here}:stack_cycles", id="stands_alone", purposes=both),
             Relation("conflicts", "measurement_not_comparable",
                      "a variable declared to be measured differently in a cycle is refused unless "
                      "its conversion is declared", when=("stack",), rung="refused",

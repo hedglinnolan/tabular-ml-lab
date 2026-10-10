@@ -76,7 +76,9 @@ def test_the_cycle_means_their_intervals_and_the_contrasts_match_svyby_and_svyco
     ref = run_r(R_STACK + """
 by <- svyby(~y, ~time, s, svymean, covmat = TRUE)
 dfs <- sapply(sort(unique(f$time)), function(t) degf(subset(s, time == t)))
-ci <- confint(by, df = dfs)
+# By hand: confint(by, df = dfs) recycles a vector df and returns wrong limits when the dfs differ.
+half <- qt(0.975, dfs) * SE(by)
+ci <- cbind(coef(by) - half, coef(by) + half)
 Z <- contr.poly(4, scores = c(2012, 2014, 2016, 2018.6))
 cc <- svycontrast(by, list(lin = Z[, 1], quad = Z[, 2], cub = Z[, 3]))
 out(list(mean = unname(coef(by)), se = unname(SE(by)), vcov = unname(vcov(by)), dfs = dfs,
@@ -98,6 +100,34 @@ out(list(mean = unname(coef(by)), se = unname(SE(by)), vcov = unname(vcov(by)), 
         _close(got, c, se, pv)
     assert [t.name for t in r.terms] == ["linear", "quadratic", "cubic"]
     assert r.shape == "increasing" and "rose" in r.says
+
+
+@needs_r
+def test_each_cycle_interval_takes_its_own_degrees_of_freedom_as_computed_by_hand_in_r(tmp_path):
+    """Cycles with different numbers of strata have different design degrees of freedom (PSUs minus
+    strata, Ingram et al. 2018); each cycle's t interval uses its own, mean ± qt(0.975, df_c)·SE,
+    computed in R from svyby's means and standard errors and each cycle's degf."""
+    files = {7: nhanes_cycle(7, strata=8), 8: nhanes_cycle(8, strata=6),
+             9: nhanes_cycle(9, strata=5)}
+    s = C.stack_cycles(files, weight="WTMEC2YR")
+    r = T.cycle_trend(_adult_bmi(s), s.frame[C.CYCLE], design=s.design())
+    ref = run_r("""
+f <- read.csv("stacked.csv")
+f$y <- ifelse(f$RIDAGEYR >= 20, f$BMXBMI, NA)
+d <- svydesign(ids = ~SDMVPSU, strata = ~interaction(cycle_release, SDMVSTRA),
+               weights = ~pooled_weight, nest = TRUE, data = f)
+s <- subset(d, !is.na(y) & pooled_weight > 0)
+by <- svyby(~y, ~cycle_midpoint, s, svymean)
+dfs <- sapply(sort(unique(f$cycle_midpoint)), function(t) degf(subset(s, cycle_midpoint == t)))
+half <- qt(0.975, dfs) * SE(by)
+out(list(mean = unname(coef(by)), se = unname(SE(by)), dfs = dfs,
+         lo = unname(coef(by) - half), hi = unname(coef(by) + half)))
+""", {"stacked": s.frame}, tmp_path)
+    assert [e.df for e in r.estimates] == ref["dfs"] == [9, 7, 6]
+    np.testing.assert_allclose([e.estimate for e in r.estimates], ref["mean"], rtol=1e-12)
+    np.testing.assert_allclose([e.se for e in r.estimates], ref["se"], rtol=1e-10)
+    np.testing.assert_allclose([e.lower for e in r.estimates], ref["lo"], rtol=1e-10)
+    np.testing.assert_allclose([e.upper for e in r.estimates], ref["hi"], rtol=1e-10)
 
 
 def test_equally_spaced_contrasts_are_the_classical_orthogonal_polynomials():
