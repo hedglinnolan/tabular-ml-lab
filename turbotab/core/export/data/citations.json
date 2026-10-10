@@ -1,6 +1,6 @@
 {
  "format": 1,
- "checked_on": "2026-10-09",
+ "checked_on": "2026-10-10",
  "about": "The citation registry (SIZING X4). Records with a DOI carry Crossref's (or DataCite's) metadata, rewritten by `python -m turbotab.core.export.citations_check`; records without one are marked by kind, with an ISBN or URL and the reason. `cited_as` holds how the app's text cites each one; `disagreements` lists where that text differs from the record.",
  "records": [
   {
@@ -8261,6 +8261,651 @@
    ],
    "verified_by": "crossref",
    "verified_on": "2026-10-09"
+  },
+  {
+   "key": "huber1964",
+   "kind": "article",
+   "cited_as": [
+    "Huber(?:,? P\\. ?J\\.)?,? \\(?1964\\b"
+   ],
+   "doi": "10.1214/aoms/1177703732",
+   "verified_by": "crossref",
+   "authors": [
+    "Huber, Peter J."
+   ],
+   "title": "Robust Estimation of a Location Parameter",
+   "year": 1964,
+   "venue": "The Annals of Mathematical Statistics",
+   "volume": "35",
+   "issue": "1",
+   "pages": "73-101",
+   "publisher": "Institute of Mathematical Statistics",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1964
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "holland1977irls",
+   "kind": "article",
+   "cited_as": [
+    "Holland(?:,? P\\. ?W\\.)?(?:,? (?:&|and) |, )Welsch(?:,? R\\. ?E\\.)?,? \\(?1977\\b"
+   ],
+   "doi": "10.1080/03610927708827533",
+   "verified_by": "crossref",
+   "authors": [
+    "Holland, Paul W.",
+    "Welsch, Roy E."
+   ],
+   "title": "Robust regression using iteratively reweighted least-squares",
+   "year": 1977,
+   "venue": "Communications in Statistics - Theory and Methods",
+   "volume": "6",
+   "issue": "9",
+   "pages": "813-827",
+   "publisher": "Informa UK Limited",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1977,
+    2007
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "breiman2001forests",
+   "kind": "article",
+   "cited_as": [
+    "Breiman(?:,? L\\.)?,? \\(?2001\\)?[,.]? Random [Ff]orests?\\b"
+   ],
+   "doi": "10.1023/A:1010933404324",
+   "verified_by": "crossref",
+   "authors": [
+    "Breiman, Leo"
+   ],
+   "title": "Random Forests",
+   "year": 2001,
+   "venue": "Machine Learning",
+   "volume": "45",
+   "issue": "1",
+   "pages": "5-32",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2001
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "wright2017ranger",
+   "kind": "article",
+   "cited_as": [
+    "Wright(?:,? M\\. ?N\\.)?(?:,? (?:&|and) |, )Ziegler(?:,? A\\.)?,? \\(?2017\\b"
+   ],
+   "doi": "10.18637/jss.v077.i01",
+   "verified_by": "crossref",
+   "authors": [
+    "Wright, Marvin N.",
+    "Ziegler, Andreas"
+   ],
+   "title": "ranger : A Fast Implementation of Random Forests for High Dimensional Data in C++ and R",
+   "year": 2017,
+   "venue": "Journal of Statistical Software",
+   "volume": "77",
+   "issue": "1",
+   "pages": "",
+   "publisher": "Foundation for Open Access Statistic",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2017
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "probst2019rf",
+   "kind": "article",
+   "cited_as": [
+    "Probst(?:,? P\\.)?,? Wright(?:,? M\\. ?N\\.)?(?:,? (?:&|and) |, )Boulesteix(?:,? A\\.-?L\\.)?,? \\(?2019\\b"
+   ],
+   "doi": "10.1002/widm.1301",
+   "verified_by": "crossref",
+   "authors": [
+    "Probst, Philipp",
+    "Wright, Marvin N.",
+    "Boulesteix, Anne‐Laure"
+   ],
+   "title": "Hyperparameters and tuning strategies for random forest",
+   "year": 2019,
+   "venue": "WIREs Data Mining and Knowledge Discovery",
+   "volume": "9",
+   "issue": "3",
+   "pages": "e1301",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2019
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "chen2016xgboost",
+   "kind": "proceedings",
+   "cited_as": [
+    "Chen(?:,? T\\.)?(?:,? (?:&|and) |, )Guestrin(?:,? C\\.)?,? \\(?2016\\b"
+   ],
+   "doi": "10.1145/2939672.2939785",
+   "verified_by": "crossref",
+   "authors": [
+    "Chen, Tianqi",
+    "Guestrin, Carlos"
+   ],
+   "title": "XGBoost: A Scalable Tree Boosting System",
+   "year": 2016,
+   "venue": "Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining",
+   "volume": "",
+   "issue": "",
+   "pages": "785-794",
+   "publisher": "ACM",
+   "crossref_type": "proceedings-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "bischl2023hpo",
+   "kind": "article",
+   "cited_as": [
+    "Bischl\\b[^;()]{0,160}?\\(?2023\\b"
+   ],
+   "doi": "10.1002/widm.1484",
+   "verified_by": "crossref",
+   "authors": [
+    "Bischl, Bernd",
+    "Binder, Martin",
+    "Lang, Michel",
+    "Pielok, Tobias",
+    "Richter, Jakob",
+    "Coors, Stefan",
+    "Thomas, Janek",
+    "Ullmann, Theresa",
+    "Becker, Marc",
+    "Boulesteix, Anne‐Laure",
+    "Deng, Difan",
+    "Lindauer, Marius"
+   ],
+   "title": "Hyperparameter optimization: Foundations, algorithms, best practices, and open challenges",
+   "year": 2023,
+   "venue": "WIREs Data Mining and Knowledge Discovery",
+   "volume": "13",
+   "issue": "2",
+   "pages": "e1484",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2023
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "riley2021penalization",
+   "kind": "article",
+   "cited_as": [
+    "Riley\\b[^;()]{0,160}?\\(?2021\\b"
+   ],
+   "doi": "10.1016/j.jclinepi.2020.12.005",
+   "verified_by": "crossref",
+   "authors": [
+    "Riley, Richard D.",
+    "Snell, Kym I.E.",
+    "Martin, Glen P.",
+    "Whittle, Rebecca",
+    "Archer, Lucinda",
+    "Sperrin, Matthew",
+    "Collins, Gary S."
+   ],
+   "title": "Penalization and shrinkage methods produced unreliable clinical prediction models especially when sample size was small",
+   "year": 2021,
+   "venue": "Journal of Clinical Epidemiology",
+   "volume": "132",
+   "issue": "",
+   "pages": "88-96",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2021
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "vancalster2020shrinkage",
+   "kind": "article",
+   "cited_as": [
+    "Van Calster\\b[^;()]{0,160}?\\(?2020\\b"
+   ],
+   "doi": "10.1177/0962280220921415",
+   "verified_by": "crossref",
+   "authors": [
+    "Van Calster, Ben",
+    "van Smeden, Maarten",
+    "De Cock, Bavo",
+    "Steyerberg, Ewout W"
+   ],
+   "title": "Regression shrinkage methods for clinical prediction models do not guarantee improved performance: Simulation study",
+   "year": 2020,
+   "venue": "Statistical Methods in Medical Research",
+   "volume": "29",
+   "issue": "11",
+   "pages": "3166-3178",
+   "publisher": "SAGE Publications",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2020
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "martin2021tuning",
+   "kind": "article",
+   "cited_as": [
+    "Martin\\b[^;()]{0,160}?\\(?2021\\b"
+   ],
+   "doi": "10.1177/09622802211046388",
+   "verified_by": "crossref",
+   "authors": [
+    "Martin, Glen P",
+    "Riley, Richard D",
+    "Collins, Gary S",
+    "Sperrin, Matthew"
+   ],
+   "title": "Developing clinical prediction models when adhering to minimum sample size recommendations: The importance of quantifying bootstrap variability in tuning parameters and predictive performance",
+   "year": 2021,
+   "venue": "Statistical Methods in Medical Research",
+   "volume": "30",
+   "issue": "12",
+   "pages": "2545-2561",
+   "publisher": "SAGE Publications",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2021
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "kruppa2014theory",
+   "kind": "article",
+   "cited_as": [
+    "Kruppa\\b(?![^;()]*Applications)[^;()]{0,200}?\\(?2014\\b"
+   ],
+   "doi": "10.1002/bimj.201300068",
+   "verified_by": "crossref",
+   "authors": [
+    "Kruppa, Jochen",
+    "Liu, Yufeng",
+    "Biau, Gérard",
+    "Kohler, Michael",
+    "König, Inke R.",
+    "Malley, James D.",
+    "Ziegler, Andreas"
+   ],
+   "title": "Probability estimation with machine learning methods for dichotomous and multicategory outcome: Theory",
+   "year": 2014,
+   "venue": "Biometrical Journal",
+   "volume": "56",
+   "issue": "4",
+   "pages": "534-563",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2014
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "josse2024missing",
+   "kind": "article",
+   "cited_as": [
+    "Josse\\b[^;()]{0,160}?\\(?2024\\b"
+   ],
+   "doi": "10.1007/s00362-024-01550-4",
+   "verified_by": "crossref",
+   "authors": [
+    "Josse, Julie",
+    "Chen, Jacob M.",
+    "Prost, Nicolas",
+    "Varoquaux, Gaël",
+    "Scornet, Erwan"
+   ],
+   "title": "On the consistency of supervised learning with missing values",
+   "year": 2024,
+   "venue": "Statistical Papers",
+   "volume": "65",
+   "issue": "9",
+   "pages": "5447-5479",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2024
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "perezlebel2022missing",
+   "kind": "article",
+   "cited_as": [
+    "P[ée]rez-Lebel\\b[^;()]{0,160}?\\(?2022\\b"
+   ],
+   "doi": "10.1093/gigascience/giac013",
+   "verified_by": "crossref",
+   "authors": [
+    "Perez-Lebel, Alexandre",
+    "Varoquaux, Gaël",
+    "Le Morvan, Marine",
+    "Josse, Julie",
+    "Poline, Jean-Baptiste"
+   ],
+   "title": "Benchmarking missing-values approaches for predictive models on health databases",
+   "year": 2022,
+   "venue": "GigaScience",
+   "volume": "11",
+   "issue": "",
+   "pages": "giac013",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2022
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "vanness2023indicator",
+   "kind": "proceedings",
+   "cited_as": [
+    "Van Ness\\b[^;()]{0,160}?\\(?2023\\b"
+   ],
+   "doi": "10.1145/3580305.3599911",
+   "verified_by": "crossref",
+   "authors": [
+    "Van Ness, Mike",
+    "Bosschieter, Tomas M.",
+    "Halpin-Gregorio, Roberto",
+    "Udell, Madeleine"
+   ],
+   "title": "The Missing Indicator Method: From Low to High Dimensions",
+   "year": 2023,
+   "venue": "Proceedings of the 29th ACM SIGKDD Conference on Knowledge Discovery and Data Mining",
+   "volume": "",
+   "issue": "",
+   "pages": "5004-5015",
+   "publisher": "ACM",
+   "crossref_type": "proceedings-article",
+   "years_seen": [
+    2023
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "gelman2008twosd",
+   "kind": "article",
+   "cited_as": [
+    "Gelman(?:,? A\\.)?,? \\(?2008\\b"
+   ],
+   "doi": "10.1002/sim.3107",
+   "verified_by": "crossref",
+   "authors": [
+    "Gelman, Andrew"
+   ],
+   "title": "Scaling regression inputs by dividing by two standard deviations",
+   "year": 2008,
+   "venue": "Statistics in Medicine",
+   "volume": "27",
+   "issue": "15",
+   "pages": "2865-2873",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2007,
+    2008
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "ng2004l1l2",
+   "kind": "proceedings",
+   "cited_as": [
+    "Ng(?:,? A\\. ?Y\\.)?,? \\(?2004\\b"
+   ],
+   "doi": "10.1145/1015330.1015435",
+   "verified_by": "crossref",
+   "authors": [
+    "Ng, Andrew Y."
+   ],
+   "title": "Feature selection, L 1 vs. L 2 regularization, and rotational invariance",
+   "year": 2004,
+   "venue": "Twenty-first international conference on Machine learning - ICML '04",
+   "volume": "",
+   "issue": "",
+   "pages": "78",
+   "publisher": "ACM Press",
+   "crossref_type": "proceedings-article",
+   "years_seen": [
+    2004
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "mcelfresh2023tabular",
+   "kind": "proceedings",
+   "cited_as": [
+    "McElfresh\\b[^;()]{0,160}?\\(?2023\\b"
+   ],
+   "doi": "10.52202/075280-3337",
+   "verified_by": "crossref",
+   "authors": [
+    "McElfresh, Duncan",
+    "Khandagale, Sujay",
+    "Valverde, Jonathan",
+    "C, Vishak Prasad",
+    "Ramakrishnan, Ganesh",
+    "Goldblum, Micah",
+    "White, Colin"
+   ],
+   "title": "When Do Neural Nets Outperform Boosted Trees on Tabular Data?",
+   "year": 2023,
+   "venue": "Advances in Neural Information Processing Systems 36",
+   "volume": "",
+   "issue": "",
+   "pages": "76336-76369",
+   "publisher": "Neural Information Processing Systems Foundation, Inc. (NeurIPS)",
+   "crossref_type": "proceedings-article",
+   "years_seen": [
+    2023
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "curth2024forests",
+   "kind": "preprint",
+   "cited_as": [
+    "Curth\\b[^;()]{0,160}?\\(?2024\\b"
+   ],
+   "doi": "10.48550/arXiv.2402.01502",
+   "verified_by": "datacite",
+   "authors": [
+    "Curth, Alicia",
+    "Jeffares, Alan",
+    "van der Schaar, Mihaela"
+   ],
+   "title": "Why do Random Forests Work? Understanding Tree Ensembles as Self-Regularizing Adaptive Smoothers",
+   "year": 2024,
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "arXiv",
+   "years_seen": [
+    2024
+   ],
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "liaw2002randomforest",
+   "kind": "periodical",
+   "cited_as": [
+    "Liaw(?:,? A\\.)?(?:,? (?:&|and) |, )Wiener(?:,? M\\.)?,? \\(?2002\\b"
+   ],
+   "title": "Classification and Regression by randomForest",
+   "year": 2002,
+   "authors": [
+    "Liaw, Andy",
+    "Wiener, Matthew"
+   ],
+   "venue": "R News",
+   "volume": "2",
+   "issue": "3",
+   "pages": "18-22",
+   "url": "https://CRAN.R-project.org/doc/Rnews/Rnews_2002-3.pdf",
+   "no_doi": "R News (the R Journal's predecessor) registered no DOIs and Crossref lists none for this article; the issue's PDF on CRAN is the source.",
+   "doi": null,
+   "verified_by": "url",
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "probst2019tunability",
+   "kind": "periodical",
+   "cited_as": [
+    "Probst(?:,? P\\.)?,? Boulesteix(?:,? A\\.-?L\\.)?(?:,? (?:&|and) |, )Bischl(?:,? B\\.)?,? \\(?2019\\b",
+    "Probst et al\\.?,? \\(?2019\\b"
+   ],
+   "title": "Tunability: Importance of Hyperparameters of Machine Learning Algorithms",
+   "year": 2019,
+   "authors": [
+    "Probst, Philipp",
+    "Boulesteix, Anne-Laure",
+    "Bischl, Bernd"
+   ],
+   "venue": "Journal of Machine Learning Research",
+   "volume": "20",
+   "issue": "53",
+   "pages": "1-32",
+   "url": "https://jmlr.org/papers/v20/18-444.html",
+   "no_doi": "The Journal of Machine Learning Research registers no DOIs; its own page for the paper is the source.",
+   "doi": null,
+   "verified_by": "url",
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "bergstra2012random",
+   "kind": "periodical",
+   "cited_as": [
+    "Bergstra(?:,? J\\.)?(?:,? (?:&|and) |, )Bengio(?:,? Y\\.)?,? \\(?2012\\b"
+   ],
+   "title": "Random Search for Hyper-Parameter Optimization",
+   "year": 2012,
+   "authors": [
+    "Bergstra, James",
+    "Bengio, Yoshua"
+   ],
+   "venue": "Journal of Machine Learning Research",
+   "volume": "13",
+   "issue": "10",
+   "pages": "281-305",
+   "url": "https://jmlr.org/papers/v13/bergstra12a.html",
+   "no_doi": "The Journal of Machine Learning Research registers no DOIs; its own page for the paper is the source.",
+   "doi": null,
+   "verified_by": "url",
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "cawley2010overfitting",
+   "kind": "periodical",
+   "cited_as": [
+    "Cawley\\b[^;()]{0,100}?\\(?2010\\b"
+   ],
+   "title": "On Over-fitting in Model Selection and Subsequent Selection Bias in Performance Evaluation",
+   "year": 2010,
+   "authors": [
+    "Cawley, Gavin C.",
+    "Talbot, Nicola L. C."
+   ],
+   "venue": "Journal of Machine Learning Research",
+   "volume": "11",
+   "issue": "70",
+   "pages": "2079-2107",
+   "url": "https://jmlr.org/papers/v11/cawley10a.html",
+   "no_doi": "The Journal of Machine Learning Research registers no DOIs; its own page for the paper is the source.",
+   "doi": null,
+   "verified_by": "url",
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "kobak2020ridge",
+   "kind": "periodical",
+   "cited_as": [
+    "Kobak\\b[^;()]{0,160}?\\(?2020\\b"
+   ],
+   "title": "The Optimal Ridge Penalty for Real-world High-dimensional Data Can Be Zero or Negative due to the Implicit Ridge Regularization",
+   "year": 2020,
+   "authors": [
+    "Kobak, Dmitry",
+    "Lomond, Jonathan",
+    "Sanchez, Benoit"
+   ],
+   "venue": "Journal of Machine Learning Research",
+   "volume": "21",
+   "issue": "169",
+   "pages": "1-16",
+   "url": "https://jmlr.org/papers/v21/19-844.html",
+   "no_doi": "The Journal of Machine Learning Research registers no DOIs; its own page for the paper is the source.",
+   "doi": null,
+   "verified_by": "url",
+   "verified_on": "2026-10-10",
+   "disagreements": []
+  },
+  {
+   "key": "mentch2020randomization",
+   "kind": "periodical",
+   "cited_as": [
+    "Mentch\\b[^;()]{0,160}?\\(?2020\\b"
+   ],
+   "title": "Randomization as Regularization: A Degrees of Freedom Explanation for Random Forest Success",
+   "year": 2020,
+   "authors": [
+    "Mentch, Lucas",
+    "Zhou, Siyu"
+   ],
+   "venue": "Journal of Machine Learning Research",
+   "volume": "21",
+   "issue": "171",
+   "pages": "1-36",
+   "url": "https://jmlr.org/papers/v21/19-905.html",
+   "no_doi": "The Journal of Machine Learning Research registers no DOIs; its own page for the paper is the source.",
+   "doi": null,
+   "verified_by": "url",
+   "verified_on": "2026-10-10",
+   "disagreements": []
   }
  ]
 }
