@@ -1,10 +1,6 @@
 """The engine's path search with the elastic net on it: a class an inner split lacks, the imbalance
 correction, and the time estimate (RT-5f's verifier; RECIPES_AND_TUNING §4.3, §4.4).
 
-Each of these needs a change in ``models/tuning.py`` or ``models/cost.py``, files this package
-does not own; the change is handed to the integrator, and until it lands the tests are strict
-expected failures (the patch removes the markers).
-
 * **A class an inner split lacks** (the verifier's rare.py and rare_design.py). The path models
   the classes of the rows it is fit on; the fit's other classes had no column, and the pooled
   predictions could not be stacked ("all the input array dimensions … size 4 … size 3"). A class
@@ -35,10 +31,6 @@ from turbotab.core.models import tuning as T
 from turbotab.core.models.base import get_family
 from turbotab.core.models.inner_cv import fit_pipeline
 
-ENGINE = pytest.mark.xfail(
-    strict=True, reason="needs the engine change handed to the integrator (RT-5f open issue: "
-                        "tuning._path_searched aligns a split's classes; a path under the "
-                        "imbalance correction is searched point by point; cost times the search)")
 EPS = np.finfo(float).eps
 
 
@@ -57,7 +49,6 @@ def _pipe(key: str, task: str, plan, n: int, p: int):
                            search=plan).set_output(transform="pandas")
 
 
-@ENGINE
 @pytest.mark.parametrize("key", ["elastic_net", "ridge"])
 def test_a_class_one_row_holds_is_missing_from_an_inner_split_and_costs_every_point_alike(key):
     rng = np.random.default_rng(0)
@@ -81,7 +72,6 @@ def test_a_class_one_row_holds_is_missing_from_an_inner_split_and_costs_every_po
     assert np.all(losses > floor)
 
 
-@ENGINE
 def test_a_class_held_in_one_psu_is_scored_under_the_population_answer():
     rng = np.random.default_rng(1)
     n = 300
@@ -99,7 +89,6 @@ def test_a_class_held_in_one_psu_is_scored_under_the_population_answer():
         assert any(3 not in set(y[np.asarray(d.train, dtype=int)]) for d in inner), key
 
 
-@ENGINE
 def test_under_the_imbalance_correction_the_path_search_scores_the_wrapped_model():
     from sklearn.base import clone
 
@@ -154,7 +143,6 @@ def test_under_the_imbalance_correction_the_path_search_scores_the_wrapped_model
     assert np.max(np.abs(curves["weights"] - by_hand)) <= 1e-9 * by_hand.min()
 
 
-@ENGINE
 def test_a_path_familys_time_estimate_times_its_search(monkeypatch):
     from turbotab.core.decisions import ProjectState
     from turbotab.core.models import cost

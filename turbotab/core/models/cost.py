@@ -177,15 +177,20 @@ def estimate_fits(store: Any, state: Any, task: str, train_ids: Any, families: S
         if callable(cancelled) and cancelled():
             break
         plan = (plans or {}).get(family.key)
-        pipeline = None
+        pipeline, whole = None, False
         if plan is not None:
             try:
                 tuned = build_pipeline(replace(spec, plans={family.key: plan.to_dict()}), family,
                                        task, purpose, n_rows, n_columns)
-                # the center resolved on the timing sample (its outcome, its model matrix), as
-                # every fit resolves its candidate on its own rows
-                pipeline = tuned.at(center(plan), X=X[spec.inputs], y=y,
-                                    groups=None if units is None else units.to_numpy())
+                if plan.kind == "path" and not plan.imbalance and plan.chooses():
+                    # each inner split runs the whole path, which no one fit at the center
+                    # measures: the search itself is timed, the refit with it
+                    pipeline, whole = tuned, True
+                else:
+                    # the center resolved on the timing sample (its outcome, its model matrix),
+                    # as every fit resolves its candidate on its own rows
+                    pipeline = tuned.at(center(plan), X=X[spec.inputs], y=y,
+                                        groups=None if units is None else units.to_numpy())
             except Exception:  # noqa: BLE001 - timed at its built settings instead
                 log.debug("the center candidate could not be built", exc_info=True)
         if pipeline is None:
@@ -199,9 +204,9 @@ def estimate_fits(store: Any, state: Any, task: str, train_ids: Any, families: S
         seconds = time_one_fit(pipeline, X[spec.inputs], y)
         if seconds is None:
             continue
-        fits = tuned_fits(plan)
+        fits = 1 if whole else tuned_fits(plan)
         total = seconds * scale * full_fits(folds, scheme) * fits
-        text = say(total, n_rows, n_columns) + (TUNING_CLAUSE if fits > 2 else "")
+        text = say(total, n_rows, n_columns) + (TUNING_CLAUSE if whole or fits > 2 else "")
         out[family.key] = Estimate(seconds=round(total, 1), text=text)
     return out
 

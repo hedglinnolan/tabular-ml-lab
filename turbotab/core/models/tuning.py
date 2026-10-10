@@ -791,7 +791,7 @@ class SobolStrategy:
             return c + 1
         if plan.inner_k < 2:
             return w
-        if plan.kind == "path":
+        if plan.kind == "path" and not plan.imbalance:  # imbalance: each point fit, as below
             r = math.prod(len(opts) for _, opts in plan.options) if plan.options else 1
             return w * ((plan.inner_k - 1) * r + 1)
         return w * ((plan.inner_k - 1) * c + 1)
@@ -1702,8 +1702,15 @@ def _path_searched(run: _Run, splits: list[tuple[np.ndarray, np.ndarray]]
         pooled_y.append(y_all[validation])
         if weights is not None:
             pooled_w.append(weights[validation])
+        # the path models these training rows' own classes, in sorted order (``PathFit``); a
+        # class the split lacks gets probability 0 in every candidate, as a searched family's
+        # does (:func:`_aligned`), so it moves no choice
+        have = None if run.classes is None else np.unique(np.asarray(head.y))
         for c in order:
-            predictions[c].append(_from_scores(plan.task, eta[:, c, :], run.classes))
+            predicted = _from_scores(plan.task, eta[:, c, :], run.classes)
+            if have is not None:
+                predicted = _aligned(predicted, list(have), run.classes)
+            predictions[c].append(predicted)
     return _pooled(run, order, pooled_y, pooled_w, predictions), shape
 
 
@@ -1811,10 +1818,14 @@ def _tuned_fit(pipe: "TunedPipeline", X: Any, y: Any, *, groups: Any, order: Any
                 below = True
             else:
                 k_used = len(splits)
-                if plan.kind == "path":
+                if plan.kind == "path" and not plan.imbalance:
                     losses, shape = _path_searched(run, splits)
                 else:
+                    # under the imbalance correction a candidate is the wrapped, recalibrated
+                    # model (RECIPES §4.3): a path's grid points are fit through it one by one,
+                    # each at its split's own settings, so the search scores what is deployed
                     losses = _searched(run, splits, order_eval)
+                    shape = tuple(len(v) for v in _path_grid(plan, decl).values())
         if any(v is not None for v in losses):
             chosen = choose(losses)
         if plan.kind == "path" and k_used:

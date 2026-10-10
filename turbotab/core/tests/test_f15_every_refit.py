@@ -79,10 +79,7 @@ HELPERS = {"fit_with": ("seed", "designs", "cancelled"),
            "correct_together": ("seed", "designs", "cancelled")}
 # F15's last two call sites, in files the integrator owns this phase (stages/modeling.py and
 # stages/secondary.py): each is removed here when its call passes them.
-PENDING = {"stages/modeling.py: class_family_entries: no designs",
-           "stages/modeling.py: class_family_entries: no cancelled",
-           "stages/secondary.py: fit_on_rows: no designs",
-           "stages/secondary.py: fit_on_rows: no cancelled"}
+PENDING: set[str] = set()
 
 
 def _sources() -> list[tuple[Path, ast.AST]]:
@@ -125,9 +122,8 @@ def test_every_call_of_a_refit_helper_hands_it_the_design_and_the_cancel() -> No
     """Read from the source, every module included: each call of a stage's refit helper
     (``fit_on_rows``, ``class_family_entries``, ``correct_together``, ``fit_with``) passes the
     rows' design and the stage's cancel (and ``seed=`` where the helper has no split to read it
-    from), none of them the literal None, except the two calls F15 leaves to the integrator
-    (``PENDING``). Until those pass them, sensitivity's secondary refits and class substitution's
-    refits under the population answer get no design and no cancel."""
+    from), none of them the literal None. ``PENDING`` is empty since the integration of C6a phase
+    3 gave the substitution stage's class refits and the secondary stage's refits theirs."""
     problems: set[str] = set()
     for path, tree in _sources():
         for node in ast.walk(tree):
@@ -536,11 +532,10 @@ def test_regression_calibration_refits_under_the_population_with_each_persons_de
 
 def test_class_substitution_refits_at_the_splits_seed_with_the_design_it_is_handed(
         tmp_path) -> None:
-    """Class substitution's refit on every analyzed row, called as the fit stage calls it today
-    (no ``seed=``), is fit at the recorded split's seed (7, where it was 0 on the base: the
-    curves of a family with random draws move with it), inside a cancel scope, with the design
-    it is handed (``designs=``, here the table's own columns by row id: the fit stage's call does
-    not hand one yet, PENDING above)."""
+    """Class substitution's refit on every analyzed row, called as the substitution stage calls it
+    (the split's seed, its designs and its cancel), is fit at the recorded split's seed (7, where
+    it was 0 on the base: the curves of a family with random draws move with it), inside a cancel
+    scope, with the design it is handed (``designs=``, here the table's own columns by row id)."""
     from turbotab.core.decisions import EnergyAdjustment, SubstitutionSpec
     from turbotab.core.stages import class_substitution as CS
     from turbotab.core.stages.modeling import design_stage, fit_stage, substitution_stage
@@ -566,8 +561,10 @@ def test_class_substitution_refits_at_the_splits_seed_with_the_design_it_is_hand
     real = CS.class_family_entries
 
     def handed(*args: Any, **kw: Any) -> Any:
-        assert "seed" not in kw  # the fit stage's call, as it is
-        return real(*args, **kw, designs=designs, cancelled=lambda: False)
+        # the substitution stage's call hands the split's seed, its own designs (None here: no
+        # population answer) and its cancel; the table's design columns are handed in their place
+        assert kw["seed"] == 7 and kw["designs"] is None and callable(kw["cancelled"])
+        return real(*args, **{**kw, "designs": designs})
 
     spy = _Spy()
     with pytest.MonkeyPatch.context() as patch:

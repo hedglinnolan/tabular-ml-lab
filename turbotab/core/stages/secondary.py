@@ -67,7 +67,7 @@ def secondary_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.models.pipeline import DesignSpec, build_pipeline, design_spec, modeling_frame
     from turbotab.core.stages.data import open_store
     from turbotab.core.stages.modeling import (_missing_for_table, _survey, _task, coded_outcome,
-                                               outcome_levels, read_assignment)
+                                               fit_designs, outcome_levels, read_assignment)
     from turbotab.core.stages.sensitivity import fit_on_rows
     from turbotab.core.voice import listing
 
@@ -104,6 +104,9 @@ def secondary_stage(ctx: StageContext) -> Bundle:
         info = {c.name: c for c in store.info().columns}
         columns = list(dict.fromkeys([*spec.inputs, *extra, target, *unit_columns]))
         frame = modeling_frame(store, columns, rows, outcome=target)
+        # F15: the refits take the split's seed and the rows' designs, as the fit stage's did
+        designs = fit_designs(state, store, frame.index.to_numpy())
+    split_seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
     strategy = state.missing.strategy if state.missing is not None else None
     note = "every analyzed row"
     if strategy != "multiple_imputation" and extra:
@@ -165,7 +168,7 @@ def secondary_stage(ctx: StageContext) -> Bundle:
                 _, (coef, inference), concerns = fit_on_rows(
                     state, family, built[family.key], frame, s.inputs, y, task, unit_columns,
                     outcome=outcome, survey=survey, levels=levels, missing=missing_by[label],
-                    spec=s)
+                    spec=s, seed=split_seed, designs=designs, cancelled=ctx.cancelled)
             except Exception as exc:  # noqa: BLE001 - a model that cannot be fit says why
                 fits.append({"label": label, "adjusted_for": adjusted, "n_rows": int(len(frame)),
                              "coefficients": None, "concerns": [f"It could not be fit: {exc}"]})

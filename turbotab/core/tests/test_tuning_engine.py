@@ -1,8 +1,8 @@
 """RT-1b · the search engine, nested in every fit (RECIPES_AND_TUNING §4.2–§4.7; WAVE_C6A_PLAN §2,
 §5).
 
-No family is tuned yet (RT-5a and RT-5f declare the trees' and the elastic net's tuning), so each
-test registers a small probe family for its own duration, with a declaration made here. Every
+The engine is tested on probe families: each test registers a small family for its own duration,
+with a declaration made here (boosted trees and the elastic net carry their own tests). Every
 expected value is computed independently of ``models/tuning.py``:
 
 * **T3** the inner splits: partitions worked by hand from the fixture's persons, times and PSUs,

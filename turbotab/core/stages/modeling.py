@@ -2816,7 +2816,7 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
                 total_energy=total_energy, scale=scale, percent=percent, n_boot=n_boot,
                 groups=groups, group_of=group_of, interval=interval, imputed=imputed,
                 train_ids=train_ids, survey_design=survey_design, domain=domain, models=chosen,
-                progress=say)
+                progress=say, seed=split_seed, designs=designs, cancelled=ctx.cancelled)
             class_draws.append(drawn)
             models.extend(drawn.entries)
             first_curve = drawn.curve
