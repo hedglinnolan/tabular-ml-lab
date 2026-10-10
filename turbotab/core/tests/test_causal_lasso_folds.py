@@ -202,3 +202,39 @@ def test_the_grouped_lasso_chooses_the_alpha_lassocv_chooses_on_explicit_group_f
         alphas=100, eps=1e-4, cv=KFold(5, shuffle=True, random_state=seed), max_iter=50_000,
         tol=1e-7, random_state=seed)).fit(X, y)
     assert by_row.steps[-1][1].alpha_ != found.alpha_
+
+
+@pytest.mark.parametrize("classifier", (False, True), ids=("numeric", "yes/no"))
+def test_a_partition_drawn_by_unit_keeps_people_whole_in_a_cross_fit_that_names_no_units(
+        recorder, classifier):
+    """The causal stage's positivity gate and the method preview read the estimator's own
+    propensity with ``cross_fit(factory, ..., splits[0], weights, seed)`` and name no units. A
+    partition drawn by unit carries its units, so that propensity's lasso folds keep people whole
+    as the estimator's do, and it is the propensity the estimator itself fits."""
+    data = _people_data()
+    person, n = data["person"], len(data["y"])
+    d = data["d_binary"] if classifier else data["d_numeric"]
+    splits = est.sample_splits(n, 5, 1, seed=8, groups=person)
+    lasso = est.learner_factory("lasso")
+    [gate] = est.cross_fit(lasso, classifier, data["X"], d, splits[0], None, 8)
+    assert len(recorder.folds) == 5
+    for rows, folds in zip(_fit_rows(splits[0], 5), recorder.folds):
+        assert sum(len(test) for _, test in folds) == len(rows)
+        assert _straddlers(person, rows, folds) == set()
+    [own] = est.cross_fit(lasso, classifier, data["X"], d, splits[0], None, 8, groups=person)
+    assert np.array_equal(gate, own)
+
+
+def test_a_partition_without_repeated_units_still_draws_the_lasso_folds_by_row(recorder):
+    """A PSU per row deals the same partition's folds by unit, yet no unit repeats: the lasso's own
+    folds stay ``KFold(5, shuffle)`` by the fit's seed."""
+    data = _people_data()
+    X, y = data["X"], data["y"]
+    n = len(y)
+    splits = est.sample_splits(n, 4, 1, seed=1, groups=np.arange(n))
+    est.cross_fit(est.learner_factory("lasso"), False, X, y, splits[0], seed=9)
+    assert len(recorder.folds) == 4
+    for k, (train, _) in enumerate(splits[0]):
+        want = KFold(5, shuffle=True, random_state=9 + k).split(X[train])
+        for (a, b), (c, e) in zip(recorder.folds[k], want):
+            assert np.array_equal(a, c) and np.array_equal(b, e)

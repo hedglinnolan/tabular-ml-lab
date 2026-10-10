@@ -187,16 +187,31 @@ def total_variance(u: np.ndarray, design: Design) -> float:
 Split = tuple[np.ndarray, np.ndarray]  # (train rows, test rows)
 
 
+class Folds(list):
+    """One partition's splits, with the units they were dealt by (``None``: by row).
+
+    The units travel with the partition, so a learner fit on one of its training folds splits its
+    own rows (the lasso's penalty) by the same whole units even where a caller names none: the
+    causal stage's positivity gate and the method preview read the estimator's own propensity from
+    the partition alone."""
+
+    def __init__(self, splits: Sequence[Split], units: np.ndarray | None = None) -> None:
+        super().__init__(splits)
+        self.units = units
+
+
+
 def sample_splits(n: int, folds: int = 5, repetitions: int = 1, seed: int = 0,
-                  groups: np.ndarray | None = None) -> list[list[Split]]:
+                  groups: np.ndarray | None = None) -> list[Folds]:
     """``repetitions`` random partitions of the rows into ``folds`` test folds, reproducible from
     ``seed``. With ``groups`` (PSUs or clusters), whole groups are dealt to folds, so no group's
-    rows are on both sides of a split."""
+    rows are on both sides of a split, and each partition carries them (:class:`Folds`)."""
     if folds < 2:
         raise ValueError("Cross-fitting needs at least two folds.")
     rng = np.random.default_rng(seed)
-    out: list[list[Split]] = []
+    out: list[Folds] = []
     rows = np.arange(n)
+    units = None if groups is None else np.asarray(groups)
     for _ in range(repetitions):
         if groups is None:
             order = rng.permutation(n)
@@ -211,7 +226,7 @@ def sample_splits(n: int, folds: int = 5, repetitions: int = 1, seed: int = 0,
             group_fold = np.empty(G, dtype=np.int64)
             group_fold[order] = np.arange(G) % folds
             fold_of = group_fold[codes]
-        out.append([(rows[fold_of != k], rows[fold_of == k]) for k in range(folds)])
+        out.append(Folds([(rows[fold_of != k], rows[fold_of == k]) for k in range(folds)], units))
     return out
 
 
@@ -482,7 +497,10 @@ def cross_fit(factory: Factory, classifier: bool, X: np.ndarray, y: np.ndarray,
 
     ``groups``: each row's unit (a design's PSUs or clusters). Given them, the learner's ``fit``
     takes its training rows' units as ``groups``, and a learner that splits its own rows (the
-    lasso's penalty) splits them by whole unit."""
+    lasso's penalty) splits them by whole unit. Named none, they are the units the partition was
+    dealt by (:func:`sample_splits`), if any."""
+    if groups is None and isinstance(splits, Folds):
+        groups = splits.units
     n = len(y)
     outs: list[np.ndarray] | None = None
     for k, (train, test) in enumerate(splits):
