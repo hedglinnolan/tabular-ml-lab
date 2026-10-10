@@ -34,7 +34,8 @@ What this module decides, and where each piece runs:
 * **Withholding**: the fit scores the held-out rows once and keeps the scores out of its public
   artifact (``frames["sealed_scores"]``); :func:`serve_fit` serves ``holdout: null`` and
   ``holdout_sealed: true`` until ``open_seal`` is recorded, whatever artifact it is handed.
-* **Refusals**: ``open_seal`` once, on a fresh fit, and never reverted; Decision A (orientation,
+* **Refusals**: ``open_seal`` once, on a fresh fit, after the triage of open noticings is settled
+  (the opening gate, ``sweep.triage``), and never reverted; Decision A (orientation,
   grain, unit, aggregation) refused while the seal is drawn, with the re-seal path as the exit.
   So is any answer that changes what the draw reads once rows are held out (audit RO-02): the
   outcome, its task, a chronological request, a repair to a column the draw reads
@@ -1699,6 +1700,49 @@ def _open_seal_once_on_a_fresh_fit(decision: Any, ctx: Any) -> None:
             exits=waits.get("exits") or [])
 
 
+def _the_opening_waits_for_the_triage(decision: Any, ctx: Any) -> None:
+    """The opening gate (WALKABLE_PLAN §3 P2; ``sweep.triage``): the held-out rows open once, so
+    every open noticing is triaged before they do, while its disposition can still be chosen
+    without the held-out scores in view. Refused while the triage holds a blocker or a noticing
+    with no recorded disposition, with a plain reason and an exit to the triage. Where nothing
+    can say what the triage holds (no ``triage`` reader: a replay), nothing is refused."""
+    reader = _ctx(ctx, "triage")
+    if not callable(reader):
+        return
+    try:
+        t = reader()
+    except Exception:  # noqa: BLE001 - a triage that cannot be read refuses nothing
+        return
+    if t is None or getattr(t, "passed", False) or getattr(t, "answered", True):
+        return
+    from turbotab.core.quest import STAGE_NAMES
+
+    items = list(getattr(t, "items", None) or [])
+    where = STAGE_NAMES.get(getattr(t, "stage", ""), "the triage")
+    blocking = [i for i in items if getattr(i, "blocker", False)]
+    if blocking:
+        names = "; ".join(i.summary for i in blocking)
+        raise Refusal(
+            "triage_open",
+            f"The held-out rows open once, after every open noticing is settled. "
+            f"{len(blocking)} must be resolved first: {names}.",
+            exits=[{"label": f"Decide: {i.summary}", "decision": None} for i in blocking])
+    waiting = [i for i in items if getattr(i, "recorded", None) is None]
+    n = len(waiting)
+    # The triage's own "Confirm all" (``sweep._confirm_the_triage``): each noticing as the person
+    # set it, else as recorded while that stands, else as the engine recommends, each with its
+    # reason; a page without the triage on it still has a way through.
+    confirm = {"kind": "confirm_sweep", "stage": getattr(t, "stage", "results"),
+               "sweep": "noticings", "lines": []}
+    raise Refusal(
+        "triage_open",
+        f"The held-out rows open once, after every open noticing is triaged: {n} "
+        f"{'is' if n == 1 else 'are'} still open. Triage {'it' if n == 1 else 'them'} in {where} "
+        f"first, so each is decided before any held-out score is seen.",
+        exits=[{"label": f"Triage the open noticings in {where}", "decision": None},
+               {"label": "Keep the recommended dispositions", "decision": confirm}])
+
+
 # ── after the opening: the scores kept, and the rows held still (audit WP16, RO-05) ──
 # Opened at AUC 0.80, the audit then re-drew seeds 1–5 and was served 0.62–0.72 at once, and a new
 # outcome's held-out R² with no seal ever drawn for it, while nothing kept the opened score. So the
@@ -1869,6 +1913,7 @@ decisions.register_validator("set_split", _a_changed_scheme_is_its_own_kind)
 decisions.register_validator("set_validation", _the_scheme_needs_a_draw)
 decisions.register_validator("set_validation", _a_scheme_after_the_opening_is_recorded)
 decisions.register_validator("open_seal", _open_seal_once_on_a_fresh_fit)
+decisions.register_validator("open_seal", _the_opening_waits_for_the_triage)
 decisions.register_completion("open_seal", _the_opening_keeps_its_scores)
 decisions.register_validator("reseal", _reseal_needs_an_opened_seal)
 decisions.register_completion("reseal", _the_reseal_names_its_outcome)
