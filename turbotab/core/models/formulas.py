@@ -16,6 +16,11 @@ scikit-learn's ``Ridge`` calls it ``alpha``; per row it is nλ.
 part is ½nα(1 − ρ)‖β‖², so κ = nα(1 − ρ). At ρ = 0 that is the whole fit. Otherwise the lasso part
 also drops columns, which the shrinkage path shows, and these factors are the ridge part's alone
 (MODEL_FAMILY_CONTRACT §2.3). Rows are unweighted.
+
+**Ridge's knob** (``ridge``, RT-5b). The ridge family tunes λ per row; its least-squares estimator,
+scikit-learn's ``Ridge``, records ``alpha`` = nλ, which is κ itself (``Ridge`` minimizes
+‖y − Zβ‖² + α‖β‖², the module's loss doubled). Logistic ridge's ``C`` = 1/(nλ) has no exact factors
+of this kind: the contract's weighted approximation at the fitted probabilities is not drawn here.
 """
 from __future__ import annotations
 
@@ -54,8 +59,15 @@ def elastic_net_ridge_part(Z: Any, alpha: float, l1_ratio: float) -> Shrinkage:
     return ridge_shrinkage(Z, n * float(alpha) * (1.0 - float(l1_ratio)))
 
 
+def ridge(Z: Any, alpha: float) -> Shrinkage:
+    """Ridge's shrinkage at scikit-learn's ``Ridge(alpha)`` on the scaled matrix ``Z`` it was fit
+    on: κ = α (the module docstring), so df = Σⱼ dⱼ²/(dⱼ² + nλ) at the ridge family's λ."""
+    return ridge_shrinkage(Z, float(alpha))
+
+
 FORMULAS: dict[str, Callable[..., Shrinkage]] = {
     "elastic_net_ridge_part": elastic_net_ridge_part,
+    "ridge": ridge,
 }
 
-__all__ = ["FORMULAS", "Shrinkage", "elastic_net_ridge_part", "ridge_shrinkage"]
+__all__ = ["FORMULAS", "Shrinkage", "elastic_net_ridge_part", "ridge", "ridge_shrinkage"]
