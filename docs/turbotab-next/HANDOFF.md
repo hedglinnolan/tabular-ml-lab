@@ -1,5 +1,69 @@
 # Handoff
 
+**State on 2026-10-10 (~03:15 UTC), sprint active.** `turbotab-next` = `0b807a5e`, GREEN on both CI tiers (fast and full, 10 jobs). Landed since 2026-10-08:
+- **E1a (5bcafd14):**
+  - the model-family contract declarations, MC-1/MC-2a, with the syntax-tree no-switch test;
+  - the stage registry, P0.4 (`core/quest.py`).
+- **The experiment winners (d0ae80ac):**
+  - the decision-log format marker and migrations;
+  - the causal learner key renames;
+  - the DML classifier fix.
+- **The ten view kinds (90d7d4fd):** `src/components/views`, `/lab/views`.
+- **E1p (683a3224):** Bland–Altman, subgroup clustering and dietary-pattern cores; the citation registry and `refs.bib` with Crossref-verified DOIs.
+- **E1b (0b807a5e):**
+  - Fit records the lock, and nothing is served before it;
+  - the F11 leak is closed, with the held-out pipeline guarantee test;
+  - the Confirm sweep and record list (P0.5);
+  - ordering fixes, part of P0.6;
+  - pinned deps and constraints, with CI split into a fast tier and a full tier (`ci/full-*`).
+- **Docs:**
+  - `SURFACING_POLICY.md`: materiality M(i,s), the ledger, the tier function and the two-phase triage;
+  - `audit/EXTERNAL_AUDIT_2026-10-09.md`;
+  - `MODEL_FAMILY_CONTRACT.md`, `V2X_SEAMS.md`, the crosswalk with Nolan's rulings, `RECIPES_AND_TUNING.md` draft 3, and FOUNDATION rewritten for the quest log.
+
+**Running at compaction:**
+- **E1c (wf_0ad98ab7-b11):**
+  - the outcome-beside-a-column gate on the data routes;
+  - F12 (the imbalance wrapper's early stopping);
+  - Surfaceable (executable fires, reads and holds) plus the path fuzzer;
+  - materiality plus the ledger, with the Confirm sweep moved onto M and the NHANES 3-noticing proof;
+  - plain words.
+- **E1q (wf_a7a411c8-f80):** stacking cycles plus trends; trials; case-control and matched sets; the specification curve plus leave-one-site-out validation. Its integrator is fixing a test_stage_registry label mismatch for the new contracts.
+- **The quest-log design (wf_d50f5b62-3fc):** static Models-stage screens on branch `design/quest-models-stage`, reviewed by Fable. Screenshots go to the session scratchpad `quest-shots/`, and must be shown to Nolan.
+
+**Landing protocol:**
+- Read EVERY verifier problem, not just the verdict.
+- Confirm CI myself through the public check-runs API.
+- Regenerate METHODS_REFERENCE and the packets (with --reuse) when they conflict.
+
+**Subagent policy:**
+- Opus for statistics and safeguards; Sonnet only for plumbing, with an Opus verifier; never below Sonnet.
+- Never use pkill.
+- Repair whenever any non-note problem is found.
+
+**Next:**
+- C6a: the new families plus the RT-1 tuning engine with `TuningPlan.strategy`;
+- MC-2b;
+- the rest of P0.6 (set_missing/set_fill split, substitution before Fit, and more);
+- D1: Describe wiring (DESCRIBE_LABELS to move into the contracts);
+- E1: design routing;
+- C7a: exhibit recording;
+- X1/X2: the manuscript model and LaTeX;
+- P0.7: the shell, after Nolan reviews the design;
+- P0.9: noticings, family by family, on materiality;
+- the verifier replay benchmark (approved);
+- regenerate the review packets at a clean commit.
+
+**Rulings since 2026-10-08:**
+- the triage sweep at the lock (replacing "decide all");
+- non-journey noticings (about 138) deferred; Describe, experiments, Word and the contract intelligence stay in 2.0;
+- the outcome column may show in Your data;
+- RECIPES draft 3's four settlements approved;
+- Classic tests may be edited, but not Classic app code;
+- the DoD is delegated to the orchestrator and frozen (correctness changes only);
+- the planned road is kept, not a slice-first change;
+- Nolan is fine with the CI failure emails.
+
 **State (2026-10-06, paused by Nolan after the platform fixes).** `turbotab-next` is at the merge that adds the design docs (on top of `9c349c4e`). The last CI run (`9c349c4e`) is green on all four jobs: Linux core and server tests, the Docker server image, and the macOS and Windows launchers.
 
 **The engine (done and independently verified).** Waves 1, 2a, 2b and 2c and their repairs cover nearly every method in `V2_DEFINITION_OF_DONE.md`:
