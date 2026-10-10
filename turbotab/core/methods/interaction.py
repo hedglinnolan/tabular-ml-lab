@@ -42,6 +42,7 @@ scalar pooled by Rubin's rules, the heterogeneity test by D1.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from typing import Any, Literal, Mapping, Sequence
 
 import numpy as np
@@ -703,8 +704,8 @@ def _one(ctx: Any, state: Any, exposure: str, modifier: str, spec: Any) -> Modif
     from turbotab.core.models.inference import Outcome, cluster_columns, resolve_clusters
     from turbotab.core.models.pipeline import DesignSpec, design_spec, modeling_frame
     from turbotab.core.stages.data import open_store
-    from turbotab.core.stages.modeling import (_survey, _task, coded_outcome, outcome_levels,
-                                               read_assignment)
+    from turbotab.core.stages.modeling import (_survey, _task, coded_outcome, fit_designs,
+                                               outcome_levels, read_assignment)
 
     kind = _get(spec, "kind")
     status = POST_HOC if _get(spec, "post_hoc") else "declared"
@@ -737,10 +738,17 @@ def _one(ctx: Any, state: Any, exposure: str, modifier: str, spec: Any) -> Modif
             follow = follow_up_columns(state)
         columns = list(dict.fromkeys([*spec_d.inputs, *wanted, target, *unit_columns, *follow]))
         frame = modeling_frame(store, columns, assignment.index.to_numpy(), outcome=target)
+        # F15 (RECIPES §4.3): under the population answer each row's stratum, PSU and weight,
+        # which every refit here is handed with the split's seed, as the fit stage's are.
+        designs = fit_designs(state, store, frame.index.to_numpy())
+    split_seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
     predictors = [*spec_d.predictors, *[c for c in [modifier, *extra]
                                         if c not in spec_d.predictors and c != exposure]]
-    spec_m = design_spec(state, frame[[c for c in dict.fromkeys([*spec_d.inputs, *wanted])]],
-                         predictors, column_info=info)
+    # The interaction's spec holds the design stage's plans, so a tuned family follows the plan
+    # every fit of it follows (``build_pipeline`` raises ``MissingPlan`` on a spec without one).
+    columns_m = list(dict.fromkeys([*spec_d.inputs, *wanted]))
+    spec_m = replace(design_spec(state, frame[columns_m], predictors, column_info=info),
+                     plans=spec_d.plans)
     levels = None
     if task == "ordinal":
         from turbotab.core.models.ordinal import ordinal_outcome
@@ -779,7 +787,8 @@ def _one(ctx: Any, state: Any, exposure: str, modifier: str, spec: Any) -> Modif
         try:
             fit, lay_f = _family(ctx, state, family, spec_m, frame, y, task=task, levels=levels,
                                  outcome=outcome, clusters=clusters, survey=survey,
-                                 exposure=exposure, modifier=modifier, spec=spec, target=target)
+                                 exposure=exposure, modifier=modifier, spec=spec, target=target,
+                                 designs=designs, split_seed=split_seed)
             lay = lay or lay_f
             fits.append(fit)
         except Exception as exc:  # noqa: BLE001 - said in the artifact, never silent
@@ -827,14 +836,20 @@ def _failure_words(family: Any, exc: BaseException) -> str:
 
 def _family(ctx: Any, state: Any, family: Any, spec_m: Any, frame: pd.DataFrame, y: np.ndarray, *,
             task: str, levels: Any, outcome: Any, clusters: Any, survey: Any, exposure: str,
-            modifier: str, spec: Any, target: str) -> tuple[ModificationFit, _Layout]:
+            modifier: str, spec: Any, target: str, designs: Any = None,
+            split_seed: int = 0) -> tuple[ModificationFit, _Layout]:
     from sklearn.base import clone
 
-    from turbotab.core.models.inner_cv import fit_pipeline
     from turbotab.core.models.linear import model_matrix
     from turbotab.core.models.pipeline import build_pipeline
     from turbotab.core.stages.effects import matrix_table
-    from turbotab.core.stages.modeling import _design_df, with_units
+    from turbotab.core.stages.modeling import _design_df, fit_with, with_units
+
+    def refit(model: Any, X_k: pd.DataFrame, y_k: Any) -> Any:
+        # F15: the split's seed, the rows' survey design (``designs``, by row id) and the stage's
+        # cancel reach the refit, as they reach the fit stage's.
+        return fit_with(model, X_k, y_k, designs=designs, seed=split_seed,
+                        cancelled=ctx.cancelled)
 
     concerns: list[str] = []
     X = frame[list(spec_m.inputs)]
@@ -847,7 +862,7 @@ def _family(ctx: Any, state: Any, family: Any, spec_m: Any, frame: pd.DataFrame,
         concerns.append("Fit without the survey weights: these estimates describe these "
                         "participants, not the surveyed population.")
         design = None
-    first = fit_pipeline(with_units(clone(pipeline), units), X, y)
+    first = refit(with_units(clone(pipeline), units), X, y)
     if levels is not None:
         first[-1].level_names_ = list(levels)
     lay = layout(first, X, spec_m.inputs, exposure, modifier, spec_m.energy_adjustment(), spec,
@@ -870,7 +885,7 @@ def _family(ctx: Any, state: Any, family: Any, spec_m: Any, frame: pd.DataFrame,
     df_com: float | None = None
     df_scalar: float | None = None
     for X_k in copies:
-        fitted = fit_pipeline(with_units(clone(template), units), X_k[list(spec_m.inputs)], y)
+        fitted = refit(with_units(clone(template), units), X_k[list(spec_m.inputs)], y)
         if levels is not None:
             fitted[-1].level_names_ = list(levels)
         M = with_products(model_matrix(fitted, X_k[list(spec_m.inputs)]), lay.products)

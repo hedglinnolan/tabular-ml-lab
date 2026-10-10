@@ -714,9 +714,10 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.models.inner_cv import fit_pipeline
     from turbotab.core.models.linear import model_matrix
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
+    from turbotab.core.models.tuning import cancel_scope
     from turbotab.core.stages.data import open_store
     from turbotab.core.stages.modeling import (_missing_for_table, _settled_factors, _task,
-                                               coded_outcome)
+                                               coded_outcome, design_for, fit_designs)
 
     state = ctx.state
     spec_me = state.measurement_error
@@ -755,6 +756,17 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     ctx.progress(0.03, "Reading the analysis rows and each person's recalls")
     with open_store(ctx) as store:
         frame = modeling_frame(store, [*spec.inputs, state.target], rows, outcome=state.target)
+        # F15 (RECIPES §4.3): each row's stratum, PSU and weight under the population answer,
+        # handed with the split's seed to every refit, as the fit stage's are.
+        designs = fit_designs(state, store, frame.index.to_numpy())
+    split_seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
+    row_ids = frame.index.to_numpy()
+
+    def refit(model: Any, X_k: pd.DataFrame, y_k: Any, ids: np.ndarray) -> Any:
+        """``model`` fit on ``X_k`` (the rows ``ids`` names, which a bootstrap's frame has
+        renumbered) at the split's seed, with those rows' design, inside the stage's cancel."""
+        with cancel_scope(ctx.cancelled):
+            return fit_pipeline(model, X_k, y_k, design=design_for(designs, ids), seed=split_seed)
     clusters, survey, keep, weights_all = analysis_design(ctx, state, frame.index)
     if survey is not None and survey.refusal and method != "none":
         return done(applies=False, reason=survey.refusal, exits=list(survey.exits),
@@ -819,7 +831,7 @@ def calibration_stage(ctx: StageContext) -> Bundle:
 
     # ── the error-prone columns, from the first copy's pipeline ──
     ctx.progress(0.08, "Refitting the linear model on every eligible row")
-    first = fit_pipeline(clone(template), copies[0], y_all)
+    first = refit(clone(template), copies[0], y_all, row_ids)
     matrix0 = model_matrix(first, copies[0])
     columns = [str(c) for c in matrix0.columns]
     items = error_prone(first, columns, spec.roles, energy)
@@ -894,15 +906,16 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     yv = yv_all[persons]
     w = None if weights_all is None else weights_all[persons]
     classes = list(getattr(first[-1], "classes_", [])) or None
-    seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
+    seed = split_seed
     contrast = _contrast(state, adj, features)
 
     def chain(frames: Sequence[pd.DataFrame], yy: np.ndarray, dframe: pd.DataFrame,
-              dperson: np.ndarray, ww: np.ndarray | None) -> list[Any]:
-        """Each copy's (fitted, matrix, Corrected): steps (2)–(4) of §1.1."""
+              dperson: np.ndarray, ww: np.ndarray | None, ids: np.ndarray) -> list[Any]:
+        """Each copy's (fitted, matrix, Corrected): steps (2)–(4) of §1.1; ``ids``: the row ids
+        of the frames' rows."""
         out = []
         for Xc in frames:
-            fitted = fit_pipeline(clone(template), Xc, yy)
+            fitted = refit(clone(template), Xc, yy, ids)
             matrix = model_matrix(fitted, Xc)
             cols = [str(c) for c in matrix.columns]
             if [cols.index(f) for f in features if f in cols] != J or len(cols) != len(columns):
@@ -927,7 +940,7 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     ctx.progress(0.12, "Calibrating each copy" if imputed else "Calibrating the intakes")
     X_rows = [c.iloc[persons] for c in copies]
     try:
-        results = chain(X_rows, yv, day_frame, day_of, w)
+        results = chain(X_rows, yv, day_frame, day_of, w, row_ids[persons])
     except CalibrationRefused as refused:
         said = str(refused).rstrip(".")
         return done(applies=False, family=key, recalls=recalls, n_persons=n_persons,
@@ -970,7 +983,7 @@ def calibration_stage(ctx: StageContext) -> Bundle:
                 cb = Clusters(column=clusters.column, codes=pair, n_clusters=int(pair.max()) + 1)
             Xb = _impute(spec, Xb[0], yb, task, BOOT_COPIES, seed + 1009 * (b + 1), sb, cb,
                          nested, factors, time_invariant=plan.get("unit_level"))
-        return quantities(chain(Xb, yb, db, pb, wb))
+        return quantities(chain(Xb, yb, db, pb, wb, row_ids[persons[idx]]))
 
     n_boot = int(spec_me.n_boot)
     from turbotab.core.methods.calibration import Resampling

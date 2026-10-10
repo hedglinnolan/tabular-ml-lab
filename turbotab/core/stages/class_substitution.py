@@ -174,6 +174,12 @@ def _label(value: float | None, chosen: float | None, name: str, scale: str) -> 
             f"at k = {_plain(chosen)}")
 
 
+def _split_seed(state: Any) -> int:
+    """The recorded split's seed (0 when no split is recorded)."""
+    split = getattr(state, "split", None)
+    return int(getattr(split, "seed", 0) or 0) if split is not None else 0
+
+
 def class_family_entries(key: str, family: Any, *, task: str, pipeline: Any, template: Any,
                          X_fit: pd.DataFrame, y_fit: Any, X: pd.DataFrame, curve_rows: Any,
                          shift: Any, ks: Sequence[float], sub: Any, state: Any,
@@ -183,7 +189,9 @@ def class_family_entries(key: str, family: Any, *, task: str, pipeline: Any, tem
                          imputed: Mapping[str, Any] | None, train_ids: Any,
                          survey_design: Any = None, domain: Any = None,
                          models: Sequence[str] = (),
-                         progress: Callable[[float, str], None] | None = None) -> ClassDraw:
+                         progress: Callable[[float, str], None] | None = None,
+                         seed: int | None = None, designs: Any = None,
+                         cancelled: Callable[[], bool] | None = None) -> ClassDraw:
     """``key``'s class curves as the substitution stage draws them (module docstring).
 
     ``pipeline`` is the family's fit on ``X_fit``/``y_fit`` (every analyzed row under inference,
@@ -192,11 +200,16 @@ def class_family_entries(key: str, family: Any, *, task: str, pipeline: Any, tem
     positions in ``X_fit``) and ``shift`` the move on them. ``imputed`` is the fit's multiple
     imputations (each copy's frame and fit) under inference, ``survey_design`` and ``domain`` the
     surveyed population's, ``models`` every chosen family (a blocked curve's exit keeps the rest).
+
+    F15 (RECIPES §4.3): every refit here is fit at the split's ``seed`` (the recorded split's when
+    None), with its rows' survey design under the population answer (``designs``,
+    ``stages.modeling.fit_designs``, by row id), inside a cancel scope asking ``cancelled``.
     """
     from sklearn.base import clone
 
-    from turbotab.core.models.inner_cv import fit_pipeline
-    from turbotab.core.stages.modeling import BAND_BOOT, BAND_ROWS, pinned_to_full_fit
+    from turbotab.core.stages.modeling import BAND_BOOT, BAND_ROWS, fit_with, pinned_to_full_fit
+
+    seed = _split_seed(state) if seed is None else int(seed)
 
     curve_args = dict(donor=sub.donor, recipient=sub.recipient, kcal_per_unit=kcal_per_unit,
                       ks=ks, total_kind="variable", nested=nested, total=total_energy,
@@ -209,7 +222,8 @@ def class_family_entries(key: str, family: Any, *, task: str, pipeline: Any, tem
                        sub=sub, ks=ks, kcal_per_unit=kcal_per_unit, nested=nested,
                        total_energy=total_energy, scale=scale, percent=percent, n_boot=n_boot,
                        template=template, y_fit=y_fit, group_of=group_of,
-                       survey_design=survey_design, models=models, progress=say)
+                       survey_design=survey_design, models=models, progress=say, seed=seed,
+                       designs=designs, cancelled=cancelled)
     if survey_design is not None:
         return _population(key, family, task=task, pipeline=pipeline, X=X,
                            y=np.asarray(y_fit)[np.asarray(curve_rows)], shift=shift,
@@ -221,7 +235,8 @@ def class_family_entries(key: str, family: Any, *, task: str, pipeline: Any, tem
         say(0.0, f"{family.label}: refitting on every analyzed row")
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            pipeline = fit_pipeline(clone(template), X_fit, y_fit, groups=groups)
+            pipeline = fit_with(clone(template), X_fit, y_fit, groups=groups, designs=designs,
+                                seed=seed, cancelled=cancelled)
     from turbotab.core.methods.substitution import class_curves, class_refit_band
 
     classes = list(pipeline.classes_)
@@ -240,7 +255,8 @@ def class_family_entries(key: str, family: Any, *, task: str, pipeline: Any, tem
         pipe = pinned_to_full_fit(clone(template), _full)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            refitted = fit_pipeline(pipe, Xb, yb, groups=inner)
+            refitted = fit_with(pipe, Xb, yb, groups=inner, designs=designs, seed=seed,
+                                cancelled=cancelled)
         return class_predictor(refitted, Xb, yb, classes, family)
 
     common = dict(classes=classes, shift=shift, ks=ks, live=curves["live"], groups=groups,
@@ -311,7 +327,8 @@ def _pooled(key: str, family: Any, *, task: str, imputed: Mapping[str, Any], tra
             nested: Mapping[str, str], total_energy: str | None, scale: str,
             percent: Sequence[str], n_boot: int, template: Any, y_fit: Any, group_of: Any,
             survey_design: Any, models: Sequence[str],
-            progress: Callable[[float, str], None]) -> ClassDraw:
+            progress: Callable[[float, str], None], seed: int = 0, designs: Any = None,
+            cancelled: Callable[[], bool] | None = None) -> ClassDraw:
     """MS3: each completed copy's class curves through that copy's own fit, pooled at each k.
 
     Each copy's curves average over that copy's own rows (the curve's rows, or every row of a copy
@@ -324,10 +341,10 @@ def _pooled(key: str, family: Any, *, task: str, imputed: Mapping[str, Any], tra
 
     from turbotab.core.methods.substitution import (class_curves, class_refit_band,
                                                     design_class_curves, pool_class_curves)
-    from turbotab.core.models.inner_cv import fit_pipeline
     from turbotab.core.models.linear import model_matrix
     from turbotab.core.models.survey import SAMPLE_EXIT, domain_of, has_design_estimator
-    from turbotab.core.stages.modeling import (BAND_ROWS, SUBSTITUTION_ROWS, pinned_to_full_fit,
+    from turbotab.core.stages.modeling import (BAND_ROWS, SUBSTITUTION_ROWS, fit_with,
+                                               pinned_to_full_fit,
                                                shift_for)
 
     frames = list(imputed["frames"])
@@ -349,7 +366,8 @@ def _pooled(key: str, family: Any, *, task: str, imputed: Mapping[str, Any], tra
                  and not supplied else None)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            return fit_pipeline(clone(template), X_all, y_all, groups=units)
+            return fit_with(clone(template), X_all, y_all, groups=units, designs=designs,
+                            seed=seed, cancelled=cancelled)
 
     curve_ids = set(int(i) for i in np.asarray(train_ids))
     curves: list[dict[str, Any]] = []
@@ -430,7 +448,8 @@ def _pooled(key: str, family: Any, *, task: str, imputed: Mapping[str, Any], tra
                 pipe = pinned_to_full_fit(clone(template), _full)
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    refitted = fit_pipeline(pipe, Xb, yb, groups=inner)
+                    refitted = fit_with(pipe, Xb, yb, groups=inner, designs=designs,
+                                        seed=seed, cancelled=cancelled)
                 return class_predictor(refitted, Xb, yb, classes, family)
 
             drawn = class_refit_band(

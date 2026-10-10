@@ -385,17 +385,20 @@ def _correct_jointly(specs: Sequence[Any], copies: Sequence[pd.DataFrame],
                      retests: Mapping[str, np.ndarray | None],
                      references: Mapping[str, np.ndarray | None], *, task: str, family: Any,
                      pipeline: Any, outcome: Any, seed: int, clusters: Any,
-                     progress: Any = None, imputations: Any = None) -> dict[str, dict[str, Any]]:
+                     progress: Any = None, imputations: Any = None, designs: Any = None,
+                     cancelled: Any = None) -> dict[str, dict[str, Any]]:
     """Every score in ``specs`` corrected together in each copy, each combined over the copies by
     Rubin's rules (one copy: as it is). Raises ``ScaleRefused`` naming the score whose data refuse
     (``which``, its position in ``specs``), or None when they refuse together. ``imputations``:
     the multiple imputations ``copies`` come from, whose plan each copy's pipeline follows (the
-    knots placed once on the observed values; no median fill inside a copy: ``copy_pipeline``)."""
+    knots placed once on the observed values; no median fill inside a copy: ``copy_pipeline``).
+    Each copy's refit is fit at the split's ``seed``, with its rows' survey design (``designs``,
+    by row id) inside a cancel scope asking ``cancelled`` (F15, ``stages.modeling.fit_with``)."""
     from turbotab.core.methods import scales as S
     from turbotab.core.methods.imputation import pool_rows, pool_scalar
     from turbotab.core.methods.missing import copy_pipeline
-    from turbotab.core.models.inner_cv import fit_pipeline
     from turbotab.core.models.linear import model_matrix
+    from turbotab.core.stages.modeling import fit_with
 
     fit = S.FITS[task]
     groups = clusters.codes if clusters.clustered else None
@@ -405,7 +408,8 @@ def _correct_jointly(specs: Sequence[Any], copies: Sequence[pd.DataFrame],
     for k, X_k in enumerate(copies):
         if progress is not None:
             progress(k, len(copies))
-        fitted = fit_pipeline(copy_pipeline(pipeline, imputations), X_k, y)
+        fitted = fit_with(copy_pipeline(pipeline, imputations), X_k, y, designs=designs, seed=seed,
+                          cancelled=cancelled)
         matrix = model_matrix(fitted, X_k)
         names = [str(c) for c in matrix.columns]
         for i, s in enumerate(specs):
@@ -505,7 +509,8 @@ def scales_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
     from turbotab.core.scales import methods_sentence, uncorrected_alongside
     from turbotab.core.stages.data import open_store
-    from turbotab.core.stages.modeling import _task, coded_outcome, outcome_levels, read_assignment
+    from turbotab.core.stages.modeling import (_task, coded_outcome, fit_designs, outcome_levels,
+                                               read_assignment)
 
     state = ctx.state
     specs = list(state.scales or [])
@@ -528,6 +533,7 @@ def scales_stage(ctx: StageContext) -> Bundle:
         frame = modeling_frame(store, list(dict.fromkeys([*spec.inputs, *extra, *unit_columns,
                                                           target])), ids, outcome=target)
         codes = {s.name: codes_in_values(s, frame, state, store) for s in specs}
+        designs = fit_designs(state, store, frame.index.to_numpy())  # F15: for the refits
     clusters = (resolve_clusters(state, frame.loc[:, unit_columns], [grouped_by]) if inference
                 else INDEPENDENT)
     raw = frame[target].to_numpy()
@@ -608,7 +614,8 @@ def scales_stage(ctx: StageContext) -> Bundle:
     corrections, refused = (correct_together(
         eligible, copies=copies, keyed=keyed, y=y, retests=retests, references=references,
         task=task, family=family, pipeline=pipeline, outcome=outcome, seed=seed,
-        clusters=clusters, progress=progress, imputations=imputations) if eligible else ({}, {}))
+        clusters=clusters, progress=progress, imputations=imputations, designs=designs,
+        cancelled=ctx.cancelled) if eligible else ({}, {}))
     for r, s in zip(out, specs):
         correction = corrections.get(s.name)
         if s.name in refused:
