@@ -21,9 +21,11 @@ from turbotab.core.tests import path_fuzzer
 from turbotab.core.tests.test_path_fuzzer import _decide, _log_of
 
 # Every compute stage whose card is an exhibit (CROSSWALK, "Engine stages and quest stages"),
-# listed by hand. The substitution curve has no card of its own yet, so it is not one.
-EXHIBIT_MAP = ["usual_intake", "fit", "sensitivity", "calibration", "secondary", "scales",
-               "effects", "causal", "time_varying", "modification", "explain", "evaluation"]
+# listed by hand, and the substitution curve (TRUST: the second comparison is an exhibit of
+# Results, with its question's goals while the crosswalk gives it no card of its own).
+EXHIBIT_MAP = ["usual_intake", "fit", "substitution", "sensitivity", "calibration", "secondary",
+               "scales", "effects", "causal", "time_varying", "modification", "explain",
+               "evaluation"]
 
 # The ones the engine serves on the NHANES fixture answered under Estimate (models ["linear"],
 # the dietary lens, an adjustment set and an estimand, nothing else declared), by each stage's
@@ -40,7 +42,10 @@ EXHIBIT_MAP = ["usual_intake", "fit", "sensitivity", "calibration", "secondary",
 #   time_varying  estimand, unit, purpose            one row per participant: no unit answer
 #   modification  modifications, models, purpose     no effect modifier declared
 #   explain       explain, models, purpose           no explain answer
-NHANES_ESTIMATE = ["usual_intake", "fit", "secondary", "effects", "evaluation"]
+# TRUST: only the exhibits Estimate serves count (the crosswalk's goals): usual_intake is a
+# Describe exhibit, fit (the performance table) and evaluation (the decision curve) Predict ones.
+NHANES_SERVED = ["usual_intake", "fit", "secondary", "effects", "evaluation"]
+NHANES_ESTIMATE = ["secondary", "effects"]
 NOT_ANSWERED = ["sensitivity", "measurement_error", "scales", "causal", "unit", "modifications",
                 "explain"]
 
@@ -56,7 +61,7 @@ def _after_fit(purpose: str, extra: list[dict] | None = None) -> dict[str, Quest
 
 def test_the_exhibit_map_and_the_version():
     assert sorted(quest.EXHIBIT_STAGES) == sorted(EXHIBIT_MAP)
-    assert quest.QUEST_VERSION == 4
+    assert quest.QUEST_VERSION == 5
 
 
 def test_the_fixture_answers_none_of_the_exhibits_it_is_not_served():
@@ -65,6 +70,10 @@ def test_the_fixture_answers_none_of_the_exhibits_it_is_not_served():
     assert state.models == ["linear"] and state.lens == ["dietary"]
     assert state.adjustment and state.estimand is not None
     assert sorted(quest.served_exhibits(state)) == sorted(NHANES_ESTIMATE)
+    from turbotab.core.surfacing import computable
+
+    assert sorted(n for n in quest.EXHIBIT_STAGES if n in computable(state)) == sorted(
+        NHANES_SERVED)
 
 
 def test_results_after_fit_under_estimate_reads_0_of_n_served_and_is_not_complete():
@@ -72,13 +81,14 @@ def test_results_after_fit_under_estimate_reads_0_of_n_served_and_is_not_complet
     assert results.reached
     # nothing in Results is a counted Decide yet: the whole count is the served exhibits
     assert [l for l in results.lines if l.label == "Decide" and l.counted] == []
-    assert results.progress == Progress(answered=0, required=5, complete=False)
+    assert results.progress == Progress(answered=0, required=2, complete=False)
 
 
 def test_an_explain_answer_serves_one_more_exhibit():
-    # explain requires explain, models and purpose: answered, it is served, 0 of 6
+    # explain requires explain, models and purpose: answered, it is served (an Estimate exhibit
+    # too), 0 of 3
     results = _after_fit("inference", [{"kind": "set_explain", "reseeds": 0}])["results"]
-    assert results.progress == Progress(answered=0, required=6, complete=False)
+    assert results.progress == Progress(answered=0, required=3, complete=False)
 
 
 def test_write_up_is_not_reached_until_results_is_placed():
@@ -108,8 +118,10 @@ def test_predict_is_unchanged():
 
 def test_a_goal_changed_to_estimate_says_why_results_counts_its_exhibits():
     # Under Predict Results was open; the goal becomes Estimate. On the Predict path no
-    # adjustment set or estimand was answered, so the served exhibits are usual_intake, fit and
-    # evaluation; Results says the change to Your question made them out of date.
+    # adjustment set or estimand was answered, so the engine serves usual_intake, fit and
+    # evaluation, and with nothing declared to estimate the goal is Describe (TRUST): of them only
+    # usual_intake is its exhibit, and Results says the change to Your question made it out of
+    # date.
     state, _artifacts, records = path_fuzzer.answered_through(path_fuzzer.NHANES, "prediction")
     state = _decide(records, {"kind": "set_purpose", "purpose": "inference"})
     fit = fit_press.fit_lock(state, records, pressed=True, held=False, estimate=None, opened=True)
@@ -117,8 +129,8 @@ def test_a_goal_changed_to_estimate_says_why_results_counts_its_exhibits():
     results = next(s for s in log.stages if s.key == "results")
     assert results.reopened == [Reopened(
         changed_in="question", decision_id=records[-1].id, kind="set_purpose",
-        results=["usual_intake", "fit", "evaluation"],
-        sentence="Your change to Your question made 3 results in Results out of date.")]
+        results=["usual_intake"],
+        sentence="Your change to Your question made 1 result in Results out of date.")]
     # once the plan is locked for the new goal, the drop-back is behind it
     state = _decide(records, {"kind": "lock_plan", "seen_target": state.target})
     fit = fit_press.fit_lock(state, records, pressed=True, held=False, estimate=None, opened=True)

@@ -463,10 +463,11 @@ def test_results_stays_reached_after_the_fit_and_says_why_it_dropped_back():
     # Fresh for the answers now: reached, and under Estimate it reads 0 of N, N the exhibits the
     # engine serves, none decided yet (Q-c), not complete; Write-up waits for Results to be
     # placed. This plan records no split, so of the exhibits only usual intake (it requires the
-    # lens and the goal) is served: 0 of 1.
+    # lens and the goal) is computed, and it is a Describe exhibit, no objective under Estimate
+    # (TRUST): 0 of 0, waiting for the Estimate exhibits, so not complete.
     log = quest.quest_log(state, records, steps, {"fit": {"status": "fresh"}})
     assert stage(log, "results").reached and not stage(log, "writeup").reached
-    assert stage(log, "results").progress == quest.Progress(answered=0, required=1, complete=False)
+    assert stage(log, "results").progress == quest.Progress(answered=0, required=0, complete=False)
     assert stage(log, "writeup").progress is None
     # The rule recorded in Who's in after the fit: the fit is out of date, and Results stays
     # reached and says why, until it is computed again (or, with Fit held, until Fit is pressed).
@@ -475,7 +476,7 @@ def test_results_stays_reached_after_the_fit_and_says_why_it_dropped_back():
                               shown_at={"fit": fitted})
         results = stage(log, "results")
         assert results.reached and not stage(log, "writeup").reached, status
-        assert results.progress == quest.Progress(answered=0, required=1, complete=False)
+        assert results.progress == quest.Progress(answered=0, required=0, complete=False)
         assert results.reopened == [quest.Reopened(
             changed_in="whos_in", decision_id="r8", kind="set_exclusions", results=["fit"],
             sentence="Your change to Who's in made 1 result in Results out of date.")]

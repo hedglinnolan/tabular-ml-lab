@@ -439,8 +439,11 @@ def _numbers(s: Any) -> Any:
 
 
 def _fmt_value(v: float) -> str:
-    # Six significant digits: a code's decimals are its meaning (ICD-9-CM 250.02 is no `250`).
-    return f"{int(v):,}" if float(v).is_integer() else f"{v:,.6g}"
+    """A value of a column whose reading is not settled, as the data hold it. It may be a code or a
+    year (a survey cycle's 2001, a FIPS 36061), and neither is grouped: thousands separators belong
+    to amounts and counts, and whether these values are amounts is the very question. Six
+    significant digits: a code's decimals are its meaning (ICD-9-CM 250.02 is no `250`)."""
+    return str(int(v)) if float(v).is_integer() else f"{v:.6g}"
 
 
 def names_rows(values: Any) -> Verdict:

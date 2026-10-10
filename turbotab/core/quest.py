@@ -101,7 +101,10 @@ from turbotab.core.fit_press import FitLock
 # stages the engine serves on the state, ``served_exhibits``), not complete; Write-up is not
 # reached until Results is placed; a goal changed to Estimate says why Results counts them, and a
 # goal changed to Predict says why Who's in asks the split (§7.2 I11, ruling 3).
-QUEST_VERSION = 4
+# 5 (TRUST): Results counts only the exhibits its goal serves (``EXHIBITS``), the substitution
+# curve among them; a question something waits on, stated as why another does not apply, is a
+# Decide at the readings ask card (``waits_on_an_answer``).
+QUEST_VERSION = 5
 
 STAGES: tuple[tuple[str, str], ...] = (
     ("data", "Your data"),
@@ -242,6 +245,35 @@ OTHER_KINDS: dict[str, Place] = {
     "reseal": Place("results", "decision:reseal", DECIDE, 36),
     "set_explain": Place("results", "decision:set_explain", DECIDE, 45),
 }
+# The readings ledger's one ask card, where a question something waits on is decided.
+ASK_CARD = OTHER_KINDS["confirm_readings"]
+# How the ledger words that ask (``readings.ask_text``, its only writer): a reason holding it is a
+# question something waits on (the fit, the causal lane's card), never a reason a question does
+# not apply.
+ASK_LEADS: tuple[str, ...] = ("Tell me about this column: ", "Tell me about these columns: ")
+
+
+def asks(reason: Any) -> str | None:
+    """The ask a reason holds (from its lead to the end), or None when it asks nothing."""
+    text = str(reason or "")
+    at = min((text.find(lead) for lead in ASK_LEADS if lead in text), default=-1)
+    return text[at:] if at >= 0 else None
+
+
+def waits_on_an_answer(step: Any) -> bool:
+    """TRUST (the quest-log critique's blocking question in the wrong drawer): a Router step stated
+    as not applicable for a reason that is the readings ledger's ask is no question that does not
+    apply. Its gate read a consumer's refusal (``readings.Unsettled``: "the fit waits for the
+    answer"), so what it reports is a question something waits on: a Decide, at the ask card."""
+    return _get(step, "status") == "not_applicable" and asks(_get(step, "reason")) is not None
+
+
+def record_steps(steps: Sequence[Any]) -> list[Any]:
+    """The Router's steps For the record reads (``sweep.for_the_record``): every one but those
+    that wait on an answer (:func:`waits_on_an_answer`), which the quest log lists as Decides."""
+    return [s for s in steps if not waits_on_an_answer(s)]
+
+
 # A revert sits where the record it undoes sits.
 FOLLOWS_WHAT_IT_UNDOES = "revert"
 # "Confirm all" sits in the stage whose sweep it confirms (P0.5; ``turbotab/core/sweep.py``).
@@ -541,6 +573,19 @@ def explore_place(kind: str, state: Any = None, *, noticed: Any = None,
     return replace(place, label=collinear_label(state, noticed, pairs))
 
 
+def explore_label(finding: Mapping[str, Any], state: Any = None, *, noticed: Any = None) -> str:
+    """The label the person sees on one of Explore's findings (an ``ExploreFinding`` as served):
+    its kind's place, labeled by :func:`explore_place`. For the collinear finding, ``noticed`` is
+    the K5 noticing measured on the table (``materiality.collinear_noticing``), and with none the
+    finding's own columns (the union of the pairs it shows) stand for its pairs, so what you study
+    among them makes it a Decide. A kind with no place keeps For the record."""
+    kind = str(_get(finding, "kind") or "")
+    if kind not in EXPLORE_FINDINGS:
+        return RECORD
+    columns = [str(c) for c in _get(finding, "columns") or []]
+    return explore_place(kind, state, noticed=noticed, pairs=[(c,) for c in columns]).label
+
+
 def finding_place(finding: Mapping[str, Any], state: Any = None) -> tuple[Place, str | None]:
     """Where a finding is decided, and the question it is decided at (None: its own repair).
 
@@ -629,23 +674,55 @@ COMPUTE: dict[str, tuple[str, str | None]] = {
 }
 
 
-# The compute stages whose result is an exhibit of Results (the card that shows it is an
-# ``exhibit:``). After Fit under Estimate and Describe, each one the engine serves on the state is
-# one of Results' objectives (:func:`served_exhibits`).
-EXHIBIT_STAGES: tuple[str, ...] = tuple(
-    name for name, (stage, card) in COMPUTE.items()
-    if stage == "results" and card is not None and card.startswith("exhibit:"))
+# The exhibit map: each compute stage whose result is an exhibit of Results, with the goals its
+# exhibit serves (the crosswalk card's ``goals``: ``inference`` is Estimate, ``describe``
+# Describe, ``prediction`` Predict). After Fit under Estimate and Describe, each one the engine
+# serves on the state for the goal is one of Results' objectives (:func:`served_exhibits`). Every
+# stage whose card is an ``exhibit:`` is here; the substitution curve is too (TRUST: the second
+# comparison is an exhibit of Results), with its question's goals (``decision:substitution-pair``)
+# while the crosswalk gives the curve no card of its own (disagreement 13).
+EXHIBITS: dict[str, tuple[str, ...]] = {
+    "usual_intake": ("describe",),
+    "fit": ("prediction",),
+    "substitution": ("inference", "prediction"),
+    "sensitivity": ("inference", "prediction"),
+    "calibration": ("inference",),
+    "secondary": ("inference",),
+    "scales": ("inference", "prediction"),
+    "effects": ("inference",),
+    "causal": ("inference",),
+    "time_varying": ("inference",),
+    "modification": ("inference",),
+    "explain": ("prediction", "inference"),
+    "evaluation": ("prediction",),
+}
+EXHIBIT_STAGES: tuple[str, ...] = tuple(EXHIBITS)
+
+
+def goal_of(state: Any) -> str | None:
+    """The goal Results serves, in the crosswalk's words: Predict (``prediction``); under the
+    engine's ``inference``, Estimate (``inference``) once what you study is declared, else Describe
+    (``describe``: no single effect to estimate). None with no goal answered."""
+    purpose = getattr(state, "purpose", None)
+    if purpose == "prediction":
+        return "prediction"
+    if purpose == "inference":
+        return "inference" if getattr(state, "estimand", None) is not None else "describe"
+    return None
 
 
 def served_exhibits(state: Any) -> tuple[str, ...]:
-    """The exhibit-bearing stages the engine serves on ``state``: those whose ``requires`` (and
-    their upstream stages') are all answered, the scheduler's own rule (``surfacing.computable``,
-    ``graph.unmet_requires``). A stage it never computes here (no causal answer, no explain
-    answer) is no exhibit to word and place, so it is not counted."""
+    """The exhibits the engine serves on ``state`` for its goal: the stages of :data:`EXHIBITS`
+    whose goals hold this state's (:func:`goal_of`; TRUST: under Estimate, a Describe or a Predict
+    exhibit is no objective of Results) and whose ``requires`` (and their upstream stages') are all
+    answered, the scheduler's own rule (``surfacing.computable``, ``graph.unmet_requires``). A
+    stage it never computes here (no causal answer, no explain answer) is no exhibit to word and
+    place, so it is not counted."""
     from turbotab.core.surfacing import computable
 
+    goal = goal_of(state)
     can = computable(state)
-    return tuple(name for name in EXHIBIT_STAGES if name in can)
+    return tuple(name for name in EXHIBIT_STAGES if name in can and goal in EXHIBITS[name])
 
 
 @lru_cache(maxsize=1)
@@ -1319,6 +1396,16 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
     for step in steps:
         key, status = _get(step, "key"), _get(step, "status")
         place = GOAL_PLACES.get((key, purpose)) or QUESTIONS.get(key)
+        if waits_on_an_answer(step):
+            # TRUST: a question the fit waits on, stated as why another does not apply, is a
+            # Decide where its readings are asked (Your data's ask card), never For the record.
+            ask = asks(_get(step, "reason"))
+            if not any(line.name == ask for _stage, line in lines):
+                lines.append((ASK_CARD.stage, QuestLine(
+                    id=ASK_CARD.item, key=f"ask:{key}", source="question", label=DECIDE,
+                    name=str(ask), status="open", counted=True, order=ASK_CARD.order,
+                    reason=str(_get(step, "reason")))))
+            continue
         if place is None or status == "not_applicable":
             continue
         label = place.label
@@ -1750,9 +1837,15 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
             swept = int(sweep is not None and sweep.answered)
             answered = sum(l.status == "answered" for l in decide) + swept
             required = len(decide) + int(sweep is not None)
+            complete = answered >= required
             if estimates and key == "results":
-                required += len(served_exhibits(state))
-            progress = Progress(answered=answered, required=required, complete=answered >= required)
+                served = len(served_exhibits(state))
+                required += served
+                # TRUST: with no exhibit of the goal served yet (the families withdrawn, say),
+                # Results waits for them; it is not complete at 0 of 0, so the exhibits a later
+                # answer serves are not lines gained by a complete stage.
+                complete = answered >= required and served > 0
+            progress = Progress(answered=answered, required=required, complete=complete)
         # A stage not reached yet has nothing to drop back from.
         reasons = _reasons(key, mine, log, stages, shown_at) if reached else []
         if reached and estimates and key == "results":
@@ -1763,13 +1856,16 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
 
 
 __all__ = [
-    "COMPLETED", "COMPUTE", "ChangedSince", "DECLARATIONS", "Declaration", "EXHIBIT_STAGES",
+    "ASK_CARD", "ASK_LEADS", "COMPLETED", "COMPUTE", "ChangedSince", "DECLARATIONS",
+    "Declaration", "EXHIBITS", "EXHIBIT_STAGES",
     "EXPLORE_FINDINGS", "FINDING_ROUTES", "FOLLOWS_ITS_STAGE", "FOLLOWS_WHAT_IT_UNDOES", "Facts",
     "GOAL_PLACES", "LABELS", "NORMALIZATION", "OTHER_KINDS", "Place", "Progress", "QUESTIONS",
     "QUEST_VERSION", "QuestLine", "QuestLog", "QuestStage", "READ_BY_GATE", "ReadItem",
     "ReadOption", "Reopened", "ReopenedBy", "STAGES", "STAGE_NAMES", "STATED", "SWEEP_ITEMS",
     "Sweep", "TIER_RULINGS", "Waiting", "answer_holds", "answering_kinds", "contract_tier",
-    "explore_place", "finding_place", "kind_place", "kind_stages", "noticing_place",
+    "asks", "explore_label", "explore_place", "finding_place", "goal_of", "kind_place",
+    "kind_stages", "noticing_place",
     "noticing_places", "noticing_stage", "noticing_stages", "quest_log", "question_reads",
-    "record_stage", "served_exhibits", "stage_reads", "written_slots",
+    "record_stage", "record_steps", "served_exhibits", "stage_reads", "waits_on_an_answer",
+    "written_slots",
 ]

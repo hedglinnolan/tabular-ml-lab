@@ -807,8 +807,19 @@ def test_1_a_sentence_that_counts_rows_states_the_rows_as_they_stand(name, infer
         columns = ["sugar", *seen["effects"]["families"][0]["sequence"][-1]["adjusted_for"]]
         n = len(screened)
         assert len(screened.dropna(subset=columns)) == n  # every analyzed column recorded
-        assert line["text"] == (f"A complete-case analysis was applied: no row is missing any "
-                                f"predictor, so all `{n:,}` rows remain.")
+        head = (f"A complete-case analysis was applied: no row is missing any predictor, so all "
+                f"`{n:,}` rows remain")
+        # TRUST: an analyzed column whose values the data's provider imputed (its flag
+        # ``imputed_<column>`` true on a row, read here with pandas) is named, so "no row is
+        # missing" does not hide them.
+        imputed = [c for c in columns if f"imputed_{c}" in frame.columns
+                   and frame[f"imputed_{c}"].astype(str).str.lower().eq("true").any()]
+        if imputed:
+            assert line["text"].startswith(head + "; ")
+            assert "values the data's provider imputed before the file arrived (flagged in `imputed_" \
+                in line["text"] and line["text"].endswith("), analyzed as recorded.")
+        else:
+            assert line["text"] == head + "."
     else:
         predictors = seen["cohort"]["predictors"]
         n = len(frame[frame["glucose"].notna()])

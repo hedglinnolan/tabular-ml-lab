@@ -39,7 +39,7 @@ from turbotab.core.graph import (
 )
 from turbotab.core.interview import InterviewStep, route
 from turbotab.core.jobs import PRELOAD, JobRunner, JobView
-from turbotab.core.quest import QuestLog, quest_log
+from turbotab.core.quest import QuestLog, explore_label, quest_log, record_steps
 from turbotab.core.consequences import estimates_unseen as materiality_unseen
 from turbotab.core.sweep import ForTheRecord, Triage, for_the_record, triage
 from turbotab.core.stages import GRAPH_FACTORY
@@ -434,6 +434,23 @@ POOL_WORDS = {
     "all": "rows",
     "given": "rows",
 }
+
+
+def explore_labeled(artifact: Any, state: Any, noticed: Callable[[], Any]) -> Any:
+    """The explore artifact with each finding's ``label`` (Decide, Confirm, For the record) as the
+    person sees it (``quest.explore_label``). ``noticed`` returns the K5 collinear noticing measured
+    on the table (None when there is none); it is read only when a collinear finding is served
+    outside Predict, where the pair scan's lever is a Decide whatever the table. ``artifact`` is
+    never changed in place."""
+    if not isinstance(artifact, dict):
+        return artifact
+    findings = artifact.get("findings") or []
+    measure = (getattr(state, "purpose", None) != "prediction"
+               and any(isinstance(f, dict) and f.get("kind") == "collinear" for f in findings))
+    found = noticed() if measure else None
+    return {**artifact, "findings": [
+        {**f, "label": explore_label(f, state, noticed=found)} if isinstance(f, dict) else f
+        for f in findings]}
 
 
 def preview_basis(ctx: consequences.PreviewContext, result: consequences.PreviewResult,
@@ -1055,6 +1072,13 @@ class ProjectService:
         except Exception:  # noqa: BLE001 - nothing measured: the findings are triaged alone
             return []
 
+    def _collinear_noticed(self, pid: str, state: ProjectState) -> Any:
+        """The K5 collinear noticing on the table the analysis reads, as the triage measures it
+        (``materiality.noticings_for``), or None (none measured, or no table yet)."""
+        from turbotab.core.materiality import COLLINEAR_THREAD
+
+        return next((n for n in self._noticed(pid, state) if n.thread == COLLINEAR_THREAD), None)
+
     def materiality(self, pid: str) -> Any:
         """The materiality ledger (SURFACING_POLICY §2.2): each noticing's predicted movement, the
         triage's recommendation and recorded disposition, and once the plan is fixed (under
@@ -1090,7 +1114,9 @@ class ProjectService:
         profile's basis, why a question was not asked, the defaults that change nothing here, and
         what the engine recorded itself."""
         q = self._quest(pid)
-        return for_the_record(q.log, q.steps, q.records, ingest=self._shown(pid, "ingest"),
+        # TRUST: a step that waits on an answer is a Decide in the quest log, never For the record.
+        return for_the_record(q.log, record_steps(q.steps), q.records,
+                              ingest=self._shown(pid, "ingest"),
                               profile=self._shown(pid, "profile"))
 
     def _quest(self, pid: str) -> _QuestInputs:
@@ -1862,7 +1888,9 @@ class ProjectService:
                   **record_facts(self._fresh(pid, "calibration", public=True)),
                   # P1-FU: the estimand's swap read on the values (the parts inside their totals),
                   # as the caption and Table 2 read it.
-                  "set_estimand": {"nested": self._values_nesting(pid, decisions.fold(records))}}
+                  "set_estimand": {"nested": self._values_nesting(pid, decisions.fold(records))},
+                  # TRUST: the band's refits say which rows they resample on the table as it is.
+                  "set_substitution": {"n_rows": facts.n_rows}}
         return methods_text(records, {"detected_task": facts.detected_task, "counts": stages})
 
     def _flow_counts(self, pid: str) -> dict[str, Any]:
@@ -1879,8 +1907,11 @@ class ProjectService:
         out: dict[str, Any] = {}
         cc = next((s for s in steps if s.get("key") == "complete_cases"), None)
         if cc is not None:
+            # TRUST: the table too, so "no row is missing" names the values the data's provider
+            # imputed before the file arrived (``voice._imputed_upstream``).
             out["set_missing"] = {"n_complete": int(cc["n"]),
-                                  "n_before": int(cc["n"]) + int(cc["dropped"])}
+                                  "n_before": int(cc["n"]) + int(cc["dropped"]),
+                                  "datastore": self._store_or_none(pid)}
         if any(str(s.get("key")).startswith("exclusion:") for s in steps):
             out["set_exclusions"] = {"exclusion_counts": rule_drops(steps)}
         return out
@@ -1952,6 +1983,10 @@ class ProjectService:
             # (SIZING P0.8, disagreement 4), as the estimates do.
             state = self.log(pid).state()
             artifact = fit_press.relationships_served(artifact, state, self._pressed(pid, state))
+            # TRUST (phase 2 P1-FU item 1): each finding carries the label the person sees, the
+            # collinear one Decide only when what you study is inside the dependency.
+            artifact = explore_labeled(artifact, state,
+                                       lambda: self._collinear_noticed(pid, state))
         if artifact is not None:
             artifact = self._outcome_served(pid, stage, artifact)
         if stage == "findings" and artifact is not None:  # M2 §4: each finding's disposition

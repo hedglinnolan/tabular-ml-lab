@@ -1001,6 +1001,11 @@ SWAP_POPULATION = ("over the surveyed population its curve is the weighted mean 
                    "linearization over the survey design (the `50` bootstrap refits asked for are "
                    "not drawn: a row bootstrap ignores the strata and PSUs).")
 SWAP_SAMPLE = "its band comes from `50` refits of each model on bootstrap resamples of every analyzed row."
+# TRUST: with no table size at hand the band's rows are said with its bound (``voice._band_rows``).
+SWAP_SAMPLE_UNSIZED = ("its band comes from `50` refits of each model on bootstrap resamples of "
+                       "the analyzed rows, each resample drawing `10,000` of them when there are "
+                       "more, with the spread rescaled to the full sample (an m-out-of-n "
+                       "bootstrap).")
 # MS5 (MODELING_SEQUENCE §0 ruling 7): regression calibration is design-based under the surveyed
 # population (weighted fits, a bootstrap resampling PSUs within strata over the whole chain); the
 # record says so on the answer as it stands.
@@ -1090,7 +1095,7 @@ def test_4_the_methods_text_restates_what_the_survey_answer_does_on_the_answer_a
     head = ("Three model families were chosen: linear regression, elastic net and feature-wise "
             "least-squares tests with Benjamini–Hochberg false-discovery control. Read from the "
             "values, no question asked: `age` is a covariate.")
-    swap_said = SWAP_SAID.format(held="at the same total energy") + SWAP_SAMPLE
+    swap_said = SWAP_SAID.format(held="at the same total energy") + SWAP_SAMPLE_UNSIZED
     assert (chosen.sentence, swap.sentence) == (head, swap_said)
     assert calibration.sentence == CALIBRATION_APPLIED.format(n=200)
     post({"kind": "lock_plan"})
