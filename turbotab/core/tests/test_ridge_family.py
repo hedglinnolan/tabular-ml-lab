@@ -9,11 +9,20 @@ Every reference here is computed in the test, independently of the family's code
   Σᵢ ℓᵢ + (nλ/2)‖W‖², the intercepts unpenalized, for a yes/no outcome and for classes;
 * linear SHAP: βⱼ(zᵢⱼ − z̄ⱼ) on the columns standardized by hand, β from the references above;
 * invariance (C3, C13): an orthogonal rotation after the scaling keeps every prediction, and a
-  shear changes them.
+  shear changes them;
+* logistic ridge's knob factors (C7): the eigenvalues of the penalized likelihood's Hessian at the
+  fit, built here from [1, Z] and the fitted probabilities, its intercept profiled out (a Schur
+  complement), so df = tr[(S + κI)⁻¹S] with κ = 1/C;
+* the shelf (RECIPES §2.6): the first two predicting families with ridge on the shelf are those of
+  the same shelf with ridge taken off, the families the reference journeys pick today;
+* the card's words: RECIPES §6.5's vocabulary row for λ, read from the spec.
 
 T2(a) (the pooled argmin on the diabetes data) waits for the engine (phase 3).
 """
 from __future__ import annotations
+
+import re
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -29,6 +38,7 @@ from turbotab.core.models.sources import SOURCES
 from turbotab.core.models.tuning import estimator_params, path_grid, tuning_for
 
 N, P = 160, 5
+REPO = Path(__file__).resolve().parents[3]
 
 
 def _family():
@@ -61,11 +71,13 @@ def _closed_form(Z: np.ndarray, y: np.ndarray, lam: float,
     return beta, float(ybar - zbar @ beta)
 
 
-def _penalized_logistic(Z: np.ndarray, y: np.ndarray, lam: float) -> tuple[np.ndarray, np.ndarray]:
-    """The minimizer of Σᵢ −log softmax(Wzᵢ + b)[yᵢ] + (nλ/2)‖W‖²_F by scipy's L-BFGS: for a yes/no
-    outcome one row (the logit of class 1), for K classes K rows, as scikit-learn's multinomial
-    parameterizes it. Returns (coef (K, p), intercept (K,))."""
+def _penalized_logistic(Z: np.ndarray, y: np.ndarray, lam: float,
+                        w: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """The minimizer of Σᵢ wᵢ·(−log softmax(Wzᵢ + b)[yᵢ]) + (nλ/2)‖W‖²_F by scipy's L-BFGS (wᵢ = 1
+    unless given): for a yes/no outcome one row (the logit of class 1), for K classes K rows, as
+    scikit-learn's multinomial parameterizes it. Returns (coef (K, p), intercept (K,))."""
     n, p = Z.shape
+    w = np.ones(n) if w is None else np.asarray(w, dtype=float)
     classes = np.unique(y)
     K = 1 if len(classes) == 2 else len(classes)
     Y = (y == classes[1]).astype(float)[:, None] if K == 1 else (
@@ -78,13 +90,13 @@ def _penalized_logistic(Z: np.ndarray, y: np.ndarray, lam: float) -> tuple[np.nd
         W, b = unpack(theta)
         eta = Z @ W.T + b
         if K == 1:
-            nll = np.sum(np.logaddexp(0.0, eta[:, 0]) - Y[:, 0] * eta[:, 0])
-            resid = 1.0 / (1.0 + np.exp(-eta)) - Y
+            nll = np.sum(w * (np.logaddexp(0.0, eta[:, 0]) - Y[:, 0] * eta[:, 0]))
+            resid = w[:, None] * (1.0 / (1.0 + np.exp(-eta)) - Y)
         else:
             m = eta.max(axis=1, keepdims=True)
             lse = m[:, 0] + np.log(np.exp(eta - m).sum(axis=1))
-            nll = np.sum(lse - np.sum(Y * eta, axis=1))
-            resid = np.exp(eta - lse[:, None]) - Y
+            nll = np.sum(w * (lse - np.sum(Y * eta, axis=1)))
+            resid = w[:, None] * (np.exp(eta - lse[:, None]) - Y)
         grad_W = resid.T @ Z + n * lam * W
         grad_b = resid.sum(axis=0)
         return nll + 0.5 * n * lam * np.sum(W ** 2), np.concatenate([grad_W.ravel(), grad_b])
@@ -147,9 +159,11 @@ def test_settings_turn_a_per_row_penalty_into_each_estimators_own():
         assert f.build(task, "prediction", n, 3).get_params()["l1_ratio"] == 0.0
 
 
-@pytest.mark.parametrize("p,n_rows,want", [(5, 2_500, 2.0), (5, 120, 2.0), (300, 120, 3.0)])
+@pytest.mark.parametrize("p,n_rows,want", [(5, 2_500, 2.0), (5, 2_000, 2.0), (5, 1_999, 1.0),
+                                           (5, 120, 1.0), (300, 120, 3.0), (3_000, 2_500, 3.0)])
 def test_the_shelf_scores_are_recipes_conventions(p, n_rows, want):
-    """RECIPES §2.6: 2.0; at p ≥ n, 3.0 (below the elastic net's 4.0)."""
+    """RECIPES §2.6: 2.0 from 2,000 training rows; at p ≥ n, 3.0 (below the elastic net's 4.0);
+    below 2,000 rows 1.0, under the 1.5 of the families the reference journeys pick second there."""
     from turbotab.core.models.base import Situation
 
     s = Situation(task="regression", purpose="prediction", n_rows=n_rows, n_features=p)
@@ -176,16 +190,27 @@ def test_the_path_is_the_closed_form_at_every_grid_point():
         assert np.max(np.abs(est.coef_ - beta)) < 1e-8 and abs(est.intercept_ - b) < 1e-8, lam
 
 
-def test_a_weighted_path_is_the_weighted_closed_form():
+def test_a_weighted_path_is_the_weighted_closed_form_at_weights_of_mean_one():
+    """Weights are relative, scaled to mean 1 as glmnet scales them to sum to n, so λ keeps its
+    per-row meaning: weights summing to a population total give the same path, and the refit at
+    α = nλ with ``sample_weight`` w/mean(w) is the path's point."""
     f = _family()
     Z, y = _data(1)
     w = np.random.default_rng(5).uniform(0.2, 3.0, size=len(y))
+    relative = w / w.mean()
     grid = {"lambda": np.array([10.0, 0.1, 1e-4])}
     fit = f.path(Z, y, grid, task="regression", weights=w)
+    total = f.path(Z, y, grid, task="regression", weights=w * 25_000.0)
     for g, lam in enumerate(grid["lambda"]):
-        beta, b = _closed_form(Z, y, lam, w)
+        beta, b = _closed_form(Z, y, lam, relative)
         assert np.max(np.abs(fit.coefs[0, g, 0] - beta)) < 1e-8
         assert abs(fit.intercepts[0, g, 0] - b) < 1e-8
+        assert np.max(np.abs(total.coefs[0, g, 0] - beta)) < 1e-8
+        est = f.build("regression", "prediction", len(y), P)
+        est.set_params(**estimator_params(f, "regression", {"lambda": lam}, n_units=len(y),
+                                          n_rows=len(y)))
+        est.fit(Z, y, sample_weight=relative)
+        assert np.max(np.abs(est.coef_ - beta)) < 1e-8 and abs(est.intercept_ - b) < 1e-8
 
 
 def test_df_is_the_trace_of_the_explicit_hat_matrix():
@@ -287,3 +312,121 @@ def test_a_rotation_after_scaling_keeps_predictions_and_a_shear_changes_them(tas
     tol = 1e-8 if task == "regression" else 1e-6
     assert np.max(np.abs(raw(Q) - plain)) < tol
     assert np.max(np.abs(raw(shear) - plain)) > 1e-3
+
+
+# ── the shelf: the reference journeys' first two stay first (RECIPES §2.6) ───
+
+
+def _first_two(situation) -> list[str]:
+    """``journeys.first_models``' rule under prediction: the first two predicting families."""
+    from turbotab.core.models.base import rank
+
+    return [f.key for f, _ in rank(situation) if f.predicts][:2]
+
+
+@pytest.mark.parametrize("task", ["regression", "binary"])
+def test_ridge_never_displaces_the_first_two_families_the_journeys_pick(task, monkeypatch):
+    """RECIPES §2.6: "The two families the reference journeys pick (`first_models`) stay first."
+    Every prediction journey is a number or a yes/no outcome, so the reference is the shelf for
+    those tasks with ridge taken off, at sizes from 30 to 10,000 rows, narrow and wide; with ridge
+    on it, the first two predicting families are the same."""
+    import turbotab.core.methods.omics  # noqa: F401 - registers the screened elastic net
+    from turbotab.core.models import base
+
+    _family()
+    events = (None, None) if task == "regression" else (None, 10)  # 10%: least squares "fair"
+    situations = [base.Situation(task=task, purpose="prediction", n_rows=n, n_features=p,
+                                 n_events=None if share is None else max(1, n * share // 100))
+                  for n in (30, 100, 300, 800, 1_500, 1_999, 2_000, 2_500, 10_000)
+                  for p in (5, 40, n, 3 * n) for share in events]
+    with_ridge = [_first_two(s) for s in situations]
+    monkeypatch.delitem(base._REGISTRY, "ridge")
+    without = [_first_two(s) for s in situations]
+    assert with_ridge == without
+    # the survey journey's pick at 300 rows (its capture) is among the shelves compared
+    assert ["elastic_net", "screened_elastic_net"] in without
+
+
+# ── the card's words (RECIPES §6.5) ──────────────────────────────────────────
+
+
+def test_the_penalty_takes_recipes_card_and_quiet_words():
+    """RECIPES §6.5's vocabulary: "ridge and elastic net λ" reads "how strongly coefficients are
+    pulled toward zero" on the card and "penalty (λ)" as the quiet term."""
+    text = (REPO / "docs" / "turbotab-next" / "RECIPES_AND_TUNING.md").read_text(encoding="utf-8")
+    row = re.search(r"^\| ridge and elastic net λ \| (.+?) \| (.+?) \|$", text, re.M)
+    assert row is not None
+    (dim,) = tuning_for(_family(), "regression").dimensions
+    assert (dim.label, dim.term) == (row[1], row[2])
+
+
+# ── C7: logistic ridge's knob factors ────────────────────────────────────────
+
+
+def _profiled_hessian(Z: np.ndarray, prob: np.ndarray) -> np.ndarray:
+    """The log-likelihood's Hessian in (b, β) at the fitted probabilities, [1, Z]ᵀdiag(p(1 − p))[1, Z],
+    with the unpenalized intercept profiled out: the Schur complement of its (b, b) entry."""
+    X = np.column_stack([np.ones(len(prob)), Z])
+    H = X.T @ ((prob * (1 - prob))[:, None] * X)
+    return H[1:, 1:] - np.outer(H[1:, 0], H[0, 1:]) / H[0, 0]
+
+
+def test_logistic_ridge_knob_is_the_penalized_hessians_shrinkage():
+    """MODEL_FAMILY_CONTRACT C7 (logistic ridge, C = 1/(nλ)): the factors use the weighted matrix at
+    the fitted probabilities, labeled an approximation. On the fit's own Hessian S (built here) the
+    shrink factors are the eigenvalues e of S over e + κ, κ = 1/C, and df = tr[(S + κI)⁻¹S]."""
+    f = _family()
+    Z, signal = _data(7)
+    Zs = (Z - Z.mean(axis=0)) / Z.std(axis=0)
+    y = (signal + np.random.default_rng(3).normal(scale=3.0, size=N) > np.median(signal)).astype(int)
+    formula = FORMULAS[f.complexity[0].formula]
+    for lam in (1e-3, 0.05, 1.0):
+        C = estimator_params(f, "binary", {"lambda": lam}, n_units=N, n_rows=N)["C"]
+        W, b = _penalized_logistic(Zs, y, lam)
+        prob = 1.0 / (1.0 + np.exp(-(Zs @ W[0] + b[0])))
+        S = _profiled_hessian(Zs, prob)
+        kappa = N * lam
+        got = formula(Zs, C=C, probabilities=prob)
+        assert got.approximate
+        assert got.df == pytest.approx(np.trace(np.linalg.solve(S + kappa * np.eye(P), S)),
+                                       abs=1e-10)
+        assert np.allclose(got.spread, np.sort(np.linalg.eigvalsh(S))[::-1], rtol=1e-10)
+        # scikit-learn's two-column probabilities read the same
+        two = formula(Zs, C=C, probabilities=np.column_stack([1 - prob, prob]))
+        assert two.df == pytest.approx(got.df, abs=1e-12)
+    # least squares stays exact, by alpha as before
+    assert not formula(Zs, 3.0).approximate
+    with pytest.raises(ValueError, match="probabilities"):
+        formula(Zs, C=1.0)
+    with pytest.raises(ValueError, match="one of"):
+        formula(Zs, 1.0, C=1.0)
+    with pytest.raises(ValueError, match="yes/no"):
+        formula(Zs, C=1.0, probabilities=np.full((N, 3), 1 / 3))
+
+
+# ── weighted logistic ridge ──────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("task,classes", [("binary", 2), ("multiclass", 3)])
+def test_a_weighted_logistic_path_and_refit_are_the_weighted_likelihood_minimum(task, classes):
+    """Σᵢ (wᵢ/w̄)ℓᵢ + (nλ/2)‖W‖² by scipy at weights scaled to mean 1; the path at weights summing to
+    a population total is the same; the refit with ``sample_weight`` w/w̄ is the path's point."""
+    f = _family()
+    Z, signal = _data(8)
+    Zs = (Z - Z.mean(axis=0)) / Z.std(axis=0)
+    noisy = signal + np.random.default_rng(12).normal(scale=4.0, size=N)
+    y = np.digitize(noisy, np.quantile(noisy, np.linspace(0, 1, classes + 1)[1:-1]))
+    w = np.random.default_rng(6).uniform(0.2, 3.0, size=N)
+    relative = w / w.mean()
+    lams = np.array([1.0, 0.01, 1e-4])
+    fit = f.path(Zs, y, {"lambda": lams}, task=task, weights=w)
+    total = f.path(Zs, y, {"lambda": lams}, task=task, weights=w * 25_000.0)
+    for g, lam in enumerate(lams):
+        W, b = _penalized_logistic(Zs, y, lam, relative)
+        assert np.max(np.abs(fit.coefs[0, g] - W)) < 1e-6, lam
+        assert np.max(np.abs(fit.intercepts[0, g] - b)) < 1e-6, lam
+        assert np.max(np.abs(total.coefs[0, g] - W)) < 1e-6, lam
+        est = f.build(task, "prediction", N, P)
+        est.set_params(**estimator_params(f, task, {"lambda": lam}, n_units=N, n_rows=N))
+        est.fit(Zs, y, sample_weight=relative)
+        assert np.max(np.abs(est.coef_ - W)) < 1e-6 and np.max(np.abs(est.intercept_ - b)) < 1e-6

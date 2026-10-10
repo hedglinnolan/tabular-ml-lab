@@ -17,7 +17,20 @@ the centered matrix (the intercept unpenalized) through one SVD, Zc = UDVᵀ,
 L-BFGS at each point, warm-started from the stronger penalty before it, to the tolerance the
 refit uses, so the path's point and the refit at that λ are the same fit.
 
-**What waits.** Full coding ("every level its own column", RECIPES §2.2) is the recipe's
+**Row weights are relative.** Given ``weights``, the path scales them to mean 1, as glmnet scales
+its observation weights to sum to n, so the loss is Σᵢ (wᵢ/w̄)ℓᵢ beside the penalty nλ: weights that
+sum to a population total move no λ, and the refit at λ is the path's point when it is given
+``sample_weight`` w/w̄.
+
+**The shelf** (RECIPES §2.6, conventions): 2.0 from 2,000 training rows, after boosted trees' 3.0
+and the elastic net's 2.5; 3.0 when predictors outnumber rows, below the elastic net's 4.0 and the
+screened net's 3.8; 1.0 below 2,000 rows, under the 1.5 that least squares and the screened elastic
+net hold there, so the two families the reference journeys pick today stay first.
+
+**What waits.** The penalty is chosen only by RT-1b's engine, which sets each fit's ``alpha`` or
+``C`` through :meth:`Ridge.settings`; :meth:`Ridge.build` alone carries scikit-learn's default of 1,
+so ``describe`` is true of a fit only once the engine runs it, and this family lands with the engine
+or after it. Full coding ("every level its own column", RECIPES §2.2) is the recipe's
 ``onehot_drop`` (RECIPES §2.4, RT-2): the shared one-hot step still drops the first level for
 every family, and nothing here re-codes it. The shrinkage-path view reads the elastic net's CV
 attributes until RT-5f moves it onto the tuning record, so ridge declares the equation only.
@@ -54,11 +67,13 @@ from turbotab.core.models.tuning import Dimension, PathFit, TuningDecl
 LOGISTIC_TOL = 1e-10
 LOGISTIC_MAX_ITER = 10_000
 WIDE_SCORE = 3.0  # RECIPES §2.6: at p ≥ n, below the elastic net's 4.0 (a convention)
-BASE_SCORE = 2.0  # RECIPES §2.6 (a convention)
+BASE_SCORE = 2.0  # RECIPES §2.6, from FROM_ROWS training rows (a convention)
+FROM_ROWS = 2_000  # RECIPES §2.6: the order it states holds "at 2,000 training rows or more"
+SMALL_SCORE = 1.0  # below FROM_ROWS: under the journeys' second picks there, 1.5 (a convention)
 FEW_ROWS = 50  # as the elastic net: below this the inner folds choose λ from very few rows
 
 LAMBDA = Dimension(
-    "lambda", "how hard every effect is pulled toward zero", "penalty per row (λ)", 1e-5, 1e2,
+    "lambda", "how strongly coefficients are pulled toward zero", "penalty (λ)", 1e-5, 1e2,
     "log", source="Probst, Boulesteix & Bischl 2019; Kobak et al. 2020", points=50)
 TUNING = TuningDecl(
     "path", dimensions=(LAMBDA,), space_version="ridge/1",
@@ -162,9 +177,12 @@ class Ridge(FamilyBase):
              weights: Any = None) -> PathFit:
         """Every λ of ``grid`` on these rows (the module docstring), as a ``tuning.PathFit`` with one
         outer setting. ``weights``, when given, weight each row's loss as ``sample_weight`` does
-        (the penalty stays nλ, n the rows)."""
+        once scaled to mean 1 (the module docstring); the penalty stays nλ, n the rows."""
         Z = np.asarray(Z, dtype=float)
         lams = np.asarray(grid["lambda"], dtype=float)
+        if weights is not None:
+            weights = np.asarray(weights, dtype=float)
+            weights = weights / weights.mean()
         if task == "regression":
             coefs, intercepts = _least_squares_path(Z, np.asarray(y, dtype=float), lams, weights)
         else:
@@ -187,11 +205,12 @@ class Ridge(FamilyBase):
                                 classes=classes if classes and len(classes) > 2 else None)
 
     def assess(self, s: Situation) -> Assessment:
-        """RECIPES §2.6's conventions: 2.0, and 3.0 when predictors outnumber rows; under
-        inference "fair" at most 2.0, as the elastic net."""
+        """RECIPES §2.6's conventions (the module docstring): 2.0 from 2,000 training rows, 1.0
+        below, and 3.0 when predictors outnumber rows; under inference "fair" at most 2.0, as the
+        elastic net."""
         concerns: list[str] = []
         fit = "good"
-        score = BASE_SCORE
+        score = BASE_SCORE if s.n_rows >= FROM_ROWS else SMALL_SCORE
         if s.n_features >= s.n_rows:
             concerns.append(f"{s.n_features:,} predictors for {s.n_rows:,} rows: it keeps every one, "
                             f"each shrunk.")
@@ -240,4 +259,5 @@ def _logistic_path(Z: np.ndarray, y: np.ndarray, lams: np.ndarray,
 
 RIDGE = register_family(Ridge())
 
-__all__ = ["LOGISTIC_MAX_ITER", "LOGISTIC_TOL", "METHODS_LABELS", "RIDGE", "Ridge", "TUNING"]
+__all__ = ["FROM_ROWS", "LOGISTIC_MAX_ITER", "LOGISTIC_TOL", "METHODS_LABELS", "RIDGE", "Ridge",
+           "TUNING"]
