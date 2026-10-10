@@ -1975,3 +1975,89 @@ class ProjectService:
         with self._lock:  # a request still reading the previous table keeps its own reference
             self._stores[pid] = (tag, store)
         return store
+
+    # ── the outcome's gates on the data routes (CROSSWALK disagreement 2; core/outcome_gate) ──
+
+    def _outcome_rows(self, pid: str, state: Any) -> Any:
+        """The rows a view of the outcome reads once it is open: the training rows under Predict,
+        the rows kept so far otherwise (None while they are being counted)."""
+        from turbotab.core import outcome_gate
+
+        stages = self.engine.status(pid)
+        cohort = self._cohort_ids(pid, stages)
+        if outcome_gate.predicting(state):
+            return self.training_rows(pid, stages, self.sealed_rows(pid, stages), cohort)
+        return self.analyzed_rows(pid, stages, cohort)
+
+    def table_window(self, pid: str, offset: int, limit: int,
+                     columns: list[str] | None) -> dict[str, Any]:
+        """A row window, the outcome left out of it until the outcome beside a column opens (the
+        lock under Estimate and Describe, and with no goal; the draw under Predict, after which
+        its held-out rows' outcome stays blank). Each column left out or blanked is named in
+        ``withheld`` with its line."""
+        from turbotab.core import outcome_gate
+
+        store = self.store(pid)
+        state = self.log(pid).state()
+        target = state.target
+        wanted = list(columns) if columns is not None else store.columns
+        if not target or target not in wanted:
+            return store.window(offset, limit, wanted)
+        gate = outcome_gate.beside_gate(state, self._pressed(pid, state))
+        if gate is not None:
+            window = store.window(offset, limit, [c for c in wanted if c != target])
+            return {**window, "withheld": {target: gate["line"]}}
+        window = store.window(offset, limit, wanted)
+        if not outcome_gate.predicting(state):
+            return window
+        sealed = self.sealed_rows(pid, self.engine.status(pid))
+        held = {int(i) for i in sealed} if sealed is not None else set()
+        at = window["columns"].index(target)
+        first = int(window["offset"])
+        blanked = [i for i in range(len(window["rows"])) if first + i in held]
+        for i in blanked:
+            window["rows"][i][at] = None
+        if blanked:
+            window["withheld"] = {target: outcome_gate.HELD_OUT_SEALED}
+        return window
+
+    def column_summaries(self, pid: str, store: DataStore, summaries: list[dict[str, Any]]
+                         ) -> list[dict[str, Any]]:
+        """``summaries`` as served: the outcome's, before the outcome alone opens, keeps only what
+        the outcome card shows; once open, it is computed on the rows its view reads, with the
+        ``view_outcome`` a client records on opening it."""
+        from turbotab.core import outcome_gate
+
+        state = self.log(pid).state()
+        target = state.target
+        if not target or all(s.get("name") != target for s in summaries):
+            return summaries
+        gate = outcome_gate.alone_gate(state)
+        rows = None if gate is not None else self._outcome_rows(pid, state)
+        if gate is None and rows is None:
+            gate = {"line": outcome_gate.ROWS_BEING_COUNTED}
+        if gate is not None:
+            return [outcome_gate.card_summary(s, gate["line"]) if s.get("name") == target else s
+                    for s in summaries]
+        mine = {**store.summary_of_rows(target, rows), "rows": outcome_gate.rows_read(state),
+                "record": outcome_gate.view_record()}
+        return [mine if s.get("name") == target else s for s in summaries]
+
+    def column_histogram(self, pid: str, name: str, bins: int) -> dict[str, Any]:
+        """A column's histogram. The outcome's is its distribution, the outcome alone: refused
+        with its line before its gate, and once open drawn on the rows its view reads, with the
+        ``view_outcome`` a client records on opening it."""
+        from turbotab.core import outcome_gate
+
+        store = self.store(pid)
+        state = self.log(pid).state()
+        if not state.target or name != state.target:
+            return store.histogram(name, bins)
+        gate = outcome_gate.alone_gate(state)
+        if gate is not None:
+            raise ApiError(409, "outcome_not_yet", gate["line"], gate["exits"])
+        rows = self._outcome_rows(pid, state)
+        if rows is None:
+            raise ApiError(409, "outcome_not_yet", outcome_gate.ROWS_BEING_COUNTED)
+        return {**store.histogram_of_rows(name, rows, bins), "rows": outcome_gate.rows_read(state),
+                "record": outcome_gate.view_record()}

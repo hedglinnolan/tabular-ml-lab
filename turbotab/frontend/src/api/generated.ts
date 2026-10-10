@@ -418,7 +418,8 @@ export interface paths {
          * Table
          * @description Rows ``[offset, offset + limit)`` in file order, of the ``columns`` asked for (the ones a
          *     grid shows): only those are read, so a window of a 20,000-column table costs what its
-         *     visible columns cost.
+         *     visible columns cost. Once the outcome is chosen, a window leaves it out until the outcome
+         *     beside a column opens, and says so in ``withheld`` (CROSSWALK disagreement 2).
          */
         get: operations["table_api_projects__pid__table_get"];
         put?: never;
@@ -457,7 +458,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Histogram */
+        /**
+         * Histogram
+         * @description The column's histogram. The outcome's is the outcome alone: refused with its line until
+         *     its gate opens, then drawn on the rows its view reads (``turbotab.core.outcome_gate``).
+         */
         get: operations["histogram_api_projects__pid__columns__name__histogram_get"];
         put?: never;
         post?: never;
@@ -1380,6 +1385,14 @@ export interface components {
             top: components["schemas"]["ValueCount"][] | null;
             /** N Infinite */
             n_infinite: number;
+            /** Withheld */
+            withheld: string | null;
+            /** Rows */
+            rows: ("training" | "analyzed") | null;
+            /** Record */
+            record: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * ColumnUnitSpec
@@ -2404,6 +2417,12 @@ export interface components {
             counts: number[];
             /** N Missing */
             n_missing: number;
+            /** Rows */
+            rows: ("training" | "analyzed") | null;
+            /** Record */
+            record: {
+                [key: string]: unknown;
+            } | null;
         };
         /** HistogramData */
         HistogramData: {
@@ -6918,6 +6937,10 @@ export interface components {
             total_rows: number;
             /** Offset */
             offset: number;
+            /** Withheld */
+            withheld: {
+                [key: string]: string;
+            };
         };
         /** TeachingEntry */
         TeachingEntry: {
@@ -17221,7 +17244,7 @@ export interface operations {
                     "application/json": components["schemas"]["Refusal"];
                 };
             };
-            /** @description The table has not been read yet (the ingest stage is not fresh) */
+            /** @description The table is not read yet, or the outcome's distribution is not open yet */
             409: {
                 headers: {
                     [name: string]: unknown;

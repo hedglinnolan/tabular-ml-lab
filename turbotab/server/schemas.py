@@ -118,6 +118,9 @@ class ValueCount(Model):
     count: int
 
 
+OutcomeRows = Literal["training", "analyzed"]
+
+
 class ColumnSummary(Model):
     name: str
     dtype: Dtype
@@ -134,6 +137,13 @@ class ColumnSummary(Model):
     top: list[ValueCount] | None
     # Infinite values (a ratio over zero) are counted here and left out of every statistic above.
     n_infinite: int
+    # The outcome's own summary (``turbotab.core.outcome_gate``): before the outcome alone opens,
+    # only what the outcome card shows, and this line saying when the rest opens.
+    withheld: str | None = None
+    # Once open: the rows it was computed on, and the ``view_outcome`` a client records on
+    # opening it.
+    rows: OutcomeRows | None = None
+    record: dict[str, Any] | None = None
 
 
 class TableWindow(Model):
@@ -141,6 +151,9 @@ class TableWindow(Model):
     rows: list[list[Any]]
     total_rows: int
     offset: int
+    # A column left out of the window, or blanked on some rows, with the line saying why: the
+    # outcome beside the other columns waits for its gate (``turbotab.core.outcome_gate``).
+    withheld: dict[str, str] = Field(default_factory=dict)
 
 
 class Histogram(Model):
@@ -148,6 +161,10 @@ class Histogram(Model):
     edges: list[float]
     counts: list[int]
     n_missing: int
+    # The outcome's distribution: the rows it was drawn on, and the ``view_outcome`` a client
+    # records on opening it (``turbotab.core.outcome_gate``).
+    rows: OutcomeRows | None = None
+    record: dict[str, Any] | None = None
 
 
 # ── errors ───────────────────────────────────────────────────────────────────
