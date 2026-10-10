@@ -3487,8 +3487,13 @@ export interface components {
          * Progress
          * @description A reached stage's objectives: each counted Decide one, its Confirm sweep one. ``complete``
          *     once every one is answered. A reached stage that asks nothing (0 of 0: First look until its
-         *     noticings are wired, Results under Estimate, Write-up) is complete, its segment full; a stage
-         *     not reached has no progress at all (empty, never "0 of N").
+         *     noticings are wired, Write-up under Predict) is complete, its segment full; a stage not
+         *     reached has no progress at all (empty, never "0 of N").
+         *
+         *     Results under Estimate and Describe is the exception (FOUNDATION §3, §8): once Fit is pressed
+         *     each exhibit's wording and placement is an objective of Results, so it reads 0 of N, N the
+         *     exhibit-bearing stages (``EXHIBIT_STAGES``), and is not complete, not "0 of 0" full; and
+         *     Write-up is not reached (no progress) until Results is placed (C7a adds placement).
          */
         Progress: {
             /** Answered */
@@ -3749,7 +3754,7 @@ export interface components {
         QuestLog: {
             /**
              * Version
-             * @default 3
+             * @default 4
              */
             version: number;
             /** Stages */

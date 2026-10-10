@@ -38,7 +38,7 @@ def test_the_quest_log_is_served_versioned_with_the_seven_stages_in_order(client
     r = client.get(f"/api/projects/{pid}/quest")
     assert r.status_code == 200, r.text
     log = r.json()
-    assert log["version"] == QUEST_VERSION == 3
+    assert log["version"] == QUEST_VERSION == 4
     assert [(s["key"], s["name"]) for s in log["stages"]] == SEVEN
     # Nothing is locked, and the log says why (P0.8): no goal is chosen yet.
     assert log["fit"]["purpose"] is None and log["fit"]["locked"] is False
@@ -187,8 +187,8 @@ def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkey
     assert stages["models"]["progress"] == models_before
 
     # 3 · The fit: computed, but Results opens only when Fit is pressed, which locks the plan
-    # (P0.8); then Results and Write-up are reached, and under Estimate ask nothing yet (0 of 0,
-    # complete).
+    # (P0.8); then Results is reached and reads 0 of 12, the exhibits the engine serves, none
+    # decided (Q-c; calm/FOUNDATION §3, §8), and Write-up waits for Results to be placed.
     drive.answer("energy_adjustment", {"kind": "set_energy_adjustment", "method": "standard",
                                        "energy_column": "kcal", "nutrients": ["sugar"]})
     drive.decide({"kind": "select_models", "models": ["linear"]})
@@ -209,9 +209,9 @@ def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkey
     assert shows_estimates("fit", served)
     stages = quest(drive)
     assert all(s["reopened"] == [] for s in stages.values())
-    for key in ("results", "writeup"):
-        assert stages[key]["reached"] and stages[key]["progress"] == {
-            "answered": 0, "required": 0, "complete": True}, key
+    assert stages["results"]["reached"] and stages["results"]["progress"] == {
+        "answered": 0, "required": 12, "complete": False}
+    assert not stages["writeup"]["reached"] and stages["writeup"]["progress"] is None
 
     # 4 · Who's in → Models and Results: an eligibility rule leaves the shelf, the cards and the
     # estimates out of date. Results stays reached and says why (with Fit held, until Fit is
@@ -221,8 +221,8 @@ def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkey
     assert shelf["changed_in"] == "whos_in" and "shelf" in shelf["results"]
     assert shelf["sentence"] == out_of_date("Who's in", len(shelf["results"]), "Models")
     results = stages["results"]
-    assert results["reached"] and stages["writeup"]["reached"]
-    assert results["progress"] == {"answered": 0, "required": 0, "complete": True}
+    assert results["reached"] and not stages["writeup"]["reached"]
+    assert results["progress"] == {"answered": 0, "required": 12, "complete": False}
     [estimates] = results["reopened"]
     assert estimates["decision_id"] == changed and estimates["changed_in"] == "whos_in"
     assert "fit" in estimates["results"]

@@ -35,7 +35,8 @@ unless the crosswalk rules otherwise, :data:`TIER_RULINGS`), with "Waiting for" 
 earlier answers are missing;
 progress as answered over required, each counted Decide one and the stage's Confirm sweep one,
 empty (``None``) for a stage not reached, and ``complete`` once every objective is answered (a
-reached stage that asks nothing, 0 of 0, is complete: its segment is full); and why it reopened.
+reached stage that asks nothing, 0 of 0, is complete: its segment is full; except Results under
+Estimate and Describe, which counts its exhibits, :data:`EXHIBIT_STAGES`); and why it reopened.
 
 **Reached.** A stage is reached once the Router has asked a question in it or a later one.
 Results is reached once Fit is pressed (SIZING P0.8; FOUNDATION §7): under Estimate and Describe
@@ -94,7 +95,9 @@ from turbotab.core.fit_press import FitLock
 # 2 (P0.8): Results opens when Fit is pressed, and the log carries the lock (``fit``).
 # 3 (P0.5): a Confirm line is a default whose alternative would change a number here, else For the
 # record; Your data's readings line; the sweep's words and its "Confirm all".
-QUEST_VERSION = 3
+# 4 (Q-c): after Fit under Estimate and Describe, Results reads 0 of N (N = the exhibit-bearing
+# stages, ``EXHIBIT_STAGES``), not complete; Write-up is not reached until Results is placed.
+QUEST_VERSION = 4
 
 STAGES: tuple[tuple[str, str], ...] = (
     ("data", "Your data"),
@@ -600,6 +603,13 @@ COMPUTE: dict[str, tuple[str, str | None]] = {
 }
 
 
+# The compute stages whose result is an exhibit of Results (the card that shows it is an
+# ``exhibit:``): after Fit under Estimate and Describe each is one of Results' objectives.
+EXHIBIT_STAGES: tuple[str, ...] = tuple(
+    name for name, (stage, card) in COMPUTE.items()
+    if stage == "results" and card is not None and card.startswith("exhibit:"))
+
+
 @lru_cache(maxsize=1)
 def _graph() -> Any:
     from turbotab.core.graph import load_graph
@@ -783,8 +793,13 @@ class QuestLine(BaseModel):
 class Progress(BaseModel):
     """A reached stage's objectives: each counted Decide one, its Confirm sweep one. ``complete``
     once every one is answered. A reached stage that asks nothing (0 of 0: First look until its
-    noticings are wired, Results under Estimate, Write-up) is complete, its segment full; a stage
-    not reached has no progress at all (empty, never "0 of N")."""
+    noticings are wired, Write-up under Predict) is complete, its segment full; a stage not
+    reached has no progress at all (empty, never "0 of N").
+
+    Results under Estimate and Describe is the exception (FOUNDATION §3, §8): once Fit is pressed
+    each exhibit's wording and placement is an objective of Results, so it reads 0 of N, N the
+    exhibit-bearing stages (``EXHIBIT_STAGES``), and is not complete, not "0 of 0" full; and
+    Write-up is not reached (no progress) until Results is placed (C7a adds placement)."""
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
@@ -1565,6 +1580,11 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     sweeps.weigh(placed, state, facts)
     sweeps.cover_noticings(placed, state, log, findings)
     frontier = _frontier(steps, stages, shown_at, fit, state)
+    # Under Estimate and Describe the exhibits are Results' objectives, none placed yet (C7a adds
+    # placement): Results reads 0 of N, and Write-up is not reached until Results is placed.
+    estimates = fit.locks if fit is not None else getattr(state, "purpose", None) == "inference"
+    if estimates and frontier >= STAGE_INDEX["writeup"]:
+        frontier = STAGE_INDEX["results"]
     out = []
     for key, name in STAGES:
         mine = sorted((l for stage, l in placed if stage == key),
@@ -1577,6 +1597,8 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
             swept = int(sweep is not None and sweep.answered)
             answered = sum(l.status == "answered" for l in decide) + swept
             required = len(decide) + int(sweep is not None)
+            if estimates and key == "results":
+                required += len(EXHIBIT_STAGES)
             progress = Progress(answered=answered, required=required, complete=answered >= required)
         # A stage not reached yet has nothing to drop back from.
         reasons = _reasons(key, mine, log, stages, shown_at) if reached else []
@@ -1586,7 +1608,7 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
 
 
 __all__ = [
-    "COMPLETED", "COMPUTE", "ChangedSince", "DECLARATIONS", "Declaration", "EXPLORE_FINDINGS",
+    "COMPLETED", "COMPUTE", "EXHIBIT_STAGES", "ChangedSince", "DECLARATIONS", "Declaration", "EXPLORE_FINDINGS",
     "FINDING_ROUTES", "FOLLOWS_ITS_STAGE", "FOLLOWS_WHAT_IT_UNDOES", "Facts", "GOAL_PLACES",
     "LABELS", "NORMALIZATION", "OTHER_KINDS", "Place", "Progress", "QUESTIONS", "QUEST_VERSION",
     "QuestLine", "QuestLog", "QuestStage", "READ_BY_GATE", "ReadItem", "ReadOption", "Reopened",

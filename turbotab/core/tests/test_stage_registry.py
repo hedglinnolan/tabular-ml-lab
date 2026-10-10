@@ -460,18 +460,20 @@ def test_results_stays_reached_after_the_fit_and_says_why_it_dropped_back():
     log = quest.quest_log(state, records, steps, {"fit": {"status": "idle"}})
     assert [stage(log, k).reached for k in SEVEN] == [True] * 5 + [False] * 2
     assert stage(log, "results").progress is None
-    # Fresh for the answers now: reached, and asking nothing under Estimate, complete at 0 of 0.
+    # Fresh for the answers now: reached, and under Estimate it reads 0 of 12 (the exhibits, none
+    # decided yet: Q-c), not complete; Write-up waits for Results to be placed.
     log = quest.quest_log(state, records, steps, {"fit": {"status": "fresh"}})
-    assert stage(log, "results").reached and stage(log, "writeup").reached
-    assert stage(log, "results").progress == quest.Progress(answered=0, required=0, complete=True)
+    assert stage(log, "results").reached and not stage(log, "writeup").reached
+    assert stage(log, "results").progress == quest.Progress(answered=0, required=12, complete=False)
+    assert stage(log, "writeup").progress is None
     # The rule recorded in Who's in after the fit: the fit is out of date, and Results stays
     # reached and says why, until it is computed again (or, with Fit held, until Fit is pressed).
     for status in ("stale", "queued", "running"):
         log = quest.quest_log(state, records, steps, {"fit": {"status": status}},
                               shown_at={"fit": fitted})
         results = stage(log, "results")
-        assert results.reached and stage(log, "writeup").reached, status
-        assert results.progress == quest.Progress(answered=0, required=0, complete=True)
+        assert results.reached and not stage(log, "writeup").reached, status
+        assert results.progress == quest.Progress(answered=0, required=12, complete=False)
         assert results.reopened == [quest.Reopened(
             changed_in="whos_in", decision_id="r8", kind="set_exclusions", results=["fit"],
             sentence="Your change to Who's in made 1 result in Results out of date.")]
@@ -494,7 +496,7 @@ def test_results_opens_when_fit_is_pressed_not_when_an_estimate_is_computed():
     report = fit_lock(locked, locked_records, pressed=True, held=False, estimate=None)
     log = quest.quest_log(locked, locked_records, steps, {"fit": {"status": "running"}},
                           fit=report)
-    assert stage(log, "results").reached and stage(log, "writeup").reached
+    assert stage(log, "results").reached and not stage(log, "writeup").reached
     assert log.fit.locked and log.fit.sha256 == "a" * 64 and log.fit.at == lock.at
     # Under Predict, the press for this outcome opens it; with no purpose nothing does.
     predict = state.model_copy(update={"purpose": "prediction"})
