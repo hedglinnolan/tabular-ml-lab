@@ -85,7 +85,7 @@ ESTIMATE_EXIT = {"label": "Ask it under Estimate an effect", "goal": "estimate"}
 SCORES_EXIT = {"label": "Compare the models by their cross-validated scores", "stage": "models"}
 PRIMARY_EXIT = {"label": "Revisit the recorded choice that leaves the primary without an estimate",
                 "stage": "models"}
-SCALE_EXIT = {"label": "Declare each exposure's scale (the same for every one)"}
+SCALE_EXIT = {"label": "Declare the scale of each column you study (the same for every one)"}
 
 
 class SpecCurveRefused(ValueError):
@@ -115,7 +115,7 @@ def eligible(goal: str) -> Eligibility:
                                   "compared by their scores, so there is no single estimate to "
                                   "follow across them.", (dict(SCORES_EXIT),))
     if goal == "describe":
-        return Eligibility(False, "Describe fits no model of an exposure, so there is no estimate "
+        return Eligibility(False, "Describe fits no model of what you study, so there is no estimate "
                                   "to follow across the choices.", (dict(ESTIMATE_EXIT),))
     return Eligibility(True, "The estimate under every combination of your recorded choices and "
                              "the alternatives declared beside them, after the lock.")
@@ -455,7 +455,7 @@ def linear_fitter(frame: pd.DataFrame, *, outcome: str, exposure: str,
             if o.exposure is not None and o.exposure != exposure:
                 if not (o.scale or "").strip() or not exposure_scale.strip():
                     raise SpecCurveRefused(
-                        f"“{o.label}” swaps the exposure for `{o.exposure}`, but the scale of "
+                        f"“{o.label}” swaps what you study for `{o.exposure}`, but the scale of "
                         + ("both" if not (o.scale or "").strip() and not exposure_scale.strip() else
                            f"`{o.exposure}`" if not (o.scale or "").strip() else f"`{exposure}`")
                         + " is not declared, so the curve cannot tell whether every estimate is "
@@ -463,18 +463,18 @@ def linear_fitter(frame: pd.DataFrame, *, outcome: str, exposure: str,
                         (SCALE_EXIT, {"label": "Draw it as a curve of its own"}))
                 if o.scale != exposure_scale:
                     raise SpecCurveRefused(
-                        f"“{o.label}” measures the exposure on another scale "
+                        f"“{o.label}” measures what you study on another scale "
                         f"({o.scale} against {exposure_scale}), so its estimate is not the same "
                         "quantity and the curve would mix scales.",
                         ({"label": "Draw it as a curve of its own"},))
             dropped = sorted({exposure, o.exposure or exposure}.intersection(o.drop))
             if dropped:
                 raise SpecCurveRefused(
-                    f"“{o.label}” drops {', '.join(f'`{d}`' for d in dropped)}, the exposure every "
-                    "specification estimates, so the exposure would stay in and it would be the "
+                    f"“{o.label}” drops {', '.join(f'`{d}`' for d in dropped)}, the column every "
+                    "specification studies, so it would stay in and this would be the "
                     "primary again under another name.",
-                    ({"label": "Remove the exposure from what it drops"},
-                     {"label": "Declare another exposure as an alternative instead"}))
+                    ({"label": "Remove what you study from what it drops"},
+                     {"label": "Declare another column to study as an alternative instead"}))
     unit = None if units is None else np.asarray(pd.Series(units).to_numpy(), dtype=object)
     if unit is not None and len(unit) != len(frame):
         raise ValueError("units must name every row's unit")

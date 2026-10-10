@@ -531,7 +531,7 @@ def odds_ratios(frame: pd.DataFrame, outcome: str, exposures: Sequence[str], *,
         raise ValueError(f"sampling {sampling!r} is not one of {SAMPLINGS}")
     exposures, matching, adjust = list(exposures), list(matching), list(adjust)
     if not exposures:
-        raise ValueError("name at least one exposure")
+        raise ValueError("name at least one column you study")
     _need(frame, [outcome, sets, *exposures, *matching, *adjust])
     matched = sampling == "individually_matched"
     if sampling == "frequency_matched" and not matching:
@@ -544,7 +544,7 @@ def odds_ratios(frame: pd.DataFrame, outcome: str, exposures: Sequence[str], *,
         raise CaseControlRefused(
             f"{_listed(both)} {'was' if len(both) == 1 else 'were'} matched on, so the controls "
             "were chosen to resemble the cases on it: its odds ratio cannot be estimated here.",
-            ({"label": f"Leave {_listed(both)} out of the exposures", "drop": both},),
+            ({"label": f"Leave {_listed(both)} out of what you study", "drop": both},),
             "matching factor")
     if matched:
         return _matched(frame, outcome, exposures, adjust, matching, sets, case, design)
@@ -817,7 +817,7 @@ def _matched(frame: pd.DataFrame, outcome: str, exposures: list[str], adjust: li
     if not fit.converged or np.any(np.abs(fit.beta) * np.where(sd > 0, sd, 1.0) > _HUGE):
         raise CaseControlRefused(
             "The fit did not settle on finite odds ratios.",
-            ({"label": "Leave out the exposure with the largest odds ratio, or merge rare levels",
+            ({"label": "Leave out the column with the largest odds ratio, or merge rare levels",
               "drop": [names[int(np.argmax(np.abs(fit.beta) * sd))]]},),
             "non-convergence of the conditional likelihood")
     rows = tuple(_z_row(t, fit.beta[i], se[i]) for i, t in enumerate(names))
