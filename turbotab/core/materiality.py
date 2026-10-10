@@ -774,38 +774,34 @@ COLLINEAR_THREAD = "shared-collinear-predictors"
 # near dependency; a column whose variance-decomposition proportion on it is 0.5 or more is in it.
 CONDITION_INDEX = 30.0
 IN_DEPENDENCY = 0.5
-CATEGORY_LEVELS = 12  # a text column with more levels than this is not entered as indicators
+def _model_columns(state: Any, frame: Any, columns: Sequence[str]
+                   ) -> tuple[np.ndarray, list[str]] | None:
+    """The model matrix's columns for ``columns`` (no intercept), as the fit builds them, and the
+    column each came from: the pipeline's own steps (``models.pipeline.shared_steps``: the fill,
+    the energy step, what you study in its declared form, text and declared codes one-hot with the
+    first level dropped), never the outcome. Rows the fit leaves out for a blank (no fill answered)
+    are dropped. None where the fit's design cannot be built yet (it asks first)."""
+    from turbotab.core.models.pipeline import (
+        design_spec, normalize_frame, shared_steps, transformer,
+    )
 
-
-def _model_columns(frame: Any, columns: Sequence[str]) -> tuple[np.ndarray, list[str]]:
-    """The model matrix's columns for ``columns`` (no intercept) and the column each came from:
-    a number as it is, a text column of 2 to :data:`CATEGORY_LEVELS` levels as one indicator per
-    level after the first (sorted), anything else left out. Rows with a blank are dropped."""
-    import pandas as pd
-
-    parts: list[np.ndarray] = []
-    owners: list[str] = []
-    for c in columns:
-        if c not in frame.columns:
-            continue
-        s = frame[c]
-        if pd.api.types.is_bool_dtype(s) or pd.api.types.is_numeric_dtype(s):
-            parts.append(pd.to_numeric(s, errors="coerce").to_numpy(dtype=float))
-            owners.append(c)
-            continue
-        levels = sorted(str(v) for v in s.dropna().unique())
-        if not 2 <= len(levels) <= CATEGORY_LEVELS:
-            continue
-        text = s.astype(object)
-        blank = s.isna().to_numpy()
-        for level in levels[1:]:
-            x = (text.astype(str) == level).to_numpy(dtype=float)
-            x[blank] = np.nan
-            parts.append(x)
-            owners.append(c)
-    if not parts:
-        return np.empty((len(frame), 0)), []
-    X = np.column_stack(parts)
+    present = [c for c in dict.fromkeys(columns) if c in frame.columns]
+    raw = normalize_frame(frame[present].reset_index(drop=True))
+    try:
+        spec = design_spec(state, raw, present)
+        if not spec.impute:
+            raw = raw.dropna().reset_index(drop=True)
+        if raw.empty:
+            return None
+        out = transformer(shared_steps(spec)).fit_transform(raw[spec.inputs])
+    except Exception:  # noqa: BLE001 - an answer still owed: the fit asks it, not this noticing
+        return None
+    # Each output column's source: itself, or the longest column it is named after (an indicator
+    # ``gender_male``, an adjusted ``protein_adj``, a form's ``sugar_q2``).
+    by_length = sorted(present, key=len, reverse=True)
+    owners = [next((c for c in by_length if str(name) == c or str(name).startswith(f"{c}_")),
+                   str(name)) for name in out.columns]
+    X = out.to_numpy(dtype=float)
     return X[np.isfinite(X).all(axis=1)], owners
 
 
@@ -854,7 +850,10 @@ def collinear_noticing(state: Any, frame: Any) -> Noticing | None:
     adjusted = [c for c in adjustment_set(state) if c in frame.columns and c != exposure]
     if not adjusted:
         return None
-    X, owners = _model_columns(frame, [exposure, *adjusted])
+    built = _model_columns(state, frame, [exposure, *adjusted])
+    if built is None:
+        return None
+    X, owners = built
     if exposure not in owners or len(X) <= X.shape[1] + 1:
         return None
     eta, pi, s, vt = belsley(X)
@@ -911,8 +910,8 @@ def collinear_noticing(state: Any, frame: Any) -> Noticing | None:
         thread=COLLINEAR_THREAD, family="K5", stage=_place(COLLINEAR_THREAD),
         subject=[exposure, *partners], summary=f"{others} move almost in step",
         measure=share, measure_label=label, decides_by="disclosure",
-        alternative="writing those adjustment terms another way (grouped, or one as the rest of "
-                    "the others)",
+        alternative="rewriting those adjustment terms as other combinations of the same columns "
+                    "(one of them as its difference from the rest), all of them kept",
         predicted=invariance(words, label=f"{label}; exact by theorem ({theorem})"))
 
 
@@ -938,6 +937,26 @@ def noticing_tier(n: Noticing) -> str:
                 has_default=disclosed, m_alt=n.predicted if disclosed else None)
 
 
+def collinear_label(state: Any, noticed: Noticing | None,
+                    pairs: Iterable[Sequence[str]] = ()) -> str:
+    """The label the quest log's collinear line takes on this table (the crosswalk's
+    ``noticing:explore::collinear``, which carries ``shared-collinear-predictors``; its tier in
+    ``quest_noticings.json`` is the ceiling, Decide). Under Predict the pair scan's lever (a penalty
+    in each fold) is a decision: Decide. Under Estimate or Describe the K5 noticing decides
+    (:func:`noticing_tier`): Decide for an exact identity or with what you study in the dependency,
+    For the record outside it. With no near dependency, a pair (``pairs``: explore's, two columns
+    each) that holds what you study is decided at the adjustment question; pairs of adjustment
+    terms alone change nothing here (Frisch–Waugh–Lovell), For the record."""
+    from turbotab.core.quest import DECIDE, RECORD
+
+    if getattr(state, "purpose", None) == "prediction":
+        return DECIDE
+    if noticed is not None:
+        return noticing_tier(noticed)
+    exposure = _exposure(state)
+    return DECIDE if any(exposure in pair[:2] for pair in pairs) else RECORD
+
+
 def dietary_noticings(state: Any, frame: Any, kept: Any = None, kept_without: Any = None
                       ) -> list[Noticing]:
     """The three noticings of the policy's proof, as they fire on this table and these answers."""
@@ -951,16 +970,17 @@ def dietary_noticings(state: Any, frame: Any, kept: Any = None, kept_without: An
 
 
 def noticings_for(state: Any, store: Any, ingest: Mapping[str, Any]) -> list[Noticing]:
-    """The noticings measured on the project's table: the cohort as the answers keep it, and as
-    they would keep it without the energy screen (``stages.rows.compute_cohort``)."""
-    if "dietary" not in (getattr(state, "lens", None) or ()):
-        return []
+    """The noticings measured on the project's table: under the dietary lens, the policy's proof
+    on the cohort as the answers keep it, and as they would keep it without the energy screen
+    (``stages.rows.compute_cohort``); under any lens, the structure among the adjustment terms
+    (:func:`collinear_noticing`, a thread that is not dietary)."""
     from turbotab.core.stages.rows import compute_cohort
 
+    dietary = "dietary" in (getattr(state, "lens", None) or ())
     energy = _energy_column(state)
     rules = list(getattr(state, "exclusions", None) or [])
     kept = kept_without = None
-    if any(_screen(r, energy) for r in rules):
+    if dietary and any(_screen(r, energy) for r in rules):
         _, kept, _ = compute_cohort(store, state, ingest)
         without = state.model_copy(update={"exclusions": [r for r in rules if not _screen(r, energy)]})
         _, kept_without, _ = compute_cohort(store, without, ingest)
@@ -971,7 +991,7 @@ def noticings_for(state: Any, store: Any, ingest: Mapping[str, Any]) -> list[Not
         wanted.add(grain.id_column)
     columns = [c["name"] for c in ingest.get("columns") or [] if c.get("name") in wanted]
     frame = store.materialize(columns)
-    out = dietary_noticings(state, frame, kept, kept_without)
+    out = dietary_noticings(state, frame, kept, kept_without) if dietary else []
     # Every row in the file, before Who's in (the crosswalk's display gate for K5).
     collinear = collinear_noticing(state, frame)
     return out + [collinear] if collinear is not None else out
@@ -1300,7 +1320,7 @@ __all__ = [
     "FAMILY_NAMES", "INSTRUMENTS",
     "Ledger", "LedgerRow", "Movement", "Noticing", "TRIAGE_ROWS", "TriageRow", "adjustment_set",
     "attenuation", "band_of", "belsley", "calibrate", "calibration", "cases_from",
-    "changes_question", "collinear_noticing",
+    "changes_question", "collinear_label", "collinear_noticing",
     "correlation_change", "design_imbalance", "dietary_noticings", "disposition",
     "energy_noticing", "excess_over_chance", "exposure_shift", "finding_done", "in_triage",
     "invariance", "ledger",

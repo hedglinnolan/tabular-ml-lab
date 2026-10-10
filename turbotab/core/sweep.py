@@ -477,15 +477,23 @@ def _modifiers(state: Any) -> set[str]:
             if spec is not None and not _get(spec, "withdrawn")}
 
 
+# The roles that put a column in the model as an adjustment term, with a coefficient of its own.
+ADJUSTMENT_ROLES = ("covariate", "energy")
+
+
 def adjustment_only(state: Any, column: str) -> bool:
-    """Whether ``column`` reaches the focal estimate only as an adjustment term, or not at all:
-    under Estimate or Describe with what you study known, it is not the outcome, not what you
-    study, not a declared modifier, and no answer names it but its role. Unanswered roles or
-    purpose, or Predict (no focal estimate), are the strictest case: False."""
+    """Whether ``column`` reaches the focal estimate only as an adjustment term: under Estimate or
+    Describe with what you study known, its role is a covariate or total energy (a term with a
+    coefficient of its own), it is not the outcome, not what you study, not a declared modifier,
+    and no answer names it but its role. Any other role (a design, time, cluster or flag column,
+    one left out) has no coefficient whose sign a recoding flips, and is not covered. Unanswered
+    roles or purpose, or Predict (no focal estimate), are the strictest case: False."""
     roles = _get(state, "roles")
     purpose = _get(state, "purpose")
     exposures = set(_exposures(state))
     if not roles or purpose is None or purpose == "prediction" or not exposures:
+        return False
+    if roles.get(column) not in ADJUSTMENT_ROLES:
         return False
     if column == _get(state, "target") or column in exposures or column in _modifiers(state):
         return False
@@ -516,7 +524,8 @@ def recommend(state: Any, finding: Mapping[str, Any], open_questions: set[str]
 
     1. A critical finding blocks or refuses part of the analysis (UNDERSTANDING_LAYER §2.2, T1):
        it is acted on first.
-    2. A repair that only recodes a column (``repairs.Family.reparameterizes``) on columns that
+    2. A repair that only recodes a column (``repairs.Family.reparameterizes``), renaming the two
+       values it is written with and no others (no second spelling, no blank), on columns that
        reach the focal estimate only as adjustment terms (:func:`adjustment_only`) changes no
        number here, exactly: the model matrix spans the same space either way
        (Frisch–Waugh–Lovell; ``materiality.invariance``).
@@ -564,14 +573,23 @@ def _repaired(finding: Mapping[str, Any]) -> bool:
     return family_for(str(finding.get("id"))) is not None and bool(finding.get("repairs"))
 
 
+def _relabels(options: Sequence[Mapping[str, Any]]) -> bool:
+    """Every offered option only renames the column's values as written (its params say so:
+    ``repairs._relabels``, two spellings and no blank). Unsaid is not a relabeling."""
+    return bool(options) and all(
+        (_get(_get(o, "decision") or {}, "params") or {}).get("relabels") is True for o in options)
+
+
 def reparameterized(state: Any, finding: Mapping[str, Any]) -> Movement | None:
-    """Where ``finding``'s repair only recodes columns that reach the focal estimate as adjustment
-    terms alone: the predicted movement of the repair on that estimate, exactly 0 by theorem
-    (``materiality.invariance``). None where the rule does not hold."""
+    """Where ``finding``'s repair only renames the values, as written, of columns that reach the
+    focal estimate as adjustment terms alone: the predicted movement of the repair on that
+    estimate, exactly 0 by theorem (``materiality.invariance``). None where the rule does not
+    hold: a family that is not a recoding, a column as written that is more than two spellings or
+    holds a blank (the repair then changes the model matrix's space), or a focal column."""
     family = family_for(str(finding.get("id")))
     columns = [str(c) for c in finding.get("affected_columns") or []]
-    if family is None or not family.reparameterizes or not finding.get("repairs") or not columns \
-            or not all(adjustment_only(state, c) for c in columns):
+    if family is None or not family.reparameterizes or not _relabels(finding.get("repairs") or []) \
+            or not columns or not all(adjustment_only(state, c) for c in columns):
         return None
     focal = _tick(_exposures(state))
     return invariance(f"Coding {_tick(columns)} the other way round only flips the sign of its own "

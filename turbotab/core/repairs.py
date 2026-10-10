@@ -492,6 +492,7 @@ def _offer_binary(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) 
             or len(levels) != 2):
         return []
     counts = {str(k): int(v) for k, v in dict(p.get("counts") or {}).items()}
+    relabels = _relabels(oc.frame[column])
     order = levels
     if p.get("positive_known") and p.get("positive") in levels:  # the usual reading first
         order = [str(p["positive"])] + [v for v in levels if v != p["positive"]]
@@ -503,8 +504,18 @@ def _offer_binary(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) 
             f"{_tick(column)} becomes `1` for {_tick(one)} ({_count(counts.get(one, 0))} rows) and "
             f"`0` for {_tick(zero)} ({_count(counts.get(zero, 0))}).",
             f"{_tick(column)} was recoded with {_tick(one)} as `1` and {_tick(zero)} as `0`.",
-            "values", {"column": str(column), "one": one, "zero": zero}))
+            "values", {"column": str(column), "one": one, "zero": zero, "relabels": relabels}))
     return out
+
+
+def _relabels(s: pd.Series) -> bool:
+    """Whether the repair only renames the column's values as written: exactly two spellings and
+    no blank. Left as text, the column enters the model one-hot encoded on its raw spellings
+    (``models.pipeline``), so two spellings and no blank are one indicator either way, the same
+    space as the repaired 0/1 column (``sweep.reparameterized``). A second spelling of a level
+    ("Male", "male "), a blank token ("n/a") or a blank is not: as written each spelling is an
+    indicator of its own, and a blank is filled as text one way and as a number another."""
+    return bool(len(s)) and not s.isna().any() and int(s.astype(str).nunique()) == 2
 
 
 # DuckDB's trim takes the characters to strip; Python's str.strip() strips these four as well.

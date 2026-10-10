@@ -21,6 +21,10 @@ import numpy as np
 import pytest
 import statsmodels.api as sm
 
+import pandas as pd
+
+from ml import binary_text
+from turbotab import engine
 from turbotab.core import decisions, repairs, sweep
 from turbotab.core.tests.test_confirm_sweep import log_of, planned
 
@@ -33,10 +37,19 @@ INTAKE = {"id": "pack::dietary::implausible_intake", "severity": "warning",
           "summary": "Some energy reports are outside 500 to 5,000 kcal",
           "affected_columns": ["kcal"], "routes_to": "exclusions", "repairs": [],
           "answered_by": None}
+
+
+def _level(one, zero, relabels=True):
+    """A binary repair option as ``repairs._offer_binary`` serves it: ``relabels`` says the column
+    as written is two spellings and no blank, so the repair only renames its two values."""
+    return {"key": "level", "decision": {"params": {"column": "gender", "one": one, "zero": zero,
+                                                    "relabels": relabels}}}
+
+
 GENDER = {"id": "binary_text__gender", "severity": "warning",
           "summary": "gender is two values written as text",
           "affected_columns": ["gender"], "routes_to": None,
-          "repairs": [{"key": "level:male"}, {"key": "level:female"}], "answered_by": None}
+          "repairs": [_level("male", "female"), _level("female", "male")], "answered_by": None}
 FINDINGS = {"findings": [SAS, INTAKE, GENDER]}
 ROLES = {"SEQN": "identifier", "sugar": "exposure", "kcal": "energy", "age": "covariate",
          "gender": "covariate"}
@@ -144,3 +157,93 @@ def test_gender_coded_either_way_gives_the_same_estimate_and_interval_for_sugar(
                                           sugar * female])).fit()
     assert abs(ai.params[1] - bi.params[1]) > 1e-3
     assert ai.params[1] + ai.params[4] == pytest.approx(bi.params[1], abs=1e-10)
+
+
+# ── a pure relabeling only: the column as written is two spellings and no blank ────────────────
+#
+# The theorem covers recoding one indicator into another. Left alone, a text column enters the
+# model one-hot encoded on its raw spellings (``models.pipeline``: OneHotEncoder(drop="first")), so
+# "Male", "male " and "MALE" are three indicators and "n/a" a fourth: the repair then changes the
+# column space, and the estimate moves. A blank is filled one way as text (its most frequent value)
+# and another as a 0/1 number (with a missing indicator under that answer): not a relabeling either.
+
+SPELLINGS = ["Male", "male ", "MALE", "Female", "female", "n/a"]
+
+
+def _frame(gender, n=600, seed=5):
+    rng = np.random.default_rng(seed)
+    g = np.resize(np.asarray(gender, dtype=object), n)
+    rng.shuffle(g)
+    male = np.array([str(v).strip().lower() == "male" for v in g], dtype=float)
+    sugar = rng.gamma(4.0, 20.0, n) + 12 * male + 6 * (g == "MALE")
+    age = rng.uniform(20, 80, n)
+    glucose = 90 + 0.05 * sugar + 0.2 * age + 4 * male + 3 * (g == "n/a") + rng.normal(0, 8, n)
+    return pd.DataFrame({"SEQN": np.arange(n), "sugar": sugar, "kcal": rng.gamma(9, 220, n),
+                         "age": age, "gender": g, "glucose": glucose})
+
+
+def _served(frame):
+    """The binary finding as the findings stage serves it, with the options its repair offers."""
+    raw = engine.shape_finding_to_dict(binary_text.binary_text_finding("gender", frame["gender"]))
+    served = {"id": raw["id"], "severity": raw["severity"], "summary": raw["title"],
+              "affected_columns": ["gender"], "routes_to": None, "answered_by": None}
+    repairs.attach([(raw, served)], frame, "glucose")
+    return served
+
+
+def test_variant_spellings_are_not_a_relabeling_so_the_repair_is_acted_on_in_your_data():
+    frame = _frame(SPELLINGS)
+    served = _served(frame)
+    assert served["repairs"] and not any(o["decision"]["params"]["relabels"]
+                                         for o in served["repairs"])
+    got = sweep.recommend(design(), served, set())
+    assert got[:2] == ("act_on_it", False) and "Your data" in got[2] and "exactly" not in got[2]
+    # The reference: as written it enters as one indicator per raw spelling after the first (four
+    # here), repaired as one 0/1 column; sugar's coefficient differs between the two.
+    y = frame["glucose"].to_numpy(float)
+    base = frame[["sugar", "age"]].to_numpy(float)
+    raw = pd.get_dummies(frame["gender"], drop_first=True).to_numpy(float)
+    assert raw.shape[1] == len(set(SPELLINGS)) - 1
+    coded = frame["gender"].map(lambda v: float(str(v).strip().lower() == "male"))
+    keep = frame["gender"] != "n/a"
+    a = sm.OLS(y, sm.add_constant(np.column_stack([base, raw]))).fit()
+    b = sm.OLS(y[keep], sm.add_constant(np.column_stack([base, coded])[keep])).fit()
+    assert abs(a.params[1] - b.params[1]) > 1e-4
+
+
+@pytest.mark.parametrize("values", [["Male", "male", "Female"], ["male", "female", None]],
+                         ids=["two-spellings", "a-blank"])
+def test_a_second_spelling_or_a_blank_is_not_a_relabeling(values):
+    served = _served(_frame(values))
+    assert served["repairs"] and not any(o["decision"]["params"]["relabels"]
+                                         for o in served["repairs"])
+    assert sweep.recommend(design(), served, set())[0] == "act_on_it"
+
+
+def test_two_spellings_and_no_blank_are_a_relabeling_and_change_no_number():
+    frame = _frame(["Male", "Female"])
+    served = _served(frame)
+    assert all(o["decision"]["params"]["relabels"] for o in served["repairs"])
+    got = sweep.recommend(design(), served, set())
+    assert got[0] == "no_change" and "exactly" in got[2]
+    # The reference: as written, one indicator after the first ("Female" dropped); repaired, `male`
+    # as 1 or `female` as 1. All three span the same space: sugar is identical to 1e-12.
+    y = frame["glucose"].to_numpy(float)
+    base = frame[["sugar", "age"]].to_numpy(float)
+    raw = pd.get_dummies(frame["gender"], drop_first=True).to_numpy(float)
+    fits = [sm.OLS(y, sm.add_constant(np.column_stack([base, g]))).fit()
+            for g in (raw, (frame["gender"] == "Male").to_numpy(float),
+                      (frame["gender"] == "Female").to_numpy(float))]
+    for f in fits[1:]:
+        assert abs(f.params[1] - fits[0].params[1]) < 1e-12
+        assert abs(f.bse[1] - fits[0].bse[1]) < 1e-12
+
+
+@pytest.mark.parametrize("role", ["design", "time", "cluster", "flag", "excluded", "identifier"])
+def test_the_rule_holds_only_for_an_adjustment_term(role):
+    """A column with no coefficient (a design, time or flag column, or one left out) has no sign to
+    flip, and a time column is not guaranteed to enter as one indicator: the repair is acted on."""
+    state = design(roles={**ROLES, "gender": role})
+    got = sweep.recommend(state, GENDER, set())
+    assert got[0] != "no_change" and "coefficient" not in got[2]
+    assert sweep.recommend(design(), GENDER, set())[0] == "no_change"

@@ -199,3 +199,111 @@ def test_the_ledger_names_the_theorem():
     assert "Frisch–Waugh–Lovell" in (row.predicted.theorem or "")
     assert row.recommended == "no_change" and not row.limitation
     assert row.verdict == "not_graded"  # exact: there is nothing to check after the lock
+
+
+# ── the alternative the band-0 claim covers: the same columns, written another way ─────────────
+
+
+def test_the_alternative_is_a_rewrite_within_the_same_columns_not_their_total():
+    """The theorem covers rewriting the adjustment terms within the space they span. Replacing the
+    parts by their total is another model: the reference shows the estimate moving."""
+    n = noticing(table())
+    assert "grouped" not in n.alternative and "same columns" in n.alternative
+    f = table()
+    y = f["glucose"].to_numpy(float)
+    parts = sm.OLS(y, sm.add_constant(f[["sugar", "kcal", *PARTS, "age"]].to_numpy(float))).fit()
+    total = sm.OLS(y, sm.add_constant(f[["sugar", "kcal", "age"]].to_numpy(float))).fit()
+    assert abs(parts.params[1] - total.params[1]) > 1e-3
+
+
+# ── the model matrix the noticing reads is the one the pipeline fits ─────────────────────────
+
+
+def coded_table(n=500, seed=4):
+    """``race`` holds codes 1, 2, 3, 4, 6 (declared as codes), ``site`` fifteen text levels;
+    ``urban`` is nearly the indicator of race 6, ``remote`` nearly that of site s15."""
+    rng = np.random.default_rng(seed)
+    f = table(n=n, seed=seed)
+    f["race"] = rng.choice([1, 2, 3, 4, 6], n)
+    f["site"] = rng.choice([f"s{i:02d}" for i in range(1, 16)], n)
+    f["urban"] = (f["race"] == 6).astype(float) + rng.normal(0, 0.003, n)
+    f["remote"] = (f["site"] == "s15").astype(float) + rng.normal(0, 0.003, n)
+    return f
+
+
+def hand_coded(f, columns):
+    """[1, X] as the fit's design reads it: codes and text one-hot, the first level dropped
+    (pandas, independent of scikit-learn), numbers as they are; then Belsley's proportions."""
+    X, names = [np.ones(len(f))], ["(intercept)"]
+    for c in columns:
+        if c in ("race", "site", "gender"):
+            dummies = pd.get_dummies(f[c], drop_first=True).to_numpy(float)
+            X += list(dummies.T)
+            names += [c] * dummies.shape[1]
+        else:
+            X.append(f[c].to_numpy(float))
+            names.append(c)
+    A = np.column_stack(X)
+    A = A / np.sqrt((A ** 2).sum(axis=0))
+    _u, s, vt = np.linalg.svd(A, full_matrices=False)
+    phi = (vt.T ** 2) / s ** 2
+    return names, phi / phi.sum(axis=1, keepdims=True), s[0] / s
+
+
+@pytest.mark.parametrize("pair", [("race", "urban"), ("site", "remote")],
+                         ids=["declared-codes", "fifteen-text-levels"])
+def test_codes_and_many_text_levels_enter_as_the_fit_enters_them(pair):
+    f = coded_table()
+    columns = ["age", "gender", *pair]
+    n = noticing(f, columns=columns, categorical=["race"])
+    names, pi, eta = hand_coded(f, ["sugar", "kcal", *columns])  # kcal: the energy column
+    near = [k for k in range(len(eta)) if eta[k] >= 30
+            and len({names[j] for j in range(1, len(names)) if pi[j, k] >= 0.5}) >= 2]
+    assert near, "the drawn table holds a near dependency between the pair"
+    inside = {names[j] for k in near for j in range(1, len(names)) if pi[j, k] >= 0.5}
+    assert inside == set(pair)
+    want = max(sum(pi[j, k] for k in near) for j in range(len(names)) if names[j] == "sugar")
+    assert n is not None and n.measure == pytest.approx(want, abs=1e-8)
+    assert set(n.subject) == {"sugar", *pair} and n.predicted.band == 0
+
+
+# ── any lens: the thread is not dietary ─────────────────────────────────────
+
+
+class _Store:
+    def __init__(self, frame):
+        self.frame = frame
+
+    def materialize(self, columns, row_ids=None):
+        return self.frame[list(columns)].copy()
+
+
+@pytest.mark.parametrize("lens", [["clinical"], [], ["dietary"]])
+def test_the_noticing_fires_under_any_lens(lens):
+    f = table()
+    s = state(ADJUST, lens=lens)
+    ingest = {"columns": [{"name": c} for c in f.columns]}
+    got = [n for n in M.noticings_for(s, _Store(f), ingest) if n.thread == THREAD]
+    assert len(got) == 1 and got[0].model_dump() == M.collinear_noticing(s, f).model_dump()
+    if "dietary" not in lens:  # the dietary proof's noticings stay with the dietary lens
+        assert {n.thread for n in M.noticings_for(s, _Store(f), ingest)} == {THREAD}
+
+
+# ── the quest log's collinear line takes the noticing's tier ──────────────────
+
+
+def test_the_collinear_line_is_decide_only_where_what_you_study_is_in_it():
+    outside, inside = noticing(table()), noticing(table(sugar_inside=True),
+                                                  columns=[*ADJUST, "starch"])
+    exact = noticing(table(exact=True))
+    s = state(ADJUST)
+    assert M.collinear_label(s, outside) == quest.RECORD
+    assert M.collinear_label(s, inside) == quest.DECIDE
+    assert M.collinear_label(s, exact) == quest.DECIDE
+    # With no near dependency, a pair of adjustment terms alone changes nothing here; a pair that
+    # holds what you study is decided at the adjustment question.
+    assert M.collinear_label(s, None, [("fat_total", "fat_mon")]) == quest.RECORD
+    assert M.collinear_label(s, None, [("sugar", "carb")]) == quest.DECIDE
+    # Under Predict the pair scan's lever (a penalty in each fold) is the decision.
+    assert M.collinear_label(state(ADJUST, purpose="prediction"), None,
+                             [("fat_total", "fat_mon")]) == quest.DECIDE
