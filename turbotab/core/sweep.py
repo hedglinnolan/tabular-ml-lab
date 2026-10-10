@@ -58,7 +58,9 @@ from turbotab.core.materiality import (
     Movement,
     Noticing,
     TriageRow,
+    finding_done,
     in_triage,
+    limitation_owed,
     triage_rows,
     would_change,
 )
@@ -547,6 +549,8 @@ def triage(state: Any, log: QuestLog, findings: Any, records: Sequence[Any] = ()
         label = DISPOSITION_WORDS[disposition]
         if disposition == "could_bias" and _get(state, "purpose") == "prediction":
             label = "Could bias the score"
+        done = finding_done(state, finding.get("affected_columns") or []) \
+            if disposition == "could_bias" else None
         items.append(TriageItem(
             id=fid, line=line.id if line.id.startswith("finding:") else f"finding:{fid}",
             stage=where, summary=line.name, severity=str(finding.get("severity") or "info"),
@@ -554,7 +558,9 @@ def triage(state: Any, log: QuestLog, findings: Any, records: Sequence[Any] = ()
             question=finding.get("routes_to") if finding.get("routes_to") in QUESTIONS else None,
             recommended=disposition, label=label, reason=reason, blocker=blocker,
             recorded=held[fid].value if stands else None,
-            limitation=disposition == "could_bias"))
+            # Nolan's rule (2026-10-09): a limitation sentence only when it could bias and nothing
+            # was done; a declared sensitivity analysis on its columns counts as done.
+            limitation=disposition == "could_bias" and limitation_owed(1, done), done=done))
     items += [_noticing_item(n, state, held, changed) for n in noticed if in_triage(n)]
     # Blockers first, then by band (a finding, unmeasured, sits with "could bias").
     items.sort(key=lambda i: (not i.blocker, -(1 if i.band is None else i.band)))

@@ -1,5 +1,9 @@
 """The dietary NHANES proof of SURFACING_POLICY §9 ("The smallest end-to-end proof"), and the
-calibration cases it gives ``materiality_calibration.json``.
+calibration cases it gives ``materiality_calibration.json``: the proof's Goldberg screen and a
+ladder of kcal range screens, from one that removes almost no rows to the narrow cut-offs common in
+nutrition cohorts, each predicted before the lock and verified after it on the same pipeline. These
+cases come from the proof's simplified pipeline (:data:`PIPELINE`), not from the capture as
+recorded; the twelve captured reference journeys are still to be added (§2.6).
 
 The state is the ``dietary-inference`` capture's answers up to Models
 (``docs/turbotab-next/review-packets/captures/dietary-inference.json``: the dietary lens, glucose
@@ -25,7 +29,15 @@ from turbotab.core import decisions as d
 from turbotab.core import materiality as M
 from turbotab.core.decisions import ProjectState
 
-JOURNEY = "dietary-inference"
+JOURNEY = "dietary-proof"
+PIPELINE = ("The dietary-inference capture's answers up to Models on the NHANES fixture, with "
+            "complete cases in place of its multiple imputation and every nutrient as a straight "
+            "line in place of its splines: the proof's simplified pipeline, not the capture as "
+            "recorded.")
+GOLDBERG_OUT = "keeping every row (the Goldberg screen out)"
+# The ladder of energy screens beside the proof's Goldberg screen: (low, high) in kcal/day.
+SCREENS = [(100, 9000), (200, 7000), (300, 6000), (400, 5000), (500, 5000), (800, 4200),
+           (1000, 4000), (600, 3500)]
 NUTRIENTS = ["protein", "sugar", "carb", "fat_total", "fat_sat", "fat_mon", "fat_poly"]
 ROLES = {"SEQN": "identifier", "cycle_begin_year": "covariate", "age": "covariate",
          "gender": "covariate", "bp_sys": "covariate", "bp_di": "covariate",
@@ -105,18 +117,31 @@ class Proof:
         self.run.close()
 
 
+def screen_rule(low: float, high: float) -> d.ExclusionRule:
+    return d.ExclusionRule(column="kcal", low=low, high=high, reason="implausible intake")
+
+
+def _cases(proof: Proof, state: ProjectState, alternative: str) -> tuple[list[M.Case], M.Ledger]:
+    noticed = proof.noticings(state)
+    locked = state.model_copy(update={"plan_locked": True})
+    book = M.ledger(locked, noticed, proof.artifacts(locked))
+    return M.cases_from(JOURNEY, book.rows, pipeline=PIPELINE, alternative=alternative), book
+
+
 def dietary_cases() -> tuple[list[M.Case], M.Ledger]:
-    """The proof run once: the noticings before the lock, the sensitivity stage after it, and the
-    calibration cases the ledger gives."""
+    """The proof run on the Goldberg screen and on each screen of the ladder: the noticings before
+    the lock, the sensitivity stage after it, and the calibration cases the ledgers give. The
+    ledger returned is the Goldberg screen's."""
     proof = Proof()
     try:
-        state = proof_state()
-        noticed = proof.noticings(state)
-        locked = state.model_copy(update={"plan_locked": True})
-        book = M.ledger(locked, noticed, proof.artifacts(locked))
+        cases, book = _cases(proof, proof_state(), GOLDBERG_OUT)
+        for low, high in SCREENS:
+            more, _ = _cases(proof, proof_state(exclusions=[screen_rule(low, high)]),
+                             f"keeping every row (the {low:,}–{high:,} kcal screen out)")
+            cases += more
     finally:
         proof.close()
-    return M.cases_from(JOURNEY, book.rows), book
+    return cases, book
 
 
 def build() -> dict[str, Any]:

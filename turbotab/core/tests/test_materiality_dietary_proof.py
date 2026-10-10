@@ -215,17 +215,47 @@ def test_after_the_lock_the_screen_is_verified_against_a_hand_refit(loop, frame)
 
 def test_the_ledger_replays_and_calibrates_the_committed_file(loop):
     """The ledger is derived: folding the same records onto the same answers gives the same rows.
-    Its one calibration case is the committed file's."""
+    Its calibration case is among the committed file's, and the file is what the proof pipeline
+    gives across its ladder of energy screens, labeled as that pipeline and not as the capture."""
     first = M.ledger(loop["locked"], loop["noticings"], loop["artifacts"])
     replayed = C.proof_state()
     for r in loop["records"]:
         replayed = decisions.fold_onto(replayed, r.decision)
     again = M.ledger(replayed, loop["noticings"], loop["artifacts"])
     assert again.model_dump() == first.model_dump()
-    cases = M.cases_from(C.JOURNEY, first.rows)
+    cases = M.cases_from(C.JOURNEY, first.rows, pipeline=C.PIPELINE,
+                         alternative=C.GOLDBERG_OUT)
     assert [(c.thread, c.instrument, c.instrument_post, c.band_post) for c in cases] == [
         (SCREEN, "rows_smd", "sensitivity", 1)]
     committed = M.calibration()
-    assert M.calibrate(cases, committed) == committed, \
-        "run: venv/bin/python -m turbotab.core.tests.materiality_cases --write"
+    assert cases[0].model_dump(mode="json") in committed["cases"]
+    assert "complete cases" in C.PIPELINE and "not the capture" in C.PIPELINE
+    assert C.JOURNEY != "dietary-inference"  # the capture as recorded is not what was run
+    rebuilt = C.build()
+    assert rebuilt == committed, "run: venv/bin/python -m turbotab.core.tests.materiality_cases --write"
     assert committed["instruments"]["rows_smd"]["confusion"]["false_reassurance"] == 0
+
+
+def test_a_narrow_screen_once_said_to_change_nothing_could_bias_and_is_upgraded_openly(proof, frame):
+    """The verifier's case: a 500–5,000 kcal screen removes few rows that differ little on what is
+    adjusted for (rows × SMD ≈ 0.019), yet the every-row refit moves sugar's coefficient by about
+    0.63 of its half-width, since the extreme reports are high-leverage. Calibrated on the ladder
+    of screens, the rows instrument calls it "could bias", never "doesn't change your numbers
+    here"; after the lock the realized band 2 is above it, so the exhibit is relabeled openly."""
+    rule = decisions.ExclusionRule(column="kcal", low=500, high=5000, reason="implausible intake")
+    state = C.proof_state(exclusions=[rule])
+    n = {x.thread: x for x in proof.noticings(state)}[SCREEN]
+    kcal = frame["kcal"]
+    inside = ((kcal >= 500) & (kcal <= 5000)).to_numpy()
+    leaving = ~inside
+    want_pre = leaving.mean() * max(hand_smd(frame[c], leaving) for c in ADJUSTED)
+    assert n.predicted.value == pytest.approx(want_pre, rel=1e-9) and want_pre < 0.05
+    assert n.predicted.band == 1 and M.recommend(n)[0] == "could_bias"
+    locked = state.model_copy(update={"plan_locked": True})
+    row = next(r for r in M.ledger(locked, [n], proof.artifacts(locked)).rows)
+    est, low, high = ols_sugar(frame[inside])
+    every, _, _ = ols_sugar(frame)
+    want_post = abs(every - est) / ((high - low) / 2)
+    assert row.realized.value == pytest.approx(want_post, rel=1e-6) and want_post > 0.5
+    assert row.realized.band == 2 and row.verdict == "upgraded"
+    assert row.label.startswith("Moved more than predicted") and "possibly bias" in row.label

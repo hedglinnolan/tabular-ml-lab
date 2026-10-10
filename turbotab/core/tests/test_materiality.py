@@ -8,6 +8,7 @@ function it checks.
 """
 from __future__ import annotations
 
+import json
 import math
 
 import numpy as np
@@ -21,10 +22,14 @@ from turbotab.core.tests.test_stage_registry import line, record
 
 
 @pytest.fixture
-def calibrated():
-    """The committed calibration with ``rows_smd`` calibrated and the others not."""
-    data = M.calibration()
-    assert data["instruments"]["rows_smd"]["calibrated"]
+def calibrated(monkeypatch):
+    """``rows_smd`` calibrated at its starting conventions (0.05, 0.2) and the other proxies not:
+    the grading is tested here on fixed thresholds; the committed file's own thresholds are tested
+    with the cases they were calibrated on (``test_materiality_dietary_proof``)."""
+    data = json.loads(json.dumps(M.calibration()))
+    rows = data["instruments"]["rows_smd"]
+    rows.update(band_1=0.05, band_2=0.2, calibrated=True)
+    monkeypatch.setattr(M, "calibration", lambda: data)
     return data
 
 
@@ -39,8 +44,19 @@ def test_an_uncalibrated_instrument_never_says_it_changes_nothing():
     assert quiet.band == 1 and not quiet.calibrated
     assert M.disposition(quiet) == "could_bias"
     assert M.would_change(quiet) == (True, "nothing moves")
-    loud = M.movement("exposure_shift", 3.0, "a lot moves")
-    assert loud.band == 1  # capped at 1 either way
+
+
+def test_an_uncalibrated_proxy_is_floored_at_could_bias_and_still_says_act_on_it():
+    """The cap of §2.6 is a floor: an uncalibrated proxy never says band 0, and a movement past its
+    band-2 convention is still "act on it" (§2.3: 1 − λ ≈ 0.6 is act on it; §2.5: drift beyond
+    50% of features over chance is band 2)."""
+    assert M.attenuation(0.38, "sugar").band == 2  # 1 − λ = 0.62
+    assert M.disposition(M.attenuation(0.38, "sugar")) == "act_on_it"
+    assert M.exposure_shift(pd.DataFrame({"x": [0.0, 1, 0, 1]}),
+                            pd.DataFrame({"x": [17.0, 18, 17, 18]}), "x").band == 2  # W1/SD = 34
+    assert M.excess_over_chance(0.64, 0.007, "features").band == 2  # 63% beyond chance
+    assert M.excess_over_chance(0.03, 0.007, "features").band == 1  # below band 1: floored
+    assert M.attenuation(0.95, "sugar").band == 1  # 1 − λ = 0.05: floored, never band 0
 
 
 def test_a_calibrated_instrument_grades_by_its_thresholds(calibrated):
@@ -328,19 +344,57 @@ def test_limitation_sentences_stop_at_the_budget():
 # ── calibration (§2.6) ───────────────────────────────────────────────────────
 
 
+def case(m_pre, m_post, band_post, thread="t"):
+    return M.Case(journey="j", pipeline="p", thread=thread, alternative="a", instrument="rows_smd",
+                  m_pre=m_pre, instrument_post="sensitivity", m_post=m_post, band_post=band_post)
+
+
 def test_calibration_lowers_a_threshold_that_would_reassure_falsely():
     start = M.calibration()
-    cases = [M.Case(journey="j", thread="t", instrument="rows_smd", m_pre=0.03,
-                    instrument_post="sensitivity", m_post=0.3, band_post=1),
-             M.Case(journey="j", thread="u", instrument="rows_smd", m_pre=0.3,
-                    instrument_post="sensitivity", m_post=0.02, band_post=0)]
+    cases = [case(0.03, 0.3, 1), case(0.3, 0.02, 0), case(0.001, 0.01, 0), case(0.06, 0.2, 1),
+             case(0.25, 0.7, 2)]
     out = M.calibrate(cases, start)
     rows = out["instruments"]["rows_smd"]
-    assert rows["band_1"] == 0.03 and rows["calibrated"] and rows["cases"] == 2
-    assert rows["confusion"]["matrix"] == [[0, 0, 0], [0, 1, 0], [1, 0, 0]]
+    assert rows["band_1"] == 0.03 and rows["calibrated"] and rows["cases"] == 5
+    assert rows["confusion"]["matrix"] == [[1, 0, 0], [0, 2, 0], [1, 0, 1]]
     assert rows["confusion"]["false_reassurance"] == 0 and rows["confusion"]["cry_wolf"] == 1
     assert not out["instruments"]["attenuation"]["calibrated"]  # no case: uncalibrated
     assert out["instruments"]["sensitivity"]["calibrated"]
+
+
+def test_a_proxy_says_below_noise_only_on_enough_cases_and_a_band_zero_that_held():
+    """One case is not a calibration (§2.6's guard against false reassurance): a proxy is
+    calibrated, and so may say "doesn't change your numbers here", only with at least the file's
+    minimum number of cases and at least one case it put below noise that stayed below noise
+    after the lock. Short of that it is floored at "could bias"."""
+    start = M.calibration()
+    assert start["min_cases"] >= 5
+    one = M.calibrate([case(0.185, 0.124, 1)], start)["instruments"]["rows_smd"]
+    assert not one["calibrated"] and one["cases"] == 1
+    # Five cases, every one realized above noise: no evidence band 0 is ever right.
+    loud = [case(v, 0.4, 1, thread=str(v)) for v in (0.004, 0.008, 0.012, 0.019, 0.03)]
+    out = M.calibrate(loud, start)["instruments"]["rows_smd"]
+    assert out["band_1"] == 0.004 and not out["calibrated"]
+    assert out["confusion"]["false_reassurance"] == 0
+    # With one that held below noise, it is calibrated below the lowest miss.
+    held = M.calibrate([*loud, case(0.001, 0.01, 0)], start)["instruments"]["rows_smd"]
+    assert held["calibrated"] and held["band_1"] == 0.004
+
+
+def test_the_committed_calibration_reassures_falsely_on_none_of_its_cases():
+    """The file is what ``calibrate`` makes of its own cases, each says where it came from, and no
+    case it calls below noise moved the estimate by τ₀ or more after the lock."""
+    data = M.calibration()
+    cases = [M.Case.model_validate(c) for c in data["cases"]]
+    assert M.calibrate(cases, data) == data
+    assert all(c.pipeline and c.alternative for c in cases)
+    for name, entry in data["instruments"].items():
+        if entry["regime"] == "predicted" and entry.get("cases"):
+            assert entry["confusion"]["false_reassurance"] == 0, name
+    for c in cases:
+        b1, b2, cal = M.thresholds(c.instrument)
+        if cal and c.m_pre < b1:
+            assert c.band_post == 0, c
 
 
 # ── the lock covers the dispositions ─────────────────────────────────────────
@@ -361,3 +415,140 @@ def test_the_locks_digest_covers_the_triage_dispositions():
         digests.append(plan_lock.digest(plan))
     assert digests[0] != digests[1]
     assert plan_lock.TRIAGE not in plan_lock.plan_of(planned())
+
+
+# ── the prediction and the verification measure the same alternative ────────
+
+
+AGE_RULE = decisions.ExclusionRule(column="age", low=20, high=80, reason="adults")
+KCAL_RULE = decisions.ExclusionRule(column="kcal", low=500, high=5000, reason="implausible intake")
+
+
+def screened(**update):
+    from turbotab.core.stages.rows import rule_label
+
+    state = planned(roles={**ROLES_KCAL}, exclusions=[AGE_RULE, KCAL_RULE], **update)
+    art = {"analyses": [{"label": "Primary", "primary": True,
+                         "rules": [rule_label(AGE_RULE), rule_label(KCAL_RULE)]},
+                        {"label": "Without the screen", "primary": False,
+                         "rules": [rule_label(AGE_RULE)]},
+                        {"label": "Every row", "primary": False, "rules": []}],
+           "families": [{"family": "linear", "fits": [
+               fit("Primary", 90, -0.02, -0.03, -0.01),
+               fit("Without the screen", 95, -0.0205, -0.031, -0.01),  # 0.05: the screen
+               fit("Every row", 100, -0.03, -0.04, -0.02)]}]}  # 1.0: the screen and age
+    return state, {"sensitivity": art}
+
+
+ROLES_KCAL = {"SEQN": "identifier", "sugar": "exposure", "age": "covariate", "kcal": "energy"}
+
+
+def test_the_screen_is_verified_on_the_rows_without_the_screen_alone():
+    """The prediction is the screen taken out of the exclusions; the verification is the analysis
+    on the same rows (the other rules kept), never the every-row analysis that also drops them."""
+    state, art = screened(plan_locked=True)
+    row = M.ledger(state, [screen_noticing(0.1)], art).rows[0]
+    assert row.realized.value == pytest.approx(0.0005 / 0.01)
+    assert "without the screen" in row.realized.words
+    # With no analysis on those rows the screen is not verifiable, not verified on other rows.
+    only_every = {"sensitivity": {**art["sensitivity"],
+                                  "analyses": [a for a in art["sensitivity"]["analyses"]
+                                               if a["label"] != "Without the screen"],
+                                  "families": [{"family": "linear", "fits": [
+                                      art["sensitivity"]["families"][0]["fits"][0],
+                                      art["sensitivity"]["families"][0]["fits"][2]]}]}}
+    assert M.ledger(state, [screen_noticing(0.1)], only_every).rows[0].verdict == "not_verifiable"
+    # When the screen is the only rule, the every-row analysis is the rows without it.
+    alone = planned(roles={**ROLES_KCAL}, exclusions=[KCAL_RULE], plan_locked=True)
+    two = sensitivity(fit("Primary", 90, -0.02, -0.03, -0.01),
+                      fit("Every row", 100, -0.023, -0.035, -0.011))
+    assert M.ledger(alone, [screen_noticing(0.1)], {"sensitivity": two}).rows[0].realized.value \
+        == pytest.approx(0.3)
+
+
+def test_the_screen_counts_as_done_only_with_an_analysis_on_the_rows_without_it():
+    frame = pd.DataFrame({"SEQN": range(6), "sugar": [1.0, 2, 3, 4, 5, 6],
+                          "age": [30.0, 40, 50, 60, 70, 80], "kcal": [400.0, 900, 1500, 2000, 2500, 6000]})
+    kept, without = [1, 2, 3, 4], [0, 1, 2, 3, 4, 5]
+    every = decisions.SensitivityAnalysis(label="Every row", rules=[])
+    mine = decisions.SensitivityAnalysis(label="Without the screen", rules=[AGE_RULE])
+    state = planned(roles={**ROLES_KCAL}, exclusions=[AGE_RULE, KCAL_RULE], sensitivity=[every])
+    assert M.reporters_noticing(state, frame, kept, without).done is None
+    state = state.model_copy(update={"sensitivity": [mine]})
+    assert "without the screen" in M.reporters_noticing(state, frame, kept, without).done
+
+
+def test_the_recall_days_are_read_from_the_exposures_own_units():
+    frame = pd.DataFrame({"SEQN": range(4), "sugar": [1.0, 2, 3, 4], "kcal": [1.0, 2, 3, 4]})
+    units = {"sugar": decisions.ColumnUnitSpec(unit="g", days=1)}
+    state = planned(roles={**ROLES_KCAL}, column_units=units,
+                    estimand=decisions.EstimandSpec(exposure="sugar", measure="mean_difference"))
+    n = M.variance_noticing(state, frame)
+    assert "one recall day" in n.predicted.words
+    both = {"sugar": decisions.ColumnUnitSpec(unit="g", days=2),
+            "kcal": decisions.ColumnUnitSpec(unit="kcal", days=1)}
+    n = M.variance_noticing(state.model_copy(update={"column_units": both}), frame)
+    assert "2 recall days averaged" in n.predicted.words
+
+
+def test_a_finding_owes_a_limitation_only_when_nothing_was_done():
+    """Nolan's rule (2026-10-09) holds for findings as for measured noticings: a declared
+    sensitivity analysis on the rows the finding concerns counts as done."""
+    from turbotab.core.tests.test_confirm_sweep import FINDINGS
+
+    findings = {"findings": [f for f in FINDINGS["findings"] if f["severity"] != "critical"]}
+    state = planned()
+    t = sweep.triage(state, log_of(state, findings=findings), findings)
+    age = next(i for i in t.items if i.id == "binary_text__age")
+    assert age.recommended == "could_bias" and age.limitation and age.done is None
+    declared = planned(sensitivity=[decisions.SensitivityAnalysis(label="Adults", rules=[AGE_RULE])])
+    t = sweep.triage(declared, log_of(declared, findings=findings), findings)
+    age = next(i for i in t.items if i.id == "binary_text__age")
+    assert age.recommended == "could_bias" and not age.limitation and "Adults" in age.done
+    assert next(i for i in t.items if i.id == "note__SEQN").limitation is False
+
+
+def test_a_lock_recorded_before_the_triage_entered_the_plan_is_not_changed_by_it():
+    """A lock whose plan holds no triage (recorded before the dispositions were part of it) fixed
+    the answers alone: a confirmed triage in the state is no change to that plan, so a decision
+    made while nothing was shown does not withdraw it. A change to an answer still does, and a
+    lock that holds the triage is changed by a changed disposition."""
+    from types import SimpleNamespace
+
+    state = planned()
+    log = log_of(state)
+    t = sweep.triage(state, log, {"findings": []}, noticed=[noticing("screen", 0.1)])
+
+    def held(value):
+        d = decisions.validate({"kind": "confirm_sweep", "stage": "models", "sweep": "noticings",
+                                "lines": [{"id": "noticing:screen", "key": "screen",
+                                           "value": value}]}, Ctx(log, t))
+        return planned(sweeps=decisions.fold([record(1, d.model_dump(mode="json"))]).sweeps)
+
+    def lock_of(plan):
+        return SimpleNamespace(plan=plan, digest=plan_lock.digest(plan))
+
+    triaged = held("could_bias")
+    old = lock_of({k: v for k, v in plan_lock.plan_of(triaged).items() if k != plan_lock.TRIAGE})
+    assert not plan_lock.plan_changed(old, triaged)
+    assert plan_lock.plan_changed(old, triaged.model_copy(update={"exclusions": [AGE_RULE]}))
+    new = lock_of(plan_lock.plan_of(triaged))
+    assert not plan_lock.plan_changed(new, triaged)
+    assert plan_lock.plan_changed(new, held("no_change"))
+
+
+def test_noisy_replicates_say_act_on_it_and_drop_out_once_the_correction_is_answered():
+    """With replicate recalls λ is measured; 1 − λ past 0.5 is "act on it" even on an
+    uncalibrated proxy (§2.3). The measurement-error answer is its own decision: once answered,
+    the act-on-it noticing drops out of the triage, as the answered energy question does."""
+    frame = pd.DataFrame({"SEQN": ["p", "p", "q", "q", "r", "r"],
+                          "sugar": [1.0, 9, 2, 8, 3, 7], "kcal": [1.0, 2, 3, 4, 5, 6]})
+    state = planned(roles={**ROLES_KCAL}, repeat_kind=decisions.RepeatSpec(repeat_kind="repeats"),
+                    grain=decisions.GrainSpec(grain="repeated", id_column="SEQN"))
+    n = M.variance_noticing(state, frame)
+    assert n.predicted.value > 0.5 and n.predicted.band == 2 and not n.answered
+    assert M.in_triage(n) and M.recommend(n)[0] == "act_on_it"
+    declared = state.model_copy(update={"measurement_error": decisions.MeasurementErrorSpec(
+        method="regression_calibration")})
+    n = M.variance_noticing(declared, frame)
+    assert n.answered and not M.in_triage(n) and "Regression calibration" in n.done

@@ -29,12 +29,14 @@ change your numbers here", "could bias" and "act on it", in two regimes recorded
 
 **Bands and calibration** (§2.4, §2.6). Each instrument has two thresholds in
 ``materiality_calibration.json`` (band 1 "could bias", band 2 "act on it"); the realized ones use
-τ₀ and τ₁. A proxy the calibration set has no case for is *uncalibrated* and its band is capped at
-1: it may say "could bias" but never "doesn't change your numbers here". A movement that changes the
-question (substitution versus addition) is band 2 and never graded by a number; one that cannot be
-measured on these rows (one recall day for λ) is band 1, "not measurable here". :func:`calibrate`
-chooses the thresholds from the cases (the reference journeys' predicted and realized rows) to
-leave no false reassurance, and reports the confusion matrix per instrument.
+τ₀ and τ₁. A proxy is *calibrated* only with at least ``min_cases`` cases and at least one it put
+below noise that stayed below noise after the lock; an uncalibrated proxy is floored at band 1 (the
+cap of §2.6 read as a floor: it may say "could bias" or "act on it", never "doesn't change your
+numbers here"). A movement that changes the question (substitution versus addition) is band 2 and
+never graded by a number; one that cannot be measured on these rows (one recall day for λ) is band
+1, "not measurable here". :func:`calibrate` chooses the thresholds from the cases (each labeled
+with the pipeline it was run on) to leave no false reassurance, and reports the confusion matrix
+per instrument.
 
 **The tier** (§1.3, :func:`tier`): a blocker is Decide; an item that needs a meaning with ``M > 0``
 is Decide; one that changes the question is Decide; a default whose best alternative reaches
@@ -162,7 +164,8 @@ class Movement(BaseModel):
 def band_of(instrument: str, value: float | None, *, changes_question: bool = False,
             not_measurable: bool = False, crosses: bool = False) -> int:
     """The band (0 below noise, 1 could bias, 2 act on it) of a movement (§2.4). Unknown is "could
-    bias"; a proxy without a calibration case is capped at 1, never 0."""
+    bias"; an uncalibrated proxy is floored at 1: never 0, and still 2 past its band-2 convention
+    (§2.3: an attenuation 1 − λ ≈ 0.6 is act on it)."""
     if changes_question or crosses:
         return 2
     if not_measurable or value is None or not math.isfinite(value):
@@ -171,7 +174,7 @@ def band_of(instrument: str, value: float | None, *, changes_question: bool = Fa
     raw = 2 if value >= band_2 else 1 if value >= band_1 else 0
     regime = INSTRUMENTS.get(instrument, ("predicted", ""))[0]
     if regime == "predicted" and not calibrated:
-        return 1
+        return max(raw, 1)
     return raw
 
 
@@ -195,8 +198,8 @@ def disposition(m: Movement) -> Disposition:
 
 def would_change(m: Movement) -> tuple[bool, str]:
     """The Confirm sweep's test where ``M`` is measured: another choice changes a number here when
-    its movement reaches τ_confirm. An uncalibrated proxy is never below it (its band is at least
-    1), so it never says the choice changes nothing."""
+    its movement reaches τ_confirm. An uncalibrated proxy is never below it (its band is floored
+    at 1), so it never says the choice changes nothing."""
     return m.band >= tau_confirm_band(), m.words
 
 
@@ -403,16 +406,19 @@ def _exposure_features(features: Iterable[str], exposure: str | None) -> list[st
     return mine or features
 
 
-def realized_from_sensitivity(artifact: Mapping[str, Any], exposure: str | None
-                              ) -> Movement | None:
-    """The screen's realized movement: the primary's fit beside the analysis without the
-    primary's rules (Banna 2017's every-row analysis), through ``sensitivity.changes_for``; the
-    largest over the exposure's model-matrix columns and the families."""
+def realized_from_sensitivity(artifact: Mapping[str, Any], exposure: str | None,
+                              rules: Sequence[str] = ()) -> Movement | None:
+    """The realized movement of an alternative row set: the primary's fit beside the analysis on
+    the rows ``rules`` keep (their labels, ``stages.rows.rule_label``; none: Banna 2017's every-row
+    analysis), through ``sensitivity.changes_for``; the largest over the exposure's model-matrix
+    columns and the families. None when no analysis was fit on exactly those rows."""
     from turbotab.core.stages.sensitivity import changes_for
 
     analyses = list(artifact.get("analyses") or [])
+    want = sorted(str(r) for r in rules)
     index = next((i for i, a in enumerate(analyses) if not a.get("primary")
-                  and not a.get("rules") and not a.get("refused")), None)
+                  and sorted(str(r) for r in a.get("rules") or []) == want
+                  and not a.get("refused")), None)
     if index is None:
         return None
     best: Movement | None = None
@@ -639,8 +645,25 @@ def _screen(rule: Any, energy: str | None) -> bool:
     return bool(energy) and getattr(rule, "column", None) == energy and kind in ("range", "outside")
 
 
-def _every_row_declared(state: Any) -> bool:
-    return any(not a.rules for a in getattr(state, "sensitivity", None) or [])
+def _labels(rules: Iterable[Any]) -> list[str]:
+    from turbotab.core.stages.rows import rule_label
+
+    return sorted(rule_label(r) for r in rules)
+
+
+def without_screens(state: Any) -> list[str]:
+    """The labels of the primary's rules with the energy screens taken out: the rows the screen's
+    prediction compares against, and so the analysis that verifies it."""
+    energy = _energy_column(state)
+    return _labels(r for r in getattr(state, "exclusions", None) or [] if not _screen(r, energy))
+
+
+def _without_screen_declared(state: Any) -> str | None:
+    """The label of a declared analysis on the rows the primary keeps without its energy screens
+    (every row when the screen is the only rule), or None."""
+    want = without_screens(state)
+    return next((a.label for a in getattr(state, "sensitivity", None) or []
+                 if _labels(a.rules) == want), None)
 
 
 def reporters_noticing(state: Any, frame: Any, kept: Any, kept_without: Any) -> Noticing | None:
@@ -656,8 +679,14 @@ def reporters_noticing(state: Any, frame: Any, kept: Any, kept_without: Any) -> 
     leaving = ~np.isin(base, np.asarray(kept, dtype=np.int64))
     rows = frame.loc[base]
     m = rows_smd(rows, leaving, adjustment_set(state), rule="The energy screen")
-    done = ("The every-row analysis is declared beside the primary (Banna et al. 2017)."
-            if _every_row_declared(state) else None)
+    declared = _without_screen_declared(state)
+    if declared is None:
+        done = None
+    elif not without_screens(state):
+        done = "The every-row analysis is declared beside the primary (Banna et al. 2017)."
+    else:
+        done = (f"An analysis on the rows the other rules keep without the screen "
+                f"(\"{declared}\") is declared beside the primary.")
     return Noticing(
         thread="diet-implausible-reporters", family="S5",
         stage=_place("diet-implausible-reporters"), subject=[energy or ""],
@@ -676,7 +705,9 @@ def variance_noticing(state: Any, frame: Any) -> Noticing | None:
         return None
     energy = _energy_column(state)
     units = getattr(state, "column_units", None) or {}
-    spec = units.get(energy) if energy else None
+    # The exposure's own recall days; the energy column's only where the exposure's are not
+    # recorded (a dietary table's nutrients come from the same recalls).
+    spec = units.get(exposure) or (units.get(energy) if energy else None)
     days = getattr(spec, "days", None) if spec is not None else None
     repeat = getattr(state, "repeat_kind", None)
     grain = getattr(state, "grain", None)
@@ -687,7 +718,8 @@ def variance_noticing(state: Any, frame: Any) -> Noticing | None:
         found = reliability(frame[exposure], frame[person])
     lam = found[0] if found is not None else None
     m = attenuation(lam, exposure, days=days)
-    corrected = getattr(getattr(state, "measurement_error", None), "method", None)
+    answer = getattr(state, "measurement_error", None)
+    corrected = getattr(answer, "method", None)
     done = ("Regression calibration is declared for it." if corrected == "regression_calibration"
             else None)
     return Noticing(
@@ -696,7 +728,7 @@ def variance_noticing(state: Any, frame: Any) -> Noticing | None:
         summary=f"Part of `{exposure}`'s spread is day-to-day noise",
         measure=lam, measure_label=m.label, decides_by="meaning",
         alternative="correcting for day-to-day noise", predicted=m, question=None,
-        answered=False, done=done, verified_by="calibration")
+        answered=answer is not None, done=done, verified_by="calibration")
 
 
 def dietary_noticings(state: Any, frame: Any, kept: Any = None, kept_without: Any = None
@@ -736,6 +768,17 @@ def noticings_for(state: Any, store: Any, ingest: Mapping[str, Any]) -> list[Not
 
 
 # ── the two-phase triage ─────────────────────────────────────────────────────
+
+
+def finding_done(state: Any, columns: Iterable[str]) -> str | None:
+    """What was done about a finding on ``columns``: a declared sensitivity analysis whose rules
+    read one of them counts (Nolan, 2026-10-09), else None."""
+    wanted = {str(c) for c in columns}
+    for a in getattr(state, "sensitivity", None) or []:
+        read = {c for r in a.rules for c in r.reads()}
+        if read & wanted:
+            return f"The sensitivity analysis \"{a.label}\" is declared beside the primary."
+    return None
 
 
 def limitation_owed(band: int, done: str | None) -> bool:
@@ -871,7 +914,8 @@ def _realized(n: Noticing, state: Any, artifacts: Mapping[str, Any]) -> Movement
         return None
     exposure = _exposure(state)
     if n.verified_by == "sensitivity":
-        return realized_from_sensitivity(found, exposure)
+        # The same alternative the prediction measured: the screen taken out, the other rules kept.
+        return realized_from_sensitivity(found, exposure, without_screens(state))
     if n.verified_by == "calibration":
         return realized_from_calibration(found, exposure)
     if n.verified_by == "secondary":
@@ -945,7 +989,9 @@ class Case(BaseModel):
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
     journey: str
+    pipeline: str  # what was run: the capture as recorded, or a stated simplification of it
     thread: str
+    alternative: str
     instrument: str
     m_pre: float
     instrument_post: str
@@ -953,14 +999,18 @@ class Case(BaseModel):
     band_post: int
 
 
-def cases_from(journey: str, rows: Iterable[LedgerRow]) -> list[Case]:
-    """The ledger's rows that calibrate a proxy: a numeric prediction and a realized movement."""
+def cases_from(journey: str, rows: Iterable[LedgerRow], *, pipeline: str,
+               alternative: str | None = None) -> list[Case]:
+    """The ledger's rows that calibrate a proxy: a numeric prediction and a realized movement.
+    ``pipeline``: what was run, said plainly; ``alternative``: the alternative, where the row's own
+    words do not name it (one rule of several tried)."""
     out = []
     for r in rows:
         p, q = r.predicted, r.realized
         if q is None or p.value is None or q.value is None or p.regime != "predicted":
             continue
-        out.append(Case(journey=journey, thread=r.thread, instrument=p.instrument,
+        out.append(Case(journey=journey, pipeline=pipeline, thread=r.thread,
+                        alternative=alternative or r.alternative, instrument=p.instrument,
                         m_pre=round(p.value, 6), instrument_post=q.instrument,
                         m_post=round(q.value, 6), band_post=q.band))
     return out
@@ -976,8 +1026,12 @@ def calibrate(cases: Sequence[Case], start: Mapping[str, Any]) -> dict[str, Any]
     Per proxy instrument: a threshold that would leave a case falsely reassured (predicted band 0,
     realized band ≥ 1) is lowered to that case's predicted value, so no case is; the confusion
     matrix (predicted band × realized band) is reported, with the false reassurances and the
-    cry-wolf cases (predicted ≥ 1, realized 0). An instrument with no case stays uncalibrated."""
+    cry-wolf cases (predicted ≥ 1, realized 0). An instrument is calibrated, and so may say
+    "doesn't change your numbers here", only with at least ``min_cases`` cases and at least one
+    case it put below noise that stayed below noise (a band 0 that held); short of that it is
+    uncalibrated and floored at band 1, its thresholds still reported."""
     out = json.loads(json.dumps(dict(start)))
+    min_cases = int(out.get("min_cases", 5))
     by: dict[str, list[Case]] = {}
     for c in cases:
         by.setdefault(c.instrument, []).append(c)
@@ -999,8 +1053,15 @@ def calibrate(cases: Sequence[Case], start: Mapping[str, Any]) -> dict[str, Any]
         matrix = [[0, 0, 0] for _ in range(3)]
         for c in mine:
             matrix[_raw_band(c.m_pre, b1, b2)][c.band_post] += 1
-        entry["calibrated"] = bool(mine)
+        held = matrix[0][0]
+        entry["calibrated"] = len(mine) >= min_cases and held > 0
         entry["cases"] = len(mine)
+        if mine and not entry["calibrated"]:
+            entry["uncalibrated"] = (
+                f"{len(mine)} case(s), fewer than {min_cases}" if len(mine) < min_cases else
+                "no case it put below noise stayed below noise after the lock")
+        else:
+            entry.pop("uncalibrated", None)
         entry["confusion"] = {"rows": "predicted band 0, 1, 2", "columns": "realized band 0, 1, 2",
                               "matrix": matrix,
                               "false_reassurance": sum(matrix[0][1:]),
@@ -1019,10 +1080,11 @@ __all__ = [
     "Ledger", "LedgerRow", "Movement", "Noticing", "TRIAGE_ROWS", "TriageRow", "adjustment_set",
     "attenuation", "band_of", "calibrate", "calibration", "cases_from", "changes_question",
     "correlation_change", "design_imbalance", "dietary_noticings", "disposition",
-    "energy_noticing", "excess_over_chance", "exposure_shift", "in_triage", "ledger",
+    "energy_noticing", "excess_over_chance", "exposure_shift", "finding_done", "in_triage",
+    "ledger",
     "limitation_owed", "movement", "noticings_for", "outcome_beside_allowed", "paired_folds",
     "realized_from_benchmarks", "realized_from_calibration", "realized_from_e_value",
     "realized_from_secondary", "realized_from_sensitivity", "recommend", "refit", "reliability",
     "reporters_noticing", "rows_smd", "smd", "thresholds", "tier", "triage_rows",
-    "variance_noticing", "verify", "would_change", "write_calibration",
+    "variance_noticing", "verify", "without_screens", "would_change", "write_calibration",
 ]

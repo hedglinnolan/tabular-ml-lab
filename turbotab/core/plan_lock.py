@@ -84,6 +84,17 @@ def plan_of(state: Any) -> dict[str, Any]:
     return plan
 
 
+def plan_changed(lock: Any, state: Any) -> bool:
+    """Whether ``state``'s plan differs from the one ``lock`` recorded. A lock whose plan holds no
+    triage was recorded before the dispositions were part of the plan: it fixed the answers alone,
+    so the triage is left out of the comparison (a confirmed triage then is no change to it)."""
+    plan = plan_of(state)
+    recorded = getattr(lock, "plan", None)
+    if isinstance(recorded, Mapping) and TRIAGE not in recorded:
+        plan.pop(TRIAGE, None)
+    return digest(plan) != getattr(lock, "digest", None)
+
+
 def digest(plan: Mapping[str, Any]) -> str:
     """The plan's SHA-256 over its canonical JSON (keys sorted, no spaces, UTF-8)."""
     text = json.dumps(plan, sort_keys=True, separators=(",", ":"), ensure_ascii=False)

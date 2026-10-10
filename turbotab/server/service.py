@@ -5,6 +5,7 @@ the data layer (``DataStore``) or from a stage artifact.
 """
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import os
@@ -1043,11 +1044,23 @@ class ProjectService:
         state = decisions.fold(records)
         noticed = self._noticed(pid, state)
         pressed = self._pressed(pid, state)
-        artifacts = {}
+        artifacts: dict[str, Any] = {}
         if not materiality_unseen(state, pressed):
-            artifacts = {stage: self._fresh(pid, stage, public=True)
-                         for stage in ("sensitivity", "calibration", "secondary")}
-        return materiality.ledger(state, noticed, artifacts, pressed=pressed)
+            # The realized rows quote the refits' estimates: each artifact comes through the
+            # serving path (WP17's gate and the lock withhold what they withhold), never raw.
+            stages = self.engine.status(pid)
+            for stage in ("sensitivity", "calibration", "secondary"):
+                status = stages.get(stage)
+                if status is None or status.status != "fresh" or not status.key:
+                    continue
+                found = copy.deepcopy(self._artifact(pid, stage, status.key, public=True))
+                artifacts[stage] = self._serve(pid, stage, found, status.key)
+        book = materiality.ledger(state, noticed, artifacts, pressed=pressed)
+        # An estimate quoted is an estimate shown: the lock stands from now on (LOCK_SHOWN), as
+        # when the stage itself is served.
+        for stage in {r.exhibit for r in book.rows if r.realized is not None and r.exhibit}:
+            self._note_shown(pid, stage, artifacts.get(stage))
+        return book
 
     def record(self, pid: str) -> ForTheRecord:
         """Each reached stage's For the record lines (P0.5): the ingest's facts and warnings, the
@@ -1256,8 +1269,7 @@ class ProjectService:
         lock = self._unseen_lock(pid, records) if client else None
         if lock is not None:
             after = decisions.state_after(parsed, ctx)
-            if after is not None and plan_lock.digest(plan_lock.plan_of(after)) != \
-                    getattr(lock.decision, "digest", None):
+            if after is not None and plan_lock.plan_changed(lock.decision, after):
                 self._withdraw_lock(pid, lock, "the plan was changed before then.")
                 records = log.records()
             seen = False
