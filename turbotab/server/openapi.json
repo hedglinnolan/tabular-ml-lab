@@ -11379,7 +11379,7 @@
           "version": {
             "type": "integer",
             "title": "Version",
-            "default": 4
+            "default": 5
           },
           "stages": {
             "items": {
@@ -26587,6 +26587,18 @@
             ],
             "default": null,
             "title": "Record"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
           }
         },
         "required": [
@@ -26601,7 +26613,8 @@
           "groups",
           "detail",
           "lever",
-          "record"
+          "record",
+          "label"
         ],
         "title": "ExploreFinding",
         "type": "object"

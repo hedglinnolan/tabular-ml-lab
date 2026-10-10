@@ -4057,14 +4057,14 @@ In the shelf's registration order (the omics chain's family last), which breaks 
 
 | Outcome | Purpose | Model | Detail |
 |---|---|---|---|
-| regression | prediction | Elastic net regression | Chooses the penalty's strength and its lasso-ridge mix by an inner cross-validation within the training rows it is given. |
-| regression | inference | Elastic net regression | Chooses the penalty's strength and its lasso-ridge mix by an inner cross-validation within the training rows it is given. |
-| binary | prediction | Penalized logistic regression | Chooses the penalty's strength and its lasso-ridge mix by an inner cross-validation within the training rows it is given. |
-| binary | inference | Penalized logistic regression | Chooses the penalty's strength and its lasso-ridge mix by an inner cross-validation within the training rows it is given. |
-| multiclass | prediction | Penalized logistic regression | Chooses the penalty's strength and its lasso-ridge mix by an inner cross-validation within the training rows it is given. |
-| multiclass | inference | Penalized logistic regression | Chooses the penalty's strength and its lasso-ridge mix by an inner cross-validation within the training rows it is given. |
-| ordinal | prediction | Penalized logistic regression | Chooses the penalty's strength and its lasso-ridge mix by an inner cross-validation within the training rows it is given. |
-| ordinal | inference | Penalized logistic regression | Chooses the penalty's strength and its lasso-ridge mix by an inner cross-validation within the training rows it is given. |
+| regression | prediction | Elastic net regression | Chooses the penalty's strength and its lasso-ridge mix along a path, by an inner cross-validation within the training rows it is given. |
+| regression | inference | Elastic net regression | Chooses the penalty's strength and its lasso-ridge mix along a path, by an inner cross-validation within the training rows it is given. |
+| binary | prediction | Penalized logistic regression | Chooses the penalty's strength and its lasso-ridge mix along a path, by an inner cross-validation within the training rows it is given. |
+| binary | inference | Penalized logistic regression | Chooses the penalty's strength and its lasso-ridge mix along a path, by an inner cross-validation within the training rows it is given. |
+| multiclass | prediction | Penalized logistic regression | Chooses the penalty's strength and its lasso-ridge mix along a path, by an inner cross-validation within the training rows it is given. |
+| multiclass | inference | Penalized logistic regression | Chooses the penalty's strength and its lasso-ridge mix along a path, by an inner cross-validation within the training rows it is given. |
+| ordinal | prediction | Penalized logistic regression | Chooses the penalty's strength and its lasso-ridge mix along a path, by an inner cross-validation within the training rows it is given. |
+| ordinal | inference | Penalized logistic regression | Chooses the penalty's strength and its lasso-ridge mix along a path, by an inner cross-validation within the training rows it is given. |
 
 **Not declared, because a family is not a method contract:** options labeled customary and sound, a leash rung per purpose, a storyboard, relations and primary sources (see the gaps).
 
@@ -4128,14 +4128,14 @@ In the shelf's registration order (the omics chain's family last), which breaks 
 
 | Outcome | Purpose | Model | Detail |
 |---|---|---|---|
-| regression | prediction | Histogram gradient boosting | Up to 100 trees of at most 31 leaves; on more than 10,000 rows it stops early on a tenth of its training units, the latest when the folds follow time. |
-| regression | inference | Histogram gradient boosting | Up to 100 trees of at most 31 leaves; on more than 10,000 rows it stops early on a tenth of its training units, the latest when the folds follow time. |
-| binary | prediction | Histogram gradient boosting | Up to 100 trees of at most 31 leaves; on more than 10,000 rows it stops early on a tenth of its training units, the latest when the folds follow time. |
-| binary | inference | Histogram gradient boosting | Up to 100 trees of at most 31 leaves; on more than 10,000 rows it stops early on a tenth of its training units, the latest when the folds follow time. |
-| multiclass | prediction | Histogram gradient boosting | Up to 100 trees of at most 31 leaves; on more than 10,000 rows it stops early on a tenth of its training units, the latest when the folds follow time. |
-| multiclass | inference | Histogram gradient boosting | Up to 100 trees of at most 31 leaves; on more than 10,000 rows it stops early on a tenth of its training units, the latest when the folds follow time. |
-| ordinal | prediction | Histogram gradient boosting | Up to 100 trees of at most 31 leaves; on more than 10,000 rows it stops early on a tenth of its training units, the latest when the folds follow time. |
-| ordinal | inference | Histogram gradient boosting | Up to 100 trees of at most 31 leaves; on more than 10,000 rows it stops early on a tenth of its training units, the latest when the folds follow time. |
+| regression | prediction | Histogram gradient boosting | Its settings are searched inside every training fold, scikit-learn's defaults (100 trees of at most 31 leaves) always among them and used alone below an effective size of 300 (units, events or the rarest class's count). Searched settings stop early from an effective size of 1,500, the defaults above 10,000 training rows, holding back a tenth of the fold's units, the latest when the folds follow time. |
+| regression | inference | Histogram gradient boosting | Its settings are searched inside every training fold, scikit-learn's defaults (100 trees of at most 31 leaves) always among them and used alone below an effective size of 300 (units, events or the rarest class's count). Searched settings stop early from an effective size of 1,500, the defaults above 10,000 training rows, holding back a tenth of the fold's units, the latest when the folds follow time. |
+| binary | prediction | Histogram gradient boosting | Its settings are searched inside every training fold, scikit-learn's defaults (100 trees of at most 31 leaves) always among them and used alone below an effective size of 300 (units, events or the rarest class's count). Searched settings stop early from an effective size of 1,500, the defaults above 10,000 training rows, holding back a tenth of the fold's units, the latest when the folds follow time. |
+| binary | inference | Histogram gradient boosting | Its settings are searched inside every training fold, scikit-learn's defaults (100 trees of at most 31 leaves) always among them and used alone below an effective size of 300 (units, events or the rarest class's count). Searched settings stop early from an effective size of 1,500, the defaults above 10,000 training rows, holding back a tenth of the fold's units, the latest when the folds follow time. |
+| multiclass | prediction | Histogram gradient boosting | Its settings are searched inside every training fold, scikit-learn's defaults (100 trees of at most 31 leaves) always among them and used alone below an effective size of 300 (units, events or the rarest class's count). Searched settings stop early from an effective size of 1,500, the defaults above 10,000 training rows, holding back a tenth of the fold's units, the latest when the folds follow time. |
+| multiclass | inference | Histogram gradient boosting | Its settings are searched inside every training fold, scikit-learn's defaults (100 trees of at most 31 leaves) always among them and used alone below an effective size of 300 (units, events or the rarest class's count). Searched settings stop early from an effective size of 1,500, the defaults above 10,000 training rows, holding back a tenth of the fold's units, the latest when the folds follow time. |
+| ordinal | prediction | Histogram gradient boosting | Its settings are searched inside every training fold, scikit-learn's defaults (100 trees of at most 31 leaves) always among them and used alone below an effective size of 300 (units, events or the rarest class's count). Searched settings stop early from an effective size of 1,500, the defaults above 10,000 training rows, holding back a tenth of the fold's units, the latest when the folds follow time. |
+| ordinal | inference | Histogram gradient boosting | Its settings are searched inside every training fold, scikit-learn's defaults (100 trees of at most 31 leaves) always among them and used alone below an effective size of 300 (units, events or the rarest class's count). Searched settings stop early from an effective size of 1,500, the defaults above 10,000 training rows, holding back a tenth of the fold's units, the latest when the folds follow time. |
 
 **Not declared, because a family is not a method contract:** options labeled customary and sound, a leash rung per purpose, a storyboard, relations and primary sources (see the gaps).
 
@@ -4308,8 +4308,8 @@ In the shelf's registration order (the omics chain's family last), which breaks 
 
 | Outcome | Purpose | Model | Detail |
 |---|---|---|---|
-| regression | prediction | Screened elastic net regression | Keeps the n / log n study factors most correlated with the outcome on each training fold (sure independence screening, Fan & Lv 2008), then chooses the penalty by an inner cross-validation within those rows. |
-| binary | prediction | Screened penalized logistic regression | Keeps the n / log n study factors most correlated with the outcome on each training fold (sure independence screening, Fan & Lv 2008), then chooses the penalty by an inner cross-validation within those rows. |
+| regression | prediction | Screened elastic net regression | Keeps the n / log n study factors most correlated with the outcome on each training fold (sure independence screening, Fan & Lv 2008), then chooses the penalty by an inner cross-validation within those rows, screening again in every inner split. |
+| binary | prediction | Screened penalized logistic regression | Keeps the n / log n study factors most correlated with the outcome on each training fold (sure independence screening, Fan & Lv 2008), then chooses the penalty by an inner cross-validation within those rows, screening again in every inner split. |
 
 **Not declared, because a family is not a method contract:** options labeled customary and sound, a leash rung per purpose, a storyboard, relations and primary sources (see the gaps).
 

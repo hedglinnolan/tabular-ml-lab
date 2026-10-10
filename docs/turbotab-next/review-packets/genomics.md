@@ -258,8 +258,8 @@ Reviewed in full in this packet:
 
 | Outcome | Purpose | Model | Detail |
 |---|---|---|---|
-| regression | prediction | Screened elastic net regression | Keeps the n / log n study factors most correlated with the outcome on each training fold (sure independence screening, Fan & Lv 2008), then chooses the penalty by an inner cross-validation within those rows. |
-| binary | prediction | Screened penalized logistic regression | Keeps the n / log n study factors most correlated with the outcome on each training fold (sure independence screening, Fan & Lv 2008), then chooses the penalty by an inner cross-validation within those rows. |
+| regression | prediction | Screened elastic net regression | Keeps the n / log n study factors most correlated with the outcome on each training fold (sure independence screening, Fan & Lv 2008), then chooses the penalty by an inner cross-validation within those rows, screening again in every inner split. |
+| binary | prediction | Screened penalized logistic regression | Keeps the n / log n study factors most correlated with the outcome on each training fold (sure independence screening, Fan & Lv 2008), then chooses the penalty by an inner cross-validation within those rows, screening again in every inner split. |
 
 **Not declared, because a family is not a method contract:** options labeled customary and sound, a leash rung per purpose, a storyboard, relations and primary sources (see the gaps).
 
