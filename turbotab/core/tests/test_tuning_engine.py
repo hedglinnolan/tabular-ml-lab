@@ -11,11 +11,17 @@ expected value is computed independently of ``models/tuning.py``:
   weighted inner loss refit by hand, each candidate a direct ``HistGradientBoostingRegressor`` on
   the observed inner rows, Σ w·(y − ŷ)² / Σ w written out; the oversample lever's stopping and
   recalibration rows read off spies on the wrapped trees;
-* **T4** perturbation: held-out rows changed (values scaled, outcomes permuted, so class counts
-  hold) leave the fold's record and fit unchanged bit for bit; a training row changes them;
+* **T4** perturbation, held-out rows changed (values scaled, outcomes permuted among them, so
+  class counts hold): handed to the engine's parts beside a fit's rows (V2X_SEAMS row 1) they move
+  no split, stopping set or model; through the store they leave the plan as it was, while a
+  training row's class moves n_plan by hand; through the design and fit stages they leave the
+  plan and every record bit for bit, while one training row moves exactly the records of the fits
+  that train on it (the fixture's own count of the comparison's folds, and the refit);
 * **T9** the floor: a fit with fewer than 2 × K of the rarest class keeps K and is counted;
 * **T13** replay: the same seed reproduces bit for bit; another split seed draws other candidates;
-  pinned replay through the plain path reproduces the deployed predictions with one fit;
+  pinned replay through the plain path, at the seed of the search's own draws recomputed here
+  from the SHA-256 of (split seed, "stopping sets"), reproduces the deployed predictions with one
+  fit; each stopping set is ``train_test_split``'s of its persons at that seed;
 * **T17** one plan, observed through ``observing()`` in every outer fold, bootstrap resample and
   the final refit;
 * **F13** folds of 9,999 and 10,001 rows stop alike under one plan, against scikit-learn's own
@@ -24,7 +30,15 @@ expected value is computed independently of ``models/tuning.py``:
   rows, equals ``plan.fits()`` (searched, with the imbalance lever, out of bag, on a path, and
   with nothing to choose); out-of-bag losses equal direct ``RandomForestRegressor`` fits'; a
   path's pooled losses equal direct ``Ridge`` fits' on the observed splits;
-* Cancel stops a search within about 2 seconds; the estimate counts the plan's fits.
+* Cancel stops a search within about 2 seconds; the estimate counts the plan's fits, its center
+  resolved on the timing sample's outcome and matrix (``settings`` gets both, checked here);
+* out of bag, a row no tree left out is left out of the loss, as the hand computation from each
+  tree's sample does; under the population answer a unit across PSUs joins them (blocks by hand,
+  GroupKFold's identity); a declaration with no early stopping holds the model's switch off,
+  where scikit-learn's own ``"auto"`` would stop;
+* the boundary: ``pipeline.with_plans`` gives a spec the design's plan (by hand), so the fast
+  tier's held-out guarantee builds a tuned family; the shelf and design read every answer a plan
+  reads; every fit the stages make passes the split's seed and the design in a cancel scope.
 """
 from __future__ import annotations
 
@@ -347,42 +361,157 @@ def test_t3_the_oversample_lever_keeps_people_whole_and_never_resamples_a_stoppi
 # ── T4 · no leakage, by perturbation ─────────────────────────────────────────
 
 
-def test_t4_held_out_rows_never_move_a_folds_choice_and_a_training_row_does(probe):
-    rng = np.random.default_rng(21)
-    X = pd.DataFrame(rng.normal(size=(400, 4)), columns=[f"x{i}" for i in range(4)])
-    X.index = pd.Index(np.arange(400) + 1, name="row_id")
-    y = X["x0"].to_numpy() + X["x1"].to_numpy() ** 2 + rng.normal(size=400)
-    fold = rng.permutation(np.arange(400) % 5)
-    n_plan, plan_rows, unit = T.plan_size("regression", y, None, folds=5)
-    assert (n_plan, plan_rows) == (320, 320)  # by hand: ⌊400·4/5⌋
-    plan = T.make_plan(probe, task="regression", loss="mse", n_plan=n_plan, plan_rows=plan_rows,
-                       unit=unit, split_seed=3)
-    assert len(plan.candidates) == 5
-    probe_rows = pd.DataFrame(rng.normal(size=(50, 4)), columns=X.columns)
-    k = 2
-    train, held = fold != k, fold == k
-
-    def fit_fold(Xa, ya):
-        fitted = fit_pipeline(_tuned(probe, plan), Xa.loc[train], ya[train], seed=3)
-        return fitted.tuning_, fitted.predict(probe_rows)
-
-    record, predicted = fit_fold(X, y)
-    # held-out rows changed: values scaled, outcomes permuted among them (counts kept)
-    Xp, yp = X.copy(), y.copy()
-    Xp.loc[held, :] = Xp.loc[held, :].to_numpy() * rng.uniform(0.5, 2.0, size=(held.sum(), 4))
+def _perturbed(X, y, held, rng):
+    """Held-out rows changed: their values scaled, their outcomes permuted among them, so every
+    class count (of all rows, and of the rows kept) holds."""
+    Xp, yp = X.copy(), np.asarray(y).copy()
+    scale = rng.uniform(0.5, 2.0, size=(held.sum(), X.shape[1]))
+    Xp.loc[held, :] = Xp.loc[held, :].to_numpy() * scale
     yp[held] = rng.permutation(yp[held])
-    assert T.plan_size("regression", yp, None, folds=5) == (n_plan, plan_rows, unit)
-    again, again_predicted = fit_fold(Xp, yp)
-    assert again.losses == record.losses and again.chosen == record.chosen
-    assert again.chosen_params == record.chosen_params
-    assert again.chosen_options == record.chosen_options
-    assert np.array_equal(again_predicted, predicted)
-    # one training row changed: the fold's search sees it
+    return Xp, yp
+
+
+def test_t4_rows_outside_a_fits_rows_never_reach_its_splits_its_stopping_set_or_its_model(probe):
+    """The engine's parts take their rows as an argument (V2X_SEAMS row 1), so the data they are
+    handed here holds held-out rows too. Changing those rows (class counts kept) moves no inner
+    split, no stopping set and no fitted model; changing one of the fit's own rows does."""
+    X, y, person = _people(120, 2, task="binary")
+    rng = np.random.default_rng(21)
+    held = np.isin(person, rng.choice(120, 24, replace=False))
+    rows = np.flatnonzero(~held)
+    plan = _plan(probe, "binary", n_plan=1_600)
+    assert plan.inner_k == 3 and plan.early_stopping
+    probe_rows = pd.DataFrame(rng.normal(size=(40, 4)), columns=X.columns)
+
+    def parts(Xa, ya):
+        splits = T.inner_splits_for(plan, Xa, ya, rows, groups=person, seed=11)
+        head = T.fit_head(Pipeline([("model", _trees("binary"))]), Xa, ya, rows, groups=person,
+                          seed=11, stop_share=0.1, classify=True)
+        fitted = T.fit_parts(Pipeline([("model", _trees("binary"))]), Xa, ya, rows,
+                             groups=person, seed=11, stop_share=0.1)
+        return ([(a.tolist(), b.tolist()) for a, b in splits], head.rows.tolist(),
+                head.stopping.tolist(), fitted.predict_proba(probe_rows))
+
+    before = parts(X, y)
+    Xp, yp = _perturbed(X, y, held, rng)
+    assert np.array_equal(np.bincount(yp), np.bincount(y))
+    assert np.array_equal(np.bincount(yp[rows]), np.bincount(y[rows]))
+    after = parts(Xp, yp)
+    assert after[:3] == before[:3]
+    assert np.array_equal(after[3], before[3])
+    # every split and the stopping set hold the fit's rows only (positions into the data)
+    assert all(set(a) | set(b) <= set(rows.tolist()) for a, b in before[0])
+    assert set(before[1]) | set(before[2]) == set(rows.tolist())
+    # one of the fit's own rows changed: its model sees it
     Xt = X.copy()
-    first = X.index[np.flatnonzero(train)[0]]
-    Xt.loc[first, "x0"] += 5.0
-    moved, _ = fit_fold(Xt, y)
-    assert moved.losses != record.losses
+    Xt.iloc[rows[0], 0] += 50.0
+    assert not np.array_equal(parts(Xt, y)[3], before[3])
+
+
+def test_t4_the_plan_reads_the_training_rows_counts_and_never_a_held_out_row(probe):
+    """The plan reads the outcome's class counts (an allowed read): through the store, held-out
+    rows changed with the counts kept leave it as it was; a training row's class moves n_plan, by
+    hand."""
+    from turbotab.core.graph import Bundle
+    from turbotab.core.stages.modeling import tuning_plans
+
+    rng = np.random.default_rng(6)
+    ids = np.arange(500) + 1
+    y = (rng.random(500) < 0.3).astype(int)
+    train = rng.random(500) < 0.8
+    assignment = pd.DataFrame({"row_id": ids, "partition": np.where(train, "train", "holdout"),
+                               "fold": np.where(train, np.arange(500) % 5, -1)})
+    split = Bundle(data={"folds": 5, "seed": 9, "grouped_by": None},
+                   frames={"assignment": assignment})
+
+    def plan_of(outcome):
+        table = pd.DataFrame({"y": outcome, "x": rng.normal(size=500)},
+                             index=pd.Index(ids, name="row_id"))
+
+        class Store:
+            columns = list(table.columns)
+
+            def materialize(self, columns, row_ids):
+                return table.loc[np.asarray(row_ids), list(columns)]
+
+        state = SimpleNamespace(target="y", split=None, survey=None, purpose="prediction")
+        ctx = SimpleNamespace(state=state, inputs={"split": split})
+        return tuning_plans(ctx, "binary", [probe], store=Store(), train_ids=ids[train])[probe.key]
+
+    plan = plan_of(y)
+    events = int(min(y[train].sum(), (1 - y[train]).sum()))
+    assert plan.n_plan == events * 4 // 5 and plan.unit == "events"  # by hand: ⌊events·4/5⌋
+    permuted = y.copy()
+    permuted[~train] = rng.permutation(y[~train])
+    assert permuted.sum() == y.sum()
+    assert plan_of(permuted) == plan
+    flipped = y.copy()
+    flipped[np.flatnonzero(train & (y == 0))[:5]] = 1  # five more training events
+    assert plan_of(flipped).n_plan == (events + 5) * 4 // 5
+
+
+def test_t4_through_the_stages_held_out_rows_move_nothing_and_a_training_row_moves_its_folds(
+        tmp_path, monkeypatch):
+    """Through the design and fit stages, every fit of a tuned family recorded: the held-out
+    partition changed (values scaled, outcomes permuted among its rows) leaves the plan and every
+    record (losses, choice, settings) bit for bit; one training row changed moves exactly the
+    records of the fits that train on it: the comparison's folds that hold it (the fixture's own
+    count of the fit stage's folds) and the final refit."""
+    from turbotab.core.models import get_family
+    from turbotab.core.stages.modeling import design_stage, fit_stage
+    from turbotab.core.tests import modeling_fixtures as mf
+
+    monkeypatch.setattr(get_family("boosted_trees"), "tuning", replace(TREES, max_drawn=2))
+    seen: list[tuple[frozenset, tuple]] = []
+    original = T._tuned_fit
+
+    def recorded(pipe, X, y, **kw):
+        out = original(pipe, X, y, **kw)
+        r = out.tuning_
+        seen.append((frozenset(X.index.tolist()),
+                     (r.plan, r.losses, r.chosen, tuple(sorted(r.chosen_params.items())),
+                      r.inner_k_used, r.below_floor, r.n_fits)))
+        return out
+
+    monkeypatch.setattr(T, "_tuned_fit", recorded)
+    frame = mf.nhanes_like(500, seed=3)  # 400 training rows: n_plan 320, so the plan searches
+    split = mf.split_bundle(frame.index.to_numpy(), seed=4)
+    st = mf.state(models=["boosted_trees"])
+    ti = mf.target_info("regression")
+
+    def run(table, folder):
+        paths = mf.ingest_frame(table, tmp_path / folder)
+        design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
+        seen.clear()
+        fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
+        records = dict(seen)
+        assert len(records) == len(seen)  # each fit's training rows its own
+        return design.objects["spec"]["plans"], records
+
+    plans, records = run(frame, "a")
+    plan = T.TuningPlan.from_dict(plans["boosted_trees"])
+    assert len(plan.candidates) == 3 and plan.inner_k == 3  # a search, so choices can move
+    a = split.frames["assignment"]
+    held = a.set_index("row_id").loc[frame.index, "partition"].to_numpy() == "holdout"
+    rng = np.random.default_rng(17)
+    changed = frame.copy()
+    numbers = [c for c in frame.select_dtypes("number").columns
+               if c not in ("SEQN", "cycle_begin_year", "glucose")]
+    changed.loc[held, numbers] = (changed.loc[held, numbers].to_numpy()
+                                  * rng.uniform(0.5, 2.0, size=(held.sum(), len(numbers))))
+    changed.loc[held, "glucose"] = rng.permutation(changed.loc[held, "glucose"].to_numpy())
+    plans_p, records_p = run(changed, "b")
+    assert plans_p == plans and records_p == records
+    # one training row changed: the fits that train on it move, and no other
+    row = int(a.loc[a["partition"] == "train", "row_id"].iloc[0])
+    moved = frame.copy()
+    moved.loc[row, "bmi"] += 40.0
+    moved.loc[row, "glucose"] += 60.0
+    plans_m, records_m = run(moved, "c")
+    assert plans_m == plans and set(records_m) == set(records)
+    every = frozenset(a.loc[a["partition"] == "train", "row_id"].tolist())
+    expected = {s for s in mf.comparison_train_sets(split) | {every} if row in s}
+    assert {s for s in records if records_m[s] != records[s]} == expected
 
 
 def test_t4_a_class_outcomes_plan_reads_its_counts_so_the_perturbation_keeps_them():
@@ -438,12 +567,24 @@ def test_t13_the_same_seed_reproduces_another_draws_other_candidates_and_pinned_
     other = _plan(probe, n_plan=1_600, seed=8)
     assert [c.values for c in other.candidates[1:]] != [c.values for c in plan.candidates[1:]]
     # pinned replay: the plain pipeline at the recorded settings, through the plain path at the
-    # split's seed, is one fit and the deployed predictions
+    # seed of the search's own draws (SHA-256 of the split's seed and "stopping sets"), is one fit
+    # and the deployed predictions
+    own = _seed(plan.split_seed, "stopping sets")
     SEEN.clear()
-    pinned = fit_pipeline(_tuned(probe, plan).at(a.chosen_params), X, y, groups=person,
-                          seed=plan.split_seed)
+    pinned = fit_pipeline(_tuned(probe, plan).at(a.chosen_params), X, y, groups=person, seed=own)
     assert type(pinned) is Pipeline and len(SEEN) == 1
     assert np.array_equal(pinned.predict(X), first.predict(X))
+    # a refit that stops early draws its stopping persons at that seed: the replay needs it
+    stopping = _plan(probe, n_plan=1_600, plan_rows=12_000, mode="standard")
+    assert stopping.standard_stops and len(stopping.candidates) == 1
+    deployed = fit_pipeline(_tuned(probe, stopping), X, y, groups=person,
+                            seed=stopping.split_seed)
+    assert deployed.tuning_.chosen_params["early_stopping"] is True
+    at = _tuned(probe, stopping).at(deployed.tuning_.chosen_params)
+    replay = fit_pipeline(clone(at), X, y, groups=person, seed=own)
+    assert np.array_equal(replay.predict(X), deployed.predict(X))
+    raw = fit_pipeline(clone(at), X, y, groups=person, seed=stopping.split_seed)
+    assert not np.array_equal(raw.predict(X), deployed.predict(X))
     # the refit is a direct trees fit at the chosen parameters when it does not stop early
     if not a.chosen_params["early_stopping"]:
         direct = HistGradientBoostingRegressor(random_state=0).set_params(**a.chosen_params)
@@ -599,7 +740,11 @@ def test_t6_out_of_bag_scores_each_candidate_once_as_a_direct_forest_does(monkey
     for c, candidate in enumerate(plan.candidates):
         direct = RandomForestRegressor(n_estimators=20, oob_score=True, random_state=0,
                                        **candidate.values).fit(X, y)
-        by_hand = float(np.mean((y - direct.oob_prediction_) ** 2))
+        # a row no tree left out has no out-of-bag prediction (scikit-learn writes 0 there)
+        kept = np.zeros(len(y), dtype=bool)
+        for sample in direct.estimators_samples_:
+            kept |= ~np.isin(np.arange(len(y)), sample)
+        by_hand = float(np.mean((y[kept] - direct.oob_prediction_[kept]) ** 2))
         assert fitted.tuning_.losses[c] == pytest.approx(by_hand, rel=1e-12)
 
 
@@ -801,3 +946,259 @@ def test_the_design_holds_the_plan_and_every_fit_of_the_fit_stage_follows_it(tmp
     assert len(drawn) >= 10 * 5 + 1  # the comparison's folds and the final refit, at least
     assert all(d.plan == plan for d in drawn)
     assert fit.objects["fitted"]["boosted_trees"].tuning_.plan == plan
+
+
+# ── a tuned family wherever a pipeline is built ──────────────────────────────
+
+
+def test_with_plans_gives_a_spec_the_plan_the_design_would_make(probe):
+    from turbotab.core.models.pipeline import build_pipeline, with_plans
+
+    X, y, person = _people(150, 2)
+    spec = with_plans(_spec(), [probe], "regression", y, units=person, folds=5, split_seed=9)
+    plan = T.TuningPlan.from_dict(spec.plans[probe.key])
+    # by hand: 150 persons in 300 rows, 5 folds: ⌊150·4/5⌋ persons, ⌊300·4/5⌋ rows, the seed given
+    assert (plan.n_plan, plan.plan_rows, plan.unit, plan.split_seed) == (120, 240, "units", 9)
+    assert isinstance(build_pipeline(spec, probe, "regression", "prediction", 300, 2),
+                      TunedPipeline)
+    # one row per person reads no units, as the design stage does
+    alone = with_plans(_spec(), [probe], "regression", y, units=np.arange(300), split_seed=9)
+    assert T.TuningPlan.from_dict(alone.plans[probe.key]).n_plan == 240
+    # an untuned family adds no plan
+    linear = SimpleNamespace(key="plain", tasks=("regression",), tuning=None)
+    assert with_plans(_spec(), [linear], "regression", y).plans is None
+
+
+def test_the_held_out_guarantee_builds_a_tuned_family_from_its_plan(monkeypatch):
+    """The fast tier's held-out guarantee builds every registered family; a tuned one is built
+    from a plan there too, so it holds (held-out rows through the training-fitted steps, those
+    steps the training rows' own) for boosted trees given a probe declaration, under the plain
+    design, the imbalance lever and a selection step."""
+    from turbotab.core.models import get_family
+    from turbotab.core.tests import test_heldout_guarantee as H
+
+    monkeypatch.setattr(get_family("boosted_trees"), "tuning", TREES)
+    frame = H._table()
+    for task, option in (("regression", "as_given"), ("binary", "lever_imbalance_oversample"),
+                         ("regression", "select_univariable")):
+        H.test_held_out_predictions_are_the_training_fitted_steps_applied_by_hand(
+            frame, "boosted_trees", task, option)
+    final, *_ = H._fitted("boosted_trees", "regression", H.OPTIONS["as_given"](), frame)
+    assert isinstance(final, TunedPipeline) and final.tuning_.plan.family == "boosted_trees"
+
+
+def test_the_stages_that_make_plans_read_every_answer_a_plan_reads():
+    """The shelf and the design make the plans (the shelf to count their fits), so each reads
+    every answer a plan reads: the levers and the selection step (out of bag or not, the
+    imbalance correction), the survey answer (PSUs, the weighted loss) and the purpose."""
+    from turbotab.core.stages import build_graph
+
+    stages = {s.name: s for s in build_graph().stages()}
+    for name in ("shelf", "design"):
+        assert {"levers", "selection", "survey", "purpose"} <= set(stages[name].reads), name
+
+
+def test_every_stage_fit_takes_the_splits_seed_and_design_inside_a_cancel_scope():
+    """F15: every fit the fit, substitution and evaluation stages make passes the split's seed and
+    the design, inside a cancel scope, so a tuned family searches as planned wherever it is
+    refit and a pressed Cancel stops it."""
+    import ast
+    import inspect
+
+    from turbotab.core.stages import evaluation, modeling
+
+    def calls(node, scoped):
+        if isinstance(node, ast.With):
+            scoped = scoped or any(isinstance(i.context_expr, ast.Call)
+                                   and getattr(i.context_expr.func, "id", None) == "cancel_scope"
+                                   for i in node.items)
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "fit_pipeline":
+            yield node, scoped
+        for child in ast.iter_child_nodes(node):
+            yield from calls(child, scoped)
+
+    found = 0
+    for module in (modeling, evaluation):
+        for call, scoped in calls(ast.parse(inspect.getsource(module)), False):
+            found += 1
+            where = f"{module.__name__}:{call.lineno}"
+            assert {"seed", "design"} <= {k.arg for k in call.keywords}, where
+            assert scoped, where
+    assert found >= 5
+
+
+# ── early stopping: the plan alone decides ───────────────────────────────────
+
+
+def test_a_tuned_fit_stops_early_only_where_its_plan_says(monkeypatch):
+    """A family whose declaration names no early stopping, around trees that keep scikit-learn's
+    "auto" (which stops above 10,000 rows on a split it draws by position: F11, F13), never stops
+    early in a tuned fit: the switch is held off in every fit and recorded. A model with no
+    switch (the forest) records none."""
+    SEEN.clear()
+    decl = TuningDecl("search", dimensions=TREES.dimensions[:2],
+                      standard={"learning_rate": 0.1, "max_leaf_nodes": 8},
+                      space_version="probe_plain/1", max_drawn=2)
+    family = _family("probe_plain", decl, _trees, tasks=("regression",))
+    monkeypatch.setitem(B._REGISTRY, family.key, family)
+    rng = np.random.default_rng(13)
+    X = pd.DataFrame(rng.normal(size=(10_001, 3)), columns=["a", "b", "c"])
+    y = X["a"].to_numpy() + rng.normal(size=10_001)
+    assert HistGradientBoostingRegressor(max_iter=15, random_state=0).fit(X, y).do_early_stopping_
+    plan = _plan(family, n_plan=12_000, plan_rows=12_000, mode="standard")
+    fitted, drawn = _observed(lambda: fit_pipeline(_tuned(family, plan), X, y, seed=7))
+    assert fitted[-1].do_early_stopping_ is False
+    assert fitted.tuning_.chosen_params["early_stopping"] is False
+    assert [d.stopping for d in drawn] == [None] and SEEN == [(10_001, 0)]
+    forest = _family("probe_forest", FOREST,
+                     lambda task, *a: RandomForestRegressor(n_estimators=5, random_state=0),
+                     tasks=("regression",))
+    monkeypatch.setitem(B._REGISTRY, forest.key, forest)
+    Xs, ys, _ = _people(40, 1)
+    record = fit_pipeline(_tuned(forest, _plan(forest, n_plan=100)), Xs, ys, seed=7).tuning_
+    assert "early_stopping" not in record.chosen_params
+
+
+# ── out of bag: only rows some tree left out ─────────────────────────────────
+
+
+def test_t6_out_of_bag_scores_only_rows_some_tree_left_out(monkeypatch):
+    """scikit-learn predicts 0 for a row no tree left out (it counts such a row once), so with few
+    trees the out-of-bag loss leaves those rows out, as the hand computation does: each tree
+    predicts the rows outside its sample (``estimators_samples_``), averaged per row over the
+    trees that left it out."""
+    import warnings
+
+    forest = _family("probe_forest", FOREST,
+                     lambda task, *a: RandomForestRegressor(n_estimators=3, oob_score=True,
+                                                            random_state=0),
+                     tasks=("regression",))
+    monkeypatch.setitem(B._REGISTRY, forest.key, forest)
+    X, y, _ = _people(60, 1)
+    plan = _plan(forest, n_plan=400, out_of_bag=True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # "Some inputs do not have OOB scores"
+        fitted = fit_pipeline(_tuned(forest, plan), X, y, seed=7)
+        for c, candidate in enumerate(plan.candidates):
+            direct = RandomForestRegressor(n_estimators=3, random_state=0,
+                                           **candidate.values).fit(X, y)
+            Xa = X.to_numpy(dtype=np.float32)
+            total, count = np.zeros(len(y)), np.zeros(len(y))
+            for tree, sample in zip(direct.estimators_, direct.estimators_samples_):
+                out = np.setdiff1d(np.arange(len(y)), sample)
+                total[out] += tree.predict(Xa[out])
+                count[out] += 1
+            kept = count > 0
+            assert 0 < (~kept).sum() < len(y)  # some row was never left out
+            by_hand = float(np.mean((y[kept] - total[kept] / count[kept]) ** 2))
+            assert fitted.tuning_.losses[c] == pytest.approx(by_hand, rel=1e-12)
+
+
+# ── the population answer: a unit across PSUs ────────────────────────────────
+
+
+def test_t3_under_the_population_answer_a_unit_across_psus_joins_them(probe):
+    """A unit not nested in one PSU joins the PSUs it sits in, so neither a unit nor a PSU is ever
+    split between an inner split's two sides. By hand: persons straddle PSUs 0|1 and 0|2, 0|2 and
+    1|1, and 2|1 and 2|2, so those PSUs fall into two blocks, each named by its first PSU as text;
+    the inner splits are GroupKFold's over the blocks at the derived seed."""
+    X, y, stratum, psu, w = _nhanes_shaped()
+    person = np.arange(300) // 2  # two rows each, nested in the PSUs (10 rows a PSU)
+    for a, b in ((9, 10), (19, 20), (49, 50)):
+        person[b] = person[a]  # rows 9|10, 19|20 and 49|50 sit in neighboring PSUs
+    plan = _plan(probe, n_plan=400, psus=30, weighted=True)
+    assert plan.inner_k == 3
+    design = T.FitDesign(strata=stratum, psu=psu, weights=w)
+    fitted, drawn = _observed(lambda: fit_pipeline(_tuned(probe, plan), X, y, groups=person,
+                                                   design=design, seed=plan.split_seed))
+    label = np.asarray([f"{s}|{p}" for s, p in zip(stratum, psu)], dtype=object)
+    block = label.copy()
+    block[np.isin(label, ["0|2", "1|1"])] = "0|1"
+    block[label == "2|2"] = "2|1"
+    of_person = pd.Series(person, index=X.index)
+    of_psu = pd.Series(label, index=X.index)
+    inner = [d for d in drawn if d.kind == "inner"]
+    assert len(inner) == 3
+    for d in inner:
+        assert not set(of_person[d.train]) & set(of_person[d.validation])
+        assert not set(of_psu[d.train]) & set(of_psu[d.validation])
+    expected = _group_kfold(block, 3, _seed(plan.split_seed, "inner splits"))
+    assert [sorted(d.validation) for d in inner] == [sorted(X.index[e]) for e in expected]
+
+
+# ── seeds: every draw of a search from the split's, by SHA-256 ───────────────
+
+
+def test_t13_a_searchs_stopping_sets_and_nested_splits_draw_at_a_derived_seed(probe, monkeypatch):
+    """RECIPES §4.7: inner splits, and stopping sets likewise, are seeded from the SHA-256 of the
+    split's seed and their name, never the split's seed itself. Each inner split's stopping
+    persons are scikit-learn's ``train_test_split`` of its persons, sorted as text, at
+    (split seed, "stopping sets"); every head and model fit of the search draws there."""
+    from sklearn.model_selection import train_test_split
+
+    X, y, person = _people(80)
+    plan = _plan(probe, n_plan=1_600)
+    own = _seed(plan.split_seed, "stopping sets")
+    assert own != plan.split_seed
+    seeds: list[int] = []
+    for name in ("fit_head", "fit_model"):
+        original = getattr(T, name)
+
+        def spied(*a, _original=original, **kw):
+            seeds.append(kw["seed"])
+            return _original(*a, **kw)
+
+        monkeypatch.setattr(T, name, spied)
+    _, drawn = _observed(lambda: fit_pipeline(_tuned(probe, plan), X, y, groups=person,
+                                              seed=plan.split_seed))
+    assert seeds and set(seeds) == {own}
+    of = pd.Series([str(p) for p in person], index=X.index)
+    for d in (d for d in drawn if d.kind == "inner"):
+        names = np.unique(of[np.concatenate([d.train, d.stopping])].to_numpy())
+        _, chosen = train_test_split(names, test_size=max(1, int(round(0.1 * len(names)))),
+                                     random_state=own)
+        assert set(of[d.stopping]) == set(chosen)
+
+
+# ── the time estimate resolves the center on the timing rows ─────────────────
+
+
+def test_the_center_is_resolved_on_the_timing_rows_outcome_and_matrix(probe, monkeypatch):
+    """``settings`` is always called with the fit's outcome and model matrix: ``at`` a candidate
+    takes the rows it will be fit on, and the estimate passes its timing sample, so a family
+    whose settings read the outcome (XGBoost's hessian) is timed at its center."""
+    from turbotab.core.decisions import ProjectState
+    from turbotab.core.models import cost
+
+    def settings(values, *, task, n_units, n_rows, y, Z, plan):
+        assert y is not None and Z is not None and len(y) == len(Z) == n_rows
+        return {**values, "l2_regularization": float(np.var(np.asarray(y)))}
+
+    family = _family("probe_set", TREES, _trees, settings=settings)
+    monkeypatch.setitem(B._REGISTRY, family.key, family)
+    plan = _plan(family, n_plan=400)
+    pipe = _tuned(family, plan)
+    with pytest.raises(TypeError):
+        pipe.at(T.center(plan))
+    X, y, person = _people(60, 2)
+    pinned = pipe.at(T.center(plan), X=X, y=y, groups=person)
+    assert type(pinned) is Pipeline
+    assert pinned[-1].get_params()["l2_regularization"] == pytest.approx(float(np.var(y)))
+    rng = np.random.default_rng(0)
+    frame = pd.DataFrame({"x0": rng.normal(size=120), "x1": rng.normal(size=120)})
+    frame["y"] = frame["x0"] + rng.normal(size=120)
+
+    class Store:
+        def materialize(self, columns, ids):
+            return frame.loc[np.asarray(ids), list(columns)]
+
+    timed = []
+    monkeypatch.setattr(cost, "time_one_fit", lambda pipeline, X, y: timed.append(pipeline) or 0.5)
+    state = ProjectState(target="y", task="regression", purpose="prediction",
+                         roles={"x0": "exposure", "x1": "covariate"})
+    out = cost.estimate_fits(Store(), state, "regression", np.arange(120), [family], folds=5,
+                             plans={family.key: plan})
+    assert out[family.key].seconds == 0.5 * 5 * plan.fits()
+    [timed_pipeline] = timed
+    by_hand = float(np.var(frame["y"].to_numpy()))  # the timing sample is every row here
+    assert timed_pipeline[-1].get_params()["l2_regularization"] == pytest.approx(by_hand)

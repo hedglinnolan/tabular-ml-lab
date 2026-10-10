@@ -490,6 +490,75 @@ def reads_outcome_before_model(levers: Mapping[str, Any] | None,
     return family.preprocess is not None
 
 
+def make_plans(families: Sequence[Any], task: str, y: Any, *, units: Any = None, folds: int = 5,
+               order: Any = None, split_seed: int = 0, psus: int | None = None,
+               population: bool = False, levers: Mapping[str, Any] | None = None,
+               selection: Mapping[str, Any] | None = None, strict: bool = True) -> dict[str, Any]:
+    """Each tuned family's one plan (``tuning.make_plan``; RECIPES §4.2), by family key, for the
+    headline split's training rows ``y`` cut into ``folds`` outer folds; {} when no family is
+    tuned for ``task``. What the design stage makes (``stages.modeling.tuning_plans`` reads these
+    inputs from the store and the split) and what a test or a stage that builds a pipeline outside
+    it uses (:func:`with_plans`).
+
+    ``units``: each row's unit (None, or one row per unit: every row its own); ``order``: each
+    row's time when the folds follow it; ``split_seed``: the split's; ``psus``: the fewest PSUs in
+    any outer training fold under the population answer (``population``: the inner loss is
+    weighted). A forest scores out of bag only where every row is its own unit, the folds do not
+    follow time, the sample answer applies and no step before the model may read the outcome
+    (:func:`reads_outcome_before_model`); the imbalance correction makes every candidate the
+    wrapped model. ``strict=False`` leaves out a family whose plan is refused (the shelf's
+    estimate) instead of raising."""
+    from typing import get_args
+
+    from turbotab.core.models.metrics import PRIMARY
+    from turbotab.core.models.tuning import Loss, make_plan, plan_size, tuning_for
+
+    tuned = [f for f in families if tuning_for(f, task) is not None]
+    if not tuned:
+        return {}
+    loss = PRIMARY.get(task)
+    if loss not in get_args(Loss):
+        if not strict:
+            return {}
+        raise ValueError(f"{tuned[0].label} is tuned on a strictly proper per-row loss, which "
+                         f"this outcome has none of, so it cannot be fit here.")
+    if units is not None and len(pd.unique(np.asarray(units, dtype=object))) == len(units):
+        units = None  # one row per unit: the fit stage reads no units either
+    n_plan, plan_rows, unit = plan_size(task, y, units, folds=folds, order=order)
+    imbalance = task == "binary" and ((levers or {}).get("imbalance") or "none") != "none"
+    plans: dict[str, Any] = {}
+    for family in tuned:
+        decl = tuning_for(family, task)
+        out_of_bag = bool(decl.out_of_bag and units is None and order is None and not population
+                          and not reads_outcome_before_model(levers, selection, family))
+        try:
+            plan = make_plan(family, task=task, loss=loss, n_plan=n_plan, plan_rows=plan_rows,
+                             unit=unit, split_seed=int(split_seed), psus=psus,
+                             out_of_bag=out_of_bag, weighted=population, imbalance=imbalance)
+        except ValueError:
+            if strict:
+                raise
+            continue
+        if plan is not None:
+            plans[family.key] = plan
+    return plans
+
+
+def with_plans(spec: "DesignSpec", families: Sequence[Any], task: str, y: Any, *, units: Any = None,
+               folds: int = 5, order: Any = None, split_seed: int = 0) -> "DesignSpec":
+    """A copy of ``spec`` holding each tuned family's plan (:func:`make_plans`, with the spec's
+    own levers and selection step) beside any it held, so :func:`build_pipeline` builds a tuned
+    family outside the design stage (a test, a stage that builds its own pipeline) as the design
+    does, never skipping the search. ``spec`` itself when no family is tuned for ``task``."""
+    from dataclasses import replace
+
+    plans = make_plans(families, task, y, units=units, folds=folds, order=order,
+                       split_seed=split_seed, levers=spec.levers, selection=spec.selection)
+    if not plans:
+        return spec
+    return replace(spec, plans={**(spec.plans or {}), **{k: p.to_dict() for k, p in plans.items()}})
+
+
 def _explore_answer(state: Any, slot: str) -> dict[str, Any] | None:
     """Wave 2, EXPLORE: the ``levers`` or ``selection`` answer the pipeline runs in each training
     fold, under prediction only (under inference the levers are refused and selection is a labeled
@@ -1012,8 +1081,8 @@ __all__ = [
     "PresentColumns", "build_pipeline", "describe_steps", "design_spec", "detect_detail",
     "detect_step", "energy_detail", "explore_answers",
     "explore_candidates", "explore_steps", "family_steps", "impute_detail",
-    "frame_level_columns", "input_columns", "is_categorical", "level_columns", "missing_as_level",
-    "model_predictors", "modeling_frame", "normalize_frame", "predictors_from_roles",
-    "reads_outcome_before_model",
-    "shared_steps", "takes_level", "transformer", "warnings_for",
+    "frame_level_columns", "input_columns", "is_categorical", "level_columns", "make_plans",
+    "missing_as_level", "model_predictors", "modeling_frame", "normalize_frame",
+    "predictors_from_roles", "reads_outcome_before_model",
+    "shared_steps", "takes_level", "transformer", "warnings_for", "with_plans",
 ]

@@ -358,6 +358,21 @@ def design_for(designs: pd.DataFrame | None, index: Any) -> Any:
         weights=np.nan_to_num(rows["weight"].to_numpy(dtype=float), nan=0.0))
 
 
+def fit_with(model: Any, X: Any, y: Any, *, groups: Any = None, order: Any = None,
+             designs: pd.DataFrame | None = None, seed: int = 0, cancelled: Any = None) -> Any:
+    """F15 (RECIPES §4.3): ``inner_cv.fit_pipeline`` on ``X``, ``y`` with the split's ``seed`` and,
+    under the population answer, the rows' design (:func:`design_for` of ``designs``, by row id),
+    inside a cancel scope (``cancelled``: the stage's), so a tuned family searches as its plan
+    says wherever a stage refits it, and a pressed Cancel stops it before its next candidate fit.
+    Returns the fitted pipeline."""
+    from turbotab.core.models.inner_cv import fit_pipeline
+    from turbotab.core.models.tuning import cancel_scope
+
+    with cancel_scope(cancelled if callable(cancelled) else (lambda: False)):
+        return fit_pipeline(model, X, y, groups=groups, order=order,
+                            design=design_for(designs, getattr(X, "index", None)), seed=seed)
+
+
 def _fewest_psus(designs: pd.DataFrame, assignment: pd.DataFrame, ids: Any, folds: int,
                  seed: int, *, evaluated: bool) -> int | None:
     """The fewest PSUs in any outer training fold the stages draw (RECIPES §4.2): each of the
@@ -404,23 +419,15 @@ def tuning_plans(ctx: StageContext, task: str, families: Sequence[Any], *, store
     training fold, and its inner loss is weighted. A forest scores out of bag only where every row
     is its own unit, the folds do not follow time, the sample answer applies and no step before
     the model may read the outcome (``pipeline.reads_outcome_before_model``). ``strict=False``
-    leaves out a family whose plan is refused (the shelf's estimate) instead of raising."""
-    from typing import get_args
+    leaves out a family whose plan is refused (the shelf's estimate) instead of raising. The
+    plans themselves are ``pipeline.make_plans``'s, from what this reads."""
+    from turbotab.core.models.pipeline import make_plans, modeling_frame
+    from turbotab.core.models.tuning import tuning_for
 
-    from turbotab.core.models.metrics import PRIMARY
-    from turbotab.core.models.pipeline import modeling_frame, reads_outcome_before_model
-    from turbotab.core.models.tuning import Loss, make_plan, plan_size, tuning_for
-
-    tuned = [f for f in families if tuning_for(f, task) is not None]
-    if not tuned or train_ids is None or not len(train_ids):
+    if (train_ids is None or not len(train_ids)
+            or not any(tuning_for(f, task) is not None for f in families)):
         return {}
     state = ctx.state
-    loss = PRIMARY.get(task)
-    if loss not in get_args(Loss):
-        if not strict:
-            return {}
-        raise ValueError(f"{tuned[0].label} is tuned on a strictly proper per-row loss, which "
-                         f"this outcome has none of, so it cannot be fit here.")
     split = ctx.inputs.get("split")
     data = (split.data or {}) if isinstance(split, Bundle) else {}
     assignment = read_assignment(split)
@@ -433,33 +440,16 @@ def tuning_plans(ctx: StageContext, task: str, families: Sequence[Any], *, store
     ids = frame.index.to_numpy()
     y = frame[state.target].to_numpy()
     units = frame[grouped_by].to_numpy(dtype=object) if grouped_by in frame.columns else None
-    if units is not None and len(pd.unique(units)) == len(units):
-        units = None  # one row per unit: the fit stage reads no units either
     time_ordered = data.get("fold_scheme") == "time_ordered" and "order" in assignment.columns
     order = assignment.loc[pd.Index(ids), "order"].to_numpy(dtype=float) if time_ordered else None
-    n_plan, plan_rows, unit = plan_size(task, y, units, folds=folds, order=order)
     designs = fit_designs(state, store, ids)
     psus = (None if designs is None else
             _fewest_psus(designs, assignment, ids, folds,
                          int(getattr(state.split, "seed", 0) or 0),
                          evaluated=state.purpose != "inference"))
-    imbalance = task == "binary" and ((levers or {}).get("imbalance") or "none") != "none"
-    plans: dict[str, Any] = {}
-    for family in tuned:
-        decl = tuning_for(family, task)
-        out_of_bag = bool(decl.out_of_bag and units is None and order is None and designs is None
-                          and not reads_outcome_before_model(levers, selection, family))
-        try:
-            plan = make_plan(family, task=task, loss=loss, n_plan=n_plan, plan_rows=plan_rows,
-                             unit=unit, split_seed=seed, psus=psus, out_of_bag=out_of_bag,
-                             weighted=designs is not None, imbalance=imbalance)
-        except ValueError:
-            if strict:
-                raise
-            continue
-        if plan is not None:
-            plans[family.key] = plan
-    return plans
+    return make_plans(families, task, y, units=units, folds=folds, order=order, split_seed=seed,
+                      psus=psus, population=designs is not None, levers=levers,
+                      selection=selection, strict=strict)
 
 
 def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[Any]) -> dict[str, Any]:
@@ -1900,12 +1890,13 @@ def fit_stage(ctx: StageContext) -> Bundle:
                                 order=None if order is None else order[take],
                                 design=design_for(designs, X_fit.index), seed=split_seed)
 
-    def fit_table(model: Any, X_fit: Any = None) -> Any:
+    def fit_table(model: Any, X_fit: Any = None, y_fit: Any = None) -> Any:
         """Fit a pipeline on the coefficient table's rows (``X_fit``: a completed copy of them,
-        under multiple imputation), its inner splits drawn as the folds are."""
+        under multiple imputation, with ``y_fit`` its outcome when the outcome is imputed too),
+        its inner splits drawn as the folds are."""
         X_fit = X_tab if X_fit is None else X_fit
         with cancel_scope(ctx.cancelled):
-            return fit_pipeline(model, X_fit, y_tab,
+            return fit_pipeline(model, X_fit, y_tab if y_fit is None else y_fit,
                                 groups=None if unit_all is None else unit_all[table_rows],
                                 order=None if order_all is None else order_all[table_rows],
                                 design=design_for(designs, X_fit.index), seed=split_seed)
@@ -2108,7 +2099,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                             if y_k is None:
                                 return _with_levels(fit_table(with_units(model, unit_of), X_k),
                                                     levels)
-                            return _with_levels(fit_pipeline(model, X_k, y_k), levels)
+                            return _with_levels(fit_table(model, X_k, y_k), levels)
 
                         collected: dict[str, Any] = {}
                         table, pooled, form_tests, form_concerns = pooled_table(
@@ -2418,6 +2409,9 @@ def fit_stage(ctx: StageContext) -> Bundle:
         frames[SEALED_DETAIL] = sealed_detail_frame(sealed_detail)
     return Bundle(data=artifact.model_dump(mode="json"), frames=frames,
                   objects={"fitted": fitted, "grouped_by": grouped_by,
+                           # F15: the split's seed and the rows' designs, which the substitution
+                           # stage's refits take as the fit's own did.
+                           "split_seed": split_seed, "fit_designs": designs,
                            "every_row": every_row if inference else None,
                            "every_row_ids": (assignment.index[table_rows].to_numpy(dtype=np.int64)
                                              if inference else None),
@@ -2697,6 +2691,9 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         train_ids = np.sort(np.random.default_rng(0).choice(train_ids, SUBSTITUTION_ROWS, replace=False))
     target = ctx.state.target
     grouped_by = objects.get("grouped_by")
+    # F15: the refits here take the split's seed and the rows' designs, as the fit stage's did.
+    split_seed = int(objects.get("split_seed") or 0)
+    designs = objects.get("fit_designs")
     ctx.progress(0.02, f"Reading the {rows_word}")
     extra = [target] + ([grouped_by] if grouped_by and grouped_by not in spec.inputs
                         and grouped_by != target else [])
@@ -2859,7 +2856,8 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
                 kcal_per_unit=kcal_per_unit, nested=nested, total_energy=total_energy, scale=scale,
                 percent=percent, outcome_unit=outcome_unit, n_boot=n_boot, pipeline=pipelines[key],
                 y_fit=y_fit, group_of=group_of, interval_rows=BAND_ROWS, progress=copy_progress,
-                survey_design=survey_design, models=chosen)
+                survey_design=survey_design, models=chosen, seed=split_seed, designs=designs,
+                cancelled=ctx.cancelled)
             band_seconds += time.perf_counter() - started
             first_curve = info["curves"][0]
             note = note or first_curve["note"]
@@ -2915,12 +2913,11 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         if key not in fitted:
             # Under inference, a family with no coefficient table (boosted trees) was fit on the
             # training rows only; its curve reads its refit on every analyzed row.
-            from turbotab.core.models.inner_cv import fit_pipeline
-
             ctx.progress(start, f"{family.label}: refitting on every analyzed row")
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                fitted[key] = fit_pipeline(clone(pipelines[key]), X_fit, y_fit, groups=groups)
+                fitted[key] = fit_with(clone(pipelines[key]), X_fit, y_fit, groups=groups,
+                                       designs=designs, seed=split_seed, cancelled=ctx.cancelled)
         curve = substitution_curve(_predictor(task, fitted[key]), X, donor=sub.donor,
                                    recipient=sub.recipient, kcal_per_unit=kcal_per_unit, ks=ks,
                                    total_kind="variable", nested=nested, total=total_energy,
@@ -2943,8 +2940,6 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         if pipelines.get(key) is not None:
             def refit(Xb: pd.DataFrame, yb: Any, _pipe: Any = pipelines[key],
                       _full: Any = fitted[key]) -> Any:
-                from turbotab.core.models.inner_cv import fit_pipeline
-
                 # Every copy of a resampled row (every row of a unit) is one inner unit, both in
                 # elastic net's inner folds and in boosted trees' early-stopping rows, which stop
                 # early exactly when the full fit did.
@@ -2956,7 +2951,8 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
                     with_units(pipe, resampled_units(full_units, Xb.index))
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    return _predictor(task, fit_pipeline(pipe, Xb, yb, groups=inner))
+                    return _predictor(task, fit_with(pipe, Xb, yb, groups=inner, designs=designs,
+                                                     seed=split_seed, cancelled=ctx.cancelled))
 
             common = dict(shift=shift, ks=ks, live=curve["live"], groups=groups, random_state=0,
                           center=curve["delta"], fixed_center=fixed["delta"],
@@ -3183,7 +3179,8 @@ def _pooled_curve(key: str, family: Any, task: str, imputed: Mapping[str, Any], 
                   percent: Sequence[str], outcome_unit: str | None, n_boot: int,
                   pipeline: Any, y_fit: Any, group_of: Any, interval_rows: int,
                   progress: Any = None, survey_design: Any = None,
-                  models: Sequence[str] = ()) -> tuple[dict[str, Any], dict[str, Any]]:
+                  models: Sequence[str] = (), seed: int = 0, designs: Any = None,
+                  cancelled: Any = None) -> tuple[dict[str, Any], dict[str, Any]]:
     """MS3 (MODELING_SEQUENCE §2: "multiple imputation implies pooling of every estimate shown
     under inference, including substitution curves"): ``key``'s curve pooled over the copies.
 
@@ -3195,7 +3192,9 @@ def _pooled_curve(key: str, family: Any, task: str, imputed: Mapping[str, Any], 
     curve is pooled at each k: Q̄(k) the mean, and with a band (``n_boot``) each copy's bootstrap
     variance its within-copy variance (Schomaker & Heumann 2018's MI-then-bootstrap with Rubin's
     rules; the ``n_boot`` refits split over the copies), on Barnard–Rubin's ν (``pooled =
-    "per_k"``). Returns (the model entry, what the band record needs).
+    "per_k"``). Returns (the model entry, what the band record needs). Every refit takes the
+    split's ``seed`` and the rows' ``designs``, in a scope ``cancelled`` stops (F15:
+    :func:`fit_with`).
 
     Under the population answer (``survey_design``; MS4 with MS2) each copy's curve is the surveyed
     population's (:func:`~turbotab.core.models.survey.population_curve`: the survey-weighted refit,
@@ -3222,14 +3221,13 @@ def _pooled_curve(key: str, family: Any, task: str, imputed: Mapping[str, Any], 
         on the completed copy, as its single fit is on every analyzed row (MS3)."""
         if given:
             return given[j]
-        from turbotab.core.models.inner_cv import fit_pipeline
-
         y_j = np.asarray(outcomes[j]) if outcomes is not None else y_fit
         units = (group_of.reindex(X_all.index).to_numpy() if group_of is not None
                  and outcomes is None else None)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            return fit_pipeline(clone(pipeline), X_all, y_j, groups=units)
+            return fit_with(clone(pipeline), X_all, y_j, groups=units, designs=designs, seed=seed,
+                            cancelled=cancelled)
 
     curve_ids = set(int(i) for i in np.asarray(train_ids))
     curves, shifts, rows_of, fits = [], [], [], []
@@ -3368,14 +3366,14 @@ def _pooled_curve(key: str, family: Any, task: str, imputed: Mapping[str, Any], 
                 y_j = np.asarray(outcomes[j]) if outcomes is not None else y_fit
 
                 def refit(Xb: pd.DataFrame, yb: Any, _full: Any = fitted) -> Any:
-                    from turbotab.core.models.inner_cv import fit_pipeline
-
                     inner = (group_of.reindex(Xb.index).to_numpy() if group_of is not None
                              and outcomes is None else Xb.index.to_numpy())
                     pipe = pinned_to_full_fit(clone(pipeline), _full)
                     with warnings.catch_warnings():
                         warnings.simplefilter("ignore")
-                        return _predictor(task, fit_pipeline(pipe, Xb, yb, groups=inner))
+                        return _predictor(task, fit_with(pipe, Xb, yb, groups=inner,
+                                                         designs=designs, seed=seed,
+                                                         cancelled=cancelled))
 
                 band = refit_band(refit, X_all, y_j, shift=shifts[j], ks=ks, live=live,
                                   n_boot=per_copy, random_state=j, center=curves[j]["delta"],

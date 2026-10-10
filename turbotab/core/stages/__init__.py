@@ -498,11 +498,12 @@ def build_graph() -> Graph:
             # shelf 16 (MC-1): each family carries ``terms`` beside its concerns, its concerns'
             # quiet names (MODEL_FAMILY_CONTRACT C4), None until MC-5 writes them.
             # shelf 17 (RT-1b, RT-8's core): a tuned family's estimate is timed at its plan's center
-            # and counts the fits its plan makes in every outer fit (RECIPES §4.4).
+            # and counts the fits its plan makes in every outer fit (RECIPES §4.4); the plan reads
+            # the selection step (out of bag or inner folds), so the shelf reads it too.
             Stage("shelf", 17, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
-                   "outcome_order", "exposure_forms", "levers",
+                   "outcome_order", "exposure_forms", "levers", "selection",
                    # MS4: under the population answer the families with no design-based
                    # estimator rank last, their block said before they are chosen.
                    "survey", *WP17_READS),
@@ -681,7 +682,9 @@ def build_graph() -> Graph:
             # fit's refusal and exits, never drawn as these participants' curve.
             # substitution 18 (engine residue): as fit 26, a blocked curve's missing-values exits.
             # substitution 19 (resume integration 2): both substitution 18s.
-            Stage("substitution", 19, ("working", "fit", "design"),
+            # substitution 20 (RT-1b, F15): its refits take the split's seed and the rows' designs,
+            # as the fit stage's do, inside a cancel scope.
+            Stage("substitution", 20, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
                    "column_units", *ROLE_READS, *WP17_READS),
                   substitution_stage, heavy=True, requires=("substitution", "purpose"),

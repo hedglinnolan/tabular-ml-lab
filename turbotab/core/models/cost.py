@@ -182,7 +182,10 @@ def estimate_fits(store: Any, state: Any, task: str, train_ids: Any, families: S
             try:
                 tuned = build_pipeline(replace(spec, plans={family.key: plan.to_dict()}), family,
                                        task, purpose, n_rows, n_columns)
-                pipeline = tuned.at(center(plan), units=len(y))
+                # the center resolved on the timing sample (its outcome, its model matrix), as
+                # every fit resolves its candidate on its own rows
+                pipeline = tuned.at(center(plan), X=X[spec.inputs], y=y,
+                                    groups=None if units is None else units.to_numpy())
             except Exception:  # noqa: BLE001 - timed at its built settings instead
                 log.debug("the center candidate could not be built", exc_info=True)
         if pipeline is None:
