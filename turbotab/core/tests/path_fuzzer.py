@@ -6,29 +6,45 @@ A journey starts from an empty project on one of two fixtures (the committed NHA
 columns under the dietary lens; an untargeted metabolomics table) and takes up to ``max_steps``
 actions, each drawn by the seed: answer the Router's open question, answer an open declaration,
 dispose of a finding, "Confirm all" in a reached stage, change an earlier answer or revert a
-record (the two stated reopenings), or press Fit. Compute stages that read what an answer wrote
-are marked running and settle at random, so questions wait on their cards as they do live.
+record (the two stated reopenings), or press Fit. Compute stages that read what an answer wrote,
+and that the graph can compute, are marked running and settle at random, so questions wait on
+their cards as they do live; the fit is fresh, running, failed or held whether or not Fit was
+pressed, as a fit under the hold's 2 minutes computes before the press.
 
 The invariants held now (the rest need the ledger, the caps or the timing harness):
 
 * **I1** no estimate before the lock: while ``consequences.estimates_unseen``, every estimate stage
-  is withheld (``fit_press.served``); with no goal none can compute; Results is never reached
-  before Fit is pressed; the substitution and the seal never open before it.
+  is withheld (``fit_press.served``) and no quest line's text holds a number from one (each
+  estimate stage that can compute is mocked with its numbers and handed to the quest log raw);
+  with no goal none can compute; Results is never reached before Fit is pressed; the seal never opens before it, though the fit computes before the press
+  (a fit under the hold's 2 minutes is fresh, running or failed without one).
 * **I2** (its half that needs no materiality) the registry and the quest log agree: every
-  question, declaration and finding that fires is a line, and every line is an item that fires.
-* **I4** every Decide is answerable or says so: an open line waits for nothing, and every
-  question it reads is answered, stated or not applicable.
-* **I6** the display-order rule: every answer the engine filled is a Confirm or For the record
+  question, declaration and finding that fires is a line, and every line (question, declaration,
+  finding, reading) is an item that fires; a stage offers "Confirm all" only where its sweep item
+  fires, and lists a default wherever it does; each default the log shows as a line is listed
+  exactly where it fires. (A result's ``fires`` is held to the engine's own blocking in
+  ``test_surfaceable``.)
+* **I4** every Decide is answerable or says so: an open line waits for nothing, the Router's open
+  question sits in a reached stage, and every question a line reads is answered, stated or not
+  applicable.
+* **I6** the display-order rule: nothing shown settled rests on an unanswered question without
+  saying so (a line answered or set for the person whose item reads one still open waits for it,
+  or says why it was asked again); every answer the engine filled is a Confirm or For the record
   line; the outcome alone waits for Who's in (the explore stage requires the split); under
   Estimate, and with no goal, the outcome beside a column waits for the lock.
 * **I8** determinism: the same log gives the same quest log, and the preview's fold
   (``fold_onto``) agrees with the log's fold outside the conditional slots it documents.
 * **I10** tier is mode-independent: the Decide and Confirm sets are the same in every mode
   (``surfacing.disclosure``), and at most one line is drawn at level 3.
-* **I11** progress is monotone except by a stated reopening: a line answered before and listed
-  now is answered still, unless the action was a change or a revert, or the line or its stage
-  says why (``reopened_by``, ``changed_since``, the stage's ``reopened``, the sweep's
-  ``changed``); a reached stage stays reached on the same terms.
+* **I11** progress is monotone except by a stated reopening, after every action, the changes and
+  reverts included: a stage's answered count never falls, and a change or a revert never makes a
+  complete stage ask again, without a Reopened record in it (a forward step, a first answer or a
+  reading settling, can find more for a stage to ask, which §7.2's answered/required would call a
+  fall; it is not a reopening; an answered line that left because it no longer applies, or is no
+  longer counted, takes its count with it); a line answered before is answered still, or names
+  why itself (``reopened_by``, ``changed_since``, a
+  Reopened record or the sweep's ``changed`` listing it), or left the log because it no longer
+  applies; a reached stage stays reached unless it, or the stage now asking, says why.
 """
 from __future__ import annotations
 
@@ -207,10 +223,62 @@ def artifacts_for(state: Any, fx: Fixture, records: list[DecisionRecord], steps_
     return out
 
 
-def stages_for(running: Iterable[str], pressed: bool) -> dict[str, dict[str, Any]]:
+# How the fit stands, drawn per state: a fit expected to take under about 2 minutes computes before
+# Fit is pressed (``fit_press.holds``), so the fit is fresh, running or failed whether or not it was
+# pressed; only a held fit is idle until the press.
+FIT_STATUSES = (("fresh", 5.0), ("running", 2.0), ("error", 1.0), ("idle", 2.0))
+
+
+# What an estimate stage's artifact holds, raw (as the server hands the quest log the usual-intake
+# stage's newest artifact, served or not): numbers no quest line may repeat before the lock (I1).
+ESTIMATE_NUMBERS = ("7.3131", "6.1717", "8.4545", "0.0137")
+
+
+def estimates_for(state: Any) -> dict[str, Any]:
+    """Each estimate stage the graph can compute here, with its estimate, interval and p-value."""
+    from turbotab.core.estimand import ESTIMATE_STAGES
+
+    row = {"term": "exposure", "estimate": 7.3131, "ci_low": 6.1717, "ci_high": 8.4545,
+           "p": 0.0137, "sentence": "The estimate is 7.3131 (6.1717 to 8.4545), p = 0.0137."}
+    computable = surfacing.computable(state)
+    return {name: {"estimates": [dict(row)], "summary": row["sentence"]}
+            for name in ESTIMATE_STAGES if name in computable}
+
+
+def stages_for(running: Iterable[str], fit: str) -> dict[str, dict[str, Any]]:
     out = {name: {"status": "running"} for name in running}
-    out["fit"] = {"status": "fresh" if pressed else "idle"}
+    out["fit"] = {"status": fit}
     return out
+
+
+def fit_status(rng: random.Random, state: Any, pressed: bool) -> str:
+    """The fit's status on this state: it computes once the graph can compute it, held or not."""
+    if "fit" not in surfacing.computable(state):
+        return "blocked"
+    statuses = [s for s, _w in FIT_STATUSES if not (pressed and s == "idle")]
+    weights = [w for s, w in FIT_STATUSES if not (pressed and s == "idle")]
+    return rng.choices(statuses, weights=weights)[0]
+
+
+def answered_through(fx: Fixture, purpose: str, stop: str = "open_seal"
+                     ) -> tuple[ProjectState, dict[str, Any], list[DecisionRecord]]:
+    """The log answering every Router question before ``stop`` by its first option on this
+    fixture (the goal ``purpose``), Fit pressed and the fit fresh along the way: its state, the
+    artifacts mocked for it and its records."""
+    state, records = ProjectState(), []
+    for _ in range(3 * len(QUESTION_KEYS)):
+        artifacts = artifacts_for(state, fx, records)
+        steps = route(state, {"fit": {"status": "fresh"}}, artifacts, records, pressed=True)
+        first = next((s for s in steps if s.status == "open"), None)
+        if first is None or first.key == stop:
+            break
+        options = ([{"kind": "set_purpose", "purpose": purpose}] if first.key == "purpose"
+                   else question_options(first.key, state, fx))
+        if not options:
+            break
+        records.append(_record(records, _validate(options[0], state, fx)))
+        state = decisions.fold(records)
+    return state, artifacts_for(state, fx, records), records
 
 
 # ── a journey ────────────────────────────────────────────────────────────────
@@ -232,6 +300,7 @@ class Snapshot:
     pressed_ever: bool
     log: QuestLog
     onto: ProjectState | None = None  # the preview's fold, beside the log's
+    shown_at: dict[str, Any] = field(default_factory=dict)  # results shown for earlier answers
 
 
 @dataclass
@@ -244,11 +313,12 @@ class Journey:
 
 def quest_of(state: Any, records: list[DecisionRecord], steps: list[InterviewStep],
              stages: dict[str, Any], artifacts: dict[str, Any], fx: Fixture, pressed: bool,
-             pressed_ever: bool) -> QuestLog:
+             pressed_ever: bool, shown_at: dict[str, datetime | None] | None = None) -> QuestLog:
     fit = fit_press.fit_lock(state, records, pressed=pressed, held=False, estimate=None,
                              opened=pressed_ever)
     return quest.quest_log(state, records, steps, stages, findings=artifacts.get("findings"),
-                           columns=fx.columns, artifacts=artifacts, fit=fit)
+                           columns=fx.columns, artifacts={**estimates_for(state), **artifacts},
+                           fit=fit, shown_at=shown_at or {})
 
 
 def _record(records: list[DecisionRecord], decision: Any) -> DecisionRecord:
@@ -273,16 +343,23 @@ def run_journey(seed: int, max_steps: int = 40) -> Journey:
     running: set[str] = set()
     pressed_for: str | None = None
     pressed_ever = False
+    press_at: datetime | None = None  # when Fit last served the estimates
 
     def snap(index: int, action: str, reopening: bool, kind: str | None,
              onto: ProjectState | None = None) -> Snapshot:
         pressed = pressed_for is not None and pressed_for == state.target
-        stages = stages_for(running, pressed)
+        fit = fit_status(rng, state, pressed)
+        stages = stages_for(running, fit)
         artifacts = artifacts_for(state, fx, records, confidence=confidence)
-        steps = route(state, stages, artifacts, records)
-        log = quest_of(state, records, steps, stages, artifacts, fx, pressed, pressed_ever)
+        steps = route(state, stages, artifacts, records, pressed=pressed)
+        # As the server reads it: the fit served after a press, not fresh for the answers now,
+        # is a result shown for earlier ones.
+        shown_at = ({"fit": press_at} if press_at is not None and not (pressed and fit == "fresh")
+                    else {})
+        log = quest_of(state, records, steps, stages, artifacts, fx, pressed, pressed_ever,
+                       shown_at)
         return Snapshot(fx, index, action, reopening, kind, state, list(records), steps, stages,
-                        artifacts, pressed, pressed_ever, log, onto)
+                        artifacts, pressed, pressed_ever, log, onto, shown_at)
 
     journey.snapshots.append(snap(0, "start", False, None))
     for index in range(1, max_steps + 1):
@@ -309,6 +386,7 @@ def run_journey(seed: int, max_steps: int = 40) -> Journey:
                 records.append(_record(records, decision))
                 state = decisions.fold(records)
             pressed_for, pressed_ever = state.target, True
+            press_at = T0 + timedelta(minutes=len(records), seconds=30)
             kind = "fit"
         elif action == "revert":
             decision = parse_decision({"kind": "revert", "decision_id": payload})
@@ -325,9 +403,11 @@ def run_journey(seed: int, max_steps: int = 40) -> Journey:
             state = decisions.fold(records)
             kind = decision.kind
             written = quest.written_slots(decision)
+            # the engine computes only what its requires allow (``graph.unmet_requires``)
+            computable = surfacing.computable(state)
             running |= {name for name in quest.COMPUTE
                         if name != "fit" and written & quest.stage_reads(name)
-                        and rng.random() < 0.5}
+                        and name in computable and rng.random() < 0.5}
         journey.snapshots.append(snap(index, action, reopening, kind, onto))
     return journey
 
@@ -401,6 +481,10 @@ def i1_no_estimate_before_the_lock(snap: Snapshot) -> list[str]:
     if unseen and fit_press.serving_gate(snap.state, snap.pressed) is None:
         out.append("estimates are unseen but the serving gate lets one through")
     if unseen:
+        text = snap.log.model_dump_json(exclude={"fit"})
+        leaked = [n for n in ESTIMATE_NUMBERS if n in text]
+        if leaked:
+            out.append(f"the quest log repeats estimate numbers {leaked} before the lock")
         for stage in ESTIMATE_STAGES:
             artifact = ({"models": [{"coefficients": [1.0], "inference": {"p": 0.01}}]}
                         if stage == "fit" else {"estimate": 1.0})
@@ -414,10 +498,14 @@ def i1_no_estimate_before_the_lock(snap: Snapshot) -> list[str]:
     results = next(s for s in snap.log.stages if s.key == "results")
     if results.reached and not snap.pressed_ever:
         out.append("Results is reached before Fit was ever pressed")
+    # The seal sits in Results: under Predict it opens on the press for this outcome, under
+    # Estimate on the lock a press recorded, whatever the fit's own status (it computes before
+    # the press).
     status = _status(snap.steps)
-    for key in ("substitution", "open_seal"):
-        if status.get(key) == "open" and not snap.pressed:
-            out.append(f"{key} opens before Fit")
+    fitted = (snap.pressed if snap.state.purpose == "prediction"
+              else bool(snap.state.plan_locked) and snap.pressed_ever)
+    if status.get("open_seal") == "open" and not fitted:
+        out.append(f"open_seal opens before Fit (fit {snap.stages['fit']['status']})")
     return out
 
 
@@ -453,6 +541,34 @@ def i2_registry_agrees_with_the_quest_log(snap: Snapshot) -> list[str]:
         fam = reg.get(f"noticing:{family(str(f.get('id')))}")
         if fam is None or not fam.fires(snap.state, facts):
             out.append(f"finding {f.get('id')} has no registry item that fires")
+    # Every line is an item that fires (the other direction, for each source the log lists).
+    findings_listed = {str(f.get("id")) for f in findings}
+    for stage, line in _lines(snap.log):
+        if line.source == "question" and line.key in status and status[line.key] == "not_applicable":
+            out.append(f"{line.id} is listed but its question does not fire")
+        if line.source == "finding" and line.key not in findings_listed:
+            out.append(f"{line.id} is listed but no finding of the artifact is it")
+        if line.source == "reading" and not reg["default:read-from-data"].fires(snap.state, facts):
+            out.append(f"{line.id} is listed but no reading fires")
+    # "Confirm all": a stage's sweep is offered only where its item fires, and where it fires the
+    # stage lists the default it holds (a Confirm line, or For the record once weighed).
+    for stage in snap.log.stages:
+        item = reg.get(f"decision:confirm_sweep:{stage.key}")
+        fires = item is not None and item.fires(snap.state, facts)
+        if stage.sweep is not None and not fires:
+            out.append(f"{stage.key} offers Confirm all but its sweep item does not fire")
+        stated = [l for l in stage.lines if l.label in ("Confirm", "For the record")]
+        if fires and not stated:
+            out.append(f"{stage.key}'s sweep item fires but the stage states nothing")
+    # The defaults the log shows as lines: listed exactly where they fire.
+    for key, (source, line_key) in surfacing.DEFAULT_LINES.items():
+        item = reg[key]
+        fires = item.fires(snap.state, facts)
+        shown = [l for st, l in _lines(snap.log) if st.key == item.stage and l.source == source
+                 and (line_key is None or l.key == line_key)
+                 and l.label in ("Confirm", "For the record")]  # stated, or confirmed as stated
+        if fires != bool(shown):
+            out.append(f"{key} fires={fires} but the log shows it {len(shown)} times")
     return out
 
 
@@ -463,6 +579,10 @@ def i4_every_decide_is_answerable(snap: Snapshot) -> list[str]:
     for stage, line in _lines(snap.log):
         if line.status != "open":
             continue
+        if line.source == "question" and not stage.reached:
+            # The Router's open question is the Decide asked now; a later stage's declarations
+            # and noticings are listed open ahead of it, as what that stage will ask.
+            out.append(f"{line.id} is the open question in {stage.key}, which is not reached")
         if line.waiting_for or line.computing:
             out.append(f"{line.id} is open and waits for {[w.key for w in line.waiting_for]} "
                        f"{line.computing}")
@@ -481,6 +601,30 @@ def i4_every_decide_is_answerable(snap: Snapshot) -> list[str]:
 
 def i6_display_order(snap: Snapshot) -> list[str]:
     out = []
+    # Nothing shown depends on an unanswered decision without saying so: a line shown settled
+    # (answered, or set for the person) whose item reads a question still open or waiting waits,
+    # or says why it was asked again.
+    reg = surfacing.registry()
+    # a stated line rests on what its default reads (the form stated under Predict reads the goal
+    # alone), not on what the question reads when it is asked
+    stated_by = {line: reg[key] for key, line in surfacing.DEFAULT_LINES.items()}
+    # the questions still asking, as the quest log shows them (an answer that holds while its own
+    # reading recomputes stands answered meanwhile)
+    asking = {l.key for _s, l in _lines(snap.log)
+              if l.source == "question" and l.status in ("open", "waiting")}
+    for _stage, line in _lines(snap.log):
+        if line.status not in ("answered", "set_for_you"):
+            continue
+        item = reg.get(f"question:{line.key}") if line.source == "question" else (
+            reg.get(f"decision:{line.key}") if line.source == "declaration" else None)
+        if line.label != "Decide" and (line.source, line.key) in stated_by:
+            item = stated_by[(line.source, line.key)]  # stated, or confirmed as stated
+        if item is None:
+            continue
+        unsettled = [k for k in item.reads if k in asking]
+        if unsettled and not (line.waiting_for or line.reopened_by or line.changed_since):
+            out.append(f"{line.id} is shown {line.status} but rests on unanswered {unsettled} "
+                       f"without saying so")
     listed = {line.key: line for _stage, line in _lines(snap.log) if line.source == "question"}
     for step in snap.steps:
         if step.status == "skipped":
@@ -503,7 +647,7 @@ def i8_determinism(snap: Snapshot) -> list[str]:
     out = []
     if snap.index % 4 == 0:  # every fourth state: recomputing the quest log is the costly half
         again = quest_of(snap.state, snap.records, snap.steps, snap.stages, snap.artifacts,
-                         snap.fixture, snap.pressed, snap.pressed_ever)
+                         snap.fixture, snap.pressed, snap.pressed_ever, snap.shown_at)
         if again.model_dump() != snap.log.model_dump():
             out.append("the same log gave another quest log")
     if snap.onto is not None:
@@ -531,32 +675,92 @@ def i10_mode_independence(snap: Snapshot) -> list[str]:
     return out
 
 
+def _fires_now(snap: Snapshot, line: Any) -> bool:
+    """Whether the item behind a line still fires on this state (a line that left the log is
+    accounted for only when it no longer applies)."""
+    facts = facts_of(snap)
+    reg = surfacing.registry()
+    if line.source == "question":
+        status = _status(snap.steps).get(line.key)
+        return status is not None and status != "not_applicable"
+    if line.source == "declaration":
+        item = reg.get(f"decision:{line.key}")
+        return item is not None and item.fires(snap.state, facts)
+    if line.source == "finding":
+        return any(str(f.get("id")) == line.key
+                   for f in surfacing._listed(snap.artifacts.get("findings")))
+    return True
+
+
 def i11_monotone_progress(prev: Snapshot, snap: Snapshot) -> list[str]:
-    if snap.reopening:
-        return []
+    """§7.2 I11: a stage's answered/required never falls without a Reopened record naming the
+    cause; after a change or a revert as after any other action. Each line answered before is
+    answered still, or says itself why (``reopened_by``, ``changed_since``, its stage's sweep
+    listing it as changed), or no longer applies; a reached stage stays reached unless it, or the
+    stage now asking, holds the Reopened record that says why."""
     out = []
-    now = {(stage.key, line.source, line.key, line.id): (stage, line) for stage, line in _lines(snap.log)}
+    after = f"after {snap.action} {snap.kind}"
+    # a line is its stage, source and key (its card can change with the goal: the split under
+    # Estimate is For the record)
+    now = {(stage.key, line.source, line.key): (stage, line) for stage, line in _lines(snap.log)}
     for stage, line in _lines(prev.log):
         if line.status != "answered":
             continue
-        found = now.get((stage.key, line.source, line.key, line.id))
+        found = now.get((stage.key, line.source, line.key))
         if found is None:
-            continue  # it no longer applies
+            if _fires_now(snap, line):
+                out.append(f"{line.id} ({stage.key}) was answered and left the log while it "
+                           f"still applies ({after})")
+            continue
         new_stage, new_line = found
         if new_line.status == "answered":
             continue
         said = (new_line.reopened_by is not None or new_line.changed_since is not None
-                or bool(new_stage.reopened)
-                or (new_stage.sweep is not None and bool(new_stage.sweep.changed)))
+                or any(new_line.id in r.questions for r in new_stage.reopened)
+                or (new_stage.sweep is not None and new_line.key in new_stage.sweep.changed))
         if not said:
             out.append(f"{line.id} ({stage.key}) was answered and is {new_line.status} now, "
-                       f"with nothing saying why (after {snap.action} {snap.kind})")
-    before = {s.key for s in prev.log.stages if s.reached}
-    after = {s.key for s in snap.log.stages if s.reached}
-    dropped = before - after
-    if dropped and not any(s.reopened for s in snap.log.stages):
-        out.append(f"{sorted(dropped)} stopped being reached with nothing saying why "
-                   f"(after {snap.action} {snap.kind})")
+                       f"with nothing saying why ({after})")
+    stages_now = {s.key: s for s in snap.log.stages}
+    for old in prev.log.stages:
+        new = stages_now[old.key]
+        if old.progress is None or new.progress is None:
+            continue
+        # Work done is never undone silently: the answered count falls only with a Reopened
+        # record (or lines that left because they no longer apply, which take their count with
+        # them), and a complete stage asks again only with one. (A stage still asking can count
+        # more as its readings settle: a question waiting on its reading is not counted yet.)
+        # an answered Decide that left (it no longer applies) or is no longer counted (the split
+        # is For the record under Estimate) takes its count with it
+        counted = {(l.source, l.key) for l in new.lines if l.label == "Decide" and l.counted}
+        gone = sum(1 for l in old.lines if l.label == "Decide" and l.counted
+                   and l.status == "answered" and (l.source, l.key) not in counted)
+        lost = (old.progress.answered - new.progress.answered) - gone > 0
+        # A forward step (a first answer, a reading settling) can find more for a stage to ask;
+        # a change or a revert that does is a reopening, and says so.
+        before = {(l.source, l.key): l for l in old.lines}
+        asks = [l for l in new.lines if l.counted and l.status != "answered"
+                and ((l.source, l.key) not in before
+                     or before[(l.source, l.key)].status == "answered")]
+        reopened = (snap.reopening and old.progress.complete and not new.progress.complete
+                    and bool(asks))
+        if (lost or reopened) and not new.reopened and not (
+                new.sweep is not None and new.sweep.changed):
+            out.append(f"{old.key}'s progress fell from {old.progress.answered}/"
+                       f"{old.progress.required} to {new.progress.answered}/"
+                       f"{new.progress.required} with no Reopened record ({after})")
+    asking = next((s for s in snap.log.stages
+                   if any(l.source == "question" and l.status in ("open", "waiting")
+                          and (l.reopened_by is not None or not l.waiting_for)
+                          for l in s.lines)), None)
+    for old in prev.log.stages:
+        if not old.reached or stages_now[old.key].reached:
+            continue
+        why = bool(stages_now[old.key].reopened) or (
+            asking is not None and (bool(asking.reopened) or any(
+                l.reopened_by is not None for l in asking.lines)))
+        if not why:
+            out.append(f"{old.key} stopped being reached with nothing saying why ({after})")
     return out
 
 

@@ -6,21 +6,24 @@ answers the same questions in code (:class:`Surfaceable`):
 
 * **questions**: the Router's keys (``interview.QUESTION_KEYS``). ``fires`` is the Router's own
   gate (``interview.applicability``: asked, stated or answered, never "does not apply"); ``reads``
-  every earlier question (the Router asks in its dependency order, CROSSWALK disagreement 18);
-  ``stands`` is ``quest.answer_holds``.
+  the questions its gate and its options read (:data:`QUESTION_READS`), each an earlier one (the
+  Router asks in its dependency order, CROSSWALK disagreement 18); ``stands`` is
+  ``quest.answer_holds``.
 * **decisions**: every decision kind the log accepts (``decisions.SLOTS``). A kind that answers a
   Router question is that question's; a declaration (``quest.DECLARATIONS``) is its own, its
   ``applies`` and ``reads``; every other kind has a predicate here (:data:`KIND_FIRES`), read from
   its crosswalk item's ``fires_when``. "Confirm all" is one per stage sweep. A ``revert`` is the
   record it undoes (``quest.FOLLOWS_WHAT_IT_UNDOES``), so it has none of its own.
 * **defaults**: the defaults the engine states today (the Router's stated gates, Estimate's split,
-  what the values settled) and those whose condition is one slot.
+  what the values settled) and those whose condition is one slot; :data:`DEFAULT_LINES` names the
+  quest line each one the log lists is shown as. "Confirm all" fires per stage, where the stage
+  holds a default set for the person (:func:`_sweep_fires`).
 * **noticings**: the engine's current findings, by family (``stages/finding_words.FAMILIES`` and
   the rest the engine names), and Explore's (``quest.EXPLORE_FINDINGS``). Each fires when the
   findings artifact (or Explore's) holds one of its family.
 * **results**: each compute stage the quest log shows (``quest.COMPUTE``). It fires when the graph
-  can compute it (every slot it and its upstream require is set, as ``graph.Engine`` reads
-  ``requires``).
+  can compute it: the scheduler's own rule, ``graph.unmet_requires`` (every slot it and its
+  upstream require is set), which ``graph.Engine._compute_keys`` reads too.
 
 Each item declares ``fires(state, facts)``, ``reads`` (the questions or declarations whose answers
 it needs), ``holds`` (the slots its answer writes: what it changes; a result writes none),
@@ -145,8 +148,58 @@ def question_fires(key: str, state: Any, facts: Facts) -> bool:
     return applicability(key, state, facts.artifacts) is None
 
 
+def answered(key: str, state: Any) -> bool:
+    """Whether the person's answer to Router question ``key`` is recorded and stands (its slot
+    holds a value, and ``quest.answer_holds`` says it still answers)."""
+    from turbotab.core.interview import SLOT_OF
+    from turbotab.core.quest import answer_holds
+
+    return getattr(state, SLOT_OF.get(key, key), None) is not None and answer_holds(key)(state)
+
+
 def _question(key: str) -> Callable[[Any, Facts], bool]:
     return lambda state, facts: question_fires(key, state, facts)
+
+
+# The Router questions whose answers each question needs: what its gate reads (whether it is
+# asked, stated or not applicable: ``interview._gates``, ``_energy_applicability``,
+# ``_substitution_applicability``, the task's skip) and what its options are drawn from. Never
+# every earlier question: the Router asks in its dependency order, so each read is an earlier
+# question (the display-order rule), but most earlier questions are not read. A test holds each
+# list sufficient: clearing every answer a question does not read leaves its gate as it was.
+QUESTION_READS: dict[str, tuple[str, ...]] = {
+    "lens": (),
+    "orientation": ("lens",),  # asked under an assay lens
+    "target": (),
+    "task": ("target",),  # the outcome's kind, read for this outcome
+    # a yes/no or time-to-event outcome's level: the outcome's kind as its reading says it (the
+    # task question comes after it, and an answer to it overrides the reading)
+    "event": ("target",),
+    "follow_up": ("target", "task"),
+    "design": (),
+    "purpose": (),
+    "grain": (),
+    "repeat_kind": ("grain",),  # only when units repeat
+    "unit": ("grain",),
+    "aggregation": ("grain", "unit"),  # only when the unit is the unit
+    "temporal": ("grain", "repeat_kind"),  # repeats of one measurement are not time points
+    "roles": ("target",),  # every column but the outcome
+    "clusters": ("roles",),  # the columns that read as groups
+    "survey": ("purpose", "roles"),  # under inference, beside a survey-weight column
+    "exclusions": (),
+    "missing": (),
+    "split": ("purpose",),  # nothing is held out under Estimate
+    "estimand": ("purpose", "roles"),  # the exposure, under inference
+    "adjustment": ("purpose", "roles", "estimand"),  # each covariate, for the exposure
+    "time_varying": ("purpose", "grain", "repeat_kind", "unit", "temporal", "roles", "estimand"),
+    "energy_adjustment": ("lens", "roles"),  # the dietary lens, an energy column and an exposure
+    "form": ("purpose", "roles", "estimand", "adjustment", "energy_adjustment"),
+    "modification": ("purpose", "roles", "estimand"),
+    "causal": ("lens", "purpose", "roles", "estimand", "adjustment"),
+    "models": ("target", "task", "purpose"),  # the shelf for this outcome's kind and the goal
+    "substitution": ("roles",),  # two exposures that carry energy
+    "open_seal": ("split", "models"),  # rows held out, and the fit of the chosen models
+}
 
 
 # ── decision kinds with no Router key and no declaration ─────────────────────
@@ -245,12 +298,43 @@ KIND_FIRES: dict[str, Callable[[Any, Facts], bool]] = {
 
 
 def _sweep_fires(stage: str) -> Callable[[Any, Facts], bool]:
-    """"Confirm all" is offered where the stage's sweep holds a stated default
-    (``sweep.sweep_of``); from the state alone, whenever a goal or an outcome is set (the design
-    is stated observational from the start, the split under Estimate, the task on a settled
-    reading). First look sets nothing for the person."""
-    return lambda state, facts: (getattr(state, "target", None) is not None
-                                 or getattr(state, "purpose", None) is not None)
+    """"Confirm all" in ``stage`` fires when the stage holds a default set for the person, a
+    Confirm line (``sweep.sweep_of`` offers it where one is, and ``sweep.weigh`` keeps it a Confirm
+    when another answer would change a number, else moves it to For the record): a Router question
+    placed in the stage with a Confirm label (the causal lane, the modifiers) or whose answer the
+    Router states with one (the design, the grain, the repeat kind, the form under prediction), a
+    Confirm declaration of the stage that applies, or, in Your data, a reading of the values. Each
+    stage's own; First look sets nothing for the person and has no sweep."""
+    from turbotab.core import quest
+    from turbotab.core.interview import stated
+
+    questions = [k for k, place in quest.QUESTIONS.items() if place.stage == stage]
+    declarations = [d for d in quest.DECLARATIONS
+                    if d.place.stage == stage and d.place.label == quest.CONFIRM]
+
+    def fires(state: Any, facts: Facts) -> bool:
+        purpose = getattr(state, "purpose", None)
+        for key in questions:
+            place = quest.GOAL_PLACES.get((key, purpose)) or quest.QUESTIONS[key]
+            if place.stage != stage or not question_fires(key, state, facts):
+                continue
+            if place.label == quest.CONFIRM:
+                return True
+            # stated, not answered: an answer the person gave is theirs, a Decide line
+            if (place.label == quest.DECIDE and quest.STATED.get(key, quest.CONFIRM) == quest.CONFIRM
+                    and not answered(key, state)
+                    and stated(key, state, facts.artifacts) is not None):
+                return True
+        for decl in declarations:
+            if decl.only_recorded:
+                from turbotab.core.decisions import SLOTS
+
+                if getattr(state, SLOTS[decl.kind], None) is not None:
+                    return True
+            elif decl.applies(state, facts):
+                return True
+        return stage == "data" and bool(_readings(facts))
+    return fires
 
 
 # ── defaults ─────────────────────────────────────────────────────────────────
@@ -260,7 +344,7 @@ def _stated(key: str) -> Callable[[Any, Facts], bool]:
     def fires(state: Any, facts: Facts) -> bool:
         from turbotab.core.interview import stated
 
-        if key in ("grain", "repeat_kind") and getattr(state, key, None) is not None:
+        if answered(key, state):  # the person's answer stands: nothing is stated
             return False
         if key == "form" and getattr(state, "purpose", None) != "prediction":
             return False
@@ -326,6 +410,20 @@ DEFAULTS: tuple[tuple[str, str, Callable[[Any, Facts], bool], tuple[str, ...], f
 )
 
 
+# The defaults the quest log shows as a line of their own (a Router question stated, or Your data's
+# readings): (the line's source, its key; None for any line of that source). The rest are stated
+# phrases inside another line or exhibit, which the quest log does not list yet.
+DEFAULT_LINES: dict[str, tuple[str, str | None]] = {
+    "default:design_observational": ("question", "design"),
+    "default:task_settled": ("question", "task"),
+    "default:grain_stated": ("question", "grain"),
+    "default:repeat_kind_stated": ("question", "repeat_kind"),
+    "default:split_under_inference": ("question", "split"),
+    "default:form-under-prediction": ("question", "form"),
+    "default:read-from-data": ("reading", None),
+}
+
+
 # ── findings ─────────────────────────────────────────────────────────────────
 
 # The question each family's voice routes it to (``finding_words``: the ``Voice``'s second
@@ -385,17 +483,13 @@ def _order() -> tuple[Any, ...]:
 
 
 def blocked(state: Any) -> dict[str, tuple[str, ...]]:
-    """Each compute stage -> the slots it (or a stage upstream) requires that are unset here, as
-    the scheduler reads ``requires`` (``graph.Engine._compute_keys``); empty when it can
-    compute."""
+    """Each compute stage -> the slots it (or a stage upstream) requires that are unset here: the
+    scheduler's own rule (``graph.unmet_requires``, which ``graph.Engine._compute_keys`` reads), so
+    the registry reads the engine and not a copy of it; empty when it can compute."""
+    from turbotab.core.graph import unmet_requires
+
     values = state.model_dump(mode="json") if hasattr(state, "model_dump") else dict(state)
-    out: dict[str, tuple[str, ...]] = {}
-    for stage in _order():
-        missing = [slot for slot in stage.requires if values.get(slot) is None]
-        for dep in stage.deps:
-            missing.extend(out.get(dep, ()))
-        out[stage.name] = tuple(dict.fromkeys(missing))
-    return out
+    return {name: tuple(missing) for name, missing in unmet_requires(_order(), values).items()}
 
 
 def computable(state: Any) -> frozenset[str]:
@@ -481,11 +575,11 @@ def registry() -> dict[str, Item]:
         out[entry.key] = entry
 
     questions: dict[str, Item] = {}
-    for i, key in enumerate(QUESTION_KEYS):
+    for key in QUESTION_KEYS:
         place = quest.QUESTIONS[key]
         holds = frozenset().union(*(_kind_writes(k) for k in quest.answering_kinds(key)))
         entry = Item(key=f"question:{key}", shape="question", stage=place.stage, item=place.item,
-                     when=_question(key), reads=QUESTION_KEYS[:i], holds=holds,
+                     when=_question(key), reads=QUESTION_READS[key], holds=holds,
                      consumer=first_consumer(holds), standing=quest.answer_holds(key))
         questions[key] = entry
         add(entry)
@@ -647,7 +741,8 @@ def disclosure(log: Any, mode: str = "standard", remembered: Sequence[str] = ())
 
 
 __all__ = [
-    "DEFAULTS", "FINDING_QUESTIONS", "Item", "KIND_FIRES", "MODES", "SHAPES", "Shown",
+    "DEFAULTS", "DEFAULT_LINES", "FINDING_QUESTIONS", "Item", "KIND_FIRES", "MODES", "QUESTION_READS", "SHAPES",
+    "Shown",
     "Surfaceable", "blocked", "by_shape", "carriers", "computable", "crosswalk_rules",
     "disclosure", "finding_families", "first_consumer", "for_kind", "question_fires", "registry",
     "rule_name",

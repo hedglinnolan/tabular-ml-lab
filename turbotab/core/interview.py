@@ -63,10 +63,11 @@ Rules:
   adjustment set; ``not_applicable`` when the ``time_varying`` stage reads the exposure as fixed
   within every unit. It is answered by the lane for the current exposure, and the weights' lane
   only once its truncation is declared after the diagnostics.
-* ``open_seal`` is the last step (M2_CONTRACT §12.1): asked once the fit is fresh (it waits on the
-  fit while the fit is computing; a fit that failed or was stopped holds it no longer, and opening
-  is refused with the failure), ``not_applicable`` when nothing is held out, and answered once
-  opened. Its slot is ``seal_opened``.
+* ``open_seal`` is the last step (M2_CONTRACT §12.1): asked once Fit opened Results (``pressed``
+  under Predict, the plan locked under Estimate and Describe; it waits on ``fit`` until then) and
+  the fit is fresh (it waits on the fit while the fit is computing; a fit that failed or was
+  stopped holds it no longer, and opening is refused with the failure), ``not_applicable`` when
+  nothing is held out, and answered once opened. Its slot is ``seal_opened``.
 * A skip's ``reason`` is the clause after the client's own "Not asked:" label, so it never begins
   with those words itself.
 * ``task`` (audit WP18, RO-10) stays open while its answer is incomplete (``followup``): a positive,
@@ -163,6 +164,12 @@ NEEDS: dict[str, tuple[str, ...]] = {
     "open_seal": ("fit",),
 }
 MUST_BE_FRESH = {"substitution": "fit", "open_seal": "fit"}
+# The questions that wait for Fit itself, not only for the fit stage to be fresh: they sit in
+# Results, which Fit opens (``fit_press.results_open``). Under Predict a fit expected to take under
+# about 2 minutes computes before the press, so the fit's freshness says nothing about it (the path
+# fuzzer, I1). The substitution is a Models question, part of the plan the lock fixes, so it waits
+# for the fit's options alone.
+AFTER_FIT = frozenset({"open_seal"})
 NOT_ASKED = "Not asked:"  # the client's label before a skip's reason
 
 
@@ -472,6 +479,7 @@ def route(
     deps: Mapping[str, Sequence[str]] | None = None,
     energy_bearing: Callable[[str], bool] | None = None,
     ask: AskContext | None = None,
+    pressed: bool | None = None,
 ) -> list[InterviewStep]:
     """The interview, in asking order.
 
@@ -481,7 +489,9 @@ def route(
     ``records``: the decision log, for each answered step's ``decision_id``. WP17: ``roles`` (the
     roles stage's proposals) tells the cluster question which columns read as groups. ``ask``:
     what the open question's ask card may read (the table's summaries and store); without it the
-    card reads the state and the artifacts alone.
+    card reads the state and the artifacts alone. ``pressed``: Fit was pressed for the outcome
+    (``fit_press.pressed_for``); the seal question waits for it under Predict (None reads as not
+    pressed), and for the plan's lock under Estimate and Describe (:data:`AFTER_FIT`).
     """
     from turbotab.core import causal, estimand, time_varying
     from turbotab.core.methods import exposure_form, interaction
@@ -577,6 +587,13 @@ def route(
             # like any other stage: the step opens and says why it cannot be taken (the zero-row
             # crash's seal step waited on a failed fit for good).
             own.append(fresh_stage)
+        if key in AFTER_FIT and "fit" not in own:
+            from turbotab.core.fit_press import results_open
+
+            if not results_open(state, pressed):
+                # The seal sits in Results, which Fit opens: a fit that computed on its own (under
+                # the hold, or done before the press) does not open it, nor does one that failed.
+                own.append("fit")
         if first_unanswered is None:
             first_unanswered = key
             status = "waiting" if own else "open"
@@ -705,6 +722,6 @@ def first_unanswered(steps: Sequence[InterviewStep]) -> InterviewStep | None:
     return next((s for s in steps if s.status in ("open", "waiting")), None)
 
 
-__all__ = ["InterviewStep", "NEEDS", "QUESTION_KEYS", "QuestionKey", "SLOT_OF", "applicability",
-           "first_unanswered",
+__all__ = ["AFTER_FIT", "InterviewStep", "NEEDS", "QUESTION_KEYS", "QuestionKey", "SLOT_OF",
+           "applicability", "first_unanswered",
            "pending_stages", "route", "stated", "with_deferred"]

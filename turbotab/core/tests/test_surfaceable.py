@@ -163,6 +163,70 @@ def test_a_result_fires_when_the_graph_can_compute_it():
     assert registry["result:explore"].reads == ("lens", "target", "split")
 
 
+def _journey_states(n: int = 60, every: int = 2) -> list[tuple[ProjectState, dict]]:
+    from turbotab.core.tests.path_fuzzer import run_journey
+
+    return [(snap.state, snap.artifacts) for seed in range(n)
+            for snap in run_journey(seed).snapshots[::every]]
+
+
+def test_a_question_reads_the_answers_its_gate_needs_and_not_every_earlier_one():
+    # reads names what the question needs (the task: "the inputs it needs"), not the asking order:
+    # clearing every answer a question does not read leaves the Router's gate where it was (asked,
+    # stated or not applicable), over the fuzzer's states on both fixtures.
+    from turbotab.core.interview import applicability, stated
+
+    registry = surfacing.registry()
+    holds = {k: registry[f"question:{k}"].holds for k in QUESTION_KEYS}
+    fields = ProjectState.model_fields
+    checked = 0
+    for state, artifacts in _journey_states():
+        for key in QUESTION_KEYS:
+            reads = registry[f"question:{key}"].reads
+            kept = set().union(*(holds[r] for r in (*reads, key)))
+            cleared = {slot: None for other in QUESTION_KEYS if other not in (*reads, key)
+                       for slot in holds[other] - kept
+                       if slot in fields and getattr(state, slot) is not None}
+            if not cleared:
+                continue
+            bare = state.model_copy(update=cleared)
+            before = (applicability(key, state, artifacts), stated(key, state, artifacts))
+            after = (applicability(key, bare, artifacts), stated(key, bare, artifacts))
+            assert (before[0] is None, before[1] is None) == (after[0] is None, after[1] is None), (
+                key, sorted(cleared), before, after)
+            checked += 1
+    assert checked > 10_000
+    # Each read is an earlier question (the display-order rule), and most questions read far
+    # fewer than every earlier one.
+    for i, key in enumerate(QUESTION_KEYS):
+        reads = registry[f"question:{key}"].reads
+        assert set(reads) <= set(QUESTION_KEYS[:i]), (key, reads)
+    assert registry["question:open_seal"].reads == ("split", "models")
+    assert registry["question:clusters"].reads == ("roles",)
+    # A decision kind answering a question reads what that question reads.
+    assert surfacing.for_kind("set_censoring").reads == ("target", "task")
+
+
+def test_the_registry_blocks_a_result_exactly_where_the_engine_does(tmp_path):
+    # surfacing.blocked reads the scheduler's own rule; the engine's keys, computed as the engine
+    # computes them, agree on every state the fuzzer reaches.
+    from turbotab.core import graph
+
+    engine = object.__new__(graph.Engine)
+    engine._order = quest._graph().order()
+    compared = 0
+    for state, _artifacts in _journey_states(n=40, every=3):
+        project = graph._Project("p")
+        project.ctx = graph.ProjectContext(project_id="p", state=state, cache_root=tmp_path,
+                                           paths={}, settings={}, fingerprint="f")
+        engine._compute_keys(project)
+        blocked = surfacing.blocked(state)
+        assert {n: tuple(m) for n, m in project.missing.items()} == blocked
+        assert {n for n, k in project.keys.items() if k is not None} == surfacing.computable(state)
+        compared += 1
+    assert compared > 300
+
+
 # ── the crosswalk's rules ────────────────────────────────────────────────────
 
 

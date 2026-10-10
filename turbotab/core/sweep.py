@@ -68,6 +68,7 @@ from turbotab.core.quest import (
     QuestStage,
     ReadItem,
     ReadOption,
+    ReopenedBy,
     Sweep,
     _get,
     _Log,
@@ -302,6 +303,18 @@ def _writer(log: _Log, stage: str, sweep: str) -> str | None:
     return found.id if found is not None else None
 
 
+def _withdrawn(log: _Log, stage: str, sweep: str) -> Any:
+    """The latest live revert of this stage's "Confirm all", or None."""
+    for r in reversed(log.live):
+        if r.decision.kind != "revert":
+            continue
+        target = log.by_id.get(r.decision.decision_id)
+        if (target is not None and target.decision.kind == "confirm_sweep"
+                and target.decision.stage == stage and target.decision.sweep == sweep):
+            return r
+    return None
+
+
 def _sweep_words(n: int) -> tuple[str, str]:
     if n == 1:
         return "Here is the other choice set for you", "Confirm it"
@@ -325,6 +338,15 @@ def sweep_of(stage: str, lines: Sequence[QuestLine], state: Any, log: _Log) -> S
             line.status, line.decision_id = "answered", writer
         elif held is not None:
             changed.append(line.key)
+    if held is None:
+        # "Confirm all" withdrawn (a revert of it, none since): each default it confirmed is set
+        # for the person again, and says so (the path fuzzer, I11).
+        withdrawn = _withdrawn(log, stage, "defaults")
+        if withdrawn is not None:
+            for line in confirms:
+                if line.status == "set_for_you" and line.reopened_by is None:
+                    line.reopened_by = ReopenedBy(decision_id=withdrawn.id,
+                                                  kind=withdrawn.decision.kind, stage=stage)
     heading, action = _sweep_words(len(confirms))
     return Sweep(lines=len(confirms), answered=all(l.status == "answered" for l in confirms),
                  id=SWEEP_ITEMS.get(stage, ""), heading=heading, action=action,

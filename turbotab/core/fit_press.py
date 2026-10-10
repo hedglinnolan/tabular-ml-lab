@@ -281,6 +281,19 @@ def fit_lock(state: Any, records: Sequence[Any], *, pressed: bool, held: bool,
         reason=reason)
 
 
+def results_open(state: Any, pressed: bool | None) -> bool:
+    """Whether Fit has opened Results now: under Estimate and Describe the plan locked (pressing
+    Fit records the lock), under Predict Fit pressed for the outcome (``pressed``: None, not
+    known, reads as not pressed, the strictest case); never with no goal. The quest log's
+    frontier (:class:`FitLock`) and the Router's seal question read the same rule."""
+    purpose = _get(state, "purpose")
+    if purpose is None:
+        return False
+    if purpose == "prediction":
+        return bool(pressed)
+    return bool(_get(state, "plan_locked"))
+
+
 def opened_by(press: Mapping[str, Any] | None) -> bool:
     """Whether a press of Fit is kept and not withdrawn, whatever outcome it was pressed for."""
     return press is not None and not press.get("withdrawn")
@@ -289,4 +302,5 @@ def opened_by(press: Mapping[str, Any] | None) -> bool:
 __all__ = ["FIT_FIRST", "FitLock", "HOLD_SECONDS", "LOCK_FIRST", "PRESS_FILE", "PRESS_FIT",
            "PURPOSE_FIRST", "RELATIONSHIPS_AFTER_LOCK", "REARM", "fit_estimate", "fit_lock", "gate",
            "holds", "opened_by", "pressed_for", "read_press", "record_press", "relationships_served",
+           "results_open",
            "served", "serving_gate", "withdraw_press"]

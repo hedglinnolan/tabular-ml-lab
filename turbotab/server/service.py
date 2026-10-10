@@ -1097,7 +1097,10 @@ class ProjectService:
         from turbotab.core.ask import AskContext
 
         ask = AskContext(state, artifacts, column_info=column_info, store=store)
-        steps = route(state, stages, artifacts, records, ask=ask)
+        # The seal question waits for Fit itself (``interview.AFTER_FIT``): a short fit computes
+        # before the press, and its freshness opens nothing.
+        steps = route(state, stages, artifacts, records, ask=ask,
+                      pressed=self._pressed(pid, state))
         if not recording:
             return steps
         with self._scheduled_lock:
