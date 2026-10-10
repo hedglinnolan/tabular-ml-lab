@@ -140,8 +140,8 @@ class ColumnSummary(Model):
     # The outcome's own summary (``turbotab.core.outcome_gate``): before the outcome alone opens,
     # only what the outcome card shows, and this line saying when the rest opens.
     withheld: str | None = None
-    # Once open: the rows it was computed on, and the ``view_outcome`` a client records on
-    # opening it.
+    # Once open: the rows it was computed on. Open but not yet recorded for those rows: the
+    # ``view_outcome`` a client posts on opening it, after which it is served.
     rows: OutcomeRows | None = None
     record: dict[str, Any] | None = None
 
@@ -154,6 +154,12 @@ class TableWindow(Model):
     # A column left out of the window, or blanked on some rows, with the line saying why: the
     # outcome beside the other columns waits for its gate (``turbotab.core.outcome_gate``).
     withheld: dict[str, str] = Field(default_factory=dict)
+    # The gate open but the look not yet recorded for the rows it reads: the ``view_outcome`` a
+    # client posts on opening it, after which the window shows the outcome.
+    record: dict[str, Any] | None = None
+    # A quiet label on a column, such as the outcome beside the others once the plan is locked:
+    # exploratory.
+    labels: dict[str, str] = Field(default_factory=dict)
 
 
 class Histogram(Model):
@@ -161,10 +167,8 @@ class Histogram(Model):
     edges: list[float]
     counts: list[int]
     n_missing: int
-    # The outcome's distribution: the rows it was drawn on, and the ``view_outcome`` a client
-    # records on opening it (``turbotab.core.outcome_gate``).
+    # The outcome's distribution: the rows it was drawn on (``turbotab.core.outcome_gate``).
     rows: OutcomeRows | None = None
-    record: dict[str, Any] | None = None
 
 
 # ── errors ───────────────────────────────────────────────────────────────────

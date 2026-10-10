@@ -1920,7 +1920,7 @@
             }
           },
           "409": {
-            "description": "The table is not read yet, or the outcome's distribution is not open yet",
+            "description": "The table is not read yet, or the outcome's distribution is not open or not recorded yet",
             "content": {
               "application/json": {
                 "schema": {
@@ -7422,18 +7422,6 @@
               }
             ],
             "title": "Rows"
-          },
-          "record": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Record"
           }
         },
         "type": "object",
@@ -7442,8 +7430,7 @@
           "edges",
           "counts",
           "n_missing",
-          "rows",
-          "record"
+          "rows"
         ],
         "title": "Histogram"
       },
@@ -9627,7 +9614,8 @@
             "type": "string",
             "enum": [
               "relationship",
-              "distribution"
+              "distribution",
+              "table"
             ],
             "title": "View"
           },
@@ -9678,6 +9666,17 @@
             },
             "type": "object",
             "title": "Levers"
+          },
+          "rows_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows Key"
           }
         },
         "additionalProperties": false,
@@ -9688,7 +9687,8 @@
           "target",
           "rows",
           "n_rows",
-          "levers"
+          "levers",
+          "rows_key"
         ],
         "title": "OutcomeViewSpec"
       },
@@ -18699,6 +18699,25 @@
             },
             "type": "object",
             "title": "Withheld"
+          },
+          "record": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Labels"
           }
         },
         "type": "object",
@@ -18707,7 +18726,9 @@
           "rows",
           "total_rows",
           "offset",
-          "withheld"
+          "withheld",
+          "record",
+          "labels"
         ],
         "title": "TableWindow"
       },
@@ -19433,7 +19454,8 @@
             "type": "string",
             "enum": [
               "relationship",
-              "distribution"
+              "distribution",
+              "table"
             ],
             "title": "View"
           },
@@ -19497,6 +19519,17 @@
               }
             ],
             "title": "Levers"
+          },
+          "rows_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows Key"
           }
         },
         "additionalProperties": false,
@@ -19519,7 +19552,8 @@
             "type": "string",
             "enum": [
               "relationship",
-              "distribution"
+              "distribution",
+              "table"
             ],
             "title": "View"
           },
@@ -19583,6 +19617,17 @@
               }
             ],
             "title": "Levers"
+          },
+          "rows_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows Key"
           }
         },
         "additionalProperties": false,
@@ -19594,7 +19639,8 @@
           "target",
           "rows",
           "n_rows",
-          "levers"
+          "levers",
+          "rows_key"
         ],
         "title": "ViewOutcome"
       },
@@ -41766,7 +41812,8 @@
           "view": {
             "enum": [
               "relationship",
-              "distribution"
+              "distribution",
+              "table"
             ],
             "title": "View",
             "type": "string"
@@ -41835,6 +41882,18 @@
             ],
             "default": null,
             "title": "Levers"
+          },
+          "rows_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rows Key"
           }
         },
         "required": [
@@ -41844,7 +41903,8 @@
           "target",
           "rows",
           "n_rows",
-          "levers"
+          "levers",
+          "rows_key"
         ],
         "title": "ViewOutcome",
         "type": "object"

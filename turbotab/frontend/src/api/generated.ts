@@ -2419,10 +2419,6 @@ export interface components {
             n_missing: number;
             /** Rows */
             rows: ("training" | "analyzed") | null;
-            /** Record */
-            record: {
-                [key: string]: unknown;
-            } | null;
         };
         /** HistogramData */
         HistogramData: {
@@ -3295,7 +3291,7 @@ export interface components {
              * View
              * @enum {string}
              */
-            view: "relationship" | "distribution";
+            view: "relationship" | "distribution" | "table";
             /** Column */
             column: string;
             /** Target */
@@ -3308,6 +3304,8 @@ export interface components {
             levers: {
                 [key: string]: string;
             };
+            /** Rows Key */
+            rows_key: string | null;
         };
         /**
          * PlanExport
@@ -6941,6 +6939,14 @@ export interface components {
             withheld: {
                 [key: string]: string;
             };
+            /** Record */
+            record: {
+                [key: string]: unknown;
+            } | null;
+            /** Labels */
+            labels: {
+                [key: string]: string;
+            };
         };
         /** TeachingEntry */
         TeachingEntry: {
@@ -7219,7 +7225,7 @@ export interface components {
              * View
              * @enum {string}
              */
-            view: "relationship" | "distribution";
+            view: "relationship" | "distribution" | "table";
             /** Columns */
             columns?: string[];
             /** Target */
@@ -7234,6 +7240,8 @@ export interface components {
                     [key: string]: string;
                 };
             } | null;
+            /** Rows Key */
+            rows_key?: string | null;
         };
         /** ViewOutcome */
         "ViewOutcome-Output": {
@@ -7246,7 +7254,7 @@ export interface components {
              * View
              * @enum {string}
              */
-            view: "relationship" | "distribution";
+            view: "relationship" | "distribution" | "table";
             /** Columns */
             columns: string[];
             /** Target */
@@ -7261,6 +7269,8 @@ export interface components {
                     [key: string]: string;
                 };
             } | null;
+            /** Rows Key */
+            rows_key: string | null;
         };
         /**
          * Waiting
@@ -16166,7 +16176,7 @@ export interface components {
              * View
              * @enum {string}
              */
-            view: "relationship" | "distribution";
+            view: "relationship" | "distribution" | "table";
             /** Columns */
             columns: string[];
             /**
@@ -16193,6 +16203,11 @@ export interface components {
                     [key: string]: string;
                 };
             } | null;
+            /**
+             * Rows Key
+             * @default null
+             */
+            rows_key: string | null;
         };
         /** WeightSummary */
         WeightSummary: {
@@ -17244,7 +17259,7 @@ export interface operations {
                     "application/json": components["schemas"]["Refusal"];
                 };
             };
-            /** @description The table is not read yet, or the outcome's distribution is not open yet */
+            /** @description The table is not read yet, or the outcome's distribution is not open or not recorded yet */
             409: {
                 headers: {
                     [name: string]: unknown;

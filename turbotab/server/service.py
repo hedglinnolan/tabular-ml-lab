@@ -1425,9 +1425,14 @@ class ProjectService:
             cohort_ids = self._artifact(pid, "cohort", cohort.key).frames["rows"]["row_id"].to_numpy(
                 dtype="int64")
         training = self.training_rows(pid, stages, sealed, cohort_ids)
-        ctx = evidence.EvidenceContext(state=self.log(pid).state(), datastore=store, sealed=sealed,
+        state = self.log(pid).state()
+        ctx = evidence.EvidenceContext(state=state, datastore=store, sealed=sealed,
                                        training=training)
-        return evidence.evidence(finding, ctx)
+        # The outcome's own values are shown only in its views, at their gates (CROSSWALK
+        # disagreement 2): the evidence leaves its distribution and its values by row out.
+        from turbotab.core.outcome_gate import served_evidence
+
+        return served_evidence(evidence.evidence(finding, ctx), state)
 
     def _artifact(self, pid: str, stage: str, key: str, public: bool = False) -> Any:
         """A stage's artifact by key, remembered (an artifact at a key never changes)."""
@@ -1831,6 +1836,8 @@ class ProjectService:
             # (SIZING P0.8, disagreement 4), as the estimates do.
             state = self.log(pid).state()
             artifact = fit_press.relationships_served(artifact, state, self._pressed(pid, state))
+        if artifact is not None:
+            artifact = self._outcome_served(pid, stage, artifact)
         if stage == "findings" and artifact is not None:  # M2 §4: each finding's disposition
             from turbotab.core import repairs
 
@@ -1978,86 +1985,155 @@ class ProjectService:
 
     # ── the outcome's gates on the data routes (CROSSWALK disagreement 2; core/outcome_gate) ──
 
-    def _outcome_rows(self, pid: str, state: Any) -> Any:
-        """The rows a view of the outcome reads once it is open: the training rows under Predict,
-        the rows kept so far otherwise (None while they are being counted)."""
+    def _outcome_state(self, pid: str) -> tuple[Any, bool]:
+        """The project's state, and whether the person drew the held-out rows under Predict."""
         from turbotab.core import outcome_gate
 
-        stages = self.engine.status(pid)
-        cohort = self._cohort_ids(pid, stages)
+        records = self.log(pid).records()
+        state = decisions.fold(records)
+        return state, outcome_gate.predicting(state) and outcome_gate.drawn(records)
+
+    def _outcome_rows(self, pid: str, state: Any, stages: dict[str, StageStatus] | None = None
+                      ) -> Any:
+        """The rows a view of the outcome reads once it is open: under Predict the current draw's
+        training rows, known only while the split is fresh (a split recomputing, or an older
+        draw's, is not the current seal); the rows kept so far otherwise. None while not known."""
+        import numpy as np
+
+        from turbotab.core import outcome_gate
+
+        stages = stages if stages is not None else self.engine.status(pid)
         if outcome_gate.predicting(state):
-            return self.training_rows(pid, stages, self.sealed_rows(pid, stages), cohort)
-        return self.analyzed_rows(pid, stages, cohort)
+            status = stages.get("split")
+            if status is None or status.status != "fresh" or not status.key:
+                return None
+            frame = self._artifact(pid, "split", status.key).frames["assignment"]
+            return np.sort(frame.loc[frame["partition"] == "train", "row_id"].to_numpy(dtype="int64"))
+        return self.analyzed_rows(pid, stages, self._cohort_ids(pid, stages))
+
+    @staticmethod
+    def _rows_unknown(state: Any) -> str:
+        from turbotab.core import outcome_gate
+
+        return (outcome_gate.BEING_DRAWN if outcome_gate.predicting(state)
+                else outcome_gate.ROWS_BEING_COUNTED)
 
     def table_window(self, pid: str, offset: int, limit: int,
                      columns: list[str] | None) -> dict[str, Any]:
         """A row window, the outcome left out of it until the outcome beside a column opens (the
-        lock under Estimate and Describe, and with no goal; the draw under Predict, after which
-        its held-out rows' outcome stays blank). Each column left out or blanked is named in
-        ``withheld`` with its line."""
+        lock under Estimate and Describe, and with no goal; the draw under Predict) and the look is
+        recorded for the rows it reads; then shown on those rows only (the training rows under
+        Predict, the rows analyzed otherwise, labeled exploratory), blank on every other row. Each
+        column left out or blanked is named in ``withheld`` with its line; a look not yet
+        recorded hands back its ``record``."""
+        import numpy as np
+
         from turbotab.core import outcome_gate
 
         store = self.store(pid)
-        state = self.log(pid).state()
+        state, drew = self._outcome_state(pid)
         target = state.target
         wanted = list(columns) if columns is not None else store.columns
         if not target or target not in wanted:
             return store.window(offset, limit, wanted)
-        gate = outcome_gate.beside_gate(state, self._pressed(pid, state))
-        if gate is not None:
+
+        def without(line: str, record: dict[str, Any] | None = None) -> dict[str, Any]:
             window = store.window(offset, limit, [c for c in wanted if c != target])
-            return {**window, "withheld": {target: gate["line"]}}
+            return {**window, "withheld": {target: line}, "record": record}
+
+        gate = outcome_gate.beside_gate(state, self._pressed(pid, state), drew)
+        if gate is not None:
+            return without(gate["line"])
+        rows = self._outcome_rows(pid, state)
+        if rows is None:
+            return without(self._rows_unknown(state))
+        key = outcome_gate.rows_key(rows)
+        if not outcome_gate.recorded(state, "table", [], key):
+            return without(outcome_gate.NOT_RECORDED, outcome_gate.view_record("table", [], key))
         window = store.window(offset, limit, wanted)
-        if not outcome_gate.predicting(state):
-            return window
-        sealed = self.sealed_rows(pid, self.engine.status(pid))
-        held = {int(i) for i in sealed} if sealed is not None else set()
         at = window["columns"].index(target)
         first = int(window["offset"])
-        blanked = [i for i in range(len(window["rows"])) if first + i in held]
-        for i in blanked:
-            window["rows"][i][at] = None
-        if blanked:
-            window["withheld"] = {target: outcome_gate.HELD_OUT_SEALED}
+        ids = np.arange(first, first + len(window["rows"]), dtype=np.int64)
+        shown = np.isin(ids, rows)
+        for i in np.flatnonzero(~shown):
+            window["rows"][int(i)][at] = None
+        predicting = outcome_gate.predicting(state)
+        if not shown.all():
+            window["withheld"] = {target: outcome_gate.HELD_OUT_SEALED if predicting
+                                  else outcome_gate.NOT_ANALYZED}
+        if not predicting:
+            window["labels"] = {target: outcome_gate.EXPLORATORY}
         return window
 
     def column_summaries(self, pid: str, store: DataStore, summaries: list[dict[str, Any]]
                          ) -> list[dict[str, Any]]:
-        """``summaries`` as served: the outcome's, before the outcome alone opens, keeps only what
-        the outcome card shows; once open, it is computed on the rows its view reads, with the
-        ``view_outcome`` a client records on opening it."""
+        """``summaries`` as served: the outcome's keeps only what the outcome card shows until the
+        outcome alone opens and its look is recorded for the rows it reads (its ``record`` handed
+        back until then); then it is computed on those rows."""
         from turbotab.core import outcome_gate
 
-        state = self.log(pid).state()
+        state, drew = self._outcome_state(pid)
         target = state.target
         if not target or all(s.get("name") != target for s in summaries):
             return summaries
-        gate = outcome_gate.alone_gate(state)
-        rows = None if gate is not None else self._outcome_rows(pid, state)
-        if gate is None and rows is None:
-            gate = {"line": outcome_gate.ROWS_BEING_COUNTED}
-        if gate is not None:
-            return [outcome_gate.card_summary(s, gate["line"]) if s.get("name") == target else s
-                    for s in summaries]
-        mine = {**store.summary_of_rows(target, rows), "rows": outcome_gate.rows_read(state),
-                "record": outcome_gate.view_record()}
+        gate = outcome_gate.alone_gate(state, drew)
+        line, record, rows = (gate or {}).get("line"), None, None
+        if gate is None:
+            rows = self._outcome_rows(pid, state)
+            if rows is None:
+                line = self._rows_unknown(state)
+            else:
+                key = outcome_gate.rows_key(rows)
+                if not outcome_gate.recorded(state, "distribution", [], key):
+                    line = outcome_gate.NOT_RECORDED
+                    record = outcome_gate.view_record("distribution", [], key)
+        if line is not None:
+            return [{**outcome_gate.card_summary(s, line), "record": record}
+                    if s.get("name") == target else s for s in summaries]
+        mine = {**store.summary_of_rows(target, rows), "rows": outcome_gate.rows_read(state)}
         return [mine if s.get("name") == target else s for s in summaries]
 
     def column_histogram(self, pid: str, name: str, bins: int) -> dict[str, Any]:
         """A column's histogram. The outcome's is its distribution, the outcome alone: refused
-        with its line before its gate, and once open drawn on the rows its view reads, with the
-        ``view_outcome`` a client records on opening it."""
+        with its line before its gate, and until its look is recorded for the rows it reads (the
+        record to post is the refusal's exit); then drawn on those rows."""
         from turbotab.core import outcome_gate
 
         store = self.store(pid)
-        state = self.log(pid).state()
+        state, drew = self._outcome_state(pid)
         if not state.target or name != state.target:
             return store.histogram(name, bins)
-        gate = outcome_gate.alone_gate(state)
+        gate = outcome_gate.alone_gate(state, drew)
         if gate is not None:
             raise ApiError(409, "outcome_not_yet", gate["line"], gate["exits"])
         rows = self._outcome_rows(pid, state)
         if rows is None:
-            raise ApiError(409, "outcome_not_yet", outcome_gate.ROWS_BEING_COUNTED)
-        return {**store.histogram_of_rows(name, rows, bins), "rows": outcome_gate.rows_read(state),
-                "record": outcome_gate.view_record()}
+            raise ApiError(409, "outcome_not_yet", self._rows_unknown(state))
+        key = outcome_gate.rows_key(rows)
+        if not outcome_gate.recorded(state, "distribution", [], key):
+            raise ApiError(409, "outcome_not_recorded", outcome_gate.NOT_RECORDED, [
+                {"label": "Open the outcome's distribution",
+                 "decision": outcome_gate.view_record("distribution", [], key)}])
+        return {**store.histogram_of_rows(name, rows, bins), "rows": outcome_gate.rows_read(state)}
+
+    def _outcome_served(self, pid: str, stage: str, artifact: Any) -> Any:
+        """A stage's artifact with the outcome's own values left to its views (no sample of it, the
+        profile's summary of it kept to the card), and under Predict the explore stage's
+        relationship points withheld until the person's draw is fresh."""
+        from turbotab.core import outcome_gate
+
+        if stage not in (*outcome_gate.SAMPLED_STAGES, "profile", "explore"):
+            return artifact
+        state, drew = self._outcome_state(pid)
+        if stage == "explore":
+            if not outcome_gate.predicting(state):
+                return artifact
+            stages = self.engine.status(pid)
+            if drew and all(stages.get(s) is not None and stages[s].status == "fresh"
+                            for s in ("split", "explore")):
+                return artifact
+            return fit_press.withhold_relationships(
+                artifact, outcome_gate.AFTER_THE_DRAW if not drew else outcome_gate.BEING_DRAWN)
+        gate = outcome_gate.alone_gate(state, drew)
+        line = gate["line"] if gate is not None else outcome_gate.OWN_VIEW
+        return outcome_gate.served_stage(stage, artifact, state, line)

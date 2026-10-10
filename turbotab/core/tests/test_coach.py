@@ -255,6 +255,8 @@ def test_the_outcome_unit_is_stated_only_as_recorded_and_proposed_from_the_name_
 
 
 def test_the_target_preview_shows_the_outcome_with_its_unit(tmp_path):
+    """The outcome card shows a number's range and recorded unit, not its distribution, which
+    waits for the outcome alone's gate (CROSSWALK, "The outcome card")."""
     rng = np.random.default_rng(1)
     src = tmp_path / "labs.csv"
     pd.DataFrame({"glucose_mg_dl": rng.normal(100, 12, 300), "glucose": rng.normal(100, 12, 300),
@@ -265,16 +267,19 @@ def test_the_target_preview_shows_the_outcome_with_its_unit(tmp_path):
         # BLUEPRINT §14.3: the header's letters state nothing until the unit is recorded.
         ctx = ctx_for(store, ProjectState())
         result = plan(d.SetTarget(column="glucose_mg_dl"), ctx, basis="")
-        dist = next(v for v in result.views if v.kind == "distribution")
-        assert "mg/dL" not in dist.caption.replace("`glucose_mg_dl`", "")
+        assert all(v.kind != "distribution" for v in result.views)
+        assert "middle half" not in result.note and "median" not in result.note
+        assert result.note.endswith("rows; its distribution is shown after Who's in.")
+        assert "mg/dL" not in result.note.replace("`glucose_mg_dl`", "")
         recorded = ProjectState(target="glucose_mg_dl", outcome_unit="mg/dL")
         result = plan(d.SetTarget(column="glucose_mg_dl"), ctx_for(store, recorded), basis="")
-        dist = next(v for v in result.views if v.kind == "distribution")
-        assert " mg/dL, middle half " in dist.caption and dist.before_label.endswith("(mg/dL)")
+        assert result.note.count(" mg/dL") == 2 and " runs from " in result.note
         # A name that does not spell its unit out states none (audit IN-05: never guessed).
         result = plan(d.SetTarget(column="glucose"), ctx_for(store, ProjectState()), basis="")
-        dist = next(v for v in result.views if v.kind == "distribution")
-        assert "mg/dL" not in dist.caption and "mmol" not in dist.caption
+        assert "mg/dL" not in result.note and "mmol" not in result.note
+        predicting = ProjectState(purpose="prediction")
+        result = plan(d.SetTarget(column="glucose"), ctx_for(store, predicting), basis="")
+        assert result.note.endswith("once you decide which rows to hold out.")
         result = plan(d.SetTarget(column="diabetes"), ctx_for(store, ProjectState()), basis="")
         assert result.note.startswith("Two levels: `")
         assert result.note.endswith("the next question asks which is the event.")

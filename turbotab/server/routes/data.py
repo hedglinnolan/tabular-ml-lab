@@ -98,7 +98,8 @@ def columns(
     responses={
         400: refusal("Not a numeric column"),
         404: refusal("No such project or column"),
-        409: refusal("The table is not read yet, or the outcome's distribution is not open yet"),
+        409: refusal("The table is not read yet, or the outcome's distribution is not open or "
+                     "not recorded yet"),
     },
 )
 def histogram(
