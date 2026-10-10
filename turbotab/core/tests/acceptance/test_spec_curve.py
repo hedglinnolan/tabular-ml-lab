@@ -384,3 +384,83 @@ def test_the_contract_is_registered_with_its_sentence_and_relations():
         assert c.relation(rid).enforced_by.startswith("turbotab.core.methods.spec_curve:")
     assert "Simonsohn, Simmons & Nelson 2020" in S.spec_curve_sentence()
     assert "No joint test" in S.spec_curve_sentence()
+
+
+# ── what the probes found: scales, the lock, a dropped exposure, the domain's n ─
+
+
+@pytest.mark.parametrize("alt_scale,primary_scale", [(None, ""), ("per year", ""), (None, "per SD")])
+def test_an_exposure_swap_with_an_undeclared_scale_is_refused(alt_scale, primary_scale):
+    frame = _frame()
+    swap = [S.Choice("exposure", "Exposure",
+                     (S.Alternative("x", "x"), S.Alternative("age", "a instead", exposure="a",
+                                                             scale=alt_scale)), "x")]
+    with pytest.raises(S.SpecCurveRefused, match="not declared") as caught:
+        S.linear_fitter(frame, outcome="y", exposure="x", covariates=["b"], choices=swap,
+                        task="regression", exposure_scale=primary_scale)
+    assert caught.value.exits
+
+
+@pytest.mark.parametrize("lock", ["", "   ", False, 0, object(), True])
+def test_a_placeholder_lock_keeps_the_curve_sealed(lock):
+    called = []
+    curve = S.specification_curve(_choices(_frame()), lambda p: called.append(p), lock=lock,
+                                  estimate_label="z")
+    assert curve.sealed == S.SEALED and not called and curve.to_view()["specs"] == []
+
+
+def test_a_lock_plan_record_opens_the_curve_and_another_record_does_not():
+    from types import SimpleNamespace as NS
+
+    choices = [S.Choice("c", "C", (S.Alternative("p", "p"), S.Alternative("q", "q")), "p")]
+    fit = lambda picks: S.SpecFit(1.0, 0.5, 1.5, 9)  # noqa: E731
+    lock = NS(id="rec-7", decision=NS(kind="lock_plan"))
+    opened = S.specification_curve(choices, fit, lock=lock, estimate_label="z")
+    assert opened.sealed is None and opened.plan_lock == "rec-7" and len(opened.specs) == 2
+    other = NS(id="rec-8", decision=NS(kind="set_roles"))
+    assert S.specification_curve(choices, fit, lock=other, estimate_label="z").sealed == S.SEALED
+
+
+@pytest.mark.parametrize("drop", [("x",), ("x_alt",)])
+def test_an_option_that_drops_the_exposure_is_refused(drop):
+    frame = _frame()
+    exposure = "x" if drop == ("x",) else "x_alt"
+    choices = [S.Choice("adjustment", "Adjusted for",
+                        (S.Alternative("base", "a"),
+                         S.Alternative("dropz", "without the exposure", drop=drop,
+                                       exposure=None if exposure == "x" else "x_alt",
+                                       scale=None if exposure == "x" else "per unit")), "base")]
+    with pytest.raises(S.SpecCurveRefused, match="drops") as caught:
+        S.linear_fitter(frame, outcome="y", exposure="x", covariates=["a"], choices=choices,
+                        task="regression", exposure_scale="per unit")
+    assert caught.value.exits
+
+
+def test_under_a_design_a_specification_s_n_is_its_domain():
+    from turbotab.core.models.survey import build_design
+
+    frame = _frame()
+    w = frame["w"].to_numpy().copy()
+    w[:30] = 0.0
+    w[30:35] = np.nan
+    design = build_design(frame, w, weight_column="w", strata_column="stratum", psu_column="psu")
+    choices = _choices(frame)
+    fit = S.linear_fitter(frame, outcome="y", exposure="x", covariates=["a"], choices=choices,
+                          task="regression", design=design)
+    curve = S.specification_curve(choices, fit, lock="lock-1", estimate_label="z", weighted=True)
+    weighted = np.isfinite(w) & (w > 0)
+    for s in curve.specs:
+        cols = {"a": ["a"], "ab": ["a", "b"], "ag": ["a", "g"], "none": []}[s.picks["adjustment"]]
+        rows = frame[["y", "x", *cols]].notna().all(axis=1).to_numpy() & weighted
+        if s.picks["rows"] == "trim":
+            rows &= frame["x"].between(1, 9).to_numpy()
+        assert s.n == int(rows.sum())
+
+
+def test_a_primary_with_no_estimate_is_refused_with_exits():
+    choices = [S.Choice("c", "C", (S.Alternative("p", "p"), S.Alternative("q", "q")), "p")]
+    with pytest.raises(S.SpecCurveRefused) as caught:
+        S.specification_curve(choices, lambda picks: S.SpecFit(math.nan, None, None, 3,
+                                                               refused="none"),
+                              lock="L", estimate_label="z")
+    assert caught.value.exits

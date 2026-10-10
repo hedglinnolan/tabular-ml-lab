@@ -346,3 +346,35 @@ def test_the_contract_is_registered_with_its_sentence_and_relations():
         assert c.relation(rid).enforced_by.startswith("turbotab.core.methods.site_validation:")
     sentence = V.site_validation_sentence()
     assert "Riley et al. 2016" in sentence and "Snell et al. 2018" in sentence
+
+
+# ── a site that cannot be weighed, and the refusals' exits ───────────────────
+
+
+def test_a_c_of_one_is_shown_but_named_as_left_out_of_the_pooling():
+    got = V.pool("c_statistic", [0.70, 0.75, 1.0, 0.80], [0.03, 0.04, 0.0, 0.05], scale="logit",
+                 labels=list("ABCD"))
+    alone = V.pool("c_statistic", [0.70, 0.75, 0.80], [0.03, 0.04, 0.05], scale="logit")
+    assert got.k == 3 and got.estimate == pytest.approx(alone.estimate, rel=1e-12)
+    assert got.note.startswith("Left out of the pooling: C (C = 1")
+    assert alone.note is None
+    X, event, _, site = _sites()
+    rng = np.random.default_rng(11)
+    extra = pd.DataFrame({"a": np.r_[rng.uniform(3, 4, 3), rng.uniform(-4, -3, 3)],
+                          "b": np.zeros(6)})
+    X2 = pd.concat([X, extra], ignore_index=True)
+    event2 = np.r_[event, [1, 1, 1, 0, 0, 0]]
+    site2 = np.r_[site, ["H"] * 6]
+    r = V.site_validation("binary", _logistic, X2, event2, site2)
+    h = next(s for s in r.sites if s.site == "H")
+    assert h.c_statistic.estimate == 1.0 and h.c_statistic.se == 0
+    assert "left out of the pooling" in h.note and "C = 1" in h.note
+    pooled = r.pooled["c_statistic"]
+    assert pooled.k == 7 and "H (C = 1" in pooled.note
+
+
+def test_an_outcome_with_one_value_is_refused_with_exits():
+    X, event, _, site = _sites()
+    with pytest.raises(V.SiteValidationRefused, match="only one") as caught:
+        V.site_validation("binary", _logistic, X, np.zeros_like(event), site)
+    assert caught.value.exits

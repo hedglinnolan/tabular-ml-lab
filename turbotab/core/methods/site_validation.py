@@ -53,7 +53,10 @@ the surveyed-population answer, since a site's design-weighted performance has n
 pooling here (the exits: score the sites on the rows as sampled, or the design-based
 cross-validation the fit offers); an outcome other than a number or yes/no. A site that cannot be
 scored (one outcome class only, too few rows) is listed with its reason and left out of the pooling
-of that measure; a site whose rows all lack the site's value is never held out and never fitted on.
+of that measure; so is a measure that cannot be weighed (a C statistic of exactly 0 or 1, whose
+DeLong standard error is zero and whose logit is infinite): the site shows it, says why it is not
+pooled, and the pooled note names it. A site whose rows all lack the site's value is never held out
+and never fitted on.
 
 The goal that offers it: Predict. Estimate an effect and Describe fit no prediction model to carry
 to a new site.
@@ -174,25 +177,49 @@ def _dl_tau2(y: np.ndarray, v: np.ndarray) -> float:
     return max(0.0, (q - (len(y) - 1)) / c) if c > 0 else 0.0
 
 
+def unpooled_reason(estimate: float | None, se: float | None, scale: str) -> str | None:
+    """Why a site's measure cannot enter the pooling, in plain words, or None when it can."""
+    if estimate is None or not math.isfinite(estimate):
+        return "not scored"
+    if scale == "logit" and not 0 < estimate < 1:
+        return (f"C = {estimate:g}: the predictions separate its outcomes completely, so on the "
+                "logit scale it has no finite value or standard error")
+    if se is None or not math.isfinite(se) or se <= 0:
+        return "no standard error, so it has no weight"
+    return None
+
+
 def pool(measure: str, estimates: Sequence[float], ses: Sequence[float], *,
          scale: Literal["identity", "logit"] = "identity", method: str = "reml_hksj",
-         level: float = LEVEL) -> Pooled:
+         level: float = LEVEL, labels: Sequence[str] | None = None) -> Pooled:
     """The random-effects summary of per-site ``estimates`` with standard errors ``ses`` (module
-    docstring). On the logit scale each estimate θ becomes logit θ with SE se/(θ(1 − θ))."""
+    docstring). On the logit scale each estimate θ becomes logit θ with SE se/(θ(1 − θ)). A site
+    that cannot be pooled (no estimate, no standard error, a C of 0 or 1) is left out, and the
+    note names it with its reason (``labels`` name the sites)."""
     if method not in METHODS:
         raise ValueError(f"method {method!r} is not one of {METHODS}")
     th = np.asarray(estimates, dtype=float)
     se = np.asarray(ses, dtype=float)
-    keep = np.isfinite(th) & np.isfinite(se) & (se > 0)
-    if scale == "logit":
-        keep &= (th > 0) & (th < 1)
+    names = list(labels) if labels is not None else [str(i + 1) for i in range(len(th))]
+    if len(names) != len(th):
+        raise ValueError("labels must name every site")
+    reasons = [unpooled_reason(float(t), float(s), scale) for t, s in zip(th, se)]
+    keep = np.array([r is None for r in reasons], dtype=bool)
+    left = [f"{nm} ({r})" for nm, r in zip(names, reasons) if r is not None and r != "not scored"]
+    left_note = ("Left out of the pooling: " + "; ".join(left) + ".") if left else None
     th, se = th[keep], se[keep]
     k = int(len(th))
     label = ("REML, Hartung–Knapp–Sidik–Jonkman interval" if method == "reml_hksj" else
              "DerSimonian–Laird, Wald interval")
+
+    def _note(*parts: str | None) -> str | None:
+        said = " ".join(p for p in parts if p)
+        return said or None
+
     if k < 2:
         return Pooled(measure, scale, k, None, method=label,
-                      note=f"{k} site{'s' if k != 1 else ''} scored: nothing to pool.")
+                      note=_note(f"{k} site{'s' if k != 1 else ''} scored: nothing to pool.",
+                                 left_note))
     if scale == "logit":
         se = se / (th * (1 - th))
         th = np.log(th / (1 - th))
@@ -221,8 +248,9 @@ def pool(measure: str, estimates: Sequence[float], ses: Sequence[float], *,
     if k >= 3:
         spread = float(stats.t.ppf(half_level, k - 2)) * math.sqrt(tau2 + se_mu ** 2)
         out.update(pi_low=back(mu - spread), pi_high=back(mu + spread))
+        out["note"] = left_note
     else:
-        out["note"] = "Two sites scored: no prediction interval (it needs three)."
+        out["note"] = _note("Two sites scored: no prediction interval (it needs three).", left_note)
     return Pooled(**out)
 
 
@@ -353,7 +381,12 @@ def site_validation(task: str, make: Callable[[], Any], X: Any, y: Any, sites: A
     if task == "binary":
         observed_classes = sorted(set(yv[present].tolist()), key=str)
         if len(observed_classes) != 2:
-            raise SiteValidationRefused("A yes/no outcome needs both of its values among the rows.")
+            raise SiteValidationRefused(
+                "A yes/no outcome needs both of its values among the rows with a site; here "
+                + ("there is only one" if len(observed_classes) < 2 else
+                   f"there are {len(observed_classes)}") + ".",
+                ({"label": "Check which column is the outcome", "stage": "first_look"},
+                 KFOLD_EXIT))
     notes: dict[str, str] = {}
     pairs = []
     for i, level in enumerate(levels):
@@ -388,12 +421,18 @@ def site_validation(task: str, make: Callable[[], Any], X: Any, y: Any, sites: A
             auc = perf.auc_interval(event, p, groups=groups, unit=unit_name)
             cal = perf.calibration("binary", pred.y, pred.prediction, classes=classes,
                                    groups=groups, where="in this held-out site")
+            c_stat = _measure(auc)
+            said = [] if cal is not None else ["Calibration not assessed: fewer than 10 rows."]
+            if c_stat is not None:
+                why = unpooled_reason(c_stat.estimate, c_stat.se, "logit")
+                if why is not None:
+                    said.append(f"Its C statistic is shown but left out of the pooling: {why}.")
             rows.append(SiteScore(
                 level, n_site, size[0], n_events=events, observed=float(event.mean()),
-                expected=float(p.mean()), c_statistic=_measure(auc),
+                expected=float(p.mean()), c_statistic=c_stat,
                 citl=None if cal is None else _measure(cal.intercept),
                 slope=None if cal is None else _measure(cal.slope),
-                note=None if cal is not None else "Calibration not assessed: fewer than 10 rows."))
+                note=" ".join(said) or None))
         else:
             yy = np.asarray(pred.y, dtype=float)
             yhat = np.asarray(pred.prediction, dtype=float)
@@ -414,7 +453,8 @@ def site_validation(task: str, make: Callable[[], Any], X: Any, y: Any, sites: A
         est = [getattr(s, name).estimate if getattr(s, name) is not None else math.nan for s in rows]
         se = [(getattr(s, name).se if getattr(s, name) is not None and getattr(s, name).se is not None
                else math.nan) for s in rows]
-        pooled[name] = pool(name, est, se, scale=scale, method=method)  # type: ignore[arg-type]
+        pooled[name] = pool(name, est, se, scale=scale, method=method,  # type: ignore[arg-type]
+                            labels=[s.site for s in rows])
     clustered = None
     if unit is not None and unit[present].duplicated().any():
         clustered = unit_name or "unit"
@@ -530,8 +570,9 @@ def _register_contract() -> None:
                      "before I²", purposes=prediction, condition="three or more sites scored",
                      enforced_by=f"{here}:pool", id="new_site_interval"),
             Relation("implies", "unscored_site_listed",
-                     "a site with one outcome class only, or too few rows, is listed with its "
-                     "reason and left out of that measure's pooling", purposes=prediction,
+                     "a site with one outcome class only, or too few rows, or a C statistic of "
+                     "exactly 0 or 1, is listed with its reason and left out of that measure's "
+                     "pooling, the pooled note naming it", purposes=prediction,
                      condition="a site that cannot be scored", enforced_by=f"{here}:site_validation",
                      id="unscored_site"),
             Relation("implies", "clustered_site_intervals",
