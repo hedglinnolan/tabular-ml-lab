@@ -210,7 +210,7 @@ FINDINGS = {"findings": [
     {"id": "batch_confounded__run", "severity": "critical", "summary": "Run is the outcome",
      "affected_columns": ["run"], "routes_to": None, "repairs": [{"key": "x"}],
      "answered_by": None},
-    {"id": "binary_text__age", "severity": "warning", "summary": "Age reads as text",
+    {"id": "heaping__age", "severity": "warning", "summary": "Ages heap on round numbers",
      "affected_columns": ["age"], "routes_to": None, "repairs": [{"key": "map"}],
      "answered_by": None},
     {"id": "outliers__bp_sys", "severity": "warning", "summary": "Extreme blood pressure",
@@ -233,7 +233,7 @@ def test_each_open_noticing_arrives_with_a_recommended_disposition_and_blockers_
     got = {i.id: (i.recommended, i.blocker) for i in t.items}
     assert got == {
         "batch_confounded__run": ("act_on_it", True),  # critical: it must be resolved first
-        "binary_text__age": ("could_bias", False),  # age is in the model
+        "heaping__age": ("could_bias", False),  # age is in the model
         "outliers__bp_sys": ("no_change", False),  # bp_sys is left out of every model
         "note__SEQN": ("no_change", False),  # a note, nothing to act on
     }
@@ -253,7 +253,8 @@ def test_each_open_noticing_arrives_with_a_recommended_disposition_and_blockers_
     routed = {"id": "implausible", "severity": "warning", "affected_columns": ["sugar"],
               "routes_to": "exclusions"}
     assert sweep.recommend(state, routed, {"exclusions"})[:2] == ("act_on_it", False)
-    assert sweep.recommend(state, routed, set())[:2] == ("could_bias", False)
+    # Answered, it is still decided there: the answer is where it is changed (Q-a's rule 3).
+    assert sweep.recommend(state, routed, set())[:2] == ("act_on_it", False)
 
 
 def test_the_triage_records_every_disposition_and_the_disposed_noticings_are_answered():
@@ -267,12 +268,12 @@ def test_the_triage_records_every_disposition_and_the_disposed_noticings_are_ans
                             "lines": [{"id": "finding:note__SEQN", "key": "note__SEQN",
                                        "value": "act_on_it"}]}, Ctx(log, t))
     assert {l.key: l.value for l in d.lines} == {
-        "binary_text__age": "could_bias", "outliers__bp_sys": "no_change",
+        "heaping__age": "could_bias", "outliers__bp_sys": "no_change",
         "note__SEQN": "act_on_it"}
     records = [record(1, d.model_dump(mode="json"))]
     state = planned(sweeps=decisions.fold(records).sweeps)
     after = log_of(state, records, findings=resolved)
-    assert line(after, "binary_text__age").status == "answered"
+    assert line(after, "heaping__age").status == "answered"
     assert line(after, "outliers__bp_sys").decision_id == "r1"
     assert line(after, "note__SEQN").status == "open"  # to act on: still its own decision
     assert stage(after, "models").sweep is not None  # the defaults' sweep is a separate objective
@@ -319,19 +320,19 @@ def test_a_second_triage_keeps_every_disposition_recorded_by_the_first():
     state, log, t = triaged(planned(), records, findings)
     shown = {i.id: i.recorded for i in t.items}
     # Every disposition the first triage holds is shown with it: nothing reads as unrecorded.
-    assert shown == {"binary_text__age": "could_bias", "outliers__bp_sys": "no_change",
+    assert shown == {"heaping__age": "could_bias", "outliers__bp_sys": "no_change",
                      "note__SEQN": "act_on_it", "skew__age": None}
     assert not t.answered and t.confirmable
     d = decisions.validate({"kind": "confirm_sweep", "stage": "models", "sweep": "noticings"},
                            Ctx(log, t))
     # The person's own choice stands; only the new noticing takes the engine's recommendation.
     assert {l.key: l.value for l in d.lines} == {
-        "binary_text__age": "could_bias", "outliers__bp_sys": "no_change",
+        "heaping__age": "could_bias", "outliers__bp_sys": "no_change",
         "note__SEQN": "act_on_it", "skew__age": "could_bias"}
     records = [*records, record(2, d.model_dump(mode="json"))]
     _s, after, t2 = triaged(planned(), records, findings)
     assert t2.answered and t2.confirmed_by == "r2"
-    for key in ("binary_text__age", "outliers__bp_sys", "skew__age"):
+    for key in ("heaping__age", "outliers__bp_sys", "skew__age"):
         assert (line(after, key).status, line(after, key).decision_id) == ("answered", "r2"), key
     assert line(after, "note__SEQN").status == "open"  # still its own decision
     # Undoing the second triage brings the first one's back, as it was.
@@ -353,7 +354,7 @@ def test_a_disposition_whose_facts_changed_is_open_again_and_says_so():
     assert (item.recommended, item.recorded) == ("could_bias", None)
     assert t.changed == ["outliers__bp_sys"] and not t.answered
     # The others still stand as recorded.
-    assert line(log, "binary_text__age").decision_id == "r1"
+    assert line(log, "heaping__age").decision_id == "r1"
     # Confirming again records the disposition on the facts as they stand.
     d = decisions.validate({"kind": "confirm_sweep", "stage": "models", "sweep": "noticings"},
                            Ctx(log, t))
@@ -363,14 +364,14 @@ def test_a_disposition_whose_facts_changed_is_open_again_and_says_so():
 def test_a_noticing_that_turns_critical_under_the_same_id_blocks_again():
     records = first_triage()
     _s, before, _t = triaged(planned(), records, RESOLVED)
-    where = next(s.key for s in before.stages if any(l.key == "binary_text__age" for l in s.lines))
-    critical = with_finding(RESOLVED, id="binary_text__age", severity="critical",
+    where = next(s.key for s in before.stages if any(l.key == "heaping__age" for l in s.lines))
+    critical = with_finding(RESOLVED, id="heaping__age", severity="critical",
                             summary="Age reads as text", affected_columns=["age"])
     state, log, t = triaged(planned(), records, critical)
-    assert line(log, "binary_text__age").status == "open"
+    assert line(log, "heaping__age").status == "open"
     assert t.blockers == 1 and not t.answered and not t.confirmable
     [blocking] = [i for i in t.items if i.blocker]
-    assert (blocking.id, blocking.recorded) == ("binary_text__age", None)
+    assert (blocking.id, blocking.recorded) == ("heaping__age", None)
     assert stage(log, where).progress.answered == stage(before, where).progress.answered - 1
     assert not stage(log, where).progress.complete
     with pytest.raises(Refusal) as blocked:

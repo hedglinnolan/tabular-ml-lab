@@ -36,7 +36,15 @@ numbers here"). A movement that changes the question (substitution versus additi
 never graded by a number; one that cannot be measured on these rows (one recall day for λ) is band
 1, "not measurable here". :func:`calibrate` chooses the thresholds from the cases (each labeled
 with the pipeline it was run on) to leave no false reassurance, and reports the confusion matrix
-per instrument.
+per instrument. An instrument exact by theorem (:func:`invariance`: Frisch–Waugh–Lovell, a
+reparameterization of a column that is not focal) is not floored: its 0 is a proof, so it needs no
+cases; ``calibrate`` keeps its entry, which names the theorem, and each movement carries it
+(§2.6 as amended, WAVE_C6A_PLAN §7 ruling 2).
+
+**Structure among the adjustment terms** (K5, :func:`collinear_noticing`): Belsley's
+variance-decomposition proportions of what you study and the adjustment set, outcome-blind. What
+you study outside every near dependency is band 0 by theorem, For the record; inside one it changes
+the question (band 2, decided at the adjustment question); an exact identity is a T1 blocker.
 
 **The tier** (§1.3, :func:`tier`): a blocker is Decide; an item that needs a meaning with ``M > 0``
 is Decide; one that changes the question is Decide; a default whose best alternative reaches
@@ -105,6 +113,11 @@ INSTRUMENTS: dict[str, tuple[Regime, str]] = {
     "design_imbalance": ("predicted", "rank-biserial r over the outcome"),
     "excess_over_chance": ("predicted", "share beyond chance"),
     "changes_question": ("predicted", "changes the question"),
+    # Exact by theorem (§2.6 as amended, WAVE_C6A_PLAN §7 ruling 2): an alternative that leaves the
+    # model matrix's column space unchanged (a recoding of a column that is not focal, or adjustment
+    # terms written another way) moves the focal estimate by exactly 0 (Frisch–Waugh–Lovell). It
+    # needs no calibration cases and is never floored; its calibration entry names the theorem.
+    "invariance": ("predicted", "exact by theorem"),
     "sensitivity": ("realized", "|Δβ| / half-width, refit on other rows"),
     "calibration": ("realized", "|Δβ| / half-width, calibrated"),
     "secondary": ("realized", "|Δβ| / half-width, further adjusted"),
@@ -134,6 +147,13 @@ def thresholds(instrument: str) -> tuple[float, float, bool]:
     return float(entry["band_1"]), float(entry["band_2"]), bool(entry["calibrated"])
 
 
+def theorem_of(instrument: str) -> str | None:
+    """The theorem an exact instrument rests on, as its calibration entry names it; None for a
+    proxy that is not exact (it keeps the floor of §2.6)."""
+    entry = calibration()["instruments"].get(instrument) or {}
+    return entry.get("theorem") or None
+
+
 def tau_confirm_band() -> int:
     """τ_confirm, as a band: a default whose best alternative reaches it is a Confirm."""
     return int(calibration()["tau_confirm_band"])
@@ -159,13 +179,16 @@ class Movement(BaseModel):
     crosses: bool = False  # a sign change, or an interval that crosses the null
     words: str
     label: str
+    # The theorem an exact instrument rests on (``invariance``): the ledger names it.
+    theorem: str | None = None
 
 
 def band_of(instrument: str, value: float | None, *, changes_question: bool = False,
             not_measurable: bool = False, crosses: bool = False) -> int:
     """The band (0 below noise, 1 could bias, 2 act on it) of a movement (§2.4). Unknown is "could
     bias"; an uncalibrated proxy is floored at 1: never 0, and still 2 past its band-2 convention
-    (§2.3: an attenuation 1 − λ ≈ 0.6 is act on it)."""
+    (§2.3: an attenuation 1 − λ ≈ 0.6 is act on it). An instrument exact by theorem is never
+    floored (§2.6 as amended): its 0 is a proof, not a prediction."""
     if changes_question or crosses:
         return 2
     if not_measurable or value is None or not math.isfinite(value):
@@ -173,7 +196,7 @@ def band_of(instrument: str, value: float | None, *, changes_question: bool = Fa
     band_1, band_2, calibrated = thresholds(instrument)
     raw = 2 if value >= band_2 else 1 if value >= band_1 else 0
     regime = INSTRUMENTS.get(instrument, ("predicted", ""))[0]
-    if regime == "predicted" and not calibrated:
+    if regime == "predicted" and not calibrated and theorem_of(instrument) is None:
         return max(raw, 1)
     return raw
 
@@ -184,12 +207,22 @@ def movement(instrument: str, value: float | None, words: str, *, label: str | N
     regime, name = INSTRUMENTS[instrument]
     _b1, _b2, calibrated = thresholds(instrument)
     shown = name if value is None else f"{name} = {value:.3f}"
+    theorem = theorem_of(instrument)
     return Movement(instrument=instrument, regime=regime, value=value,
                     band=band_of(instrument, value, changes_question=changes_question,
                                  not_measurable=not_measurable, crosses=crosses),
-                    calibrated=calibrated or regime == "realized",
+                    calibrated=calibrated or regime == "realized" or theorem is not None,
                     changes_question=changes_question, not_measurable=not_measurable,
-                    crosses=crosses, words=words, label=label or shown)
+                    crosses=crosses, words=words, label=label or shown, theorem=theorem)
+
+
+def invariance(words: str, *, label: str | None = None) -> Movement:
+    """An alternative that leaves the focal estimate exactly where it is, by theorem: the model
+    matrix spans the same space under it (a recoding of a column that is not focal, adjustment
+    terms written another way), so the estimate, its interval and the fitted values do not move
+    (Frisch–Waugh–Lovell). Band 0, never floored; the label names the theorem."""
+    theorem = theorem_of("invariance") or "Frisch–Waugh–Lovell"
+    return movement("invariance", 0.0, words, label=label or f"exact by theorem ({theorem})")
 
 
 def disposition(m: Movement) -> Disposition:
@@ -575,6 +608,9 @@ class Noticing(BaseModel):
     answered: bool = False
     done: str | None = None
     verified_by: str | None = None
+    # A T1 blocker (UNDERSTANDING_LAYER §2.2): part of the analysis cannot run as answered, so it
+    # is resolved before any estimate (an exact identity among the model's columns).
+    blocker: bool = False
 
 
 def _energy_column(state: Any) -> str | None:
@@ -731,6 +767,196 @@ def variance_noticing(state: Any, frame: Any) -> Noticing | None:
         answered=answer is not None, done=done, verified_by="calibration")
 
 
+# ── structure among the adjustment terms (K5) ────────────────────────────────
+
+COLLINEAR_THREAD = "shared-collinear-predictors"
+# Belsley, Kuh & Welsch (1980, §3.3): a condition index of 30 or more marks a moderate to strong
+# near dependency; a column whose variance-decomposition proportion on it is 0.5 or more is in it.
+CONDITION_INDEX = 30.0
+IN_DEPENDENCY = 0.5
+def _model_columns(state: Any, frame: Any, columns: Sequence[str]
+                   ) -> tuple[np.ndarray, list[str]] | None:
+    """The model matrix's columns for ``columns`` (no intercept), as the fit builds them, and the
+    column each came from: the pipeline's own steps (``models.pipeline.shared_steps``: the fill,
+    the energy step, what you study in its declared form, text and declared codes one-hot with the
+    first level dropped), never the outcome. Rows the fit leaves out for a blank (no fill answered)
+    are dropped. None where the fit's design cannot be built yet (it asks first)."""
+    from turbotab.core.models.pipeline import (
+        design_spec, normalize_frame, shared_steps, transformer,
+    )
+
+    present = [c for c in dict.fromkeys(columns) if c in frame.columns]
+    raw = normalize_frame(frame[present].reset_index(drop=True))
+    try:
+        spec = design_spec(state, raw, present)
+        if not spec.impute:
+            raw = raw.dropna().reset_index(drop=True)
+        if raw.empty:
+            return None
+        out = transformer(shared_steps(spec)).fit_transform(raw[spec.inputs])
+    except Exception:  # noqa: BLE001 - an answer still owed: the fit asks it, not this noticing
+        return None
+    # Each output column's source: itself, or the longest column it is named after (an indicator
+    # ``gender_male``, an adjusted ``protein_adj``, a form's ``sugar_q2``).
+    by_length = sorted(present, key=len, reverse=True)
+    owners = [next((c for c in by_length if str(name) == c or str(name).startswith(f"{c}_")),
+                   str(name)) for name in out.columns]
+    X = out.to_numpy(dtype=float)
+    return X[np.isfinite(X).all(axis=1)], owners
+
+
+def belsley(X: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Belsley's diagnostics of ``[1, X]``, as ``models.linear.collinearity_concern`` computes them:
+    the intercept and every column scaled to unit length, its SVD ``U S Vᵀ``; the condition
+    indexes ``η_k = s_max / s_k``; the variance-decomposition proportions
+    ``π_jk = (v_jk² / s_k²) / Σ_k (v_jk² / s_k²)`` (row 0 the intercept); the singular values; and
+    ``Vᵀ`` (a row whose singular value is 0 is an exact identity among the columns)."""
+    A = np.column_stack([np.ones(len(X)), X])
+    norms = np.linalg.norm(A, axis=0)
+    norms[norms == 0] = 1.0
+    _, s, vt = np.linalg.svd(A / norms, full_matrices=False)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        phi = (vt.T ** 2) / np.where(s > 0, s, np.finfo(float).tiny) ** 2
+        pi = phi / phi.sum(axis=1, keepdims=True)
+        eta = s[0] / np.where(s > 0, s, np.finfo(float).tiny)
+    return eta, pi, s, vt
+
+
+def _in_order(columns: Iterable[str], order: Sequence[str]) -> list[str]:
+    found = set(columns)
+    return [c for c in dict.fromkeys(order) if c in found]
+
+
+def collinear_noticing(state: Any, frame: Any) -> Noticing | None:
+    """``shared-collinear-predictors`` on the adjustment set (K5; with ``diet-nested-parts`` and
+    ``shared-compositional-parts``, "a total beside its parts"): a near dependency among what the
+    primary model adjusts for, and where what you study sits in it. Outcome-blind: it reads what
+    you study and the adjustment set, never the outcome. None under Predict (no focal estimate),
+    or with no dependency among two or more columns.
+
+    * An exact identity (the model matrix is rank deficient, e.g. kcal = 4P + 4C + 9F + 7A
+      exactly) is a T1 blocker: the model cannot separate those columns.
+    * What you study in the dependency (its proportions summed over the near dependencies, at
+      least 0.5): which of them are held fixed changes what the estimate means (band 2), decided
+      at the adjustment question.
+    * Otherwise band 0 by theorem: the estimate and its interval do not depend on how the
+      adjustment terms are written (Frisch–Waugh–Lovell), so it is disclosed For the record, the
+      others' coefficients labeled as adjustment terms."""
+    if getattr(state, "purpose", None) == "prediction":
+        return None
+    exposure = _exposure(state)
+    if not exposure or exposure not in frame.columns:
+        return None
+    adjusted = [c for c in adjustment_set(state) if c in frame.columns and c != exposure]
+    if not adjusted:
+        return None
+    built = _model_columns(state, frame, [exposure, *adjusted])
+    if built is None:
+        return None
+    X, owners = built
+    if exposure not in owners or len(X) <= X.shape[1] + 1:
+        return None
+    eta, pi, s, vt = belsley(X)
+    names = ["", *owners]  # row 0 is the intercept
+    order = [exposure, *adjusted]
+    # Numerically rank deficient, as numpy's ``matrix_rank`` reads it.
+    tol = s[0] * max(X.shape[0], X.shape[1] + 1) * np.finfo(float).eps
+    exact: set[str] = set()
+    for k in np.flatnonzero(s <= tol):
+        members = {names[j] for j in range(1, len(names)) if abs(vt[k, j]) > 1e-6}
+        if len(members) >= 2:
+            exact |= members
+    if exact:
+        subject = _in_order(exact, order)
+        cols = _listing(subject)
+        words = (f"{cols} add up exactly: one is a fixed sum of the others, so the model cannot "
+                 f"tell them apart. Leave one of them out before any estimate.")
+        label = "the model matrix is rank deficient (an exact linear identity)"
+        return Noticing(
+            thread=COLLINEAR_THREAD, family="K5", stage=_place(COLLINEAR_THREAD), subject=subject,
+            summary=f"{cols} add up exactly", measure=None, measure_label=label,
+            decides_by="meaning", alternative="leaving one of them out",
+            predicted=Movement(instrument="changes_question", regime="predicted", value=None,
+                               band=2, calibrated=True, changes_question=True, words=words,
+                               label=label),
+            question="adjustment", answered=False, blocker=True)
+    near = [k for k in range(len(s)) if eta[k] >= CONDITION_INDEX
+            and len({names[j] for j in range(1, len(names)) if pi[j, k] >= IN_DEPENDENCY}) >= 2]
+    if not near:
+        return None
+    involved = {names[j] for k in near for j in range(1, len(names)) if pi[j, k] >= IN_DEPENDENCY}
+    rows = [j for j in range(1, len(names)) if names[j] == exposure]
+    share = float(max(sum(pi[j, k] for k in near) for j in rows))
+    worst = float(max(eta[k] for k in near))
+    partners = _in_order(involved - {exposure}, order)
+    others = _listing(partners)
+    label = (f"Belsley proportion of {exposure} = {share:.2f}, condition index {worst:.0f}")
+    if share >= IN_DEPENDENCY:
+        words = (f"`{exposure}` is close to a fixed mix of {others}: holding them fixed, more "
+                 f"`{exposure}` means less of what it replaces, so which of them stay in the model "
+                 f"changes what the estimate means. It is decided at the adjustment-set question.")
+        return Noticing(
+            thread=COLLINEAR_THREAD, family="K5", stage=_place(COLLINEAR_THREAD),
+            subject=[exposure, *partners], summary=f"`{exposure}` moves almost in step with {others}",
+            measure=share, measure_label=label, decides_by="meaning",
+            alternative="another choice of which of them are held fixed",
+            predicted=changes_question(words, label), question="adjustment",
+            answered=_adjustment_answered(state, exposure, partners))
+    words = (f"{others} are close to a fixed mix of one another, and `{exposure}` is not part of "
+             f"it. Its estimate and interval are the same however they are written; their own "
+             f"coefficients are adjustment terms, not effects.")
+    theorem = theorem_of("invariance") or "Frisch–Waugh–Lovell"
+    return Noticing(
+        thread=COLLINEAR_THREAD, family="K5", stage=_place(COLLINEAR_THREAD),
+        subject=[exposure, *partners], summary=f"{others} move almost in step",
+        measure=share, measure_label=label, decides_by="disclosure",
+        alternative="rewriting those adjustment terms as other combinations of the same columns "
+                    "(one of them as its difference from the rest), all of them kept",
+        predicted=invariance(words, label=f"{label}; exact by theorem ({theorem})"))
+
+
+def _listing(columns: Sequence[str]) -> str:
+    from turbotab.core.voice import listing
+
+    return listing(list(columns), limit=4)
+
+
+def _adjustment_answered(state: Any, exposure: str, columns: Sequence[str]) -> bool:
+    """Every partner in the dependency answered at the adjustment question for what you study."""
+    answers = getattr(state, "adjustment", None) or {}
+    return bool(columns) and all(
+        c in answers and getattr(answers[c], "exposure", None) == exposure for c in columns)
+
+
+def noticing_tier(n: Noticing) -> str:
+    """The label a measured noticing takes (§1.3, :func:`tier`): a blocker or one that changes the
+    question is Decide; one decided by disclosure whose alternative changes nothing here is For
+    the record; one that needs a meaning is Decide."""
+    disclosed = n.decides_by == "disclosure"
+    return tier(blocker=n.blocker, decides_by=n.decides_by, m=n.predicted,
+                has_default=disclosed, m_alt=n.predicted if disclosed else None)
+
+
+def collinear_label(state: Any, noticed: Noticing | None,
+                    pairs: Iterable[Sequence[str]] = ()) -> str:
+    """The label the quest log's collinear line takes on this table (the crosswalk's
+    ``noticing:explore::collinear``, which carries ``shared-collinear-predictors``; its tier in
+    ``quest_noticings.json`` is the ceiling, Decide). Under Predict the pair scan's lever (a penalty
+    in each fold) is a decision: Decide. Under Estimate or Describe the K5 noticing decides
+    (:func:`noticing_tier`): Decide for an exact identity or with what you study in the dependency,
+    For the record outside it. With no near dependency, a pair (``pairs``: explore's, two columns
+    each) that holds what you study is decided at the adjustment question; pairs of adjustment
+    terms alone change nothing here (Frisch–Waugh–Lovell), For the record."""
+    from turbotab.core.quest import DECIDE, RECORD
+
+    if getattr(state, "purpose", None) == "prediction":
+        return DECIDE
+    if noticed is not None:
+        return noticing_tier(noticed)
+    exposure = _exposure(state)
+    return DECIDE if any(exposure in pair[:2] for pair in pairs) else RECORD
+
+
 def dietary_noticings(state: Any, frame: Any, kept: Any = None, kept_without: Any = None
                       ) -> list[Noticing]:
     """The three noticings of the policy's proof, as they fire on this table and these answers."""
@@ -744,16 +970,17 @@ def dietary_noticings(state: Any, frame: Any, kept: Any = None, kept_without: An
 
 
 def noticings_for(state: Any, store: Any, ingest: Mapping[str, Any]) -> list[Noticing]:
-    """The noticings measured on the project's table: the cohort as the answers keep it, and as
-    they would keep it without the energy screen (``stages.rows.compute_cohort``)."""
-    if "dietary" not in (getattr(state, "lens", None) or ()):
-        return []
+    """The noticings measured on the project's table: under the dietary lens, the policy's proof
+    on the cohort as the answers keep it, and as they would keep it without the energy screen
+    (``stages.rows.compute_cohort``); under any lens, the structure among the adjustment terms
+    (:func:`collinear_noticing`, a thread that is not dietary)."""
     from turbotab.core.stages.rows import compute_cohort
 
+    dietary = "dietary" in (getattr(state, "lens", None) or ())
     energy = _energy_column(state)
     rules = list(getattr(state, "exclusions", None) or [])
     kept = kept_without = None
-    if any(_screen(r, energy) for r in rules):
+    if dietary and any(_screen(r, energy) for r in rules):
         _, kept, _ = compute_cohort(store, state, ingest)
         without = state.model_copy(update={"exclusions": [r for r in rules if not _screen(r, energy)]})
         _, kept_without, _ = compute_cohort(store, without, ingest)
@@ -764,7 +991,10 @@ def noticings_for(state: Any, store: Any, ingest: Mapping[str, Any]) -> list[Not
         wanted.add(grain.id_column)
     columns = [c["name"] for c in ingest.get("columns") or [] if c.get("name") in wanted]
     frame = store.materialize(columns)
-    return dietary_noticings(state, frame, kept, kept_without)
+    out = dietary_noticings(state, frame, kept, kept_without) if dietary else []
+    # Every row in the file, before Who's in (the crosswalk's display gate for K5).
+    collinear = collinear_noticing(state, frame)
+    return out + [collinear] if collinear is not None else out
 
 
 # ── the two-phase triage ─────────────────────────────────────────────────────
@@ -793,8 +1023,14 @@ def recommend(n: Noticing, *, purpose: str | None = None) -> tuple[Disposition, 
     m = n.predicted
     what = "score" if purpose == "prediction" else "estimate"
     owed = limitation_owed(m.band, n.done)
+    if n.blocker:
+        return ("act_on_it", f"{m.words} It blocks part of the analysis, so it is resolved before "
+                             f"any {what}.", False)
     if m.band == 2:
         return "act_on_it", f"{m.words} It is decided on its own card.", False
+    if m.band == 0 and m.theorem:
+        return ("no_change", f"{m.words} That holds exactly ({m.theorem}), so there is nothing to "
+                             f"check after the plan is fixed.", False)
     if m.band == 0:
         return ("no_change", f"{m.words} That is below what would move the {what}; it is checked "
                              f"again after the plan is fixed.", False)
@@ -808,8 +1044,9 @@ def recommend(n: Noticing, *, purpose: str | None = None) -> tuple[Disposition, 
 
 
 def in_triage(n: Noticing) -> bool:
-    """An act-on-it noticing whose decision is answered drops out; the rest stay."""
-    return not (n.predicted.band == 2 and n.answered)
+    """An act-on-it noticing whose decision is answered drops out; the rest stay (a blocker
+    always: it is resolved only by the change that stops it firing)."""
+    return n.blocker or not (n.predicted.band == 2 and n.answered)
 
 
 class TriageRow(BaseModel):
@@ -849,8 +1086,9 @@ def triage_rows(items: Sequence[tuple[str, str]], cap: int = TRIAGE_ROWS) -> lis
 def verify(predicted: Movement, realized: Movement | None, *, locked: bool
            ) -> tuple[Verdict, str | None]:
     """After the lock: the realized band against the predicted one, and the exhibit's label when
-    the realized band is higher (an open relabel, never a silent edit)."""
-    if predicted.changes_question:
+    the realized band is higher (an open relabel, never a silent edit). A movement exact by
+    theorem is not graded either: there is nothing a refit could find."""
+    if predicted.changes_question or predicted.theorem:
         return "not_graded", None
     if not locked:
         return "pending", None
@@ -1037,6 +1275,8 @@ def calibrate(cases: Sequence[Case], start: Mapping[str, Any]) -> dict[str, Any]
         by.setdefault(c.instrument, []).append(c)
     for name, entry in out["instruments"].items():
         mine = by.get(name, [])
+        if entry.get("theorem"):
+            continue  # exact by theorem (§2.6 as amended): kept as it is, never floored
         if entry["regime"] == "realized":
             entry["band_1"], entry["band_2"] = out["tau_0"], out["tau_1"]
             entry["calibrated"] = True
@@ -1076,13 +1316,16 @@ def write_calibration(data: Mapping[str, Any], path: Path = CALIBRATION_FILE) ->
 
 
 __all__ = [
-    "BAND_WORDS", "CALIBRATION_FILE", "Case", "DISPOSITION_OF_BAND", "FAMILY_NAMES", "INSTRUMENTS",
+    "BAND_WORDS", "CALIBRATION_FILE", "COLLINEAR_THREAD", "Case", "DISPOSITION_OF_BAND",
+    "FAMILY_NAMES", "INSTRUMENTS",
     "Ledger", "LedgerRow", "Movement", "Noticing", "TRIAGE_ROWS", "TriageRow", "adjustment_set",
-    "attenuation", "band_of", "calibrate", "calibration", "cases_from", "changes_question",
+    "attenuation", "band_of", "belsley", "calibrate", "calibration", "cases_from",
+    "changes_question", "collinear_label", "collinear_noticing",
     "correlation_change", "design_imbalance", "dietary_noticings", "disposition",
     "energy_noticing", "excess_over_chance", "exposure_shift", "finding_done", "in_triage",
-    "ledger",
-    "limitation_owed", "movement", "noticings_for", "outcome_beside_allowed", "paired_folds",
+    "invariance", "ledger",
+    "limitation_owed", "movement", "noticing_tier", "noticings_for", "outcome_beside_allowed",
+    "paired_folds", "theorem_of",
     "realized_from_benchmarks", "realized_from_calibration", "realized_from_e_value",
     "realized_from_secondary", "realized_from_sensitivity", "recommend", "refit", "reliability",
     "reporters_noticing", "rows_smd", "smd", "thresholds", "tier", "triage_rows",

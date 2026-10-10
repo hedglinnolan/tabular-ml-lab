@@ -32,6 +32,9 @@ ADJUSTED = ["age", "gender", "cycle_begin_year", "protein", "carb", "fat_total",
 ENERGY = "diet-energy-carries-the-nutrient"
 SCREEN = "diet-implausible-reporters"
 DAYS = "diet-day-to-day-variance"
+# Q-d: kcal beside its parts, and the fats beside their total, make the adjustment terms nearly
+# collinear; sugar is not in either dependency, so it is band 0 by theorem.
+COLLINEAR = "shared-collinear-predictors"
 
 
 class Ctx:
@@ -89,10 +92,33 @@ def ols_sugar(rows: pd.DataFrame) -> tuple[float, float, float]:
 
 
 def test_the_three_noticings_fire_on_the_models_stage(noticed):
-    assert set(noticed) == {ENERGY, SCREEN, DAYS}
-    assert {t: n.family for t, n in noticed.items()} == {ENERGY: "K5", SCREEN: "S5", DAYS: "K3"}
+    assert set(noticed) == {ENERGY, SCREEN, DAYS, COLLINEAR}
+    assert {t: n.family for t, n in noticed.items()} == {ENERGY: "K5", SCREEN: "S5", DAYS: "K3",
+                                                         COLLINEAR: "K5"}
     assert {t: n.stage for t, n in noticed.items()} == {ENERGY: "models", SCREEN: "whos_in",
-                                                         DAYS: "models"}
+                                                         DAYS: "models", COLLINEAR: "models"}
+
+
+def test_the_adjustment_terms_are_nearly_collinear_and_sugar_is_outside(noticed, frame):
+    """Belsley's proportions by hand on every row of the fixture: [1, sugar, the adjustment set]
+    (gender as its male indicator), each column scaled to unit length, its SVD."""
+    rows = frame[["sugar", *ADJUSTED]].dropna()
+    X = np.column_stack([np.ones(len(rows)), rows["sugar"],
+                         *[(rows[c] == "male").astype(float) if c == "gender" else rows[c]
+                           for c in ADJUSTED]]).astype(float)
+    names = ["(intercept)", "sugar", *ADJUSTED]
+    X = X / np.sqrt((X ** 2).sum(axis=0))
+    _u, s, vt = np.linalg.svd(X, full_matrices=False)
+    phi = vt.T ** 2 / s ** 2
+    pi = phi / phi.sum(axis=1, keepdims=True)
+    near = [k for k in range(len(s)) if s[0] / s[k] >= 30
+            and sum(pi[j, k] >= 0.5 for j in range(1, len(names))) >= 2]
+    inside = {names[j] for k in near for j in range(1, len(names)) if pi[j, k] >= 0.5}
+    assert {"kcal", "carb", "fat_total", "fat_sat", "fat_mon", "fat_poly"} <= inside
+    n = noticed[COLLINEAR]
+    assert n.measure == pytest.approx(sum(pi[1, k] for k in near), abs=1e-9) and n.measure < 0.5
+    assert set(n.subject) == {"sugar", *inside}
+    assert n.predicted.band == 0 and n.predicted.instrument == "invariance" and not n.blocker
 
 
 def test_energy_carries_the_nutrient_changes_the_question(noticed, frame):
@@ -165,7 +191,8 @@ def test_the_triage_recommends_from_each_band_and_drafts_one_limitation(loop):
     t = loop["triage"]
     got = {i.id: (i.recommended, i.limitation) for i in t.items}
     assert got == {SCREEN: ("could_bias", False),  # the every-row analysis is something done
-                   DAYS: ("could_bias", True)}  # nothing here can check it
+                   DAYS: ("could_bias", True),  # nothing here can check it
+                   COLLINEAR: ("no_change", False)}  # exact by theorem: sugar is outside
     assert t.stage == "models" and t.confirmable and not t.blockers
     assert next(i for i in t.items if i.id == DAYS).label.endswith("(not measurable here)")
 
@@ -173,7 +200,7 @@ def test_the_triage_recommends_from_each_band_and_drafts_one_limitation(loop):
 def test_the_locks_digest_covers_the_dispositions(loop):
     lock = loop["lock"]
     assert {l["key"]: l["value"] for l in lock.plan[plan_lock.TRIAGE]} == {
-        SCREEN: "could_bias", DAYS: "could_bias"}
+        SCREEN: "could_bias", DAYS: "could_bias", COLLINEAR: "no_change"}
     assert lock.digest == plan_lock.digest(lock.plan)
     assert loop["locked"].plan_locked
     # The gate has passed: the triage can no longer be confirmed.
@@ -187,7 +214,7 @@ def test_before_the_lock_the_ledger_reads_no_refit(loop):
     book = M.ledger(loop["triaged"], loop["noticings"], loop["artifacts"])
     assert not book.locked
     assert {r.thread: r.verdict for r in book.rows} == {ENERGY: "not_graded", SCREEN: "pending",
-                                                        DAYS: "pending"}
+                                                        DAYS: "pending", COLLINEAR: "not_graded"}
     assert all(r.realized is None for r in book.rows)
 
 
