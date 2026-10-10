@@ -30,9 +30,9 @@ net hold there, so the two families the reference journeys pick today stay first
 **What waits.** The penalty is chosen only by RT-1b's engine, which sets each fit's ``alpha`` or
 ``C`` through :meth:`Ridge.settings`; :meth:`Ridge.build` alone carries scikit-learn's default of 1,
 so ``describe`` is true of a fit only once the engine runs it, and this family lands with the engine
-or after it. Full coding ("every level its own column", RECIPES §2.2) is declared here as
-``onehot_drop = None`` (RECIPES §2.4), which the shared one-hot steps read (RT-5f) until RT-2's
-recipe holds it. The shrinkage-path view reads the elastic net's CV
+or after it. Full coding ("every level its own column", RECIPES §2.2) is the recipe's
+``onehot_drop`` (RECIPES §2.4, RT-2): the shared one-hot step still drops the first level for
+every family, and nothing here re-codes it. The shrinkage-path view reads the elastic net's CV
 attributes until RT-5f moves it onto the tuning record, so ridge declares the equation only.
 ``updating`` is empty: a uniform calibration-slope shrinkage of a ridge is not sourced
 (WAVE_C6A_PLAN §5, ruling 7).

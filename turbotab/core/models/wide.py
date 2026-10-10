@@ -61,17 +61,13 @@ class Float32ElasticNetCV(PooledElasticNetCV):
         return super().fit(X, np.asarray(y, dtype=np.float32), sample_weight, **params)
 
 
-class Float32ElasticNet(ExactElasticNet):
-    """The family's refit on a wide matrix: scikit-learn's ``ElasticNet`` by coordinate descent in
-    single precision, at :data:`WIDE_TOL` (as :func:`coordinate_path` computes the path)."""
-
-    exact = False
-
-    def fit(self, X: Any, y: Any, sample_weight: Any = None, check_input: bool = True
-            ) -> "Float32ElasticNet":
-        X = X.astype(np.float32) if hasattr(X, "astype") else np.asarray(X, dtype=np.float32)
-        return super().fit(X, np.asarray(y, dtype=np.float32), sample_weight=sample_weight,
-                           check_input=check_input)
+class WideElasticNet(ExactElasticNet):
+    """The family's refit as built for a table with more columns than rows (:func:`for_wide`).
+    It fits as :class:`~turbotab.core.models.elastic_net.ExactElasticNet` does, by the matrix it
+    is handed: a screen that leaves the screened net within the exact path's reach is fit exactly,
+    as its inner splits' paths are; past that reach it runs :func:`coordinate_path`, in single
+    precision at :data:`WIDE_TOL` while the matrix stays wide. Its own class marks a wide build
+    in the family's identity."""
 
 
 def coordinate_path(Z: np.ndarray, y: np.ndarray, alphas: np.ndarray, l1_ratio: float, *,
@@ -107,13 +103,14 @@ def coordinate_path(Z: np.ndarray, y: np.ndarray, alphas: np.ndarray, l1_ratio: 
 
 def for_wide(model: Any, n_rows: int, n_features: int) -> Any:
     """``model`` (the family's ``ExactElasticNet``, or the selection step's PooledElasticNetCV)
-    as it should fit a matrix of this shape: itself when narrow, or when the exact path reaches its
-    columns; otherwise its single-precision twin at :data:`WIDE_TOL`."""
+    as it should be built for a matrix of this shape: itself when narrow, or when the exact path
+    reaches its columns; otherwise its wide twin (:class:`WideElasticNet`, which still fits the
+    matrix it is handed, or :class:`Float32ElasticNetCV` at :data:`WIDE_TOL`)."""
     if not is_wide(n_rows, n_features) or int(n_features) <= EXACT_MAX_COLUMNS:
         return model
     if type(model) is ExactElasticNet:
-        wide = Float32ElasticNet(**model.get_params())
-        return wide.set_params(tol=WIDE_TOL, max_iter=WIDE_MAX_ITER)
+        return WideElasticNet(**model.get_params()).set_params(tol=WIDE_TOL,
+                                                               max_iter=WIDE_MAX_ITER)
     if type(model) is PooledElasticNetCV:
         wide = Float32ElasticNetCV(**model.get_params())
         return wide.set_params(n_jobs=model.n_jobs or fit_threads(), tol=WIDE_TOL,
@@ -121,5 +118,5 @@ def for_wide(model: Any, n_rows: int, n_features: int) -> Any:
     return model
 
 
-__all__ = ["Float32ElasticNet", "Float32ElasticNetCV", "MAX_THREADS", "WIDE_MAX_ITER", "WIDE_TOL",
-           "coordinate_path", "fit_threads", "for_wide", "is_wide"]
+__all__ = ["Float32ElasticNetCV", "MAX_THREADS", "WIDE_MAX_ITER", "WIDE_TOL",
+           "WideElasticNet", "coordinate_path", "fit_threads", "for_wide", "is_wide"]

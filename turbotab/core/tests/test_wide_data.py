@@ -349,7 +349,7 @@ def test_the_wide_elastic_net_chooses_what_the_default_chooses():
     from turbotab.core.models.elastic_net import (ELASTIC_NET, L1_RATIOS, SOLVER_TOL,
                                                   ExactElasticNet)
     from turbotab.core.models.inner_cv import fit_pipeline
-    from turbotab.core.models.wide import Float32ElasticNet
+    from turbotab.core.models.wide import WideElasticNet
 
     ratios = np.exp(np.linspace(0.0, np.log(1e-3), 100))  # RECIPES §4.1, strongest first
     narrow = ELASTIC_NET.build("regression", "prediction", 1_000, 50)
@@ -370,7 +370,7 @@ def test_the_wide_elastic_net_chooses_what_the_default_chooses():
         X = pd.DataFrame(raw, columns=genes)
         y = table["bmi"].to_numpy().astype(float)
         wide = ELASTIC_NET.build("regression", "prediction", 150, 800)
-        assert type(wide) is Float32ElasticNet and wide.tol == 1e-4
+        assert type(wide) is WideElasticNet and wide.tol == 1e-4
         plan = T.make_plan(ELASTIC_NET, task="regression", loss="mse", n_plan=150, plan_rows=150,
                            unit="units", split_seed=seed)
         pipe = T.TunedPipeline([("scale", StandardScaler()), ("model", wide)], search=plan)

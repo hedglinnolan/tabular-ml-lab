@@ -889,15 +889,29 @@ def energy_detail(adj: EnergyAdjustment | None, energy: Sequence[str] = (),
     return f"Splits {E} into kcal from {what} and kcal from everything else; {E} leaves the model."
 
 
+def coded_categories(spec: DesignSpec) -> int:
+    """The category columns the shared one-hot steps encode (:func:`shared_steps`: the levels
+    step's and the one-hot step's): full coding gives each one more column than ``"first"``."""
+    levels = [c for c in spec.levels if c in spec.predictors and c in spec.inputs]
+    return len(levels) + len([c for c in spec.categorical
+                              if c in spec.predictors and c not in levels])
+
+
 def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
                    purpose: Purpose | None, n_matrix_columns: int | None = None) -> list[dict[str, str]]:
-    """``[{key, label, detail}]`` for each step of this family's pipeline, in order."""
+    """``[{key, label, detail}]`` for each step of this family's pipeline, in order.
+
+    ``n_matrix_columns``: the shared steps' matrix width with the first level of each category
+    dropped (the design's); a family that codes every level (:func:`onehot_drop`) is described
+    with its own width, one more column per category (:func:`coded_categories`)."""
     out: list[dict[str, str]] = []
     from turbotab.core.methods.omics import splits_for_detection
 
     split = splits_for_detection(spec.normalization, getattr(spec, "censored", None))
-    coding = ("; the first level is the reference." if onehot_drop(family) == "first"
-              else "; every level has its own column.")
+    full = onehot_drop(family) is None
+    coding = "; every level has its own column." if full else "; the first level is the reference."
+    if n_matrix_columns and full:
+        n_matrix_columns = int(n_matrix_columns) + coded_categories(spec)
     for name, step in family_steps(spec, family, task):
         if name in ("lever_forms", "lever_filter", "select"):
             from turbotab.core.methods.levers import describe_step as describe_lever
@@ -1103,7 +1117,8 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
 
 __all__ = [
     "ADJUST_STEPS", "DesignSpec", "MISSING_LEVEL", "MissingLevelEncoder", "ONEHOT_DROPS",
-    "PREDICTOR_ROLES", "PresentColumns", "build_pipeline", "describe_steps", "design_spec",
+    "PREDICTOR_ROLES", "PresentColumns", "build_pipeline", "coded_categories", "describe_steps",
+    "design_spec",
     "detect_detail", "detect_step", "energy_detail", "explore_answers",
     "explore_candidates", "explore_steps", "family_steps", "impute_detail",
     "frame_level_columns", "input_columns", "is_categorical", "level_columns", "make_plans",

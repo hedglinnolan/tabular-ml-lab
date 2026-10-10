@@ -30,15 +30,23 @@ meant a weaker penalty per row on more rows.
 wherever the exact path reaches: the refit's estimators, :class:`ExactElasticNet` and
 :class:`ExactLogisticRegression`, are scikit-learn's own fit by the exact path at their one penalty,
 so the refit at a grid point is that point of the path. Past :data:`EXACT_MAX_COLUMNS` columns (or
-:data:`EXACT_MAX_COEFFICIENTS` logistic coefficients) scikit-learn's solvers run instead: coordinate
-descent to :data:`SOLVER_TOL`, in single precision when the table is wide (``wide``), and ``saga``
-for the logistic loss; there the penalty is not promised to be the same on every platform. More
-than two classes under a pure lasso are reported at the middle of their tied set
-(``exact_path.middle_of_ties``) by either solver.
+:data:`EXACT_MAX_COEFFICIENTS` logistic coefficients) the path and the refit run the same solver
+instead: coordinate descent to :data:`SOLVER_TOL`, in single precision at ``wide.WIDE_TOL`` when
+the matrix has more columns than rows (``wide.coordinate_path``), and ``saga`` for the logistic
+loss; the refit then agrees with the warm-started path to that tolerance, and the penalty is not
+promised to be the same on every platform. Both read the matrix they are handed, so a screen that
+leaves the screened net within the exact path's reach is fit exactly in the inner splits and in
+the refit alike, whatever width the table was built for.
 
 **Full coding** (RECIPES §2.2, §2.4): ``onehot_drop = None``, read by the shared one-hot steps
 (``pipeline.shared_steps``), gives every level its own column, so the penalty and the predictions do
-not depend on which level sorts first.
+not depend on which level sorts first. Under a pure lasso a category's coefficients are tied: its
+indicators mark every row once, so they can move together along one direction that changes no
+prediction and no penalty, and a solver stops at whichever end its column order reaches first.
+They are reported at the middle of that set (:func:`middle_of_category_ties`): for two levels,
+plus and minus half the contrast, the elastic net's limit as its mix nears 1. More than two classes
+under a pure lasso are also reported at the middle of the classes' tied set
+(``exact_path.middle_of_ties``), by either solver, in the path and in the refit.
 
 **The selection step's elastic net** (``variable_selection``) keeps its own estimators,
 :class:`PooledElasticNetCV` and :class:`PooledLogisticRegressionCV`: ``ElasticNetCV`` and
@@ -395,6 +403,105 @@ def _gaussian(Z: np.ndarray, y: np.ndarray, alphas: np.ndarray, mix: float,
     return coordinate_path(Z, y, alphas, mix, weights=w)
 
 
+# ── a category's tied coefficients under a pure lasso (full coding) ──────────
+
+TIE_PASSES = 50  # the most passes the class and category middles alternate for (two suffice)
+
+
+def category_groups(Z: Any) -> list[np.ndarray]:
+    """The runs of adjacent columns of ``Z`` that code one category with every level its own
+    column (full coding, RECIPES §2.4): each column takes two values, its higher one marking its
+    level (scaling keeps the order), no two mark the same row, and together they mark every row.
+    The one-hot steps write a category's levels side by side, so a run is found by reading the
+    columns in order; a partition of the rows the steps did not write side by side is not found,
+    and its coefficients are reported as the solver left them."""
+    Z = np.asarray(Z)
+    if Z.ndim != 2 or not Z.shape[0] or not Z.shape[1]:
+        return []
+    low, high = Z.min(axis=0), Z.max(axis=0)
+    two = (high > low) & np.all((Z == low) | (Z == high), axis=0)
+    groups: list[np.ndarray] = []
+    j, p = 0, Z.shape[1]
+    while j < p:
+        if not two[j]:
+            j += 1
+            continue
+        marked = (Z[:, j] == high[j]).astype(np.int64)
+        k, end = j + 1, None
+        while k < p and two[k]:
+            marked += Z[:, k] == high[k]
+            k += 1
+            if marked.max() > 1:
+                break
+            if marked.min() == 1:
+                end = k
+                break
+        if end is None:
+            j += 1
+        else:
+            groups.append(np.arange(j, end))
+            j = end
+    return groups
+
+
+def _tied_middle(beta: np.ndarray, u: np.ndarray) -> float:
+    """The step t to the middle of the pure lasso's tied set along ``u``: Σₗ |βₗ + t·uₗ| =
+    Σₗ uₗ·|βₗ/uₗ + t| is lowest on the weighted median of −βₗ/uₗ (weights uₗ), an interval when
+    the weights below one point make exactly half (two levels always do), else one point."""
+    at = -beta / u
+    order = np.argsort(at, kind="stable")
+    at, w = at[order], u[order]
+    total = float(w.sum())
+    below = np.cumsum(w)
+    j = int(np.searchsorted(below, total / 2 - 1e-9 * total))
+    j = min(j, len(at) - 1)
+    if abs(float(below[j]) - total / 2) <= 1e-9 * total and j + 1 < len(at):
+        return float(at[j] + at[j + 1]) / 2
+    return float(at[j])
+
+
+def middle_of_category_ties(Z: Any, coef: Any, intercept: Any, *, multinomial: bool,
+                            groups: list[np.ndarray] | None = None
+                            ) -> tuple[np.ndarray, np.ndarray]:
+    """A pure lasso's coefficients (``coef``: one row per class, or one row) at the middle of the
+    set they are tied on when ``Z`` codes a category with every level its own column (RECIPES
+    §2.4; :func:`category_groups`).
+
+    A category's indicators mark every row once, so with uₗ = 1/(its column's two values' gap)
+    Σₗ uₗ·zₗ is one constant c on every row: moving its coefficients by t·u (and the intercept by
+    −t·c) changes no prediction, and under a pure lasso no penalty while t stays in the tied set
+    (:func:`_tied_middle`). A solver stops at whichever end its column order reaches first, so
+    the category's coefficients would follow which level sorts first (one level at 0, the other
+    carrying the whole contrast). Each is moved to the middle of its set: for two levels, ±half
+    the contrast, the elastic net's limit as its mix nears 1; the same point from any solution.
+    With more than two classes the classes' own tie (``exact_path.middle_of_ties``: a number
+    added to a column in every class) alternates with the categories' until neither moves. A
+    row whose level the fit never saw (every indicator 0) is predicted at that middle too."""
+    W = np.array(np.atleast_2d(coef), dtype=float)
+    b = np.array(np.atleast_1d(intercept), dtype=float)
+    Z = np.asarray(Z)
+    groups = category_groups(Z) if groups is None else groups
+    if not groups and not multinomial:
+        return W, b
+    parts = []
+    for G in groups:
+        low, high = Z[:, G].min(axis=0).astype(float), Z[:, G].max(axis=0).astype(float)
+        u = 1.0 / (high - low)
+        parts.append((G, u, 1.0 + float(u @ low)))
+    for _ in range(TIE_PASSES):
+        before = W.copy()
+        for G, u, c in parts:
+            for k in range(W.shape[0]):
+                t = _tied_middle(W[k, G], u)
+                W[k, G] += t * u
+                b[k] -= t * c
+        if multinomial:
+            W = W - np.median(W, axis=0)
+        if np.max(np.abs(W - before), initial=0.0) <= 1e-14 * max(1.0, float(np.abs(W).max(initial=0.0))):
+            break
+    return W, b
+
+
 def _saga(C: float = 1.0, l1_ratio: float = 0.5) -> LogisticRegression:
     return LogisticRegression(C=C, l1_ratio=l1_ratio, solver="saga", tol=SAGA_TOL,
                               max_iter=SAGA_MAX_ITER, random_state=0)
@@ -405,7 +512,7 @@ def _logistic(Z: np.ndarray, codes: np.ndarray, n_classes: int, Cs: np.ndarray, 
     """One mix's logistic path at ``Cs`` (the strongest penalty first): (G, K, p) coefficients and
     (G, K) intercepts, K = 1 for two classes; exact within :data:`EXACT_MAX_COEFFICIENTS`,
     otherwise ``saga`` warm-started along the path."""
-    from turbotab.core.models.exact_path import logistic_path, middle_of_ties
+    from turbotab.core.models.exact_path import logistic_path
 
     rows = 1 if n_classes == 2 else n_classes
     if rows * Z.shape[1] <= EXACT_MAX_COEFFICIENTS:
@@ -422,19 +529,37 @@ def _logistic(Z: np.ndarray, codes: np.ndarray, n_classes: int, Cs: np.ndarray, 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", ConvergenceWarning)
             model.set_params(C=float(C)).fit(Z, codes, sample_weight=w)
-        W = np.atleast_2d(np.array(model.coef_, dtype=float))
-        if rows > 1 and mix == 1.0:
-            W = middle_of_ties(W)
-        coefs.append(W)
+        coefs.append(np.atleast_2d(np.array(model.coef_, dtype=float)))
         intercepts.append(np.atleast_1d(np.array(model.intercept_, dtype=float)))
     return np.asarray(coefs), np.asarray(intercepts)
 
 
+def _middle_of_path(Z: np.ndarray, coefs: np.ndarray, intercepts: np.ndarray, *,
+                    multinomial: bool) -> tuple[np.ndarray, np.ndarray]:
+    """A pure lasso's path, (G, K, p) and (G, K), each point at the middle of its tied set
+    (:func:`middle_of_category_ties`), as the refit reports it."""
+    groups = category_groups(Z)
+    if not groups and not multinomial:
+        return coefs, intercepts
+    coefs, intercepts = np.array(coefs, dtype=float), np.array(intercepts, dtype=float)
+    for g in range(coefs.shape[0]):
+        coefs[g], intercepts[g] = middle_of_category_ties(Z, coefs[g], intercepts[g],
+                                                          multinomial=multinomial, groups=groups)
+    return coefs, intercepts
+
+
 class ExactElasticNet(ElasticNetRegression):
-    """scikit-learn's ``ElasticNet`` at its one ``alpha`` and ``l1_ratio``, solved by the exact
-    path (``exact_path.gaussian_path``), so the family's refit at a point of its path is that
-    point. Weights, positive coefficients, a sparse matrix or more than :data:`EXACT_MAX_COLUMNS`
-    columns, or a subclass that sets ``exact = False``, keep scikit-learn's coordinate descent."""
+    """scikit-learn's ``ElasticNet`` at its one ``alpha`` and ``l1_ratio``, fit as the family's
+    path computes that point on the matrix it is handed, so the refit at a grid point is that
+    point of the path: the exact path (``exact_path.gaussian_path``) up to
+    :data:`EXACT_MAX_COLUMNS` columns, past them the path's own coordinate descent
+    (``wide.coordinate_path``: single precision at ``wide.WIDE_TOL`` when the matrix has more
+    columns than rows, else double precision at :data:`SOLVER_TOL`), which agrees with the
+    warm-started path to the solver's tolerance. The choice reads the matrix the fit receives,
+    not the width the pipeline was built for, so a screen or a full coding that changes the
+    columns changes nothing here. Weights, positive coefficients, a sparse matrix, or a subclass
+    that sets ``exact = False``, keep scikit-learn's own coordinate descent. A pure lasso is
+    reported at the middle of a category's tied set (:func:`middle_of_category_ties`)."""
 
     exact = True
 
@@ -445,17 +570,31 @@ class ExactElasticNet(ElasticNetRegression):
 
         from turbotab.core.models.exact_path import gaussian_path
 
-        if not (self.exact and sample_weight is None and not self.positive
-                and not sparse.issparse(X) and np.ndim(X) == 2
-                and np.shape(X)[1] <= EXACT_MAX_COLUMNS):
-            return super().fit(X, y, sample_weight=sample_weight, check_input=check_input)
-        X, y = validate_data(self, X, y, dtype=np.float64, y_numeric=True)
-        y = column_or_1d(y, warn=True).astype(np.float64)
-        coefs, intercepts, _ = gaussian_path(X, y, [float(self.alpha)], float(self.l1_ratio),
-                                             fit_intercept=self.fit_intercept)
-        self.coef_ = coefs[:, 0]
-        self.intercept_ = float(intercepts[0]) if self.fit_intercept else 0.0
-        self.dual_gap_, self.n_iter_ = 0.0, 0
+        dense = not sparse.issparse(X) and np.ndim(X) == 2
+        if not (self.exact and sample_weight is None and not self.positive and dense):
+            super().fit(X, y, sample_weight=sample_weight, check_input=check_input)
+        else:
+            X, y = validate_data(self, X, y, dtype=np.float64, y_numeric=True)
+            y = column_or_1d(y, warn=True).astype(np.float64)
+            if X.shape[1] <= EXACT_MAX_COLUMNS:
+                coefs, intercepts, _ = gaussian_path(X, y, [float(self.alpha)],
+                                                     float(self.l1_ratio),
+                                                     fit_intercept=self.fit_intercept)
+                self.coef_ = coefs[:, 0]
+                self.intercept_ = float(intercepts[0]) if self.fit_intercept else 0.0
+            elif self.fit_intercept:
+                from turbotab.core.models.wide import coordinate_path
+
+                coefs, intercepts = coordinate_path(X, y, np.array([float(self.alpha)]),
+                                                    float(self.l1_ratio))
+                self.coef_, self.intercept_ = coefs[0], float(intercepts[0])
+            else:
+                return super().fit(X, y, check_input=check_input)
+            self.dual_gap_, self.n_iter_ = 0.0, 0
+        if float(self.l1_ratio) == 1.0 and self.fit_intercept and dense and not self.positive:
+            Z = X if isinstance(X, np.ndarray) else np.asarray(X)
+            W, b = middle_of_category_ties(Z, self.coef_, self.intercept_, multinomial=False)
+            self.coef_, self.intercept_ = W[0].astype(np.asarray(self.coef_).dtype), float(b[0])
         return self
 
 
@@ -463,8 +602,10 @@ class ExactLogisticRegression(LogisticRegression):
     """scikit-learn's ``LogisticRegression`` at its one ``C`` and ``l1_ratio``, solved by the exact
     path (``exact_path.logistic_path``: proximal Newton), so the family's refit at a point of its
     path is that point. Class weights, a sparse matrix or more than :data:`EXACT_MAX_COEFFICIENTS`
-    coefficients keep scikit-learn's solver (``saga``). More than two classes under a pure lasso
-    are reported at the middle of their tied set either way (``exact_path.middle_of_ties``)."""
+    coefficients keep scikit-learn's solver (``saga``). Under a pure lasso the coefficients are
+    reported at the middle of their tied set either way: more than two classes' (a number added
+    to a column in every class, ``exact_path.middle_of_ties``) and a category's with every level
+    its own column (:func:`middle_of_category_ties`)."""
 
     def fit(self, X: Any, y: Any, sample_weight: Any = None) -> "ExactLogisticRegression":
         from scipy import sparse
@@ -472,7 +613,7 @@ class ExactLogisticRegression(LogisticRegression):
         from sklearn.utils.multiclass import check_classification_targets
         from sklearn.utils.validation import validate_data
 
-        from turbotab.core.models.exact_path import logistic_path, middle_of_ties
+        from turbotab.core.models.exact_path import logistic_path
 
         mix = float(self.l1_ratio)
         if sparse.issparse(X) or self.class_weight is not None or np.ndim(X) != 2:
@@ -492,16 +633,26 @@ class ExactLogisticRegression(LogisticRegression):
         self.coef_ = np.atleast_2d(W)
         self.intercept_ = np.atleast_1d(b) if self.fit_intercept else np.zeros(rows)
         self.n_iter_ = np.asarray(steps, dtype=np.int32)
-        if rows > 1 and mix == 1.0:
-            self.coef_ = middle_of_ties(self.coef_)
-        return self
+        return self._middle(X)
 
     def _given(self, X: Any, y: Any, sample_weight: Any) -> "ExactLogisticRegression":
-        from turbotab.core.models.exact_path import middle_of_ties
-
         super().fit(X, y, sample_weight=sample_weight)
-        if len(self.classes_) > 2 and float(self.l1_ratio) == 1.0:
-            self.coef_ = middle_of_ties(self.coef_)
+        from scipy import sparse
+
+        return self if sparse.issparse(X) else self._middle(np.asarray(X))
+
+    def _middle(self, X: np.ndarray) -> "ExactLogisticRegression":
+        if float(self.l1_ratio) != 1.0:
+            return self
+        multinomial = len(self.classes_) > 2
+        if not self.fit_intercept:  # a category's move needs the intercept to absorb it
+            if multinomial:
+                from turbotab.core.models.exact_path import middle_of_ties
+
+                self.coef_ = middle_of_ties(self.coef_)
+            return self
+        self.coef_, self.intercept_ = middle_of_category_ties(X, self.coef_, self.intercept_,
+                                                              multinomial=multinomial)
         return self
 
 
@@ -546,9 +697,10 @@ class ElasticNet(FamilyBase):
     linear_in_values = True
     # MODEL_FAMILY_CONTRACT §1 (§3.1's row for it).
     identity = Identity(kind="estimator", library="scikit-learn",
-                        estimator="ExactElasticNet (Float32ElasticNet past the exact path's "
-                                  "columns when wide); ExactLogisticRegression (saga past the "
-                                  "exact path's coefficients)",
+                        estimator="ExactElasticNet (WideElasticNet when built wide: the "
+                                  "path's coordinate descent past the exact path's columns); "
+                                  "ExactLogisticRegression (saga past the exact path's "
+                                  "coefficients)",
                         seed_policy="none: deterministic (the exact path); saga's random_state 0 "
                                     "past it")
     purposes = ("prediction", "inference")
@@ -585,7 +737,7 @@ class ElasticNet(FamilyBase):
         """The plain estimator the path search refits at its chosen values (``settings``); built
         at scikit-learn's own defaults, which no fit keeps."""
         if task == "regression":
-            from turbotab.core.models.wide import for_wide  # p > n: single precision
+            from turbotab.core.models.wide import for_wide  # built wide: WideElasticNet
 
             return for_wide(ExactElasticNet(max_iter=SOLVER_MAX_ITER, tol=SOLVER_TOL),
                             n_rows, n_features)
@@ -618,7 +770,10 @@ class ElasticNet(FamilyBase):
         settings, in order) the ratios r (strongest first) times these rows' own λ_max(ρ); least
         squares at α = r·λ_max, the logistic loss at C = 1/(n·r·λ_max), each mix's path warm-started
         from its strongest penalty. ``weights``, when given, weight each row's loss as
-        ``sample_weight`` does once scaled to mean 1; the penalty stays per row."""
+        ``sample_weight`` does once scaled to mean 1; the penalty stays per row. A pure lasso's
+        points are at the middle of their tied sets (:func:`middle_of_category_ties`), as the
+        refit reports them, so a row whose level these rows lack is scored at the same point
+        whichever level sorts first."""
         Z = np.asarray(Z, dtype=float)
         n = Z.shape[0]
         mixes = np.atleast_1d(np.asarray(grid["l1_ratio"], dtype=float))
@@ -650,6 +805,10 @@ class ElasticNet(FamilyBase):
                               float(mix), weight) for m, mix in enumerate(mixes)]
             coefs = np.asarray([c for c, _ in fits])
             intercepts = np.asarray([b for _, b in fits])
+        multinomial = task != "regression" and coefs.shape[2] > 1
+        for m in np.flatnonzero(mixes == 1.0):  # a pure lasso: its ties' middles, as the refit's
+            coefs[m], intercepts[m] = _middle_of_path(Z, coefs[m], intercepts[m],
+                                                      multinomial=multinomial)
         return PathFit(values=values, coefs=coefs, intercepts=intercepts)
 
     def coefficients(self, pipeline: Any, X: Any, y: Any, *, task: Task,
@@ -694,5 +853,5 @@ __all__ = ["ELASTIC_NET", "EXACT_MAX_COEFFICIENTS", "EXACT_MAX_COLUMNS", "Elasti
            "ExactElasticNet", "ExactLogisticRegression", "L1_RATIOS", "LOGISTIC_L1_RATIOS",
            "LOGISTIC_RATIO_POINTS", "LOSS_PRECISION", "PooledElasticNetCV",
            "PooledLogisticRegressionCV", "RATIO_LOW", "RATIO_POINTS", "SAGA_MAX_ITER", "SAGA_TOL",
-           "SOLVER_MAX_ITER", "SOLVER_TOL", "TUNING", "inner_folds", "lambda_max",
-           "lowest_rounded"]
+           "SOLVER_MAX_ITER", "SOLVER_TOL", "TIE_PASSES", "TUNING", "category_groups",
+           "inner_folds", "lambda_max", "lowest_rounded", "middle_of_category_ties"]

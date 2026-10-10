@@ -13,7 +13,8 @@ refits those per split).
 independent N(0, 1)), 50 datasets, the same plan and seeds for both:
 
 * **N (ours):** the screened family's pipeline (screen, scale, elastic net) through the engine:
-  the screen refit on every inner split's training rows.
+  the screen refit on every inner split's training rows; its model built at the table's width,
+  as the design stage builds it (the wide build, which fits the screened columns it is handed).
 * **F (F4, what not to do):** the screen fit once on the fit's rows, written out here, then the
   same path search on the screened columns alone (scale, elastic net).
 
@@ -65,7 +66,9 @@ def _ours(X: pd.DataFrame, y: np.ndarray, seed: int):
     family = get_family("screened_elastic_net")
     pipe = TunedPipeline([("screen", UnivariateScreen(list(X.columns))),
                           ("scale", StandardScaler()),
-                          ("model", family.build("regression", "prediction", len(y), 50))],
+                          # built at the table's width, as the design stage builds it
+                          ("model", family.build("regression", "prediction", len(y),
+                                                 X.shape[1]))],
                          search=_plan(len(y), seed)).set_output(transform="pandas")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -87,7 +90,8 @@ class _ScreenedOnce:
         kept = self.screen.transform(X)
         family = get_family("screened_elastic_net")
         pipe = TunedPipeline([("scale", StandardScaler()),
-                              ("model", family.build("regression", "prediction", len(y), 50))],
+                              ("model", family.build("regression", "prediction", len(y),
+                                                     X.shape[1]))],
                              search=_plan(len(y), seed)).set_output(transform="pandas")
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")

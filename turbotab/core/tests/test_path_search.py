@@ -360,6 +360,80 @@ def test_the_screened_elastic_nets_screen_is_refit_on_every_inner_splits_trainin
     assert fitted["screen"].size_ == omics.sis_size(n)
 
 
+def test_a_screened_net_built_wide_refits_the_screened_matrix_as_its_inner_paths_do():
+    """The verifier's finding: production builds the screened net at the table's width (120 rows ×
+    2,000 columns: the wide build, which refit in single precision at 10⁻⁴), while every inner
+    split's path ran exactly on the ~n/log n columns the screen keeps, so the refit was not the
+    path's point. Built at the table's width as the design stage builds it, the refit now reads
+    the matrix it is handed: on the screened, scaled columns it equals scikit-learn's own
+    float64 ``ElasticNet`` run to 10⁻¹⁴ at the chosen penalty (1e-8 of the largest coefficient),
+    and the family's path at that ratio on the same rows (1e-10)."""
+    from sklearn.linear_model import ElasticNet
+
+    from turbotab.core.contracts import contracts
+    from turbotab.core.methods import omics
+    from turbotab.core.models.wide import WideElasticNet
+
+    contracts()
+    family = get_family("screened_elastic_net")
+    rng = np.random.default_rng(21)
+    n, p = 120, 2000
+    X = pd.DataFrame(rng.normal(size=(n, p)), columns=[f"g{i}" for i in range(p)],
+                     index=pd.Index(np.arange(n) + 900, name="row_id"))
+    y = X.iloc[:, :4].to_numpy() @ np.array([1.0, -0.8, 0.6, 0.5]) + rng.normal(size=n)
+    built = family.build("regression", "prediction", n, p)
+    assert type(built) is WideElasticNet  # the wide build production makes
+    plan = make_plan(family, task="regression", loss="mse", n_plan=n, plan_rows=n, unit="units",
+                     split_seed=SEED)
+    pipe = TunedPipeline([("screen", omics.UnivariateScreen(list(X.columns))),
+                          ("scale", StandardScaler()), ("model", built)],
+                         search=plan).set_output(transform="pandas")
+    fitted, _ = _fit(pipe, X, y)
+    model = fitted[-1]
+    Z = fitted[:-1].transform(X).to_numpy(dtype=float)
+    assert Z.shape[1] == omics.sis_size(n) < 500  # within the exact path's reach
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        theirs = ElasticNet(alpha=model.alpha, l1_ratio=model.l1_ratio, tol=1e-14,
+                            max_iter=1_000_000).fit(Z, y)
+    scale = float(np.max(np.abs(theirs.coef_)))
+    assert scale > 0
+    assert np.max(np.abs(model.coef_ - theirs.coef_)) <= 1e-8 * scale
+    values = fitted.tuning_.plan.candidates[fitted.tuning_.chosen].values
+    point = family.path(Z, y, {"l1_ratio": [values["l1_ratio"]], "ratio": [values["ratio"]]},
+                        task="regression")
+    assert np.max(np.abs(np.asarray(point.coefs)[0, 0, 0] - model.coef_)) <= 1e-10 * scale
+
+
+def test_past_the_exact_path_the_refit_runs_the_paths_own_solver_whatever_it_was_built_for():
+    """Past the exact path's 500 columns the path runs coordinate descent (``wide.coordinate_path``,
+    single precision at 10⁻⁴ while the matrix is wide). The refit runs the same solver on the
+    matrix it is handed whichever class it was built as, so the narrow build and the wide build
+    give the same coefficients bit for bit, and both are scikit-learn's float64 ``ElasticNet``
+    (run to 10⁻¹²) to 10⁻³ of the largest coefficient."""
+    from sklearn.linear_model import ElasticNet
+
+    from turbotab.core.models.elastic_net import ELASTIC_NET, ExactElasticNet
+    from turbotab.core.models.wide import WideElasticNet
+
+    rng = np.random.default_rng(5)
+    n, p = 150, 600
+    Z = rng.normal(size=(n, p))
+    Z = (Z - Z.mean(axis=0)) / Z.std(axis=0)
+    y = Z[:, :5] @ np.array([1.0, -0.7, 0.5, 0.4, -0.3]) + rng.normal(size=n)
+    narrow = ELASTIC_NET.build("regression", "prediction", 1000, 50)
+    wide = ELASTIC_NET.build("regression", "prediction", n, p)
+    assert type(narrow) is ExactElasticNet and type(wide) is WideElasticNet
+    alpha = 0.1 * float(np.max(np.abs(Z.T @ (y - y.mean())))) / (n * 0.9)
+    fits = [m.set_params(alpha=alpha, l1_ratio=0.9).fit(Z, y) for m in (narrow, wide)]
+    assert np.array_equal(fits[0].coef_, fits[1].coef_)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        theirs = ElasticNet(alpha=alpha, l1_ratio=0.9, tol=1e-12, max_iter=100_000).fit(Z, y)
+    scale = float(np.max(np.abs(theirs.coef_)))
+    assert np.max(np.abs(fits[0].coef_ - theirs.coef_)) <= 1e-3 * scale
+
+
 # ── the shrinkage path reads the record ──────────────────────────────────────
 
 

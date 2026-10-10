@@ -570,9 +570,10 @@ def build_graph() -> Graph:
             # answer (so it reads the survey answer); its pipeline searches in every fit.
             # design 29 (RT-5f, with RT-5a's tuned boosted trees): the elastic net is a path family,
             # so the design holds its plan (each inner split's own λ_max, the logistic C per row,
-            # the screened net's screen refit in every inner split), and ridge and the elastic net
-            # code every level of a category in their own column (``onehot_drop``). Every stage
-            # that reads the design, the fit first, recomputes.
+            # the screened net's screen refit in every inner split, a pure lasso's tied category
+            # reported at its middle), and ridge and the elastic net code every level of a
+            # category in their own column (``onehot_drop``). Every stage that reads the design,
+            # the fit first, recomputes.
             Stage("design", 29, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
