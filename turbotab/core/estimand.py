@@ -550,15 +550,58 @@ def family_contrast_applies(state: Any) -> bool:
     return any(energy_contrast_applies(state, c) for c in family_exposures(state))
 
 
-def substitution_words(state: Any, exposure: Any, *, amount: bool = True) -> str | None:
+# The energy answers whose estimate is per a unit other than the nutrient's own (P1-FU).
+ENERGY_MEASURED = ("density", "density_multivariate", "residual_energy_dropped")
+
+
+def energy_measure(state: Any, exposure: Any) -> str | None:
+    """The unit ``exposure``'s estimate is per, as the caption states it
+    (``exposure_form.estimand_unit``), where the energy answer makes it other than the nutrient's
+    own: a density (per unit of energy), or the energy-adjusted residual with total energy left out
+    of the outcome model. The methods sentence and the preview say it too (P1-FU); None for any
+    other exposure or answer, whose sentence keeps the column's unit."""
+    adj = _get(state, "energy_adjustment")
+    if (not exposure or _get(adj, "method") not in ENERGY_MEASURED
+            or str(exposure) not in (_get(adj, "nutrients") or [])):
+        return None
+    from turbotab.core.methods.exposure_form import estimand_unit
+
+    return estimand_unit(state, str(exposure))
+
+
+def values_nesting(state: Any, *, store: Any = None, frame: Any = None) -> dict[str, str] | None:
+    """Child -> the total the values keep it inside, among the settled predictors whose names make
+    them a part and a total (``methods.nesting.nested_components``, the design's own test: a part
+    at most its total on 99% of the rows where both are recorded), read from ``frame`` or from
+    ``store``; None where no table is at hand, so the names alone speak (P1-FU: the caption, the
+    methods sentence, the preview and the card say the swap Table 2 says)."""
+    from turbotab.core.methods.nesting import candidates, nested_components
+
+    names = list(predictor_roles(state))
+    pairs = candidates(names)
+    needed = list(dict.fromkeys([*pairs, *(c for kids in pairs.values() for c in kids)]))
+    if frame is None or any(c not in frame.columns for c in needed):
+        if store is None:
+            return None
+        try:
+            frame = store.materialize(needed)
+        except Exception:  # noqa: BLE001 - a column the table no longer holds: the names speak
+            return None
+    return nested_components(frame, needed) if needed else {}
+
+
+def substitution_words(state: Any, exposure: Any, *, amount: bool = True,
+                       nested: Mapping[str, str] | None = None) -> str | None:
     """The substitution ``exposure``'s estimate is, in the words every surface uses (WAVE_C6A Q-b:
     the caption, the methods sentence, the preview, the card; Table 2's row says its phrase):
     ``1 g more sugar in place of other carbohydrate (total carbohydrate and energy fixed)``.
 
     Read from the adjustment set as it stands: the settled predictors the answers keep, the energy
     answer, and the parts beside their totals (their names, each column's own confirmation standing
-    over the guess: ``readings.nesting``; the design also checks the values, a part never above
-    its total). None when the estimate is no substitution (``methods.energy.substitution_swap``)."""
+    over the guess: ``readings.nesting``). ``nested``: the values' reading (:func:`values_nesting`),
+    which the design reads for Table 2, a part never above its total; None where no table is at
+    hand, and the names alone then speak. None when the estimate is no substitution
+    (``methods.energy.substitution_swap``)."""
     if not exposure:
         return None
     from turbotab.core.methods.energy import amount_of, substitution_swap
@@ -572,7 +615,8 @@ def substitution_words(state: Any, exposure: Any, *, amount: bool = True) -> str
         return None
     left = {c for c, d in derived_roles(state).items() if not d.adjusted}
     predictors = [c for c in roles if c not in left or c == exposure]
-    found = {child: parent for parent, kids in candidates(predictors).items() for child in kids}
+    found = (dict(nested) if nested is not None else
+             {child: parent for parent, kids in candidates(predictors).items() for child in kids})
     swap = substitution_swap(_get(state, "energy_adjustment"), predictors, roles, exposure,
                              nested=nesting(state, found, columns=predictors))
     if swap is None:
@@ -1096,14 +1140,15 @@ def multiplicity_statement(state: Any, spec: Any, n: int) -> str:
             f"hypotheses, {ROTHMAN}), with every member shown.{kept}")
 
 
-def _option_words(state: Any, exposure: Any) -> str | None:
+def _option_words(state: Any, exposure: Any,
+                  nested: Mapping[str, str] | None = None) -> str | None:
     """The substitution option's consequence (Q-b): the swap as every surface words it, within the
     option's word budget (``teaching.BUDGETS``); its "1 g" gives way first, and a swap too long
     even then leaves the option its general words (None)."""
     from turbotab.core.teaching import BUDGETS
 
     for amount in (True, False):
-        swapped = substitution_words(state, exposure, amount=amount)
+        swapped = substitution_words(state, exposure, amount=amount, nested=nested)
         if swapped is None:
             return None
         text = f"{swapped[0].upper()}{swapped[1:]}."
@@ -1112,10 +1157,12 @@ def _option_words(state: Any, exposure: Any) -> str | None:
     return None
 
 
-def estimand_card(state: Any, task: str | None, prevalence: float | None = None) -> dict[str, Any] | None:
+def estimand_card(state: Any, task: str | None, prevalence: float | None = None, *,
+                  nested: Mapping[str, str] | None = None) -> dict[str, Any] | None:
     """What the estimand question offers: the exposure candidates, the effects, the contrast for an
     energy-bearing exposure, and the measures ruling 9 labels (difference or ratio; conditional or
-    marginal), ranked by the outcome's ``prevalence`` (the event's share) for a yes/no outcome."""
+    marginal), ranked by the outcome's ``prevalence`` (the event's share) for a yes/no outcome.
+    ``nested``: the values' reading of the parts inside their totals (:func:`values_nesting`)."""
     if _get(state, "purpose") != "inference" or _get(state, "roles") is None:
         return None
     candidates = exposure_candidates(state)
@@ -1134,7 +1181,7 @@ def estimand_card(state: Any, task: str | None, prevalence: float | None = None)
     bearing = [c for c in candidates if energy_contrast_applies(state, c)]
     asked = (_get(spec, "exposure") if spec is not None and not _get(spec, "family") else None) \
         or (bearing[0] if len(bearing) == 1 else None)
-    swapped = _option_words(state, asked) if asked in bearing else None
+    swapped = _option_words(state, asked, nested) if asked in bearing else None
     return {
         "exposures": [{"column": c, "energy_contrast": energy_contrast_applies(state, c)}
                       for c in candidates],
@@ -1171,9 +1218,12 @@ def estimand_card(state: Any, task: str | None, prevalence: float | None = None)
 # ── the caption, worded from the estimand ────────────────────────────────────
 
 
-def caption(state: Any, task: str | None = None) -> str | None:
+def caption(state: Any, task: str | None = None, *,
+            nested: Mapping[str, str] | None = None) -> str | None:
     """The sentence the inference table is captioned with, worded from the declared estimand: which
-    effect of which exposure, on what scale, conditional on what, and what was left out and why."""
+    effect of which exposure, on what scale, conditional on what, and what was left out and why.
+    ``nested``: the values' reading of the parts inside their totals (:func:`values_nesting`), as
+    the design reads it for Table 2; None where no table is at hand."""
     spec = current_estimand(state)
     if spec is None or _get(state, "purpose") != "inference":
         return None
@@ -1202,7 +1252,8 @@ def caption(state: Any, task: str | None = None) -> str | None:
                  if exposure in domain_columns(state) else "")
         # Q-b: a substitution says what it swaps, from the adjustment set (sugar in place of other
         # carbohydrate with total carbohydrate held; the sources left out, named, without it).
-        swapped = substitution_words(state, exposure) if contrast == "substitution" else None
+        swapped = (substitution_words(state, exposure, nested=nested)
+                   if contrast == "substitution" else None)
         subject = (f"{swapped} on {_tick(target)}{among}" if swapped else
                    f"{_tick(exposure)} on {_tick(target)}{among}" + (f" ({what})" if what else ""))
         text = (f"The {effect} effect of {subject}"
@@ -1562,11 +1613,13 @@ def withhold(stage: str, artifact: Any, gate: Mapping[str, Any]) -> Any:
     return out
 
 
-def annotate_fit(artifact: Any, state: Any) -> Any:
+def annotate_fit(artifact: Any, state: Any, *, nested: Mapping[str, str] | None = None) -> Any:
     """The served fit under a declared estimand: the caption worded from it, and the Table 2
     display (Westreich & Greenland 2013): each model's ``coefficients`` hold the exposure's rows
     only (every member of an exposure family), and every other row moves to ``adjustment_terms``,
-    titled "adjustment terms, not effect estimates" (``models/effects.py``)."""
+    titled "adjustment terms, not effect estimates" (``models/effects.py``). ``nested``: the
+    values' reading of the parts inside their totals the caption is worded on
+    (:func:`values_nesting`)."""
     from turbotab.core.models.effects import APPENDIX_TITLE, split_rows
 
     if not isinstance(artifact, dict) or _get(state, "purpose") != "inference":
@@ -1594,7 +1647,7 @@ def annotate_fit(artifact: Any, state: Any) -> Any:
     out["estimand"] = {
         "exposure": exposure_key(spec), "effect": _get(spec, "effect"),
         "measure": _get(spec, "measure"),
-        "contrast": _get(spec, "contrast"), "caption": caption(state, out.get("task")),
+        "contrast": _get(spec, "contrast"), "caption": caption(state, out.get("task"), nested=nested),
         "adjusted": [c for c, d in derived_roles(state).items() if d.adjusted],
         "left_out": {c: d.role for c, d in derived_roles(state).items() if not d.adjusted},
         "secondary": secondary_columns(state),

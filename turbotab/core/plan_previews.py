@@ -372,8 +372,10 @@ MEASURE_SHORT = {"mean_difference": "mean difference", "odds_ratio": "odds ratio
                  "risk_ratio": "risk ratio"}
 
 
-def estimand_line(state: Any) -> str | None:
-    """The estimand in one line: whose effect, on what, on which scale."""
+def estimand_line(state: Any, *, nested: Any = None) -> str | None:
+    """The estimand in one line: whose effect, on what, on which scale. ``nested``: the values'
+    reading of the parts inside their totals (``estimand.values_nesting``), as the design reads it
+    for Table 2; None where no table is at hand."""
     from turbotab.core import estimand as est
 
     spec = est.current_estimand(state)
@@ -386,23 +388,38 @@ def estimand_line(state: Any) -> str | None:
         family = est.family_exposures(state)
         return (f"{effect} effect of each of {fmt_count(len(family))} study factors on {target}: "
                 f"{measure}.")
+    short = MEASURE_SHORT.get(str(spec.measure), measure)
+    # P1-FU: under a density or the energy-dropped residual, the unit the caption and the methods
+    # sentence state (``estimand.energy_measure``) is said here too.
+    measured = est.energy_measure(state, spec.exposure)
     # Q-b: a substitution says what it swaps, as the caption and the methods sentence say it
     # (``estimand.substitution_words``), and what is measured. The swap is kept whole; to fit the
     # caption's words, the measure is named by its short label, ahead of the swap; then the swap's
     # "1 g" gives way (as on the card); only a swap too long even then goes without the measure.
-    swapped = (est.substitution_words(state, spec.exposure)
+    swapped = (est.substitution_words(state, spec.exposure, nested=nested)
                if spec.contrast == "substitution" else None)
     if swapped:
-        short = MEASURE_SHORT.get(str(spec.measure), measure)
-        bare = est.substitution_words(state, spec.exposure, amount=False) or swapped
-        lines = [f"{effect} effect of {swapped} on {target}: {measure}.",
+        per = f" per {measured}" if measured else ""
+        bare = est.substitution_words(state, spec.exposure, amount=False, nested=nested) or swapped
+        lines = [*((f"{effect} effect on {target} ({short}{per}): {swap}."
+                    for swap in dict.fromkeys((swapped, bare))) if per else ()),
+                 f"{effect} effect of {swapped} on {target}: {measure}.",
                  *(f"{effect} effect on {target} ({short}): {swap}."
                    for swap in dict.fromkeys((swapped, bare)))]
         fits = [line for line in lines if len(line.split()) <= CAPTION_WORDS]
         return fits[0] if fits else f"{effect} effect of {swapped} on {target}."
     contrast = {"substitution": " in place of other calories",
                 "addition": " added to the diet"}.get(str(spec.contrast), "")
-    return f"{effect} effect of {tick(spec.exposure)}{contrast} on {target}: {measure}."
+    if not measured:
+        return f"{effect} effect of {tick(spec.exposure)}{contrast} on {target}: {measure}."
+    # The measured quantity is what the effect is of (`sugar_g` per unit of `kcal`), the contrast
+    # kept whole; to fit the caption's words the measure gives way to its short label, then goes.
+    what = measured.removeprefix("unit of ")
+    what += "," if contrast and "," in what else ""
+    lines = [f"{effect} effect of {what}{contrast} on {target}: {measure}.",
+             f"{effect} effect of {what}{contrast} on {target}: {short}."]
+    fits = [line for line in lines if len(line.split()) <= CAPTION_WORDS]
+    return fits[0] if fits else f"{effect} effect of {what}{contrast} on {target}."
 
 
 def inference_first(what: str) -> str:
@@ -440,7 +457,7 @@ def estimand_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     now = fit_design(ctx, ctx.state, ids)
     feats = exposure_features(after, then)
     exposures = est.exposures_of(after, est.current_estimand(after))
-    line = estimand_line(after)
+    line = estimand_line(after, nested=est.values_nesting(after, store=ctx.datastore))
     ctx.read["estimand"] = {"line": line, "features": feats, "exposures": exposures}
     views: list[Any] = [LineageView(
         title=title("What you study in the model"),

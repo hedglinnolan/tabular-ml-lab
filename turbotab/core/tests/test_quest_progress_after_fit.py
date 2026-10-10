@@ -276,13 +276,95 @@ def test_write_up_closes_without_a_reason_only_when_the_goal_became_estimate():
                        "(after answer set_explain)")
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "Engine conflict with ruling 3, reported, not fixed in Q-c: after the unit is changed, the "
-    "aggregation answer (a first answer, decided in Who's in) makes the regression-calibration "
-    "declaration apply in a complete Models, and quest._declaration_asked_again names a cause "
-    "only for a record that changes an earlier answer, so Models says nothing."))
 def test_the_aggregation_answer_that_makes_calibration_apply_says_why_in_models():
+    """Ruling 3 (P1-FU): after the unit is changed, the aggregation answer (a first answer, decided
+    in Who's in) makes the regression-calibration question apply in a Models already worked and
+    complete. Models has been reopened, and says why: by that answer, in Who's in."""
     journey = path_fuzzer.run_journey(26)
     prev, snap = journey.snapshots[38], journey.snapshots[39]
     assert (snap.action, snap.kind) == ("answer", "set_aggregation")
     assert path_fuzzer.i11_monotone_progress(prev, snap) == []
+    before = next(s for s in prev.log.stages if s.key == "models")
+    models = next(s for s in snap.log.stages if s.key == "models")
+    assert before.progress.complete and not models.progress.complete
+    [line] = [l for l in models.lines if l.key == "set_measurement_error"]
+    answer = snap.records[-1]
+    assert answer.decision.kind == "set_aggregation"
+    assert (line.status, line.reopened_by.decision_id, line.reopened_by.stage) == (
+        "open", answer.id, "whos_in")
+    [reason] = [r for r in models.reopened if r.decision_id == answer.id]
+    assert reason.changed_in == "whos_in" and reason.questions == [line.id]
+    assert reason.sentence == "Your change to Who's in reopened 1 question in Models."
+
+
+def test_a_first_answer_into_a_stage_still_asking_reopens_nothing():
+    """A first answer that makes a declaration apply in a stage that was not complete is the
+    journey going forward: the exclusion rule (Who's in) makes the every-row sensitivity question
+    apply while Models still asks its adjustment set again; the new line is open, with no cause,
+    and Models names only the confirmation that asked the adjustment set again."""
+    from turbotab.core import decisions
+    from turbotab.core.tests.test_stage_registry import (EXCLUSION, TG_COVARIATE, _plan, record,
+                                                         stage, steps_until)
+
+    _state, records = _plan(TG_COVARIATE)
+    records = [*records, record(8, EXCLUSION)]
+    log = quest.quest_log(decisions.fold(records), records, steps_until("adjustment"))
+    models = stage(log, "models")
+    [sensitivity] = [l for l in models.lines if l.key == "set_sensitivity"]
+    assert (sensitivity.status, sensitivity.reopened_by) == ("open", None)
+    assert [r.kind for r in models.reopened] == ["confirm_role"]
+    # the same answer given after a complete Models reaches back into it (``_reaches_back``)
+    assert quest._reaches_back(quest._Log(records), records[-1], "models")
+
+
+def _models_after(snap, records):
+    """Models in the quest log the path fuzzer computes for ``records`` on ``snap``'s table."""
+    from turbotab.core import decisions
+
+    state = decisions.fold(records)
+    arts = path_fuzzer.artifacts_for(state, snap.fixture, records, confidence="high")
+    steps = path_fuzzer.route(state, snap.stages, arts, records, pressed=snap.pressed)
+    log = path_fuzzer.quest_of(state, records, steps, snap.stages, arts, snap.fixture,
+                               snap.pressed, snap.pressed_ever, snap.shown_at)
+    return next(s for s in log.stages if s.key == "models")
+
+
+def test_a_first_answer_given_while_the_stage_still_asked_is_not_named_later():
+    """Completeness is judged as the log stood when the answer was given (verifier, P1-FU item 6).
+    Journey 26 with the model sequence answered only after the aggregation answer: Models was 6/8
+    when the aggregation made the calibration question apply, so answering the sequence later
+    (7/8) does not turn that answer into a reopening of Models."""
+    journey = path_fuzzer.run_journey(26)
+    snap = journey.snapshots[39]
+    records = list(snap.records)
+    [sequence] = [i for i, r in enumerate(records) if r.decision.kind == "set_model_sequence"]
+    assert records[-1].decision.kind == "set_aggregation" and sequence < len(records) - 1
+    moved = [*records[:sequence], *records[sequence + 1:], records[sequence]]
+    moved = [r.model_copy(update={"seq": i + 1, "id": f"r{i + 1}",
+                                  "at": path_fuzzer.T0 + path_fuzzer.timedelta(minutes=i + 1)})
+             for i, r in enumerate(moved)]
+    models = _models_after(snap, moved)
+    assert (models.progress.answered, models.progress.required) == (7, 8)
+    [line] = [l for l in models.lines if l.key == "set_measurement_error"]
+    assert (line.status, line.reopened_by) == ("open", None)
+    assert models.reopened == []
+
+
+def test_no_declaration_is_named_reopened_by_an_earlier_answer_after_the_fact():
+    """Seeds where a first answer was given while Models was unreached or still asking, and Models'
+    other questions were answered later (17: the exclusions answered at step 20, the selection
+    declared at step 28): no open declaration gains a cause that is not the action just taken."""
+    for seed in (17, 19, 20):
+        journey = path_fuzzer.run_journey(seed)
+        for prev, snap in zip(journey.snapshots, journey.snapshots[1:]):
+            newest = snap.records[-1].id if snap.records else None
+            for old, new in zip(prev.log.stages, snap.log.stages):
+                was = {l.key: l for l in old.lines}
+                for line in new.lines:
+                    o = was.get(line.key)
+                    if (line.source != "declaration" or o is None or o.reopened_by is not None
+                            or line.reopened_by is None or o.status != "open"
+                            or line.status != "open"):
+                        continue
+                    assert line.reopened_by.decision_id == newest, (
+                        seed, snap.index, new.key, line.key, line.reopened_by.kind)

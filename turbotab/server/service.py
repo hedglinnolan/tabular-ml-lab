@@ -1028,13 +1028,21 @@ class ProjectService:
         q = self._quest(pid)
         return triage(q.state, q.log, q.findings, q.records, noticed=self._noticed(pid, q.state))
 
+    def _values_nesting(self, pid: str, state: ProjectState) -> dict[str, str] | None:
+        """The parts the values keep inside their totals among the settled predictors
+        (``estimand.values_nesting``, the design's own test); None until the table is read."""
+        try:
+            return estimand.values_nesting(state, store=self.store(pid))
+        except Exception:  # noqa: BLE001 - no table yet: the names alone speak
+            return None
+
     def _noticed(self, pid: str, state: ProjectState) -> list[Any]:
-        """The noticings measured on the table the analysis reads, outcome-blind; none until the
-        table is read, or where the measuring fails (a triage never fails for want of one)."""
+        """The noticings measured on the table the analysis reads, outcome-blind, under any lens
+        (``materiality.noticings_for``: the dietary proof's under the dietary lens alone, the
+        structure among the adjustment terms under every lens); none until the table is read, or
+        where the measuring fails (a triage never fails for want of one)."""
         from turbotab.core import materiality
 
-        if "dietary" not in (state.lens or ()):
-            return []
         try:
             store = self.store(pid)
             source = self.table_source(pid)
@@ -1851,7 +1859,10 @@ class ProjectService:
         from turbotab.core.stages.calibration import record_facts
 
         stages = {**self._flow_counts(pid),
-                  **record_facts(self._fresh(pid, "calibration", public=True))}
+                  **record_facts(self._fresh(pid, "calibration", public=True)),
+                  # P1-FU: the estimand's swap read on the values (the parts inside their totals),
+                  # as the caption and Table 2 read it.
+                  "set_estimand": {"nested": self._values_nesting(pid, decisions.fold(records))}}
         return methods_text(records, {"detected_task": facts.detected_task, "counts": stages})
 
     def _flow_counts(self, pid: str) -> dict[str, Any]:
@@ -1926,7 +1937,10 @@ class ProjectService:
             if gate is not None:
                 artifact = estimand.withhold(stage, artifact, gate)
             elif stage == "fit":
-                artifact = estimand.annotate_fit(artifact, state)
+                # The caption says the swap Table 2 says: on the values' reading of the parts
+                # inside their totals, as the design reads it (P1-FU).
+                artifact = estimand.annotate_fit(artifact, state,
+                                                 nested=self._values_nesting(pid, state))
             if stage == "fit":
                 # Wave 2, EXPLORE (MODELING_SEQUENCE ruling 13): under inference no cross-validated
                 # score is shown.
