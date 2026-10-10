@@ -25,6 +25,7 @@ from turbotab.core.models.base import (
 from turbotab.core.models import linear  # noqa: F401,E402 - registers
 from turbotab.core.models import elastic_net  # noqa: F401,E402 - registers
 from turbotab.core.models import boosted_trees  # noqa: F401,E402 - registers
+from turbotab.core.models import forest  # noqa: F401,E402 - registers random_forest (RT-5d)
 from turbotab.core.models import featurewise  # noqa: F401,E402 - registers (WP11)
 from turbotab.core.models import ordinal  # noqa: F401,E402 - registers proportional_odds (WP12a)
 from turbotab.core.models import repeated  # noqa: F401,E402 - registers mixed and gee (WP12)

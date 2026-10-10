@@ -13,6 +13,11 @@ joblib>=1.3
 # load (on a Mac without the OpenMP runtime: `brew install libomp`), so the rest still runs.
 lightgbm>=4.3
 xgboost>=2.1
+# The random forest's compiled TreeSHAP (turbotab/core/models/forest.py; RECIPES_AND_TUNING RT-5d,
+# T11: it equals v2's own TreeSHAP to 1e-6, blanks included). From 0.53 it needs neither numba
+# nor llvmlite, and its other requirements are already pinned in constraints.txt (re-resolved with
+# `uv pip compile`: no new package). Without it the forest's SHAP values use v2's numpy TreeSHAP.
+shap>=0.53
 
 # ── data layer (turbotab/core/datastore.py) ─────────────────────────────────
 duckdb>=1.1            # read_csv/sniff_csv, Parquet COPY, approx_top_k, query_progress
