@@ -3320,6 +3320,8 @@ export interface components {
             words: string;
             /** Label */
             label: string;
+            /** Theorem */
+            theorem: string | null;
         };
         /** MultiplicitySpec */
         MultiplicitySpec: {

@@ -9668,6 +9668,17 @@
           "label": {
             "type": "string",
             "title": "Label"
+          },
+          "theorem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theorem"
           }
         },
         "type": "object",
@@ -9681,7 +9692,8 @@
           "not_measurable",
           "crosses",
           "words",
-          "label"
+          "label",
+          "theorem"
         ],
         "title": "Movement",
         "description": "One measurement of ``M``: its instrument and regime, the value (None where it is not graded\nby a number), its band, whether the instrument is calibrated, and in plain words what was\nmeasured (``words``) with the technical name as a quiet label (``label``)."
