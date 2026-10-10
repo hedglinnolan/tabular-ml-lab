@@ -550,7 +550,21 @@ def test_a16_boosted_trees_stop_early_on_whole_units_the_latest_when_time_ordere
     X = pd.DataFrame(rng.normal(size=(people * per, 3)), columns=["a", "b", "c"])
     X.index = pd.Index(np.arange(len(X)) + 10_000, name="row_id")
     y = X["a"].to_numpy() + rng.normal(size=len(X))
-    pipe = _pipeline("boosted_trees", "regression", ["a", "b", "c"], len(X))
+    # Boosted trees are tuned (RT-5a), so they are built through a plan: its standard settings
+    # alone (mode "standard"), for a plan whose outer training fold holds these 12,000 rows, so
+    # scikit-learn's own rule (above 10,000 of the plan's rows) has them stop early.
+    from dataclasses import replace
+
+    from turbotab.core.models.tuning import make_plan
+
+    trees = get_family("boosted_trees")
+    plan = make_plan(trees, task="regression", loss="mse", n_plan=people, plan_rows=len(X),
+                     unit="units", split_seed=0, mode="standard")
+    assert plan.standard_stops and len(plan.candidates) == 1
+    spec = DesignSpec(predictors=["a", "b", "c"], inputs=["a", "b", "c"], categorical=[],
+                      numeric=["a", "b", "c"], energy=None, impute=False,
+                      plans={trees.key: plan.to_dict()})
+    pipe = build_pipeline(spec, trees, "regression", "prediction", len(X), 3)
     fitted = fit_pipeline(clone(pipe), X, y, groups=person)
     train_rows, val_rows = seen[-1]
     who = dict(zip(X.index, person))

@@ -37,10 +37,23 @@ from turbotab.core.tests.acceptance.asah import asah
 from turbotab.core.tests.stage_harness import Ingested
 
 
-def _pipeline(family: str, task: str, columns: list[str], n: int):
+def _pipeline(family: str, task: str, columns: list[str], n: int, y=None):
+    """The family's pipeline as the design builds it. A tuned family (boosted trees, RT-5a) is
+    built through a plan in ``mode="standard"``: scikit-learn's defaults alone, the shelf's
+    standard settings these tests measure, one fit per outer fold."""
+    from dataclasses import replace
+
+    from turbotab.core.models.tuning import make_plan, plan_size, tuning_for
+
     spec = DesignSpec(predictors=columns, inputs=columns, categorical=[], numeric=columns,
                       energy=None, impute=False)
-    return build_pipeline(spec, get_family(family), task, "prediction", n, len(columns))
+    fam = get_family(family)
+    if tuning_for(fam, task) is not None:
+        n_plan, plan_rows, unit = plan_size(task, y, None, folds=5)
+        plan = make_plan(fam, task=task, loss=PRIMARY[task], n_plan=n_plan, plan_rows=plan_rows,
+                         unit=unit, split_seed=0, mode="standard")
+        spec = replace(spec, plans={fam.key: plan.to_dict()})
+    return build_pipeline(spec, fam, task, "prediction", n, len(columns))
 
 
 def _folds(n: int, seed: int, y=None) -> np.ndarray:
@@ -50,7 +63,7 @@ def _folds(n: int, seed: int, y=None) -> np.ndarray:
 
 
 def _cv(task, family, X, y, folds):
-    pipe = _pipeline(family, task, list(X.columns), len(y))
+    pipe = _pipeline(family, task, list(X.columns), len(y), y=y)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return cross_validate(task, lambda: clone(pipe), X, y, fold_pairs(folds),

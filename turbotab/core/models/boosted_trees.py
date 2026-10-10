@@ -3,10 +3,18 @@
 Its fitted trees reach the explanations through its ``trees`` member (:func:`hgb_ensemble`), the
 one place that reads scikit-learn's private ``_predictors`` and ``_baseline_prediction``
 (MODEL_FAMILY_CONTRACT C10; WAVE_C6A_PLAN §2, package RT-1a).
+
+**Tuned (RT-5a; RECIPES §4.1).** Its settings are searched inside every training fold
+(:data:`TUNING`): learning rate, leaves per tree, the smallest leaf (capped at a twentieth of the
+plan's units, :func:`leaf_cap`), the L2 pull, the share of columns per split, and the number of
+trees when the plan does not stop early. scikit-learn's defaults are the standard candidate, so
+below an effective size of 300, where the plan keeps the standard candidate alone, a fit is a
+direct ``HistGradientBoosting*()`` fit at those defaults. "Try both" for blanks waits for RT-3
+(C6b).
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 
@@ -23,9 +31,55 @@ from turbotab.core.models.base import (
     Source,
     register_family,
 )
+from turbotab.core.models.tuning import Dimension, TuningDecl
 
 SMALL_N = 500
 TINY_N = 200
+
+STANDARD = "default"  # the standard smallest leaf: scikit-learn's own, never capped
+STANDARD_LEAF = 20  # HistGradientBoosting*'s min_samples_leaf default
+LEAF_SHARE = 20  # a searched leaf holds at most a twentieth of the plan's units (RECIPES §4.1)
+_TUNABILITY = "Probst, Boulesteix & Bischl 2019"
+
+TUNING = TuningDecl(
+    "search",
+    dimensions=(
+        Dimension("learning_rate", "how big each correction step is", "learning rate", 0.01, 0.3,
+                  "log", source=_TUNABILITY),
+        Dimension("max_leaf_nodes", "how many leaves each tree may grow", "leaves per tree", 4,
+                  128, "log_int", source=_TUNABILITY),
+        Dimension("min_samples_leaf", "the fewest rows a leaf may hold", "minimum leaf size", 2,
+                  200, "log_int", source=_TUNABILITY),
+        Dimension("l2_regularization", "how strongly each leaf's value is pulled toward zero",
+                  "L2 regularization", 1e-3, 10.0, "log", source=_TUNABILITY),
+        Dimension("max_features", "the share of columns each split tries", "feature subsampling",
+                  0.3, 1.0, "linear", source=_TUNABILITY),
+        Dimension("max_iter", "how many trees", "boosting rounds", 25, 500, "log_int",
+                  source=_TUNABILITY, active="without_early_stopping"),
+    ),
+    standard={"learning_rate": 0.1, "max_leaf_nodes": 31, "min_samples_leaf": STANDARD,
+              "l2_regularization": 0.0, "max_features": 1.0, "max_iter": 100},
+    standard_source="scikit-learn's defaults",
+    # Sobol candidates stop early from an effective size of 1,500 (the plan's); the standard ones
+    # by scikit-learn's own rule, above 10,000 of the plan's rows, at its own 100 trees and patience.
+    early_stopping={"param": "max_iter", "rounds": 1000, "patience_param": "n_iter_no_change",
+                    "patience": 20, "share": 0.1},
+    space_version="boosted_trees/1",
+    structural=("loss",),
+    reason="Its settings are searched inside every training fold, with scikit-learn's defaults "
+           "always among the candidates.",
+)
+
+
+def leaf_cap(*, plan: Any = None, n_units: int) -> int:
+    """The most rows a searched smallest leaf may hold (RECIPES §4.1): a twentieth of the plan's
+    units, at least 1. The plan's: its ``n_plan`` when it counts units, else its rows (a count of
+    events or of the rarest class is not what a leaf holds); without a plan, the fit's own units."""
+    if plan is not None:
+        n = int(plan.n_plan) if plan.unit == "units" else int(plan.plan_rows)
+    else:
+        n = int(n_units)
+    return max(1, n // LEAF_SHARE)
 
 
 def hgb_ensemble(model: Any) -> Any:
@@ -65,7 +119,9 @@ class BoostedTrees(FamilyBase):
     # MODEL_FAMILY_CONTRACT §1 (§3.1's row for it).
     identity = Identity(kind="estimator", library="scikit-learn",
                         estimator="HistGradientBoostingRegressor; HistGradientBoostingClassifier",
-                        seed_policy="random_state 0, fixed")
+                        seed_policy="random_state from the tuning plan's seed (derive_seed of the "
+                                    "split's seed, family and space version), 0 without a plan; "
+                                    "it seeds the column subsampling")
     purposes = ("prediction", "inference")
     predicts = True
     flexible = True
@@ -90,6 +146,8 @@ class BoostedTrees(FamilyBase):
     review_lenses = ("shared",)
     sources = (Source("friedman2001"),)
     consequence = "Many shallow trees: finds curves and interactions; gives no coefficients."
+    tuning = TUNING
+    defaults_version = "2"  # RT-5a: tuned; "Try both" for blanks joins with RT-3
 
     def methods_label(self, task: Task | None) -> str:
         return "gradient-boosted trees"
@@ -97,6 +155,24 @@ class BoostedTrees(FamilyBase):
     def trees(self, step: Any) -> Any:
         """Its fitted model step's trees, for TreeSHAP and the tree view (C10)."""
         return hgb_ensemble(step)
+
+    def settings(self, values: Mapping[str, Any], *, task: str, n_units: int, n_rows: int,
+                 y: Any = None, Z: Any = None, plan: Any = None) -> dict[str, Any]:
+        """A candidate's values as the estimator's parameters on one fit: the standard leaf
+        (``"default"``) as scikit-learn's own 20; any other leaf capped at :func:`leaf_cap`; the
+        plan's seed as ``random_state`` (0 without a plan). Its output fed back in gives itself
+        (a leaf already at or under the cap stays)."""
+        out = dict(values)
+        leaf = out.get("min_samples_leaf")
+        if isinstance(leaf, str):
+            if leaf != STANDARD:
+                raise ValueError(f"min_samples_leaf {leaf!r} is not a number of rows or "
+                                 f"{STANDARD!r}")
+            out["min_samples_leaf"] = STANDARD_LEAF
+        elif leaf is not None:
+            out["min_samples_leaf"] = min(int(leaf), leaf_cap(plan=plan, n_units=n_units))
+        out["random_state"] = int(plan.seed) if plan is not None else 0
+        return out
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         if task == "regression":
@@ -109,8 +185,10 @@ class BoostedTrees(FamilyBase):
 
     def describe(self, task: Task, purpose: Purpose | None) -> tuple[str, str]:
         return ("Histogram gradient boosting",
-                "Up to 100 trees of at most 31 leaves; on more than 10,000 rows it stops early on "
-                "a tenth of its training units, the latest when the folds follow time.")
+                "Its settings are searched inside every training fold, scikit-learn's defaults "
+                "(100 trees of at most 31 leaves) always among them and used alone with fewer "
+                "than 300 units or events; trees that stop early hold back a tenth of the fold's units, the latest "
+                "when the folds follow time.")
 
     def assess(self, s: Situation) -> Assessment:
         concerns: list[str] = []
