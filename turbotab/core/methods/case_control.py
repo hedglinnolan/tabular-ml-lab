@@ -96,7 +96,7 @@ SOURCES = {
     "janes_pepe": "Janes & Pepe 2008, Biometrics 64:1",
     "rothman": "Rothman, Greenland & Lash, Modern Epidemiology, ch. 8",
     "hosmer": "Hosmer, Lemeshow & Sturdivant 2013, ch. 7",
-    "lumley": "Lumley 2010, Complex Surveys: A Guide to Analysis Using R (Wiley), ch. 5",
+    "lumley": "Lumley 2010, Complex Surveys: A Guide to Analysis Using R (Wiley), ch. 6",
 }
 
 _SAMPLED = ("the cases and the controls were sampled separately, so how many of each the table "
@@ -284,12 +284,19 @@ class _Coder:
     levels: Mapping[str, tuple[Any, ...]]  # categorical column -> its levels, the first the reference
 
     @classmethod
-    def fit(cls, frame: pd.DataFrame, columns: Sequence[str]) -> "_Coder":
+    def fit(cls, frame: pd.DataFrame, columns: Sequence[str],
+            strata: Sequence[str] = ()) -> "_Coder":
+        """``strata`` are coded as categories even when they hold numbers (a matching stratum
+        coded 0 to 4 is five strata, not one slope)."""
         levels = {}
         for c in columns:
             s = frame[c]
-            if not (pd.api.types.is_numeric_dtype(s) or pd.api.types.is_bool_dtype(s)):
-                levels[c] = tuple(sorted(pd.unique(s.dropna()).tolist(), key=str))
+            if c in strata or not (pd.api.types.is_numeric_dtype(s) or pd.api.types.is_bool_dtype(s)):
+                seen = pd.unique(s.dropna()).tolist()
+                try:
+                    levels[c] = tuple(sorted(seen)) if c in strata else tuple(sorted(seen, key=str))
+                except TypeError:
+                    levels[c] = tuple(sorted(seen, key=str))
         return cls(tuple(columns), levels)
 
     def terms(self, column: str) -> list[str]:
@@ -476,7 +483,9 @@ class CaseControlOdds:
     df: float | None = None
     loglik: float | None = None
     loglik_null: float | None = None
-    lr_test: tuple[float, int, float] | None = None  # (statistic, df, p) of every term at once
+    # (statistic, df, p): every reported term at once, against loglik_null, the model with the
+    # matching factors alone (intercept only without them; no term at all within matched sets)
+    lr_test: tuple[float, int, float] | None = None
     withheld: tuple[dict[str, Any], ...] = ()  # prevalence and risk: refused, with reasons and exits
     concerns: tuple[str, ...] = ()
 
@@ -542,12 +551,13 @@ def odds_ratios(frame: pd.DataFrame, outcome: str, exposures: Sequence[str], *,
     y, _ = _cases(frame[outcome], case)
     columns = exposures + [c for c in adjust if c not in exposures] + \
         [c for c in matching if c not in exposures + adjust]
-    coder = _Coder.fit(frame, columns)
+    raw = _raw_measurements(frame, matching)
+    coder = _Coder.fit(frame, columns, strata=[c for c in matching if c not in raw])
     M = coder.transform(frame)
     keep = np.isfinite(y) & M.notna().all(axis=1).to_numpy()
     M, y = M[keep], y[keep]
     names = coder.names
-    matching_terms = {t for c in matching for t in coder.terms(c)}
+    matching_terms = [t for c in matching for t in coder.terms(c)]
     concerns = _left_concern(int((~keep).sum()))
     n, cases = len(y), int(y.sum())
     if cases == 0 or cases == n:
@@ -556,13 +566,19 @@ def odds_ratios(frame: pd.DataFrame, outcome: str, exposures: Sequence[str], *,
     _collinear(X[:, 1:], names, intercept=True)
     from turbotab.core.models.inference import separated_columns
 
-    gone = [names[j - 1] for j in separated_columns(X, y) if j > 0]
-    if gone:
-        raise CaseControlRefused(
-            f"{_listed(gone)} {'separates' if len(gone) == 1 else 'separate'} the cases from the "
-            "controls completely, so the odds ratio is infinite and no interval exists.",
-            ({"label": f"Leave {_listed(gone)} out, or merge its rare levels", "drop": gone},),
-            "complete separation")
+    at = {t: j for j, t in enumerate(names)}
+    base = [at[t] for t in matching_terms]
+
+    def infinite(cols: Sequence[str]) -> list[str]:
+        """The infinite coefficients among ``cols``' terms, the matching factors always in."""
+        own = [at[t] for c in cols for t in coder.terms(c)]
+        idx = own + [j for j in base if j not in own]
+        sub = np.column_stack([np.ones(n), M.to_numpy(dtype=float)[:, idx]])
+        terms = [names[j] for j in idx]
+        found = {terms[k - 1] for k in separated_columns(sub, y) if k > 0}
+        return [names[j] for j in own if names[j] in found]
+
+    _refuse_separation(columns, coder, infinite, matched=False)
     shown = [t for t in names if t not in matching_terms]
     if design is not None:
         ids = _row_ids(frame, row_ids)[keep]
@@ -573,22 +589,117 @@ def odds_ratios(frame: pd.DataFrame, outcome: str, exposures: Sequence[str], *,
         beta, cov, ll, ok = _logistic(X, y)
         se = np.sqrt(np.diag(cov))
         rows = tuple(_z_row(t, beta[i + 1], se[i + 1]) for i, t in enumerate(names) if t in shown)
-        share = cases / n
-        ll0 = float(cases * math.log(share) + (n - cases) * math.log(1 - share))
+        if matching_terms:  # the reported terms are tested against the matching factors alone
+            ll0 = _logistic(np.column_stack([np.ones(n), M[matching_terms].to_numpy(dtype=float)]),
+                            y)[2]
+        else:
+            share = cases / n
+            ll0 = float(cases * math.log(share) + (n - cases) * math.log(1 - share))
         stat = 2 * (ll - ll0)
-        lr = (float(stat), len(names), float(stats.chi2.sf(stat, len(names))))
+        lr = (float(stat), len(shown), float(stats.chi2.sf(stat, len(shown))))
         df = None
         est = "logistic regression (maximum likelihood; Wald intervals)"
         if not ok:
             concerns.append("The fit stopped before converging; treat these numbers with care.")
     if matching:
-        concerns.append(f"The matching factors ({_listed(matching)}) are in the model; their own "
-                        "odds ratios are not estimated, because the matching fixed them by design.")
+        strata = [c for c in matching if c not in raw]
+        how = f"{_listed(strata)}, one indicator per stratum" if strata else ""
+        if raw:
+            how += ("; " if how else "") + f"{_listed(raw)} as a straight line"
+        concerns.append(f"The matching factors are in the model ({how}); their own odds ratios "
+                        "are not estimated, because the matching fixed them by design.")
+    for c in raw:
+        concerns.append(
+            f"{c} has {frame[c].nunique():,} distinct values, so it reads as the measurement "
+            "itself rather than strata, and it is adjusted for as a straight line. If the controls "
+            f"were drawn within bands of {c}, name the band column instead: a straight line can "
+            "leave some confounding by the matching.")
     return CaseControlOdds(
         sampling=sampling, estimator=est, rows=rows, n_rows=n, n_cases=cases,
         n_controls=n - cases, matching=tuple(matching), weighted=design is not None, df=df,
         loglik=ll, loglik_null=ll0, lr_test=lr, withheld=_withheld(sampling),
         concerns=tuple(concerns))
+
+
+# A numeric matching factor with more distinct values than this is a measurement (an age in
+# years), not the strata the controls were drawn in: it is adjusted for as a straight line, with a
+# concern; one with this many or fewer takes one indicator per stratum.
+MAX_STRATA = 20
+
+
+def _raw_measurements(frame: pd.DataFrame, matching: Sequence[str]) -> list[str]:
+    """The numeric matching factors with more distinct values than :data:`MAX_STRATA`."""
+    return [c for c in matching if pd.api.types.is_numeric_dtype(frame[c])
+            and not pd.api.types.is_bool_dtype(frame[c]) and frame[c].nunique() > MAX_STRATA]
+
+
+def _refuse_separation(columns: Sequence[str], coder: "_Coder", infinite: Any, *,
+                       matched: bool) -> None:
+    """Refuse the columns that separate the cases from the controls, and only those.
+
+    ``infinite(cols)`` gives the infinite coefficients of the model holding ``cols``. The cone of
+    separating directions moves every coefficient beside a separating column too (Konis 2007), so
+    each column it names is tried on its own: a column that separates alone is the one named
+    (with its levels, for a category); when none does, the smallest group of them that separates
+    together is named, and leaving out any one of its columns is an exit."""
+    remaining = list(columns)
+    alone: list[str] = []
+    levels: dict[str, list[Any]] = {}
+    together: list[str] = []
+    gone = infinite(remaining)
+    while gone:
+        named = [c for c in remaining if any(t in gone for t in coder.terms(c))]
+        found = {c: infinite([c]) for c in named}
+        found = {c: g for c, g in found.items() if g}
+        if not found and len(named) > 1:
+            together = _smallest_separating(named, infinite)
+            break
+        found = found or {c: gone for c in named}
+        for c, g in found.items():
+            alone.append(c)
+            if c in coder.levels:
+                levels[c] = [v for v in coder.levels[c][1:] if f"{c}={v}" in g]
+        remaining = [c for c in remaining if c not in found]
+        gone = infinite(remaining) if remaining else []
+    if not (alone or together):
+        return
+    parts, exits = [], []
+    if alone:
+        # a category whose separation lies in some of its levels is named by those levels
+        named = [_listed([f"{c} = {v}" for v in levels[c]])
+                 if levels.get(c) and len(levels[c]) < len(coder.terms(c)) else c for c in alone]
+        one = len(alone) == 1
+        if matched:
+            parts.append(f"within every set, {_listed(named)} {'puts' if one else 'each put'} "
+                         "each case above (or below) its own controls")
+        else:
+            parts.append(f"{_listed(named)} {'separates' if one else 'each separate'} the cases "
+                         "from the controls completely")
+        for c, vs in levels.items():
+            if vs:
+                lv = _listed([f"{c} = {v}" for v in vs])
+                exits.append({"label": f"Merge {lv} into another level of {c}",
+                              "merge": {"column": c, "levels": vs}})
+        exits.append({"label": f"Leave {_listed(alone)} out", "drop": list(alone)})
+    if together:
+        if matched:
+            parts.append(f"within every set, {_listed(together)} together put each case above (or "
+                         "below) its own controls")
+        else:
+            parts.append(f"together, {_listed(together)} separate the cases from the controls "
+                         "completely")
+        exits.extend({"label": f"Leave {_listed(alone + [c])} out", "drop": alone + [c]}
+                     for c in together)
+    text = "; ".join(parts)
+    if text.startswith(("together", "within")):  # never a column's own name
+        text = text[0].upper() + text[1:]
+    many = len(alone) + len(together) > 1
+    raise CaseControlRefused(
+        text + f", so {'their odds ratios are' if many else 'its odds ratio is'} infinite and no "
+        "interval exists." + (" Leaving out one of the columns that separate together may be "
+                              "enough." if together else ""),
+        exits, "monotone conditional likelihood (separation within matched sets)" if matched
+        else "complete separation")
 
 
 def _left_concern(left: int) -> list[str]:
@@ -686,25 +797,20 @@ def _matched(frame: pd.DataFrame, outcome: str, exposures: list[str], adjust: li
     centered = Xi - means[ci]
     constant = [t for j, t in enumerate(names) if np.allclose(centered[:, j], 0.0, atol=1e-12)]
     if constant:
-        cols = [c for c in columns if any(t in constant for t in coder.terms(c))]
-        raise CaseControlRefused(
-            f"{_listed(cols)} {'is' if len(cols) == 1 else 'are'} the same for every member of each "
-            "matched set, so the comparison within sets says nothing about it: it was matched on, "
-            "and its odds ratio cannot be estimated.",
-            ({"label": f"Leave {_listed(cols)} out", "drop": cols},),
-            "a matching factor is not estimable in conditional logistic regression")
+        _refuse_constant(columns, coder, constant)
     _collinear(centered, names, intercept=False)
     from turbotab.core.models.inference import separated_columns
 
     pairs = _case_control_pairs(ci, yi)
     Zd = Xi[pairs[:, 0]] - Xi[pairs[:, 1]]
-    gone = [names[j] for j in separated_columns(Zd, np.ones(len(Zd)))]
-    if gone:
-        raise CaseControlRefused(
-            f"Within every set, {_listed(gone)} puts each case above (or below) its own controls, "
-            "so the odds ratio is infinite and no interval exists.",
-            ({"label": f"Leave {_listed(gone)} out, or merge its rare levels", "drop": gone},),
-            "monotone conditional likelihood (separation within matched sets)")
+    at = {t: j for j, t in enumerate(names)}
+
+    def infinite(cols: Sequence[str]) -> list[str]:
+        """The infinite coefficients among ``cols``' terms in the conditional model of ``cols``."""
+        idx = [at[t] for c in cols for t in coder.terms(c)]
+        return [names[idx[k]] for k in separated_columns(Zd[:, idx], np.ones(len(Zd)))]
+
+    _refuse_separation(columns, coder, infinite, matched=True)
     fit = conditional_logistic(Xi, yi, ci)
     se = np.sqrt(np.diag(fit.cov))
     sd = Xi.std(axis=0)
@@ -747,6 +853,57 @@ def _matched(frame: pd.DataFrame, outcome: str, exposures: list[str], adjust: li
         withheld=_withheld("individually_matched"), concerns=tuple(concerns))
 
 
+def _smallest_separating(named: Sequence[str], infinite: Any, largest: int = 3,
+                         budget: int = 60) -> list[str]:
+    """The smallest group (two up to ``largest`` columns, at most ``budget`` groups tried) of
+    ``named`` that separates the cases from the controls by itself; all of ``named`` when none
+    is found within those limits."""
+    from itertools import combinations
+
+    tried = 0
+    for k in range(2, min(largest, len(named) - 1) + 1):
+        for group in combinations(named, k):
+            tried += 1
+            if tried > budget:
+                return list(named)
+            if infinite(list(group)):
+                return list(group)
+    return list(named)
+
+
+def _refuse_constant(columns: Sequence[str], coder: "_Coder", constant: Sequence[str]) -> None:
+    """Refuse the terms that do not vary within any informative set. A column all of whose terms
+    are constant was matched on (or behaves as if it were) and leaves; a category with only some
+    levels constant keeps its other levels, and those levels can be merged into another."""
+    whole = [c for c in columns if all(t in constant for t in coder.terms(c))]
+    levels = {c: [v for v in coder.levels[c][1:] if f"{c}={v}" in constant]
+              for c in columns if c in coder.levels and c not in whole}
+    levels = {c: vs for c, vs in levels.items() if vs}
+    parts, exits, terms = [], [], []
+    if whole:
+        one = len(whole) == 1
+        parts.append(f"{_listed(whole)} {'is' if one else 'are'} the same for every member of each "
+                     f"matched set, so the comparison within sets says nothing about "
+                     f"{'it' if one else 'them'}: {'it was' if one else 'they were'} matched on, "
+                     f"and {'its odds ratio' if one else 'their odds ratios'} cannot be estimated.")
+        exits.append({"label": f"Leave {_listed(whole)} out", "drop": list(whole)})
+        terms.append("a matching factor is not estimable in conditional logistic regression")
+    for c, vs in levels.items():
+        lv = _listed([f"{c} = {v}" for v in vs])
+        one = len(vs) == 1
+        parts.append(f"Within every matched set, either everyone or no one has {lv}, so the "
+                     f"comparison within sets says nothing about {'that level' if one else 'those levels'}"
+                     f" of {c}: {'its odds ratio' if one else 'their odds ratios'} cannot be "
+                     "estimated.")
+        exits.append({"label": f"Merge {lv} into another level of {c}",
+                      "merge": {"column": c, "levels": list(vs)}})
+        exits.append({"label": f"Leave {c} out", "drop": [c]})
+    if levels:
+        terms.append("a level constant within every matched set is not estimable in conditional "
+                     "logistic regression")
+    raise CaseControlRefused(" ".join(parts), exits, "; ".join(terms))
+
+
 def _case_control_pairs(codes: np.ndarray, y: np.ndarray) -> np.ndarray:
     """Every (case, control) pair of rows within a set."""
     out = []
@@ -784,6 +941,8 @@ def recalibrate(probability: Any, offset: float | np.ndarray) -> np.ndarray:
 
 
 def _check_prevalence(prevalence: Any) -> None:
+    if prevalence is None:  # no stated prevalence: refused, never a silent default
+        eligible("predict", "unmatched", "predicted_risk").require()
     values = prevalence.values() if isinstance(prevalence, Mapping) else [prevalence]
     for v in values:
         if not (isinstance(v, (int, float)) and 0.0 < float(v) < 1.0):
@@ -793,7 +952,8 @@ def _check_prevalence(prevalence: Any) -> None:
 
 class PriorCorrected(ClassifierMixin, BaseEstimator):
     """A classifier trained on a case-control sample, its predicted probabilities recalibrated to
-    the population prevalence (King & Zeng 2001's prior correction; module docstring).
+    the population prevalence (King & Zeng 2001's prior correction; module docstring). Without a
+    ``prevalence`` it is refused at ``fit``: no prevalence is assumed.
 
     ``fit`` fits a clone of ``estimator`` and learns the case share ȳ of the rows it is given (so
     in cross-validation, of the training fold alone); ``predict_proba`` takes
@@ -802,8 +962,8 @@ class PriorCorrected(ClassifierMixin, BaseEstimator):
     factor) the share and the prevalence are per stratum, and ``prevalence`` maps each stratum to
     its own."""
 
-    def __init__(self, estimator: Any = None, prevalence: float | Mapping[Any, float] = 0.5,
-                 stratum: str | None = None):
+    def __init__(self, estimator: Any = None,
+                 prevalence: float | Mapping[Any, float] | None = None, stratum: str | None = None):
         self.estimator = estimator
         self.prevalence = prevalence
         self.stratum = stratum
@@ -1321,12 +1481,18 @@ def _register_contracts() -> None:
             Relation("conflicts", "matched_on_not_estimable",
                      "a column the same for every member of each set has no odds ratio in the "
                      "conditional analysis", when=("conditional",), rung="refused",
-                     exits=("leave it out",), condition="a column constant within every set",
+                     exits=("leave it out", "for a level of a category constant within every "
+                            "set: merge that level into another"),
+                     condition="a column (or a level of a category) constant within every set",
                      enforced_by=f"{here}:odds_ratios", id="matched_on"),
             Relation("conflicts", "separation",
-                     "an exposure that separates cases from controls (or each case from its own "
-                     "controls) has an infinite odds ratio and is refused", rung="refused",
-                     exits=("leave it out, or merge its rare levels",),
+                     "a column that separates cases from controls (or each case from its own "
+                     "controls) has an infinite odds ratio and is refused; only the columns that "
+                     "separate on their own are named, not the exposures beside them",
+                     rung="refused",
+                     exits=("leave the separating column out", "for a category: merge the "
+                            "separating levels into another", "columns that separate only "
+                            "together: leave out one of them"),
                      condition="complete separation", enforced_by=f"{here}:odds_ratios",
                      id="separated"),
             Relation("implies", "population_design",

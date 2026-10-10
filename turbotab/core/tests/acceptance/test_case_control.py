@@ -172,11 +172,17 @@ tight <- glm.control(epsilon = 1e-14, maxit = 100)
 f <- glm(case ~ x + z + band, family = binomial, data = df, control = tight)
 g <- glm(case ~ x + z, family = binomial, data = df, control = tight)
 null <- glm(case ~ 1, family = binomial, data = df)
+strata <- glm(case ~ band, family = binomial, data = df, control = tight)
+lrt <- anova(strata, f, test = "LRT")
 ci <- confint.default(f)
 out(list(coef = unname(coef(f)), se = unname(sqrt(diag(vcov(f)))), lo = unname(ci[, 1]),
          hi = unname(ci[, 2]), p = unname(summary(f)$coefficients[, 4]),
          ll = as.numeric(logLik(f)), ll0 = as.numeric(logLik(null)),
-         g = unname(coef(g)), gse = unname(sqrt(diag(vcov(g)))), n = nrow(df)))
+         ll_strata = as.numeric(logLik(strata)), lr = c(lrt$Deviance[2], lrt$Df[2],
+         lrt[["Pr(>Chi)"]][2]),
+         g = unname(coef(g)), gse = unname(sqrt(diag(vcov(g)))), n = nrow(df),
+         gll0 = as.numeric(logLik(glm(case ~ 1, family = binomial, data = df))),
+         glr = c(2 * (as.numeric(logLik(g)) - as.numeric(logLik(null))), 2)))
 """, {"cc": df}, tmp_path)
     freq = CC.odds_ratios(df, "case", ["x"], sampling="frequency_matched", matching=["band"],
                           adjust=["z"])
@@ -188,12 +194,28 @@ out(list(coef = unname(coef(f)), se = unname(sqrt(diag(vcov(f)))), lo = unname(c
     assert [row.upper for row in freq.rows] == pytest.approx(np.exp(ref["hi"][1:3]), rel=1e-7)
     assert [row.p for row in freq.rows] == pytest.approx(ref["p"][1:3], rel=1e-6)
     assert freq.loglik == pytest.approx(ref["ll"], rel=1e-10)
-    assert freq.loglik_null == pytest.approx(ref["ll0"], rel=1e-10)
+    # the likelihood-ratio test covers the reported terms (x, z) only, against the model with
+    # the matching strata alone, as anova(glm(case ~ band), glm(case ~ x + z + band)) does
+    assert freq.loglik_null == pytest.approx(ref["ll_strata"], rel=1e-10)
+    assert freq.lr_test[0] == pytest.approx(ref["lr"][0], rel=1e-8)
+    assert freq.lr_test[1] == ref["lr"][1] == 2
+    assert freq.lr_test[2] == pytest.approx(ref["lr"][2], rel=1e-6)
     assert freq.n_rows == ref["n"] and freq.matching == ("band",)
     assert any("2 rows with a missing value leave" in c for c in freq.concerns)
+    assert any("one indicator per stratum" in c for c in freq.concerns)
+    # a matching stratum coded as numbers (0, 1, 2) is still three strata, not one slope
+    df["band_code"] = df["band"].map({"40-49": 0, "50-59": 1, "60-69": 2})
+    coded = CC.odds_ratios(df, "case", ["x"], sampling="frequency_matched",
+                           matching=["band_code"], adjust=["z"])
+    assert [row.log_or for row in coded.rows] == pytest.approx(ref["coef"][1:3], rel=1e-8)
+    assert [row.se for row in coded.rows] == pytest.approx(ref["se"][1:3], rel=1e-7)
+    assert coded.loglik == pytest.approx(ref["ll"], rel=1e-10)
+    assert coded.lr_test[1] == 2
     plain = CC.odds_ratios(df, "case", ["x", "z"])
     assert [row.log_or for row in plain.rows] == pytest.approx(ref["g"][1:], rel=1e-8)
     assert [row.se for row in plain.rows] == pytest.approx(ref["gse"][1:], rel=1e-7)
+    assert plain.loglik_null == pytest.approx(ref["gll0"], rel=1e-10)
+    assert plain.lr_test[0] == pytest.approx(ref["glr"][0], rel=1e-8) and plain.lr_test[1] == 2
     assert "intercept reflects the sampling" in CC.case_control_sentence(freq)
     assert "adjusted for the matching factors (band)" in CC.case_control_sentence(freq)
 
@@ -206,6 +228,22 @@ def test_a_frequency_matched_sample_with_no_matching_factor_named_is_refused():
     with pytest.raises(CC.CaseControlRefused, match="matched on") as both:
         CC.odds_ratios(df, "case", ["x", "band"], sampling="frequency_matched", matching=["band"])
     assert both.value.exits[0]["drop"] == ["band"]
+
+
+def test_a_matching_factor_given_as_a_raw_measurement_is_a_straight_line_with_a_concern():
+    """A numeric matching factor with more distinct values than strata are drawn in is the
+    measurement itself: it is adjusted for as a straight line (the glm-checked fit with it among
+    the adjustment columns), and the concern says so and asks for the band column."""
+    df = _sampled(_population())
+    df["age"] = np.random.default_rng(1).integers(40, 70, len(df))
+    fit = CC.odds_ratios(df, "case", ["x"], sampling="frequency_matched", matching=["age"])
+    line = CC.odds_ratios(df, "case", ["x", "age"])
+    assert fit.row("x").log_or == pytest.approx(line.row("x").log_or, rel=1e-12)
+    assert fit.row("x").se == pytest.approx(line.row("x").se, rel=1e-12)
+    assert [row.term for row in fit.rows] == ["x"] and fit.lr_test[1] == 1
+    assert any("age has 30 distinct values" in c and "name the band column" in c
+               for c in fit.concerns)
+    assert any("(age as a straight line)" in c for c in fit.concerns)
 
 
 # ── the population answer ────────────────────────────────────────────────────
@@ -351,13 +389,65 @@ def test_a_matching_factor_or_a_separating_exposure_is_refused_in_the_conditiona
     df["perfect"] = df["case"] * 2.0 + df["set"] * 0.01  # every case above its own controls
     with pytest.raises(CC.CaseControlRefused, match="infinite") as separated:
         CC.odds_ratios(df, "case", ["x", "perfect"], sampling="individually_matched", sets="set")
-    assert "perfect" in separated.value.exits[0]["drop"]
+    # only the separating column is named: the exposure beside it stays
+    assert separated.value.exits == [{"label": "Leave perfect out", "drop": ["perfect"]}]
+    assert separated.value.reason.startswith("Within every set, perfect puts each case above")
+    df["also"] = df["case"] * 3.0 + np.random.default_rng(5).uniform(0, 0.5, len(df))
+    with pytest.raises(CC.CaseControlRefused) as two:
+        CC.odds_ratios(df, "case", ["x", "perfect", "also"], sampling="individually_matched",
+                       sets="set")
+    assert "perfect and also each put each case above" in two.value.reason
+    assert two.value.exits == [{"label": "Leave perfect and also out", "drop": ["perfect", "also"]}]
     pop = _sampled(_population())
     pop["flag"] = pop["case"]
-    with pytest.raises(CC.CaseControlRefused, match="the cases from the controls completely"):
+    with pytest.raises(CC.CaseControlRefused, match="the cases from the controls completely") \
+            as flagged:
         CC.odds_ratios(pop, "case", ["x", "flag"])
+    assert flagged.value.exits == [{"label": "Leave flag out", "drop": ["flag"]}]
+    assert "x" not in flagged.value.reason.split(" separates")[0]
     with pytest.raises(CC.CaseControlRefused, match="no column names the sets"):
         CC.odds_ratios(df, "case", ["x"], sampling="individually_matched")
+
+
+def test_a_level_constant_within_every_set_is_named_with_a_merge_exit():
+    """A category level that only appears in sets where every member has it has no odds ratio
+    within sets, but the other levels of its column do: the level is named, not the column."""
+    df = _multi()
+    first = df["set"].isin([1, 2])
+    df.loc[first, "smoke"] = "pipe"
+    with pytest.raises(CC.CaseControlRefused) as level:
+        CC.odds_ratios(df, "case", ["x", "smoke"], sampling="individually_matched", sets="set")
+    assert "either everyone or no one has smoke = pipe" in level.value.reason
+    assert "matched on" not in level.value.reason
+    assert level.value.exits == [
+        {"label": "Merge smoke = pipe into another level of smoke",
+         "merge": {"column": "smoke", "levels": ["pipe"]}},
+        {"label": "Leave smoke out", "drop": ["smoke"]}]
+    assert "level constant within every matched set" in level.value.term
+    # following the merge exit fits, with smoke's other levels estimated
+    df.loc[first, "smoke"] = "current"
+    fit = CC.odds_ratios(df, "case", ["x", "smoke"], sampling="individually_matched", sets="set")
+    assert [row.term for row in fit.rows] == ["x", "smoke=former", "smoke=never"]
+
+
+def test_unmatched_separation_names_the_separating_level_or_the_smallest_group():
+    pop = _sampled(_population())
+    pop["e"] = np.where(np.arange(len(pop)) % 2 == 0, "a", "b")
+    pop.loc[pop.index[pop["case"] == 1][:4], "e"] = "rare"  # a level held by cases alone
+    with pytest.raises(CC.CaseControlRefused) as rare:
+        CC.odds_ratios(pop, "case", ["x", "e"])
+    assert rare.value.reason.startswith("e = rare separates the cases from the controls")
+    assert rare.value.exits[0] == {"label": "Merge e = rare into another level of e",
+                                   "merge": {"column": "e", "levels": ["rare"]}}
+    rng = np.random.default_rng(2)
+    sign = np.where(pop["case"] == 1, 1.0, -1.0)
+    pop["u"] = rng.uniform(-10, 10, len(pop))
+    pop["v"] = -pop["u"] + sign * rng.uniform(0.1, 1.0, len(pop))  # u + v separates; neither alone
+    with pytest.raises(CC.CaseControlRefused) as joint:
+        CC.odds_ratios(pop, "case", ["x", "u", "v"])
+    assert joint.value.reason.startswith("Together, u and v separate the cases")
+    assert joint.value.exits == [{"label": "Leave u out", "drop": ["u"]},
+                                 {"label": "Leave v out", "drop": ["v"]}]
 
 
 # ── Predict: the prior correction, inside each training fold ─────────────────
@@ -437,6 +527,11 @@ def test_the_correction_is_learned_in_each_training_fold_and_never_from_held_out
     assert no_prev.value.exits[0]["needs"] == "population_prevalence"
     with pytest.raises(CC.CaseControlRefused, match="correct the same thing twice"):
         CC.predicted_risks(_lr(), X, y, prevalence=0.03, design=object())
+    # no prevalence is ever assumed: built without one, the corrected model refuses to fit
+    assert CC.PriorCorrected(_lr()).prevalence is None
+    with pytest.raises(CC.CaseControlRefused, match="not risks") as unstated:
+        CC.PriorCorrected(_lr()).fit(X, y)
+    assert unstated.value.exits[0]["needs"] == "population_prevalence"
 
 
 def test_frequency_matching_takes_a_prevalence_per_stratum_with_the_stratum_among_the_features():
@@ -573,6 +668,10 @@ def test_the_contracts_are_registered_with_their_labels_and_enforcing_code():
     assert C.run_order(["case_control_risks", "case_control_effects"]) == [
         "case_control_effects", "case_control_risks"]
     assert "gail1981likelihood" in citations.keys_cited()
+    # design-based logistic regression is Lumley 2010's chapter 6, "Categorical Data Regression"
+    # (Crossref's chapter records under 10.1002/9780470580066; chapter 5 is "Ratios and Linear
+    # Regression")
+    assert CC.SOURCES["lumley"].endswith("ch. 6")
 
 
 def test_the_refusals_speak_plainly_with_the_technical_term_as_a_label():
