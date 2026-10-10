@@ -99,7 +99,7 @@ ENERGY_R = 0.3
 # proxies are calibrated against; its thresholds are τ₀ and τ₁.
 INSTRUMENTS: dict[str, tuple[Regime, str]] = {
     "rows_smd": ("predicted", "rows changed × largest SMD"),
-    "exposure_shift": ("predicted", "W1 / SD of the exposure"),
+    "exposure_shift": ("predicted", "W1 / SD of what you study"),
     "correlation_change": ("predicted", "|Δr| among predictors"),
     "attenuation": ("predicted", "attenuation 1 − λ"),
     "design_imbalance": ("predicted", "rank-biserial r over the outcome"),
@@ -495,7 +495,7 @@ def realized_from_benchmarks(robustness: Mapping[str, Any], half_width: float | 
     worst = max(benchmarks, key=lambda b: abs(float(b["estimate"]) - estimate))
     return refit("benchmark", estimate, estimate - half_width, estimate + half_width,
                  float(worst["estimate"]),
-                 f"a confounder as strong as `{worst['covariate']}`")
+                 f"a common cause as strong as `{worst['covariate']}`")
 
 
 def realized_from_e_value(e_value: Mapping[str, Any]) -> Movement | None:
@@ -508,8 +508,8 @@ def realized_from_e_value(e_value: Mapping[str, Any]) -> Movement | None:
     includes = bool(e_value.get("interval_includes_null"))
     words = ("The interval already includes no effect, so any unmeasured confounding could move "
              "it either way." if includes else
-             f"An unmeasured confounder would need a risk ratio of {float(limit or 1):.2f} with "
-             f"both the exposure and the outcome to move the interval to no effect.")
+             f"An unmeasured common cause would need a risk ratio of {float(limit or 1):.2f} with "
+             f"both what you study and the outcome to move the interval to no effect.")
     m = movement("e_value", float(limit) if limit is not None else None, words, crosses=includes)
     return m if includes else m.model_copy(update={"band": 1})
 

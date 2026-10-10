@@ -213,7 +213,7 @@ def test_1_set_adjustment_is_the_lineage_with_each_covariates_role_lane(est):
     assert lineage.caption == ("`5` adjusted (`age`, `sex` and 3 more); `bmi` left out as "
                                "mediator; `hscrp` left out as possible collider.")
     groups = {n.column: n.group for n in lineage.after.nodes if n.lane == "adjusted"}
-    assert groups == {"age": "confounder", "sex": "confounder", "smoking": "confounder",
+    assert groups == {"age": "cause of both", "sex": "cause of both", "smoking": "cause of both",
                       "activity": "precision", "supplement": "precision", "bmi": "mediator",
                       "hscrp": "possible collider"}
     in_model = {n.column for n in lineage.after.nodes if n.lane == "matrix"}
