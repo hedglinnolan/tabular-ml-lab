@@ -31,5 +31,9 @@ geepack
 lme4
 clubSandwich
 glmnet
+BlandAltmanLeh
+SimplyAgree
+mclust
+fpc
 sva
 limma

@@ -68,6 +68,10 @@ CONTRACT_LENSES: dict[str, tuple[str, ...]] = {
     "regression_calibration": ("dietary",),
     "multiclass_substitution": ("dietary",),
     "survey_substitution": ("dietary",),
+    "dietary_patterns": ("dietary",),
+    "pattern_inputs": ("dietary",),
+    "pattern_count": ("dietary",),
+    "pattern_clusters": ("dietary",),
     # a complex survey design (NHANES): reviewed in full by the dietary, clinical and survey lenses
     "survey_population": ("dietary", "clinical", "survey"),
     "survey_linear": ("dietary", "clinical", "survey"),
@@ -117,8 +121,12 @@ CONTRACT_LENSES: dict[str, tuple[str, ...]] = {
     "horizon_calibration": (SHARED,),
     "nested_cv_interval": (SHARED,),
     "explain": (SHARED,),
+    # subgroups of similar people (D4): an engine core every lens may describe or use as a feature
+    "subgroups": (SHARED,),
     # the export ends every journey
     "manuscript_export": (SHARED,),
+    # D5: agreement between two measurement methods (Describe) or two models (Predict), any lens
+    "bland_altman": (SHARED,),
 }
 
 # Every registered model family: the lenses whose packet reviews it in full, or (SHARED,). No

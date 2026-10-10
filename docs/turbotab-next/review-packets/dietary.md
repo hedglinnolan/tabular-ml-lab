@@ -8,7 +8,7 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
 
 ## 1 · The methods this lens offers
 
-### 1.1 · Its own methods (11)
+### 1.1 · Its own methods (15)
 
 #### Rows read as imputed copies are not repeats (`copies_not_repeats`)
 
@@ -88,6 +88,188 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
 
 - NCHS, NHANES DXA multiple imputation data files (2008)
 - Rubin 1987
+
+#### Dietary patterns: how the food groups are made comparable (`pattern_inputs`)
+
+- **Slot:** in-fold (fit on training rows only); place in it 0.4.
+- **Data scope:** training fold: learns from study rows, so it is fit in-fold. Fitted on the training rows only under prediction and applied to the held-out rows with their means, standard deviations, energy coefficients, loadings and centers; under inference, on every analyzed row. The outcome never enters (a reduced rank regression response that is the outcome is refused).
+- **Needs:**
+  - the food-group intake columns
+  - total energy, for the energy-adjusted forms
+- **Question:** Before finding patterns, should the food groups be adjusted for how much people eat overall?
+- **Where:** placed at Crosswalk D3: engine only; asked by the Describe goal and the stages in D1.
+- **Lenses:** Dietary assessment. Declared by the PATTERNS package.
+
+**Options**, each labeled customary and sound for each purpose, with its leash rung and its rank (1 is offered first):
+
+| Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
+|---|---|---|---|---|---|
+| `residual`: Adjusted for total energy (residual method), then standardized | Willett, Howe & Kushi 1997, Am J Clin Nutr 65:1220S: the residual method, standard for energy-adjusting intakes in cohort studies | Sound: the energy regression is fitted in each training fold | available, 1 | Sound: the patterns describe what people eat, not how much, so the first pattern does not just track total intake | recommended, 1 |
+| `density`: Per 1,000 kcal, then standardized | Common in dietary-pattern reports (Newby & Tucker 2004, Nutr Rev 62:177) | Sound: a per-row ratio, then the fold's center and scale | available, 2 | Sound: the patterns describe the diet's make-up; the ratio keeps some dependence on energy | available, 2 |
+| `standardized`: Standardized as eaten, no energy adjustment | The most common input: intakes standardized so the correlation matrix is used (Hu 2002, Curr Opin Lipidol 13:3) | Sound: the fold's center and scale | available, 3 | Sound with total energy kept in the outcome model; without it, the first pattern often tracks how much people eat | available, 3 |
+
+**Storyboard** (the transform player's real steps):
+
+1. Fit each food group on total energy (residual method), or divide by it (per 1,000 kcal)
+2. Center and scale each food group with the training rows' weighted mean and standard deviation
+
+**Methods sentence:**
+
+- Written by `turbotab.core.methods.dietary_patterns:methods_sentence`: The dietary-pattern methods sentence: the method, the food groups' form, the weights, the retention rule and, under Predict, that the patterns were derived in each training fold.
+
+**Relations:**
+
+| Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
+|---|---|---|---|---|---|
+| precedes | `dietary_patterns` | any option | prediction, inference | The food groups are made comparable before the patterns are found. |  |
+| implies | `total energy in the outcome model` (id `energy_in_outcome`) | `standardized` | inference | With intakes not energy-adjusted, keep total energy as a covariate in the outcome model, since the first pattern often tracks how much people eat. |  |
+
+**Primary sources:**
+
+- Willett, Howe & Kushi 1997, Am J Clin Nutr 65:1220S
+- Newby & Tucker 2004, Nutr Rev 62:177
+- Hu 2002, Curr Opin Lipidol 13:3
+
+#### Dietary patterns: foods eaten together (`dietary_patterns`)
+
+- **Slot:** in-fold (fit on training rows only); place in it 0.41.
+- **Data scope:** training fold: learns from study rows, so it is fit in-fold. Fitted on the training rows only under prediction and applied to the held-out rows with their means, standard deviations, energy coefficients, loadings and centers; under inference, on every analyzed row. The outcome never enters (a reduced rank regression response that is the outcome is refused).
+- **Needs:**
+  - two or more food-group intake columns
+  - intermediate responses on the pathway, for reduced rank regression
+  - the survey weights, when the rows are a weighted sample
+- **Question:** How should eating patterns be found in the food groups?
+- **Where:** placed at Crosswalk D3: engine only; asked by the Describe goal and the stages in D1.
+- **Lenses:** Dietary assessment. Declared by the PATTERNS package.
+
+**Options**, each labeled customary and sound for each purpose, with its leash rung and its rank (1 is offered first):
+
+| Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
+|---|---|---|---|---|---|
+| `pca`: Patterns of foods eaten together (principal components) | The most used method for empirical dietary patterns (Hu 2002, Curr Opin Lipidol 13:3; Newby & Tucker 2004, Nutr Rev 62:177) | Sound: derived from the food groups alone, in each training fold, and scored on the held-out rows with the fold's loadings | recommended, 1 | Sound for describing how foods go together; the patterns are derived without the outcome, so their association with it is not chosen to be large | recommended, 1 |
+| `factor_analysis`: Patterns from shared variation only (exploratory factor analysis) | Common beside principal components, often reported as factor analysis (Newby & Tucker 2004, Nutr Rev 62:177); Fabrigar et al. 1999, Psychol Methods 4:272 on factors versus components | Sound: derived from the food groups alone, in each training fold | available, 2 | Sound when the patterns are taken as underlying habits that the food groups measure with error; it models each food group's own variation apart | available, 2 |
+| `cluster_analysis`: Groups of people who eat alike (k-means clusters) | Used to place each person in one eating group (Newby et al. 2003, Am J Clin Nutr 77:1417; Newby & Tucker 2004, Nutr Rev 62:177) | Sound: the centers are learned in each training fold and held-out rows join the nearest one | available, 3 | Sound for describing groups of people; membership is all-or-nothing, so it carries less information than pattern scores | available, 3 |
+| `reduced_rank_regression`: Patterns that explain intermediate responses (reduced rank regression) | Hoffmann et al. 2004, Am J Epidemiol 159:935: food-group combinations that explain the most variation in responses on the pathway (biomarkers, nutrients) | Sound with intermediate responses measured in the training rows; held-out rows need only their food groups | available, 4 | Sound with intermediate responses on the pathway, never the outcome being studied, which is refused | available, 4 |
+
+**Storyboard** (the transform player's real steps):
+
+1. Read the food groups (and the responses, for reduced rank regression)
+2. Make the food groups comparable as declared, then standardize them
+3. Compute their correlations, weighted by the survey weights when there are any
+4. Find the patterns: components, factors, clusters or response-explaining factors
+5. Rotate components and factors by varimax and order them by variance
+6. Score every person, the held-out rows with the training rows' patterns
+
+**Methods sentence:**
+
+- Written by `turbotab.core.methods.dietary_patterns:methods_sentence`: The dietary-pattern methods sentence: the method, the food groups' form, the weights, the retention rule and, under Predict, that the patterns were derived in each training fold.
+- Its clause in a chain's methods paragraph (`contracts.paragraph`) is written by `turbotab.core.methods.dietary_patterns:_clause`.
+- Under prediction it is named in the in-fold group: “within each training fold, the dietary patterns … were fitted and applied to the held-out fold”.
+
+**Relations:**
+
+| Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
+|---|---|---|---|---|---|
+| conflicts | `the outcome as a response` (id `outcome_as_response`) | `reduced_rank_regression`; when the outcome, or a column equal to it, among the responses | prediction, inference | Refused: the outcome being studied cannot be a reduced rank regression response, so the patterns are never chosen to explain it. *(rung: refused, with an exit)* Exits: choose intermediate responses on the pathway, such as biomarkers or nutrients; derive the patterns by principal components or factor analysis instead. | `turbotab.core.methods.dietary_patterns:check_responses` |
+| implies | `patterns derived in each training fold` (id `in_each_fold`) | any option; when Predict | prediction | The patterns are derived from the training rows of each fold and applied to the held-out rows, never from every row. | `turbotab.core.methods.dietary_patterns:PatternTransformer` |
+| implies | `survey_population` (id `weighted_covariance`) | any option; when a survey weight column | prediction, inference | The correlations, cluster centers and reduced rank regression are weighted by the survey weights, so the patterns are the surveyed population's. | `turbotab.core.methods.dietary_patterns:weighted_correlation` |
+| implies | `varimax rotation` (id `varimax`) | `pca`, `factor_analysis`; when two or more patterns retained | prediction, inference | Components and factors are rotated by varimax, so each food group loads mainly on one pattern. | `turbotab.core.methods.dietary_patterns:varimax` |
+| enables | `pattern_count` | `pca`, `factor_analysis` | prediction, inference | How many components or factors to keep is asked next. |  |
+| enables | `pattern_clusters` | `cluster_analysis` | prediction, inference | How many groups of people to form is asked next. |  |
+| implies | `one factor at most per response` (id `factors_per_response`) | `reduced_rank_regression` | prediction, inference | Reduced rank regression gives at most one factor per response; each factor's share of the responses' variation is reported. | `turbotab.core.methods.dietary_patterns:fit_patterns` |
+
+**Primary sources:**
+
+- Hu 2002, Curr Opin Lipidol 13:3
+- Newby & Tucker 2004, Nutr Rev 62:177
+- Newby et al. 2003, Am J Clin Nutr 77:1417
+- Hoffmann et al. 2004, Am J Epidemiol 159:935
+- Kaiser 1958, Psychometrika 23:187
+- Fabrigar et al. 1999, Psychol Methods 4:272
+- R stats::prcomp, stats::varimax; psych::fa (fm = "pa")
+
+#### Dietary patterns: how many groups of people (`pattern_clusters`)
+
+- **Slot:** in-fold (fit on training rows only); place in it 0.42.
+- **Data scope:** training fold: learns from study rows, so it is fit in-fold. Fitted on the training rows only under prediction and applied to the held-out rows with their means, standard deviations, energy coefficients, loadings and centers; under inference, on every analyzed row. The outcome never enters (a reduced rank regression response that is the outcome is refused).
+- **Needs:**
+  - the standardized food groups
+  - a range of group numbers, or the declared one
+- **Question:** How many groups of people who eat alike should be formed?
+- **Where:** placed at Crosswalk D3: engine only; asked by the Describe goal and the stages in D1.
+- **Lenses:** Dietary assessment. Declared by the PATTERNS package.
+
+**Options**, each labeled customary and sound for each purpose, with its leash rung and its rank (1 is offered first):
+
+| Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
+|---|---|---|---|---|---|
+| `silhouette`: The number whose groups are most distinct (silhouette width) | Rousseeuw 1987, J Comput Appl Math 20:53: the average silhouette width | Sound: a rule fixed in advance, rerun in each training fold | recommended, 1 | Sound: chooses the number whose people sit most clearly in their own group; under survey weights the widths are weighted | recommended, 1 |
+| `declared`: A number stated in advance | Common: the number chosen for interpretability and group size (Newby et al. 2003, Am J Clin Nutr 77:1417; Newby & Tucker 2004, Nutr Rev 62:177) | Sound if stated before the folds | available, 2 | Sound when stated with its reason; it is a judgment | available, 2 |
+
+**Storyboard** (the transform player's real steps):
+
+1. Run k-means from many random starts for each number of groups
+2. Compute each person's silhouette width and average it, weighted
+3. Keep the number with the largest average width
+
+**Methods sentence:**
+
+- Written by `turbotab.core.methods.dietary_patterns:methods_sentence`: The dietary-pattern methods sentence: the method, the food groups' form, the weights, the retention rule and, under Predict, that the patterns were derived in each training fold.
+
+**Relations:**
+
+| Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
+|---|---|---|---|---|---|
+| implies | `survey_population` (id `weighted_widths`) | any option; when a survey weight column | prediction, inference | The cluster centers are weighted means and the silhouette widths are averaged with the survey weights. | `turbotab.core.methods.dietary_patterns:silhouette_widths` |
+
+**Primary sources:**
+
+- Rousseeuw 1987, J Comput Appl Math 20:53
+- Newby et al. 2003, Am J Clin Nutr 77:1417
+- R stats::kmeans; R cluster::silhouette
+
+#### Dietary patterns: how many to keep (`pattern_count`)
+
+- **Slot:** in-fold (fit on training rows only); place in it 0.42.
+- **Data scope:** training fold: learns from study rows, so it is fit in-fold. Fitted on the training rows only under prediction and applied to the held-out rows with their means, standard deviations, energy coefficients, loadings and centers; under inference, on every analyzed row. The outcome never enters (a reduced rank regression response that is the outcome is refused).
+- **Needs:**
+  - the food groups' correlation matrix
+  - the number read from the scree plot, for the scree rule
+- **Question:** How many patterns should be kept?
+- **Where:** placed at Crosswalk D3: engine only; asked by the Describe goal and the stages in D1.
+- **Lenses:** Dietary assessment. Declared by the PATTERNS package.
+
+**Options**, each labeled customary and sound for each purpose, with its leash rung and its rank (1 is offered first):
+
+| Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
+|---|---|---|---|---|---|
+| `parallel_analysis`: Those that stand out from random data (parallel analysis) | Horn 1965, Psychometrika 30:179; Glorfeld 1995, Educ Psychol Meas 55:377 (the 95th percentile); recommended by Zwick & Velicer 1986, Psychol Bull 99:432 | Sound: a rule fixed in advance, rerun in each training fold | recommended, 1 | Sound: keeps only patterns larger than random data of the same size would give; under survey weights the random data are weighted the same way | recommended, 1 |
+| `scree`: The number read from the scree plot (the scree rule) | Cattell 1966, Multivariate Behav Res 1:245; most dietary-pattern reports combine it with interpretability (Newby & Tucker 2004, Nutr Rev 62:177) | Sound if the number is fixed before the folds; read per fold it is not repeatable | available, 2 | Sound when the number and the plot are reported; it is a judgment | available, 2 |
+| `eigenvalue_over_one`: Every pattern with an eigenvalue above 1 | Kaiser 1960, Educ Psychol Meas 20:141: the most used default in software and in reports | Keeps too many with many food groups (Zwick & Velicer 1986, Psychol Bull 99:432); rank lower | ranked lower, concern stated, 3 | Keeps too many with many food groups (Zwick & Velicer 1986, Psychol Bull 99:432); rank lower | ranked lower, concern stated, 3 |
+
+**Storyboard** (the transform player's real steps):
+
+1. Compute the eigenvalues of the food groups' correlation matrix
+2. Simulate random data of the same size (under the same weights) and take the 95th percentile of their eigenvalues
+3. Keep the leading patterns whose eigenvalue is above that
+
+**Methods sentence:**
+
+- Written by `turbotab.core.methods.dietary_patterns:methods_sentence`: The dietary-pattern methods sentence: the method, the food groups' form, the weights, the retention rule and, under Predict, that the patterns were derived in each training fold.
+
+**Relations:**
+
+| Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
+|---|---|---|---|---|---|
+| implies | `survey_population` (id `weighted_reference`) | `parallel_analysis`; when a survey weight column | prediction, inference | Parallel analysis draws its random data under the same survey weights as the food groups' correlations. | `turbotab.core.methods.dietary_patterns:parallel_analysis` |
+
+**Primary sources:**
+
+- Horn 1965, Psychometrika 30:179
+- Glorfeld 1995, Educ Psychol Meas 55:377
+- Cattell 1966, Multivariate Behav Res 1:245
+- Kaiser 1960, Educ Psychol Meas 20:141
+- Zwick & Velicer 1986, Psychol Bull 99:432
 
 #### Regression calibration from repeated 24-hour recalls (`regression_calibration`)
 
@@ -579,7 +761,7 @@ Every other family on the shelf, each in full in the methods reference:
 | Cox proportional hazards (`cox`) | time_to_event | prediction, inference | Each predictor multiplies the hazard by a constant ratio over all of follow-up; effects add on the log scale. | every lens (shared): the methods reference |
 | Screened elastic net (`screened_elastic_net`) | regression, binary | prediction | Only features with a strong marginal association survive; among them, straight-line effects shrunk toward zero. | the metabolomics and genomics packets |
 
-### 1.3 · Shared methods (41)
+### 1.3 · Shared methods (43)
 
 Every lens offers these; their full contracts are in the methods reference.
 
@@ -591,6 +773,7 @@ Every lens offers these; their full contracts are in the methods reference.
 | Multiple imputation compatible with the analysis model | `multiple_imputation_compatible` | in_fold | model | `set_missing` |
 | Passive multiple imputation (chained equations, terms derived per copy) | `multiple_imputation_passive` | in_fold | model | `set_missing` |
 | Single-level multiple imputation on clustered rows | `multiple_imputation_single_level` | in_fold | model | `set_missing` |
+| Subgroups of similar people (cluster analysis) | `subgroups` | in_fold | training_fold | not declared |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) | `exposure_transform` | in_fold | training_fold | not declared |
 | The functional form of a continuous exposure or confounder | `functional_form` | in_fold | training_fold | `set_exposure_form` |
 | Splines for every continuous predictor, knots by a stated rule | `spline_rule` | in_fold | training_fold | `set_levers` |
@@ -625,6 +808,7 @@ Every lens offers these; their full contracts are in the methods reference.
 | Calibration by a horizon, and by level | `horizon_calibration` | evaluation | training_fold | `set_split` |
 | The nested cross-validation interval | `nested_cv_interval` | evaluation | training_fold | `set_split` |
 | Intended use, the decision curve and the threshold | `intended_use` | evaluation | training_fold | `set_intended_use` |
+| Agreement between two measurements (Bland–Altman) | `bland_altman` | evaluation | descriptive | not declared |
 | The manuscript bundle and its replay | `manuscript_export` | evaluation | descriptive | not declared |
 
 ### 1.4 · Methods another lens reviews in full (14)
@@ -852,6 +1036,10 @@ Every relation this lens's own methods take part in: declared by them, or declar
 flowchart LR
   n_copies_not_repeats["Rows read as imputed copies are not repeats"]:::own
   n_imputed_copies_pooled["The data's own imputed copies, pooled by Rubin's rules"]:::own
+  n_pattern_inputs["Dietary patterns: how the food groups are made comparable"]:::own
+  n_dietary_patterns["Dietary patterns: foods eaten together"]:::own
+  n_pattern_clusters["Dietary patterns: how many groups of people"]:::own
+  n_pattern_count["Dietary patterns: how many to keep"]:::own
   n_regression_calibration["Regression calibration from repeated 24-hour recalls"]:::own
   n_nci_usual_intake["Usual-intake distribution (NCI method)"]:::own
   n_survey_population["The population estimand under a survey design"]:::own
@@ -865,6 +1053,11 @@ flowchart LR
   n_pooling_by_Rubin_s_rules(["pooling by Rubin's rules"]):::named
   n_rubins_rules(["rubins_rules"]):::named
   n_combined_copies(["combined_copies"]):::named
+  n_total_energy_in_the_outcome_model(["total energy in the outcome model"]):::named
+  n_the_outcome_as_a_response(["the outcome as a response"]):::named
+  n_patterns_derived_in_each_training_fold(["patterns derived in each training fold"]):::named
+  n_varimax_rotation(["varimax rotation"]):::named
+  n_one_factor_at_most_per_response(["one factor at most per response"]):::named
   n_every_outcome_model_covariate_in_the_calibration_model(["every outcome-model covariate in the calibration model"]):::named
   n_multivariate_calibration(["multivariate calibration"]):::named
   n_the_all_components_model_calibrated(["the all-components model calibrated"]):::named
@@ -877,6 +1070,7 @@ flowchart LR
   n_a_declared_secondary_analysis_beside_the_uncorrected_estimate(["a declared secondary analysis beside the uncorrected estimate"]):::named
   n_the_calibration_in_the_manuscript_bundle(["the calibration in the manuscript bundle"]):::named
   n_the_calibration_s_declaration(["the calibration's declaration"]):::named
+  n_subgroups["Subgroups of similar people (cluster analysis)"]:::other
   n_repeats_offer(["repeats_offer"]):::named
   n_association_is_calibration(["association_is_calibration"]):::named
   n_zeros_two_part(["zeros_two_part"]):::named
@@ -918,6 +1112,17 @@ flowchart LR
   n_copies_not_repeats -->|implies| n_pooling_by_Rubin_s_rules
   n_imputed_copies_pooled -->|implies| n_rubins_rules
   n_imputed_copies_pooled -.->|conflicts| n_combined_copies
+  n_pattern_inputs -->|precedes| n_dietary_patterns
+  n_pattern_inputs -->|implies| n_total_energy_in_the_outcome_model
+  n_dietary_patterns -.->|conflicts| n_the_outcome_as_a_response
+  n_dietary_patterns -->|implies| n_patterns_derived_in_each_training_fold
+  n_dietary_patterns -->|implies| n_survey_population
+  n_dietary_patterns -->|implies| n_varimax_rotation
+  n_dietary_patterns -.->|enables| n_pattern_count
+  n_dietary_patterns -.->|enables| n_pattern_clusters
+  n_dietary_patterns -->|implies| n_one_factor_at_most_per_response
+  n_pattern_clusters -->|implies| n_survey_population
+  n_pattern_count -->|implies| n_survey_population
   n_regression_calibration -->|implies| n_every_outcome_model_covariate_in_the_calibration_model
   n_regression_calibration -->|implies| n_multivariate_calibration
   n_regression_calibration -.->|enables| n_the_all_components_model_calibrated
@@ -931,6 +1136,7 @@ flowchart LR
   n_regression_calibration -->|implies| n_a_declared_secondary_analysis_beside_the_uncorrected_estimate
   n_regression_calibration -->|implies| n_the_calibration_in_the_manuscript_bundle
   n_regression_calibration ==>|invalidates| n_the_calibration_s_declaration
+  n_subgroups -->|implies| n_survey_population
   n_nci_usual_intake -.->|enables| n_repeats_offer
   n_nci_usual_intake -.->|conflicts| n_association_is_calibration
   n_nci_usual_intake -->|implies| n_zeros_two_part
@@ -991,6 +1197,10 @@ The relations, with the sentence the app states when each fires:
 | `copies_not_repeats` | implies | `pooling by Rubin's rules` | any option; when the imputed-copies answer under inference, each copy kept as a record | inference | every estimate is pooled over the copies (MODELING_SEQUENCE §2) |
 | `design_based_cv` | implies | `design_folds` | `population`; when the surveyed-population answer under prediction | prediction | folds keep whole PSUs together within strata, and every loss, calibration and comparison is survey-weighted, labeled design-based cross-validation |
 | `design_based_cv` | implies | `no_cv_under_inference` | any option | inference | no cross-validated score is shown under inference |
+| `dietary_patterns` | implies | `one factor at most per response` | `reduced_rank_regression` | prediction, inference | Reduced rank regression gives at most one factor per response; each factor's share of the responses' variation is reported. |
+| `dietary_patterns` | implies | `patterns derived in each training fold` | any option; when Predict | prediction | The patterns are derived from the training rows of each fold and applied to the held-out rows, never from every row. |
+| `dietary_patterns` | implies | `survey_population` | any option; when a survey weight column | prediction, inference | The correlations, cluster centers and reduced rank regression are weighted by the survey weights, so the patterns are the surveyed population's. |
+| `dietary_patterns` | implies | `varimax rotation` | `pca`, `factor_analysis`; when two or more patterns retained | prediction, inference | Components and factors are rotated by varimax, so each food group loads mainly on one pattern. |
 | `imputed_copies_pooled` | implies | `rubins_rules` | any option; when imputed copies kept as records, under inference | inference | each copy analyzed with its own outcome and pooled by Rubin's rules |
 | `multiclass_substitution` | implies | `class_probabilities_sum_to_one` | any option | prediction, inference | The class curves sum to zero at every k, because each row's class probabilities sum to one before and after the move; a set that does not is a defect, raised and never drawn. |
 | `multiclass_substitution` | implies | `estimand_label` | any option | prediction, inference | The estimand names the probability scale, the isocaloric move and the population the curves average over; each class's label is the change in its probability at the stated k, an average over that population, since a multinomial model's change depends on k and on each person's intake (MODELING_SEQUENCE §2). |
@@ -1001,6 +1211,9 @@ The relations, with the sentence the app states when each fires:
 | `nci_usual_intake` | implies | `population_design` | any option; when a survey design answered as the surveyed population | prediction, inference | the fit and the distribution are weighted, and the standard errors come from Fay's balanced repeated replication (two PSUs per stratum) or a bootstrap of PSUs within strata, stated in the sentence |
 | `nci_usual_intake` | implies | `sample_attestation` | any option; when a survey design answered as these participants | prediction, inference | unweighted estimates, a bootstrap over participants, and the attestation in the sentence |
 | `nci_usual_intake` | implies | `zeros_two_part` | any option; when zero days above 5% of a component's recalls | prediction, inference | the two-part model ranks first; the amount-only model is recorded with the concern that its zero days became half the smallest amount |
+| `pattern_clusters` | implies | `survey_population` | any option; when a survey weight column | prediction, inference | The cluster centers are weighted means and the silhouette widths are averaged with the survey weights. |
+| `pattern_count` | implies | `survey_population` | `parallel_analysis`; when a survey weight column | prediction, inference | Parallel analysis draws its random data under the same survey weights as the food groups' correlations. |
+| `pattern_inputs` | implies | `total energy in the outcome model` | `standardized` | inference | With intakes not energy-adjusted, keep total energy as a covariate in the outcome model, since the first pattern often tracks how much people eat. |
 | `regression_calibration` | implies | `a declared secondary analysis beside the uncorrected estimate` | any option; when regression calibration declared | inference | The calibrated estimate sits beside the uncorrected one, whose estimate, interval and test of no association are the primary's; it corrects only within-person random error, assuming recalls are unbiased for usual intake (customary; sound under that assumption). |
 | `regression_calibration` | implies | `a lonely PSU resampled as the primary centers it` | any option; when the surveyed-population answer, a stratum with a single PSU | inference | A stratum with a single PSU is drawn twice or not at all, each with chance 1/2, so its PSU total varies about zero as R survey's lonely.psu "adjust" centers it, so the calibrated interval treats it as the primary's design-based table does, never as a stratum with no variance. |
 | `regression_calibration` | implies | `a whole-chain bootstrap interval` | any option; when regression calibration declared | inference | Its interval comes from a bootstrap that repeats the imputation, the energy model, the calibration and the outcome model, resampling PSUs within strata under a survey design and clusters under repeated units. |
@@ -1010,6 +1223,7 @@ The relations, with the sentence the app states when each fires:
 | `regression_calibration` | implies | `multivariate calibration` | any option; when two or more error-prone intakes in the outcome model (total energy beside an adjusted nutrient; every source of the all-components model) | inference | Every error-prone intake is calibrated jointly, never one nutrient at a time (Rosner, Spiegelman & Willett 1990, Am J Epidemiol 132:734). |
 | `regression_calibration` | implies | `survey_population` | any option; when the surveyed-population answer | inference | The calibration and the outcome model are survey-weighted, and PSUs are resampled within strata (Rao & Wu 1988, J Am Stat Assoc 83:231); with no stratum of two PSUs it is blocked and recorded, the sample-only attestation its exit. |
 | `regression_calibration` | implies | `the calibration in the manuscript bundle` | any option; when regression calibration declared | inference | The calibrated estimates, their label and the methods paragraph reach the export; a declared calibration that was not run is said to be blocked, there and in the record. |
+| `subgroups` | implies | `survey_population` | `kmeans_silhouette`; when the surveyed-population answer | prediction, inference | With survey weights, k-means weighs each person by their weight in the standardization, its objective and the silhouette, none changed by the weights' scale, and the stability uses the rescaled bootstrap: PSUs within strata, the weights rescaled (Rao, Wu & Yue 1992, Surv Methodol 18:209). |
 | `survey_cox` | implies | `adjusted Wald F for joint tests` | any option | inference | A spline's overall and nonlinear tests are adjusted Wald F tests on (q, d − q + 1) degrees of freedom (Korn & Graubard 1990). |
 | `survey_cox` | implies | `design-based intervals` | any option | inference | Every interval is design-based: Taylor linearization over the strata and PSUs, on t with the design's degrees of freedom (the PSUs minus the strata that hold the analysis rows). |
 | `survey_cox` | implies | `lonely PSUs centered` | any option | inference | A stratum with a single PSU is centered at the mean PSU total of the strata that hold analysis rows (R survey's lonely.psu "adjust"), and the table names it. |
@@ -1026,6 +1240,8 @@ The relations, with the sentence the app states when each fires:
 | `survey_population` | implies | `multiple imputation on the design's degrees of freedom` | any option | inference | Each completed copy is analyzed design-based, and Rubin's rules take the design's degrees of freedom as the complete-data degrees of freedom (MS2). |
 | `survey_population` | implies | `regression calibration by PSU within strata` | any option | inference | Regression calibration and its outcome model are survey-weighted, and its interval comes from a bootstrap resampling PSUs within strata over the whole chain (Rao and Wu's); with no stratum of two PSUs it is blocked and recorded, with the sample-only attestation or no correction as its exits. |
 | `survey_population` | implies | `the record restated` | any option | inference | Every sentence that says what the survey answer does to a family, a curve or a correction is restated in the methods text on the answer as it stands; the Record keeps it as said. |
+| `dietary_patterns` | enables | `pattern_clusters` | `cluster_analysis` | prediction, inference | How many groups of people to form is asked next. |
+| `dietary_patterns` | enables | `pattern_count` | `pca`, `factor_analysis` | prediction, inference | How many components or factors to keep is asked next. |
 | `nci_usual_intake` | enables | `repeats_offer` | any option; when the dietary lens, an inference purpose and two or more recalls for at least two people | prediction, inference | the usual-intake distribution is offered as its own estimand |
 | `regression_calibration` | enables | `the all-components model calibrated` | any option; when the all-components or partition energy model | inference | The all-components model's energy sources are calibrated jointly, so the calibration and the all-components substitution coexist (MODELING_SEQUENCE §0 ruling 7). |
 | `nci_usual_intake` | invalidates | `structure_invalidates` | any option; when the repeats answer changing after the usual-intake answer | prediction, inference | the recorded answer is re-read against the new structure and not applied where the rows are no longer recalls; never silently kept |
@@ -1033,6 +1249,7 @@ The relations, with the sentence the app states when each fires:
 | `survey_population` | invalidates | `the substitution band from row resampling` | any option | inference | A row bootstrap ignores the strata and PSUs, so the curve's band is the design's linearization instead, and the refits asked for are not drawn. |
 | `survey_substitution` | invalidates | `the substitution band from row resampling` | any option | inference | A row bootstrap ignores the strata and PSUs, so the band is the design's instead. |
 | `copies_not_repeats` | conflicts | `repeats over imputed copies` | any option; when the repeats or time-points answer over rows read as imputed copies, under inference | inference | blocked and recorded: the exits answer imputed copies (Rubin's rules) or record the answer *(rung: blocked until recorded)* Exits: imputed copies, each analyzed and pooled by Rubin's rules; keep the answer, recorded: intervals too narrow. |
+| `dietary_patterns` | conflicts | `the outcome as a response` | `reduced_rank_regression`; when the outcome, or a column equal to it, among the responses | prediction, inference | Refused: the outcome being studied cannot be a reduced rank regression response, so the patterns are never chosen to explain it. *(rung: refused, with an exit)* Exits: choose intermediate responses on the pathway, such as biomarkers or nutrients; derive the patterns by principal components or factor analysis instead. |
 | `imputed_copies_pooled` | conflicts | `combined_copies` | any option; when imputed copies combined into one row per unit, under inference | inference | blocked and recorded: imputed values treated as measured *(rung: blocked until recorded)* Exits: Keep each copy as a record, pooled by Rubin's rules; Combine them, recorded: intervals too narrow. |
 | `multiclass_substitution` | conflicts | `imputation_blocked` | any option; when multiple imputation under inference with blanks among the analyzed rows, blocked and recorded or with no copies drawn | inference | While the missing-values answer blocks the coefficient table under inference (passive imputation with a declared nonlinear term, single-level imputation on clustered rows, imputation that cannot run on these data), or no imputed copies were drawn for the fit, no class curve is drawn: each family's curves are blocked and recorded with the table's own refusal and exits, never drawn on one fill of the blanks. *(rung: blocked until recorded)* Exits: the coefficient table's own exits (complete cases, with their assumption stated, among them); with no copies drawn: the linear model added, whose coefficient table draws them. |
 | `multiclass_substitution` | conflicts | `omitted_energy_sources` | any option; when energy sources left out above MAX_OMITTED_SHARE of total energy | inference | Energy sources left out of the model, above the stated share of total energy, block the swap under inference until it is recorded: the curves carry the confounding of the sources total energy holds as one composite. *(rung: blocked until recorded)* Exits: add each missing energy source to the model as an exposure; Keep this swap; the curve carries their confounding; Choose another swap. |
@@ -1054,6 +1271,7 @@ The relations, with the sentence the app states when each fires:
 | `survey_population` | conflicts | `a scale's corrected coefficient` | any option | inference | A scale's correction and the uncorrected coefficient beside it are fit on the rows as sampled, so they are blocked and recorded. *(rung: blocked until recorded)* Exits: the sample-only attestation. |
 | `survey_population` | conflicts | `families with no design-based estimator` | any option | inference | The mixed model, GEE, feature-wise tests, the elastic net and boosted trees have no design-based estimator: their estimates are blocked and recorded. *(rung: blocked until recorded)* Exits: the design-based family for the task in its place, every other chosen family kept; the sample-only attestation. |
 | `survey_substitution` | conflicts | `a curve from a family with no design-based estimator` | any option | inference | Blocked and recorded: no curve, its reason and its exits. *(rung: blocked until recorded)* Exits: the design-based family in its place, every other chosen family kept; the sample-only attestation. |
+| `pattern_inputs` | precedes | `dietary_patterns` | any option | prediction, inference | The food groups are made comparable before the patterns are found. |
 
 ## 3 · The defaults, by purpose
 
@@ -1065,6 +1283,10 @@ The option each method offers first for each purpose, its rung, and the reason i
 |---|---|---|
 | Rows read as imputed copies are not repeats (`copies_not_repeats`) | `imputed_copies` (available): Sound | `imputed_copies` (recommended): Sound: the imputation's variability enters the intervals |
 | The data's own imputed copies, pooled by Rubin's rules (`imputed_copies_pooled`) | `supplied` (available): The copies are kept as records; the concern is stated | `supplied` (recommended): Sound: each copy carries its own outcome; Rubin's rules carry the imputation's uncertainty |
+| Dietary patterns: how the food groups are made comparable (`pattern_inputs`) | `residual` (available): Sound: the energy regression is fitted in each training fold | `residual` (recommended): Sound: the patterns describe what people eat, not how much, so the first pattern does not just track total intake |
+| Dietary patterns: foods eaten together (`dietary_patterns`) | `pca` (recommended): Sound: derived from the food groups alone, in each training fold, and scored on the held-out rows with the fold's loadings | `pca` (recommended): Sound for describing how foods go together; the patterns are derived without the outcome, so their association with it is not chosen to be large |
+| Dietary patterns: how many groups of people (`pattern_clusters`) | `silhouette` (recommended): Sound: a rule fixed in advance, rerun in each training fold | `silhouette` (recommended): Sound: chooses the number whose people sit most clearly in their own group; under survey weights the widths are weighted |
+| Dietary patterns: how many to keep (`pattern_count`) | `parallel_analysis` (recommended): Sound: a rule fixed in advance, rerun in each training fold | `parallel_analysis` (recommended): Sound: keeps only patterns larger than random data of the same size would give; under survey weights the random data are weighted the same way |
 | Regression calibration from repeated 24-hour recalls (`regression_calibration`) | refused under prediction (`multivariate`): Not for prediction: the model is used on recalls measured the same way as these, so its predictions need no correction. | `multivariate` (recommended): Sound under its assumption (corrects only within-person random error, assuming recalls are unbiased for usual intake (customary; sound under that assumption)): with several error-prone intakes only the joint calibration removes the bias, which can go either way |
 | Usual-intake distribution (NCI method) (`nci_usual_intake`) | not offered under prediction: not offered: no prediction reads a usual-intake distribution | ranked by the data: §3.4 |
 | The population estimand under a survey design (`survey_population`) | not offered under prediction: Not asked: under prediction the scores describe the rows they were computed on, and the weights are noted, not used. | `population` (recommended): Sound for a population estimand: every family and display is design-based, or blocked and recorded where none exists (MODELING_SEQUENCE §0 ruling 6). |
@@ -1095,6 +1317,7 @@ The option each method offers first for each purpose, its rung, and the reason i
 | Multiple imputation compatible with the analysis model (`multiple_imputation_compatible`) | refused under prediction (`compatible`): Not here: it uses the outcome, which a new row does not have | `compatible` (recommended): Sound: SMC-FCS where the model holds a spline, a log, a ratio or a logistic or Cox outcome, chained equations where it is linear in the imputed values (Bartlett et al. 2015) |
 | Passive multiple imputation (chained equations, terms derived per copy) (`multiple_imputation_passive`) | refused under prediction (`passive`): Not here: it uses the outcome, which a new row does not have | `passive` (blocked until recorded): Unsound with a declared nonlinear term: passive imputation draws each value from a model linear in it and only then derives the declared nonlinear terms, so the curvature and the nonlinearity tests would be biased toward the null (Bartlett et al. 2015) |
 | Single-level multiple imputation on clustered rows (`multiple_imputation_single_level`) | refused under prediction (`single_level`): Not here: it uses the outcome, which a new row does not have | `single_level` (blocked until recorded): Unsound on clustered rows: imputing clustered rows one at a time gives a unit's time-invariant values different draws on its different rows and erases the correlation within units (Lüdtke, Robitzsch & Grund 2017) |
+| Subgroups of similar people (cluster analysis) (`subgroups`) | `kmeans_silhouette` (recommended): Sound as a feature when refitted inside each training fold; numbers only; survey weights, passed to each fold's fit as sample weights, enter its standardization, objective and silhouette | `kmeans_silhouette` (available): Under inference the subgroups are described beside the analysis (sizes, profiles, stability); a difference in the outcome between subgroups found in the same data is not a confirmatory test; sound as a description |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | ranked by the data: §3.4 | ranked by the data: §3.4 |
 | The functional form of a continuous exposure or confounder (`functional_form`) | `spline` (recommended): Sound: nests the line | ranked by the data: §3.4 |
 | Splines for every continuous predictor, knots by a stated rule (`spline_rule`) | `rule` (recommended): Sound: the rule is stated in advance and the resampling repeats it | not offered under inference: Not offered: under inference each form is declared before the estimates (set_exposure_form), never chosen by the data |
@@ -1129,6 +1352,7 @@ The option each method offers first for each purpose, its rung, and the reason i
 | Calibration by a horizon, and by level (`horizon_calibration`) | `by_horizon_and_level` (recommended): Stated: the prediction horizon is declared with the follow-up, else the median follow-up time | `by_horizon_and_level` (available): Stated beside the fit scores |
 | The nested cross-validation interval (`nested_cv_interval`) | `nested_cv` (available): Offered with its compute estimate where p/n > 1; else the interval is labeled likely too narrow | not offered under inference: Not applicable |
 | Intended use, the decision curve and the threshold (`intended_use`) | `decision_support` (recommended): Sound: net benefit over the declared threshold range (Vickers & Elkin 2006; STRATOS TG6 lists it as essential) | not offered under inference: Not asked: no score is reported under inference |
+| Agreement between two measurements (Bland–Altman) (`bland_altman`) | `differences` (available): Sound for two models' out-of-fold predictions of a number; describes how far apart they are, not which is right | not offered under inference: Not offered under Estimate an effect: agreement describes two measurements and is not an effect (offered under Describe; see DESCRIBE_LABELS) |
 | The manuscript bundle and its replay (`manuscript_export`) | `bundle` (recommended): every sentence is the record's own and the result is the declared one (selection-corrected without a holdout), so a reviewer can reconstruct the analysis and replay it | `bundle` (recommended): every sentence is the record's own, the plan's hash is the lock's, and Table 2 shows the exposure only, so a reviewer can reconstruct the analysis and replay it |
 
 ### 3.4 · Where the app ranks by the data

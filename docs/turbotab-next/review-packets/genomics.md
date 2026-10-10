@@ -275,7 +275,7 @@ Every other family on the shelf, each in full in the methods reference:
 | GEE (exchangeable) (`gee`) | regression, binary | prediction, inference | Population-average straight-line or log-odds effects; a unit's rows share one correlation. | every lens (shared): the methods reference |
 | Cox proportional hazards (`cox`) | time_to_event | prediction, inference | Each predictor multiplies the hazard by a constant ratio over all of follow-up; effects add on the log scale. | every lens (shared): the methods reference |
 
-### 1.3 · Shared methods (41)
+### 1.3 · Shared methods (43)
 
 Every lens offers these; their full contracts are in the methods reference.
 
@@ -287,6 +287,7 @@ Every lens offers these; their full contracts are in the methods reference.
 | Multiple imputation compatible with the analysis model | `multiple_imputation_compatible` | in_fold | model | `set_missing` |
 | Passive multiple imputation (chained equations, terms derived per copy) | `multiple_imputation_passive` | in_fold | model | `set_missing` |
 | Single-level multiple imputation on clustered rows | `multiple_imputation_single_level` | in_fold | model | `set_missing` |
+| Subgroups of similar people (cluster analysis) | `subgroups` | in_fold | training_fold | not declared |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) | `exposure_transform` | in_fold | training_fold | not declared |
 | The functional form of a continuous exposure or confounder | `functional_form` | in_fold | training_fold | `set_exposure_form` |
 | Splines for every continuous predictor, knots by a stated rule | `spline_rule` | in_fold | training_fold | `set_levers` |
@@ -321,9 +322,10 @@ Every lens offers these; their full contracts are in the methods reference.
 | Calibration by a horizon, and by level | `horizon_calibration` | evaluation | training_fold | `set_split` |
 | The nested cross-validation interval | `nested_cv_interval` | evaluation | training_fold | `set_split` |
 | Intended use, the decision curve and the threshold | `intended_use` | evaluation | training_fold | `set_intended_use` |
+| Agreement between two measurements (Bland–Altman) | `bland_altman` | evaluation | descriptive | not declared |
 | The manuscript bundle and its replay | `manuscript_export` | evaluation | descriptive | not declared |
 
-### 1.4 · Methods another lens reviews in full (20)
+### 1.4 · Methods another lens reviews in full (24)
 
 No method contract is declared for one lens: the app reaches each of these through the data it needs, not through the lens, though some are reached through findings or stages their own lens raises. Each is offered here whenever this lens's data hold what it needs, and is reviewed in full in the packet named.
 
@@ -337,6 +339,10 @@ No method contract is declared for one lens: the app reaches each of these throu
 | Rows read as imputed copies are not repeats | `copies_not_repeats` | the dietary assessment and clinical packets | reshape | rows read as imputed copies (a copy number such as NHANES's _MULT_) |
 | The data's own imputed copies, pooled by Rubin's rules | `imputed_copies_pooled` | the dietary assessment and clinical packets | reshape | the column numbering the copies; the unit the copies belong to |
 | The QC rows leave | `qc_rows_leave` | the metabolomics packet | eligibility | the pooled-QC label |
+| Dietary patterns: how the food groups are made comparable | `pattern_inputs` | the dietary assessment packet | in_fold | the food-group intake columns; total energy, for the energy-adjusted forms |
+| Dietary patterns: foods eaten together | `dietary_patterns` | the dietary assessment packet | in_fold | two or more food-group intake columns; intermediate responses on the pathway, for reduced rank regression; the survey weights, when the rows are a weighted sample |
+| Dietary patterns: how many groups of people | `pattern_clusters` | the dietary assessment packet | in_fold | the standardized food groups; a range of group numbers, or the declared one |
+| Dietary patterns: how many to keep | `pattern_count` | the dietary assessment packet | in_fold | the food groups' correlation matrix; the number read from the scree plot, for the scree rule |
 | D-ratio filter | `d_ratio_filter` | the metabolomics packet | in_fold | pooled-QC standard deviations |
 | Regression calibration from repeated 24-hour recalls | `regression_calibration` | the dietary assessment packet | in_fold | two or more recall days for some participants, combined by the mean; the outcome model's covariates (its adjustment set); the energy model's terms the recalls measure; the survey design or the clusters, for the bootstrap |
 | Values below detection | `detection_limit` | the metabolomics packet | in_fold | columns whose blanks are non-detections |
@@ -565,6 +571,7 @@ The option each method offers first for each purpose, its rung, and the reason i
 | Multiple imputation compatible with the analysis model (`multiple_imputation_compatible`) | refused under prediction (`compatible`): Not here: it uses the outcome, which a new row does not have | `compatible` (recommended): Sound: SMC-FCS where the model holds a spline, a log, a ratio or a logistic or Cox outcome, chained equations where it is linear in the imputed values (Bartlett et al. 2015) |
 | Passive multiple imputation (chained equations, terms derived per copy) (`multiple_imputation_passive`) | refused under prediction (`passive`): Not here: it uses the outcome, which a new row does not have | `passive` (blocked until recorded): Unsound with a declared nonlinear term: passive imputation draws each value from a model linear in it and only then derives the declared nonlinear terms, so the curvature and the nonlinearity tests would be biased toward the null (Bartlett et al. 2015) |
 | Single-level multiple imputation on clustered rows (`multiple_imputation_single_level`) | refused under prediction (`single_level`): Not here: it uses the outcome, which a new row does not have | `single_level` (blocked until recorded): Unsound on clustered rows: imputing clustered rows one at a time gives a unit's time-invariant values different draws on its different rows and erases the correlation within units (Lüdtke, Robitzsch & Grund 2017) |
+| Subgroups of similar people (cluster analysis) (`subgroups`) | `kmeans_silhouette` (recommended): Sound as a feature when refitted inside each training fold; numbers only; survey weights, passed to each fold's fit as sample weights, enter its standardization, objective and silhouette | `kmeans_silhouette` (available): Under inference the subgroups are described beside the analysis (sizes, profiles, stability); a difference in the outcome between subgroups found in the same data is not a confirmatory test; sound as a description |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | ranked by the data: §3.4 | ranked by the data: §3.4 |
 | The functional form of a continuous exposure or confounder (`functional_form`) | `spline` (recommended): Sound: nests the line | ranked by the data: §3.4 |
 | Splines for every continuous predictor, knots by a stated rule (`spline_rule`) | `rule` (recommended): Sound: the rule is stated in advance and the resampling repeats it | not offered under inference: Not offered: under inference each form is declared before the estimates (set_exposure_form), never chosen by the data |
@@ -599,6 +606,7 @@ The option each method offers first for each purpose, its rung, and the reason i
 | Calibration by a horizon, and by level (`horizon_calibration`) | `by_horizon_and_level` (recommended): Stated: the prediction horizon is declared with the follow-up, else the median follow-up time | `by_horizon_and_level` (available): Stated beside the fit scores |
 | The nested cross-validation interval (`nested_cv_interval`) | `nested_cv` (available): Offered with its compute estimate where p/n > 1; else the interval is labeled likely too narrow | not offered under inference: Not applicable |
 | Intended use, the decision curve and the threshold (`intended_use`) | `decision_support` (recommended): Sound: net benefit over the declared threshold range (Vickers & Elkin 2006; STRATOS TG6 lists it as essential) | not offered under inference: Not asked: no score is reported under inference |
+| Agreement between two measurements (Bland–Altman) (`bland_altman`) | `differences` (available): Sound for two models' out-of-fold predictions of a number; describes how far apart they are, not which is right | not offered under inference: Not offered under Estimate an effect: agreement describes two measurements and is not an effect (offered under Describe; see DESCRIBE_LABELS) |
 | The manuscript bundle and its replay (`manuscript_export`) | `bundle` (recommended): every sentence is the record's own and the result is the declared one (selection-corrected without a holdout), so a reviewer can reconstruct the analysis and replay it | `bundle` (recommended): every sentence is the record's own, the plan's hash is the lock's, and Table 2 shows the exposure only, so a reviewer can reconstruct the analysis and replay it |
 
 ### 3.4 · Where the app ranks by the data
