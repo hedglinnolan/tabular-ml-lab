@@ -98,12 +98,13 @@ def test_a_family_that_loads_is_available() -> None:
 
 def test_xgboost_that_cannot_load_is_refused_at_selection(xgboost_cannot_load: None) -> None:
     reason = get_family("xgboost").unavailable()
-    assert reason is not None and reason.startswith("The xgboost library could not load here")
+    # plain words on the card: the import error's own text is not in them
+    assert reason == "The XGBoost library could not load."
     ctx = {"task": "binary", "purpose": "prediction"}
     refusal = _refused(["xgboost", "linear"], ctx)
     assert refusal.code == "model_unavailable"
-    assert refusal.message.startswith("XGBoost cannot be fit on this computer: The xgboost "
-                                      "library could not load here")
+    assert refusal.message == ("XGBoost cannot be fit on this computer. The XGBoost library could "
+                               "not load.")
     # the family it declares itself the same kind as takes its place
     assert refusal.exits[0] == {
         "label": "Use Boosted trees instead",
@@ -123,20 +124,44 @@ def test_the_shelf_keeps_an_unavailable_family_marked_and_last(xgboost_cannot_lo
     assert "xgboost" in keys and keys[-1] == "xgboost"  # never shortened
     judged = dict((f.key, a) for f, a in ranked)["xgboost"]
     assert judged.fit == "poor"
-    assert judged.concerns[0].startswith("Cannot be fit on this computer: The xgboost library")
+    assert judged.concerns[0] == ("Cannot be fit on this computer. The XGBoost library could not "
+                                  "load.")
+    assert not any("Error" in c or "sys.modules" in c for c in judged.concerns)
 
 
 def test_any_family_declaring_itself_unavailable_is_refused() -> None:
     from turbotab.core.models.ridge import Ridge
 
     probe = type("Probe", (Ridge,), {"key": "unloadable_probe", "label": "Unloadable probe",
-                                     "unavailable": lambda self: "its library is missing"})()
+                                     "unavailable": lambda self: "Its library is missing"})()
     register_family(probe)
     try:
         refusal = _refused(["unloadable_probe", "ridge"], PREDICTION)
         assert refusal.code == "model_unavailable"
-        assert refusal.message == ("Unloadable probe cannot be fit on this computer: its library "
+        assert refusal.message == ("Unloadable probe cannot be fit on this computer. Its library "
                                    "is missing.")
+    finally:
+        unregister_family("unloadable_probe")
+
+
+def test_the_swap_reads_the_task_from_the_state_when_the_context_names_none(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """The family offered in an unavailable one's place must model the task; with no task in the
+    context, the project state's is read (as the range check reads it). The contract keeps a
+    registered pair from disagreeing on tasks (C4), so the swap's tasks are narrowed after."""
+    from turbotab.core.models.huber import Huber
+
+    probe = type("Probe", (Huber,), {"key": "unloadable_probe", "label": "Unloadable probe",
+                                     "same_kind_as": ("huber", -1.0),
+                                     "unavailable": lambda self: "Its library is missing"})()
+    register_family(probe)
+    try:
+        state = ProjectState(target="y", task="regression", purpose="prediction")
+        exits = [e["label"] for e in _refused(["unloadable_probe"], {"state": state}).exits]
+        assert exits == ["Use Robust linear regression instead", "Choose from the shelf"]
+        monkeypatch.setattr(get_family("huber"), "tasks", ("binary",))
+        exits = [e["label"] for e in _refused(["unloadable_probe"], {"state": state}).exits]
+        assert exits == ["Choose from the shelf"]  # it no longer models the state's task
     finally:
         unregister_family("unloadable_probe")
 
@@ -180,7 +205,7 @@ def test_every_scale_is_checked_and_the_standard_value_is_always_allowed() -> No
     bad = {"max_depth": 11, "criterion": "absolute_error", "min_samples_leaf": 0.2,
            "l2_regularization": 20.0}
     says = {"max_depth": "it runs from 2 to 10", "criterion": "it is one of squared_error, poisson",
-            "min_samples_leaf": "it runs from just above 0 to 0.1",
+            "min_samples_leaf": r"it runs from 0\.0025 \(one in 400\) to 0\.1",
             "l2_regularization": "it runs from 0.001 to 10"}
     for name, value in bad.items():
         with pytest.raises(ValueError, match=says[name]):
@@ -196,6 +221,34 @@ def test_every_scale_is_checked_and_the_standard_value_is_always_allowed() -> No
     assert dict(held.candidates[0].values) == {"max_depth": 2, "criterion": "poisson",
                                                "min_samples_leaf": "default",
                                                "l2_regularization": 0.0}
+
+
+def test_a_whole_number_on_an_integer_scale_reaches_the_plan_as_an_integer() -> None:
+    """XGBoost refuses max_depth = 4.0 and n_estimators = 100.0 when it fits (it wants integers), so
+    a whole number set by hand on an int or log_int scale is kept as an int, and one that is not
+    whole is refused."""
+    xgboost = get_family("xgboost")
+    held = dict(_plan(xgboost, {"max_depth": 4.0, "n_estimators": 100.0}).candidates[0].values)
+    assert held["max_depth"] == 4 and type(held["max_depth"]) is int
+    assert held["n_estimators"] == 100 and type(held["n_estimators"]) is int
+    with pytest.raises(ValueError, match="it runs from 2 to 10 in whole numbers"):
+        _plan(xgboost, {"max_depth": 4.5})
+
+
+def test_a_share_of_units_below_one_unit_of_the_plan_is_refused() -> None:
+    """A share of units runs from one unit of the plan, 1/n_plan (here 1/400 = 0.0025), to high
+    (``map_unit``); make_plan knows n_plan, so a smaller share is refused, naming the range."""
+    fam = SimpleNamespace(key="probe_ranges", label="Probe", tasks=("regression",), tuning=PROBE,
+                          defaults_version="1", settings=None)
+    for share in (1e-9, 0.002):
+        with pytest.raises(ValueError, match=r"it runs from 0\.0025 \(one in 400\) to 0\.1"):
+            _plan(fam, {"min_samples_leaf": share})
+    for share in (1 / 400, 0.05, 0.1):  # one unit and the top are inside
+        assert dict(_plan(fam, {"min_samples_leaf": share}).candidates[0].values)[
+            "min_samples_leaf"] == share
+    rf = get_family("random_forest")
+    with pytest.raises(ValueError, match="one in 400"):
+        _plan(rf, {"min_samples_leaf": 1e-9})
 
 
 def test_the_set_tuning_validator_refuses_a_value_outside_its_range() -> None:

@@ -830,24 +830,36 @@ def _shown(value: Any) -> str:
     return f"{float(value):g}" if _number(value) else str(value)
 
 
-def range_words(d: Dimension) -> str:
-    """Where ``d`` runs, plainly: "it runs from 1 to 3", "it is one of a, b"."""
+def _one_unit(n_plan: int) -> float:
+    """A share of units' lowest value: one unit of the plan, ``1/n_plan`` (:func:`map_unit`)."""
+    return 1.0 / max(int(n_plan), 1)
+
+
+def range_words(d: Dimension, n_plan: int | None = None) -> str:
+    """Where ``d`` runs, plainly: "it runs from 1 to 3", "it is one of a, b". A share of units runs
+    from one unit of the plan when ``n_plan`` is known ("from 0.0025 (one in 400)"), else from
+    just above 0."""
     if d.scale == "choice":
         return "it is one of " + ", ".join(_shown(c) for c in d.choices)
     if d.scale == "share_of_units":
-        return f"it runs from just above 0 to {_shown(d.high)}"
+        if n_plan is None:
+            return f"it runs from just above 0 to {_shown(d.high)}"
+        return (f"it runs from {_shown(_one_unit(n_plan))} (one in {int(n_plan):,}) "
+                f"to {_shown(d.high)}")
     whole = " in whole numbers" if d.scale in ("int", "log_int") else ""
     return f"it runs from {_shown(d.low)} to {_shown(d.high)}{whole}"
 
 
-def _within(d: Dimension, value: Any) -> bool:
+def _within(d: Dimension, value: Any, n_plan: int | None = None) -> bool:
     if d.scale == "choice":
         return any(_tupled(value) == _tupled(c) for c in d.choices)
     if not _number(value):
         return False
     v = float(value)
     if d.scale == "share_of_units":
-        return 0 < v <= float(d.high)
+        # one unit of the plan, with a hair of slack so 1/n_plan written another way is inside
+        low = 0.0 if n_plan is None else _one_unit(n_plan) * (1 - 1e-12)
+        return 0 < v <= float(d.high) and v >= low
     if d.scale in ("int", "log_int") and not v.is_integer():
         return False
     return float(d.low) <= v <= float(d.high)
@@ -858,22 +870,33 @@ def _standard(decl: TuningDecl, name: str, value: Any) -> bool:
             and _tupled(value) == _tupled(decl.standard[name]))
 
 
-def by_hand_problems(decl: TuningDecl, values: Mapping[str, Any]) -> list[str]:
+def by_hand_problems(decl: TuningDecl, values: Mapping[str, Any], *,
+                     n_plan: int | None = None) -> list[str]:
     """One plain sentence for each value set by hand (``values``, by dimension name) that lies
     outside its dimension's declared range (RECIPES §4.1): below ``low`` or above ``high``, not a
-    whole number on an integer scale, not among a choice's choices, not above 0 for a share of
-    units. A dimension's standard value is always allowed, even where it sits outside the searched
+    whole number on an integer scale, not among a choice's choices, for a share of units below one
+    unit of the plan (``1/n_plan``, when ``n_plan`` is known: :func:`make_plan`) or not above 0. A dimension's standard value is always allowed, even where it sits outside the searched
     range (scikit-learn's ``l2_regularization = 0``, a symbolic ``"default"``). A name the
     declaration does not hold is not checked here (:func:`make_plan` refuses it on its own)."""
     dims = {d.name: d for d in (*decl.dimensions, *decl.by_hand)}
     out: list[str] = []
     for name, value in values.items():
         d = dims.get(name)
-        if d is None or _within(d, value) or _standard(decl, name, value):
+        if d is None or _within(d, value, n_plan) or _standard(decl, name, value):
             continue
         label = d.label[:1].upper() + d.label[1:]
-        out.append(f"{label} ({d.term}) was set by hand to {_shown(value)}; {range_words(d)}.")
+        out.append(f"{label} ({d.term}) was set by hand to {_shown(value)}; "
+                   f"{range_words(d, n_plan)}.")
     return out
+
+
+def _whole(decl: TuningDecl, values: Mapping[str, Any]) -> dict[str, Any]:
+    """``values`` with each whole number on an int or log_int scale as an int (4.0 → 4): the
+    estimators want integers there (XGBoost refuses ``max_depth = 4.0`` when it fits)."""
+    scales = {d.name: d.scale for d in (*decl.dimensions, *decl.by_hand)}
+    return {name: int(float(v)) if (scales.get(name) in ("int", "log_int") and _number(v)
+                                    and float(v).is_integer()) else v
+            for name, v in values.items()}
 
 
 def make_plan(family: Any, *, task: str, loss: str, n_plan: int, plan_rows: int, unit: str,
@@ -889,7 +912,7 @@ def make_plan(family: Any, *, task: str, loss: str, n_plan: int, plan_rows: int,
     ``n_plan`` for a yes/no or class outcome; ``psus`` is the fewest PSUs in any outer training
     fold under the population answer. ``manual`` holds values set by hand (dimension or by-hand
     names only), each inside its dimension's range or its standard value (:func:`by_hand_problems`;
-    otherwise :class:`OutsideRange`); ``options`` the "Try both" slots (RT-3). ``out_of_bag``
+    otherwise :class:`OutsideRange`), a whole number on an integer scale kept as an int; ``options`` the "Try both" slots (RT-3). ``out_of_bag``
     must be allowed by the declaration, and never comes with the imbalance correction.
 
     With no inner folds (K = 0, out of bag aside) the plan keeps only the first candidate: the
@@ -906,9 +929,10 @@ def make_plan(family: Any, *, task: str, loss: str, n_plan: int, plan_rows: int,
     if unknown:
         raise ValueError(f"a value set by hand for {', '.join(map(repr, unknown))}, which "
                          f"{family.key} does not tune")
-    outside = by_hand_problems(decl, manual)
+    outside = by_hand_problems(decl, manual, n_plan=n_plan)
     if outside:
         raise OutsideRange(" ".join(outside))
+    manual = _whole(decl, manual)
     if out_of_bag and not decl.out_of_bag:
         raise ValueError(f"{family.key} declares no out-of-bag scoring")
     if out_of_bag and imbalance:

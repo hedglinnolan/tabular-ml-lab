@@ -760,7 +760,7 @@ def unavailable(family: ModelFamily) -> str | None:
 
 
 # The concern that leads an unavailable family's line on the shelf, before its reason.
-UNAVAILABLE = "Cannot be fit on this computer: "
+UNAVAILABLE = "Cannot be fit on this computer. "
 
 
 def rank(situation: Situation) -> list[tuple[ModelFamily, Assessment]]:
@@ -887,7 +887,8 @@ class FamilyBase:
     # scale ``trees(step).scale`` names; None (the member, or its return) uses ``explain.tree_shap``.
     tree_shap: Callable[[Any, Any], Any] | None = None
     # ``unavailable() -> str | None``: why it cannot be fit on this computer, in a plain sentence
-    # (its library could not load), or None when it can. The selection validator refuses it and
+    # for a card ("The XGBoost library could not load."; the technical error stays with the
+    # family, never on the card), or None when it can. The selection validator refuses it and
     # the shelf marks it (:func:`unavailable`, :func:`rank`); None here: it is always available.
     unavailable: Callable[[], str | None] | None = None
 

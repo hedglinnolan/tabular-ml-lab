@@ -4288,6 +4288,14 @@ def _purpose_of(ctx: Any) -> Any:
     return purpose
 
 
+def _task_of(ctx: Any) -> Any:
+    """The task ``ctx`` names, else the project state's, else None (not known)."""
+    task = _ctx(ctx, "task")
+    if task is None:
+        task = getattr(_state(ctx), "task", None)
+    return task
+
+
 def _registered(keys: Sequence[str]) -> dict[str, Any]:
     """The registered families among ``keys``, by key (an unknown key is refused on its own)."""
     from turbotab.core.models.base import families
@@ -4311,7 +4319,11 @@ def _keep_the_rest(decision: SelectModels, dropped: Sequence[str]) -> list[dict[
 def _models_serve_the_purpose(decision: SelectModels, ctx: Any) -> None:
     """MODEL_FAMILY_CONTRACT C2: a family is offered only for the purposes it declares
     (``purposes``), read from the declaration, never from its key. Robust linear regression is
-    prediction only in v2 (RECIPES §5); the feature-wise tests make no predictions."""
+    prediction only in v2 (RECIPES §5); the feature-wise tests make no predictions.
+
+    It is registered before every method's own ``select_models`` check (omics' raw-count refusal,
+    say): a family that cannot serve the goal is refused for that first, since no repair the later
+    checks offer (normalizing the counts) would make it serve it."""
     purpose = _purpose_of(ctx)
     if purpose not in _GOALS:
         return
@@ -4339,7 +4351,7 @@ def _models_can_load(decision: SelectModels, ctx: Any) -> None:
     missing = {k: r for k, f in chosen.items() if (r := unavailable(f)) is not None}
     if not missing:
         return
-    purpose, task = _purpose_of(ctx), _ctx(ctx, "task")
+    purpose, task = _purpose_of(ctx), _task_of(ctx)
     swap: dict[str, Any] = {}
     for key in missing:
         kind = chosen[key].same_kind_as
@@ -4359,7 +4371,7 @@ def _models_can_load(decision: SelectModels, ctx: Any) -> None:
     reasons = " ".join(r if r.endswith(".") else f"{r}." for r in missing.values())
     raise Refusal(
         "model_unavailable",
-        f"{_labels([chosen[k] for k in missing])} cannot be fit on this computer: {reasons}",
+        f"{_labels([chosen[k] for k in missing])} cannot be fit on this computer. {reasons}",
         exits=exits + _keep_the_rest(decision, list(missing)))
 
 
@@ -4375,7 +4387,7 @@ def _tuning_values_in_range(decision: Any, ctx: Any) -> None:
     if family is None or family.tuning is None or not values:
         return
     tuning = family.tuning
-    task = _ctx(ctx, "task") or getattr(_state(ctx), "task", None)
+    task = _task_of(ctx)
     decls = ([tuning] if isinstance(tuning, TuningDecl)
              else [tuning[task]] if task in tuning else list(tuning.values()))
     for decl in decls:

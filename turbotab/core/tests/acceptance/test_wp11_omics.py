@@ -339,9 +339,13 @@ def test_1b_raw_counts_are_refused_until_normalized_and_the_library_size_check_f
     assert exits[:3] == ["Log-CPM with TMM", "Log-CPM, library size only", "Already normalized"]
     assert "Keep only the families that are not linear" in exits
     assert error["exits"][3]["decision"]["models"] == ["boosted_trees"]
-    for linear in (["linear"], ["featurewise"]):
+    # every linear family that serves the goal (feature-wise tests serve only inference, and are
+    # refused under prediction for that first: normalizing would not make them predict)
+    for linear in (["linear"], ["ridge"]):
         code, body = post(client, pid, {"kind": "select_models", "models": linear})
         assert code == 409 and body["error"]["code"] == "raw_assay_values", body
+    code, body = post(client, pid, {"kind": "select_models", "models": ["featurewise"]})
+    assert code == 409 and body["error"]["code"] == "model_not_for_purpose", body
 
     accepted(client, pid, error["exits"][0]["decision"])  # log-CPM with TMM
     prepare(client, pid, {"kind": "select_models", "models": ["elastic_net"]})

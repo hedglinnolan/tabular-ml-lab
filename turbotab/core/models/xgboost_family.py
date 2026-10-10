@@ -571,13 +571,11 @@ class XGBoost(FamilyBase):
         return "gradient-boosted trees (XGBoost)"
 
     def unavailable(self) -> str | None:
-        """Why XGBoost cannot be fit here (:func:`load_error`), in a plain sentence, or None: the
-        selection validator refuses it and the shelf marks it, so it is not only refused at fit."""
-        error = load_error()
-        if error is None:
-            return None
-        return (f"The xgboost library could not load here "
-                f"({error.removeprefix('XGBoost could not load: ')}).")
+        """Why XGBoost cannot be fit here, in a plain sentence for a card, or None: the selection
+        validator refuses it and the shelf marks it, so it is not only refused at fit. The import
+        error itself (an ImportError, a dlopen path) is not on the card: :func:`load_error` keeps
+        it, and a fit's refusal (:class:`XGBoostUnavailable`) carries it."""
+        return None if load_error() is None else "The XGBoost library could not load."
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         """XGBoost's defaults, one thread, never stopping early."""
