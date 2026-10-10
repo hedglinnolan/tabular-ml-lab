@@ -552,3 +552,18 @@ def test_noisy_replicates_say_act_on_it_and_drop_out_once_the_correction_is_answ
         method="regression_calibration")})
     n = M.variance_noticing(declared, frame)
     assert n.answered and not M.in_triage(n) and "Regression calibration" in n.done
+
+
+def test_a_lock_recorded_while_looks_were_part_of_the_plan_is_not_changed_by_them():
+    """A lock recorded when the outcome's recorded looks were still part of the plan (before
+    ``plan_lock.LOOKS``) holds them; the plan read now leaves them out, so the two are compared
+    on the answers alone, and a decision made while nothing was shown does not withdraw it. A
+    change to an answer still does."""
+    from types import SimpleNamespace
+
+    state = planned()
+    looks = {"distribution:y": {"view": "distribution", "column": "y"}}
+    old = dict(plan_lock.plan_of(state), outcome_views=looks)
+    lock = SimpleNamespace(plan=old, digest=plan_lock.digest(old))
+    assert not plan_lock.plan_changed(lock, state)
+    assert plan_lock.plan_changed(lock, state.model_copy(update={"exclusions": [AGE_RULE]}))
