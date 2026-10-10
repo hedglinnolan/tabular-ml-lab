@@ -340,7 +340,10 @@ def test_ridge_never_displaces_the_first_two_families_the_journeys_pick(task, mo
                   for n in (30, 100, 300, 800, 1_500, 1_999, 2_000, 2_500, 10_000)
                   for p in (5, 40, n, 3 * n) for share in events]
     with_ridge = [_first_two(s) for s in situations]
-    monkeypatch.delitem(base._REGISTRY, "ridge")
+    # a registry without ridge for the comparison, the original restored after it in its own
+    # order (deleting and restoring the key would move ridge to the end of the registration order
+    # for every later test in this process)
+    monkeypatch.setattr(base, "_REGISTRY", {k: f for k, f in base._REGISTRY.items() if k != "ridge"})
     without = [_first_two(s) for s in situations]
     assert with_ridge == without
     # the survey journey's pick at 300 rows (its capture) is among the shelves compared
