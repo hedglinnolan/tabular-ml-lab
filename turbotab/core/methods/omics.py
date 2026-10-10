@@ -1987,7 +1987,49 @@ def _register_contracts() -> None:
 # ── the methods paragraph a chain writes (BLUEPRINT §13's chain test) ─────────
 
 
-def chain_choices(state: Any, steps: Sequence[str], family: str | None = None) -> dict[str, str | None]:
+def _declared(family: Any) -> Any:
+    """The registered family ``family`` names (a key), or the family itself; None when nothing is
+    registered under the key."""
+    if not isinstance(family, str):
+        return family
+    from turbotab.core.models import get_family
+
+    try:
+        return get_family(family)
+    except KeyError:
+        return None
+
+
+def tests_each_feature(family: Any) -> bool:
+    """Whether the family gives tests only: an inference table and no predictions, as the
+    feature-wise family tests each study factor on its own. Read from its declarations (``predicts``
+    and ``inference_decl``), so these tests carry a multiplicity control and no score."""
+    declared = _declared(family)
+    return (declared is not None and not declared.predicts
+            and declared.inference_decl is not None)
+
+
+MIX = "l1_ratio"  # the dimension of a path that mixes the lasso and ridge pulls
+
+
+def tunes_a_mix(family: Any) -> bool:
+    """Whether the family's tuning declaration is a path over a lasso-ridge mix and a penalty (the
+    elastic net's): ``tuning.kind`` is ``"path"`` and one of its dimensions is the mix, which ridge's
+    single penalty lacks. The path's penalty and mix are chosen in an inner CV on each fit's own
+    rows (``models.tuning``), which is what :func:`model_clause` says."""
+    from turbotab.core.models.tuning import tuning_for
+
+    declared = _declared(family)
+    if declared is None:
+        return False
+    for task in declared.tasks:
+        decl = tuning_for(declared, task)
+        if decl is not None and decl.kind == "path" and MIX in decl.names():
+            return True
+    return False
+
+
+def chain_choices(state: Any, steps: Sequence[str], family: Any = None) -> dict[str, str | None]:
     """The method contracts a run used, each with the option it chose: the pre-seal answers in the
     state, the in-fold steps the design built (``steps``: the family's step keys, in order), the
     batch answer, and an exposure family's multiplicity."""
@@ -2026,22 +2068,23 @@ def chain_choices(state: Any, steps: Sequence[str], family: str | None = None) -
     batch = getattr(state, "batch", None)
     if batch is not None and batch.method == "covariate":
         choices["batch"] = "covariate"
-    if family == "featurewise":
+    if family is not None and tests_each_feature(family):
         choices["multiplicity"] = multiplicity_policy(state)["method"]
     return choices
 
 
-def model_clause(family: str, validation: str | None) -> str | None:
+def model_clause(family: Any, validation: str | None) -> str | None:
     """The clause the fitted family writes for the methods paragraph: how its parameters were
-    tuned against how the rows were validated."""
-    if family in ("elastic_net", "screened_elastic_net") and validation in ("kfold", "repeated_kfold"):
+    tuned against how the rows were validated. A family whose tuning declaration is a path over a
+    lasso-ridge mix (:func:`tunes_a_mix`) writes it; any other, none."""
+    if not tunes_a_mix(family):
+        return None
+    if validation in ("kfold", "repeated_kfold"):
         return "elastic-net parameters were tuned in an inner CV nested in an outer CV"
-    if family in ("elastic_net", "screened_elastic_net"):
-        return "elastic-net parameters were tuned by an inner CV within the rows each fit was given"
-    return None
+    return "elastic-net parameters were tuned by an inner CV within the rows each fit was given"
 
 
-def methods_paragraph(state: Any, steps: Sequence[str], family: str, split: Mapping[str, Any] | None,
+def methods_paragraph(state: Any, steps: Sequence[str], family: Any, split: Mapping[str, Any] | None,
                       working: Mapping[str, Any] | None = None,
                       table: Mapping[str, Any] | None = None, *,
                       censored: Mapping[str, Any] | None = None,
@@ -2091,7 +2134,7 @@ def methods_paragraph(state: Any, steps: Sequence[str], family: str, split: Mapp
     elif purpose == "inference" and (inference or {}).get("covariance") == "CR2" \
             and (inference or {}).get("grouped_by"):
         details.append(f"Intervals were cluster-robust (CR2) by `{inference['grouped_by']}`.")
-    if family == "featurewise" and table is not None:
+    if tests_each_feature(family) and table is not None:
         details.append(featurewise_details(table, choices.get("multiplicity") or "bh"))
     clause = model_clause(family, validation) if purpose == "prediction" else None
     return paragraph(choices, run, purpose, model_clause=clause, details=details)
@@ -2104,7 +2147,7 @@ CHAIN_CONTRACTS = ("qc_detection_filter", "qc_rlsc", "qc_rsd_filter", "qc_pqn", 
                    "batch", "screen", "multiplicity")
 
 
-def fit_methods(state: Any, family: str, steps: Sequence[str], split: Mapping[str, Any] | None,
+def fit_methods(state: Any, family: Any, steps: Sequence[str], split: Mapping[str, Any] | None,
                 working: Mapping[str, Any] | None, model: Mapping[str, Any],
                 censored: Mapping[str, Any] | None, figure: bool = False) -> str | None:
     """The methods paragraph the fit stage writes for one fitted ``model`` (its artifact entry),
@@ -2113,7 +2156,7 @@ def fit_methods(state: Any, family: str, steps: Sequence[str], split: Mapping[st
     if not set(choices) & set(CHAIN_CONTRACTS):
         return None
     info = model.get("inference") or {}
-    table = {"rows": model.get("coefficients") or []} if family == "featurewise" else None
+    table = {"rows": model.get("coefficients") or []} if tests_each_feature(family) else None
     return methods_paragraph(state, steps, family, split, working, table, censored=censored,
                              missing=info.get("missing"), inference=info, figure=figure)
 
