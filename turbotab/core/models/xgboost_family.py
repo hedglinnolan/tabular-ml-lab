@@ -301,6 +301,12 @@ class _XGBoostStep(BaseEstimator):
             # The rounds after the best one are dropped: every reader sees one model.
             booster = model.get_booster()[: self.best_iteration_ + 1]
         self.booster_ = booster
+        # The rows of this fit reaching each leaf of each tree (in the model's tree order): the
+        # tree view's counts, as a cover on classes is a hessian sum and not a row count.
+        leaves = booster.predict(xgb.DMatrix(frame, missing=np.nan, nthread=int(self.n_jobs)),
+                                 pred_leaf=True)
+        leaves = np.asarray(leaves, dtype=np.int64).reshape(len(target), -1)
+        self.leaf_rows_ = [np.bincount(leaves[:, t]) for t in range(leaves.shape[1])]
         self.stopping_rows_ = 0 if val is None else int(len(val[1]))
         self.base_margin_ = _base_margin(booster)
         self.n_rounds_ = int(booster.num_boosted_rounds())
@@ -382,14 +388,16 @@ def _base_margin(booster: Any) -> np.ndarray:
 
 _NODE = np.dtype([("value", "f8"), ("count", "f8"), ("feature_idx", "i8"),
                   ("num_threshold", "f8"), ("missing_go_to_left", "u1"), ("left", "i8"),
-                  ("right", "i8"), ("depth", "i8"), ("is_leaf", "u1")])
+                  ("right", "i8"), ("depth", "i8"), ("is_leaf", "u1"), ("rows", "i8")])
 
 
-def _table(tree: dict[str, Any]) -> np.ndarray:
+def _table(tree: dict[str, Any], leaf_rows: np.ndarray) -> np.ndarray:
     """One tree of xgboost's JSON model as a node table (``explain.TreeEnsemble``'s ``tables``):
     a leaf's value is its ``split_conditions`` entry (the learning rate applied), a split's
     threshold likewise; ``count`` is the node's hessian sum (xgboost's cover, which its TreeSHAP
-    weighs by); a blank goes left where ``default_left`` says.
+    weighs by); ``rows`` is the fit's rows reaching the node (``leaf_rows``, its rows per leaf
+    id, summed up the tree), which the tree view shows; a blank goes left where ``default_left``
+    says.
 
     The JSON prints each single-precision number in its shortest form ("-0.23"), which read as a
     double is not the number xgboost holds; each is read back through single precision, so a
@@ -409,9 +417,19 @@ def _table(tree: dict[str, Any]) -> np.ndarray:
                     0 if leaf else int(tree["split_indices"][i]),
                     0.0 if leaf else condition[i],
                     0 if leaf else int(bool(int(tree["default_left"][i]))),
-                    0 if leaf else int(left[i]), 0 if leaf else int(right[i]), d, int(leaf))
+                    0 if leaf else int(left[i]), 0 if leaf else int(right[i]), d, int(leaf), 0)
         if not leaf:
             queue.extend([(int(left[i]), d + 1), (int(right[i]), d + 1)])
+
+    def rows(i: int) -> int:
+        if int(left[i]) == -1:
+            n = int(leaf_rows[i]) if i < len(leaf_rows) else 0
+        else:
+            n = rows(int(left[i])) + rows(int(right[i]))
+        nodes[i]["rows"] = n
+        return n
+
+    rows(0)
     return nodes
 
 
@@ -428,8 +446,9 @@ def xgb_ensemble(step: Any) -> Any:
     gbtree = model["learner"]["gradient_booster"]["model"]
     outputs = len(step.base_margin_)
     tables: list[list[np.ndarray]] = [[] for _ in range(outputs)]
-    for tree, k in zip(gbtree["trees"], gbtree["tree_info"]):
-        tables[int(k)].append(_table(tree))
+    for tree, k, leaf_rows in zip(gbtree["trees"], gbtree["tree_info"], step.leaf_rows_,
+                                  strict=True):
+        tables[int(k)].append(_table(tree, leaf_rows))
     trees = [[leaf_paths(nodes) for nodes in per_output] for per_output in tables]
     return TreeEnsemble(base=np.asarray(step.base_margin_, dtype=float), trees=trees,
                         tables=tables, rule="lt", scale="margin")

@@ -149,7 +149,8 @@ class TreeEnsemble:
     * ``tables``: each tree's nodes, ``[output][tree]``, as structured arrays with scikit-learn's
       ``TreePredictor.nodes`` field names: ``value``, ``count`` (the training cover: rows, or a
       hessian sum), ``feature_idx``, ``num_threshold``, ``missing_go_to_left``, ``left``, ``right``,
-      ``depth`` and ``is_leaf`` (``is_categorical`` optional), the root at 0. :func:`leaf_paths`
+      ``depth`` and ``is_leaf`` (``is_categorical`` optional; ``rows`` optional, the training rows
+      reaching the node when ``count`` is a hessian sum), the root at 0. :func:`leaf_paths`
       reads one; :func:`tree_structure` reads the first output's.
     * ``rule``: how a row meets a split: ``"le"`` goes left when its value is ``<=`` the threshold
       (scikit-learn), ``"lt"`` when it is ``<`` (XGBoost). A blank goes where
@@ -1031,7 +1032,8 @@ def tree_structure(anat: Anatomy, columns: Sequence[str], levels: int = TREE_LEV
             input=None if column is None else anat.group.get(column, column),
             threshold=None if leaf else float(node["num_threshold"]),
             blanks=None if leaf else ("left" if bool(node["missing_go_to_left"]) else "right"),
-            n=int(node["count"]), value=float(node["value"]) if leaf else None,
+            n=int(node["rows"] if "rows" in first.dtype.names else node["count"]),
+            value=float(node["value"]) if leaf else None,
             left=int(node["left"]) if expand else None,
             right=int(node["right"]) if expand else None))
         if expand:

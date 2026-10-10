@@ -227,6 +227,66 @@ def test_the_tree_view_of_boosted_trees_keeps_its_rule() -> None:
     assert view.rule == "le"
 
 
+def _rows_by_hand(booster, X: pd.DataFrame, tree: int) -> dict[int, int]:
+    """Each node of xgboost's own tree ``tree`` (``trees_to_dataframe``) and how many rows of
+    ``X`` reach it, routed by hand: left below the split (in single precision), a blank where
+    ``Missing`` says."""
+    frame = booster.trees_to_dataframe()
+    frame = frame[frame["Tree"] == tree].set_index("ID")
+    reached: dict[int, int] = {}
+
+    def route(node_id: str, rows: pd.DataFrame) -> None:
+        node = frame.loc[node_id]
+        reached[int(node["Node"])] = len(rows)
+        if node["Feature"] == "Leaf":
+            return
+        x = rows[node["Feature"]].astype(np.float32)  # xgboost compares in single precision
+        left = (x < np.float32(node["Split"])) | (x.isna() & (node["Missing"] == node["Yes"]))
+        route(node["Yes"], rows[left.to_numpy()])
+        route(node["No"], rows[~left.to_numpy()])
+
+    route(f"{tree}-0", X)
+    return reached
+
+
+@pytest.mark.parametrize("task", ["binary", "multiclass"])
+def test_the_tree_view_counts_rows_not_the_hessian_cover(task: str) -> None:
+    """On classes xgboost's cover is a hessian sum (about n·p(1 − p), well below n); the tree
+    view's ``n`` is the fit's rows reaching each node, routed by hand through xgboost's own
+    first tree, while the converted tables keep the cover for TreeSHAP."""
+    X, y = _data(task, n=300)
+    pipe = Pipeline([("model", _step(task, max_depth=3, n_estimators=4))]).set_output(
+        transform="pandas").fit(X, y)
+    view = E.tree_structure(E.anatomy(pipe, list(X.columns), task), list(X.columns),
+                            family="xgboost")
+    booster = pipe.named_steps["model"].booster_
+    by_hand = _rows_by_hand(booster, X, tree=0)
+    assert view.first_tree[0].n == 300
+    assert {node.id: node.n for node in view.first_tree} == {
+        node.id: by_hand[node.id] for node in view.first_tree}
+    root_cover = float(booster.trees_to_dataframe().query("Tree == 0 and Node == 0")["Cover"]
+                       .iloc[0])
+    assert root_cover < 0.6 * 300  # the cover is not a row count here
+    table = get_family("xgboost").trees(pipe.named_steps["model"]).tables[0][0]
+    assert float(table[0]["count"]) == pytest.approx(root_cover, rel=1e-6)
+
+
+def test_the_row_counts_leave_out_the_stopping_rows() -> None:
+    """Under early stopping the counts are the training rows only (360 of 400, the other 40
+    being the stopping rows), in every kept tree, and a split's rows are its children's."""
+    X, y = _data("binary")
+    held = np.arange(len(y)) % 10 == 0
+    step = _step("binary", max_depth=3, n_estimators=2000, early_stopping=True,
+                 early_stopping_rounds=20)
+    step.fit(X[~held], y[~held], X_val=X[held], y_val=y[held])
+    tables = get_family("xgboost").trees(step).tables[0]
+    assert len(tables) == step.best_iteration_ + 1
+    for table in tables:
+        assert int(table[0]["rows"]) == 360
+        for node in table[~table["is_leaf"].astype(bool)]:
+            assert node["rows"] == table[node["left"]]["rows"] + table[node["right"]]["rows"]
+
+
 def test_the_explanations_read_pred_contribs_through_the_family() -> None:
     """``explain.attributions`` reads the family's ``tree_shap``: xgboost's values, as
     ``Booster.predict(pred_contribs=True)`` gives them on the model matrix."""
