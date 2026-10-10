@@ -477,8 +477,11 @@ def test_3_no_coefficient_before_the_plan_and_the_roles_come_from_the_answers(tm
     assert row["se"] == pytest.approx(reference.bse["sugar"], rel=1e-6)
     # the caption is worded from the estimand
     caption = fit["estimand"]["caption"]
-    assert caption.startswith("The total effect of `sugar` on `glucose` (in place of other energy "
-                              "sources at fixed total energy), as a difference in the mean outcome")
+    # Q-b: carbohydrate and energy are in the model, so sugar's swap is for other carbohydrate;
+    # the column's name declares no unit, so no gram is said (per unit of `sugar`)
+    assert caption.startswith("The total effect of more sugar in place of other carbohydrate "
+                              "(total carbohydrate and energy fixed) on `glucose`, as a difference "
+                              "in the mean outcome")
     assert "left out as consequences of the exposure" in caption
     assert "further adjusted for `weight`, `height`, `bmi` and `waist`" in caption
     assert "VanderWeele 2019" in caption and fit["estimand"]["features"] == ["sugar"]
