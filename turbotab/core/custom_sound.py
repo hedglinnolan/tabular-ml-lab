@@ -206,7 +206,7 @@ SPLIT_ROWS: list[Row] = [
     ("holdout", "Hold out a share of rows", "clinical prediction and machine learning",
      "The standard requirement in major medical journals: validity shown outside the development "
      "sample", STEYERBERG,
-     {"inference": ("unsound", f"Serves no estimand: every analyzed row estimates the coefficients "
+     {"inference": ("unsound", f"Serves no comparison: every analyzed row estimates the coefficients "
                                f"whatever is held out, so it costs rows for a score ({SHMUELI})."),
       "prediction": ("conditional", "A lockbox against the analyst's own overfitting, sound at "
                                     "large sizes; at small ones its rows neither train nor score "

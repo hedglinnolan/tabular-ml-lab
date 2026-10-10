@@ -822,7 +822,7 @@ def _register_contract() -> None:
                    "recommended"),
             option("univariate",
                    "One error-prone intake calibrated (an energy-adjusted intake with energy out "
-                   "of the model, or one exposure)",
+                   "of the model, or one study factor)",
                    f"{FREEDMAN}: univariate calibration of energy-adjusted intakes; {ROSNER_1989}",
                    f"Sound under its assumption ({LABEL}) when the model holds one error-prone "
                    f"intake; with several, the joint calibration is implied", "recommended"),

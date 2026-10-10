@@ -177,7 +177,7 @@ def test_1_set_estimand_is_the_lineage_with_the_exposure_emphasized_and_the_one_
     assert "supplement" in lineage.emphasis
     # MODELING_SEQUENCE §2: the declared exposure invalidates the answers given for fiber; the
     # covariates they left out are back in the model until they are asked again, and the note says so.
-    assert result.note == ("The adjustment answers were given for another exposure, so they are "
+    assert result.note == ("The adjustment answers were given for another study factor, so they are "
                            "asked again; until then `bmi` and `hscrp` are back in the model.")
     assert result.basis == "Values on all 600 analyzed rows."
 
@@ -631,7 +631,7 @@ def test_1_set_time_varying_is_the_weight_distribution_with_its_truncation(tvy):
     assert [f.label for f in dist.story] == ["Times loss-to-follow-up weights"]
     assert (dist.before_label, dist.after_label) == ("dash's weights", "truncated weights")
     assert [m.label for m in dist.marks] == ["1% cut 0.266", "99% cut 3.59"]
-    assert result.basis == ("The exposure models fitted on all 3,565 analyzed rows of 800 units; "
+    assert result.basis == ("The models of what you study fitted on all 3,565 analyzed rows of 800 units; "
                             "no outcome read.")
 
 

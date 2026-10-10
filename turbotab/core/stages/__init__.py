@@ -790,7 +790,7 @@ def build_graph() -> Graph:
             Stage("effects", 6, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand", "purpose"),
-                  label="Reporting the exposure's effect across the declared models",
+                  label="Reporting the effect of what you study across the declared models",
                   serves=ESTIMATE),
             # ── The causal lane (V2 definition of done §2; turbotab/core/causal.py) ──
             # causal_design is outcome-free: the options, the assumptions and positivity, shown
@@ -818,7 +818,7 @@ def build_graph() -> Graph:
             # counted; the MSM's ratio read as a hazard ratio for its E-value.
             Stage("time_varying", 2, ("working", "split", "target_info", "structure"),
                   TIME_VARYING_READS, time_varying_stage, heavy=True,
-                  requires=("estimand", "unit", "purpose"), label="Following the exposure through time",
+                  requires=("estimand", "unit", "purpose"), label="Following what you study through time",
                   serves=ESTIMATE),
             # ── Wave 2, EXPLAIN (V2 definition of done §2): the fitted families described ──
             # explain 2 (wave 1b, MS6): the floor quotes the fit's own primary score.

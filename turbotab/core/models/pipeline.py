@@ -796,7 +796,7 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
         elif name == "form":
             from turbotab.core.methods.exposure_form import describe as describe_forms
 
-            out.append({"key": "form", "label": "Exposure form",
+            out.append({"key": "form", "label": "Form of what you study",
                         "detail": describe_forms(step.forms)})
         elif name == "score":
             from turbotab.core.methods.scales import describe as describe_scales

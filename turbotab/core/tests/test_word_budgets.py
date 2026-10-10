@@ -123,6 +123,24 @@ def test_the_energy_teaching_states_the_equivalence_precisely():
     assert "identical" in text
 
 
+def test_the_plain_phrases_fit_where_the_quiet_terms_stood():
+    """P0.12: a card says "what you study" where it said "exposure" and "could explain the link"
+    where it said "confounder"; the option labels that carried the terms still fit their budget, and
+    the terms themselves remain as the quiet labels beside them."""
+    from turbotab.core import plain
+
+    roles = {o.value: o.label for o in teaching.entry("roles").options}
+    adjustment = {o.value: o.label for o in teaching.entry("adjustment").options}
+    assert roles["exposure"] == "What you study" and adjustment["confounder"] == "Could explain the link"
+    for label in (roles["exposure"], adjustment["confounder"]):
+        assert not over(label, B["option_label"]), label
+    assert voice.words(plain.PLAIN_WORDS["exposure"]) <= B["option_label"]
+    terms = {t.term for e in teaching.entries() for t in e.terms}
+    assert {"exposure", "estimand", "time-varying confounder"} <= terms
+    # the in-place definition a kept term carries is shorter than any term definition's budget
+    assert plain.DEFINITION_WORDS < B["term_definition"]
+
+
 def test_the_required_terms_define_themselves():
     terms = {t.term for e in teaching.entries() for t in e.terms}
     for required in ("estimand", "residual method", "substitution", "holdout", "cross-validation",

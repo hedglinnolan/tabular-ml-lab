@@ -1583,7 +1583,7 @@ def _register_contract() -> None:
                      "energy, block the swap under inference until it is recorded: the curves "
                      "carry the confounding of the sources total energy holds as one composite.",
                      purposes=("inference",), rung="block_and_record",
-                     exits=("add each missing energy source to the model as an exposure",
+                     exits=("add each missing energy source to the model as a study factor",
                             "Keep this swap; the curve carries their confounding",
                             "Choose another swap"),
                      enforced_by="turbotab.core.decisions:_substitution_has_every_energy_source",
@@ -1596,7 +1596,7 @@ def _register_contract() -> None:
                      enforced_by="turbotab.core.methods.energy:omitted_sentence",
                      condition="energy sources left out of the model", id="omitted_stated"),
             Relation("implies", "estimand_label",
-                     "The estimand names the probability scale, the isocaloric move and the "
+                     "The comparison you want names the probability scale, the isocaloric move and the "
                      "population the curves average over; each class's label is the change in "
                      "its probability at the stated k, an average over that population, since a "
                      "multinomial model's change depends on k and on each person's intake "

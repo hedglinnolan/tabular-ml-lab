@@ -1091,7 +1091,7 @@ def _register_contracts() -> None:
 
     for c in (
         MethodContract(
-            key="survey_population", label="The population estimand under a survey design",
+            key="survey_population", label="The whole-population comparison under a survey design",
             slot="model", scope="model", run_order=0.0, package="SURVEY",
             scope_note=("The answer chooses the outcome model's estimator. Each row's weight is its "
                         "own, but every design-based estimate and its variance read the outcome and "
@@ -1106,7 +1106,7 @@ def _register_contracts() -> None:
                 Option("population", "The surveyed population (weights, strata and PSUs)",
                        "NCHS's analytic guidelines for NHANES: the sample weights with the "
                        "design's strata and PSUs (NHANES Analytic Guidelines 2011–2016)",
-                       {"inference": "Sound for a population estimand: every family and display "
+                       {"inference": "Sound for a whole-population comparison: every family and display "
                                      "is design-based, or blocked and recorded where none exists "
                                      "(MODELING_SEQUENCE §0 ruling 6).",
                         "prediction": not_asked},

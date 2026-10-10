@@ -198,8 +198,8 @@ METHOD_TABLE: Dict[str, Dict[str, Any]] = {
         "estimand": (
             "The nutrient's amount per unit of energy, with total energy as a separate term. "
             "Its coefficient is not clean diet composition: Tomova et al. (2022) find the "
-            "density model's coefficient \"an obscure quantity that conflates both the effect of "
-            "the nutrient exposure and that of the reciprocal of total energy\", and with total "
+            "density model's coefficient an obscure quantity that conflates the effect of the "
+            "nutrient with that of the reciprocal of total energy, and with total "
             "energy added \"a more accurate estimate than the (unadjusted) nutrient density model, "
             "but one which is still biased\"; the all-components model is the paper's recommended "
             "route."),
@@ -225,7 +225,7 @@ METHOD_TABLE: Dict[str, Dict[str, Any]] = {
         "standing": "CONVENTION (weakest)",
         "caveats": [f"Interpretation obscure ({_TOMOVA}).", _PARTIAL],
         "customary": "Yes, the weakest (NUTRITION_PACK §04).",
-        "sound": {"inference": "Avoid: an obscure estimand, severely biased (Tomova 2022).",
+        "sound": {"inference": "Avoid: an obscure quantity, severely biased (Tomova 2022).",
                   "prediction": "Rank low: drops total energy."},
     },
     "partition": {

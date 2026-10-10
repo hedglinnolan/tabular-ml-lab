@@ -178,7 +178,7 @@ def lens_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     if energy:
         said.append(f"`{energy[0]}` reads as total energy")
     if nutrients:
-        said.append(f"{fmt_count(len(nutrients))} nutrients that carry energy as exposures")
+        said.append(f"{fmt_count(len(nutrients))} nutrients that carry energy as study factors")
     names = [LENS_NOUN.get(k, k) for k in lens]
     noun = _and(names) if len(names) <= 2 else f"{_NUMBER.get(len(names), len(names))}"
     lenses = f"the {noun} lens" if len(names) == 1 else (

@@ -331,16 +331,16 @@ def test_1_the_guess_follows_the_exposure_outcome_pairing():
     expect = [
         (cross, "LBXGH", OUTCOME_KIND, "another measure of the outcome `LBXGLU`'s own kind"),
         (cross, "hba1c", OUTCOME_KIND, "another measure of the outcome `LBXGLU`'s own kind"),
-        (cross, "LBDHDD", TIMING, "measured at the same visit as the exposure"),
+        (cross, "LBDHDD", TIMING, "measured at the same visit as what you study"),
         (cross, "metformin", TIMING, "Tobin et al. 2005"),
-        (cross, "statin_use", TIMING, "a treatment the exposure may have led to"),
+        (cross, "statin_use", TIMING, "a treatment that what you study may have led to"),
         (cross, "smoking", PRE, "habits"),
         (cross, "physical_activity", PRE, "habits"),
         (cross, "alcohol_drinks", PRE, "habits"),
-        (cohort, "LBXGH", TIMING, "measured at baseline with the exposure"),
-        (cohort, "hs_crp", TIMING, "measured at baseline with the exposure"),
-        (ldl, "statin_use", TIMING, "it lowers the exposure `LBDLDL`"),
-        (ldl, "LBXGH", TIMING, "measured at baseline with the exposure"),
+        (cohort, "LBXGH", TIMING, "measured at baseline with what you study"),
+        (cohort, "hs_crp", TIMING, "measured at baseline with what you study"),
+        (ldl, "statin_use", TIMING, "it lowers `LBDLDL`, what you study,"),
+        (ldl, "LBXGH", TIMING, "measured at baseline with what you study"),
     ]
     # The repair (the LEASH verifier's v1c_cohort): beside an incident event the baseline levels of
     # the outcome's own group take the clinical (or body) row; beside an LDL outcome at the same
@@ -351,10 +351,10 @@ def test_1_the_guess_follows_the_exposure_outcome_pairing():
     prevalent = state("fiber_g", "diabetes", "binary")
     ldl_out = state("sat_fat_g", "ldl_mg_dl", "regression")
     obese = state("sugar_g", "obesity", "time_to_event")
-    baseline = "measured at baseline with the exposure, so before the event: no consequence of the event"
+    baseline = "measured at baseline with what you study, so before the event: no consequence of the event"
     # A continuous outcome named as measured over follow-up, as a change, or at a time since
     # baseline: the baseline level of its own kind is the pair too, with Glymour et al. 2005 beside.
-    later = ("measured at baseline with the exposure, so before the outcome's measurement: no "
+    later = ("measured at baseline with what you study, so before the outcome's measurement: no "
              "consequence of the outcome")
     ldl_12m = state("sat_fat_g", "ldl_12m", "regression")
     change = state("sugar_g", "hba1c_change", "regression")
@@ -479,7 +479,7 @@ def test_1_a_baseline_level_of_the_outcomes_kind_beside_an_incident_event_is_the
         for c in ("hba1c", "fasting_glucose"):
             reason = member[c]["reason"]
             assert reason.startswith("a level of the outcome `incident_diabetes`'s own kind "
-                                     "(glycemic) measured at baseline with the exposure, so before "
+                                     "(glycemic) measured at baseline with what you study, so before "
                                      "the event: no consequence of the event, and it can predict "
                                      "it"), reason
             assert "NUTRITION_PACK §08" in member[c]["source"]

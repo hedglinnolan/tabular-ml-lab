@@ -57,20 +57,20 @@ It covers 72 method contracts, 9 model families, 5 questions whose options are l
 | [Double ML, interactive](#double-ml-interactive-dml_irm) | `dml_irm` | model | model | every lens (shared) | `set_causal` |
 | [Double ML, partially linear](#double-ml-partially-linear-dml_plr) | `dml_plr` | model | model | every lens (shared) | `set_causal` |
 | [The effect measure (difference or ratio; conditional or marginal)](#the-effect-measure-difference-or-ratio-conditional-or-marginal-effect_measure) | `effect_measure` | model | descriptive | every lens (shared) | `set_estimand` |
-| [Effect modification (the exposure's effect across strata of a modifier)](#effect-modification-the-exposures-effect-across-strata-of-a-modifier-effect_modification) | `effect_modification` | model | model | every lens (shared) | `set_modification` |
+| [Effect modification (the effect of what you study across strata of a modifier)](#effect-modification-the-effect-of-what-you-study-across-strata-of-a-modifier-effect_modification) | `effect_modification` | model | model | every lens (shared) | `set_modification` |
 | [Marginal standardization (g-computation)](#marginal-standardization-g-computation-g_computation) | `g_computation` | model | model | every lens (shared) | `set_estimand` |
 | [The grouping question, asked by structure](#the-grouping-question-asked-by-structure-grouping_by_structure) | `grouping_by_structure` | model | descriptive | every lens (shared) | `set_clusters` |
-| [Interaction (the joint effect of two exposures)](#interaction-the-joint-effect-of-two-exposures-interaction) | `interaction` | model | model | every lens (shared) | `set_modification` |
+| [Interaction (the joint effect of two study factors)](#interaction-the-joint-effect-of-two-study-factors-interaction) | `interaction` | model | model | every lens (shared) | `set_modification` |
 | [Usual-intake distribution (NCI method)](#usual-intake-distribution-nci-method-nci_usual_intake) | `nci_usual_intake` | model | training_fold | Dietary assessment | `set_usual_intake` |
 | [Post-double-selection lasso](#post-double-selection-lasso-pds_lasso) | `pds_lasso` | model | model | every lens (shared) | `set_causal` |
-| [The population estimand under a survey design](#the-population-estimand-under-a-survey-design-survey_population) | `survey_population` | model | model | Dietary assessment, Clinical, Survey instruments | `set_survey` |
+| [The whole-population comparison under a survey design](#the-whole-population-comparison-under-a-survey-design-survey_population) | `survey_population` | model | model | Dietary assessment, Clinical, Survey instruments | `set_survey` |
 | [A time-varying exposure by g-methods](#a-time-varying-exposure-by-g-methods-time_varying) | `time_varying` | model | model | every lens (shared) | `set_time_varying` |
 | [Targeted maximum likelihood](#targeted-maximum-likelihood-tmle) | `tmle` | model | model | every lens (shared) | `set_causal` |
 | [Survey-weighted Cox regression (Binder's pseudo-likelihood)](#survey-weighted-cox-regression-binders-pseudo-likelihood-survey_cox) | `survey_cox` | model | model | Dietary assessment, Clinical, Survey instruments | `select_models` |
 | [Survey-weighted linear, logistic and multinomial models](#survey-weighted-linear-logistic-and-multinomial-models-survey_linear) | `survey_linear` | model | model | Dietary assessment, Clinical, Survey instruments | `select_models` |
 | [Survey-weighted proportional-odds model](#survey-weighted-proportional-odds-model-survey_ordinal) | `survey_ordinal` | model | model | Dietary assessment, Clinical, Survey instruments | `select_models` |
 | [Diagnostics of the primary model](#diagnostics-of-the-primary-model-diagnostics) | `diagnostics` | evaluation | descriptive | every lens (shared) | `respond_diagnostic` |
-| [The E-value of a difference, standardized by the estimand's SD](#the-e-value-of-a-difference-standardized-by-the-estimands-sd-evalue_sd) | `evalue_sd` | evaluation | descriptive | every lens (shared) | not declared |
+| [The E-value of a difference, standardized by the SD the comparison you want uses](#the-e-value-of-a-difference-standardized-by-the-sd-the-comparison-you-want-uses-evalue_sd) | `evalue_sd` | evaluation | descriptive | every lens (shared) | not declared |
 | [An exposure family and its multiplicity](#an-exposure-family-and-its-multiplicity-exposure_family) | `exposure_family` | evaluation | descriptive | every lens (shared) | `set_estimand` |
 | [Outcome-model fit statistics wait with the estimates](#outcome-model-fit-statistics-wait-with-the-estimates-fit_statistics_withheld) | `fit_statistics_withheld` | evaluation | model | every lens (shared) | not declared |
 | [The declared model sequence (Table 2)](#the-declared-model-sequence-table-2-model_sequence) | `model_sequence` | evaluation | model | every lens (shared) | `set_model_sequence` |
@@ -897,7 +897,7 @@ None declared.
 | Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
 |---|---|---|---|---|---|
 | `multivariate`: Every error-prone intake calibrated jointly (multivariate regression calibration) | Freedman et al. 2011, J Natl Cancer Inst 103:1086: multivariate calibration for the standard and partition models; Rosner, Spiegelman & Willett 1990, Am J Epidemiol 132:734 | Not for prediction: the model is used on recalls measured the same way as these, so its predictions need no correction. | refused, with an exit, 1 | Sound under its assumption (corrects only within-person random error, assuming recalls are unbiased for usual intake (customary; sound under that assumption)): with several error-prone intakes only the joint calibration removes the bias, which can go either way | recommended, 1 |
-| `univariate`: One error-prone intake calibrated (an energy-adjusted intake with energy out of the model, or one exposure) | Freedman et al. 2011, J Natl Cancer Inst 103:1086: univariate calibration of energy-adjusted intakes; Rosner, Willett & Spiegelman 1989, Stat Med 8:1051 | Not for prediction: the model is used on recalls measured the same way as these, so its predictions need no correction. | refused, with an exit, 2 | Sound under its assumption (corrects only within-person random error, assuming recalls are unbiased for usual intake (customary; sound under that assumption)) when the model holds one error-prone intake; with several, the joint calibration is implied | recommended, 2 |
+| `univariate`: One error-prone intake calibrated (an energy-adjusted intake with energy out of the model, or one study factor) | Freedman et al. 2011, J Natl Cancer Inst 103:1086: univariate calibration of energy-adjusted intakes; Rosner, Willett & Spiegelman 1989, Stat Med 8:1051 | Not for prediction: the model is used on recalls measured the same way as these, so its predictions need no correction. | refused, with an exit, 2 | Sound under its assumption (corrects only within-person random error, assuming recalls are unbiased for usual intake (customary; sound under that assumption)) when the model holds one error-prone intake; with several, the joint calibration is implied | recommended, 2 |
 | `one_at_a_time`: Each intake calibrated on its own while the others stay uncorrected | Seen in cohort reports that apply a univariate attenuation factor per nutrient | Not for prediction: the model is used on recalls measured the same way as these, so its predictions need no correction. | refused, with an exit, 3 | Unsound with several error-prone intakes: the attenuation factor is wrong and the bias can go either way (Rosner, Spiegelman & Willett 1990, Am J Epidemiol 132:734); never offered | refused, with an exit, 4 |
 | `none`: No correction: the mean of the recalls, uncorrected | Most reports; STROBE-nut nut-12.3 asks that any adjustment be reported | Not for prediction: the model is used on recalls measured the same way as these, so its predictions need no correction. | refused, with an exit, 4 | Sound as the primary: its test of no association stays valid; its estimate is attenuated | available, 3 |
 
@@ -1087,7 +1087,7 @@ None declared.
 | `zero_spline`: Non-consumers apart, a spline among consumers | STROBE-nut nut-11 asks how non-consumers were handled | Sound for a mass at zero | recommended, 2 | Sound for a mass at zero | recommended, 2 |
 | `linear`: Straight line | customary | Sound when close to a line | available, 3 | Sound when the relation is close to a line | available, 3 |
 | `quintiles`: Quintiles, beside the spline | customary: the field's primary-analysis convention (Turner 2010) | Discards the variation within each fifth | ranked lower, concern stated, 4 | A coarser contrast, not a false number: ranked lower, produced beside the spline | ranked lower, concern stated, 4 |
-| `categories`: Categories at declared cut points | customary for clinical bands | Coarser | ranked lower, concern stated, 5 | Coarser; a confounder in three or fewer groups is blocked and recorded | ranked lower, concern stated, 5 |
+| `categories`: Categories at declared cut points | customary for clinical bands | Coarser | ranked lower, concern stated, 5 | Coarser; a covariate that could explain the link, in three or fewer groups, is blocked and recorded | ranked lower, concern stated, 5 |
 | `optimal`: A data-derived cut point (scope model) | seen in clinical papers (the minimum p-value) | In-fold only; discards the variation on each side | ranked lower, concern stated, 6 | Unsound: serious bias (Altman & Royston 2006) | blocked until recorded, 6 |
 
 **Ranked by the data:** the app offers these options in another order than the rank above where the data decide it; what it offers first under each condition:
@@ -1205,7 +1205,7 @@ None declared.
 
 | Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
 |---|---|---|---|---|---|
-| `censoring_aware`: Censored-normal | Recommended for exposures (Lubin et al. 2004) | Sound: the expected value below the limit, fit on the training fold. | recommended, 1 | Sound: a draw below the limit within the multiple imputation. | recommended, 1 |
+| `censoring_aware`: Censored-normal | Recommended for study factors (Lubin et al. 2004) | Sound: the expected value below the limit, fit on the training fold. | recommended, 1 | Sound: a draw below the limit within the multiple imputation. | recommended, 1 |
 | `qrilc`: QRILC (scope training_fold) | Customary for left-censored metabolomics data (Wei et al. 2018) | Sound: drawn below each sample's detection quantile. | available, 2 | Refused: one draw outside the multiple imputation. | refused, with an exit, 4 |
 | `half_minimum`: Half the minimum | Customary: MetaboAnalyst's default | Customary at ≤ 10% censored; biased beyond (Lubin et al. 2004). | available, 3 | Customary at ≤ 10% censored; biased beyond (Lubin et al. 2004). | available, 2 |
 | `as_missing`: As any other blank | Not customary for non-detects | Ranked lower: kept only with a reason. | ranked lower, concern stated, 4 | Refused: not missing at random. | refused, with an exit, 3 |
@@ -1323,7 +1323,7 @@ None declared.
 - **Data scope:** training fold: learns from study rows, so it is fit in-fold.
   Its parts: scoring by the instrument's key (reverse coding; the sum or the mean) is row_local; item-level imputation before scoring is training_fold; reliability (ω; α labeled customary) is training_fold; regression calibration of the score's coefficient is training_fold.
 - **Needs:**
-  - three or more numeric items on one response scale, each a confirmed exposure or covariate (a reflective scale's answers whole numbers; a formative index's components may be continuous scores)
+  - three or more numeric items on one response scale, each a confirmed study factor or covariate (a reflective scale's answers whole numbers; a formative index's components may be continuous scores)
   - the instrument's key: its reverse-coded items and its response scale
   - for a test–retest reliability: the repeat administration's columns, or its score
   - for a calibration substudy: a reference measure read as an amount, blank outside the substudy
@@ -1338,7 +1338,7 @@ None declared.
 |---|---|---|---|---|---|
 | `omega`: Reliability as ω (ω-total; ω-hierarchical when multidimensional) | Reported in psychometric papers (R's psych::omega) | Sound, and descriptive: under prediction the reliability changes no modeling choice. | recommended, 1 | Sound: ω does not assume equal loadings (McNeish 2018). | recommended, 1 |
 | `alpha`: Reliability as Cronbach's α | Customary: the reliability most papers report (Cronbach 1951) | Shown labeled customary only (McNeish 2018). | ranked lower, concern stated, 3 | Shown labeled customary only: its assumptions usually fail and it usually understates reliability (McNeish 2018). | ranked lower, concern stated, 6 |
-| `none`: No correction: the uncorrected estimate | Customary: most papers report the score's coefficient as estimated | Sound: a new row's score carries the same error, so the model needs no correction. | recommended, 2 | Sound as the primary analysis: for one error-prone exposure its test of no association stays valid, though the estimate is attenuated (Freedman et al. 2011). | available, 4 |
+| `none`: No correction: the uncorrected estimate | Customary: most papers report the score's coefficient as estimated | Sound: a new row's score carries the same error, so the model needs no correction. | recommended, 2 | Sound as the primary analysis: for one error-prone study factor its test of no association stays valid, though the estimate is attenuated (Freedman et al. 2011). | available, 4 |
 | `rc_test_retest`: Regression calibration from a test–retest ICC | Customary where a repeat administration exists | Under prediction the deployed model sees a new row's score with the same error, so its predictions need no correction; correcting a coefficient is an inference question. | refused, with an exit, 4 | Sound as a declared secondary analysis: a repeat administration includes transient error, conditional on the covariates. | recommended, 2 |
 | `rc_calibration_substudy`: Regression calibration against a calibration substudy | Customary in nutritional cohorts with a validation substudy (Freedman et al. 2011) | Under prediction the deployed model sees a new row's score with the same error, so its predictions need no correction; correcting a coefficient is an inference question. | refused, with an exit, 5 | Sound as a declared secondary analysis, under the reference measure's own assumptions, conditional on the covariates. | recommended, 3 |
 | `rc_internal_consistency`: Regression calibration from ω (a reflective scale) | Psychometric papers disattenuate by the Spearman correction (β/α) | Under prediction the deployed model sees a new row's score with the same error, so its predictions need no correction; correcting a coefficient is an inference question. | refused, with an exit, 6 | Sound as a declared secondary analysis when conditional on the covariates (Keogh, Shaw & Gustafson 2020). A reliability from internal consistency omits transient error, so the correction under-corrects (Schmidt, Le & Ilies 2003). | available, 5 |
@@ -1723,7 +1723,7 @@ None declared.
 - **Slot:** the model.
 - **Data scope:** model: the outcome model itself. every nuisance prediction comes from learners fit on the other folds of the analyzed rows (cross-fitting), never on the row itself; the outcome's own learners make it the outcome model's scope
 - **Needs:**
-  - a declared exposure, yes/no
+  - a declared study factor, yes/no
   - the adjustment set's answers
   - a numeric or yes/no outcome
 - **Question:** asked within the causal question (`causal`)
@@ -1751,7 +1751,7 @@ None declared.
 **Storyboard** (the transform player's real steps):
 
 1. Predict the propensity on the other folds
-2. Predict the outcome at each exposure level on the other folds
+2. Predict the outcome at each level of what you study on the other folds
 3. Combine them in the doubly robust score
 4. Average the score; repeat over sample splits; take the median
 
@@ -1789,7 +1789,7 @@ None declared.
 - **Slot:** the model.
 - **Data scope:** model: the outcome model itself. every nuisance prediction comes from learners fit on the other folds of the analyzed rows (cross-fitting), never on the row itself; the outcome's own learners make it the outcome model's scope
 - **Needs:**
-  - a declared exposure, numeric
+  - a declared study factor, numeric
   - the adjustment set's answers
   - a numeric or yes/no outcome
 - **Question:** asked within the causal question (`causal`)
@@ -1801,7 +1801,7 @@ None declared.
 
 | Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
 |---|---|---|---|---|---|
-| `dml_plr`: Double ML, partially linear | Standard in econometrics, rare in nutrition so far (Chernozhukov et al. 2018, Econom J 21:C1) | Refused: under prediction no coefficient is read as an effect. | refused, with an exit, 1 | Sound: an orthogonal score with cross-fitting gives valid intervals with flexible learners; for a yes/no exposure it is a variance-weighted average, not the average effect | available, 1 |
+| `dml_plr`: Double ML, partially linear | Standard in econometrics, rare in nutrition so far (Chernozhukov et al. 2018, Econom J 21:C1) | Refused: under prediction no coefficient is read as an effect. | refused, with an exit, 1 | Sound: an orthogonal score with cross-fitting gives valid intervals with flexible learners; for a yes/no study factor it is a variance-weighted average, not the average effect | available, 1 |
 
 **Ranked by the data:** the app offers these options in another order than the rank above where the data decide it; what it offers first under each condition:
 
@@ -1817,9 +1817,9 @@ None declared.
 **Storyboard** (the transform player's real steps):
 
 1. Predict the outcome from the adjustment set on the other folds
-2. Predict the exposure from the adjustment set on the other folds
+2. Predict what you study from the adjustment set on the other folds
 3. Keep what each prediction misses
-4. Regress the outcome's residual on the exposure's
+4. Regress the outcome's residual on the study factor's
 5. Repeat over sample splits; take the median
 
 **Methods sentence:**
@@ -1858,7 +1858,7 @@ None declared.
 - **Needs:**
   - a declared exposure
   - the outcome's task
-- **Question:** asked within the exposure and effect question (`estimand`)
+- **Question:** asked within the question on what you study and its effect (`estimand`)
 - **Where:** recorded by `set_estimand`; placed at MODELING_SEQUENCE §1 row 2.
 - **The method's own leash:** prediction not offered; inference recommended.
 - **Lenses:** every lens (shared). Declared by the ESTIMAND package.
@@ -1880,7 +1880,7 @@ None declared.
 - Under inference, an ordered outcome: `cumulative_odds_ratio`: conditional and non-collapsible: adding a covariate that predicts the outcome changes it even without confounding
 - Under inference, a multiclass outcome: `relative_risk_ratio`: conditional and non-collapsible: adding a covariate that predicts the outcome changes it even without confounding
 - Under inference, an exposure family (each exposure in turn), a numeric outcome: `mean_difference`: collapsible: the conditional and the marginal difference agree in a linear model
-- Under inference, an exposure family (each exposure in turn), a yes/no outcome: `exposure_mean_difference`: the feature-wise family's: each exposure modeled on the outcome and the covariates
+- Under inference, an exposure family (each exposure in turn), a yes/no outcome: `exposure_mean_difference`: the feature-wise family's: each study factor modeled on the outcome and the covariates
 
 **Storyboard** (the transform player's real steps):
 
@@ -1907,7 +1907,7 @@ None declared.
 - Zhang & Yu 1998, JAMA 280:1690
 - VanderWeele 2019, Eur J Epidemiol 34:211
 
-### Effect modification (the exposure's effect across strata of a modifier) (`effect_modification`)
+### Effect modification (the effect of what you study across strata of a modifier) (`effect_modification`)
 
 - **Slot:** the model.
 - **Data scope:** model: the outcome model itself. the product terms are terms of the outcome model, fit on every analyzed row
@@ -1946,7 +1946,7 @@ None declared.
 | implies | `the family of tests` (id `post-hoc-labeled`) | any option; when a modifier declared after the estimates were seen | inference | it is labeled suggested by data inspection and counted in the family | `turbotab.core.methods.interaction:family_count` |
 | implies | `SMC-FCS with the product terms` (id `modification-mi-compatible`) | any option; when multiple imputation | inference | the imputation model holds the products; every scalar is pooled by Rubin's rules and the heterogeneity test by D1 | `turbotab.core.methods.interaction:impute_with_products` |
 | implies | `the analysis-plan lock` (id `modification-in-plan`) | any option; when a declared modifier | inference | it is part of the plan; one declared after the estimates were seen is marked so | `turbotab.core.plan_lock:plan_of` |
-| conflicts | `a stratum that cannot carry the effect` (id `stratum-estimable`) | any option; when a modifier stratum with one row, one exposure value, or no event (or only events) | inference | refused with the reason, never fit to an overflow; if the rows change later, the stage says it in plain words and the family names it *(rung: refused, with an exit)* Exits: another modifier. | `turbotab.core.methods.interaction:_strata_hold_the_effect` |
+| conflicts | `a stratum that cannot carry the effect` (id `stratum-estimable`) | any option; when a modifier stratum with one row, one study factor value, or no event (or only events) | inference | refused with the reason, never fit to an overflow; if the rows change later, the stage says it in plain words and the family names it *(rung: refused, with an exit)* Exits: another modifier. | `turbotab.core.methods.interaction:_strata_hold_the_effect` |
 | implies | `the family of tests` (id `withdrawn-still-counted`) | any option; when a modifier withdrawn after the estimates were seen | inference | it is no longer estimated and still counted in the family the record states | `turbotab.core.methods.interaction:family_count` |
 | implies | `profile intervals and a penalized likelihood-ratio heterogeneity test` (id `separation-profile`) | any option; when a logistic model the data separate | inference | each effect, combination and ratio of odds ratios carries its profile penalized-likelihood interval, the heterogeneity test is the penalized likelihood-ratio test, the RERI is given without an interval | `turbotab.core.methods.interaction:firth_contrast` |
 | implies | `the exposure's adjustment set` (id `modification-own-set`) | any option; when effect modification | inference | the model is the exposure's own, the modifier beside it | `turbotab.core.methods.interaction:adjusted_sets` |
@@ -1965,7 +1965,7 @@ None declared.
   - a yes/no outcome
   - the logistic model (the linear family)
   - a declared exposure
-- **Question:** asked within the exposure and effect question (`estimand`)
+- **Question:** asked within the question on what you study and its effect (`estimand`)
 - **Where:** recorded by `set_estimand`; run by the `effects` stage; placed at MODELING_SEQUENCE §1 row 2.
 - **The method's own leash:** prediction not offered; inference recommended.
 - **Lenses:** every lens (shared). Declared by the ESTIMAND package.
@@ -2046,7 +2046,7 @@ None declared.
 - Bell & McCaffrey 2002, Surv Methodol 28:169
 - Steyerberg & Harrell 2016, J Clin Epidemiol 69:245–247
 
-### Interaction (the joint effect of two exposures) (`interaction`)
+### Interaction (the joint effect of two study factors) (`interaction`)
 
 - **Slot:** the model.
 - **Data scope:** model: the outcome model itself. the product terms are terms of the outcome model, fit on every analyzed row
@@ -2063,7 +2063,7 @@ None declared.
 
 | Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
 |---|---|---|---|---|---|
-| `declared`: Declared before the estimates | customary: a product-term p (multiplicative only) | Not offered: a prediction estimates no effect. | not offered, 1 | Sound: both exposures' confounders adjusted, both scales reported | recommended, 1 |
+| `declared`: Declared before the estimates | customary: a product-term p (multiplicative only) | Not offered: a prediction estimates no effect. | not offered, 1 | Sound: what could explain the link is adjusted for each study factor, both scales reported | recommended, 1 |
 
 **Storyboard** (the transform player's real steps):
 
@@ -2084,7 +2084,7 @@ None declared.
 | implies | `the family of tests` (id `post-hoc-labeled`) | any option; when a modifier declared after the estimates were seen | inference | it is labeled suggested by data inspection and counted in the family | `turbotab.core.methods.interaction:family_count` |
 | implies | `SMC-FCS with the product terms` (id `modification-mi-compatible`) | any option; when multiple imputation | inference | the imputation model holds the products; every scalar is pooled by Rubin's rules and the heterogeneity test by D1 | `turbotab.core.methods.interaction:impute_with_products` |
 | implies | `the analysis-plan lock` (id `modification-in-plan`) | any option; when a declared modifier | inference | it is part of the plan; one declared after the estimates were seen is marked so | `turbotab.core.plan_lock:plan_of` |
-| conflicts | `a stratum that cannot carry the effect` (id `stratum-estimable`) | any option; when a modifier stratum with one row, one exposure value, or no event (or only events) | inference | refused with the reason, never fit to an overflow; if the rows change later, the stage says it in plain words and the family names it *(rung: refused, with an exit)* Exits: another modifier. | `turbotab.core.methods.interaction:_strata_hold_the_effect` |
+| conflicts | `a stratum that cannot carry the effect` (id `stratum-estimable`) | any option; when a modifier stratum with one row, one study factor value, or no event (or only events) | inference | refused with the reason, never fit to an overflow; if the rows change later, the stage says it in plain words and the family names it *(rung: refused, with an exit)* Exits: another modifier. | `turbotab.core.methods.interaction:_strata_hold_the_effect` |
 | implies | `the family of tests` (id `withdrawn-still-counted`) | any option; when a modifier withdrawn after the estimates were seen | inference | it is no longer estimated and still counted in the family the record states | `turbotab.core.methods.interaction:family_count` |
 | implies | `profile intervals and a penalized likelihood-ratio heterogeneity test` (id `separation-profile`) | any option; when a logistic model the data separate | inference | each effect, combination and ratio of odds ratios carries its profile penalized-likelihood interval, the heterogeneity test is the penalized likelihood-ratio test, the RERI is given without an interval | `turbotab.core.methods.interaction:firth_contrast` |
 | invalidates | `the adjustment set for the second exposure` (id `interaction-reasks-adjustment`) | any option; when an interaction | inference | the disjunctive cause criterion is asked again with the second exposure as the exposure; its confounders join the model | `turbotab.core.methods.interaction:missing_answers` |
@@ -2140,7 +2140,7 @@ None declared.
 | Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
 |---|---|---|---|---|---|
 | enables | `repeats_offer` | any option; when the dietary lens, an inference purpose and two or more recalls for at least two people | prediction, inference | the usual-intake distribution is offered as its own estimand |  |
-| conflicts | `association_is_calibration` | any option; when an association between the intake and an outcome | prediction, inference | is not answered by the usual-intake distribution or any person's predicted usual intake *(rung: refused, with an exit)* Exits: regression calibration of the exposure (set_measurement_error). |  |
+| conflicts | `association_is_calibration` | any option; when an association between the intake and an outcome | prediction, inference | is not answered by the usual-intake distribution or any person's predicted usual intake *(rung: refused, with an exit)* Exits: regression calibration of what you study (set_measurement_error). |  |
 | implies | `zeros_two_part` | any option; when zero days above 5% of a component's recalls | prediction, inference | the two-part model ranks first; the amount-only model is recorded with the concern that its zero days became half the smallest amount |  |
 | conflicts | `no_zero_no_two_part` | any option; when a component reported on every recall | prediction, inference | the two-part model's probability part has nothing to estimate (refused) *(rung: refused, with an exit)* Exits: the amount-only model. |  |
 | implies | `population_design` | any option; when a survey design answered as the surveyed population | prediction, inference | the fit and the distribution are weighted, and the standard errors come from Fay's balanced repeated replication (two PSUs per stratum) or a bootstrap of PSUs within strata, stated in the sentence |  |
@@ -2170,7 +2170,7 @@ None declared.
 - **Slot:** the model.
 - **Data scope:** model: the outcome model itself. every analyzed row: the lasso selects among the declared candidates only, and the outcome lasso reads the outcome
 - **Needs:**
-  - a declared exposure
+  - a declared study factor
   - the adjustment set's answers
   - a numeric outcome
 - **Question:** asked within the causal question (`causal`)
@@ -2198,9 +2198,9 @@ None declared.
 **Storyboard** (the transform player's real steps):
 
 1. Lasso the outcome on the candidates
-2. Lasso the exposure on the candidates
+2. Lasso what you study on the candidates
 3. Keep the union of both selections
-4. Regress the outcome on the exposure and the union
+4. Regress the outcome on what you study and the union
 
 **Methods sentence:**
 
@@ -2230,7 +2230,7 @@ None declared.
 - Hernán & Robins 2020, Causal Inference: What If, §3
 - Belloni, Chernozhukov & Hansen 2014, Rev Econ Stud 81:608
 
-### The population estimand under a survey design (`survey_population`)
+### The whole-population comparison under a survey design (`survey_population`)
 
 - **Slot:** the model.
 - **Data scope:** model: the outcome model itself. The answer chooses the outcome model's estimator. Each row's weight is its own, but every design-based estimate and its variance read the outcome and every PSU's rows.
@@ -2246,7 +2246,7 @@ None declared.
 
 | Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
 |---|---|---|---|---|---|
-| `population`: The surveyed population (weights, strata and PSUs) | NCHS's analytic guidelines for NHANES: the sample weights with the design's strata and PSUs (NHANES Analytic Guidelines 2011–2016) | Not asked: under prediction the scores describe the rows they were computed on, and the weights are noted, not used. | not offered, 1 | Sound for a population estimand: every family and display is design-based, or blocked and recorded where none exists (MODELING_SEQUENCE §0 ruling 6). | recommended, 1 |
+| `population`: The surveyed population (weights, strata and PSUs) | NCHS's analytic guidelines for NHANES: the sample weights with the design's strata and PSUs (NHANES Analytic Guidelines 2011–2016) | Not asked: under prediction the scores describe the rows they were computed on, and the weights are noted, not used. | not offered, 1 | Sound for a whole-population comparison: every family and display is design-based, or blocked and recorded where none exists (MODELING_SEQUENCE §0 ruling 6). | recommended, 1 |
 | `sample`: These participants (the sample-only attestation) | Unweighted analyses of survey participants, stated as such | Not asked: under prediction the scores describe the rows they were computed on, and the weights are noted, not used. | not offered, 2 | Sound only as attested: the estimates describe these participants, unweighted, and their standard errors ignore the strata and PSUs; the record carries the attestation. | available, 2 |
 
 **Storyboard** (the transform player's real steps):
@@ -2283,15 +2283,15 @@ None declared.
 ### A time-varying exposure by g-methods (`time_varying`)
 
 - **Slot:** the model.
-- **Data scope:** model: the outcome model itself. The weights and the outcome model read every analyzed row, and the outcome model reads the outcome, so the lane is the model itself. Its diagnostics are shown first: they describe the exposure, and under an event outcome the rows still at risk of loss to follow-up, which the event ends; none of them relates the exposure to the outcome.
+- **Data scope:** model: the outcome model itself. The weights and the outcome model read every analyzed row, and the outcome model reads the outcome, so the lane is the model itself. Its diagnostics are shown first: they describe what you study, and under an event outcome the rows still at risk of loss to follow-up, which the event ends; none of them relates what you study to the outcome.
 - **Needs:**
-  - inference with one declared exposure that changes within units
+  - inference with one declared study factor that changes within units
   - repeated measures kept as rows: one row per unit per time point
   - a settled time column
-  - a declared time ordering: for a g-method, the exposure precedes the outcome it is paired with
-  - an exposure of 0 or 1 at each time point
-- **Question:** How is an exposure that changes over time estimated?
-- **Where:** recorded by `set_time_varying`; run by the `time_varying` stage; placed at MODELING_SEQUENCE §1, after step 3 (the adjustment set): the time-varying exposure question, asked under inference when a unit's time points are kept as rows.
+  - a declared time ordering: for a g-method, what you study precedes the outcome it is paired with
+  - a study factor of 0 or 1 at each time point
+- **Question:** How is a study factor that changes over time estimated?
+- **Where:** recorded by `set_time_varying`; run by the `time_varying` stage; placed at MODELING_SEQUENCE §1, after step 3 (the adjustment set): the time-varying study factor question, asked under inference when a unit's time points are kept as rows.
 - **The method's own leash:** prediction not offered; inference available.
 - **Lenses:** every lens (shared). Declared by the TIMEVARY package.
 
@@ -2299,16 +2299,16 @@ None declared.
 
 | Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
 |---|---|---|---|---|---|
-| `msm_iptw`: Marginal structural model (weights) | customary in epidemiology for time-varying exposures (Robins, Hernán & Brumback 2000, Epidemiology 11:550–560; Cole & Hernán 2008, Am J Epidemiol 168:656–664) | not offered: under prediction no coefficient is read as an effect | refused, with an exit, 1 | sound with a confounder affected by prior exposure: the weights adjust for it without blocking the earlier exposure's effect; it needs a correct exposure model and positivity | recommended, 1 |
-| `gformula`: Parametric g-formula | less common; the g-methods literature's other estimator (Robins 1986, Math Model 7:1393–1512; McGrath et al. 2020, Patterns 1:100008) | not offered: under prediction no coefficient is read as an effect | refused, with an exit, 2 | sound with a confounder affected by prior exposure: the confounders are simulated forward under each strategy; it needs a correct model for every time-varying covariate and the outcome | available, 2 |
-| `standard`: Standard regression | customary in cohort analyses: the time-varying covariates in a pooled, mixed or GEE model | not offered: under prediction no coefficient is read as an effect | refused, with an exit, 3 | sound only when no time-varying confounder is affected by prior exposure; otherwise biased (Robins, Hernán & Brumback 2000, Epidemiology 11:550–560) | blocked until recorded, 3 |
+| `msm_iptw`: Marginal structural model (weights) | customary in epidemiology for time-varying study factors (Robins, Hernán & Brumback 2000, Epidemiology 11:550–560; Cole & Hernán 2008, Am J Epidemiol 168:656–664) | not offered: under prediction no coefficient is read as an effect | refused, with an exit, 1 | sound when earlier values of what you study changed something that could explain the link: the weights adjust for it without blocking their effect; it needs a correct model of what you study and positivity | recommended, 1 |
+| `gformula`: Parametric g-formula | less common; the g-methods literature's other estimator (Robins 1986, Math Model 7:1393–1512; McGrath et al. 2020, Patterns 1:100008) | not offered: under prediction no coefficient is read as an effect | refused, with an exit, 2 | sound when earlier values of what you study changed something that could explain the link: it is simulated forward under each strategy; it needs a correct model for every time-varying covariate and the outcome | available, 2 |
+| `standard`: Standard regression | customary in cohort analyses: the time-varying covariates in a pooled, mixed or GEE model | not offered: under prediction no coefficient is read as an effect | refused, with an exit, 3 | sound only when earlier values of what you study changed nothing that could explain the link; otherwise biased (Robins, Hernán & Brumback 2000, Epidemiology 11:550–560) | blocked until recorded, 3 |
 
 **Storyboard** (the transform player's real steps):
 
-1. Model the exposure at each time point from its history: the baseline covariates and its previous value (numerator), and also the time-varying confounders (denominator)
+1. Model what you study at each time point from its history: the baseline covariates and its previous value (numerator), and also the covariates that change over time and could explain the link (denominator)
 2. Multiply each unit's probabilities over time into stabilized weights; censoring weights the same way
 3. Read the weights' distribution and positivity at each time point, then declare the truncation
-4. Fit the outcome on the exposure history in the weighted pseudo-population, with a CR2 variance by unit
+4. Fit the outcome on the history of what you study in the weighted pseudo-population, with a CR2 variance by unit
 5. For the g-formula: read positivity and what the simulation will take, declare its size, then simulate every unit always and never exposed
 
 **Methods sentence:**
@@ -2320,17 +2320,17 @@ None declared.
 
 | Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
 |---|---|---|---|---|---|
-| conflicts | `standard_adjustment_for_affected_confounders` | `standard`; when a covariate answered a cause of the exposure that earlier exposure could have changed, and a cause of the outcome | inference | Standard regression cannot adjust for a confounder that earlier exposure changed: adjusting for it removes part of the effect, and leaving it out leaves later exposure confounded. It is recorded only with an attestation; the g-methods are the exits. *(rung: blocked until recorded)* Exits: Estimate by a marginal structural model (weights); Estimate by the parametric g-formula; Keep standard regression; record that the estimate is biased by it. | `turbotab.core.time_varying:_affected_confounders_need_g_methods` |
-| conflicts | `concurrent_exposure_and_outcome` | `standard`; when the ordering answered same time, or unknown | inference | An exposure measured with its outcome cannot be told from a consequence of it. Standard regression is recorded only with that attestation, and its row is labeled as open to reverse causation; a g-method is refused. *(rung: blocked until recorded)* Exits: The exposure precedes the outcome it is paired with; Keep standard regression; record that the exposure is measured with its outcome. | `turbotab.core.time_varying:_lane_declares_the_time_ordering` |
+| conflicts | `standard_adjustment_for_affected_confounders` | `standard`; when a covariate answered a cause of what you study that earlier values of it could have changed, and a cause of the outcome | inference | Standard regression cannot adjust for something that could explain the link and that earlier values of what you study changed: adjusting for it removes part of the effect, and leaving it out leaves later values of what you study confounded. It is recorded only with an attestation; the g-methods are the exits. *(rung: blocked until recorded)* Exits: Estimate by a marginal structural model (weights); Estimate by the parametric g-formula; Keep standard regression; record that the estimate is biased by it. | `turbotab.core.time_varying:_affected_confounders_need_g_methods` |
+| conflicts | `concurrent_exposure_and_outcome` | `standard`; when the ordering answered same time, or unknown | inference | What you study, measured with its outcome, cannot be told from a consequence of it. Standard regression is recorded only with that attestation, and its row is labeled as open to reverse causation; a g-method is refused. *(rung: blocked until recorded)* Exits: What you study precedes the outcome it is paired with; Keep standard regression; record that what you study is measured with its outcome. | `turbotab.core.time_varying:_lane_declares_the_time_ordering` |
 | implies | `weight_diagnostics_before_estimates` | `msm_iptw` | inference | The weights' distribution, each truncation option's effect on it and positivity are shown first; the truncation is declared after them, and no estimate is computed until it is. | `turbotab.core.time_varying:_diagnostics_come_first` |
 | implies | `positivity_and_time_before_estimates` | `gformula` | inference | Positivity at each time point and what the simulation will take are shown first; its size is declared after them, and no risk is simulated until it is. | `turbotab.core.time_varying:_diagnostics_come_first` |
-| implies | `positivity_by_time_point` | `msm_iptw`, `gformula` | inference | Positivity is read at each time point: how many rows were exposed and unexposed, and the range of the fitted probability of exposure. |  |
+| implies | `positivity_by_time_point` | `msm_iptw`, `gformula` | inference | Positivity is read at each time point: how many rows were exposed and unexposed, and the range of the fitted probability of being exposed. |  |
 | implies | `intervals_by_unit` | `msm_iptw`, `gformula` | inference | A unit's rows are not independent: the weighted model's variance is clustered by unit (CR2, with Bell–McCaffrey degrees of freedom), the g-formula's interval resamples whole units, and with fewer units than the floor no interval is reported. |  |
 | implies | `censoring_weighted` | `msm_iptw` | inference | A unit lost to follow-up contributes the time points it was seen, and the units like it that stayed are weighted up by the inverse of their probability of having stayed. |  |
 | implies | `loss_assumed_independent` | `msm_iptw`, `gformula` | inference | Units whose rows end before the last time point without the event were lost to follow-up; with no indicator declared, the estimate assumes their loss is unrelated to the outcome, and the sentence says so. |  |
-| implies | `unmeasured_confounding_sensitivity` | `msm_iptw`, `gformula` | inference | The E-value states how strong an unmeasured confounder would have to be to explain the estimate away (MODELING_SEQUENCE §0 ruling 10). |  |
-| invalidates | `estimand` | any option | inference | Another exposure re-asks the lane: its confounders, weights and strategies belong to the exposure they were declared for. | `turbotab.core.time_varying:lane_answer` |
-| disables | `standard_estimate_as_the_effect` | `msm_iptw`, `gformula` | inference | The standard model's row for the exposure is labeled as not its effect: it cannot adjust for a confounder affected by prior exposure. | `turbotab.core.time_varying:fit_note` |
+| implies | `unmeasured_confounding_sensitivity` | `msm_iptw`, `gformula` | inference | The E-value states how strong an unmeasured common cause would have to be to explain the estimate away (MODELING_SEQUENCE §0 ruling 10). |  |
+| invalidates | `estimand` | any option | inference | Another study factor re-asks the lane: the covariates, weights and strategies belong to the study factor they were declared for. | `turbotab.core.time_varying:lane_answer` |
+| disables | `standard_estimate_as_the_effect` | `msm_iptw`, `gformula` | inference | The standard model's row for what you study is labeled as not its effect: it cannot adjust for something that could explain the link and that earlier values of what you study changed. | `turbotab.core.time_varying:fit_note` |
 | enables | `risks_under_always_and_never` | `gformula` | inference | The g-formula compares the risks had every unit always, and never, been exposed, as a difference and a ratio. |  |
 
 **Primary sources:**
@@ -2349,7 +2349,7 @@ None declared.
 - **Slot:** the model.
 - **Data scope:** model: the outcome model itself. every analyzed row for main-terms models; every nuisance prediction comes from learners fit on the other folds of the analyzed rows (cross-fitting), never on the row itself; the outcome's own learners make it the outcome model's scope for flexible learners
 - **Needs:**
-  - a declared exposure, yes/no
+  - a declared study factor, yes/no
   - the adjustment set's answers
   - a numeric or yes/no outcome
 - **Question:** asked within the causal question (`causal`)
@@ -2378,7 +2378,7 @@ None declared.
 
 1. Fit the outcome model and the propensity
 2. Fluctuate the outcome model along the clever covariates
-3. Average the targeted predictions at each exposure level
+3. Average the targeted predictions at each level of what you study
 4. Read the interval off the influence curve
 
 **Methods sentence:**
@@ -2599,7 +2599,7 @@ None declared.
 - Grambsch & Therneau 1994, Biometrika 81:515
 - Cook 1977, Technometrics 19:15
 
-### The E-value of a difference, standardized by the estimand's SD (`evalue_sd`)
+### The E-value of a difference, standardized by the SD the comparison you want uses (`evalue_sd`)
 
 - **Slot:** evaluation (after the fit).
 - **Data scope:** descriptive: may read every row to say whether the data are corrupted, but informs no modeling choice. reads the analyzed rows' outcome (and their survey weights) to standardize the reported estimate; informs no modeling choice
@@ -2651,7 +2651,7 @@ None declared.
 - **Data scope:** descriptive: may read every row to say whether the data are corrupted, but informs no modeling choice. a declaration of what is reported; the tests themselves are the feature-wise family's, fit on every analyzed row, and their multiplicity is the ``multiplicity`` contract's
 - **Needs:**
   - two or more exposures
-- **Question:** asked within the exposure and effect question (`estimand`)
+- **Question:** asked within the question on what you study and its effect (`estimand`)
 - **Where:** recorded by `set_estimand`; placed at MODELING_SEQUENCE §1 row 2.
 - **The method's own leash:** prediction not offered; inference available.
 - **Lenses:** every lens (shared). Declared by the ESTIMAND package.
@@ -2877,7 +2877,7 @@ None declared.
 |---|---|---|---|---|---|
 | `ale`: Accumulated local effects | Less used in applied papers than partial dependence (Apley & Zhu 2020, J R Stat Soc B 82:1059–1086). | Sound with correlated intakes: it averages local changes among rows that hold such values (Apley & Zhu 2020, J R Stat Soc B 82:1059–1086). | recommended, 1 | Describes the fitted model beside the declared estimate; it is not an effect estimate. | recommended, 1 |
 | `partial_dependence`: Partial dependence | The usual curve in applied machine-learning papers (Friedman 2001, Ann Stat 29:1189–1232). | Averages predictions over every row's other values, including intake combinations the data never hold when intakes are correlated (Apley & Zhu 2020, J R Stat Soc B 82:1059–1086; Molnar et al. 2022, xxAI, LNCS 13200:39–68: "ignoring feature dependencies"). | ranked lower, concern stated, 2 | Averages predictions over every row's other values, including intake combinations the data never hold when intakes are correlated (Apley & Zhu 2020, J R Stat Soc B 82:1059–1086; Molnar et al. 2022, xxAI, LNCS 13200:39–68: "ignoring feature dependencies"). | ranked lower, concern stated, 2 |
-| `as_effect`: Report the explanations as each exposure's effect | Common enough to be a named pitfall (Molnar et al. 2022, xxAI, LNCS 13200:39–68: "making unjustified causal interpretations"). | A prediction model's explanations describe its predictions; an effect needs a declared exposure and effect under inference. | refused, with an exit, 3 | The effect is the declared estimand's estimate; an explanation of a fitted model is not an effect estimate. | refused, with an exit, 3 |
+| `as_effect`: Report the explanations as each study factor's effect | Common enough to be a named pitfall (Molnar et al. 2022, xxAI, LNCS 13200:39–68: "making unjustified causal interpretations"). | A prediction model's explanations describe its predictions; an effect needs a declared study factor and effect under inference. | refused, with an exit, 3 | The effect is the estimate of the comparison you declared; an explanation of a fitted model is not an effect estimate. | refused, with an exit, 3 |
 
 **Storyboard** (the transform player's real steps):
 
@@ -2898,9 +2898,9 @@ None declared.
 |---|---|---|---|---|---|
 | implies | `performance_floor` | any option | prediction | A family whose cross-validated score does not beat the no-predictor baseline draws no curve, and says why. |  |
 | implies | `unit_resampling` | any option | prediction, inference | Rows that repeat within a unit are resampled as whole units in the refits that measure stability. |  |
-| implies | `domain_transform` | any option | prediction, inference | Each curve is drawn on the exposure's final scale, as the model reads it after energy adjustment or normalization, the scale its form is declared on. |  |
+| implies | `domain_transform` | any option | prediction, inference | Each curve is drawn on the final scale of what you study, as the model reads it after energy adjustment or normalization, the scale its form is declared on. |  |
 | conflicts | `effect_estimate` | `as_effect` | prediction, inference | An explanation describes a fitted model's predictions, not what changing an intake would do, so it is never reported as an effect. *(rung: refused, with an exit)* |  |
-| implies | `plan_lock` | any option | inference | Under inference the explanations wait until the exposure, its effect and the adjustment set are answered, and their first display locks the analysis plan. |  |
+| implies | `plan_lock` | any option | inference | Under inference the explanations wait until what you study, its effect and the adjustment set are answered, and their first display locks the analysis plan. |  |
 | implies | `adjustment_terms` | any option | inference | Under inference the covariates' attributions are labeled adjustment terms, not effect estimates. |  |
 | implies | `multiple_imputation` | any option | inference | Under multiple imputation the explanations describe the model fitted on one in-fold fill and estimate nothing. |  |
 
@@ -2919,7 +2919,7 @@ None declared.
 - **Data scope:** model: the outcome model itself.
 - **Needs:**
   - an exposure family
-- **Question:** The exposures are tested as a family: how is multiplicity controlled?
+- **Question:** The study factors are tested as a family: how is multiplicity controlled?
 - **Where:** recorded by `set_multiplicity` (the contract does not name it).
 - **Lenses:** every lens (shared).
 
@@ -3125,9 +3125,9 @@ None declared.
 | implies | `survey_population` (id `design_based`) | any option; when the survey answer "the surveyed population" | inference | Each class's curve comes from the survey-weighted multinomial fit, averaged with the weights, and its band is Taylor linearization over the survey design; refits on bootstrap resamples of rows are not drawn. | `turbotab.core.methods.substitution:design_class_curves` |
 | conflicts | `survey_population` (id `blocked_family`) | any option; when the survey answer "the surveyed population" and a family with no design-based estimator | inference | A family with no design-based estimator draws no class curves under the surveyed population: blocked and recorded. *(rung: blocked until recorded)* Exits: the design-based family in its place, every other chosen family kept; the sample-only attestation. | `turbotab.core.stages.class_substitution:population_blocked` |
 | conflicts | `survey_population` (id `no_design_df`) | any option; when the survey answer "the surveyed population" with no design degrees of freedom (every PSU alone in its stratum) | inference | A design whose analysis rows lie in no more PSUs than strata leaves no degrees of freedom for an interval: the coefficient table is refused, and no class curve is drawn either, blocked and recorded, never shown as points under a caption that promises intervals. *(rung: blocked until recorded)* Exits: the sample-only attestation. | `turbotab.core.methods.substitution:no_design_df` |
-| conflicts | `omitted_energy_sources` (id `omitted_sources`) | any option; when energy sources left out above MAX_OMITTED_SHARE of total energy | inference | Energy sources left out of the model, above the stated share of total energy, block the swap under inference until it is recorded: the curves carry the confounding of the sources total energy holds as one composite. *(rung: blocked until recorded)* Exits: add each missing energy source to the model as an exposure; Keep this swap; the curve carries their confounding; Choose another swap. | `turbotab.core.decisions:_substitution_has_every_energy_source` |
+| conflicts | `omitted_energy_sources` (id `omitted_sources`) | any option; when energy sources left out above MAX_OMITTED_SHARE of total energy | inference | Energy sources left out of the model, above the stated share of total energy, block the swap under inference until it is recorded: the curves carry the confounding of the sources total energy holds as one composite. *(rung: blocked until recorded)* Exits: add each missing energy source to the model as a study factor; Keep this swap; the curve carries their confounding; Choose another swap. | `turbotab.core.decisions:_substitution_has_every_energy_source` |
 | implies | `omitted_energy_sources` (id `omitted_stated`) | any option; when energy sources left out of the model | prediction | Under prediction the curves are model contrasts: the sources the model leaves out are named as a concern, never blocked. | `turbotab.core.methods.energy:omitted_sentence` |
-| implies | `estimand_label` | any option | prediction, inference | The estimand names the probability scale, the isocaloric move and the population the curves average over; each class's label is the change in its probability at the stated k, an average over that population, since a multinomial model's change depends on k and on each person's intake (MODELING_SEQUENCE §2). | `turbotab.core.methods.substitution:class_estimand` |
+| implies | `estimand_label` | any option | prediction, inference | The comparison you want names the probability scale, the isocaloric move and the population the curves average over; each class's label is the change in its probability at the stated k, an average over that population, since a multinomial model's change depends on k and on each person's intake (MODELING_SEQUENCE §2). | `turbotab.core.methods.substitution:class_estimand` |
 
 **Primary sources:**
 
@@ -3582,9 +3582,9 @@ In the shelf's registration order (the omics chain's family last), which breaks 
 
 - **Outcomes it models:** regression, binary.
 - **Purposes it serves:** inference; it tests and makes no predictions.
-- **Inductive bias:** Each exposure tested on its own with the covariates; Benjamini–Hochberg holds the false-discovery rate.
+- **Inductive bias:** Each study factor tested on its own with the covariates; Benjamini–Hochberg holds the false-discovery rate.
 - **Strengths:** Valid tests with more features than rows. Holds the false-discovery rate across thousands of features (Benjamini–Hochberg).
-- **Cautions:** Each estimate ignores the other exposures: one separate question per feature. Tests only: it makes no predictions and has no cross-validated score. Intervals assume equal residual variance; robust ones fail at the thresholds it tests.
+- **Cautions:** Each estimate ignores the other study factors: one separate question per feature. Tests only: it makes no predictions and has no cross-validated score. Intervals assume equal residual variance; robust ones fail at the thresholds it tests.
 - **Needs scaled inputs:** no; **uses rows with blanks as they are:** no; **Harrell's bootstrap optimism is sound for it:** not applicable, as it makes no predictions.
 - **Lenses:** Metabolomics, Genomics.
 - **Question:** asked within the models question (`select_models`); the shelf ranks every family by its own assessment of the data and never shortens the list.
@@ -3593,8 +3593,8 @@ In the shelf's registration order (the omics chain's family last), which breaks 
 
 | Outcome | Purpose | Model | Detail |
 |---|---|---|---|
-| regression | inference | Feature-wise least squares | Regresses the outcome on each exposure and the covariates, one exposure at a time: the estimate is per unit of that exposure. Classical least-squares intervals, CR2 when a unit's rows repeat; Benjamini–Hochberg q-values across the exposures. |
-| binary | inference | Feature-wise least squares | Regresses each exposure on the event and the covariates (the limma design): the estimate is the adjusted difference in its mean. Classical least-squares intervals, CR2 when a unit's rows repeat; Benjamini–Hochberg q-values across the exposures. |
+| regression | inference | Feature-wise least squares | Regresses the outcome on each study factor and the covariates, one study factor at a time: the estimate is per unit of what you study. Classical least-squares intervals, CR2 when a unit's rows repeat; Benjamini–Hochberg q-values across the study factors. |
+| binary | inference | Feature-wise least squares | Regresses each study factor on the event and the covariates (the limma design): the estimate is the adjusted difference in its mean. Classical least-squares intervals, CR2 when a unit's rows repeat; Benjamini–Hochberg q-values across the study factors. |
 
 **Not declared, because a family is not a method contract:** options labeled customary and sound, a leash rung per purpose, a storyboard, relations and primary sources (see the gaps).
 
@@ -3695,8 +3695,8 @@ In the shelf's registration order (the omics chain's family last), which breaks 
 
 | Outcome | Purpose | Model | Detail |
 |---|---|---|---|
-| regression | prediction | Screened elastic net regression | Keeps the n / log n exposures most correlated with the outcome on each training fold (sure independence screening, Fan & Lv 2008), then chooses the penalty by an inner cross-validation within those rows. |
-| binary | prediction | Screened penalized logistic regression | Keeps the n / log n exposures most correlated with the outcome on each training fold (sure independence screening, Fan & Lv 2008), then chooses the penalty by an inner cross-validation within those rows. |
+| regression | prediction | Screened elastic net regression | Keeps the n / log n study factors most correlated with the outcome on each training fold (sure independence screening, Fan & Lv 2008), then chooses the penalty by an inner cross-validation within those rows. |
+| binary | prediction | Screened penalized logistic regression | Keeps the n / log n study factors most correlated with the outcome on each training fold (sure independence screening, Fan & Lv 2008), then chooses the penalty by an inner cross-validation within those rows. |
 
 **Not declared, because a family is not a method contract:** options labeled customary and sound, a leash rung per purpose, a storyboard, relations and primary sources (see the gaps).
 
@@ -3730,7 +3730,7 @@ Under **inference**, soundest first. The field reaches for `residual_energy_drop
 | 5 | `density_multivariate`: Multivariate nutrient density model | nutritional epidemiology: Yes (NUTRITION_PACK §04). (NUTRITION_PACK §04) | conditional | Below standard and all components, with its caveat. |
 | 6 | `none`: No energy adjustment | nutritional epidemiology: As the unadjusted model beside an adjusted one (NUTRITION_PACK §04). (NUTRITION_PACK §04 and §08 (the crude model beside the adjusted ones)) | conditional | As a stated crude or sensitivity model, beside an adjusted one. |
 | 7 | `residual_energy_dropped`: Willett residual model, total energy left out | nutritional epidemiology: Yes, the field default (NUTRITION_PACK §04). (Willett, Nutritional Epidemiology (NUTRITION_PACK §04: the field default)) | unsound | Avoid in this form: covariates that track energy change it. |
-| 8 | `density`: Nutrient density alone | nutritional epidemiology: Yes, the weakest (NUTRITION_PACK §04). (NUTRITION_PACK §04) | unsound | Avoid: an obscure estimand, severely biased (Tomova 2022). |
+| 8 | `density`: Nutrient density alone | nutritional epidemiology: Yes, the weakest (NUTRITION_PACK §04). (NUTRITION_PACK §04) | unsound | Avoid: an obscure quantity, severely biased (Tomova 2022). |
 
 **Ranked by the data:** the app offers these options in another order than the rank above where the data decide it; what it offers first under each condition:
 
@@ -3810,7 +3810,7 @@ Under **inference**, soundest first. The field reaches for `holdout` first. Tens
 | 2 | `repeated_kfold`: Repeated cross-validation | clinical prediction: Acceptable internal validation (CLINICAL_SURVEY_PACK §A5.5) | sound | Steadier fit scores; it does not change the estimates. |
 | 3 | `bootstrap`: Bootstrap optimism correction | clinical prediction: The recommended default (Harrell, Lee & Mark 1996) (CLINICAL_SURVEY_PACK §A5.5) | sound | Corrects the fit scores for optimism; it does not change the estimates. |
 | 4 | `internal_external`: Internal–external, by cluster | clinical prediction: Increasingly expected across sites or periods (Collins et al. 2024, BMJ 384:e074819) | conditional | Shows how fit varies across groups; the grouping question decides the intervals. |
-| 5 | `holdout`: Hold out a share of rows | clinical prediction and machine learning: The standard requirement in major medical journals: validity shown outside the development sample (Steyerberg 2018, J Clin Epidemiol 103:131) | unsound | Serves no estimand: every analyzed row estimates the coefficients whatever is held out, so it costs rows for a score (Shmueli 2010, Stat Sci 25:289). |
+| 5 | `holdout`: Hold out a share of rows | clinical prediction and machine learning: The standard requirement in major medical journals: validity shown outside the development sample (Steyerberg 2018, J Clin Epidemiol 103:131) | unsound | Serves no comparison: every analyzed row estimates the coefficients whatever is held out, so it costs rows for a score (Shmueli 2010, Stat Sci 25:289). |
 
 **Ranked by the data:** the app offers these options in another order than the rank above where the data decide it; what it offers first under each condition:
 
@@ -3832,21 +3832,21 @@ Under **inference** it is stated, never asked by default (`causal.causal_gate`):
 | a yes/no exposure, a numeric outcome with many candidates for n | 1 | `pds_lasso`: Post-double-selection lasso | economics: standard in applied economics (Belloni, Chernozhukov & Hansen 2014, Rev Econ Stud 81:608) | sound | many candidates for n: selecting by both lassos keeps the intervals valid |
 |  | 2 | `tmle`: Targeted maximum likelihood | epidemiology: growing in epidemiology; rare in nutrition so far (Schuler & Rose 2017, Am J Epidemiol 185:65) | sound | doubly robust, efficient, and keeps each estimate inside the outcome's range |
 |  | 3 | `dml_irm`: Double ML, interactive | econometrics: standard in econometrics; rare in nutrition so far (Chernozhukov et al. 2018, Econom J 21:C1) | sound | doubly robust score with cross-fitting: valid intervals with flexible learners |
-|  | 4 | `dml_plr`: Double ML, partially linear | econometrics: standard in econometrics; rare in nutrition so far (Chernozhukov et al. 2018, Econom J 21:C1) | conditional | for a yes/no exposure it estimates a variance-weighted average, not the average effect |
+|  | 4 | `dml_plr`: Double ML, partially linear | econometrics: standard in econometrics; rare in nutrition so far (Chernozhukov et al. 2018, Econom J 21:C1) | conditional | for a yes/no study factor it estimates a variance-weighted average, not the average effect |
 |  | 5 | `none`: The primary model only | nutritional epidemiology: a regression adjusted for a set chosen from subject knowledge is the field's analysis (Walter & Tiemeier 2009, Eur J Epidemiol 24:733) | conditional | valid when the outcome model's form is right; the lane checks that |
 | a yes/no exposure, a numeric outcome with few candidates for n | 1 | `tmle`: Targeted maximum likelihood | epidemiology: growing in epidemiology; rare in nutrition so far (Schuler & Rose 2017, Am J Epidemiol 185:65) | sound | doubly robust, efficient, and keeps each estimate inside the outcome's range |
 |  | 2 | `dml_irm`: Double ML, interactive | econometrics: standard in econometrics; rare in nutrition so far (Chernozhukov et al. 2018, Econom J 21:C1) | sound | doubly robust score with cross-fitting: valid intervals with flexible learners |
-|  | 3 | `dml_plr`: Double ML, partially linear | econometrics: standard in econometrics; rare in nutrition so far (Chernozhukov et al. 2018, Econom J 21:C1) | conditional | for a yes/no exposure it estimates a variance-weighted average, not the average effect |
+|  | 3 | `dml_plr`: Double ML, partially linear | econometrics: standard in econometrics; rare in nutrition so far (Chernozhukov et al. 2018, Econom J 21:C1) | conditional | for a yes/no study factor it estimates a variance-weighted average, not the average effect |
 |  | 4 | `pds_lasso`: Post-double-selection lasso | economics: standard in applied economics (Belloni, Chernozhukov & Hansen 2014, Rev Econ Stud 81:608) | conditional | with few candidates for n there is little to select; valid all the same |
 |  | 5 | `none`: The primary model only | nutritional epidemiology: a regression adjusted for a set chosen from subject knowledge is the field's analysis (Walter & Tiemeier 2009, Eur J Epidemiol 24:733) | conditional | valid when the outcome model's form is right; the lane checks that |
 | a yes/no exposure, a numeric outcome, the surveyed population | 1 | `tmle`: Targeted maximum likelihood | epidemiology: growing in epidemiology; rare in nutrition so far (Schuler & Rose 2017, Am J Epidemiol 185:65) | sound | doubly robust, efficient, and keeps each estimate inside the outcome's range |
 |  | 2 | `dml_irm`: Double ML, interactive | econometrics: standard in econometrics; rare in nutrition so far (Chernozhukov et al. 2018, Econom J 21:C1) | sound | doubly robust score with cross-fitting: valid intervals with flexible learners |
-|  | 3 | `dml_plr`: Double ML, partially linear | econometrics: standard in econometrics; rare in nutrition so far (Chernozhukov et al. 2018, Econom J 21:C1) | conditional | for a yes/no exposure it estimates a variance-weighted average, not the average effect |
+|  | 3 | `dml_plr`: Double ML, partially linear | econometrics: standard in econometrics; rare in nutrition so far (Chernozhukov et al. 2018, Econom J 21:C1) | conditional | for a yes/no study factor it estimates a variance-weighted average, not the average effect |
 |  | 4 | `pds_lasso`: Post-double-selection lasso | economics: standard in applied economics (Belloni, Chernozhukov & Hansen 2014, Rev Econ Stud 81:608) | unsound | its plug-in penalty assumes unweighted rows, so a population estimate is blocked |
 |  | 5 | `none`: The primary model only | nutritional epidemiology: a regression adjusted for a set chosen from subject knowledge is the field's analysis (Walter & Tiemeier 2009, Eur J Epidemiol 24:733) | conditional | valid when the outcome model's form is right; the lane checks that |
 | a yes/no exposure, a yes/no outcome | 1 | `tmle`: Targeted maximum likelihood | epidemiology: growing in epidemiology; rare in nutrition so far (Schuler & Rose 2017, Am J Epidemiol 185:65) | sound | doubly robust, efficient, and keeps each estimate inside the outcome's range |
 |  | 2 | `dml_irm`: Double ML, interactive | econometrics: standard in econometrics; rare in nutrition so far (Chernozhukov et al. 2018, Econom J 21:C1) | sound | doubly robust score with cross-fitting: valid intervals with flexible learners |
-|  | 3 | `dml_plr`: Double ML, partially linear | econometrics: standard in econometrics; rare in nutrition so far (Chernozhukov et al. 2018, Econom J 21:C1) | conditional | for a yes/no exposure it estimates a variance-weighted average, not the average effect |
+|  | 3 | `dml_plr`: Double ML, partially linear | econometrics: standard in econometrics; rare in nutrition so far (Chernozhukov et al. 2018, Econom J 21:C1) | conditional | for a yes/no study factor it estimates a variance-weighted average, not the average effect |
 |  | 4 | `none`: The primary model only | nutritional epidemiology: a regression adjusted for a set chosen from subject knowledge is the field's analysis (Walter & Tiemeier 2009, Eur J Epidemiol 24:733) | conditional | valid when the outcome model's form is right; the lane checks that |
 | a continuous exposure, a numeric outcome with many candidates for n | 1 | `pds_lasso`: Post-double-selection lasso | economics: standard in applied economics (Belloni, Chernozhukov & Hansen 2014, Rev Econ Stud 81:608) | sound | many candidates for n: selecting by both lassos keeps the intervals valid |
 |  | 2 | `dml_plr`: Double ML, partially linear | econometrics: standard in econometrics; rare in nutrition so far (Chernozhukov et al. 2018, Econom J 21:C1) | sound | orthogonal score with cross-fitting: valid intervals with flexible learners |

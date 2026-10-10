@@ -100,7 +100,7 @@ def test_energy_adjustment_says_which_ingredient_is_missing():
     assert step.status in ("open", "waiting")
     no_exposure = {"energy_kcal": "energy", "age": "covariate"}
     step = _by_key(route(ProjectState(roles=no_exposure, **base), _stages()))["energy_adjustment"]
-    assert step.status == "not_applicable" and "exposure" in step.reason
+    assert step.status == "not_applicable" and "what you study" in step.reason
 
 
 def test_substitution_waits_for_a_fresh_fit_and_needs_two_energy_nutrients():

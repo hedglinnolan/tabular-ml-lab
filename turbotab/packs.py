@@ -2027,7 +2027,7 @@ def _acquisition_design(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     for role in design_present:
         said.append(f"{role} in " + ", ".join("`" + c + "`" for c in found[role]))
     if found["confounder"]:
-        said.append("known confounders "
+        said.append("known influences on other measures "
                     + ", ".join("`" + c + "`" for c in found["confounder"]))
 
     columns = [c for role, _ in DESIGN_COLUMNS + STUDY_COLUMNS

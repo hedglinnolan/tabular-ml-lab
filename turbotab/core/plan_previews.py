@@ -373,11 +373,11 @@ def estimand_line(state: Any) -> str | None:
     if spec is None:
         return None
     effect = "Direct" if spec.effect == "direct" else "Total"
-    measure = est.MEASURE_WORDS.get(str(spec.measure), str(spec.measure))
+    measure = est.MEASURE_LABELS.get(str(spec.measure), str(spec.measure))
     target = tick(state.target)
     if spec.family:
         family = est.family_exposures(state)
-        return (f"{effect} effect of each of {fmt_count(len(family))} exposures on {target}: "
+        return (f"{effect} effect of each of {fmt_count(len(family))} study factors on {target}: "
                 f"{measure}.")
     contrast = {"substitution": " in place of other calories",
                 "addition": " added to the diet"}.get(str(spec.contrast), "")
@@ -405,13 +405,13 @@ def estimand_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     from turbotab.core import estimand as est
 
     if getattr(ctx.state, "purpose", None) != "inference":
-        return cannot_draw(decision, ctx, inference_first("The exposure and its effect are declared"))
+        return cannot_draw(decision, ctx, inference_first("What you study and its effect are declared"))
     ids = pool(ctx)
     if ids is None:
         return cannot_draw(decision, ctx, rows_not_ready(ctx))
     after = after_state(decision, ctx)
     if est.current_estimand(after) is None:
-        return cannot_draw(decision, ctx, "The exposure named is not among the model's predictors "
+        return cannot_draw(decision, ctx, "The study factor named is not among the model's predictors "
                                           "as the roles stand.")
     then = fit_design(ctx, after, ids)
     if then is None:
@@ -422,7 +422,7 @@ def estimand_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     line = estimand_line(after)
     ctx.read["estimand"] = {"line": line, "features": feats, "exposures": exposures}
     views: list[Any] = [LineageView(
-        title=title("The exposure in the model"),
+        title=title("What you study in the model"),
         caption=caption(line or ""),
         emphasis=list(dict.fromkeys([*exposures, *feats]))[:12],
         before=now.lineage if now is not None else None,
@@ -434,7 +434,7 @@ def estimand_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     reopened = [c for c in est.adjustment_left_out(ctx.state)
                 if c not in est.adjustment_left_out(after) and c not in exposures]
     if reopened:
-        ctx.read["note"] = (f"The adjustment answers were given for another exposure, so they are "
+        ctx.read["note"] = (f"The adjustment answers were given for another study factor, so they are "
                             f"asked again; until then {names(reopened)} "
                             f"{'is' if len(reopened) == 1 else 'are'} back in the model.")
     population_block(ctx, after, decision)  # a measure the surveyed population cannot carry (§4)
@@ -444,9 +444,9 @@ def estimand_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 # ── set_adjustment ───────────────────────────────────────────────────────────
 
 ROLE_SHORT = {
-    "mediator_confounder": "mediator–outcome confounder",
-    "confounder": "confounder",
-    "exposure_cause": "cause of the exposure",
+    "mediator_confounder": "mediator–outcome common cause",
+    "confounder": "could explain the link",
+    "exposure_cause": "cause of what you study",
     "precision": "precision",
     "proxy": "proxy",
     "mediator": "mediator",
@@ -469,7 +469,7 @@ def adjustment_lineage(exposures: Sequence[str], covariates: Sequence[str],
     for e in exposures:
         nodes += [LineageNode(id=f"raw:{e}", column=e, lane="raw", role=roles.get(e), label=e),
                   LineageNode(id=f"mx:{e}", column=e, lane="matrix", role=roles.get(e), label=e)]
-        links.append(LineageLink(source=f"raw:{e}", target=f"mx:{e}", operation="the exposure"))
+        links.append(LineageLink(source=f"raw:{e}", target=f"mx:{e}", operation="what you study"))
     for c in covariates:
         found = derived.get(c)
         role = ROLE_SHORT.get(found.role, found.role) if found is not None else "not answered"
@@ -496,7 +496,7 @@ def adjustment_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     after = after_state(decision, ctx)
     spec = est.current_estimand(after)
     if spec is None:
-        return cannot_draw(decision, ctx, f"Each covariate is asked about against the exposure: "
+        return cannot_draw(decision, ctx, f"Each covariate is asked about against what you study: "
                                           f"answer {question_name('estimand')} first.")
     exposures = est.exposures_of(after, spec)
     covariates = est.asked_covariates(after)
@@ -595,7 +595,7 @@ def _sequence_lineage(exposure_cols: Sequence[str], adjusted: Sequence[str],
         nodes.append(LineageNode(id=f"raw:{c}", column=c, lane="raw", role=roles.get(c), label=c))
         nodes.append(LineageNode(id=f"mx:{c}", column=c, lane="matrix", role=roles.get(c), label=c))
         links.append(LineageLink(source=f"raw:{c}", target=f"mx:{c}",
-                                 operation="the exposure" if c in exposure_cols else "adjusted"))
+                                 operation="what you study" if c in exposure_cols else "adjusted"))
     return Lineage(nodes=nodes, links=links)
 
 
@@ -673,15 +673,15 @@ def multiplicity_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     purpose = getattr(after, "purpose", None)
     if purpose is None:
         return cannot_draw(decision, ctx, inference_first("A multiplicity method adjusts the "
-                                                          "exposures' tests"))
+                                                          "tests of the study factors"))
     if purpose != "inference":
-        ctx.read["note"] = (f"Under prediction no exposure's test is reported, so this method "
+        ctx.read["note"] = (f"Under prediction no study factor's test is reported, so this method "
                             f"changes nothing; it applies under inference, which "
                             f"{question_name('purpose')} settles.")
         return []
     m = len(est.family_exposures(after))
     if m < 2:
-        ctx.read["note"] = (f"With {fmt_count(m)} exposure{'' if m == 1 else 's'} there is no "
+        ctx.read["note"] = (f"With {fmt_count(m)} study factor{'' if m == 1 else 's'} there is no "
                             f"family of tests to adjust: the method applies to two or more, which "
                             f"{question_name('roles')} settle.")
         return []
@@ -1393,7 +1393,7 @@ def survey_column_and_why(state: Any) -> tuple[str | None, str]:
 
     spec = est.current_estimand(state)
     if spec is not None and not spec.family:
-        return str(spec.exposure), "the exposure you declared"
+        return str(spec.exposure), "the study factor you declared"
     roles = est.predictor_roles(state)
     later = "it follows what you study once you name it in Models"
     studied = next((c for c, r in roles.items() if r == "exposure"), None)
@@ -1899,7 +1899,7 @@ def diagnostic_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         ctx.read["note"] = ("The estimate stays as fitted, labeled with the failed check; nothing "
                             "else changes.")
         return []
-    ctx.read["note"] = ("The exposure's hazard ratio is shown before and after the median event "
+    ctx.read["note"] = ("The hazard ratio of what you study is shown before and after the median event "
                         "time, beside the average over follow-up.")
     return []
 

@@ -91,21 +91,21 @@ GUESSES: dict[str, dict[str, Any]] = {
         "label": "Demographics",
         "answers": dict(PRE_EXPOSURE),
         "reason": "set before the diet was measured, and the field's Models 1 and 2 adjust for "
-                  "them as confounders",
+                  "them as what else could explain the link",
         "source": f"{PACK08} (Models 1 and 2); {VANDERWEELE}",
     },
     "lifestyle": {
         "label": "Lifestyle",
         "answers": dict(PRE_EXPOSURE),
         "reason": "habits that shape both what people eat and the outcome; the field's Model 2 "
-                  "adjusts for them as confounders",
+                  "adjusts for them as what else could explain the link",
         "source": f"{PACK08} (Model 2: demographics and lifestyle); {VANDERWEELE}",
     },
     "dietary": {
         "label": "Other dietary components",
         "answers": dict(DIETARY),
-        "reason": "they share the diet's common causes with the exposure, so they default to "
-                  "confounders, never to not relevant (the field's Model 4)",
+        "reason": "they share the diet's common causes with what you study, so they default to "
+                  "what else could explain the link, never to not relevant (the field's Model 4)",
         "source": f"{PACK08} (Model 4: mutually adjusted nutrients)",
     },
     "body": {
@@ -119,7 +119,7 @@ GUESSES: dict[str, dict[str, Any]] = {
     "clinical": {
         "label": "Clinical measurements",
         "answers": dict(TIMING_UNKNOWN),
-        "reason": "possible mediators, or measured after the exposure: the exposure may have "
+        "reason": "possible mediators, or measured after what you study: what you study may have "
                   "changed them, so the estimate is declared without them and, beside, with them",
         "source": f"{SCHISTERMAN}; MODELING_SEQUENCE §1 step 3 (unknown timing: a declared "
                   f"with-and-without pair)",
@@ -127,7 +127,7 @@ GUESSES: dict[str, dict[str, Any]] = {
     "medication": {
         "label": "Medications",
         "answers": dict(TIMING_UNKNOWN),
-        "reason": "a treatment the exposure may have led to, measured at the same time: a possible "
+        "reason": "a treatment that what you study may have led to, measured at the same time: a possible "
                   "mediator, so the estimate is declared without it and, beside, with it",
         "source": f"{SCHISTERMAN}; MODELING_SEQUENCE §1 step 3 (unknown timing: a declared "
                   f"with-and-without pair)",
@@ -136,7 +136,7 @@ GUESSES: dict[str, dict[str, Any]] = {
         "label": "Other measures of the outcome",
         "answers": dict(OUTCOME_MEASURE),
         "reason": "another measure of the state the outcome measures, taken at the same visit: the "
-                  "exposure could have changed it as it could the outcome, and adjusting for it "
+                  "study factor could have changed it as it could the outcome, and adjusting for it "
                   "would remove part of the effect, so the criterion leaves it out",
         "source": f"{SCHISTERMAN} (\"a descending proxy for an intermediate variable\"); "
                   f"{VANDERWEELE}",
@@ -317,8 +317,8 @@ class Pairing:
 
     @property
     def when(self) -> str:
-        return ("measured at baseline with the exposure" if self.followed else
-                "measured at the same visit as the exposure")
+        return ("measured at baseline with what you study" if self.followed else
+                "measured at the same visit as what you study")
 
 
 def pairing_of(state: Any) -> Pairing:
@@ -414,21 +414,21 @@ def guess(column: str, state: Any, pairing: Pairing | None = None) -> Guess | No
             # measurement taken with the exposure applies.
             event = p.task in ("time_to_event", "binary")
             later = "the event" if event else "the outcome's measurement"
-            change = (f"{GLYMOUR} (adjusting for a baseline the exposure may have changed can bias "
+            change = (f"{GLYMOUR} (adjusting for a baseline that what you study may have changed can bias "
                       f"an analysis of change); ")
             return made(found.cls, f"{what}, a baseline level of the outcome's own kind",
                         f"a level of the outcome {_tick(p.outcome)}'s own kind ({kind}) {p.when}, "
                         f"so before {later}: no consequence of the "
                         f"{'event' if event else 'outcome'}, and it can predict it; it may have "
-                        f"changed the diet (a confounder) or been changed by it (a mediator), so "
+                        f"changed the diet (so it could explain the link) or been changed by it (a mediator), so "
                         f"the estimate is declared without it and, beside, with it",
-                        f"{PACK08} (a measurement taken with the exposure: unknown, yes, unknown); "
+                        f"{PACK08} (a measurement taken with what you study: unknown, yes, unknown); "
                         f"{SCHISTERMAN}; {'' if event else change}MODELING_SEQUENCE §1 step 3 "
                         f"(unknown timing: a declared with-and-without pair)")
         if same_outcome:
             return made("outcome_measure", f"{what}, the outcome's own kind",
                         f"another measure of the outcome {_tick(p.outcome)}'s own kind ({kind}), "
-                        f"{p.when}: it measures the state the outcome measures, so the exposure "
+                        f"{p.when}: it measures the state the outcome measures, so what you study "
                         f"could have changed it as it could the outcome, and adjusting for it "
                         f"would remove part of the effect; the criterion leaves it out")
         if same_exposure:
@@ -436,8 +436,8 @@ def guess(column: str, state: Any, pairing: Pairing | None = None) -> Guess | No
         if found.cls == "body":
             return made("body", what)
         return made("clinical", what,
-                    f"{p.when}, the exposure may have changed it: a possible mediator, or measured "
-                    f"after the exposure, so the estimate is declared without it and, beside, with "
+                    f"{p.when}, what you study may have changed it: a possible mediator, or measured "
+                    f"after what you study, so the estimate is declared without it and, beside, with "
                     f"it")
     # a medication
     what = f"{found.what}"
@@ -451,11 +451,11 @@ def guess(column: str, state: Any, pairing: Pairing | None = None) -> Guess | No
                     f"{TOBIN}; {SCHISTERMAN}; MODELING_SEQUENCE §1 step 3")
     if p.exposure_cls == "clinical" and p.exposure_group == found.group:
         return made("medication", what,
-                    f"it lowers the exposure {_tick(p.exposure)} and follows its earlier level: a "
+                    f"it lowers {_tick(p.exposure)}, what you study, and follows its earlier level: a "
                     f"possible mediator, {p.when}, so the estimate is declared without it and, "
                     f"beside, with it")
     return made("medication", what,
-                f"a treatment the exposure may have led to, {p.when}: a possible mediator, so the "
+                f"a treatment that what you study may have led to, {p.when}: a possible mediator, so the "
                 f"estimate is declared without it and, beside, with it")
 
 

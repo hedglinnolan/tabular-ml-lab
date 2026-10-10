@@ -1324,7 +1324,7 @@ def test_4_omitted_energy_sources_block_and_record_under_inference_and_are_state
     assert refused is not None and refused.code == "omitted_energy_sources"
     assert f"{share:.0%}" in str(refused)
     labels = [e["label"] for e in refused.exits]
-    assert labels == ["Add `fat_g` to the model as an exposure",
+    assert labels == ["Add `fat_g` to the model as a study factor",
                       "Keep this swap; the curve carries their confounding", "Choose another swap"]
     attested = parse_decision(refused.exits[1]["decision"])
     assert attested.acknowledged is True

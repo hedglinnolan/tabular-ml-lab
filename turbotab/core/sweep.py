@@ -164,7 +164,7 @@ def _modifier_changes(state: Any, facts: Facts, line: QuestLine) -> Change:
     if candidates:
         return True, (f"A modifier such as {_tick(candidates[:1])} would report the effect in each "
                       f"of its groups.")
-    return False, ("No column besides the exposure and the outcome could modify the effect, so "
+    return False, ("No column besides what you study and the outcome could modify the effect, so "
                    "there is no other choice to make here.")
 
 
@@ -173,7 +173,7 @@ def _multiplicity_changes(state: Any, facts: Facts, line: QuestLine) -> Change:
     the tests are accounted for changes their p-values."""
     n = len([c for c, r in (_get(state, "roles") or {}).items() if r == "exposure"])
     if n == 1:
-        return False, "The family holds one exposure, so there is no other test to account for."
+        return False, "The family holds one study factor, so there is no other test to account for."
     counted = f"the {n} tests" if n else "the family's tests"
     return True, f"Another way of accounting for {counted} changes their p-values and intervals."
 

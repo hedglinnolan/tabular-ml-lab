@@ -70,7 +70,7 @@ def term(name: str, definition: str) -> dict[str, str]:
 ESTIMAND = term(
     "estimand",
     "The exact quantity an analysis estimates, stated in words; two methods with different "
-    "estimands answer different questions.")
+    "comparisons you want answer different questions.")
 
 # The energy card's nested-parts note, folded into a term card (M2_CONTRACT §6): the partition
 # option's reason says which columns are nested, and this says what follows from it.
@@ -404,11 +404,11 @@ DESIGN = {
     "why": "The design decides which comparisons are fair. In a randomized trial adjustment only "
            "sharpens precision and causal wording is allowed; a case-control sample cannot give "
            "prevalence or absolute risk; matched sets are analyzed within each set. An "
-           "observational study needs its confounders adjusted and speaks of associations.",
+           "observational study adjusts for what else could explain the link and speaks of associations.",
     "consumer": "Who's in, the adjustment set, the claim wording and the methods read it.",
     "options": [
         option("observational", "Observed as they were",
-               "Confounders are adjusted; the results are worded as associations."),
+               "What else could explain the link is adjusted for; results are worded as associations."),
         option("parallel_trial", "Randomized groups",
                "Not available yet: analyzed in the designed-experiments milestone."),
         option("case_control", "Sampled by outcome",
@@ -417,7 +417,7 @@ DESIGN = {
                "Not available yet: crossover trials go to a later version."),
     ],
     "terms": [
-        term("observational study", "People are measured as they are, with no exposure assigned "
+        term("observational study", "People are measured as they are, with no study factor assigned "
                                      "by the investigators."),
     ],
     "drawer": {"sections": [
@@ -453,7 +453,7 @@ PURPOSE = {
     "terms": [
         term("prediction", "Estimating the outcome for new people as accurately as possible, "
                            "judged on rows the model never saw."),
-        term("inference", "Estimating how the outcome relates to an exposure, with the "
+        term("inference", "Estimating how the outcome relates to a study factor, with the "
                           "uncertainty of that estimate."),
         ESTIMAND,
     ],
@@ -603,7 +603,7 @@ AGGREGATION = {
     "one_liner": "The right summary depends on what repeats: averaging replicates reduces error, "
                  "averaging time points destroys the signal.",
     # Audit IN-22 (ledger #21): toward zero only for one error-prone exposure under classical error.
-    "why": "For repeated recalls, the mean is an acceptable exposure for ranking people, still "
+    "why": "For repeated recalls, the mean is an acceptable measure for ranking people, still "
            "measured with error: alone it is attenuated toward zero, but beside other error-prone "
            "intakes it can be inflated or flip sign. For visits, choose the baseline, the last "
            "visit or the change. When the outcome itself varies within a person, say which value "
@@ -620,7 +620,7 @@ AGGREGATION = {
                "Each measurement becomes the last value minus the first: change over time."),
     ],
     "terms": [
-        term("attenuation", "The shrinking of a lone exposure's association toward zero because "
+        term("attenuation", "The shrinking of a lone study factor's association toward zero because "
                             "it is measured with error; averaging more days reduces it."),
         term("usual intake", "A person's long-run average intake, which single days only "
                              "estimate; modeling it properly is more than a mean."),
@@ -633,17 +633,17 @@ AGGREGATION = {
         # even change direction".
         section("When the mean is adequate",
                 "To rank people for regression, classification or a predictive model, the mean of "
-                "the available recalls is an acceptable exposure and what most cohort analyses "
+                "the available recalls is an acceptable measure of what you study and what most cohort analyses "
                 "use. Under classical error it is attenuated toward zero only as the model's one "
-                "error-prone exposure: with several error-prone nutrients, or energy, in the "
+                "error-prone study factor: with several error-prone nutrients, or energy, in the "
                 "model, a coefficient can be attenuated, inflated or change sign (Keogh et al. "
                 "2020; Freedman et al. 2011).",
                 "CONVENTION", NUT03),
         section("When the mean is not adequate",
                 "Prevalence or percentile claims about usual intake, episodically consumed foods "
-                "with many zero days, and exposure coefficients that must be unbiased in "
+                "with many zero days, and coefficients for what you study that must be unbiased in "
                 "magnitude all need more than a mean. This version corrects energy-adjusted "
-                "exposure coefficients by regression calibration from the repeated recalls; it "
+                "coefficients for what you study by regression calibration from the repeated recalls; it "
                 "fits no usual-intake distribution.",
                 "SETTLED", NUT03),
         section("Cumulative averages over follow-up",
@@ -694,7 +694,7 @@ ROLES = {
     "key": "roles",
     "title": "What each column is",
     "question": "What role does each column play in the analysis?",
-    "one_liner": "Only exposures, covariates and the energy column can become predictors; every "
+    "one_liner": "Only study factors, covariates and the energy column can become predictors; every "
                  "other role stays out of the models.",
     "why": "An identifier names a person and cannot generalize. Survey weights and design columns "
            "describe how people were sampled, and a flag such as `imputed_weight` describes how a "
@@ -706,14 +706,14 @@ ROLES = {
         option("identifier", "Identifier",
                "Names a participant; never a predictor, and keeps a person's rows together in "
                "the split."),
-        option("exposure", "Exposure",
-               "What you are studying; a predictor, and energy adjustment applies to its "
+        option("exposure", "What you study",
+               "The factor the study is about; a predictor, and energy adjustment applies to its "
                "nutrients."),
         option("energy", "Energy",
                "Total energy intake; energy adjustment is computed against it and decides whether "
                "it stays."),
         option("covariate", "Covariate",
-               "Adjusted for, such as age or sex; enters the models beside the exposures."),
+               "Adjusted for, such as age or sex; enters the models beside the study factors."),
         option("cluster", "Cluster",
                "Groups participants, such as a site or household; kept out of the predictors."),
         option("design", "Survey design",
@@ -728,7 +728,7 @@ ROLES = {
     "terms": [
         term("exposure", "The variable whose relationship with the outcome the study is about, "
                          "such as a nutrient intake."),
-        term("covariate", "A variable adjusted for so that the exposure's estimate is not "
+        term("covariate", "A variable adjusted for so that the estimate of what you study is not "
                           "confounded by it, such as age or sex."),
         term("identifier", "A column that names a row or a person rather than measuring anything; "
                            "a value that appears once cannot generalize."),
@@ -774,7 +774,7 @@ SURVEY = {
         option("population", "Surveyed population",
                "Weighted estimates with Taylor-linearized intervals over the strata and PSUs."),
         option("sample", "These participants",
-               "Unweighted; the methods state a sample-only estimand whose intervals ignore the "
+               "Unweighted; the methods state a sample-only comparison you want whose intervals ignore the "
                "design."),
     ],
     "terms": [
@@ -1112,7 +1112,7 @@ ENERGY_ADJUSTMENT = {
         section("The biases they share",
                 "Standard and residual models are biased even without confounding (composite "
                 "variable bias), and all four models only partly account for confounding by "
-                "common dietary causes; each evaluates a different estimand (Tomova et al. 2022, "
+                "common dietary causes; each evaluates a different comparison you want (Tomova et al. 2022, "
                 "AJCN). The density model's coefficient is an obscure quantity, and with energy "
                 "added as a term it is more accurate but still biased; the all-components model "
                 "is the paper's recommended route.",
@@ -1162,7 +1162,7 @@ MODELS = {
         option("boosted_trees", "Boosted trees",
                "Many shallow trees: finds curves and interactions; gives no coefficients."),
         option("featurewise", "Feature-wise tests",
-               "Tests each exposure on its own, adjusted for the covariates, with "
+               "Tests each factor on its own, adjusted for the covariates, with "
                "Benjamini–Hochberg false-discovery control; no predictions."),
         # MS7: in-fold screening at p ≫ n before the penalty (methods/omics.py).
         option("screened_elastic_net", "Screened elastic net",
@@ -1343,7 +1343,7 @@ CLUSTERS = {
     "question": "Are participants grouped in sites, centres, households or batches?",
     "one_liner": "People in one group are more alike than people across groups, so the model and "
                  "its intervals must know the groups.",
-    "why": "Under inference a site that differs in both exposure and outcome confounds the "
+    "why": "Under inference a site that differs in both what you study and the outcome confounds the "
            "estimate, and intervals that treat its participants as independent are too narrow: "
            "each site gets its own intercept and the intervals are clustered by it. Under "
            "prediction, validation keeps a group together and can hold out whole groups.",
@@ -1359,7 +1359,7 @@ CLUSTERS = {
                "Every participant is analyzed as independent; recorded with its reason."),
     ],
     "terms": [
-        term("fixed effects", "One intercept per group, so the exposure is compared within groups, "
+        term("fixed effects", "One intercept per group, so what you study is compared within groups, "
                               "never between them."),
         term("cluster-robust", "Intervals that let rows in one group share more than chance; few "
                                "groups need a small-sample correction."),
@@ -1376,10 +1376,10 @@ CLUSTERS = {
 
 ESTIMAND_QUESTION = {
     "key": "estimand",
-    "title": "The exposure and its effect",
-    "question": "Which exposure, and which of its effects, does this analysis estimate?",
+    "title": "What you study and its effect",
+    "question": "Which study factor, and which of its effects, does this analysis estimate?",
     "one_liner": "Inference reports one declared effect; no estimate is shown until it is named.",
-    "why": "A coefficient answers a question only once the question is fixed: which exposure, its "
+    "why": "A coefficient answers a question only once the question is fixed: which study factor, its "
            "total or its direct effect, a substitution or an addition of calories, and on which "
            "scale. Choosing these after seeing the estimates is a forking path. Only the measures "
            "TurboTab fits are offered.",
@@ -1387,10 +1387,10 @@ ESTIMAND_QUESTION = {
                 "methods read it.",
     "options": [
         option("total", "Total effect",
-               "Everything the exposure changes downstream counts; mediators stay out of the "
+               "Everything that what you study changes downstream counts; mediators stay out of the "
                "model."),
         option("direct", "Direct effect",
-               "Mediators are held fixed; their confounders must be adjusted for too."),
+               "Mediators are held fixed; what else could explain the link is adjusted for too."),
     ],
     "terms": [
         ESTIMAND,
@@ -1414,26 +1414,26 @@ ADJUSTMENT = {
     "question": "For each covariate: what causes what, and when was it measured?",
     "one_liner": "Each covariate's role is derived from your answers; covariates sharing a guess "
                  "are confirmed together.",
-    "why": "Statistics cannot tell a confounder from a mediator; only what causes what can "
+    "why": "Statistics cannot tell a mediator from something else that could explain the link; only what causes what can "
            "(VanderWeele 2019). So the disjunctive cause criterion is asked: adjust for causes of "
-           "the exposure or the outcome, leave out instruments and what the exposure changed, and "
+           "what you study or the outcome, leave out instruments and what it changed, and "
            "estimate a covariate of unknown timing with and without it.",
     "consumer": "Which columns enter the model, the declared secondary model and the caption "
                 "read it.",
     "options": [
-        option("confounder", "Confounder",
-               "A cause of the exposure and the outcome: adjusted for."),
+        option("confounder", "Could explain the link",
+               "A cause of what you study and the outcome: adjusted for."),
         option("mediator", "Mediator",
-               "Changed by the exposure and a cause of the outcome: left out of a total effect."),
+               "Changed by what you study, and causes the outcome: left out of a total effect."),
         option("timing_unknown", "Timing unknown",
                "Estimated without it and, declared beside, with it."),
     ],
     "terms": [
-        term("mediator", "A variable on the path from the exposure to the outcome; adjusting for "
+        term("mediator", "A variable on the path from what you study to the outcome; adjusting for "
                          "it removes part of the effect."),
         term("collider", "A consequence of two variables; adjusting for it can create an "
                          "association between them that is not causal."),
-        term("instrument", "A cause of the exposure that affects the outcome only through it; "
+        term("instrument", "A cause of what you study that affects the outcome only through it; "
                            "adjusting for it amplifies any confounding left."),
     ],
     "drawer": {"sections": [
@@ -1459,18 +1459,18 @@ CAUSAL = {
     "one_liner": "DML and TMLE estimate the declared effect without assuming the outcome model's "
                  "form; the assumptions come first.",
     "why": "A regression's estimate is right only if its form is. Double machine learning and "
-           "targeted maximum likelihood learn the outcome and the exposure flexibly, cross-fitted "
+           "targeted maximum likelihood learn the outcome and what you study flexibly, cross-fitted "
            "so the intervals stay valid. They still rest on no unmeasured confounding, positivity, "
            "consistency and time ordering, so each is declared before any estimate.",
     "consumer": "The causal estimate, its diagnostics, the methods sentence and the plan lock read "
                 "it.",
     "options": [
         option("dml_plr", "Double ML, partially linear",
-               "A numeric exposure's effect per unit, every nuisance model cross-fitted."),
+               "A numeric study factor's effect per unit, every nuisance model cross-fitted."),
         option("dml_irm", "Double ML, interactive",
-               "A yes/no exposure's average effect, or its effect among the exposed."),
+               "A yes/no study factor's average effect, or its effect among the exposed."),
         option("tmle", "Targeted maximum likelihood",
-               "A yes/no exposure's average effect, doubly robust, inside the outcome's range."),
+               "A yes/no study factor's average effect, doubly robust, inside the outcome's range."),
         option("pds_lasso", "Post-double-selection lasso",
                "Two lassos choose among many declared candidates; the intervals stay valid."),
         option("none", "The primary model only",
@@ -1479,7 +1479,7 @@ CAUSAL = {
     "terms": [
         term("cross-fitting", "Each row's nuisance predictions come from models fit on the other "
                               "folds, so its own noise never fits itself."),
-        term("positivity", "Every kind of participant could have had either exposure level; "
+        term("positivity", "Every kind of participant could have had either level of what you study; "
                            "without it the estimate extrapolates."),
         term("doubly robust", "Consistent when either the outcome model or the propensity model "
                               "is right."),
@@ -1509,40 +1509,40 @@ CAUSAL = {
 # weights have a mean of one".
 TIME_VARYING = {
     "key": "time_varying",
-    "title": "An exposure that changes over time",
-    "question": "How is an exposure that changes over time estimated?",
-    "one_liner": "A confounder that earlier exposure changed needs g-methods; their diagnostics come "
+    "title": "A study factor that changes over time",
+    "question": "How is a study factor that changes over time estimated?",
+    "one_liner": "What earlier values of what you study changed, and could explain the link, needs g-methods; their diagnostics come "
                  "before any estimate.",
-    "why": "When a confounder of later exposure was itself changed by earlier exposure, standard "
+    "why": "When something that could explain the link at a later time was itself changed by earlier values of what you study, standard "
            "regression is biased either way: adjusting for it removes part of the effect, and "
-           "leaving it out leaves later exposure confounded (Robins, Hernán & Brumback 2000). "
+           "leaving it out leaves the later values confounded (Robins, Hernán & Brumback 2000). "
            "Weights or simulation adjust for it at each time point.",
     "consumer": "The weights, the outcome model, the simulated risks and the methods read it.",
     "options": [
         option("msm_iptw", "Marginal structural model",
-               "Weights balance the confounders at each time point; their distribution is read "
+               "Weights balance what could explain the link at each time point; their distribution is read "
                "first."),
         option("gformula", "Parametric g-formula",
-               "Simulates the confounders forward under always and never exposed, and compares the "
+               "Simulates what could explain the link forward under always and never exposed; compares "
                "risks."),
         option("standard", "Standard regression",
-               "Sound only when no confounder was changed by earlier exposure; otherwise recorded "
+               "Sound only if nothing that could explain the link was changed earlier; otherwise recorded "
                "as biased."),
     ],
     "terms": [
         term("time-varying confounder", "A covariate measured at each time point that affects later "
-                                        "exposure and the outcome; earlier exposure may change it."),
-        term("stabilized weight", "The probability of a unit's exposure history given its baseline "
-                                  "covariates, over that given its confounders too; the mean should "
+                                        "what you study and the outcome; earlier values of it may change it."),
+        term("stabilized weight", "The probability of a unit's history of what you study given baseline "
+                                  "covariates, over that also given later covariates; the mean should "
                                   "be near 1."),
         term("positivity", "At each time point some units are exposed and some are not, so the "
                            "effect comes from the data rather than the model alone."),
     ],
     "drawer": {"sections": [
-        section("Exposure updated over follow-up, and reverse causation",
+        section("What you study, updated over follow-up, and reverse causation",
                 "With repeated FFQs across follow-up, the standard cohort approach is the "
                 "cumulative average — averaging all FFQs up to each event time — which reduces "
-                "within-person error relative to baseline-only. Caveat: if exposure changes "
+                "within-person error relative to baseline-only. Caveat: if what you study changes "
                 "because of preclinical disease, cumulative averaging imports reverse causation, "
                 "so a lag or a stop-updating-at-diagnosis rule is conventional.",
                 "CONVENTION", NUT03),
@@ -1556,14 +1556,14 @@ NUT07 = f"{_NUT}#07 · EDA and presentation"
 FORM = {
     "key": "form",
     "title": "The form of each continuous term",
-    "question": "How does the exposure, and each continuous confounder, enter the model?",
+    "question": "How do what you study, and each continuous covariate, enter the model?",
     "one_liner": "Declared before estimates, on the final scale: a spline by default, k by "
                  "Harrell's rule, quintiles reported beside it.",
-    "why": "A straight line a curve does not follow biases the estimate, and a confounder cut into "
+    "why": "A straight line a curve does not follow biases the estimate, and a covariate that could explain the link, cut into "
            "a few groups leaves confounding behind. Choosing the form after seeing a nonlinearity "
            "test inflates the test of association, so the form is declared first and its overall "
            "test is the one reported.",
-    "consumer": "The fit, its tests, the quintile table beside it and the estimand's unit read it.",
+    "consumer": "The fit, its tests, the quintile table and the comparison's unit read it.",
     "options": [
         option("spline", "Restricted cubic spline",
                "A smooth curve, linear in the tails, with an overall and a nonlinearity test."),
@@ -1604,20 +1604,20 @@ FORM = {
 MODIFICATION = {
     "key": "modification",
     "title": "Effect modifiers and interactions",
-    "question": "Does the exposure's effect differ across a subgroup, or with a second exposure?",
+    "question": "Does the effect of what you study differ by subgroup or a second factor?",
     "one_liner": "Declared before estimates; reported on the additive and multiplicative scales "
                  "against a single reference.",
-    "why": "Effect modification is one exposure's effect varying across strata of another "
-           "variable; interaction is the joint effect of two exposures, so the second exposure's "
-           "confounders must be adjusted too. Subgroups chosen after seeing the estimates are "
+    "why": "Effect modification is one study factor's effect varying across strata of another "
+           "variable; interaction is the joint effect of two study factors, so the second study factor's "
+           "covariates must be adjusted for too. Subgroups chosen after seeing the estimates are "
            "labeled suggested by data inspection and counted with the rest.",
     "consumer": "The modification analysis, its RERI and ratio of ratios, and the family of "
                 "tests read it.",
     "options": [
         option("effect_modification", "Effect modification",
-               "The exposure's effect within each stratum, on its own adjustment set."),
+               "The effect of what you study within each stratum, on its own adjustment set."),
         option("interaction", "Interaction",
-               "The joint effect of two exposures; the adjustment set is asked again for the "
+               "The joint effect of two study factors; the adjustment set is asked again for the "
                "second."),
         option("none", "None declared", "No product term enters the model."),
     ],

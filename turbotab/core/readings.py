@@ -1351,7 +1351,7 @@ def confirm_exit(kind: str, column: str, value: Any, label: str | None = None) -
 # ── the role readings (BLUEPRINT §14 rule 2) ──────────────────────────────────
 
 _ROLE_WORDS = {
-    "exposure": "an exposure", "covariate": "a covariate", "energy": "total energy intake",
+    "exposure": "what you study", "covariate": "a covariate", "energy": "total energy intake",
     "identifier": "the unit's identifier", "cluster": "a cluster of units",
     "design": "part of the survey design", "time": "the time of each row",
     "flag": "a flag on another column", "excluded": "left out of the models",

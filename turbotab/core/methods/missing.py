@@ -194,7 +194,7 @@ def below_detection_options(purpose: str | None) -> list[dict[str, Any]]:
              "fit, in each training fold without the outcome.")
     return [
         {"key": "censoring_aware", "label": BELOW_DETECTION_LABELS["censoring_aware"],
-         "customary": "Less common in metabolomics; the epidemiology of exposures below detection "
+         "customary": "Less common in metabolomics; the epidemiology of values below detection "
                       "(Lubin et al. 2004)",
          "sound": f"Sound for associations. {aware}", "rung": "recommended"},
         {"key": "half_minimum", "label": BELOW_DETECTION_LABELS["half_minimum"],

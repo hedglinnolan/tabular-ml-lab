@@ -416,7 +416,7 @@ def effects_stage(ctx: StageContext) -> Bundle:
     if state.purpose != "inference" or spec_e is None:
         why = ("Under prediction no coefficient is read as an effect, so no effect is reported."
                if state.purpose != "inference" else
-               "No effect is reported until the exposure and its effect are declared.")
+               "No effect is reported until what you study and its effect are declared.")
         return _not_applicable(state, "", why)
     key = est.exposure_key(spec_e)
     copies = imputed_copies_column(state)
@@ -1091,7 +1091,7 @@ class _Run:
 
         actions = [a for a in est.DIAGNOSTIC_ACTIONS[check]
                    if single or a == "keep_labeled"]
-        return [InferenceExit(label=est.ACTION_WORDS[a][0].upper() + est.ACTION_WORDS[a][1:],
+        return [InferenceExit(label=est.ACTION_LABELS[a][0].upper() + est.ACTION_LABELS[a][1:],
                               decision={"kind": "respond_diagnostic", "exposure": self.key,
                                         "check": check, "action": a}) for a in actions]
 

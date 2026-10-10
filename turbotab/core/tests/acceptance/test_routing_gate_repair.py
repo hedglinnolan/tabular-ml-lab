@@ -633,7 +633,7 @@ def test_6_the_estimand_question_asks_the_roles_that_rode_along(tmp_path):
         step = drive.reach("estimand")
         assert step["status"] == "open" and step["ask"] is not None
         card = step["ask"]
-        assert card["consumer"] == "the exposure and its effect"
+        assert card["consumer"] == "what you study and its effect"
         assert {c for g in card["groups"] for c in g["columns"]} == set(waiting)
         confirms = {(e["decision"]["column"], e["decision"]["value"])
                     for e in card["exits"] if (e["decision"] or {}).get("kind") == "confirm_reading"}

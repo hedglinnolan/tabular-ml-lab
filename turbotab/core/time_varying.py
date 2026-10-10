@@ -126,21 +126,21 @@ CONTRACT = register_contract(MethodContract(
     slot="model",
     scope="model",
     run_order=0.0,
-    needs=("inference with one declared exposure that changes within units",
+    needs=("inference with one declared study factor that changes within units",
            "repeated measures kept as rows: one row per unit per time point",
            "a settled time column",
-           "a declared time ordering: for a g-method, the exposure precedes the outcome it is "
+           "a declared time ordering: for a g-method, what you study precedes the outcome it is "
            "paired with",
-           "an exposure of 0 or 1 at each time point"),
-    question="How is an exposure that changes over time estimated?",
+           "a study factor of 0 or 1 at each time point"),
+    question="How is a study factor that changes over time estimated?",
     options=(
         ContractOption(
             "msm_iptw", "Marginal structural model (weights)",
-            customary=f"customary in epidemiology for time-varying exposures ({ROBINS_2000}; "
+            customary=f"customary in epidemiology for time-varying study factors ({ROBINS_2000}; "
                       f"{COLE_HERNAN})",
-            sound={"inference": "sound with a confounder affected by prior exposure: the weights "
-                                "adjust for it without blocking the earlier exposure's effect; it "
-                                "needs a correct exposure model and positivity",
+            sound={"inference": "sound when earlier values of what you study changed something that could "
+                                "explain the link: the weights adjust for it without blocking their "
+                                "effect; it needs a correct model of what you study and positivity",
                    "prediction": "not offered: under prediction no coefficient is read as an "
                                  "effect"},
             rung={"inference": "recommended", "prediction": "refused"},
@@ -149,8 +149,8 @@ CONTRACT = register_contract(MethodContract(
             "gformula", "Parametric g-formula",
             customary=f"less common; the g-methods literature's other estimator ({ROBINS_1986}; "
                       f"{MCGRATH})",
-            sound={"inference": "sound with a confounder affected by prior exposure: the "
-                                "confounders are simulated forward under each strategy; it needs a "
+            sound={"inference": "sound when earlier values of what you study changed something that could "
+                                "explain the link: it is simulated forward under each strategy; it needs a "
                                 "correct model for every time-varying covariate and the outcome",
                    "prediction": "not offered: under prediction no coefficient is read as an "
                                  "effect"},
@@ -160,45 +160,45 @@ CONTRACT = register_contract(MethodContract(
             "standard", "Standard regression",
             customary="customary in cohort analyses: the time-varying covariates in a pooled, "
                       "mixed or GEE model",
-            sound={"inference": "sound only when no time-varying confounder is affected by prior "
-                                f"exposure; otherwise biased ({ROBINS_2000})",
+            sound={"inference": "sound only when earlier values of what you study changed nothing "
+                                f"that could explain the link; otherwise biased ({ROBINS_2000})",
                    "prediction": "not offered: under prediction no coefficient is read as an "
                                  "effect"},
             rung={"inference": "block_and_record", "prediction": "refused"},
             order={"inference": 2, "prediction": 2}),
     ),
     storyboard=(
-        "Model the exposure at each time point from its history: the baseline covariates and its "
-        "previous value (numerator), and also the time-varying confounders (denominator)",
+        "Model what you study at each time point from its history: the baseline covariates and its "
+        "previous value (numerator), and also the covariates that change over time and could explain the link (denominator)",
         "Multiply each unit's probabilities over time into stabilized weights; censoring weights "
         "the same way",
         "Read the weights' distribution and positivity at each time point, then declare the "
         "truncation",
-        "Fit the outcome on the exposure history in the weighted pseudo-population, with a CR2 "
+        "Fit the outcome on the history of what you study in the weighted pseudo-population, with a CR2 "
         "variance by unit",
         "For the g-formula: read positivity and what the simulation will take, declare its size, "
         "then simulate every unit always and never exposed",
     ),
     relations=(
         Relation("conflicts", "standard_adjustment_for_affected_confounders",
-                 "Standard regression cannot adjust for a confounder that earlier exposure changed: "
-                 "adjusting for it removes part of the effect, and leaving it out leaves later "
-                 "exposure confounded. It is recorded only with an attestation; the g-methods are "
-                 "the exits.",
+                 "Standard regression cannot adjust for something that could explain the link "
+                 "and that earlier values of what you study changed: adjusting for it removes part "
+                 "of the effect, and leaving it out leaves later values of what you study "
+                 "confounded. It is recorded only with an attestation; the g-methods are the exits.",
                  purposes=("inference",), rung="block_and_record", when=("standard",),
                  exits=("Estimate by a marginal structural model (weights)",
                         "Estimate by the parametric g-formula",
                         "Keep standard regression; record that the estimate is biased by it"),
                  enforced_by="turbotab.core.time_varying:_affected_confounders_need_g_methods",
-                 condition="a covariate answered a cause of the exposure that earlier exposure "
+                 condition="a covariate answered a cause of what you study that earlier values of it "
                            "could have changed, and a cause of the outcome"),
         Relation("conflicts", "concurrent_exposure_and_outcome",
-                 "An exposure measured with its outcome cannot be told from a consequence of it. "
+                 "What you study, measured with its outcome, cannot be told from a consequence of it. "
                  "Standard regression is recorded only with that attestation, and its row is "
                  "labeled as open to reverse causation; a g-method is refused.",
                  purposes=("inference",), rung="block_and_record", when=("standard",),
-                 exits=("The exposure precedes the outcome it is paired with",
-                        "Keep standard regression; record that the exposure is measured with its "
+                 exits=("What you study precedes the outcome it is paired with",
+                        "Keep standard regression; record that what you study is measured with its "
                         "outcome"),
                  enforced_by="turbotab.core.time_varying:_lane_declares_the_time_ordering",
                  condition="the ordering answered same time, or unknown"),
@@ -215,7 +215,7 @@ CONTRACT = register_contract(MethodContract(
                  enforced_by="turbotab.core.time_varying:_diagnostics_come_first"),
         Relation("implies", "positivity_by_time_point",
                  "Positivity is read at each time point: how many rows were exposed and unexposed, "
-                 "and the range of the fitted probability of exposure.",
+                 "and the range of the fitted probability of being exposed.",
                  purposes=("inference",), when=("msm_iptw", "gformula")),
         Relation("implies", "intervals_by_unit",
                  "A unit's rows are not independent: the weighted model's variance is clustered by "
@@ -234,16 +234,17 @@ CONTRACT = register_contract(MethodContract(
                  "unrelated to the outcome, and the sentence says so.",
                  purposes=("inference",), when=("msm_iptw", "gformula")),
         Relation("implies", "unmeasured_confounding_sensitivity",
-                 "The E-value states how strong an unmeasured confounder would have to be to "
+                 "The E-value states how strong an unmeasured common cause would have to be to "
                  "explain the estimate away (MODELING_SEQUENCE §0 ruling 10).",
                  purposes=("inference",), when=("msm_iptw", "gformula")),
         Relation("invalidates", "estimand",
-                 "Another exposure re-asks the lane: its confounders, weights and strategies "
-                 "belong to the exposure they were declared for.",
+                 "Another study factor re-asks the lane: the covariates, weights and strategies "
+                 "belong to the study factor they were declared for.",
                  purposes=("inference",), enforced_by="turbotab.core.time_varying:lane_answer"),
         Relation("disables", "standard_estimate_as_the_effect",
-                 "The standard model's row for the exposure is labeled as not its effect: it "
-                 "cannot adjust for a confounder affected by prior exposure.",
+                 "The standard model's row for what you study is labeled as not its effect: it "
+                 "cannot adjust for something that could explain the link and that earlier values "
+                 "of what you study changed.",
                  purposes=("inference",), when=("msm_iptw", "gformula"),
                  enforced_by="turbotab.core.time_varying:fit_note"),
         Relation("enables", "risks_under_always_and_never",
@@ -257,12 +258,12 @@ CONTRACT = register_contract(MethodContract(
     decision="set_time_varying",
     stage="time_varying",
     package="TIMEVARY",
-    place="MODELING_SEQUENCE §1, after step 3 (the adjustment set): the time-varying exposure "
+    place="MODELING_SEQUENCE §1, after step 3 (the adjustment set): the time-varying study factor "
           "question, asked under inference when a unit's time points are kept as rows",
     scope_note="The weights and the outcome model read every analyzed row, and the outcome model "
                "reads the outcome, so the lane is the model itself. Its diagnostics are shown "
-               "first: they describe the exposure, and under an event outcome the rows still at "
-               "risk of loss to follow-up, which the event ends; none of them relates the exposure "
+               "first: they describe what you study, and under an event outcome the rows still at "
+               "risk of loss to follow-up, which the event ends; none of them relates what you study "
                "to the outcome.",
     leash={"inference": "available", "prediction": "not_offered"},
     sentence="turbotab.core.stages.time_varying:methods_paragraph",
@@ -287,13 +288,13 @@ def records_gate(state: Any, structure: Any = None) -> Gate:
     if grain is None:
         return None
     if _get(grain, "grain") != "repeated":
-        return ("not_applicable", "Each unit appears once, so no exposure changes over time.")
+        return ("not_applicable", "Each unit appears once, so nothing you study changes over time.")
     kind = effective_repeat_kind(state, data)
     if kind is None:
         return None
     if kind != "time_points":
         return ("not_applicable", "The rows are repeats of one measurement, not time points, so "
-                                  "no exposure changes over time.")
+                                  "nothing you study changes over time.")
     unit = _get(state, "unit")
     if unit == "unit":
         return ("not_applicable", "Each unit's rows are combined, so no time points stay as rows.")
@@ -333,8 +334,8 @@ def lane_gate(state: Any, structure: Any = None, artifact: Any = None) -> Gate:
     if purpose is None:
         return None
     if purpose != "inference":
-        return ("not_applicable", "Under prediction no coefficient is read as an effect, so no "
-                                  "exposure is followed through time.")
+        return ("not_applicable", "Under prediction no coefficient is read as an effect, so "
+                                  "nothing you study is followed through time.")
     found = records_gate(state, structure)
     if found is not None:
         return found
@@ -345,7 +346,7 @@ def lane_gate(state: Any, structure: Any = None, artifact: Any = None) -> Gate:
     if spec is None:
         return None
     if _get(spec, "family"):
-        return ("not_applicable", "An exposure family is estimated one exposure at a time by the "
+        return ("not_applicable", "A family of study factors is estimated one study factor at a time by the "
                                   "feature-wise family, not followed through time.")
     data = getattr(artifact, "data", artifact)
     setting = _get(data, "setting") if isinstance(data, Mapping) else None
@@ -554,7 +555,7 @@ def _lane_is_for_inference(decision: Any, ctx: Any) -> None:
     from turbotab.core.estimand import _not_inference
 
     if _get(_state(ctx), "purpose") == "prediction":
-        raise _not_inference("an exposure's path through time")
+        raise _not_inference("a study factor's path through time")
 
 
 def _lane_needs_time_points_as_rows(decision: Any, ctx: Any) -> None:
@@ -568,8 +569,8 @@ def _lane_needs_time_points_as_rows(decision: Any, ctx: Any) -> None:
         return
     structure = _artifact(ctx, "structure")
     grain = effective_grain(state, structure)
-    why = ("A time-varying exposure needs repeated measures: one row per unit per time point, "
-           "so the exposure's history and the confounders' can be read in order.")
+    why = ("A study factor that changes over time needs repeated measures: one row per unit per time "
+           "point, so its history and its covariates' can be read in order.")
     if grain is None or _get(grain, "grain") != "repeated":
         raise _refusal("no_repeated_measures",
                        f"{why} The grain answer says each unit appears once.",
@@ -623,19 +624,19 @@ def _lane_follows_the_estimand(decision: Any, ctx: Any) -> None:
     spec = current_estimand(state)
     if spec is None:
         raise _refusal("no_estimand",
-                       f"Declare the exposure first ({question_name('estimand')}); its path through "
-                       f"time is estimated for the exposure declared.",
+                       f"Declare what you study first ({question_name('estimand')}); its path through "
+                       f"time is estimated for what you study as declared.",
                        [{"label": f"Answer {question_name('estimand')} first", "decision": None}])
     if _get(spec, "family"):
         raise _refusal("family_not_followed",
-                       "An exposure family is estimated one exposure at a time by the feature-wise "
-                       "family; a time-varying lane follows one declared exposure.",
-                       [{"label": "Name one exposure (the exposure question)", "decision": None}])
+                       "A family of study factors is estimated one study factor at a time by the feature-wise "
+                       "family; a time-varying lane follows one declared study factor.",
+                       [{"label": "Name one study factor (the question on what you study)", "decision": None}])
     exposure = _get(spec, "exposure")
     if decision.exposure != exposure:
         raise _refusal("other_exposure",
-                       f"The exposure is {_tick(exposure)}, not {_tick(decision.exposure)}; the lane "
-                       f"is declared for the exposure the estimand names.",
+                       f"What you study is {_tick(exposure)}, not {_tick(decision.exposure)}; the lane "
+                       f"is declared for what you study as the comparison you want names it.",
                        [{"label": f"Declare the lane for {_tick(exposure)}",
                          "decision": decision.model_copy(update={"exposure": exposure})}])
 
@@ -651,7 +652,7 @@ def _lane_declares_the_time_ordering(decision: Any, ctx: Any) -> None:
     said = ORDERING_WORDS[decision.ordering]
     recorded = ("measured with its outcome" if decision.ordering == "same_time"
                 else "not known to precede its outcome")
-    precedes = {"label": "The exposure precedes the outcome it is paired with",
+    precedes = {"label": "What you study precedes the outcome it is paired with",
                 "decision": decision.model_copy(update={"ordering": PRECEDES,
                                                         "ordering_acknowledged": False})}
     if decision.method == "standard":
@@ -663,13 +664,13 @@ def _lane_declares_the_time_ordering(decision: Any, ctx: Any) -> None:
             f"consequence of the outcome (reverse causation). Standard regression can describe how "
             f"they go together; it is recorded as that, and its row for {x} is labeled so.",
             [precedes,
-             {"label": f"Keep standard regression; record that the exposure is {recorded}",
+             {"label": f"Keep standard regression; record that what you study is {recorded}",
               "decision": decision.model_copy(update={"ordering_acknowledged": True})}])
     raise _refusal(
         "time_ordering",
         f"{x} is {said} the outcome it is paired with, so its estimate cannot be told from a "
-        f"consequence of the outcome. g-methods need each time point's exposure to precede the "
-        f"outcome it is paired with, and its confounders to precede the exposure.",
+        f"consequence of the outcome. g-methods need each time point's value of what you study to precede the "
+        f"outcome it is paired with, and its covariates to precede it.",
         [precedes,
          {"label": f"Estimate by standard regression, recorded as {recorded}",
           "decision": decision.model_copy(update={
@@ -755,16 +756,17 @@ def _affected_confounders_need_g_methods(decision: Any, ctx: Any) -> None:
              "baseline": [c for c in base if c not in affected], "acknowledged": False,
              "censoring": censoring, "ordering": PRECEDES, "ordering_acknowledged": False,
              "diagnostics_seen": None}
-        declare = "Declare that the exposure precedes its outcome; e" if concurrent else "E"
+        declare = "Declare that what you study precedes its outcome; e" if concurrent else "E"
         setting = _setting(ctx, decision.exposure) or {}
         binary = setting.get("exposure_binary", True)
         message = (
             f"{who} {'is a cause' if one else 'are causes'} of {_tick(decision.exposure)} that "
             f"earlier {_tick(decision.exposure)} could have changed, by your answers: a time-varying "
-            f"confounder affected by prior exposure. Standard regression is biased either way: "
-            f"adjusting for {'it' if one else 'them'} removes the part of an earlier exposure's "
-            f"effect that runs through {'it' if one else 'them'}, and leaving "
-            f"{'it' if one else 'them'} out leaves later exposure confounded ({ROBINS_2000}).")
+            f"covariate that could explain the link and was affected by earlier values of what "
+            f"you study. Standard regression is biased either way: adjusting for "
+            f"{'it' if one else 'them'} removes the part of an earlier effect that runs through "
+            f"{'it' if one else 'them'}, and leaving {'it' if one else 'them'} out leaves later "
+            f"values of what you study confounded ({ROBINS_2000}).")
         keep = {"label": "Keep standard regression; record that the estimate is biased by it",
                 "decision": decision.model_copy(update={"acknowledged": True})}
         if not binary:
@@ -772,9 +774,9 @@ def _affected_confounders_need_g_methods(decision: Any, ctx: Any) -> None:
             # offer answers that are refused in turn.
             raise _refusal(
                 "affected_confounder",
-                f"{message} The g-methods here need an exposure of 0 or 1 at each time point, and "
+                f"{message} The g-methods here need a study factor of 0 or 1 at each time point, and "
                 f"{_tick(decision.exposure)} takes {setting.get('exposure_levels')} values.",
-                [keep, {"label": "Declare a yes/no exposure (the exposure question)",
+                [keep, {"label": "Declare a yes/no study factor (the question on what you study)",
                         "decision": None}])
         raise _refusal(
             "affected_confounder", message,
@@ -789,7 +791,7 @@ def _affected_confounders_need_g_methods(decision: Any, ctx: Any) -> None:
     if missing:
         raise _refusal(
             "affected_confounder_left_out",
-            f"{_listing(missing)} {'is a confounder' if len(missing) == 1 else 'are confounders'} "
+            f"{_listing(missing)} {'could explain the link and is' if len(missing) == 1 else 'could explain the link and are'} "
             f"affected by prior {_tick(decision.exposure)}, by your answers: the g-methods exist to "
             f"adjust for {'it' if len(missing) == 1 else 'them'} at each time point.",
             [{"label": f"Adjust for {_listing(missing)} at each time point",
@@ -873,16 +875,16 @@ def _lane_fits_the_data(decision: Any, ctx: Any) -> None:
     if not setting.get("exposure_binary", True):
         raise _refusal(
             "exposure_not_binary",
-            f"The weights and the always-or-never strategies here are for an exposure of 0 or 1 at "
+            f"The weights and the always-or-never strategies here are for a study factor of 0 or 1 at "
             f"each time point; {_tick(decision.exposure)} takes "
             f"{setting.get('exposure_levels')} values.",
-            [{"label": "Declare a yes/no exposure (the exposure question)", "decision": None}])
+            [{"label": "Declare a yes/no study factor (the question on what you study)", "decision": None}])
     stops = int(setting.get("exposure_stops") or 0)
     if decision.pattern == "initiation" and stops:
         raise _refusal(
             "exposure_stops",
             f"{_tick(decision.exposure)} stops after starting in {stops:,} "
-            f"{'unit' if stops == 1 else 'units'}, so it is not an exposure that, once started, "
+            f"{'unit' if stops == 1 else 'units'}, so it is not a study factor that, once started, "
             f"stays.",
             [{"label": "It can stop and restart",
               "decision": decision.model_copy(update={"pattern": "switches"})}])
