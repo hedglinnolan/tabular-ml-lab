@@ -127,6 +127,11 @@ CONTRACT_LENSES: dict[str, tuple[str, ...]] = {
     "manuscript_export": (SHARED,),
     # D5: agreement between two measurement methods (Describe) or two models (Predict), any lens
     "bland_altman": (SHARED,),
+    # E2: randomized-trial analyses (engine only until E1 routes a declared trial to them); the
+    # clinical and dietary lenses review trials (CONSORT; E5's trial methodologist joins them)
+    "trial_analysis_set": ("clinical", "dietary"),
+    "trial_effect": ("clinical", "dietary"),
+    "trial_missing_outcomes": ("clinical", "dietary"),
 }
 
 # Every registered model family: the lenses whose packet reviews it in full, or (SHARED,). No
