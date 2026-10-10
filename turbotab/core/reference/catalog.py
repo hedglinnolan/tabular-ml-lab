@@ -131,6 +131,11 @@ CONTRACT_LENSES: dict[str, tuple[str, ...]] = {
     # methods, reviewed in full by the dietary, clinical and survey lenses as the design is
     "stack_cycles": ("dietary", "clinical", "survey"),
     "cycle_trends": ("dietary", "clinical", "survey"),
+    # E2: randomized-trial analyses (engine only until E1 routes a declared trial to them); the
+    # clinical and dietary lenses review trials (CONSORT; E5's trial methodologist joins them)
+    "trial_analysis_set": ("clinical", "dietary"),
+    "trial_effect": ("clinical", "dietary"),
+    "trial_missing_outcomes": ("clinical", "dietary"),
 }
 
 # Every registered model family: the lenses whose packet reviews it in full, or (SHARED,). No

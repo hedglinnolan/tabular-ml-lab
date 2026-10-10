@@ -325,7 +325,7 @@ Every lens offers these; their full contracts are in the methods reference.
 | Agreement between two measurements (Bland–Altman) | `bland_altman` | evaluation | descriptive | not declared |
 | The manuscript bundle and its replay | `manuscript_export` | evaluation | descriptive | not declared |
 
-### 1.4 · Methods another lens reviews in full (26)
+### 1.4 · Methods another lens reviews in full (29)
 
 No method contract is declared for one lens: the app reaches each of these through the data it needs, not through the lens, though some are reached through findings or stages their own lens raises. Each is offered here whenever this lens's data hold what it needs, and is reviewed in full in the packet named.
 
@@ -340,6 +340,7 @@ No method contract is declared for one lens: the app reaches each of these throu
 | Rows read as imputed copies are not repeats | `copies_not_repeats` | the dietary assessment and clinical packets | reshape | rows read as imputed copies (a copy number such as NHANES's _MULT_) |
 | The data's own imputed copies, pooled by Rubin's rules | `imputed_copies_pooled` | the dietary assessment and clinical packets | reshape | the column numbering the copies; the unit the copies belong to |
 | The QC rows leave | `qc_rows_leave` | the metabolomics packet | eligibility | the pooled-QC label |
+| Who a randomized trial analyzes (the analysis set) | `trial_analysis_set` | the clinical and dietary assessment packets | eligibility | the arm each person was randomized to, and the control arm; for the per-protocol set: whether each person followed the protocol (yes/no); optional: the arm each person received (for the CONSORT flow) |
 | Dietary patterns: how the food groups are made comparable | `pattern_inputs` | the dietary assessment packet | in_fold | the food-group intake columns; total energy, for the energy-adjusted forms |
 | Dietary patterns: foods eaten together | `dietary_patterns` | the dietary assessment packet | in_fold | two or more food-group intake columns; intermediate responses on the pathway, for reduced rank regression; the survey weights, when the rows are a weighted sample |
 | Dietary patterns: how many groups of people | `pattern_clusters` | the dietary assessment packet | in_fold | the standardized food groups; a range of group numbers, or the declared one |
@@ -353,10 +354,12 @@ No method contract is declared for one lens: the app reaches each of these throu
 | Survey-weighted Cox regression (Binder's pseudo-likelihood) | `survey_cox` | the dietary assessment, clinical and survey instruments packets | model | the survey answer: the surveyed population (a weight, and strata and PSUs); a time-to-event outcome with its follow-up; the Cox family chosen |
 | Survey-weighted linear, logistic and multinomial models | `survey_linear` | the dietary assessment, clinical and survey instruments packets | model | the survey answer: the surveyed population (a weight, and strata and PSUs); a continuous, yes/no or multiclass outcome; the linear family chosen |
 | Survey-weighted proportional-odds model | `survey_ordinal` | the dietary assessment, clinical and survey instruments packets | model | the survey answer: the surveyed population (a weight, and strata and PSUs); an ordered outcome with its declared order; the proportional-odds family chosen |
+| The effect of the assigned treatment in a randomized trial | `trial_effect` | the clinical and dietary assessment packets | model | a declared randomized trial (parallel or cluster-randomized); the arm, the control arm and the outcome (a number, or yes/no); the randomization factors and the baseline covariates named before the data were seen (the baseline measure of the outcome among them); a cluster-randomized trial: the randomized cluster of each person |
 | The substitution curve over the surveyed population | `survey_substitution` | the dietary assessment packet | evaluation | the survey answer: the surveyed population (a weight, and strata and PSUs); a substitution answer; the linear family chosen |
 | Substitution curves for a multiclass outcome, one per class | `multiclass_substitution` | the dietary assessment packet | evaluation | a multiclass outcome (three or more unordered classes); two energy-bearing exposures whose kcal per unit is settled; a fitted family that predicts each class's probability; the substitution answer (donor, recipient and step) |
 | Design-based cross-validation | `design_based_cv` | the dietary assessment, clinical and survey instruments packets | evaluation | the surveyed-population answer; the weight, and the strata and PSUs if named |
 | Trends across stacked survey cycles | `cycle_trends` | the dietary assessment, clinical and survey instruments packets | evaluation | a stack of two or more cycles (three or more to look for a bend), with each cycle's time; a numeric measure (a mean) or a yes-or-no one (a prevalence); the survey design over the stacked rows, or the answer that the estimates describe these participants; optional: covariates (regression and joinpoint only), and joinpoints named in advance |
+| How sensitive a trial's result is to its missing outcomes (the tipping point) | `trial_missing_outcomes` | the clinical and dietary assessment packets | evaluation | a parallel trial analyzed by intention to treat; at least one randomized person with a missing outcome |
 
 ### 1.5 · Methods with no contract yet (17)
 
