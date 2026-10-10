@@ -262,6 +262,8 @@ DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.methods.subgroups",
     # D3, dietary patterns (engine only until D1 asks them)
     "turbotab.core.methods.dietary_patterns",
+    # T3: the specification curve and leave-one-site-out validation (engine only until routed)
+    "turbotab.core.methods.spec_curve", "turbotab.core.methods.site_validation",
 )
 
 

@@ -275,7 +275,7 @@ Every other family on the shelf, each in full in the methods reference:
 | GEE (exchangeable) (`gee`) | regression, binary | prediction, inference | Population-average straight-line or log-odds effects; a unit's rows share one correlation. | every lens (shared): the methods reference |
 | Cox proportional hazards (`cox`) | time_to_event | prediction, inference | Each predictor multiplies the hazard by a constant ratio over all of follow-up; effects add on the log scale. | every lens (shared): the methods reference |
 
-### 1.3 · Shared methods (43)
+### 1.3 · Shared methods (45)
 
 Every lens offers these; their full contracts are in the methods reference.
 
@@ -321,8 +321,10 @@ Every lens offers these; their full contracts are in the methods reference.
 | Bootstrap optimism correction | `bootstrap_optimism` | evaluation | training_fold | `set_split` |
 | Calibration by a horizon, and by level | `horizon_calibration` | evaluation | training_fold | `set_split` |
 | The nested cross-validation interval | `nested_cv_interval` | evaluation | training_fold | `set_split` |
+| Leave-one-site-out validation, pooled across sites | `site_validation` | evaluation | training_fold | `set_validation` |
 | Intended use, the decision curve and the threshold | `intended_use` | evaluation | training_fold | `set_intended_use` |
 | Agreement between two measurements (Bland–Altman) | `bland_altman` | evaluation | descriptive | not declared |
+| Which of my decisions mattered? (specification curve) | `specification_curve` | evaluation | model | not declared |
 | The manuscript bundle and its replay | `manuscript_export` | evaluation | descriptive | not declared |
 
 ### 1.4 · Methods another lens reviews in full (24)
@@ -605,8 +607,10 @@ The option each method offers first for each purpose, its rung, and the reason i
 | Bootstrap optimism correction (`bootstrap_optimism`) | `bootstrap` (recommended): Asked (the split question), ranked first below 20,000 units; at least 500 resamples (Collins et al. 2024) | `bootstrap` (available): Offered after one cross-validation run |
 | Calibration by a horizon, and by level (`horizon_calibration`) | `by_horizon_and_level` (recommended): Stated: the prediction horizon is declared with the follow-up, else the median follow-up time | `by_horizon_and_level` (available): Stated beside the fit scores |
 | The nested cross-validation interval (`nested_cv_interval`) | `nested_cv` (available): Offered with its compute estimate where p/n > 1; else the interval is labeled likely too narrow | not offered under inference: Not applicable |
+| Leave-one-site-out validation, pooled across sites (`site_validation`) | `reml_hksj` (recommended): Sound with few sites: the interval allows for τ² being estimated; the prediction interval says where a new site would land | not offered under inference: Not offered under Estimate an effect: it validates a prediction model at a site it never saw |
 | Intended use, the decision curve and the threshold (`intended_use`) | `decision_support` (recommended): Sound: net benefit over the declared threshold range (Vickers & Elkin 2006; STRATOS TG6 lists it as essential) | not offered under inference: Not asked: no score is reported under inference |
 | Agreement between two measurements (Bland–Altman) (`bland_altman`) | `differences` (available): Sound for two models' out-of-fold predictions of a number; describes how far apart they are, not which is right | not offered under inference: Not offered under Estimate an effect: agreement describes two measurements and is not an effect (offered under Describe; see DESCRIBE_LABELS) |
+| Which of my decisions mattered? (specification curve) (`specification_curve`) | not offered under prediction: Not offered under Predict: the choices are made inside each training fold and compared by their scores | `all` (recommended): Sound as sensitivity after the lock: every declared fork crossed; above 1,000 combinations a stated rule draws them |
 | The manuscript bundle and its replay (`manuscript_export`) | `bundle` (recommended): every sentence is the record's own and the result is the declared one (selection-corrected without a holdout), so a reviewer can reconstruct the analysis and replay it | `bundle` (recommended): every sentence is the record's own, the plan's hash is the lock's, and Table 2 shows the exposure only, so a reviewer can reconstruct the analysis and replay it |
 
 ### 3.4 · Where the app ranks by the data

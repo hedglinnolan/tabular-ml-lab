@@ -35,5 +35,6 @@ BlandAltmanLeh
 SimplyAgree
 mclust
 fpc
+metafor
 sva
 limma
