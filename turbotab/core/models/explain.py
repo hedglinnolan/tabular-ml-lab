@@ -157,8 +157,8 @@ class TreeEnsemble:
     * ``scale``: what ``out`` is: ``"margin"``, the model's raw score (the prediction for a number,
       the log-odds for a yes/no outcome, ``Anatomy.raw_score``); ``"probability"``, a class
       probability (a forest's averaged leaves: for a yes/no outcome, one output, the class coded 1).
-      :func:`attributions` computes values on either; :func:`explain` presents margin values only,
-      and says a probability scale's are not built here until RT-5d decides how they are shown.
+      :func:`attributions` computes values on either; :func:`explain` labels a probability's
+      values as such, beside curves on the log-odds (RT-5d), and says which scale is which.
     """
 
     base: np.ndarray  # (K,)
@@ -1177,6 +1177,7 @@ class _Work:
     base: float
     floor: Floor
     refits: list[tuple[Anatomy, pd.DataFrame]]  # each refit and its inputs for the explained rows
+    shap_scale: str = "margin"  # its SHAP values' scale (``Attributed.scale``)
 
 
 def _fmt(value: float | None) -> str:
@@ -1261,15 +1262,21 @@ def _work(fam: FamilyFit, s: Setting, sample: np.ndarray) -> _Work | FamilyExpla
         return FamilyExplanation(family=fam.key, label=fam.label, explained=False,
                                  reason=f"{fam.label}: explanations are built for one output "
                                         f"(a numeric or yes/no outcome).")
-    if found.scale != "margin":
-        # Values on a probability scale (a forest's) are not presented here yet: their label, the
-        # predictions beside them and the curves and interactions on one scale are RT-5d's call.
-        return FamilyExplanation(family=fam.key, label=fam.label, explained=False,
-                                 reason=f"{fam.label}: its SHAP values are not built here.")
     phi = grouped(found.phi, anat.group)
     return _Work(fam=fam, anat=anat, kind=kind, A_all=A_all, A=A, phi=phi,
                  ranked=importance(phi).sort_values(ascending=False, kind="stable"),
-                 base=found.expected, floor=floor_of(fam, s), refits=[])
+                 base=found.expected, floor=floor_of(fam, s), refits=[], shap_scale=found.scale)
+
+
+def _probability_scale(w: _Work, s: Setting) -> tuple[str, str]:
+    """A yes/no forest's SHAP values are on its probability, the scale its trees average, where
+    path-dependent TreeSHAP is exact and adds up; its curves and interactions are on the log-odds
+    of the clipped probability (``Anatomy.raw_score``), as every family's are (RECIPES RT-5d). The
+    label of its values, and the note that says which scale is which."""
+    of = f"probability of `{s.event}`" if s.event is not None else "probability of the event"
+    return of, (f"{w.fam.label}'s SHAP values are on its {of}, the scale its trees average; its "
+                f"curves and interactions are on the log-odds of that probability, kept just "
+                f"inside 0 and 1, the scale every family's curves share.")
 
 
 def _refits(w: _Work, s: Setting, sample: np.ndarray, refit: Refit,
@@ -1440,6 +1447,7 @@ def explain(families: Sequence[FamilyFit], s: Setting, refit: Refit,
     scale = scale_of(s, outcome_unit)
     explained: list[FamilyExplanation] = []
     works: list[_Work] = []
+    scale_notes: list[str] = []
     for i, fam in enumerate(families):
         say(0.05 + 0.85 * i / max(1, len(families)), f"{fam.label}: SHAP values")
         w = _work(fam, s, sample)
@@ -1470,6 +1478,11 @@ def explain(families: Sequence[FamilyFit], s: Setting, refit: Refit,
                                           level=level, color=color))
         listed = w.phi.iloc[:OBSERVATION_ROWS]
         prediction = w.anat.raw_score(w.A.iloc[:OBSERVATION_ROWS])
+        family_scale = scale
+        if w.shap_scale == "probability":  # the listed rows add up on the scale of their values
+            prediction = w.anat.rest.predict_proba(w.A.iloc[:OBSERVATION_ROWS])[:, 1]
+            family_scale, said = _probability_scale(w, s)
+            scale_notes.append(said)
         observations = Observations(
             row_ids=[int(v) for v in listed.index], base=w.base,
             prediction=[float(v) for v in prediction], inputs=shown,
@@ -1479,7 +1492,7 @@ def explain(families: Sequence[FamilyFit], s: Setting, refit: Refit,
         interactions = _interactions(w, s, list(main.index)) if w.floor.passed else None
         explained.append(FamilyExplanation(
             family=fam.key, label=fam.label, explained=True,
-            method=METHOD_WORDS[w.kind], scale=scale, base=w.base,
+            method=METHOD_WORDS[w.kind], scale=family_scale, base=w.base,
             floor=None if s.purpose == "inference" else w.floor, importance=importance_rows,
             beeswarm=beeswarm,
             observations=observations, stability=_stability(w, s, again, main),
@@ -1514,7 +1527,8 @@ def explain(families: Sequence[FamilyFit], s: Setting, refit: Refit,
                     if len(sample) == n else
                     f"SHAP values and curves of a seeded sample of {len(sample):,} of the {n:,} "
                     f"{rows_word} the models were fit on."),
-        curve_method=s.curve_method, families=explained, curves=curves, methods="", notes=notes)
+        curve_method=s.curve_method, families=explained, curves=curves, methods="",
+        notes=scale_notes + notes)
     artifact.methods = methods_sentence(artifact, s)
     say(1.0, "Done")
     return artifact
@@ -1567,6 +1581,12 @@ def methods_sentence(a: ExplainArtifact, s: Setting) -> str:
     sample = f"all {a.rows:,} {rows_word}" if a.rows == a.rows_of else \
         f"a seeded sample of {a.rows:,} of the {a.rows_of:,} {rows_word}"
     out = [f"SHAP values were computed for {sample} on each model's own scale: {how}."]
+    for f in done:  # a yes/no forest's two scales (RT-5d), named in the technical register too
+        if str(f.scale).startswith("probability"):
+            out.append(f"The {f.label.lower()}'s SHAP values are on its predicted {f.scale}, the "
+                       f"scale its trees average, where path-dependent TreeSHAP is exact and "
+                       f"additive; its curves and interactions are on the log-odds of that "
+                       f"probability, clipped half of one tree's vote from 0 and 1.")
     stable = [f for f in done if f.stability is not None]
     if stable:
         st = stable[0].stability
