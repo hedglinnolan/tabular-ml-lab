@@ -83,15 +83,22 @@ TUNING = TuningDecl(
 )
 
 
-def leaf_cap(*, plan: Any = None, n_units: int) -> int:
-    """The most rows a searched smallest leaf may hold (RECIPES §4.1): a twentieth of the plan's
-    count, at least 1, the same in every fit the plan makes. For a measured outcome that count is
-    the plan's units (``n_plan``); for a yes/no or class outcome the plan counts events or the
-    rarest class, which is not what a leaf holds, and stores no count of units, so it is the plan's
-    rows (``plan_rows``: rows, not units, when rows repeat; open for a ruling). Without a plan, the
-    fit's own units."""
+def leaf_cap(*, plan: Any = None, n_units: int, n_rows: int | None = None) -> int:
+    """The most rows a searched smallest leaf may hold (RECIPES §4.1; WAVE_C6A_PLAN §7 ruling 14):
+    a twentieth of the plan's units, at least 1, in units rather than rows when rows repeat per
+    unit.
+
+    For a measured outcome the plan's count is its units (``n_plan``). For a yes/no or class
+    outcome it counts events or the rarest class, which is not what a leaf holds, and the plan
+    stores no count of units; its units are then its rows (``plan_rows``) times this fit's units
+    per row (``n_units`` over ``n_rows``), which is the rows themselves when each row is a unit
+    (``n_rows`` omitted or equal to ``n_units``). Without a plan, the fit's own units."""
     if plan is not None:
-        n = int(plan.n_plan) if plan.unit == "units" else int(plan.plan_rows)
+        if plan.unit == "units":
+            n = int(plan.n_plan)
+        else:
+            rows = int(n_rows) if n_rows else int(n_units)
+            n = int(plan.plan_rows) * int(n_units) // rows if rows > 0 else int(plan.plan_rows)
     else:
         n = int(n_units)
     return max(1, n // LEAF_SHARE)
@@ -268,7 +275,7 @@ class BoostedTrees(FamilyBase):
                                  f"{STANDARD!r}")
             out["min_samples_leaf"] = STANDARD_LEAF
         elif leaf is not None:
-            out["min_samples_leaf"] = min(int(leaf), leaf_cap(plan=plan, n_units=n_units))
+            out["min_samples_leaf"] = min(int(leaf), leaf_cap(plan=plan, n_units=n_units, n_rows=n_rows))
         out["random_state"] = int(plan.seed) if plan is not None else 0
         out["n_threads"] = int(plan.threads) if plan is not None else 1
         return out

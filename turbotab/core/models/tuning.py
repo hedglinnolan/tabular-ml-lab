@@ -1062,7 +1062,7 @@ class TuningRecord:
     the tuning curve needs no refit); ``chosen``: the chosen candidate's index; ``chosen_params``:
     the estimator's own parameters at the refit (what pinned replay holds); ``inner_k_used``: the
     inner folds drawn; ``below_floor``: this fit held fewer than the floor and drew its folds as
-    evenly as its units allowed; ``libraries`` and ``threads``: versions and thread counts."""
+    evenly as its units allowed; ``libraries``: versions; ``threads``: the count the fits ran at."""
 
     plan: TuningPlan
     libraries: Mapping[str, str]
@@ -1767,15 +1767,11 @@ def _libraries(model: Any) -> dict[str, str]:
 
 
 def _threads(plan: TuningPlan) -> dict[str, int]:
-    out = {"plan": int(plan.threads)}
-    try:
-        from threadpoolctl import threadpool_info
-
-        for pool in threadpool_info():
-            out[str(pool.get("internal_api") or pool.get("user_api"))] = int(pool["num_threads"])
-    except Exception:  # noqa: BLE001 - the record still holds the plan's count
-        pass
-    return out
+    """The thread count the fits ran at: the plan's, which a family hands its estimator
+    (``n_threads``, ``n_jobs``) and which the boosted-tree family pins OpenMP to. Not the
+    process's pools (``threadpool_info``): those are the machine's setting when the record is
+    written, which no fit of the plan followed."""
+    return {"plan": int(plan.threads)}
 
 
 def _tuned_fit(pipe: "TunedPipeline", X: Any, y: Any, *, groups: Any, order: Any,
