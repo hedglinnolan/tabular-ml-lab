@@ -574,8 +574,11 @@ def values_nesting(state: Any, *, store: Any = None, frame: Any = None) -> dict[
     them a part and a total (``methods.nesting.nested_components``, the design's own test: a part
     at most its total on 99% of the rows where both are recorded), read from ``frame`` or from
     ``store``; None where no table is at hand, so the names alone speak (P1-FU: the caption, the
-    methods sentence, the preview and the card say the swap Table 2 says)."""
-    from turbotab.core.methods.nesting import candidates, nested_components
+    methods sentence, the preview and the card say the swap Table 2 says). Read through the ledger
+    (``readings.nesting``, as the design reads it), so each column's own confirmation stands over
+    the values' guess and no consumer settles the nesting by a test of its own (BLUEPRINT §14.3)."""
+    from turbotab.core.methods.nesting import candidates
+    from turbotab.core.readings import nesting
 
     names = list(predictor_roles(state))
     pairs = candidates(names)
@@ -587,7 +590,7 @@ def values_nesting(state: Any, *, store: Any = None, frame: Any = None) -> dict[
             frame = store.materialize(needed)
         except Exception:  # noqa: BLE001 - a column the table no longer holds: the names speak
             return None
-    return nested_components(frame, needed) if needed else {}
+    return nesting(state, frame=frame, columns=needed) if needed else {}
 
 
 def substitution_words(state: Any, exposure: Any, *, amount: bool = True,

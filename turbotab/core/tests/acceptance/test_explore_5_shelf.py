@@ -82,7 +82,10 @@ def test_5_rileys_minimum_runs_before_the_shelf_and_below_it_the_regressions_ran
     # MC-1: a quiet name beside each concern, none yet (MC-5 writes them)
     assert all(f["terms"] == [None] * len(f["concerns"]) for f in shelf["families"])
     if below:
-        assert order.index("boosted_trees") > max(order.index(k) for k in order if k != "boosted_trees")
+        # the flexible learners (C6a phase 2 added the forest and XGBoost) after every regression
+        trees = {"boosted_trees", "random_forest", "xgboost"}
+        assert min(order.index(k) for k in trees) > max(order.index(k) for k in order
+                                                        if k not in trees)
         assert flexible["concerns"][0] == (
             f"{len(train):,} rows: below Riley et al.'s minimum sample size, a flexible learner may "
             f"need over 10 times as many events per variable as a regression to reach a stable "

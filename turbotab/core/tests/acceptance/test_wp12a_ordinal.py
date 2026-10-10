@@ -337,7 +337,8 @@ def test_2_on_an_ordinal_task_the_proportional_odds_family_ranks_first(purpose):
     ranked = rank(situation)
     keys = [f.key for f, _ in ranked]
     assert keys[0] == "proportional_odds"
-    assert set(keys) == {"proportional_odds", "linear", "elastic_net", "boosted_trees"}  # never shortened
+    assert set(keys) == {"proportional_odds", "linear", "elastic_net", "ridge", "boosted_trees",
+                         "random_forest", "xgboost"}  # never shortened
     for family, assessment in ranked[1:]:
         assert assessment.concerns[0] == ORDER_BLIND
         assert assessment.score < ranked[0][1].score
