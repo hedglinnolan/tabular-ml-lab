@@ -920,6 +920,59 @@
         }
       }
     },
+    "/api/projects/{pid}/materiality": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Materiality Ledger",
+        "description": "The materiality ledger (SURFACING_POLICY §2.2): for each noticing measured on the table,\nhow far its alternative is predicted to move the numbers before the plan is fixed (outcome-\nblind), the triage's recommendation and the disposition recorded, what was done about it,\nand once the plan is fixed its realized movement and whether it matched. Derived from the\nrecord each time, so a replay gives the same rows.",
+        "operationId": "materiality_ledger_api_projects__pid__materiality_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ledger"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{pid}/triage": {
       "get": {
         "tags": [
@@ -8500,6 +8553,204 @@
         "title": "JoinSpec",
         "description": "One file joined to the table (``joins`` slot, keyed by the file's id, in answer order)."
       },
+      "Ledger": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1
+          },
+          "locked": {
+            "type": "boolean",
+            "title": "Locked"
+          },
+          "gate": {
+            "type": "string",
+            "title": "Gate"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/LedgerRow"
+            },
+            "type": "array",
+            "title": "Rows",
+            "default": []
+          },
+          "limitations": {
+            "type": "integer",
+            "title": "Limitations",
+            "default": 0
+          },
+          "budget": {
+            "type": "integer",
+            "title": "Budget"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "locked",
+          "gate",
+          "rows",
+          "limitations",
+          "budget"
+        ],
+        "title": "Ledger",
+        "description": "The materiality ledger: derived from the record, the data and the artifacts, never kept."
+      },
+      "LedgerRow": {
+        "properties": {
+          "thread": {
+            "type": "string",
+            "title": "Thread"
+          },
+          "family": {
+            "type": "string",
+            "title": "Family"
+          },
+          "subject": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Subject"
+          },
+          "alternative": {
+            "type": "string",
+            "title": "Alternative"
+          },
+          "predicted": {
+            "$ref": "#/components/schemas/Movement"
+          },
+          "recommended": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "no_change",
+                  "could_bias",
+                  "act_on_it"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "recorded": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "no_change",
+                  "could_bias",
+                  "act_on_it"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded"
+          },
+          "done": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Done"
+          },
+          "limitation": {
+            "type": "boolean",
+            "title": "Limitation",
+            "default": false
+          },
+          "realized": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Movement"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "confirmed",
+              "upgraded",
+              "downgraded",
+              "not_verifiable",
+              "not_graded"
+            ],
+            "title": "Verdict"
+          },
+          "exhibit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exhibit"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "thread",
+          "family",
+          "subject",
+          "alternative",
+          "predicted",
+          "recommended",
+          "reason",
+          "recorded",
+          "done",
+          "limitation",
+          "realized",
+          "verdict",
+          "exhibit",
+          "label",
+          "sentence"
+        ],
+        "title": "LedgerRow",
+        "description": "One row of the materiality ledger (§2.2)."
+      },
       "LevelValues": {
         "properties": {
           "column": {
@@ -9361,6 +9612,79 @@
         ],
         "title": "ModificationSpec",
         "description": "One declared modifier or second exposure (``turbotab.core.methods.interaction``).\n\n``exposure`` is the declared exposure the analysis is about (it holds while that is the\nexposure); ``low`` and ``high`` its contrast on its final scale (None: the interquartile\ncontrast, stated); ``levels`` a numeric modifier's stated values (None: its 25th and 75th\npercentiles). ``answers`` are the disjunctive cause criterion's answers for the second exposure\nof an interaction. ``post_hoc``: suggested by data inspection (declared after the estimates\nwere seen, or so marked); it counts in the family either way. ``withdrawn``: withdrawn after\nthe estimates were seen: no longer estimated, its heterogeneity test still counted in the\nfamily the record states (the analyst saw it)."
+      },
+      "Movement": {
+        "properties": {
+          "instrument": {
+            "type": "string",
+            "title": "Instrument"
+          },
+          "regime": {
+            "type": "string",
+            "enum": [
+              "predicted",
+              "realized"
+            ],
+            "title": "Regime"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "band": {
+            "type": "integer",
+            "title": "Band"
+          },
+          "calibrated": {
+            "type": "boolean",
+            "title": "Calibrated"
+          },
+          "changes_question": {
+            "type": "boolean",
+            "title": "Changes Question",
+            "default": false
+          },
+          "not_measurable": {
+            "type": "boolean",
+            "title": "Not Measurable",
+            "default": false
+          },
+          "crosses": {
+            "type": "boolean",
+            "title": "Crosses",
+            "default": false
+          },
+          "words": {
+            "type": "string",
+            "title": "Words"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "instrument",
+          "regime",
+          "value",
+          "band",
+          "calibrated",
+          "changes_question",
+          "not_measurable",
+          "crosses",
+          "words",
+          "label"
+        ],
+        "title": "Movement",
+        "description": "One measurement of ``M``: its instrument and regime, the value (None where it is not graded\nby a number), its band, whether the instrument is calibrated, and in plain words what was\nmeasured (``words``) with the technical name as a quiet label (``label``)."
       },
       "MultiplicitySpec": {
         "properties": {
@@ -19122,6 +19446,14 @@
             "type": "boolean",
             "title": "Passed",
             "default": false
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/TriageRow"
+            },
+            "type": "array",
+            "title": "Rows",
+            "default": []
           }
         },
         "type": "object",
@@ -19135,7 +19467,8 @@
           "answered",
           "confirmed_by",
           "changed",
-          "passed"
+          "passed",
+          "rows"
         ],
         "title": "Triage",
         "description": "The triage at the gate: its stage and crosswalk card, each noticing (blockers first), how\nmany block, whether it can be confirmed now (the gate not passed, no blocker, something to\ntriage), whether every noticing has a recorded disposition, and the record that holds them.\n``changed``: the noticings whose recorded disposition no longer stands, the recommendation or\nits reason having changed since. ``passed``: the gate has passed (the plan is fixed, or under\nPredict the held-out rows are open), so the triage is read, no longer confirmed."
@@ -19217,6 +19550,60 @@
               }
             ],
             "title": "Recorded"
+          },
+          "family": {
+            "type": "string",
+            "title": "Family",
+            "default": "finding"
+          },
+          "band": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Band"
+          },
+          "measure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measure"
+          },
+          "calibrated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibrated"
+          },
+          "limitation": {
+            "type": "boolean",
+            "title": "Limitation",
+            "default": false
+          },
+          "done": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Done"
           }
         },
         "type": "object",
@@ -19232,10 +19619,48 @@
           "label",
           "reason",
           "blocker",
-          "recorded"
+          "recorded",
+          "family",
+          "band",
+          "measure",
+          "calibrated",
+          "limitation",
+          "done"
         ],
         "title": "TriageItem",
         "description": "One open noticing at the gate, or one the last confirmation disposed of: where it is\ndecided (``line``, ``stage``, the ``question`` it routes to), the engine's recommended\ndisposition with its plain label and reason, whether it blocks (it must be resolved before the\ntriage is confirmed), and the disposition the last confirmation recorded while it still\nstands (the recommendation and reason it was recorded on are the triage's now)."
+      },
+      "TriageRow": {
+        "properties": {
+          "family": {
+            "type": "string",
+            "title": "Family"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "family",
+          "name",
+          "items",
+          "count"
+        ],
+        "title": "TriageRow",
+        "description": "One row of the triage sweep: a noticing on its own, or a family of them with a count."
       },
       "UpdatingSpec": {
         "properties": {

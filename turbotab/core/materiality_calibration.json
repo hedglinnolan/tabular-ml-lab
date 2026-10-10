@@ -1,0 +1,405 @@
+{
+  "version": 1,
+  "about": "SURFACING_POLICY §2.4 and §2.6: the materiality thresholds, per instrument, and the cases they are calibrated on. The cases so far come from the dietary proof's simplified pipeline (each case says what was run), not yet from the twelve captured reference journeys. Built by `python -m turbotab.core.tests.materiality_cases --write`; the registry tests rebuild it and compare.",
+  "tau_0": 0.1,
+  "tau_1": 0.5,
+  "tau_0_reason": "A realized movement below a tenth of the primary interval's half-width is below noise (SURFACING_POLICY §2.4, starting convention).",
+  "tau_1_reason": "A realized movement of half the half-width or more is acted on (SURFACING_POLICY §2.4, starting convention).",
+  "tau_confirm_band": 1,
+  "tau_confirm_reason": "A default is a Confirm when its best alternative reaches band 1 (could bias) of its instrument.",
+  "limitation_budget": 3,
+  "limitation_budget_reason": "At most three limitation sentences per journey (dietary inference, UNDERSTANDING_LAYER's four surfaced); beyond it a supplement line with its numbers.",
+  "min_cases": 5,
+  "min_cases_reason": "A proxy is calibrated, and so may say \"doesn't change your numbers here\", only on at least five cases and at least one case it put below noise that stayed below noise after the lock; one case, or cases that all moved the estimate, are no evidence that its band 0 is ever right (§2.5's false reassurance). Short of that it is floored at \"could bias\".",
+  "instruments": {
+    "rows_smd": {
+      "regime": "predicted",
+      "convention": {
+        "band_1": 0.05,
+        "band_2": 0.2,
+        "reason": "Rows changed × the leavers' largest SMD on the adjustment set (SURFACING_POLICY §2.4 starting values)."
+      },
+      "band_1": 0.003697,
+      "band_2": 0.2,
+      "calibrated": true,
+      "reason": "Rows changed × the leavers' largest SMD on the adjustment set (SURFACING_POLICY §2.4 starting values). Lowered to 0.003697 so that no case is predicted below noise and realized above it.",
+      "cases": 9,
+      "confusion": {
+        "rows": "predicted band 0, 1, 2",
+        "columns": "realized band 0, 1, 2",
+        "matrix": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            4,
+            4
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "false_reassurance": 0,
+        "cry_wolf": 0
+      }
+    },
+    "exposure_shift": {
+      "regime": "predicted",
+      "convention": {
+        "band_1": 0.1,
+        "band_2": 0.5,
+        "reason": "The exposure's W1 over its SD (SURFACING_POLICY §2.4 starting values)."
+      },
+      "band_1": 0.1,
+      "band_2": 0.5,
+      "calibrated": false,
+      "reason": "The exposure's W1 over its SD (SURFACING_POLICY §2.4 starting values).",
+      "cases": 0,
+      "confusion": {
+        "rows": "predicted band 0, 1, 2",
+        "columns": "realized band 0, 1, 2",
+        "matrix": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "false_reassurance": 0,
+        "cry_wolf": 0
+      }
+    },
+    "correlation_change": {
+      "regime": "predicted",
+      "convention": {
+        "band_1": 0.1,
+        "band_2": 0.3,
+        "reason": "|Δr| between the exposure and another predictor (SURFACING_POLICY §2.4 starting values)."
+      },
+      "band_1": 0.1,
+      "band_2": 0.3,
+      "calibrated": false,
+      "reason": "|Δr| between the exposure and another predictor (SURFACING_POLICY §2.4 starting values).",
+      "cases": 0,
+      "confusion": {
+        "rows": "predicted band 0, 1, 2",
+        "columns": "realized band 0, 1, 2",
+        "matrix": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "false_reassurance": 0,
+        "cry_wolf": 0
+      }
+    },
+    "attenuation": {
+      "regime": "predicted",
+      "convention": {
+        "band_1": 0.2,
+        "band_2": 0.5,
+        "reason": "1 − λ, regression dilution's attenuation (Hutcheon et al. 2010; SURFACING_POLICY §2.3)."
+      },
+      "band_1": 0.2,
+      "band_2": 0.5,
+      "calibrated": false,
+      "reason": "1 − λ, regression dilution's attenuation (Hutcheon et al. 2010; SURFACING_POLICY §2.3).",
+      "cases": 0,
+      "confusion": {
+        "rows": "predicted band 0, 1, 2",
+        "columns": "realized band 0, 1, 2",
+        "matrix": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "false_reassurance": 0,
+        "cry_wolf": 0
+      }
+    },
+    "design_imbalance": {
+      "regime": "predicted",
+      "convention": {
+        "band_1": 0.1,
+        "band_2": 0.3,
+        "reason": "|rank-biserial r| of a process column over the outcome, as design counts (SURFACING_POLICY §2.4 starting values)."
+      },
+      "band_1": 0.1,
+      "band_2": 0.3,
+      "calibrated": false,
+      "reason": "|rank-biserial r| of a process column over the outcome, as design counts (SURFACING_POLICY §2.4 starting values).",
+      "cases": 0,
+      "confusion": {
+        "rows": "predicted band 0, 1, 2",
+        "columns": "realized band 0, 1, 2",
+        "matrix": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "false_reassurance": 0,
+        "cry_wolf": 0
+      }
+    },
+    "excess_over_chance": {
+      "regime": "predicted",
+      "convention": {
+        "band_1": 0.05,
+        "band_2": 0.5,
+        "reason": "A detector's share beyond its chance share; band 2 when more than half beyond it (SURFACING_POLICY §2.5, S7)."
+      },
+      "band_1": 0.05,
+      "band_2": 0.5,
+      "calibrated": false,
+      "reason": "A detector's share beyond its chance share; band 2 when more than half beyond it (SURFACING_POLICY §2.5, S7).",
+      "cases": 0,
+      "confusion": {
+        "rows": "predicted band 0, 1, 2",
+        "columns": "realized band 0, 1, 2",
+        "matrix": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "false_reassurance": 0,
+        "cry_wolf": 0
+      }
+    },
+    "changes_question": {
+      "regime": "predicted",
+      "convention": {
+        "band_1": 0.0,
+        "band_2": 0.0,
+        "reason": "An alternative that changes what the estimate is: always act on it, never graded by a number."
+      },
+      "band_1": 0.0,
+      "band_2": 0.0,
+      "calibrated": false,
+      "reason": "An alternative that changes what the estimate is: always act on it, never graded by a number.",
+      "cases": 0,
+      "confusion": {
+        "rows": "predicted band 0, 1, 2",
+        "columns": "realized band 0, 1, 2",
+        "matrix": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "false_reassurance": 0,
+        "cry_wolf": 0
+      }
+    },
+    "sensitivity": {
+      "regime": "realized",
+      "band_1": 0.1,
+      "band_2": 0.5,
+      "calibrated": true
+    },
+    "calibration": {
+      "regime": "realized",
+      "band_1": 0.1,
+      "band_2": 0.5,
+      "calibrated": true
+    },
+    "secondary": {
+      "regime": "realized",
+      "band_1": 0.1,
+      "band_2": 0.5,
+      "calibrated": true
+    },
+    "benchmark": {
+      "regime": "realized",
+      "band_1": 0.1,
+      "band_2": 0.5,
+      "calibrated": true
+    },
+    "e_value": {
+      "regime": "realized",
+      "band_1": 0.1,
+      "band_2": 0.5,
+      "calibrated": true
+    },
+    "paired_folds": {
+      "regime": "realized",
+      "band_1": 0.1,
+      "band_2": 0.5,
+      "calibrated": true
+    }
+  },
+  "cases": [
+    {
+      "journey": "dietary-proof",
+      "pipeline": "The dietary-inference capture's answers up to Models on the NHANES fixture, with complete cases in place of its multiple imputation and every nutrient as a straight line in place of its splines: the proof's simplified pipeline, not the capture as recorded.",
+      "thread": "diet-implausible-reporters",
+      "alternative": "keeping every row (the Goldberg screen out)",
+      "instrument": "rows_smd",
+      "m_pre": 0.185271,
+      "instrument_post": "sensitivity",
+      "m_post": 0.12447,
+      "band_post": 1
+    },
+    {
+      "journey": "dietary-proof",
+      "pipeline": "The dietary-inference capture's answers up to Models on the NHANES fixture, with complete cases in place of its multiple imputation and every nutrient as a straight line in place of its splines: the proof's simplified pipeline, not the capture as recorded.",
+      "thread": "diet-implausible-reporters",
+      "alternative": "keeping every row (the 100–9,000 kcal screen out)",
+      "instrument": "rows_smd",
+      "m_pre": 0.001202,
+      "instrument_post": "sensitivity",
+      "m_post": 0.011212,
+      "band_post": 0
+    },
+    {
+      "journey": "dietary-proof",
+      "pipeline": "The dietary-inference capture's answers up to Models on the NHANES fixture, with complete cases in place of its multiple imputation and every nutrient as a straight line in place of its splines: the proof's simplified pipeline, not the capture as recorded.",
+      "thread": "diet-implausible-reporters",
+      "alternative": "keeping every row (the 200–7,000 kcal screen out)",
+      "instrument": "rows_smd",
+      "m_pre": 0.003697,
+      "instrument_post": "sensitivity",
+      "m_post": 0.202291,
+      "band_post": 1
+    },
+    {
+      "journey": "dietary-proof",
+      "pipeline": "The dietary-inference capture's answers up to Models on the NHANES fixture, with complete cases in place of its multiple imputation and every nutrient as a straight line in place of its splines: the proof's simplified pipeline, not the capture as recorded.",
+      "thread": "diet-implausible-reporters",
+      "alternative": "keeping every row (the 300–6,000 kcal screen out)",
+      "instrument": "rows_smd",
+      "m_pre": 0.008167,
+      "instrument_post": "sensitivity",
+      "m_post": 0.405983,
+      "band_post": 1
+    },
+    {
+      "journey": "dietary-proof",
+      "pipeline": "The dietary-inference capture's answers up to Models on the NHANES fixture, with complete cases in place of its multiple imputation and every nutrient as a straight line in place of its splines: the proof's simplified pipeline, not the capture as recorded.",
+      "thread": "diet-implausible-reporters",
+      "alternative": "keeping every row (the 400–5,000 kcal screen out)",
+      "instrument": "rows_smd",
+      "m_pre": 0.022925,
+      "instrument_post": "sensitivity",
+      "m_post": 0.63719,
+      "band_post": 2
+    },
+    {
+      "journey": "dietary-proof",
+      "pipeline": "The dietary-inference capture's answers up to Models on the NHANES fixture, with complete cases in place of its multiple imputation and every nutrient as a straight line in place of its splines: the proof's simplified pipeline, not the capture as recorded.",
+      "thread": "diet-implausible-reporters",
+      "alternative": "keeping every row (the 500–5,000 kcal screen out)",
+      "instrument": "rows_smd",
+      "m_pre": 0.018617,
+      "instrument_post": "sensitivity",
+      "m_post": 0.632682,
+      "band_post": 2
+    },
+    {
+      "journey": "dietary-proof",
+      "pipeline": "The dietary-inference capture's answers up to Models on the NHANES fixture, with complete cases in place of its multiple imputation and every nutrient as a straight line in place of its splines: the proof's simplified pipeline, not the capture as recorded.",
+      "thread": "diet-implausible-reporters",
+      "alternative": "keeping every row (the 800–4,200 kcal screen out)",
+      "instrument": "rows_smd",
+      "m_pre": 0.029915,
+      "instrument_post": "sensitivity",
+      "m_post": 0.569179,
+      "band_post": 2
+    },
+    {
+      "journey": "dietary-proof",
+      "pipeline": "The dietary-inference capture's answers up to Models on the NHANES fixture, with complete cases in place of its multiple imputation and every nutrient as a straight line in place of its splines: the proof's simplified pipeline, not the capture as recorded.",
+      "thread": "diet-implausible-reporters",
+      "alternative": "keeping every row (the 1,000–4,000 kcal screen out)",
+      "instrument": "rows_smd",
+      "m_pre": 0.012548,
+      "instrument_post": "sensitivity",
+      "m_post": 0.39953,
+      "band_post": 1
+    },
+    {
+      "journey": "dietary-proof",
+      "pipeline": "The dietary-inference capture's answers up to Models on the NHANES fixture, with complete cases in place of its multiple imputation and every nutrient as a straight line in place of its splines: the proof's simplified pipeline, not the capture as recorded.",
+      "thread": "diet-implausible-reporters",
+      "alternative": "keeping every row (the 600–3,500 kcal screen out)",
+      "instrument": "rows_smd",
+      "m_pre": 0.148638,
+      "instrument_post": "sensitivity",
+      "m_post": 0.545051,
+      "band_post": 2
+    }
+  ]
+}

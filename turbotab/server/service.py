@@ -5,6 +5,7 @@ the data layer (``DataStore``) or from a stage artifact.
 """
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import os
@@ -38,6 +39,7 @@ from turbotab.core.graph import (
 from turbotab.core.interview import InterviewStep, route
 from turbotab.core.jobs import PRELOAD, JobRunner, JobView
 from turbotab.core.quest import QuestLog, quest_log
+from turbotab.core.consequences import estimates_unseen as materiality_unseen
 from turbotab.core.sweep import ForTheRecord, Triage, for_the_record, triage
 from turbotab.core.stages import GRAPH_FACTORY
 from turbotab.core.workspace import ProjectMeta, Workspace
@@ -1005,9 +1007,60 @@ class ProjectService:
 
     def triage(self, pid: str) -> Triage:
         """The triage of the open noticings at the gate (P0.5; ``turbotab/core/sweep.py``): each
-        open finding with the engine's recommended disposition, blockers first."""
+        open finding with the engine's recommended disposition, blockers first, and each noticing
+        measured on the table (``materiality.noticings_for``) with the one its predicted movement
+        recommends (SURFACING_POLICY §2)."""
         q = self._quest(pid)
-        return triage(q.state, q.log, q.findings, q.records)
+        return triage(q.state, q.log, q.findings, q.records, noticed=self._noticed(pid, q.state))
+
+    def _noticed(self, pid: str, state: ProjectState) -> list[Any]:
+        """The noticings measured on the table the analysis reads, outcome-blind; none until the
+        table is read, or where the measuring fails (a triage never fails for want of one)."""
+        from turbotab.core import materiality
+
+        if "dietary" not in (state.lens or ()):
+            return []
+        try:
+            store = self.store(pid)
+            source = self.table_source(pid)
+            info = (self._artifact(pid, *source) if source is not None
+                    else self._shown(pid, "ingest"))
+            info = getattr(info, "data", info)
+            if not isinstance(info, dict):
+                return []
+            return materiality.noticings_for(state, store, info)
+        except Exception:  # noqa: BLE001 - nothing measured: the findings are triaged alone
+            return []
+
+    def materiality(self, pid: str) -> Any:
+        """The materiality ledger (SURFACING_POLICY §2.2): each noticing's predicted movement, the
+        triage's recommendation and recorded disposition, and once the plan is fixed (under
+        Predict, once Fit is pressed) its realized movement from the sensitivity, calibration and
+        "further adjusted" stages, with the verdict. Derived from the record each time."""
+        from turbotab.core import materiality
+
+        self.workspace.get(pid)
+        records = self.log(pid).records()
+        state = decisions.fold(records)
+        noticed = self._noticed(pid, state)
+        pressed = self._pressed(pid, state)
+        artifacts: dict[str, Any] = {}
+        if not materiality_unseen(state, pressed):
+            # The realized rows quote the refits' estimates: each artifact comes through the
+            # serving path (WP17's gate and the lock withhold what they withhold), never raw.
+            stages = self.engine.status(pid)
+            for stage in ("sensitivity", "calibration", "secondary"):
+                status = stages.get(stage)
+                if status is None or status.status != "fresh" or not status.key:
+                    continue
+                found = copy.deepcopy(self._artifact(pid, stage, status.key, public=True))
+                artifacts[stage] = self._serve(pid, stage, found, status.key)
+        book = materiality.ledger(state, noticed, artifacts, pressed=pressed)
+        # An estimate quoted is an estimate shown: the lock stands from now on (LOCK_SHOWN), as
+        # when the stage itself is served.
+        for stage in {r.exhibit for r in book.rows if r.realized is not None and r.exhibit}:
+            self._note_shown(pid, stage, artifacts.get(stage))
+        return book
 
     def record(self, pid: str) -> ForTheRecord:
         """Each reached stage's For the record lines (P0.5): the ingest's facts and warnings, the
@@ -1219,8 +1272,7 @@ class ProjectService:
         lock = self._unseen_lock(pid, records) if client else None
         if lock is not None:
             after = decisions.state_after(parsed, ctx)
-            if after is not None and plan_lock.digest(plan_lock.plan_of(after)) != \
-                    getattr(lock.decision, "digest", None):
+            if after is not None and plan_lock.plan_changed(lock.decision, after):
                 self._withdraw_lock(pid, lock, "the plan was changed before then.")
                 records = log.records()
             seen = False
