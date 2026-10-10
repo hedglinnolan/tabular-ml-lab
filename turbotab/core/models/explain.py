@@ -1304,7 +1304,7 @@ def _exposure_inputs(s: Setting, works: Sequence[_Work]) -> tuple[list[str], lis
     A = works[0].A
     notes: list[str] = []
     if s.purpose == "inference" and not s.exposures and not s.declared:
-        return [], ["Under inference a curve is drawn for the declared exposure, and none is "
+        return [], ["Under inference a curve is drawn for the declared study factor, and none is "
                     "declared."]
     asked = list(s.exposures) or (list(s.declared) if s.purpose == "inference" else [])
     if asked:
@@ -1421,7 +1421,7 @@ def explain(families: Sequence[FamilyFit], s: Setting, refit: Refit,
     notes: list[str] = []
     curves: list[InputCurves] = []
     if works:
-        say(0.92, "Drawing each exposure's curve per family")
+        say(0.92, "Drawing each study factor's curve per family")
         inputs, notes = _exposure_inputs(s, works)
         curves = _curves(s, works, inputs, _roles(s, works[0].anat.sources), units)
     inference = s.purpose == "inference"
@@ -1580,11 +1580,11 @@ FLOOR_SAYS = ("A family whose cross-validated score does not beat the no-predict
               "no curve, and says why.")
 UNITS_SAYS = ("Rows that repeat within a unit are resampled as whole units in the refits that "
               "measure stability.")
-SCALE_SAYS = ("Each curve is drawn on the exposure's final scale, as the model reads it after "
+SCALE_SAYS = ("Each curve is drawn on the final scale of what you study, as the model reads it after "
               "energy adjustment or normalization, the scale its form is declared on.")
 EFFECT_SAYS = ("An explanation describes a fitted model's predictions, not what changing an "
                "intake would do, so it is never reported as an effect.")
-LOCK_SAYS = ("Under inference the explanations wait until the exposure, its effect and the "
+LOCK_SAYS = ("Under inference the explanations wait until what you study, its effect and the "
              "adjustment set are answered, and their first display locks the analysis plan.")
 TERMS_SAYS = ("Under inference the covariates' attributions are labeled adjustment terms, not "
               "effect estimates.")
@@ -1622,12 +1622,12 @@ CONTRACT = register_contract(MethodContract(
             rung={"prediction": "rank_lower", "inference": "rank_lower"},
             order={"prediction": 1, "inference": 1}),
         ContractOption(
-            key="as_effect", label="Report the explanations as each exposure's effect",
+            key="as_effect", label="Report the explanations as each study factor's effect",
             customary=(f"Common enough to be a named pitfall ({MOLNAR_PITFALLS}: \"making "
                        f"unjustified causal interpretations\")."),
             sound={"prediction": "A prediction model's explanations describe its predictions; an "
-                                 "effect needs a declared exposure and effect under inference.",
-                   "inference": "The effect is the declared estimand's estimate; an explanation "
+                                 "effect needs a declared study factor and effect under inference.",
+                   "inference": "The effect is the estimate of the comparison you declared; an explanation "
                                 "of a fitted model is not an effect estimate."},
             rung={"prediction": "refused", "inference": "refused"},
             order={"prediction": 2, "inference": 2}),
@@ -1687,8 +1687,8 @@ def _explanations_are_never_effects(decision: Any, ctx: Any) -> None:
         raise _decisions.Refusal(
             "explanation_is_not_an_effect",
             "A prediction model's explanations describe its predictions, not what changing an "
-            "intake would do; an effect needs a declared exposure and effect under inference.",
-            exits=[keep, {"label": "Declare an inference analysis with an exposure and its effect",
+            "intake would do; an effect needs a declared study factor and effect under inference.",
+            exits=[keep, {"label": "Declare an inference analysis with a study factor and its effect",
                           "decision": {"kind": "set_purpose", "purpose": "inference"}}])
     raise _decisions.Refusal(
         "explanation_is_not_an_effect",
@@ -1714,7 +1714,7 @@ def _explained_columns_are_predictors(decision: Any, ctx: Any) -> None:
             "not_a_predictor",
             f"{named} {'is' if len(absent) == 1 else 'are'} not among the model's predictors, so "
             f"there is no curve to draw.",
-            exits=[{"label": "Draw the top exposures' curves",
+            exits=[{"label": "Draw the top study factors' curves",
                     "decision": _keep(decision, exposures=[])}])
 
 

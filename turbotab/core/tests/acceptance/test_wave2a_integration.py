@@ -329,7 +329,7 @@ def test_a_time_varying_exposure_is_the_g_methods_lane_not_the_causal_lane(tmp_p
     gate = causal.causal_gate(state, None, art)
     assert gate == ("not_applicable", "`dash` changes over time within units, so its effect is "
                                       "estimated by the time-varying lane's g-methods; the causal "
-                                      "lane estimates a point exposure's effect.")
+                                      "lane estimates the effect of a study factor measured once.")
     ctx = {"state": state, "task": "binary",
            "artifact": lambda name: art if name == "time_varying" else None}
     with pytest.raises(Refusal) as refused:

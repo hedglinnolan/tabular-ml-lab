@@ -826,9 +826,9 @@ def _levers_are_prediction(decision: Any, ctx: Any) -> None:
     raise Refusal(
         "levers_not_inference",
         "Under inference a predictor's form is declared before the estimates, never chosen by the "
-        "rows they are reported from, and an imbalance correction would change the estimand: "
-        "declare each exposure's form instead.",
-        exits=[{"label": "Declare the exposure's form (the functional-form question)",
+        "rows they are reported from, and an imbalance correction would change the comparison you want: "
+        "declare the form of each study factor instead.",
+        exits=[{"label": "Declare the form of what you study (the functional-form question)",
                 "decision": None},
                {"label": "Make the purpose prediction", "decision": SetPurpose(purpose="prediction")}])
 

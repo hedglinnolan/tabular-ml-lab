@@ -335,7 +335,7 @@ PREDICTION_ASYMMETRY = (
     "Under a prediction objective a censoring indicator plus a substituted "
     "value is often defensible for exactly that reason. Under an inference "
     "objective it is not: the same column, the same data, and the opposite "
-    "answer, because a substituted value biases the exposure–outcome estimate "
+    "answer, because a substituted value biases the estimated link between what you study and the outcome "
     "and the bias grows with the censored fraction."
 )
 
@@ -488,7 +488,7 @@ def censored_values_finding(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
                       "Below detection is real information available at "
                       "deployment, so a censoring indicator plus a substituted "
                       "value is often defensible for prediction and never for "
-                      "an unbiased exposure-outcome estimate."),
+                      "an unbiased estimate of the link between what you study and the outcome."),
                   evidence=Evidence(
                       status=CONVENTION_STATUS,
                       source=("research/CLINICAL_SURVEY_PACK.md#A1.3 Lab value "

@@ -291,7 +291,7 @@ def _energy_applicability(state: Any, bearing: Callable[[str], bool]) -> str | N
     if not any(r == "energy" for r in roles.values()):
         return "No column has the energy role, so there is no total energy to adjust against."
     if not any(r == "exposure" for r in roles.values()):
-        return "No column is an exposure, so there is nothing to adjust."
+        return "No column is marked as what you study, so there is nothing to adjust."
     # BLUEPRINT §14.1 (the readings ledger): "carries no energy" is a reading of the name, never
     # settled by it; an exposure no name reads as a nutrient (``Energykcal``'s NDNS ``Protein``,
     # a food group) may still carry energy, so the estimand question is asked rather than
@@ -310,8 +310,8 @@ def _substitution_applicability(state: Any, bearing: Callable[[str], bool]) -> s
     n = sum(1 for c, r in state.roles.items()
             if r == "exposure" and (bearing(c) or is_percent_of_energy(c)))
     if n < 2:
-        return (f"Only {n} exposure carries energy; a substitution swaps kcal between two."
-                if n == 1 else "No exposure carries energy; a substitution swaps kcal between two.")
+        return (f"Only {n} study factor carries energy; a substitution swaps kcal between two."
+                if n == 1 else "No study factor carries energy; a substitution swaps kcal between two.")
     return None
 
 

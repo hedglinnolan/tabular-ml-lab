@@ -31,6 +31,8 @@ from typing import Any, Literal, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict
 
+from turbotab.core import plain
+
 Kind = Literal["text", "int", "float", "p"]
 MINUS = "−"
 NUMERIC = ("int", "float", "p")
@@ -218,14 +220,15 @@ def table2(effects: Mapping[str, Any], target: str | None) -> list[Table]:
             for r in d.get("change") or []:
                 seq_rows.append(_coef_row(
                     f"{fam}/diagnostic/{d.get('check')}/{r.get('feature')}",
-                    {"family": label, "model": d.get("change_label") or d.get("check"),
+                    {"family": label,
+                     "model": plain.technical(d.get("change_label")) or d.get("check"),
                      "adjusted_for": None, "n": None, "covariance": None,
                      "note": d.get("response")}, r))
         for a in family.get("appendix") or []:
             for t in a.get("terms") or []:
                 app_rows.append({**_coef_row(f"{fam}/{a.get('key')}/{t.get('feature')}",
                                              {"family": label, "model": a.get("label")}, t),
-                                 "why": t.get("why")})
+                                 "why": plain.technical(t.get("why"))})
         marginal = family.get("marginal") or {}
         for c in marginal.get("contrasts") or []:
             marg_rows.append({"key": f"{fam}/marginal/{c.get('setting')}", "family": label,
@@ -242,7 +245,7 @@ def table2(effects: Mapping[str, Any], target: str | None) -> list[Table]:
                 "e_value": ev.get("point"), "e_value_limit": ev.get("limit"), "rr": ev.get("rr"),
                 "rv": rv.get("rv"), "rv_alpha": rv.get("rv_alpha"),
                 "partial_r2": rv.get("partial_r2"),
-                "reading": s.get("reading") or s.get("not_computed")})
+                "reading": plain.technical(s.get("reading") or s.get("not_computed"))})
     exposure = effects.get("exposure")
     measure = effects.get("measure_label") or effects.get("measure") or "the declared measure"
     rows_said = effects.get("rows") or ""

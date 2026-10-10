@@ -511,7 +511,7 @@ def statement(frame: pd.DataFrame, target: str, task_type: str,
         "not_a_verdict": (
             "This is a statement about the instrument, not about your study. "
             "The app does not know your expected effect size, which predictor "
-            "is your exposure of interest, or what difference would matter — "
+            "is the factor you study, or what difference would matter — "
             "so it cannot say whether this design is adequate for your "
             "question, and it does not try. What it can do is arithmetic over "
             "what it holds, and leave the judgment where it belongs."),

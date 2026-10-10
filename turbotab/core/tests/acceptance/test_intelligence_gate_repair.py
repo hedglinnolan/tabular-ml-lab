@@ -466,7 +466,7 @@ def test_wp13_1b_a_unit_is_read_as_a_whole_expression(tmp_path):
                         ("alcohol_g_week", "per week, month or year")):
         p = roles[name]
         assert p["proposed"] == "exposure" and p["confidence"] == "medium", p
-        assert p["reason"] == f"A nutrient intake {words}: an exposure, not a day's amount.", p
+        assert p["reason"] == f"A nutrient intake {words}: what you study, not a day's amount.", p
     out = _proposals(path, lens=["dietary"], target="grip_kg")
     assert out["energy"]["nutrients"] == ["carb_g"]
     left = {e["column"]: e["reason"] for e in out["energy"]["not_adjusted"]}

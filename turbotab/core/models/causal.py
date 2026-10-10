@@ -536,7 +536,7 @@ def _check(y: np.ndarray, d: np.ndarray, X: np.ndarray) -> tuple[np.ndarray, np.
     if X.shape[1] == 0:
         X = np.zeros((len(y), 1))  # no covariate: every nuisance learns a constant
     if not (len(y) == len(d) == len(X)):
-        raise ValueError("The outcome, the exposure and the covariates need one row each.")
+        raise ValueError("The outcome, what you study and the covariates need one row each.")
     if not (np.all(np.isfinite(y)) and np.all(np.isfinite(d)) and np.all(np.isfinite(X))):
         raise ValueError("The causal lane needs complete rows: a value is missing.")
     return y, d, X
@@ -631,7 +631,7 @@ def dml_irm(y: Any, d: Any, X: Any, *, learner: str | Factory = "linear",
     ``extra["ratio_refused"]`` says why there is none (:func:`ratio_refusals`)."""
     y, d, X = _check(y, d, X)
     if not is_binary(d):
-        raise ValueError("The interactive model needs a yes/no exposure coded 0 and 1.")
+        raise ValueError("The interactive model needs a yes/no study factor coded 0 and 1.")
     n = len(y)
     w = _weights(design, n)
     weight = None if design is None else design.weight
@@ -823,7 +823,7 @@ def tmle(y: Any, a: Any, W: Any, *, learner: str | Factory = "linear",
     the influence curve's weighted total over the design."""
     y, a, W = _check(y, a, W)
     if not is_binary(a):
-        raise ValueError("TMLE here needs a yes/no exposure coded 0 and 1.")
+        raise ValueError("TMLE here needs a yes/no study factor coded 0 and 1.")
     if family == "binomial" and not is_binary(y):
         raise ValueError("A yes/no outcome must be coded 0 and 1.")
     n = len(y)

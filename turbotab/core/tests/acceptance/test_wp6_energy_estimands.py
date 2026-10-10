@@ -633,7 +633,7 @@ def test_5_a_two_nutrient_swap_lists_the_omitted_sources_and_inference_blocks_it
         # The readings ledger (BLUEPRINT §14.1): each source the names read is added on its own,
         # one reading per answer, never several in one decision.
         for column in ("fat_g", "alcohol_g"):
-            added = parse_decision(exits[f"Add `{column}` to the model as an exposure"])
+            added = parse_decision(exits[f"Add `{column}` to the model as a study factor"])
             assert isinstance(added, SetRoles)
             assert added.roles[column] == "exposure"
             assert {c: r for c, r in added.roles.items() if c != column} == roles

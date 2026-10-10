@@ -449,7 +449,7 @@ def design_stage(ctx: StageContext) -> Bundle:
         predictors_or_ask(state, summaries, drop=left_out(state), store=store)
     predictors = model_predictors(state)
     if not predictors:
-        raise ValueError("No column has the role exposure, covariate or energy, so there is "
+        raise ValueError("No column is marked as what you study, a covariate or energy, so there is "
                          "nothing to model the outcome with.")
     if task == "time_to_event":
         from turbotab.core.models.survival import follow_up_columns
@@ -2328,7 +2328,7 @@ def _tests_only(family: Any, final: Any, X: Any, y: Any, task: str, state: Any, 
     from turbotab.core.models.inference import _on_rows
     from turbotab.core.models.linear import as_clusters
 
-    concerns = [f"{family.label} tests each exposure and makes no predictions, so it has no "
+    concerns = [f"{family.label} tests each study factor and makes no predictions, so it has no "
                 f"cross-validated or held-out score."]
     coefficients = interval_info = None
     try:

@@ -219,8 +219,8 @@ def test_the_gate_names_each_thing_missing_with_a_way_forward(tmp_path):
     assert found[0].message == ("The missing-values question is not answered yet; the methods "
                                 "would leave it out.")  # the substitution curve is optional
     assert found[3].message == "The fit failed, so its result cannot be reported: singular."
-    assert found[4].message == ("Table 2 (the declared models) waits for the exposure and effect "
-                                "question before it can run.")
+    assert found[4].message == ("Table 2 (the declared models) waits for the question on what you "
+                                "study and its effect before it can run.")
     with pytest.raises(d.Refusal) as caught:
         gate.check(source)
     assert caught.value.code == "unanswered_questions"

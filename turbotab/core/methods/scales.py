@@ -203,7 +203,7 @@ class ScaleScorer(TransformerMixin, BaseEstimator):
             if missing:
                 raise ValueError(f"`{s['name']}` is scored from {', '.join(missing)}, which "
                                  f"{'is' if len(missing) == 1 else 'are'} not among the "
-                                 f"predictors; give each item the exposure or covariate role.")
+                                 f"predictors; give each item the role of what you study or of a covariate.")
         self.feature_names_in_ = np.asarray(names, dtype=object)
         self.n_features_in_ = X.shape[1]
         self.outputs_ = self._outputs(names)

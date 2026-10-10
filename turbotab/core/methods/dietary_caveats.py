@@ -336,7 +336,7 @@ def measurement_error_line(exposures: Sequence[str], energy: Iterable[str] = (),
             f"{plural(n, 'intake')} measured with error, {how}, and this table does not correct for "
             f"it")
     if n + len(energy) == 1:
-        return (f"{head}: as the model's one error-prone exposure, its coefficient is attenuated "
+        return (f"{head}: as the model's one error-prone study factor, its coefficient is attenuated "
                 f"toward zero under classical error (Keogh et al. 2020).")
     with_energy = f" (here also {listing(energy, limit=2)})" if energy else ""
     return (f"{head}: with several error-prone intakes in one model{with_energy}, a coefficient can "

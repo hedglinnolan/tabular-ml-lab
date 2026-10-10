@@ -582,8 +582,8 @@ def _use_lever(state: Any) -> Lever:
 
 
 def _measure_lever(state: Any) -> Lever:
-    return _lever("Which effect measure does the estimand declare?", [
-        LeverOption(key="measure", label="The effect measure (the estimand question)",
+    return _lever("Which effect measure does the declared comparison use?", [
+        LeverOption(key="measure", label="The effect measure (asked with what you study and its effect)",
                     customary="Odds ratios are the field's habit for a yes/no outcome",
                     sound="For a common outcome a marginal risk difference or ratio ranks first "
                           "(ruling 9); declared before the estimates, the view disclosed",

@@ -244,7 +244,7 @@ CONSUMERS: dict[str, tuple[str, Callable[[AskContext], list[Any] | Needed]]] = {
     "aggregation": ("combining each unit's rows", _combining),
     "survey": ("the survey design", _survey),
     "exclusions": ("the screens", _screens),
-    "estimand": ("the exposure and its effect", _plan),
+    "estimand": ("what you study and its effect", _plan),
     "adjustment": ("the adjustment set", _plan),
     "energy_adjustment": ("the energy adjustment", _energy),
     "models": ("the fit", _fit),

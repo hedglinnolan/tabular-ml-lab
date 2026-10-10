@@ -108,9 +108,9 @@ EFFECTS: dict[str, Effect] = {
     "total": Effect("total", "Total effect", True),
     "direct": Effect(
         "direct", "Only the direct part", False, "direct_effect_v2x",
-        f"{NOT_YET_LEAD}: only the direct part of an effect is a mediation estimand, which needs "
-        f"the common causes of each mediator and the outcome and the exposure–mediator "
-        f"interaction, and mediation analysis goes to v2.x (V2_DEFINITION_OF_DONE §5). The whole "
+        f"{NOT_YET_LEAD}: only the direct part of an effect is a mediation comparison, which needs "
+        f"the common causes of each mediator and the outcome and the interaction of what you study "
+        f"with a mediator, and mediation analysis goes to v2.x (V2_DEFINITION_OF_DONE §5). The whole "
         f"effect keeps every answer, and mediators stay out of its adjustment set."),
     "complier": Effect(
         "complier", "Among those who comply", False, "complier_effect_v2x",

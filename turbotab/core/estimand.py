@@ -322,6 +322,10 @@ MEASURE_WORDS = {
     "exposure_mean_difference": ("difference in each exposure's mean between the event and the "
                                  "other level (the limma design)"),
 }
+# The same measures as a card words them (the methods sentence and the caption keep MEASURE_WORDS).
+MEASURE_LABELS = {**MEASURE_WORDS,
+                  "exposure_mean_difference": ("difference in each study factor's mean between the "
+                                               "event and the other level (the limma design)")}
 NON_COLLAPSIBLE = {"odds_ratio", "hazard_ratio", "cumulative_odds_ratio", "relative_risk_ratio"}
 # Ruling 9: the effect measure is part of the estimand, "difference or ratio; conditional or
 # marginal". A linear model's difference is both (collapsible: the conditional and the marginal
@@ -406,7 +410,7 @@ def _measure_reason(measure: str, prevalence: float | None) -> str:
         return ("conditional and non-collapsible: adding a covariate that predicts the outcome "
                 "changes it even without confounding")
     if measure == "exposure_mean_difference":
-        return "the feature-wise family's: each exposure modeled on the outcome and the covariates"
+        return "the feature-wise family's: each study factor modeled on the outcome and the covariates"
     return "collapsible: the conditional and the marginal difference agree in a linear model"
 
 
@@ -420,25 +424,27 @@ def measures_offered(task: str | None, family: bool = False,
     fitted = fitted_measures(task, family)
     if marginal_first(task, prevalence) and not family:
         fitted = [m for m in fitted if m in MARGINAL] + [m for m in fitted if m not in MARGINAL]
-    out = [{"measure": m, "label": MEASURE_WORDS[m], "fitted": True,
+    out = [{"measure": m, "label": MEASURE_LABELS[m], "fitted": True,
             "reason": _measure_reason(m, prevalence), **measure_facts(m), "rank": i + 1}
            for i, m in enumerate(fitted)]
     if not family and task is not None and task not in MARGINAL_TASKS:
-        out += [{"measure": m, "label": MEASURE_WORDS[m], "fitted": False, "reason": why,
+        out += [{"measure": m, "label": MEASURE_LABELS[m], "fitted": False, "reason": why,
                  **measure_facts(m), "rank": None} for m, why in NOT_FITTED.items()]
     return out
 
 
-def precision_note(measure: str | None, columns: Sequence[str]) -> str | None:
+def precision_note(measure: str | None, columns: Sequence[str], *, methods: bool = False) -> str | None:
     """MODELING_SEQUENCE §2 (the effect measure): "adding a precision covariate under an OR or HR
     *changes* the conditional estimand, and the app says so". None for a collapsible measure or
-    when no column is a cause of the outcome only."""
+    when no column is a cause of the outcome only. The card says "the comparison you want"; the
+    methods sentence (``methods=True``) keeps the term."""
     if measure not in NON_COLLAPSIBLE or not columns:
         return None
     one = len(columns) == 1
+    what = "estimand" if methods else "comparison you want"
     return (f"Under a {MEASURE_WORDS[measure]}, adjusting for {_listing(list(columns))}, "
             f"{'a cause' if one else 'causes'} of the outcome only, changes the conditional "
-            f"estimand, not only its precision: the ratio is non-collapsible ({DANIEL}).")
+            f"{what}, not only its precision: the ratio is non-collapsible ({DANIEL}).")
 
 
 DANIEL = "Daniel, Zhang & Farewell 2021, Biom J 63:528"
@@ -480,7 +486,7 @@ def _purpose_gate(state: Any) -> Gate:
     purpose = _get(state, "purpose")
     if purpose == "prediction":
         return ("not_applicable", "Under prediction no coefficient is read as an effect, so no "
-                                  "exposure, effect or adjustment set is declared.")
+                                  "study factor, effect or adjustment set is declared.")
     return None
 
 
@@ -489,8 +495,8 @@ def estimand_gate(state: Any) -> Gate:
     if found is not None or _get(state, "purpose") is None or _get(state, "roles") is None:
         return found
     if not exposure_candidates(state):
-        return ("not_applicable", "No column is in the model as an exposure or covariate, so there "
-                                  "is no exposure to declare.")
+        return ("not_applicable", "No column is in the model as a study factor or covariate, so there "
+                                  "is no study factor to declare.")
     return None
 
 
@@ -548,17 +554,18 @@ def family_contrast_applies(state: Any) -> bool:
 
 ROLE_WORDS = {
     "mediator_confounder": "common cause of a mediator and the outcome",
-    "confounder": "confounder",
-    "exposure_cause": "cause of the exposure",
+    "confounder": "common cause of what you study and the outcome",
+    "exposure_cause": "cause of what you study",
     "precision": "cause of the outcome only (precision)",
     "proxy": "proxy for an unmeasured common cause",
     "mediator": "mediator",
-    "collider": "consequence of the exposure (a possible collider)",
+    "collider": "consequence of what you study (a possible collider)",
     "instrument": "instrument",
     "timing_unknown": "timing unknown",
     "not_a_cause": "cause of neither",
 }
-# The same, in a sentence: one covariate, then several.
+# The same, in a sentence: one covariate, then several. These word the methods sentence
+# (``voice``), which keeps the technical register; the card says ``ROLE_WORDS``.
 ROLE_SINGULAR = {
     "mediator_confounder": "a common cause of a mediator and the outcome",
     "confounder": "a confounder", "exposure_cause": "a cause of the exposure",
@@ -624,34 +631,34 @@ def derive(answers: Any, effect: str = "total") -> Derived:
     confounds = _get(a, "confounds_mediator") in ("yes", "unknown") if direct else False
     if _get(a, "instrument"):
         return Derived("instrument", False, further,
-                       "a known instrument: it moves the outcome only through the exposure, and "
+                       "a known instrument: it moves the outcome only through what you study, and "
                        "adjusting for it amplifies any confounding left")
     if after == "yes":
         if _get(a, "causes_outcome") == "yes":
             if direct:
                 return Derived("mediator", True, False,
-                               "on the path from the exposure to the outcome; a direct effect "
+                               "on the path from what you study to the outcome; a direct effect "
                                "holds it fixed")
             return Derived("mediator", kept, further and not kept,
-                           "on the path from the exposure to the outcome: adjusting for it removes "
+                           "on the path from what you study to the outcome: adjusting for it removes "
                            "part of the total effect")
         if confounds:
             # Changed by the exposure and a common cause of a mediator and the outcome: a regression
             # can hold it fixed only as one of the mediators (the controlled direct effect fixing
             # both), never adjust it as a confounder.
             return Derived("mediator", True, False,
-                           "changed by the exposure and a common cause of a mediator and the "
+                           "changed by what you study and a common cause of a mediator and the "
                            "outcome: a direct effect holds it fixed with the mediators")
         return Derived("collider", kept, further and not kept,
-                       "changed by the exposure without causing the outcome: adjusting for it can "
+                       "changed by what you study without causing the outcome: adjusting for it can "
                        "open a path that is not causal")
     if after == "unknown":
         if direct and _get(a, "causes_outcome") != "no":
             return Derived("timing_unknown", True, False,
-                           "the exposure may have changed it: a mediator a direct effect holds "
-                           "fixed, or a confounder; either way it is adjusted")
+                           "what you study may have changed it: a mediator a direct effect holds "
+                           "fixed, or something else that could explain the link; either way it is adjusted")
         return Derived("timing_unknown", kept, not kept,
-                       "the exposure may have changed it, so the estimate is declared without it "
+                       "what you study may have changed it, so the estimate is declared without it "
                        "and, beside, with it")
     if _get(a, "proxy"):
         return Derived("proxy", True, False, "a proxy for an unmeasured cause of both")
@@ -662,17 +669,17 @@ def derive(answers: Any, effect: str = "total") -> Derived:
                            "a possible common cause of a mediator and the outcome: a direct effect "
                            "adjusts for it")
         return Derived("not_a_cause", False, further,
-                       "a cause of neither the exposure nor the outcome: the criterion leaves it out")
+                       "a cause of neither what you study nor the outcome: the criterion leaves it out")
     if co == "no":
         return Derived("exposure_cause", True, False,
-                       "a cause of the exposure: the criterion adjusts for it")
+                       "a cause of what you study: the criterion adjusts for it")
     if ce == "no":
         return Derived("precision", True, False,
                        "a cause of the outcome only: adjusting for it sharpens the estimate")
     possible = "unknown" in (ce, co)
     return Derived("confounder", True, False,
-                   ("a possible cause of the exposure and of the outcome: the criterion adjusts for "
-                    "it" if possible else "a cause of the exposure and of the outcome"))
+                   ("a possible cause of what you study and of the outcome: the criterion adjusts for "
+                    "it" if possible else "a cause of what you study and of the outcome"))
 
 
 def _covariates_among(state: Any, roles: Mapping[str, str]) -> list[str]:
@@ -785,7 +792,7 @@ def adjustment_gate(state: Any) -> Gate:
     if spec is None:
         return None
     if not asked_covariates(state):
-        besides = ("the exposures" if _get(spec, "family")
+        besides = ("the study factors" if _get(spec, "family")
                    else _tick(_get(spec, "exposure")))
         return ("not_applicable", f"No column besides {besides} is in the model, so there is no "
                                   f"adjustment set to answer.")
@@ -807,13 +814,13 @@ from turbotab.core.covariate_guesses import CLASS_ORDER, GUESSES  # noqa: E402
 
 # What a block's guess says, by the role its answers derive (a total effect's wording).
 GUESS_WORDS = {
-    "confounder": "a confounder: adjusted for in the primary",
-    "exposure_cause": "a cause of the exposure: adjusted for in the primary",
+    "confounder": "something else that could explain the link: adjusted for in the primary",
+    "exposure_cause": "a cause of what you study: adjusted for in the primary",
     "precision": "a cause of the outcome only: adjusted for in the primary",
-    "timing_unknown": "possible mediator, or measured after the exposure: the estimate is declared "
+    "timing_unknown": "possible mediator, or measured after what you study: the estimate is declared "
                       "without it and, beside, with it",
     "mediator": "a mediator: left out of a total effect",
-    "collider": "another measure of the outcome's own kind, which the exposure could have changed: "
+    "collider": "another measure of the outcome's own kind, which the study factor could have changed: "
                 "left out",
     "not_a_cause": "a cause of neither: left out",
     "instrument": "an instrument: left out",
@@ -943,15 +950,15 @@ def adjustment_card(state: Any) -> dict[str, Any] | None:
 # mediation methods"), each asked only where its answer changes the model (``direct_questions``).
 DIRECT_QUESTIONS = {
     "confounds_mediator": "Is it a common cause of a mediator and the outcome?",
-    "interacts": "Could the exposure's effect differ with its level?",
+    "interacts": "Could the effect of what you study differ with its level?",
 }
 
 # The five questions, as the card asks them (each one line).
 QUESTIONS = {
-    "causes_exposure": "Is it a cause of the exposure?",
+    "causes_exposure": "Is it a cause of what you study?",
     "causes_outcome": "Is it a cause of the outcome?",
-    "after_exposure": "Could the exposure have changed it, or was it measured after?",
-    "instrument": "Does it affect the outcome only through the exposure?",
+    "after_exposure": "Could what you study have changed it, or was it measured after?",
+    "instrument": "Does it affect the outcome only through what you study?",
     "proxy": "Does it stand in for an unmeasured cause of both?",
 }
 
@@ -1082,14 +1089,14 @@ def estimand_card(state: Any, task: str | None, prevalence: float | None = None)
         "family": ({"n": len(family), "energy_contrast": family_contrast_applies(state),
                     "measures": measures_offered(task, family=True),
                     "multiplicity": multiplicity_question(state, len(family)),
-                    "consequence": (f"Each of the {len(family):,} exposures is reported in turn, "
-                                    f"adjusted for the covariates but not for the other exposures, "
+                    "consequence": (f"Each of the {len(family):,} study factors is reported in turn, "
+                                    f"adjusted for the covariates but not for the other study factors, "
                                     f"with its multiplicity method; every member is shown (the "
                                     f"feature-wise family).")}
                    if len(family) >= 2 and fitted_measures(task, family=True) else None),
         "effects": [
             {"effect": "total", "label": "Total effect",
-             "consequence": "Everything the exposure changes downstream counts; mediators stay out."},
+             "consequence": "Whatever changes downstream from what you study counts; mediators stay out."},
             # V2X_SEAMS seam guard 6: offered as "Not available yet", with its reason and the
             # whole effect as its exit (``designs.EFFECTS``).
             {"effect": "direct", "label": EFFECTS["direct"].label, "available": False,
@@ -1288,6 +1295,10 @@ ACTION_WORDS = {
     "without_influential": "the primary model refit without the influential rows, beside it",
     "keep_labeled": "the estimate kept, labeled with the failed check",
 }
+# The same responses as a card words them: the label of the exit that takes one.
+ACTION_LABELS = {**ACTION_WORDS,
+                 "period_hazard_ratios": "the hazard ratio of what you study before and after the "
+                                         "median event time, beside the average over follow-up"}
 
 
 def current_responses(state: Any) -> dict[str, str]:
@@ -1358,15 +1369,15 @@ def served_gate(state: Any, steps: Sequence[Any]) -> dict[str, Any] | None:
                          "yes/no model and a time-to-event model",
             "clusters": "whether the participants are grouped decides the model's intercepts and "
                         "how its intervals are clustered",
-            "estimand": "the exposure and its effect decide which estimate is reported and what it "
+            "estimand": "what you study and its effect decide which estimate is reported and what it "
                         "means",
             "adjustment": "each covariate's answers decide whether it is adjusted for, left out or "
                           "set beside the primary",
-            "time_varying": "an exposure that changes over time needs its estimation lane, and "
+            "time_varying": "a study factor that changes over time needs its estimation lane, and "
                             "inverse-probability weights their truncation (the g-formula its "
                             "simulation's size), declared after the diagnostics are read, before "
                             "any estimate",
-            "form": "the form of the exposure and of each continuous confounder is declared on "
+            "form": "the form of what you study and of each continuous covariate is declared on "
                     "its final scale before any estimate",
         }[str(key)]
         return {"question": key,
@@ -1740,7 +1751,7 @@ def _no_grouping_is_recorded(decision: Any, ctx: Any) -> None:
     message = (f"{shown} {'reads' if len(candidates) == 1 else 'read'} as a group of participants. "
                f"People in one site or household are more alike than people across them, so "
                f"intervals that treat them as independent are too narrow, and between-group "
-               f"differences can confound the exposure.")
+               f"differences can confound what you study.")
     exits: list[dict[str, Any]] = [{"label": f"Adjust for {_tick(c)} and cluster by it",
                                     "decision": SetClusters(column=c, adjust="fixed_effects")}
                                    for c in candidates[:2]]
@@ -1788,7 +1799,7 @@ def _deferred_effect_is_refused(decision: Any, ctx: Any) -> None:
 
 def _estimand_is_for_inference(decision: Any, ctx: Any) -> None:
     if _get(_state(ctx), "purpose") == "prediction":
-        raise _not_inference("which exposure and which effect")
+        raise _not_inference("which study factor and which effect")
 
 
 def _estimand_names_a_predictor(decision: Any, ctx: Any) -> None:
@@ -1804,10 +1815,10 @@ def _estimand_names_a_predictor(decision: Any, ctx: Any) -> None:
             offered = exposure_candidates(state)
             raise _refusal(
                 "no_family",
-                f"An exposure family reports each of two or more exposures in turn; "
+                f"Studying a family of factors reports each of two or more in turn; "
                 f"{'only ' + _tick(family[0]) + ' is' if family else 'no column is'} in the model "
-                f"as an exposure.",
-                [{"label": f"The exposure is {_tick(c)}",
+                f"as a study factor.",
+                [{"label": f"What you study is {_tick(c)}",
                   "decision": decision.model_copy(update={"family": False, "exposure": c, "contrast": (
                       decision.contrast or "substitution") if energy_contrast_applies(state, c)
                       else None})} for c in offered[:4]])
@@ -1822,7 +1833,7 @@ def _estimand_names_a_predictor(decision: Any, ctx: Any) -> None:
         raise _refusal(
             "role_unconfirmed",
             f"{_tick(exposure)}'s role was proposed below high confidence and not confirmed on its "
-            f"own; confirm it before it is the exposure.",
+            f"own; confirm it before it is what you study.",
             confirm_exits(state, waiting))
     if exposure not in predictor_roles(state):
         offered = exposure_candidates(state)
@@ -1830,8 +1841,8 @@ def _estimand_names_a_predictor(decision: Any, ctx: Any) -> None:
             "not_in_model",
             f"{_tick(exposure)} is not in the model (its role is "
             f"{(_get(state, 'roles') or {}).get(exposure, 'none')}, or the missing-values answer "
-            f"left it out); the exposure is one of the model's columns.",
-            [{"label": f"The exposure is {_tick(c)}",
+            f"left it out); what you study is one of the model's columns.",
+            [{"label": f"What you study is {_tick(c)}",
               "decision": decision.model_copy(update={"exposure": c, "contrast": (
                   decision.contrast or "substitution") if energy_contrast_applies(state, c)
                   else None})} for c in offered[:4]])
@@ -1847,24 +1858,24 @@ def _estimand_measure_is_fitted(decision: Any, ctx: Any) -> None:
     if decision.family and task and fitted is None:
         raise _refusal(
             "family_not_fitted",
-            f"An exposure family is reported by the feature-wise family, which fits a numeric or "
-            f"yes/no outcome, not a {str(task).replace('_', ' ')} one; name one exposure.",
-            [{"label": "Name one exposure", "decision": None}])
+            f"Several study factors are reported by the feature-wise family, which fits a numeric or "
+            f"yes/no outcome, not a {str(task).replace('_', ' ')} one; name one study factor.",
+            [{"label": "Name one study factor", "decision": None}])
     if task and decision.measure in fitted_measures(task, decision.family):
         return
     if decision.measure in NOT_FITTED and not (task in MARGINAL_TASKS and not decision.family):
-        exits = ([{"label": f"Report the {MEASURE_WORDS[fitted]}",
+        exits = ([{"label": f"Report the {MEASURE_LABELS[fitted]}",
                    "decision": decision.model_copy(update={"measure": fitted})}] if fitted else [])
         raise _refusal("measure_not_fitted",
-                       f"The {MEASURE_WORDS[decision.measure]} is not fitted here: "
-                       f"{NOT_FITTED[decision.measure]}. The {MEASURE_WORDS.get(fitted, 'model')} "
+                       f"The {MEASURE_LABELS[decision.measure]} is not fitted here: "
+                       f"{NOT_FITTED[decision.measure]}. The {MEASURE_LABELS.get(fitted, 'model')} "
                        f"is what the model estimates.", exits)
     if fitted is not None and decision.measure != fitted:
         raise _refusal(
             "measure_mismatch",
-            f"A {str(task).replace('_', ' ')} outcome's model estimates a {MEASURE_WORDS[fitted]}, "
-            f"not a {MEASURE_WORDS.get(decision.measure, decision.measure)}.",
-            [{"label": f"Report the {MEASURE_WORDS[fitted]}",
+            f"A {str(task).replace('_', ' ')} outcome's model estimates a {MEASURE_LABELS[fitted]}, "
+            f"not a {MEASURE_LABELS.get(decision.measure, decision.measure)}.",
+            [{"label": f"Report the {MEASURE_LABELS[fitted]}",
               "decision": decision.model_copy(update={"measure": fitted})}])
 
 
@@ -1892,7 +1903,7 @@ def _omics_family_without_fdr_is_recorded(decision: Any, ctx: Any) -> None:
            f"not {n:,}")
     raise _refusal(
         "family_without_fdr",
-        f"{'An omics' if omics_family(state) else 'A'} family of {n:,} exposures reported by "
+        f"{'An omics' if omics_family(state) else 'A'} family of {n:,} study factors reported by "
         f"unadjusted p-values gives about {0.05 * n:,.0f} false positives at p < 0.05 by chance "
         f"alone; {why}.",
         [{"label": "Benjamini–Hochberg q-values across the family",
@@ -1907,20 +1918,20 @@ def _estimand_contrast_fits_the_exposure(decision: Any, ctx: Any) -> None:
         return
     applies = (family_contrast_applies(state) if decision.family
                else energy_contrast_applies(state, decision.exposure))
-    named = "An exposure of the family" if decision.family else _tick(decision.exposure)
+    named = "A study factor of the family" if decision.family else _tick(decision.exposure)
     if applies and decision.contrast is None:
         raise _refusal(
             "which_contrast",
             f"{named} carries energy and total energy is in the model: say "
             f"whether its effect is a substitution (more of it in place of other calories, total "
             f"energy fixed) or an addition (its calories added on top). The two are different "
-            f"estimands (Tomova et al. 2022).",
+            f"comparisons (Tomova et al. 2022).",
             [{"label": "Substitution", "decision": decision.model_copy(update={"contrast": "substitution"})},
              {"label": "Addition", "decision": decision.model_copy(update={"contrast": "addition"})}])
     if not applies and decision.contrast is not None:
         raise _refusal(
             "no_energy_contrast",
-            f"{'No exposure of the family' if decision.family else _tick(decision.exposure)} "
+            f"{'No study factor of the family' if decision.family else _tick(decision.exposure)} "
             f"carries {'' if decision.family else 'no '}energy against a total in the model, so it is "
             f"neither a substitution nor an addition of calories.",
             [{"label": "Leave the contrast out",
@@ -1941,22 +1952,22 @@ def _adjustment_follows_the_estimand(decision: Any, ctx: Any) -> None:
     spec = current_estimand(state)
     if spec is None:
         raise _refusal("no_estimand",
-                       f"Declare the exposure first ({question_name('estimand')}); each covariate is "
+                       f"Declare what you study first ({question_name('estimand')}); each covariate is "
                        f"asked about against it.",
                        [{"label": f"Answer {question_name('estimand')} first", "decision": None}])
     exposure = exposure_key(spec)
     if decision.exposure != exposure:
-        said = "the exposure family" if _get(spec, "family") else _tick(exposure)
+        said = "the family of study factors" if _get(spec, "family") else _tick(exposure)
         raise _refusal("other_exposure",
-                       f"The exposure is {said}, not {_tick(decision.exposure)}; "
-                       f"covariates are asked about against the exposure declared.",
+                       f"What you study is {said}, not {_tick(decision.exposure)}; "
+                       f"covariates are asked about against what you study declared.",
                        [{"label": f"Answer for {_tick(exposure)}",
                          "decision": decision.model_copy(update={"exposure": exposure})}])
     known = set(asked_covariates(state))
     strangers = [c for c in decision.answers if c not in known]
     if strangers:
-        what = ("the exposure itself" if strangers == [exposure] else
-                "not a covariate in the model (a covariate is a recorded exposure or covariate "
+        what = ("what you study itself" if strangers == [exposure] else
+                "not a covariate in the model (a covariate is a recorded study factor or covariate "
                 "role; total energy is decided by the energy question)")
         raise _refusal("not_a_covariate", f"{_listing(strangers)}: {what}.",
                        [{"label": "Answer for the model's covariates only",
@@ -1971,14 +1982,14 @@ def _answers_hold_together(decision: Any, ctx: Any) -> None:
             raise _refusal(
                 "instrument_causes_outcome",
                 f"{_tick(column)} is answered a cause of the outcome and an instrument; an "
-                f"instrument affects the outcome only through the exposure.",
+                f"instrument affects the outcome only through what you study.",
                 [{"label": f"{_tick(column)} is not an instrument", "decision": decision.model_copy(
                     update={"answers": {**decision.answers,
                                         column: a.model_copy(update={"instrument": False})}})}])
         if a.instrument and a.causes_exposure == "no":
             raise _refusal(
                 "instrument_not_a_cause",
-                f"{_tick(column)} is answered an instrument but not a cause of the exposure; an "
+                f"{_tick(column)} is answered an instrument but not a cause of what you study; an "
                 f"instrument is one.",
                 [{"label": f"{_tick(column)} is not an instrument", "decision": decision.model_copy(
                     update={"answers": {**decision.answers,
@@ -2001,12 +2012,12 @@ def _mediators_stay_out_of_a_total_effect(decision: Any, ctx: Any) -> None:
             continue
         if a.acknowledged:
             continue
-        what = {"mediator": "a mediator", "collider": "a consequence of the exposure",
-                "timing_unknown": "possibly a consequence of the exposure"}[d.role]
+        what = {"mediator": "a mediator", "collider": "a consequence of what you study",
+                "timing_unknown": "possibly a consequence of what you study"}[d.role]
         raise _refusal(
             "mediator_in_total_effect",
             f"{_tick(column)} is {what} by your answers: in a total-effect set it removes part of "
-            f"the effect, or opens a path that is not causal ({VANDERWEELE}: confounders \"ought to "
+            f"the effect, or opens a path that is not causal ({VANDERWEELE}: what could explain the link \"ought to "
             f"be controlled for in the estimation of the total effect\", mediators \"ought not\").",
             [{"label": f"Leave {_tick(column)} out; further adjusted for it, beside",
               "decision": decision.model_copy(update={"answers": {**decision.answers, column:
@@ -2043,7 +2054,7 @@ def _a_direct_effect_asks_its_questions(decision: Any, ctx: Any) -> None:
             raise _refusal(
                 "instrument_confounds_mediator",
                 f"{_tick(column)} is answered an instrument and a common cause of a mediator and the "
-                f"outcome; an instrument reaches the outcome only through the exposure.",
+                f"outcome; an instrument reaches the outcome only through what you study.",
                 [{"label": f"{_tick(column)} is not an instrument", "decision": decision.model_copy(
                     update={"answers": {**decision.answers,
                                         column: a.model_copy(update={"instrument": False})}})},
@@ -2059,15 +2070,15 @@ def _a_direct_effect_asks_its_questions(decision: Any, ctx: Any) -> None:
         maybe = "could" if a.interacts == "unknown" else "does"
         raise _refusal(
             "exposure_mediator_interaction",
-            f"The exposure's effect {maybe} differ with {_tick(column)}'s level by your answer: the "
-            f"exposure's coefficient is then the direct effect at {_tick(column)}'s reference level "
+            f"The effect of what you study {maybe} differ with {_tick(column)}'s level by your answer: the "
+            f"study factor's coefficient is then the direct effect at {_tick(column)}'s reference level "
             f"only, and the direct effect at other levels, or a natural direct effect, needs "
             f"counterfactual mediation methods, which TurboTab does not fit ({VALERI}: the "
             f"controlled direct effect is (θ₁ + θ₃m)(a − a*), so it changes with the mediator's "
             f"level m).",
             [{"label": "Report the total effect instead",
               "decision": SetEstimand(**{**spec.model_dump(), "effect": "total"})},
-             {"label": f"No exposure–mediator interaction with {_tick(column)}",
+             {"label": f"No study factor–mediator interaction with {_tick(column)}",
               "decision": decision.model_copy(update={"answers": {
                   **decision.answers, column: a.model_copy(update={"interacts": "no"})}})},
              {"label": f"Keep the direct effect at {_tick(column)}'s reference level; record the "
@@ -2085,7 +2096,7 @@ def _a_direct_effect_asks_its_questions(decision: Any, ctx: Any) -> None:
     raise _refusal(
         "no_mediator",
         "A direct effect holds the mediators fixed, and by your answers no covariate is one (a "
-        "covariate the exposure could change that causes the outcome): with nothing held fixed it "
+        "covariate that what you study could change and that causes the outcome): with nothing held fixed it "
         "is the total effect.",
         [{"label": "Report the total effect", "decision": SetEstimand(**{**spec.model_dump(),
                                                                           "effect": "total"})},
@@ -2118,7 +2129,7 @@ def _energy_model_fits_the_contrast(decision: Any, ctx: Any) -> None:
     other = "addition" if contrast == "substitution" else "substitution"
     ranked = (("all_components", "standard", "residual") if contrast == "substitution"
               else ("all_components", "partition"))
-    whose = "the exposures'" if _get(spec, "family") else f"{_tick(_get(spec, 'exposure'))}'s"
+    whose = "the study factors'" if _get(spec, "family") else f"{_tick(_get(spec, 'exposure'))}'s"
     # Each exit is a whole answer the user can take: an answer that named no energy column or no
     # nutrients ("none", say) takes the settled ones the energy question pre-fills.
     base = decision.model_dump(exclude={"kind"})
@@ -2129,14 +2140,14 @@ def _energy_model_fits_the_contrast(decision: Any, ctx: Any) -> None:
         base["nutrients"] = [c for c, r in roles.items() if r == "exposure" and energy_bearing(c)]
     raise _refusal(
         "contrast_mismatch",
-        f"The estimand is {'a substitution' if contrast == 'substitution' else 'an addition'} of "
+        f"The comparison you want is {'a substitution' if contrast == 'substitution' else 'an addition'} of "
         f"{whose} calories, and the {label[0].lower() + label[1:]} "
         f"estimates {'no substitution' if contrast == 'substitution' else 'a substitution, not an addition'} "
         f"(Tomova et al. 2022).",
         [*({"label": METHOD_TABLE[m]["label"],
             "decision": SetEnergyAdjustment(**{**base, "method": m})}
            for m in ranked),
-         {"label": f"Make the estimand an {other}" if other == "addition" else f"Make the estimand a {other}",
+         {"label": f"Make the comparison you want an {other}" if other == "addition" else f"Make the comparison you want a {other}",
           "decision": SetEstimand(**{**spec.model_dump(), "contrast": other})}])
 
 
@@ -2160,11 +2171,11 @@ def _models_fit_the_family(decision: Any, ctx: Any) -> None:
         return
     raise _refusal(
         "family_needs_featurewise",
-        f"The estimand is the exposure family, each exposure in turn adjusted for the covariates; "
-        f"{_listing(others)} {'adjusts' if len(others) == 1 else 'adjust'} each exposure for the "
-        f"others, which is another estimand. The feature-wise family estimates this one.",
+        f"The comparison you want is each study factor in turn, adjusted for the covariates; "
+        f"{_listing(others)} {'adjusts' if len(others) == 1 else 'adjust'} each study factor for the "
+        f"others, which is a different comparison. The feature-wise family estimates this one.",
         [{"label": "Fit the feature-wise family", "decision": SelectModels(models=["featurewise"])},
-         {"label": "Name one exposure instead", "decision": None}])
+         {"label": "Name one study factor instead", "decision": None}])
 
 
 # set_model_sequence and respond_diagnostic (MODELING_SEQUENCE §1 row 11)
@@ -2187,13 +2198,13 @@ def _sequence_follows_the_plan(decision: Any, ctx: Any) -> None:
     spec = current_estimand(state)
     if spec is None or adjustment_answer(state) is None and asked_covariates(state):
         raise _refusal("no_plan",
-                       f"Declare the exposure and answer {question_name('adjustment')} first: "
+                       f"Declare what you study and answer {question_name('adjustment')} first: "
                        f"Model 1 is a part of the primary model's adjustment set.",
                        [{"label": f"Answer {question_name('estimand')} first", "decision": None}])
     exposure = exposure_key(spec)
     if decision.exposure != exposure:
         raise _refusal("other_exposure",
-                       f"The model sequence is declared for the exposure, {_tick(exposure)}, not "
+                       f"The model sequence is declared for what you study, {_tick(exposure)}, not "
                        f"{_tick(decision.exposure)}.",
                        [{"label": f"Declare it for {_tick(exposure)}",
                          "decision": decision.model_copy(update={"exposure": exposure})}])
@@ -2218,18 +2229,18 @@ def _response_fits_the_check(decision: Any, ctx: Any) -> None:
     if decision.action not in DIAGNOSTIC_ACTIONS[decision.check]:
         raise _refusal(
             "action_not_for_check",
-            f"{ACTION_WORDS[decision.action].capitalize()} is not a response to the "
+            f"{ACTION_LABELS[decision.action].capitalize()} is not a response to the "
             f"{decision.check.replace('_', ' ')} check.",
-            [{"label": ACTION_WORDS[a].capitalize(),
+            [{"label": ACTION_LABELS[a].capitalize(),
               "decision": decision.model_copy(update={"action": a})}
              for a in DIAGNOSTIC_ACTIONS[decision.check]])
     if state is None:
         return
     spec = current_estimand(state)
     if spec is None:
-        raise _refusal("no_estimand", "The checks are of the primary model, which waits for the "
-                                      "exposure and its effect to be declared.",
-                       [{"label": "Declare the exposure and its effect first", "decision": None}])
+        raise _refusal("no_estimand", "The checks are of the primary model, which waits for "
+                                      "what you study and its effect to be declared.",
+                       [{"label": "Declare what you study and its effect first", "decision": None}])
     if decision.exposure != exposure_key(spec):
         raise _refusal("other_exposure",
                        f"The checks are of the primary model for {_tick(exposure_key(spec))}.",
@@ -2293,7 +2304,7 @@ _register()
 
 __all__ = [
     "DIRECT_QUESTIONS", "Derived", "ESTIMATE_STAGES", "FIT_SCORES", "GUESSES", "GUESS_WORDS",
-    "HOLDS", "MEASURE_OF_TASK", "MODEL_SCORES", "MEASURE_WORDS", "NOT_FITTED",
+    "HOLDS", "MEASURE_LABELS", "MEASURE_OF_TASK", "MODEL_SCORES", "MEASURE_WORDS", "NOT_FITTED",
     "OUTCOME_KIND_PLURAL", "OUTCOME_KIND_SINGULAR", "OUTCOME_KIND_WORDS", "QUESTIONS", "ROLE_PLURAL",
     "ROLE_SINGULAR",
     "ROLE_WORDS", "adjustment_answer", "adjustment_card", "adjustment_gate", "adjustment_left_out",

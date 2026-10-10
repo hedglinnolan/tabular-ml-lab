@@ -560,7 +560,7 @@ def test_3_an_item_excluded_after_the_scales_answer_reopens_it_and_its_exit_reco
         assert error["code"] == "scale_invalidated"
         assert error["message"] == (
             "`sat_3` is an item of `sat_score`, whose score replaces its items in the models. This "
-            "answer would take it out of the predictors (no longer a confirmed exposure or "
+            "answer would take it out of the predictors (no longer a confirmed study factor or "
             "covariate, left out, or the outcome), so the score could not be formed as declared. "
             "The scales answer rests on it, so it changes first and is asked again, never kept "
             "silently: take the column out of the scale or stop scoring the scale, then record "

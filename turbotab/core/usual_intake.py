@@ -73,8 +73,8 @@ MIN_REPEATERS = 2  # MIXTRAN v2.1: "at least two subjects with at least two posi
 ESTIMAND = ("The distribution of usual intake (its percentiles, and the share below a cut-off such "
             "as the EAR) in the population the recalls describe, with day-to-day variation removed "
             "by the NCI method (Tooze et al. 2006; Tooze et al. 2010).")
-ASSOCIATION = ("This is its own estimand. An association between an intake and an outcome is a "
-               "different question, answered by regression calibration of the exposure (Freedman "
+ASSOCIATION = ("This is a comparison of its own. An association between an intake and an outcome is a "
+               "different question, answered by regression calibration of what you study (Freedman "
                "et al. 2011; set_measurement_error), never by these distributions, and no person's "
                "own usual intake is estimated here.")
 POPULATION_QUESTION = ("Whole population or consumers only (STROBE-nut nut-14: \"Specify if food "
@@ -85,7 +85,7 @@ POPULATION_QUESTION = ("Whole population or consumers only (STROBE-nut nut-14: \
 NOT_DIETARY = "The dietary lens is off, so usual intake is not offered."
 LENS_UNANSWERED = "The lens is not answered yet."
 PURPOSE_UNANSWERED = "The purpose is not answered yet."
-PREDICTION = ("A usual-intake distribution describes a population: it is an inference estimand. "
+PREDICTION = ("A usual-intake distribution describes a population: it is an inference question about a population. "
               "Under prediction the model reads each person's recalls as they were measured, so "
               "nothing here would change a prediction.")
 TIME_POINTS = ("The rows repeat as time points, not as recalls of one usual intake, so their spread "
@@ -292,7 +292,7 @@ def _consumers_are_named(decision: Any, ctx: Any) -> None:
     whole = decision.model_copy(update={"population": "whole"})
     raise Refusal(
         "consumers_unnamed",
-        "Consumers only is an estimand of its own (STROBE-nut nut-14), and a person with no "
+        "Consumers only is a comparison of its own (STROBE-nut nut-14), and a person with no "
         "consumption on their recall days may still consume the food on others, so the recalls "
         "cannot say who the consumers are. Name a column that says who ever consumes it (a "
         "food-frequency answer), or estimate for the whole population.",
@@ -462,7 +462,7 @@ def _contract() -> Any:
                      condition="an association between the intake and an outcome",
                      id="association_is_calibration",
                      rung="refused",
-                     exits=("regression calibration of the exposure (set_measurement_error)",)),
+                     exits=("regression calibration of what you study (set_measurement_error)",)),
             Relation("implies", "zeros_two_part",
                      "the two-part model ranks first; the amount-only model is recorded with the "
                      "concern that its zero days became half the smallest amount",

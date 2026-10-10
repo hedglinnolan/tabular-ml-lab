@@ -244,23 +244,23 @@ def _contract(key: str, needs: tuple[str, ...], storyboard: tuple[str, ...], rel
 CONTRACTS: dict[str, Any] = {c.key: c for c in (
     _contract(
         "dml_plr",
-        ("a declared exposure, numeric", "the adjustment set's answers", "a numeric or yes/no "
+        ("a declared study factor, numeric", "the adjustment set's answers", "a numeric or yes/no "
          "outcome"),
         ("Predict the outcome from the adjustment set on the other folds",
-         "Predict the exposure from the adjustment set on the other folds",
+         "Predict what you study from the adjustment set on the other folds",
          "Keep what each prediction misses",
-         "Regress the outcome's residual on the exposure's",
+         "Regress the outcome's residual on the study factor's",
          "Repeat over sample splits; take the median"),
         (*_COMMON, "survey_weights", "measure_marginal", "form_single"), _CROSS_FIT,
         f"Standard in econometrics, rare in nutrition so far ({CHERNOZHUKOV})",
         "Sound: an orthogonal score with cross-fitting gives valid intervals with flexible "
-        "learners; for a yes/no exposure it is a variance-weighted average, not the average effect"),
+        "learners; for a yes/no study factor it is a variance-weighted average, not the average effect"),
     _contract(
         "dml_irm",
-        ("a declared exposure, yes/no", "the adjustment set's answers",
+        ("a declared study factor, yes/no", "the adjustment set's answers",
          "a numeric or yes/no outcome"),
         ("Predict the propensity on the other folds",
-         "Predict the outcome at each exposure level on the other folds",
+         "Predict the outcome at each level of what you study on the other folds",
          "Combine them in the doubly robust score",
          "Average the score; repeat over sample splits; take the median"),
         (*_COMMON, "survey_weights", "trim_changes_estimand", "measure_marginal"), _CROSS_FIT,
@@ -269,11 +269,11 @@ CONTRACTS: dict[str, Any] = {c.key: c for c in (
         "learners"),
     _contract(
         "tmle",
-        ("a declared exposure, yes/no", "the adjustment set's answers",
+        ("a declared study factor, yes/no", "the adjustment set's answers",
          "a numeric or yes/no outcome"),
         ("Fit the outcome model and the propensity",
          "Fluctuate the outcome model along the clever covariates",
-         "Average the targeted predictions at each exposure level",
+         "Average the targeted predictions at each level of what you study",
          "Read the interval off the influence curve"),
         (*_COMMON, "survey_weights", "trim_changes_estimand", "measure_marginal"),
         "every analyzed row for main-terms models; " + _CROSS_FIT + " for flexible learners",
@@ -281,11 +281,11 @@ CONTRACTS: dict[str, Any] = {c.key: c for c in (
         "Sound: doubly robust and efficient, and keeps each estimate inside the outcome's range"),
     _contract(
         "pds_lasso",
-        ("a declared exposure", "the adjustment set's answers", "a numeric outcome"),
+        ("a declared study factor", "the adjustment set's answers", "a numeric outcome"),
         ("Lasso the outcome on the candidates",
-         "Lasso the exposure on the candidates",
+         "Lasso what you study on the candidates",
          "Keep the union of both selections",
-         "Regress the outcome on the exposure and the union"),
+         "Regress the outcome on what you study and the union"),
         (*_COMMON, "survey_blocks_pds", "form_single"),
         "every analyzed row: the lasso selects among the declared candidates only, and the outcome "
         "lasso reads the outcome",
@@ -325,7 +325,7 @@ def plan_reason(state: Any) -> str | None:
     if spec is None:
         return None
     if _get(spec, "family"):
-        return ("DML and TMLE estimate one exposure's effect; an exposure family is reported "
+        return ("DML and TMLE estimate one study factor's effect; a family of study factors is reported "
                 "feature-wise, each in turn.")
     if _get(spec, "effect") == "direct":
         return ("A direct effect needs mediation methods, which the causal lane does not fit; it "
@@ -358,8 +358,8 @@ def stated_reason(first: str | None, many: bool, candidates: int, n_limit: int) 
 
 
 TIME_VARYING_REASON = ("{exposure} changes over time within units, so its effect is estimated by "
-                       "the time-varying lane's g-methods; the causal lane estimates a point "
-                       "exposure's effect.")
+                       "the time-varying lane's g-methods; the causal lane estimates the effect of "
+                       "a study factor measured once.")
 
 
 def causal_gate(state: Any, design: Any,
@@ -383,7 +383,7 @@ def causal_gate(state: Any, design: Any,
 
     found = estimand_gate(state)
     if found is not None and found[0] == "not_applicable":
-        return ("not_applicable", found[1] or "No exposure is declared, so there is no effect to "
+        return ("not_applicable", found[1] or "No study factor is declared, so there is no effect to "
                                               "estimate.")
     spec = current_estimand(state)
     if spec is None or adjustment_answer(state) is None:
@@ -427,7 +427,7 @@ def options(exposure_kind: str | None, task: str | None, many: bool,
             "doubly robust score with cross-fitting: valid intervals with flexible learners")
         add(4, "dml_plr", "econometrics", "standard in econometrics; rare in nutrition so far",
             CHERNOZHUKOV, "conditional",
-            "for a yes/no exposure it estimates a variance-weighted average, not the average effect")
+            "for a yes/no study factor it estimates a variance-weighted average, not the average effect")
     else:
         add(1, "dml_plr", "econometrics", "standard in econometrics; rare in nutrition so far",
             CHERNOZHUKOV, "sound",
@@ -467,7 +467,7 @@ def assumption_card(*, exposure: str, exposure_kind: str, adjusted: Sequence[str
         "statement": f"Given the adjustment set, {x} is as good as randomly assigned.",
         "diagnostic": (f"Adjusted for {shown}, as the disjunctive cause criterion's answers "
                        f"decided. No data can confirm this: a sensitivity analysis to an "
-                       f"unmeasured confounder is required beside the estimate."),
+                       f"unmeasured common cause is required beside the estimate."),
         "status": "untestable", "source": HERNAN})
     if exposure_kind == "binary" and overlap is not None:
         b = float(overlap["bound"])
@@ -505,8 +505,8 @@ def assumption_card(*, exposure: str, exposure_kind: str, adjusted: Sequence[str
         "statement": f"The covariates precede {x}, and {x} precedes the outcome.",
         "diagnostic": ((f"{_listing(unknown)} {'is' if len(unknown) == 1 else 'are'} of unknown "
                         f"timing and stay out of the primary set (the declared with-and-without "
-                        f"pair); the rest were answered as set before the exposure.") if unknown
-                       else "Every adjusted covariate was answered as set before the exposure."),
+                        f"pair); the rest were answered as set before what you study.") if unknown
+                       else "Every adjusted covariate was answered as set before what you study."),
         "status": "stated", "source": HERNAN})
     return out
 
@@ -897,9 +897,9 @@ def _point_exposure_only(decision: Any, ctx: Any) -> None:
         return
     raise _refusal(
         "time_varying_exposure",
-        TIME_VARYING_REASON.format(exposure=_tick(decision.exposure)) + " A confounder that "
-        "earlier exposure changed would bias these learners' estimate as it biases standard "
-        "regression's.",
+        TIME_VARYING_REASON.format(exposure=_tick(decision.exposure)) + " A covariate that could "
+        "explain the link, if earlier values of what you study changed it, would bias these learners' "
+        "estimate as it biases standard regression's.",
         [{"label": "Answer the time-varying question (a marginal structural model or the "
                    "g-formula)", "decision": None},
          {"label": "The primary model only",
@@ -916,7 +916,7 @@ def _causal_follows_the_plan(decision: Any, ctx: Any) -> None:
     spec = current_estimand(state)
     if spec is None:
         raise _refusal("no_estimand",
-                       f"Declare the exposure and its effect first ({question_name('estimand')}); "
+                       f"Declare what you study and its effect first ({question_name('estimand')}); "
                        f"the causal lane estimates that effect, over the adjustment set.",
                        [{"label": f"Answer {question_name('estimand')} first", "decision": None}])
     reason = plan_reason(state)
@@ -925,9 +925,9 @@ def _causal_follows_the_plan(decision: Any, ctx: Any) -> None:
                                                      "decision": _with(decision, method="none")}])
     if decision.exposure != _get(spec, "exposure"):
         raise _refusal("other_exposure",
-                       f"The exposure is {_tick(_get(spec, 'exposure'))}, not "
-                       f"{_tick(decision.exposure)}; the causal lane answers for the exposure "
-                       f"declared.",
+                       f"What you study is {_tick(_get(spec, 'exposure'))}, not "
+                       f"{_tick(decision.exposure)}; the causal lane answers for what you study "
+                       f"as declared.",
                        [{"label": f"Answer for {_tick(_get(spec, 'exposure'))}",
                          "decision": _with(decision, exposure=_get(spec, "exposure"))}])
     if decision.method != "none" and adjustment_answer(state) is None:
@@ -952,7 +952,7 @@ def _causal_fits_the_estimand(decision: Any, ctx: Any) -> None:
         raise _refusal(
             "measure_conditional",
             f"DML and TMLE estimate a marginal effect, and the declared measure is the "
-            f"{MEASURE_WORDS['odds_ratio']} (non-collapsible): another estimand. The marginal risk "
+            f"{MEASURE_WORDS['odds_ratio']} (non-collapsible): a different comparison. The marginal risk "
             f"difference is the causal lane's measure for a yes/no outcome.",
             [{"label": "Declare the marginal risk difference",
               "decision": _estimand_with(spec, measure="risk_difference")},
@@ -969,7 +969,7 @@ def _causal_fits_the_estimand(decision: Any, ctx: Any) -> None:
     if decision.method in ("dml_irm", "tmle") and kind == "continuous":
         raise _refusal(
             "needs_binary_exposure",
-            f"{METHOD_LABELS[decision.method]} compares two levels of the exposure, and "
+            f"{METHOD_LABELS[decision.method]} compares two levels of the study factor, and "
             f"{_tick(decision.exposure)} is numeric; the partially linear model estimates its "
             f"effect per unit.",
             [{"label": METHOD_LABELS["dml_plr"], "decision": _with(decision, method="dml_plr",
@@ -988,7 +988,7 @@ def _causal_fits_the_estimand(decision: Any, ctx: Any) -> None:
         raise _refusal(
             "trim_needs_propensity",
             "Trimming keeps the rows whose propensity to be exposed is neither near 0 nor near 1; "
-            "it applies to a yes/no exposure's interactive model or TMLE.",
+            "it applies to a yes/no study factor's interactive model or TMLE.",
             [{"label": "Keep every row", "decision": _with(decision, trim=None)}])
     forms = _get(state, "exposure_forms") or {}
     form = _get(forms.get(decision.exposure), "form")

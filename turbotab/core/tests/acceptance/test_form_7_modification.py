@@ -299,6 +299,6 @@ def test_7_modification_is_an_inference_question_about_one_declared_exposure():
         d.validate({"kind": "set_modification", "modifier": "fiber"}, {"state": st})
     assert refused.value.code == "modifier_is_exposure_or_outcome"
     assert ix.modification_gate(st) == (
-        "skipped", "No effect modifier or second exposure is declared; one can be, before the "
+        "skipped", "No effect modifier or second study factor is declared; one can be, before the "
                    "estimates are seen (afterwards it is labeled suggested by data inspection).")
     assert ix.modification_gate(pred)[0] == "not_applicable"
