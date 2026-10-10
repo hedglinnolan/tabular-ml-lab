@@ -1581,6 +1581,12 @@ def methods_sentence(a: ExplainArtifact, s: Setting) -> str:
     sample = f"all {a.rows:,} {rows_word}" if a.rows == a.rows_of else \
         f"a seeded sample of {a.rows:,} of the {a.rows_of:,} {rows_word}"
     out = [f"SHAP values were computed for {sample} on each model's own scale: {how}."]
+    for f in done:  # a yes/no forest's two scales (RT-5d), named in the technical register too
+        if str(f.scale).startswith("probability"):
+            out.append(f"The {f.label.lower()}'s SHAP values are on its predicted {f.scale}, the "
+                       f"scale its trees average, where path-dependent TreeSHAP is exact and "
+                       f"additive; its curves and interactions are on the log-odds of that "
+                       f"probability, clipped half of one tree's vote from 0 and 1.")
     stable = [f for f in done if f.stability is not None]
     if stable:
         st = stable[0].stability

@@ -181,6 +181,29 @@ def test_predicting_is_single_threaded_whatever_the_fit_used() -> None:
     assert model.n_jobs == THREADS and np.array_equal(model.predict_proba(X), first)
 
 
+@pytest.mark.parametrize("task", ["regression", "binary"])
+def test_predicting_never_changes_the_models_threads(task: str) -> None:
+    """Prediction runs on a copy that holds one thread: the model's own ``n_jobs`` reads the fit's
+    threads while its trees are predicting, so threads predicting at once never race on it."""
+    X, y = _data(task)
+    model = _forest(task, X, y)
+    first = model.estimators_[0]
+    seen: list[int] = []
+    method = "predict" if task == "regression" else "predict_proba"
+    original = getattr(first, method)
+
+    def watched(*args: Any, **kwargs: Any) -> Any:
+        seen.append(model.get_params()["n_jobs"])
+        return original(*args, **kwargs)
+
+    setattr(first, method, watched)
+    try:
+        model.predict(X[:20])
+    finally:
+        delattr(first, method)
+    assert seen == [THREADS] and model.n_jobs == THREADS
+
+
 # ── out of bag ───────────────────────────────────────────────────────────────
 
 
@@ -247,35 +270,94 @@ def test_settings_follow_the_plan_threads_and_out_of_bag() -> None:
     assert params["n_jobs"] == 1 and params["oob_score"] is False
 
 
-# ── the smallest leaf: from one row of the plan's fit to a tenth of it ───────
+# ── the smallest leaf: the stored share is the share applied ────────────────
 
 
-def test_the_smallest_leaf_runs_from_one_row_to_a_tenth_for_every_outcome() -> None:
-    """RECIPES §4.1: "from 1 row to a tenth of them". For a yes/no outcome n_plan counts events, so
-    a share drawn from one unit of n_plan (``map_unit``'s low end) would start at a leaf of about
-    rows/events rows; the family resolves the share from one row of the plan's fit instead."""
+def test_the_smallest_leaf_is_its_stored_share_of_each_fits_rows_with_or_without_the_plan(
+) -> None:
+    """WAVE_C6A_PLAN §5.2 (ruled under §7.7): the share runs log-uniformly from one unit of the
+    plan, 1/n_plan, to a tenth, is stored as a share, and becomes rows on each fit. The rows
+    applied are the stored share's, whether or not the plan is passed, so the record states the
+    leaf the fit used. For a yes/no outcome n_plan counts events, so the low end is one event's
+    share of the rows, not one row."""
     fam = get_family("random_forest")
     leaf = next(d for d in tuning_for(fam, "binary").dimensions if d.name == "min_samples_leaf")
-    for task, n_plan, unit in (("binary", 40, "events"), ("regression", 1000, "units"),
-                               ("multiclass", 120, "rarest_class")):
+    for task, n_plan, plan_rows, unit in (("binary", 400, 4000, "events"),
+                                          ("regression", 300, 1000, "units"),
+                                          ("multiclass", 120, 1000, "rarest_class")):
         plan = make_plan(fam, task=task, loss="mse" if task == "regression" else "log_loss",
-                         n_plan=n_plan, plan_rows=1000, unit=unit, split_seed=1)
+                         n_plan=n_plan, plan_rows=plan_rows, unit=unit, split_seed=1)
+        for c in plan.candidates[1:]:  # the Sobol candidates: a stored share each
+            share = c.values["min_samples_leaf"]
+            assert 1 / n_plan <= share <= 0.1
+            want = max(1, math.floor(share * plan_rows + 0.5))  # by hand
+            for given in (plan, None):
+                got = estimator_params(fam, task, c.values, n_units=plan_rows, n_rows=plan_rows,
+                                       plan=given)["min_samples_leaf"]
+                assert got == want, (task, share, given is None)
+    # the verifier's cases, by hand: 0.03141 of 4,000 rows; 0.00463 of 1,000 rows
+    for share, n_rows, want in ((0.03141, 4000, 126), (0.00463, 1000, 5)):
+        for given in (_oob_plan("binary", 400), None):
+            assert estimator_params(fam, "binary", {"min_samples_leaf": share}, n_units=n_rows,
+                                    n_rows=n_rows, plan=given)["min_samples_leaf"] == want
+    # the ends: one event's share (1/40 of 1,000 rows is 25 rows) and a tenth
+    assert map_unit(leaf, 0.0, n_plan=40) == pytest.approx(1 / 40, rel=1e-12)
+    for u, want in ((0.0, 25), (1.0, 100), (0.5, 50)):  # √(25 × 100) = 50
+        share = map_unit(leaf, u, n_plan=40)
+        assert estimator_params(fam, "binary", {"min_samples_leaf": share}, n_units=1000,
+                                n_rows=1000)["min_samples_leaf"] == want
+    # a share set by hand is the share it says
+    manual = make_plan(fam, task="binary", loss="log_loss", n_plan=40, plan_rows=1000,
+                       unit="events", split_seed=1, manual={"min_samples_leaf": 0.03})
+    assert estimator_params(fam, "binary", manual.candidates[0].values, n_units=1000,
+                            n_rows=1000, plan=manual)["min_samples_leaf"] == 30
 
-        def rows(u: float, n_rows: int = 1000) -> int:
-            share = map_unit(leaf, u, n_plan=n_plan)
-            return estimator_params(fam, task, {"min_samples_leaf": share}, n_units=n_rows,
-                                    n_rows=n_rows, plan=plan)["min_samples_leaf"]
 
-        assert rows(0.0) == 1 and rows(1.0) == 100, task  # one row; a tenth of 1,000
-        # log-uniform between them: the middle is √(1 × 100) = 10 rows
-        assert rows(0.5) == 10, task
-        # a fit of other size keeps the share: a tenth of 500 rows
-        assert rows(1.0, 500) == 50
-        # a share set by hand is the share it says
-        manual = make_plan(fam, task=task, loss=plan.loss, n_plan=n_plan, plan_rows=1000,
-                           unit=unit, split_seed=1, manual={"min_samples_leaf": 0.03})
-        assert estimator_params(fam, task, manual.candidates[0].values, n_units=1000,
-                                n_rows=1000, plan=manual)["min_samples_leaf"] == 30
+def test_settings_read_a_whole_number_leaf_as_rows_and_refuse_a_share_out_of_range() -> None:
+    """scikit-learn reads an integer ``min_samples_leaf`` as rows and a float as a share; so does
+    the family, so its resolved parameters fed back in give themselves, and a share outside
+    (0, 0.1] is refused rather than turning the forest into a stump."""
+    fam = get_family("random_forest")
+    X, y = _data("binary", n=200)
+    plan = _oob_plan("binary", 200)
+    for values in (plan.candidates[0].values, plan.candidates[-1].values,
+                   {"min_samples_leaf": 0.05, "max_features": 0.5, "max_samples": 0.8}):
+        once = estimator_params(fam, "binary", values, n_units=200, n_rows=200, y=y, Z=X,
+                                plan=plan)
+        assert estimator_params(fam, "binary", once, n_units=200, n_rows=200, y=y, Z=X,
+                                plan=plan) == once
+        assert isinstance(once["min_samples_leaf"], int) and once["min_samples_leaf"] <= 20
+    for rows in (10, np.int64(10)):
+        assert estimator_params(fam, "binary", {"min_samples_leaf": rows}, n_units=200,
+                                n_rows=200)["min_samples_leaf"] == 10
+    for bad in (0, 1.0, 0.5, 0.0, -0.01, True):
+        with pytest.raises(ValueError, match="smallest leaf"):
+            estimator_params(fam, "binary", {"min_samples_leaf": bad}, n_units=200, n_rows=200)
+
+
+def test_its_seed_is_threaded_from_the_split_through_derive_seed() -> None:
+    """RECIPES §4.7: the forest's random_state is the SHA-256 of the canonical JSON of (split seed,
+    family, space version), its first four bytes big-endian, computed here by hand."""
+    import hashlib
+    import json
+
+    def by_hand(split_seed: int) -> int:
+        text = json.dumps([split_seed, "random_forest", "random_forest/1"], sort_keys=True,
+                          separators=(",", ":"), ensure_ascii=True)
+        return int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[:4], "big")
+
+    fam = get_family("random_forest")
+    seeds = []
+    for split_seed in (7, 8):
+        plan = make_plan(fam, task="binary", loss="log_loss", n_plan=400, plan_rows=400,
+                         unit="events", split_seed=split_seed)
+        for c in plan.candidates[:3]:
+            params = estimator_params(fam, "binary", c.values, n_units=400, n_rows=400, plan=plan)
+            assert params["random_state"] == by_hand(split_seed)
+        seeds.append(by_hand(split_seed))
+    assert seeds[0] != seeds[1]
+    for task in ("regression", "binary"):
+        assert fam.build(task, "prediction", 300, 5).get_params()["random_state"] == by_hand(0)
 
 
 # ── SHAP: v2's TreeSHAP and the shap package, blanks included ────────────────
@@ -321,9 +403,55 @@ def test_local_accuracy_sums_to_the_prediction(task: str) -> None:
     fam = get_family("random_forest")
     phi, expected = fam.tree_shap(model, X_new)
     assert np.max(np.abs(expected[0] + phi[:, :, 0].sum(axis=1) - want)) < 1e-9
-    X32 = X_new.astype(np.float32).astype(float)
-    phi, expected = E.tree_shap(fam.trees(model), X32)
+    phi, expected = E.tree_shap(fam.trees(model), X_new)  # v2's own, on the same float64 rows
     assert np.max(np.abs(expected[0] + phi[:, :, 0].sum(axis=1) - want)) < 1e-9
+
+
+def test_a_float64_threshold_routes_every_input_as_its_float32_does() -> None:
+    """For thresholds of every kind, x <= t' exactly when float32(x) <= t, checked by brute force
+    at each float32 near t, the midpoints between them and the float64 values beside those."""
+    from turbotab.core.models.forest import float64_threshold
+
+    rng = np.random.default_rng(3)
+    a = rng.normal(size=300).astype(np.float32)
+    b = np.nextafter(a, np.float32(np.inf)) + rng.integers(0, 3, 300).astype(np.float32) * \
+        np.spacing(a)
+    t = np.concatenate([(a.astype(float) + b.astype(float)) / 2, a.astype(float),
+                        rng.normal(size=300), [0.0, -0.0, 1e-30, 3.0, -2.5]])
+    t2 = float64_threshold(t)
+    for ti, ui in zip(t, t2):
+        f = np.float32(ti)
+        near = [np.float32(f)]
+        for _ in range(3):
+            near = sorted({*near, np.nextafter(near[0], np.float32(-np.inf)),
+                           np.nextafter(near[-1], np.float32(np.inf))})
+        xs = []
+        for g, h in zip(near[:-1], near[1:]):
+            m = (float(g) + float(h)) / 2
+            xs += [float(g), m, np.nextafter(m, -np.inf), np.nextafter(m, np.inf), ti,
+                   np.nextafter(ti, np.inf), np.nextafter(ti, -np.inf)]
+        for x in xs:
+            assert (float(np.float32(x)) <= ti) == (x <= ui), (ti, x)
+
+
+def test_v2_tree_shap_adds_up_at_a_float64_value_just_above_a_threshold() -> None:
+    """A float64 value just above a split's threshold whose float32 rounding falls at or below it
+    goes left in the forest; v2's numpy TreeSHAP sends it the same way, so local accuracy holds."""
+    X, y = _data("regression")
+    model = _forest("regression", X, y)
+    rows = []
+    for estimator in model.estimators_:
+        tree = estimator.tree_
+        t, j = float(tree.threshold[0]), int(tree.feature[0])
+        x = np.nextafter(t, np.inf)
+        if float(np.float32(x)) <= t:
+            row = X[0].copy()
+            row[j] = x
+            rows.append(row)
+    assert len(rows) >= 5
+    X_gap = np.vstack(rows)
+    phi, expected = E.tree_shap(get_family("random_forest").trees(model), X_gap)
+    assert np.max(np.abs(expected[0] + phi[:, :, 0].sum(axis=1) - model.predict(X_gap))) < 1e-9
 
 
 # ── invariance (C3, C13) ─────────────────────────────────────────────────────
@@ -392,12 +520,33 @@ def test_a_yes_no_forest_is_explained_with_shap_on_its_probability_and_curves_on
     want = pipe.predict_proba(frame.loc[obs.row_ids])[:, 1]
     assert np.max(np.abs(total - want)) < 1e-9
     assert np.max(np.abs(np.asarray(obs.prediction) - want)) < 1e-12
-    # the curve is drawn on the log-odds of the clipped probability, and the artifact says so
-    curve = art.curves[0].curves[0]
-    assert curve.drawn
-    grid = E.ale_grid(frame["a"])
-    margin = E.ale_curve(lambda A: pipe.decision_function(A), frame, "a", grid)
-    assert np.allclose([v for v in curve.values if v is not None],
-                       [v for v in E.masked(margin, grid) if v is not None], atol=1e-9)
+    # the curve is drawn on the log-odds of the clipped probability, and the artifact says so:
+    # Apley and Zhu's ALE, computed here by hand on the artifact's grid from scikit-learn's own
+    # forest's probabilities, clipped at 1/(2T) and turned into log-odds here
+    shown = art.curves[0]
+    curve = shown.curves[0]
+    assert curve.drawn and shown.method == "ale"
+    direct = _direct("binary", model, X, y)
+    eps = 1.0 / (2 * TREES)
+
+    def logit(A: np.ndarray) -> np.ndarray:
+        p = np.clip(direct.predict_proba(A)[:, 1], eps, 1 - eps)
+        return np.log(p / (1 - p))
+
+    z = np.asarray(shown.grid)
+    K = len(z) - 1
+    k = np.clip(np.searchsorted(z, X[:, 0], side="left"), 1, K)  # x in (z_{k-1}, z_k]
+    up, down = X.copy(), X.copy()
+    up[:, 0], down[:, 0] = z[k], z[k - 1]
+    effect = logit(up) - logit(down)
+    local = np.array([effect[k == m].mean() if (k == m).any() else 0.0 for m in range(1, K + 1)])
+    g = np.concatenate([[0.0], np.cumsum(local)])
+    g = g - g[k].mean()
+    for i, v in enumerate(curve.values):
+        if v is not None:
+            assert v == pytest.approx(g[i], abs=1e-9)
     said = [n for n in art.notes if "Random forest" in n]
     assert said and "probability of `yes`" in said[0] and "log-odds" in said[0]
+    # the methods paragraph names both scales too
+    assert "random forest's SHAP values are on its predicted probability of `yes`" in art.methods
+    assert "log-odds of that probability" in art.methods

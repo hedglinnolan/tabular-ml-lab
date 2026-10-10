@@ -39,8 +39,7 @@ explanation labels each (``explain.explain``).
 from __future__ import annotations
 
 import math
-from contextlib import contextmanager
-from typing import Any, Iterator, Mapping
+from typing import Any, Mapping
 
 import numpy as np
 from sklearn.base import is_classifier
@@ -60,7 +59,7 @@ from turbotab.core.models.base import (
     Source,
     register_family,
 )
-from turbotab.core.models.tuning import Dimension, TuningDecl, map_unit
+from turbotab.core.models.tuning import Dimension, TuningDecl, derive_seed
 
 STANDARD = "default"  # a symbolic standard, resolved per task by ``settings``
 THIRD = 1.0 / 3.0  # scikit-learn's max(1, int(p/3)): randomForest's max(floor(p/3), 1) for every p
@@ -79,14 +78,14 @@ def clip_share(n_trees: int) -> float:
     return 1.0 / (2 * max(int(n_trees), 1))
 
 
-@contextmanager
-def _one_thread(model: Any) -> Iterator[None]:
-    threads = model.n_jobs
-    model.n_jobs = 1
-    try:
-        yield
-    finally:
-        model.n_jobs = threads
+def _one_thread(model: Any) -> Any:
+    """A shallow copy of the fitted ``model`` (the same trees) that predicts with one thread. The
+    model itself is never changed, so two threads predicting with it at once neither race on its
+    ``n_jobs`` nor see it change."""
+    one = object.__new__(type(model))
+    one.__dict__.update(model.__dict__)
+    one.n_jobs = 1
+    return one
 
 
 def _never_left_out(model: Any) -> np.ndarray:
@@ -104,8 +103,7 @@ class RandomForestRegressor(_SklearnRegressor):
     """scikit-learn's random forest for a number, predicted single-threaded."""
 
     def predict(self, X: Any) -> np.ndarray:
-        with _one_thread(self):
-            return super().predict(X)
+        return _SklearnRegressor.predict(_one_thread(self), X)
 
     def out_of_bag_prediction(self) -> np.ndarray:
         """Each training row's mean prediction over the trees that left it out; blank (NaN) for a
@@ -120,8 +118,7 @@ class RandomForestClassifier(_SklearnClassifier):
     predicted single-threaded, with a margin ``decision_function``."""
 
     def predict_proba(self, X: Any) -> np.ndarray:
-        with _one_thread(self):
-            return super().predict_proba(X)
+        return _SklearnClassifier.predict_proba(_one_thread(self), X)
 
     def decision_function(self, X: Any) -> np.ndarray:
         """For a yes/no outcome, the log-odds of the clipped probability of the class coded 1,
@@ -165,11 +162,35 @@ NODE_DTYPE = np.dtype([
     ("right", np.int64), ("depth", np.int64), ("is_leaf", np.uint8)])
 
 
+def float64_threshold(threshold: np.ndarray) -> np.ndarray:
+    """Thresholds that route a float64 input as scikit-learn's trees route it.
+
+    The trees read their inputs as float32: a row goes left when ``float32(x) <= t``. Rounding to
+    float32 is monotone, so that holds exactly when ``x <= t'``, t' the largest float64 that rounds
+    to a float32 at most t: with f the largest float32 at most t and m the midpoint between f and
+    the next float32 (exact in float64), t' is m when m rounds down to f (ties go to the even
+    one) and the float64 just below m otherwise. A float32 input routes alike under t and t', so
+    the shap package's values do not move; a float64 input just above t that rounds to t or below
+    now goes left, as it does in the forest."""
+    t = np.asarray(threshold, dtype=np.float64)
+    out = t.copy()
+    finite = np.isfinite(t) & (np.abs(t) < float(np.finfo(np.float32).max))
+    tf = t[finite]
+    f = tf.astype(np.float32)
+    f = np.where(f.astype(np.float64) > tf, np.nextafter(f, np.float32(-np.inf)), f)
+    up = np.nextafter(f, np.float32(np.inf))
+    m = (f.astype(np.float64) + up.astype(np.float64)) / 2.0
+    out[finite] = np.where(m.astype(np.float32).astype(np.float64) <= tf, m,
+                           np.nextafter(m, -np.inf))
+    return out
+
+
 def _node_table(tree: Any, values: np.ndarray) -> np.ndarray:
     """One fitted tree's nodes in ``explain.TreeEnsemble``'s field names: ``values`` per node, the
     bootstrap-weighted training cover (``weighted_n_node_samples``, as the shap package reads it),
-    and a row going left when its value is ``<=`` the threshold, a blank where
-    ``missing_go_to_left`` says."""
+    and a row going left when its value is ``<=`` the threshold (:func:`float64_threshold`, so a
+    float64 input goes the way the tree sends its float32), a blank where ``missing_go_to_left``
+    says."""
     left, right = tree.children_left, tree.children_right
     depth = np.zeros(tree.node_count, dtype=np.int64)
     for i in range(tree.node_count):  # a child always comes after its parent
@@ -179,7 +200,7 @@ def _node_table(tree: Any, values: np.ndarray) -> np.ndarray:
     nodes["value"] = values
     nodes["count"] = tree.weighted_n_node_samples
     nodes["feature_idx"] = np.maximum(tree.feature, 0)
-    nodes["num_threshold"] = tree.threshold
+    nodes["num_threshold"] = np.where(left >= 0, float64_threshold(tree.threshold), tree.threshold)
     nodes["missing_go_to_left"] = np.asarray(tree.missing_go_to_left, dtype=np.uint8)
     nodes["left"], nodes["right"] = left, right
     nodes["depth"] = depth
@@ -259,26 +280,37 @@ _TUNING = TuningDecl(
 )
 
 
-def leaf_rows(share: float, *, n_rows: int, plan: Any = None) -> int:
-    """The smallest leaf, in rows of one fit, for a share of the rows (RECIPES §4.1: "from 1 row to
-    a tenth of them").
+def leaf_rows(leaf: Any, *, n_rows: int) -> int:
+    """The smallest leaf, in rows of one fit (RECIPES §4.1; WAVE_C6A_PLAN §5.2).
 
-    A searched share was drawn log-uniformly from ``map_unit``'s low end, one unit of n_plan, to
-    a tenth. For a yes/no or class outcome n_plan counts the units of the rarest class, so that
-    low end would be a leaf of about rows ÷ events rows, not one row. The share is therefore
-    re-read at the same place on the log scale between one row of the plan's fit
-    (1/``plan_rows``) and a tenth; for a number with a row per unit the two ends agree and nothing
-    moves. A share set by hand is taken as it is. The share then becomes rows on this fit:
-    ``max(1, round(share × n_rows))``."""
-    s = float(share)
+    A share (a float in (0, a tenth]), searched or set by hand, is the share applied: it was drawn
+    log-uniformly from one unit of the plan, ``1/n_plan``, to a tenth (``map_unit``) and is stored
+    as it is, so the record's share and the fit's leaf agree with or without a plan. It becomes
+    ``max(1, round(share × n_rows))`` rows of this fit. A whole number is a count of rows already,
+    as scikit-learn reads an integer ``min_samples_leaf``, so resolved parameters fed back in are
+    kept. Anything else is refused, in words."""
+    if isinstance(leaf, (bool, np.bool_)):
+        raise ValueError(f"the smallest leaf is a share of the rows or a number of rows, not "
+                         f"{leaf!r}")
+    if isinstance(leaf, (int, np.integer)):
+        if leaf < 1:
+            raise ValueError(f"the smallest leaf holds at least 1 row, not {int(leaf)}")
+        return int(leaf)
+    s = float(leaf)
     high = float(_LEAF.high)
-    if plan is not None and "min_samples_leaf" not in plan.manual and s > 0:
-        drawn_from = float(map_unit(_LEAF, 0.0, n_plan=plan.n_plan))
-        one_row = min(1.0 / max(int(plan.plan_rows), 1), high)
-        if drawn_from < high and not math.isclose(drawn_from, one_row, rel_tol=1e-12):
-            u = math.log(s / drawn_from) / math.log(high / drawn_from)
-            s = math.exp(math.log(one_row) + u * (math.log(high) - math.log(one_row)))
-    return max(1, int(math.floor(s * int(n_rows) + 0.5)))
+    if not (0 < s <= high * (1 + 1e-12)):
+        raise ValueError(f"the smallest leaf, as a share of the rows, is above 0 and at most "
+                         f"{high:g}, not {s:g}")
+    return max(1, int(math.floor(min(s, high) * int(n_rows) + 0.5)))
+
+
+def seed_of(plan: Any = None) -> int:
+    """The forest's ``random_state``: the plan's seed, ``derive_seed(split seed, "random_forest",
+    space version)`` (RECIPES §4.7), so it is threaded from the split; without a plan, the same
+    derivation at split seed 0, the seed a plan made at split seed 0 gives."""
+    if plan is not None:
+        return int(plan.seed)
+    return derive_seed(0, RandomForest.key, _TUNING.space_version)
 
 
 class RandomForest(FamilyBase):
@@ -303,8 +335,9 @@ class RandomForest(FamilyBase):
     bootstrap_optimism = False
     identity = Identity(kind="estimator", library="scikit-learn",
                         estimator="RandomForestRegressor; RandomForestClassifier",
-                        seed_policy="random_state 0, fixed; fit on the plan's threads, predicted "
-                                    "single-threaded")
+                        seed_policy="random_state: the plan's seed, derive_seed(split seed, "
+                                    "family, space version); fit on the plan's threads, "
+                                    "predicted single-threaded")
     purposes = ("prediction", "inference")
     predicts = True
     flexible = True
@@ -339,17 +372,19 @@ class RandomForest(FamilyBase):
         """A candidate's values as the forest's parameters on one fit: the symbolic standards per
         task (``max_features``: ``"sqrt"`` for classes, a third of the columns for a number;
         ``min_samples_leaf``: 10 or 5 rows), the leaf's share as rows (:func:`leaf_rows`), the
-        plan's threads for the fit, and the out-of-bag predictions kept when the plan scores
-        candidates on them."""
+        plan's seed (:func:`seed_of`), the plan's threads for the fit, and the out-of-bag
+        predictions kept when the plan scores candidates on them. Its output fed back in gives
+        itself."""
         out = dict(values)
         classes = task != "regression"
         if out.get("max_features") == STANDARD:
             out["max_features"] = "sqrt" if classes else THIRD
         leaf = out.get("min_samples_leaf")
-        if leaf == STANDARD:
+        if isinstance(leaf, str) and leaf == STANDARD:
             out["min_samples_leaf"] = LEAF["classes" if classes else "numbers"]
         elif leaf is not None:
-            out["min_samples_leaf"] = leaf_rows(leaf, n_rows=n_rows, plan=plan)
+            out["min_samples_leaf"] = leaf_rows(leaf, n_rows=n_rows)
+        out["random_state"] = seed_of(plan)
         out["n_jobs"] = int(plan.threads) if plan is not None else 1
         out["oob_score"] = bool(plan is not None and plan.out_of_bag)
         return out
@@ -367,7 +402,7 @@ class RandomForest(FamilyBase):
 
         params = estimator_params(self, task, _TUNING.standard, n_units=n_rows, n_rows=n_rows)
         cls = RandomForestRegressor if task == "regression" else RandomForestClassifier
-        return cls(random_state=0, **params)
+        return cls(**params)
 
     def describe(self, task: Task, purpose: Purpose | None) -> tuple[str, str]:
         if task == "regression":
