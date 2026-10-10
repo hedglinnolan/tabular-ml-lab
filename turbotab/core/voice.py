@@ -1706,7 +1706,15 @@ def _set_estimand(d: Any, state: Any, ctx: Any) -> str:
             text += (", kept for an omics family as recorded although the field expects "
                      "false-discovery control")
     else:
-        text = (f"The analysis estimates the {d.effect} effect of {tick(d.exposure)}{on}{contrast}, "
+        # Q-b: a substitution says what it swaps, read from the adjustment set as the caption reads
+        # it (``estimand.substitution_words``), the technical name kept as its label.
+        from turbotab.core.estimand import substitution_words
+
+        swapped = (substitution_words(state, d.exposure)
+                   if d.contrast == "substitution" and state is not None else None)
+        subject = (f"{swapped}{on} (a substitution)" if swapped else
+                   f"{tick(d.exposure)}{on}{contrast}")
+        text = (f"The analysis estimates the {d.effect} effect of {subject}, "
                 f"as a {MEASURE_WORDS.get(d.measure, d.measure)} per unit of {tick(d.exposure)}")
     if d.measure in NON_COLLAPSIBLE:
         text += ", given the adjustment set"

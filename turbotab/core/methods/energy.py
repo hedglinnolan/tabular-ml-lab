@@ -84,6 +84,8 @@ __all__ = [
     "FactorReading",
     "MIN_LEVEL_ROWS",
     "StratifiedEnergyAdjuster",
+    "Swap",
+    "amount_of",
     "applicable_methods",
     "coefficient_gap",
     "default_atwater",
@@ -99,6 +101,7 @@ __all__ = [
     "nutrient_role",
     "rank_methods",
     "relative_effect_rows",
+    "substitution_swap",
     "unit_of",
 ]
 
@@ -1534,6 +1537,41 @@ def _in_place_of(named: bool, omitted: Sequence[str]) -> str:
     return f"in place of {_and([*omitted[:-1], 'other energy'])}"
 
 
+# A part of a macronutrient as a card names it (the recognizer's part codes; sugar and starch are
+# their own words).
+_PART_NOUNS = {"sfa": "saturated fat", "mufa": "monounsaturated fat",
+               "pufa": "polyunsaturated fat", "trans": "trans fat", "animal": "animal protein",
+               "plant": "plant protein", "dairy": "dairy protein"}
+
+
+def _noun(term: EnergyTerm) -> str:
+    """What one more unit of ``term`` is more of: its part's name (sugar, saturated fat), else its
+    source (protein, fat)."""
+    part = _part_of(term.column)
+    return _PART_NOUNS.get(part, part) if part else term.source
+
+
+@dataclass(frozen=True)
+class Swap:
+    """The substitution one coefficient estimates, from the columns the model holds (WAVE_C6A Q-b):
+    more of ``noun`` ``in_place_of`` what it displaces, with ``fixed`` held. One wording for the
+    caption, the methods sentence, the preview, the card and Table 2's row."""
+
+    noun: str
+    in_place_of: str
+    fixed: Tuple[str, ...]
+
+    @property
+    def phrase(self) -> str:
+        """``sugar in place of other carbohydrate (total carbohydrate and energy fixed)``."""
+        return f"{self.noun} {self.in_place_of} ({_and(self.fixed)} fixed)"
+
+    def words(self, amount: Optional[str] = None) -> str:
+        """``1 g more sugar in place of …``: ``amount`` is one unit of the column ("1 g"); None
+        when the estimate is not per such a unit (a transformed or formed exposure)."""
+        return f"{amount + ' ' if amount else ''}more {self.phrase}"
+
+
 @dataclass
 class ModelEstimand:
     """What the fitted model estimates, composed from the columns it sees.
@@ -1551,6 +1589,9 @@ class ModelEstimand:
     sources: List[str] = field(default_factory=list)
     energy_in_model: bool = False
     nested: Dict[str, List[str]] = field(default_factory=dict)  # total -> its parts, both in it
+    # Each matrix column's substitution, where its coefficient is one (the standard and residual
+    # models' swaps; a part beside its total, also with energy out of the model).
+    swaps: Dict[str, Swap] = field(default_factory=dict)
 
 
 def _form(method: Optional[str], energy_in: bool) -> str:
@@ -1707,7 +1748,13 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
                  f"none of them, not total {source}.")
 
     meanings: Dict[str, str] = {}
+    swaps: Dict[str, Swap] = {}
     parent_of = {c: p for p, kids in groups.items() for c in kids}
+    source_of = {t.column: t.source for t, _ in present}
+    # A source the model holds whole (``carb``), not only through its parts (``sugar``): a part
+    # with no whole beside it also displaces the rest of its own source (Q-b).
+    whole = {t.source for t, _ in present if not t.share and _part_of(t.column) is None}
+    swapping = form in ("standard", "residual")
     for t, m in present:
         if t.share:
             # One percentage point of energy from the source (audit B24): with total energy in the
@@ -1719,12 +1766,32 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
                                f"(a nutrient density)")
             continue
         if t.column in parent_of:
-            meanings[m] = (f"{t.column} in place of the rest of {parent_of[t.column]} "
-                           f"({parent_of[t.column]} fixed)")
+            parent = parent_of[t.column]
+            if swapping or form == "none":
+                # Its total beside it: more of the part is less of the rest of that total, the
+                # total (and total energy, when it is in the model) fixed (Q-b; ME-15).
+                whole_source = source_of.get(parent, parent)
+                swaps[m] = Swap(_noun(t), f"in place of other {whole_source}",
+                                (f"total {whole_source}", *(("energy",) if energy_in else ())))
+                meanings[m] = swaps[m].phrase
+            else:
+                meanings[m] = f"{t.column} in place of the rest of {parent} ({parent} fixed)"
             continue
         what = (f"remaining {t.source} (holding {', '.join(groups[t.column])} fixed)"
                 if t.column in groups else t.source)
-        if form in ("standard", "residual"):
+        if swapping:
+            if t.column in groups:
+                kids = [_noun(k) for k, _ in present if k.column in groups[t.column]]
+                swaps[m] = Swap(f"{t.source} other than {_and(kids)}", swap, ("total energy",))
+            elif _part_of(t.column) and t.source not in whole:
+                # A part alone (sugar with no total carbohydrate): the rest of its source is among
+                # what it displaces, named (ME-04).
+                swaps[m] = Swap(_noun(t), _in_place_of(named, [f"other {t.source}", *omitted]),
+                                ("total energy",))
+                meanings[m] = f"{swaps[m].noun} {swaps[m].in_place_of}, total energy fixed"
+                continue
+            else:
+                swaps[m] = Swap(_noun(t), swap, ("total energy",))
             meanings[m] = f"{what} {swap}, total energy fixed"
         elif form == "residual_energy_dropped":
             meanings[m] = f"energy-adjusted {what}; total energy not in the outcome model"
@@ -1753,7 +1820,43 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
     if "kcal_from_other" in in_matrix:
         meanings["kcal_from_other"] = f"adding kcal from {rest}, every named source fixed"
     return ModelEstimand(form=form, text=text, terms=meanings, omitted=omitted, sources=sources,
-                         energy_in_model=bool(energy_in), nested=groups)
+                         energy_in_model=bool(energy_in), nested=groups, swaps=swaps)
+
+
+def substitution_swap(adjustment: Any, predictors: Sequence[str], roles: Mapping[str, str],
+                      exposure: str, *, nested: Optional[Mapping[str, str]] = None,
+                      atwater: Optional[Mapping[str, float]] = None) -> Optional[Swap]:
+    """The substitution ``exposure``'s coefficient estimates in the model the answers fit, before
+    it is fitted (WAVE_C6A Q-b): :func:`describe_model` on the matrix the energy step would make
+    of ``predictors`` (the adjustment set's), with ``nested`` (child -> its total) the parts beside
+    their totals, as the design reads them. None when the coefficient is no swap (an addition, a
+    density, energy out of the model with no total beside the part).
+
+    With total carbohydrate and energy held, sugar's is "sugar in place of other carbohydrate
+    (total carbohydrate and energy fixed)"; with carbohydrate not held, a swap for the energy
+    sources not in the model, named (ME-04)."""
+    predictors = [str(c) for c in predictors]
+    roles = dict(roles or {})
+    method = getattr(adjustment, "method", None)
+    energy_cols = total_energy_columns(predictors, roles)
+    E = getattr(adjustment, "energy_column", None) or (energy_cols[0] if energy_cols else None)
+    form = _form(method, bool(E and E in predictors))
+    adjusted = (list(getattr(adjustment, "nutrients", None) or [])
+                if form not in ("none", "standard") else [])
+    # The energy-dropped residual takes total energy out of the outcome model.
+    gone = ({*energy_cols, E} if method == "residual_energy_dropped" else set())
+    matrix = [_matrix_name(c, form, adjusted, E) for c in predictors if c not in gone]
+    described = describe_model(adjustment, predictors, roles, matrix, nested=nested,
+                               atwater=atwater)
+    return described.swaps.get(_matrix_name(str(exposure), described.form, adjusted, E))
+
+
+def amount_of(column: str) -> str:
+    """One unit of ``column`` as a sentence says it: ``1 g`` for an amount in grams (or unmarked,
+    which the Atwater factors read as grams), ``1 kcal``, ``1 kJ``, ``1 mg``, else ``1 unit``."""
+    unit = unit_of(column)
+    return "1 " + {"grams": "g", "unmarked": "g", "kcal": "kcal", "kj": "kJ",
+                   "milligrams": "mg", "micrograms": "µg"}.get(unit, "unit")
 
 
 def omitted_energy(frame: pd.DataFrame, energy_column: Optional[str], columns: Sequence[str], *,

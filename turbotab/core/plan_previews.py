@@ -379,6 +379,14 @@ def estimand_line(state: Any) -> str | None:
         family = est.family_exposures(state)
         return (f"{effect} effect of each of {fmt_count(len(family))} study factors on {target}: "
                 f"{measure}.")
+    # Q-b: a substitution says what it swaps, as the caption and the methods sentence say it
+    # (``estimand.substitution_words``). The swap is kept whole: where it and the measure do not
+    # fit the caption's words together, the measure (the card's own choice) gives way.
+    swapped = (est.substitution_words(state, spec.exposure)
+               if spec.contrast == "substitution" else None)
+    if swapped:
+        line = f"{effect} effect of {swapped} on {target}: {measure}."
+        return line if len(line.split()) <= CAPTION_WORDS else f"{effect} effect of {swapped} on {target}."
     contrast = {"substitution": " in place of other calories",
                 "addition": " added to the diet"}.get(str(spec.contrast), "")
     return f"{effect} effect of {tick(spec.exposure)}{contrast} on {target}: {measure}."

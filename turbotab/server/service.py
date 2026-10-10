@@ -12,6 +12,7 @@ import os
 import shutil
 import tempfile
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from collections import OrderedDict
 from dataclasses import dataclass, field, replace
@@ -69,6 +70,9 @@ SLOTS_OF_COMPLETIONS = {"roles": "roles", "split": "split"}
 # What a Router step waits on while TurboTab records its answer itself (P0.6).
 RECORDING = "recording"
 MAX_REMEMBERED_JOBS = 10_000
+# How long a sentence waits for a stage it states to settle for the answers as they stand (the
+# split's grouping, from the seal plan: WAVE_C6A ruling 5); past it, the sentence says less.
+SETTLE_SECONDS = 30.0
 
 
 # ── decision validation that needs the server's view of the project ─────────
@@ -133,6 +137,11 @@ class DecisionContext:
     # "Decide now" (crosswalk disagreement 20): the answer asks to be taken ahead of the Router,
     # which ``sequence.decide_now_refusal`` allows only where its needs are met.
     early: bool = False
+    # A stage's public artifact for the answers as they stand, waited for while it (or a stage it
+    # reads) computes, up to ``SETTLE_SECONDS``; None when it cannot settle. What a sentence that
+    # states the current plan reads: a split recorded while the seal plan recomputes names the
+    # grouping the seal draws by, not none (WAVE_C6A ruling 5).
+    settled: Callable[[str], Any] | None = field(default=None, repr=False, compare=False)
 
 
 def _target_needs_columns(decision: Any, ctx: Any) -> None:
@@ -313,8 +322,14 @@ class SentenceFacts:
 
     @cached_property
     def seal_plan(self) -> dict[str, Any] | None:
-        """The seal's basis and chronological draw for the current answers (the split sentence)."""
-        plan = self._artifact("seal_plan")
+        """The seal's basis and chronological draw for the current answers (the split sentence):
+        the plan as it settles when it is recomputing (WAVE_C6A ruling 5), never a missing one
+        read as "nothing groups the rows"."""
+        settled = self._ctx.settled
+        try:
+            plan = settled("seal_plan") if settled else self._artifact("seal_plan")
+        except Exception:  # noqa: BLE001 - a sentence never fails a decision; it says less
+            plan = None
         return plan if isinstance(plan, dict) else None
 
     @cached_property
@@ -1209,7 +1224,27 @@ class ProjectService:
             fit_gate=lambda: fit_press.serving_gate(state, self._pressed(pid, state)),
             quest=lambda: self.quest(pid),
             triage=lambda: self.triage(pid),
+            settled=lambda stage: self._settled(pid, stage),
         )
+
+    def _settled(self, pid: str, stage: str, timeout: float = SETTLE_SECONDS) -> Any:
+        """``stage``'s fresh public artifact for the answers as they stand, waiting while it, or a
+        stage it reads, is computing (``DecisionContext.settled``). None when it is blocked, failed,
+        stopped or held, or has not settled within ``timeout`` seconds."""
+        end = time.monotonic() + timeout
+        reads = self.engine.graph.upstream(stage) | {stage}
+        while True:
+            statuses = self.engine.status(pid)
+            status = statuses.get(stage)
+            if status is None or status.status == "blocked":
+                return None
+            if status.status == "fresh" and status.key:
+                return self._artifact(pid, stage, status.key, public=True)
+            stuck = any(s.status == "error" or s.cancelled or s.held
+                        for name, s in statuses.items() if name in reads)
+            if stuck or time.monotonic() >= end:
+                return None
+            time.sleep(0.05)
 
     def decide(self, pid: str, decision: Any, *, system: bool = False,
                early: bool = False, unless_set: str | None = None) -> dict[str, Any]:
@@ -1277,6 +1312,10 @@ class ProjectService:
                 records = log.records()
             seen = False
         facts = SentenceFacts(ctx, parsed, records)
+        if parsed.kind == "set_split":
+            # The seal plan its sentence states is waited for here, before the log's lock, so a
+            # plan still computing holds no reader of the log (WAVE_C6A ruling 5).
+            facts.seal_plan  # noqa: B018 - cached for the sentence
         return log.append(  # raises Refusal for a revert it cannot make
             parsed, sentence=lambda d, before: voice.sentence_for(d, before, facts),
             after_estimates=seen, **by)
