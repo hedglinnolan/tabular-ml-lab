@@ -541,11 +541,57 @@ def post_answer(run: Run, body: dict[str, Any], depth: int = 0) -> None:
     post_answer(run, exits[0]["decision"], depth + 1)
 
 
+def reaches_fit(view: dict[str, Any]) -> bool:
+    """Whether the Router has reached Fit (SIZING P0.8; RECIPES §4.4), so a person would press it
+    now: a stage the scheduler holds for Fit (its estimate exceeds about 2 minutes), or the first
+    unsettled question waiting on the fit (the seal, which sits in Results and waits for Fit to
+    open them, ``interview.AFTER_FIT``) while the fit is not computing and has not failed."""
+    stages = view.get("stages") or {}
+    if any((s or {}).get("held") == "fit" for s in stages.values()):
+        return True
+    first = next((s for s in view.get("interview") or [] if s["status"] in OPEN), None)
+    if first is None or first["status"] != "waiting" or "fit" not in (first.get("waiting_on") or []):
+        return False
+    fit = stages.get("fit") or {}
+    return fit.get("status") not in ("queued", "running", "error") and not fit.get("cancelled")
+
+
+class FitPresser:
+    """Fit, pressed as the person walking the journey presses it: once the Router reaches it
+    (:func:`reaches_fit`), through ``POST /projects/{pid}/fit`` (``server_drive.press_fit``), at
+    most once for each state of the log and the fit, so a refused press (``fit_not_yet``) is not
+    sent again until something changes. ``note``: told what happened, in a sentence."""
+
+    def __init__(self, client: Any, pid: str, note: Callable[[str], None] | None = None):
+        self.c, self.pid, self.note = client, pid, note
+        self.pressed: set[tuple[int, str | None, str | None]] = set()
+
+    def __call__(self, view: dict[str, Any]) -> bool:
+        """Press Fit if the Router has reached it in ``view`` and it was not pressed in this
+        state already. True when it was pressed now (taken or refused)."""
+        from turbotab.core.tests.acceptance.server_drive import press_fit
+
+        if not reaches_fit(view):
+            return False
+        fit = (view.get("stages") or {}).get("fit") or {}
+        at = (len(view.get("decisions") or []), fit.get("key"), fit.get("status"))
+        if at in self.pressed:
+            return False
+        self.pressed.add(at)
+        taken = press_fit(self.c, self.pid)
+        if self.note is not None:
+            self.note("the Router reached Fit: pressed" if taken else
+                      "the Router reached Fit: pressed, and refused (nothing to fit yet)")
+        return True
+
+
 def follow(run: Run) -> bool:
-    """Answer the Router's open questions until none is open or waiting. True when it got there."""
+    """Answer the Router's open questions until none is open or waiting, pressing Fit when the
+    Router reaches it (:class:`FitPresser`). True when it got there."""
     spec, d = run.spec, run.drive
     end = run.started + spec.timeout
     done_before: set[str] = set()
+    fit = FitPresser(d.c, run.pid, run.note)
     while time.monotonic() < end:
         view = d.view()
         first = next((s for s in view["interview"] if s["status"] in OPEN), None)
@@ -559,7 +605,8 @@ def follow(run: Run) -> bool:
                 errors = {w: view["stages"][w].get("error") for w in failed}
                 run.note(f"stopped: the {key} question waits on failed stages {errors}")
                 return False
-            time.sleep(0.3)
+            if not fit(view):
+                time.sleep(0.3)
             continue
         if key in spec.before and key not in done_before:
             done_before.add(key)
@@ -580,8 +627,10 @@ def wait_results(run: Run, timeout: float = 3600.0) -> bool:
     from turbotab.core.decisions import ProjectState
 
     end = time.monotonic() + timeout
+    fit = FitPresser(run.drive.c, run.pid, run.note)
     while time.monotonic() < end:
         view = run.drive.view()
+        fit(view)  # a result the scheduler holds for Fit is released as the person releases it
         stages = result_stages(ProjectState(**view["state"]))
         statuses = {s: view["stages"][s]["status"] for s in stages}
         failed = {s: view["stages"][s].get("error") for s, v in statuses.items() if v == "error"}

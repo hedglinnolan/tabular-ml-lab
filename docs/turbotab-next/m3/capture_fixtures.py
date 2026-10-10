@@ -5,7 +5,9 @@ answered on a reference journey, through its own HTTP routes. The driver follows
 answers whatever question it opens, in its order, the way the journey's author would, and every
 reading the server asks about is answered from the fixture's declared truth
 (``turbotab/core/tests/truths.py``; BLUEPRINT §14.3: never a constant). Refusals that ask for
-something other than readings take their first exit, as a person pressing it would.
+something other than readings take their first exit, as a person pressing it would. Fit is pressed
+once the Router reaches it (``journeys.FitPresser``: the seal waits for it, and a fit the scheduler
+holds for it starts only then), through ``POST /projects/{pid}/fit``, as the person presses it.
 
 For each journey the file holds:
 
@@ -49,6 +51,7 @@ import httpx
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
+from turbotab.core.reference.journeys import FitPresser  # noqa: E402
 from turbotab.core.tests.acceptance.server_drive import (  # noqa: E402
     Drive,
     answer_wp17,
@@ -391,6 +394,9 @@ def follow(j: Journey, d: Drive, spec: dict[str, Any]) -> None:
     before: dict[str, Callable[..., None]] = spec.get("before", {})
     done_before: set[str] = set()
     stalled = 0
+    # Fit, pressed once the Router reaches it (SIZING P0.8): the seal waits for it, and a fit the
+    # scheduler holds for it starts only then.
+    fit = FitPresser(d.c, d.pid, lambda text: print(f"  [{j.name}] {text}", flush=True))
     while time.monotonic() < end:
         view = d.view()
         if until(view):
@@ -399,6 +405,7 @@ def follow(j: Journey, d: Drive, spec: dict[str, Any]) -> None:
         steps = view["interview"]
         first = next((s for s in steps if s["status"] in ("open", "waiting")), None)
         if first is None:
+            fit(view)  # a result the scheduler holds for Fit is released as the person releases it
             j.quiet()
             if until(d.view()) or not spec.get("until"):
                 return
@@ -415,7 +422,8 @@ def follow(j: Journey, d: Drive, spec: dict[str, Any]) -> None:
             if failed:
                 j.notes.append(f"stopped: {key} waits on failed {failed}")
                 return
-            time.sleep(0.3)
+            if not fit(view):
+                time.sleep(0.3)
             continue
         stalled = 0
         if key in before and key not in done_before:
