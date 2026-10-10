@@ -13,7 +13,7 @@ import {
   type SplitArtifact,
   type SubstitutionArtifact,
 } from "../../../api/m1-stage-types";
-import { useCancelFit, useCancelJob, useDecide, usePressFit, useQuest } from "../../../api/queries";
+import { useCancelJob, useDecide, usePressFit, useQuest } from "../../../api/queries";
 import type { ProjectView, Refusal, StageStatus } from "../../../api/schema";
 import { RefusalNote } from "../../record/Refusal";
 import { StaleVeil, type VeilState } from "../../../motion/StaleVeil";
@@ -78,29 +78,19 @@ function energyProvenance(view: ProjectView, design: DesignArtifact | null): str
 /**
  * Fit, pressed (SIZING P0.8; FOUNDATION §7): until it is, no estimate is served, and under
  * Estimate pressing it locks the plan. One obvious click; a refusal says what it waits for.
- * `about`: what the engine expects the fit to take, once known; `cancellable`: the press can be
- * withdrawn (Cancel is POST /fit/cancel) while the fit waits for it.
+ * `reason`: the engine's words for why the fit waits, once known; no caption until then.
  */
-function FitPress({
-  pid,
-  reason,
-  about,
-  cancellable = false,
-}: {
-  pid: string;
-  reason: string;
-  about?: string | null;
-  cancellable?: boolean;
-}) {
+function FitPress({ pid, reason }: { pid: string; reason: string | null }) {
   const press = usePressFit(pid);
-  const cancel = useCancelFit(pid);
-  const failure = press.error ?? cancel.error;
+  const failure = press.error;
   const refused = failure && isRefusalError(failure) ? failure.refusal : null;
   return (
     <section className={s.section} data-purpose="fit_press" data-testid="fit-press">
-      <p className={s.caption}>
-        <Rich text={reason} />
-      </p>
+      {reason ? (
+        <p className={s.caption}>
+          <Rich text={reason} />
+        </p>
+      ) : null}
       <div className={s.bandRow}>
         <button
           type="button"
@@ -111,28 +101,12 @@ function FitPress({
         >
           {press.isPending ? "Fitting…" : "Fit"}
         </button>
-        {about ? (
-          <span className={s.bandNote} data-testid="fit-estimate">
-            about {about}
-          </span>
-        ) : null}
-        {cancellable ? (
-          <button
-            type="button"
-            className={s.linkButton}
-            onClick={() => cancel.mutate()}
-            disabled={cancel.isPending}
-            data-testid="cancel-fit"
-          >
-            Cancel
-          </button>
-        ) : null}
       </div>
       {refused ? (
         <p className={s.bandNote} role="alert">
           <Rich text={refused.error.message} />
         </p>
-      ) : failure && !refused ? (
+      ) : failure ? (
         <p className={s.bandNote} role="alert">
           {failure.message}
         </p>
@@ -142,49 +116,32 @@ function FitPress({
 }
 
 /**
- * The fit stage when it computes nothing yet, so there is no artifact to hang Fit on (W1-B).
- *
- * A fit expected to take over about 2 minutes waits in the scheduler for Fit (core/fit_press.py):
- * its status is idle with `held: "fit"`, and the lock the quest log carries says how long the
- * engine expects it to take. Fit starts it; Cancel withdraws the press. Once pressed and running,
- * only Cancel is offered: a long fit can be stopped. Nothing is shown otherwise.
+ * Fit, where the scheduler holds the fit (W1-B; core/fit_press.py): a fit expected to take over
+ * about 2 minutes waits for Fit, its stage status carrying `held: "fit"`. The caption is the
+ * lock's reason from the quest log, the engine's words, which say how long the fit is expected
+ * to take (`cost.duration`); the page never rounds the estimate again. No Cancel: a held fit runs
+ * nothing, and POST /fit/cancel would stop every estimate stage's work and could withdraw the
+ * plan's lock. Once Fit is pressed and the fit runs, its job chip carries the one Cancel.
  */
-export function FitHeld({ pid, status }: { pid: string; status: StageStatus | undefined }) {
-  const held = status?.held === "fit";
-  const running = status?.status === "running" || status?.status === "queued";
-  const lock = useQuest(pid, held || running).data?.fit ?? null;
-  if (held) {
-    const seconds = lock?.estimate_seconds ?? null;
-    return (
-      <div className={s.results} data-testid="fit-held">
-        <FitPress
-          pid={pid}
-          reason={lock?.reason ?? "The fit waits for Fit: press it to start."}
-          about={seconds === null ? null : aboutSeconds(seconds)}
-          cancellable
-        />
-      </div>
-    );
-  }
-  if (running && lock?.pressed) return <FitRunning pid={pid} />;
-  return null;
+function HeldPress({ pid }: { pid: string }) {
+  const lock = useQuest(pid).data?.fit ?? null;
+  return <FitPress pid={pid} reason={lock?.reason ?? null} />;
 }
 
-function FitRunning({ pid }: { pid: string }) {
-  const cancel = useCancelFit(pid);
+/** True when the fit stage waits in the scheduler for Fit. */
+export function fitHeld(status: StageStatus | undefined): boolean {
+  return status?.held === "fit";
+}
+
+/**
+ * The stage's Fit while the scheduler holds the fit and the Results do not offer it themselves
+ * (no artifact yet, or an older one shown whole above which Fit is the way on). Nothing otherwise.
+ */
+export function FitHeld({ pid, status }: { pid: string; status: StageStatus | undefined }) {
+  if (!fitHeld(status)) return null;
   return (
     <div className={s.results} data-testid="fit-held">
-      <div className={s.bandRow}>
-        <button
-          type="button"
-          className={s.linkButton}
-          onClick={() => cancel.mutate()}
-          disabled={cancel.isPending}
-          data-testid="cancel-fit"
-        >
-          Cancel
-        </button>
-      </div>
+      <HeldPress pid={pid} />
     </div>
   );
 }
@@ -206,7 +163,11 @@ export function Results({ pid, view, data }: Props) {
   if (fit.withheld_for === "fit") {
     return (
       <div className={s.results} data-testid="results">
-        <FitPress pid={pid} reason={fit.withheld ?? "Press Fit to see the results."} />
+        {fitHeld(view.stages.fit) ? (
+          <HeldPress pid={pid} />
+        ) : (
+          <FitPress pid={pid} reason={fit.withheld ?? "Press Fit to see the results."} />
+        )}
       </div>
     );
   }

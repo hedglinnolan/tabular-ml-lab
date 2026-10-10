@@ -339,8 +339,11 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
             </p>
           ) : null}
           {/* Fit waits for the person when it is expected to take long: it is offered wherever the
-              recorded pipeline is on the stage, never while a preview or evidence is. */}
-          {scene.kind === "now" || scene.kind === "models" || scene.kind === "results" ? (
+              recorded pipeline is on the stage, never while a preview or evidence is, and once:
+              where the Results show an older fit withheld for Fit, they offer it themselves. */}
+          {scene.kind === "now" ||
+          scene.kind === "models" ||
+          (scene.kind === "results" && live.fit.artifact?.withheld_for !== "fit") ? (
             <FitHeld pid={pid} status={view.stages.fit} />
           ) : null}
           <div className={s.body}>
