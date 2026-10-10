@@ -6,14 +6,14 @@ one place that reads scikit-learn's private ``_predictors`` and ``_baseline_pred
 
 **Tuned (RT-5a; RECIPES §4.1).** Its settings are searched inside every training fold
 (:data:`TUNING`): learning rate, leaves per tree, the smallest leaf (capped at a twentieth of the
-plan's count, :func:`leaf_cap`), the L2 pull, the share of columns per split, and the number of
-trees when the plan does not stop early. scikit-learn's defaults are the standard candidate, and
-below an effective size of 300 (units, events or the rarest class's count) the plan keeps it
-alone: one fit at scikit-learn's defaults. That fit equals a direct ``HistGradientBoosting*()``
-fit at the same thread count while the plan's rows are at most 10,000 (above them the stopping
-rows are whole units the plan draws, not scikit-learn's 10% of positions) and the fit's rows at
-most 200,000 (above them the plan's seed, not scikit-learn's, picks the binning subsample).
-"Try both" for blanks waits for RT-3 (C6b).
+plan's units, or of its rows when it does not count units, :func:`leaf_cap`), the L2 pull, the
+share of columns per split, and the number of trees when the plan does not stop early.
+scikit-learn's defaults are the standard candidate, and below an effective size of 300 (units,
+events or the rarest class's count) the plan keeps it alone: one fit at scikit-learn's defaults.
+That fit equals a direct ``HistGradientBoosting*()`` fit at the same thread count while the plan's
+rows are at most 10,000 (above them the stopping rows are whole units the plan draws, not
+scikit-learn's 10% of positions) and the fit's rows at most 200,000 (above them the plan's seed,
+not scikit-learn's, picks the binning subsample). "Try both" for blanks waits for RT-3 (C6b).
 
 **Pinned threads (RECIPES §4.7).** The family builds :class:`PinnedHistGradientBoostingRegressor`
 / :class:`PinnedHistGradientBoostingClassifier`: scikit-learn's estimators with one more
@@ -83,22 +83,19 @@ TUNING = TuningDecl(
 )
 
 
-def leaf_cap(*, plan: Any = None, n_units: int, n_rows: int | None = None) -> int:
+def leaf_cap(*, plan: Any = None, n_units: int) -> int:
     """The most rows a searched smallest leaf may hold (RECIPES §4.1; WAVE_C6A_PLAN §7 ruling 14):
-    a twentieth of the plan's units, at least 1, in units rather than rows when rows repeat per
-    unit.
+    a twentieth of the plan's units when the plan knows them, of its rows otherwise, at least 1,
+    and the same in every fit the plan makes, so the refit runs a leaf the inner folds scored.
 
-    For a measured outcome the plan's count is its units (``n_plan``). For a yes/no or class
-    outcome it counts events or the rarest class, which is not what a leaf holds, and the plan
-    stores no count of units; its units are then its rows (``plan_rows``) times this fit's units
-    per row (``n_units`` over ``n_rows``), which is the rows themselves when each row is a unit
-    (``n_rows`` omitted or equal to ``n_units``). Without a plan, the fit's own units."""
+    For a measured outcome the plan counts units (``n_plan``, ``unit == "units"``): people, not
+    rows, when rows repeat per person. For a yes/no or class outcome it counts events or the
+    rarest class, which is not what a leaf holds, and it records no count of units, so the cap is
+    a twentieth of its rows (``plan_rows``), which are its units only when each row is one. No
+    fit's own units stand in for the plan's: people with unequal rows would give each fit its own
+    cap. Without a plan, the fit's own units."""
     if plan is not None:
-        if plan.unit == "units":
-            n = int(plan.n_plan)
-        else:
-            rows = int(n_rows) if n_rows else int(n_units)
-            n = int(plan.plan_rows) * int(n_units) // rows if rows > 0 else int(plan.plan_rows)
+        n = int(plan.n_plan) if plan.unit == "units" else int(plan.plan_rows)
     else:
         n = int(n_units)
     return max(1, n // LEAF_SHARE)
@@ -275,7 +272,7 @@ class BoostedTrees(FamilyBase):
                                  f"{STANDARD!r}")
             out["min_samples_leaf"] = STANDARD_LEAF
         elif leaf is not None:
-            out["min_samples_leaf"] = min(int(leaf), leaf_cap(plan=plan, n_units=n_units, n_rows=n_rows))
+            out["min_samples_leaf"] = min(int(leaf), leaf_cap(plan=plan, n_units=n_units))
         out["random_state"] = int(plan.seed) if plan is not None else 0
         out["n_threads"] = int(plan.threads) if plan is not None else 1
         return out

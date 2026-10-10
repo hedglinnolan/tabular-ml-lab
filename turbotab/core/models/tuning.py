@@ -1062,7 +1062,8 @@ class TuningRecord:
     the tuning curve needs no refit); ``chosen``: the chosen candidate's index; ``chosen_params``:
     the estimator's own parameters at the refit (what pinned replay holds); ``inner_k_used``: the
     inner folds drawn; ``below_floor``: this fit held fewer than the floor and drew its folds as
-    evenly as its units allowed; ``libraries``: versions; ``threads``: the count the fits ran at."""
+    evenly as its units allowed; ``libraries``: versions; ``threads``: the thread counts the fits
+    ran at, by pool (:func:`_threads`)."""
 
     plan: TuningPlan
     libraries: Mapping[str, str]
@@ -1767,11 +1768,27 @@ def _libraries(model: Any) -> dict[str, str]:
 
 
 def _threads(plan: TuningPlan) -> dict[str, int]:
-    """The thread count the fits ran at: the plan's, which a family hands its estimator
-    (``n_threads``, ``n_jobs``) and which the boosted-tree family pins OpenMP to. Not the
-    process's pools (``threadpool_info``): those are the machine's setting when the record is
-    written, which no fit of the plan followed."""
-    return {"plan": int(plan.threads)}
+    """The thread counts the fits ran at (RECIPES §4.7; WAVE_C6A_PLAN §7 ruling 14): ``plan``,
+    the plan's count, which a family hands its estimator (``n_threads``, ``n_jobs``); each OpenMP
+    pool at the plan's count too, since the families that use OpenMP pin it to the plan's count
+    on every fit and prediction (boosted trees' ``n_threads``, XGBoost's ``nthread``), so the
+    process's OpenMP setting is not what they ran at; and every other pool (BLAS) at the
+    process's count while the fit runs, which no family pins and the linear algebra of the
+    linear, logistic and elastic-net fits runs at. A pool is keyed by its library
+    (``internal_api``: ``openmp``, ``openblas``, ``mkl``...). A wide elastic net's path runs its
+    mixes on ``wide.fit_threads()`` worker threads, which change no number and are not recorded
+    here."""
+    out = {"plan": int(plan.threads)}
+    try:
+        from threadpoolctl import threadpool_info
+
+        for pool in threadpool_info():
+            key = str(pool.get("internal_api") or pool.get("user_api"))
+            openmp = pool.get("user_api") == "openmp"
+            out[key] = int(plan.threads) if openmp else int(pool["num_threads"])
+    except Exception:  # noqa: BLE001 - the record still holds the plan's count
+        pass
+    return out
 
 
 def _tuned_fit(pipe: "TunedPipeline", X: Any, y: Any, *, groups: Any, order: Any,
