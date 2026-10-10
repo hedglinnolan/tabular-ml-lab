@@ -127,6 +127,10 @@ CONTRACT_LENSES: dict[str, tuple[str, ...]] = {
     "manuscript_export": (SHARED,),
     # D5: agreement between two measurement methods (Describe) or two models (Predict), any lens
     "bland_altman": (SHARED,),
+    # E4: case-control samples and matched sets, any lens (metabolomics nested case-control
+    # studies, clinical matched designs, dietary case-control studies)
+    "case_control_effects": (SHARED,),
+    "case_control_risks": (SHARED,),
 }
 
 # Every registered model family: the lenses whose packet reviews it in full, or (SHARED,). No

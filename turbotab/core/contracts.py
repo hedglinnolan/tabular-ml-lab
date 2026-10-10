@@ -262,6 +262,8 @@ DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.methods.subgroups",
     # D3, dietary patterns (engine only until D1 asks them)
     "turbotab.core.methods.dietary_patterns",
+    # E4: case-control samples and matched sets (engine only until E1/D1/C1 route them)
+    "turbotab.core.methods.case_control",
 )
 
 

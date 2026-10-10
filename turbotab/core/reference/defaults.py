@@ -28,7 +28,10 @@ calling the function the app itself ranks with, never a copy of its rule:
 * ``causal`` (the causal lane's question, labeled in ``causal.options``, not in the registry):
   stated, never asked by default (``causal.causal_gate``), its estimators ranked by the exposure's
   kind, the outcome, how many candidates there are for n and the survey answer. The four causal
-  contracts (:data:`THROUGH`) are reached only through it, so their cases are its.
+  contracts (:data:`THROUGH`) are reached only through it, so their cases are its;
+* ``case_control_effects`` and ``case_control_risks``: ``methods.case_control.offered_first`` by
+  the sampling (unmatched, frequency-matched, individually matched) and whether the population
+  prevalence is stated.
 
 Each case states its premise and checks it against what the app computed, so a changed rule fails
 here rather than printing a stale condition. ``turbotab/core/tests/test_reference.py`` holds the
@@ -361,6 +364,43 @@ def nci_usual_intake(purpose: str) -> list[Case] | None:
                  f"`{common}`: {tail(why_common)}", common)]
 
 
+# ── case-control samples ─────────────────────────────────────────────────────
+
+
+def case_control_effects(purpose: str) -> list[Case]:
+    from turbotab.core.methods.case_control import SAMPLING_WORDS, SAMPLINGS, offered_first
+
+    goal = "estimate" if purpose == "inference" else "predict"
+    out = []
+    for sampling in SAMPLINGS:
+        key, why = offered_first("case_control_effects", goal, sampling)
+        out.append(Case(SAMPLING_WORDS[sampling], f"`{key}`: {why}", key))
+    _check([c.key for c in out] == ["unconditional", "unconditional", "conditional"],
+           "matched sets take the conditional model, the other samplings logistic regression")
+    return out
+
+
+def case_control_risks(purpose: str) -> list[Case] | None:
+    if purpose != "prediction":
+        return None  # every option is not offered under inference
+    from turbotab.core.methods.case_control import SAMPLING_WORDS, offered_first
+
+    conditions = (("unmatched", 0.02, "with the population prevalence stated"),
+                  ("unmatched", None, "with no population prevalence"),
+                  ("frequency_matched", {"stratum": 0.02},
+                   "with the prevalence stated within each matching stratum"),
+                  ("frequency_matched", 0.02, "with one prevalence for every stratum"),
+                  ("individually_matched", 0.02, "with or without a prevalence"))
+    out = []
+    for sampling, prevalence, words in conditions:
+        key, why = offered_first("case_control_risks", "predict", sampling, prevalence=prevalence)
+        out.append(Case(f"{SAMPLING_WORDS[sampling]}, {words}", f"`{key}`: {why}", key))
+    _check([c.key for c in out] == ["prior_correction", "ranking_only", "prior_correction",
+                                    "ranking_only", "within_set_ranking"],
+           "risks need the prevalence (per stratum under frequency matching), never matched sets")
+    return out
+
+
 # ── the causal lane ──────────────────────────────────────────────────────────
 
 # The conditions the causal lane ranks its estimators by (``causal.options``): the exposure's kind,
@@ -420,6 +460,8 @@ BY_CONDITION: dict[str, Callable[[str], list[Case] | None]] = {
     "unmeasured_confounding": unmeasured_confounding,
     "nci_usual_intake": nci_usual_intake,
     "causal": causal,
+    "case_control_effects": case_control_effects,
+    "case_control_risks": case_control_risks,
 }
 
 
