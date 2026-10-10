@@ -25,6 +25,8 @@ optional; a sentence says only what its context can support and never prints a p
     detected_task    the task detection's answer: ``set_task`` names an override, and the split
                      and model sentences use it when no task was answered
     model_labels     ``{family key: label}``, overriding the built-in labels
+    nested           the parts the values keep inside their totals (``estimand.values_nesting``);
+                     read from ``frame`` or ``datastore`` when not given (``set_estimand``)
 
 M2 keys (the opening sequence, the seal and findings; each optional like the rest):
 
@@ -1716,14 +1718,28 @@ def _set_estimand(d: Any, state: Any, ctx: Any) -> str:
     else:
         # Q-b: a substitution says what it swaps, read from the adjustment set as the caption reads
         # it (``estimand.substitution_words``), the technical name kept as its label.
-        from turbotab.core.estimand import substitution_words
+        # The values' reading of which parts sit inside their totals, where a table is at hand,
+        # as the design reads it for Table 2 (P1-FU).
+        from turbotab.core.estimand import substitution_words, values_nesting
+        from turbotab.core.methods.exposure_form import estimand_unit
 
-        swapped = (substitution_words(state, d.exposure)
-                   if d.contrast == "substitution" and state is not None else None)
+        swapped = None
+        if d.contrast == "substitution" and state is not None:
+            nested = _get(ctx, "nested")
+            if nested is None:
+                try:
+                    nested = values_nesting(state, store=_get(ctx, "datastore"),
+                                            frame=_get(ctx, "frame"))
+                except Exception:  # noqa: BLE001 - no table at hand: the names alone speak
+                    nested = None
+            swapped = substitution_words(state, d.exposure, nested=nested)
         subject = (f"{swapped}{on} (a substitution)" if swapped else
                    f"{tick(d.exposure)}{on}{contrast}")
+        # The unit on the exposure's final scale, as the caption states it (P1-FU: a density, the
+        # energy-adjusted residual, a form's own unit).
         text = (f"The analysis estimates the {d.effect} effect of {subject}, "
-                f"as a {MEASURE_WORDS.get(d.measure, d.measure)} per unit of {tick(d.exposure)}")
+                f"as a {MEASURE_WORDS.get(d.measure, d.measure)} per "
+                f"{estimand_unit(state, str(d.exposure))}")
     if d.measure in NON_COLLAPSIBLE:
         text += ", given the adjustment set"
     from turbotab.core.estimand import G_COMPUTATION, MARGINAL

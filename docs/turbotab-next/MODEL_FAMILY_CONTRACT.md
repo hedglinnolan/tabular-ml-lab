@@ -180,6 +180,7 @@ class FamilyBase:
     replay_tolerance: float = 1e-12         # C12
     sources: tuple[Source, ...] = ()        # its primary sources, as a method contract has
     cost_model: Literal["cells", "cross_product"] = "cells"   # C6: how one fit's time grows
+    card_label: str = ""                    # the card's plain name ("Mixed model"); `label` is the methods register's
     preprocess = build_for = describe_step = inference = inference_matrix = None  # or methods
 
     def methods_label(self, task) -> str: ...   # what the methods text calls it ("linear

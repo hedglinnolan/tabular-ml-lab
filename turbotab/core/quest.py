@@ -515,8 +515,27 @@ EXPLORE_FINDINGS: dict[str, Place] = {
     "survey_design": Place("whos_in", "q:survey", DECIDE, 7),
     "low_variance": Place("models", "noticing:explore::low_variance", CONFIRM, 0),
     "wide": Place("models", "noticing:explore::wide", DECIDE, 17),
+    # The crosswalk's ceiling (``quest_noticings.json``: Decide, right under Predict); on a table
+    # the line takes the K5 noticing's tier (:func:`explore_place`).
     "collinear": Place("models", "noticing:explore::collinear", DECIDE, 18),
 }
+
+
+def explore_place(kind: str, state: Any = None, *, noticed: Any = None,
+                  pairs: Sequence[Sequence[str]] = ()) -> Place:
+    """Where Explore's finding of ``kind`` is decided or shown on this table: its place in
+    :data:`EXPLORE_FINDINGS`, the collinear line labeled as the K5 noticing decides it
+    (``materiality.collinear_label``: ``noticed``, the noticing measured on the table, and
+    ``pairs``, Explore's pair scan, two columns each). Decide only when what you study is inside
+    the dependency, an exact identity, or under Predict; For the record at band 0."""
+    place = EXPLORE_FINDINGS[kind]
+    if kind != "collinear":
+        return place
+    from dataclasses import replace
+
+    from turbotab.core.materiality import collinear_label
+
+    return replace(place, label=collinear_label(state, noticed, pairs))
 
 
 def finding_place(finding: Mapping[str, Any], state: Any = None) -> tuple[Place, str | None]:
@@ -1089,9 +1108,14 @@ def _asked_again(log: _Log, key: str, now: str, facts: Facts) -> ReopenedBy | No
 def _declaration_asked_again(log: _Log, decl: Declaration, facts: Facts) -> ReopenedBy | None:
     """The change after which a declaration applies where it did not (the goal changed to
     Predict, so the intended use is asked; rows left out, so the every-row sensitivity analysis
-    is), as :func:`_asked_again` reads a question's."""
+    is), as :func:`_asked_again` reads a question's. A first answer decided in another stage is the
+    cause too once the person had worked the declaration's stage, or one after it, before giving
+    it (ruling 3: after the unit changed, the aggregation answer in Who's in makes the
+    regression-calibration question apply in a Models already worked): it asks more of a stage
+    already passed through, which is a reopening, not the journey going forward."""
+    home = decl.place.stage
     for record in reversed(log.live):
-        if not log.supersedes(record):
+        if not log.supersedes(record) and not _reaches_back(log, record, home):
             continue
         before, after = log.state_at(record.seq - 1), log.state_at(record.seq)
         if before is None or after is None:
@@ -1105,6 +1129,22 @@ def _declaration_asked_again(log: _Log, decl: Declaration, facts: Facts) -> Reop
             if stage is not None:
                 return ReopenedBy(decision_id=record.id, kind=record.decision.kind, stage=stage)
     return None
+
+
+def _reaches_back(log: _Log, record: Any, home: str) -> bool:
+    """Whether ``record``, decided outside ``home``, came after an answer the person gave in
+    ``home`` or in a stage after it: an answer that asks something of ``home`` then reaches back
+    into a stage already worked."""
+    stage = log.stage_of(record)
+    if stage is None or stage == home:
+        return False
+    for earlier in log.live:
+        if earlier.seq >= record.seq:
+            break
+        worked = log.stage_of(earlier)
+        if worked is not None and STAGE_INDEX[worked] >= STAGE_INDEX[home]:
+            return True
+    return False
 
 
 def _goal_made_predict(log: _Log) -> ReopenedBy | None:
@@ -1452,6 +1492,28 @@ def _finding_withdrawal(log: _Log, finding_id: str) -> ReopenedBy | None:
     return None
 
 
+def _reopened_only_if_complete(placed: Sequence[tuple[str, QuestLine]], log: _Log) -> None:
+    """A first answer named as the cause of a declaration that never had an answer of its own
+    (:func:`_reaches_back`) reopened its stage only where that stage was complete before it: every
+    other counted Decide there is answered, or was asked again by that answer or a later one. Where
+    another line was already open, the declaration is the journey going forward: no cause."""
+    for stage, line in placed:
+        by = line.reopened_by
+        if line.source != "declaration" or by is None or log.last_answer((line.key,)) is not None:
+            continue
+        cause = log.by_id.get(by.decision_id)
+        if cause is None or log.supersedes(cause):
+            continue
+        for s, other in placed:
+            if (s != stage or other is line or other.label != DECIDE or not other.counted
+                    or other.status == "answered"):
+                continue
+            since = log.by_id.get(other.reopened_by.decision_id) if other.reopened_by else None
+            if since is None or since.seq < cause.seq:
+                line.reopened_by = None
+                break
+
+
 def _hold_the_families(placed: Sequence[tuple[str, QuestLine]]) -> None:
     """The families question waits for the Decide answers ordered before it that have no Router key
     (scales, batch, the omics normalization; selection under Predict; disagreement 21 and
@@ -1651,6 +1713,7 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
               *_declaration_lines(state, by_key, log, facts),
               *_finding_lines(state, findings, by_key, log),
               *sweeps.reading_lines(state, readings)]
+    _reopened_only_if_complete(placed, log)
     _hold_the_families(placed)
     sweeps.weigh(placed, state, facts)
     sweeps.cover_noticings(placed, state, log, findings)
@@ -1691,7 +1754,7 @@ __all__ = [
     "QUEST_VERSION", "QuestLine", "QuestLog", "QuestStage", "READ_BY_GATE", "ReadItem",
     "ReadOption", "Reopened", "ReopenedBy", "STAGES", "STAGE_NAMES", "STATED", "SWEEP_ITEMS",
     "Sweep", "TIER_RULINGS", "Waiting", "answer_holds", "answering_kinds", "contract_tier",
-    "finding_place", "kind_place", "kind_stages", "noticing_place", "noticing_places",
-    "noticing_stage", "noticing_stages", "quest_log", "question_reads", "record_stage",
-    "served_exhibits", "stage_reads", "written_slots",
+    "explore_place", "finding_place", "kind_place", "kind_stages", "noticing_place",
+    "noticing_places", "noticing_stage", "noticing_stages", "quest_log", "question_reads",
+    "record_stage", "served_exhibits", "stage_reads", "written_slots",
 ]

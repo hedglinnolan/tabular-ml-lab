@@ -276,13 +276,42 @@ def test_write_up_closes_without_a_reason_only_when_the_goal_became_estimate():
                        "(after answer set_explain)")
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "Engine conflict with ruling 3, reported, not fixed in Q-c: after the unit is changed, the "
-    "aggregation answer (a first answer, decided in Who's in) makes the regression-calibration "
-    "declaration apply in a complete Models, and quest._declaration_asked_again names a cause "
-    "only for a record that changes an earlier answer, so Models says nothing."))
 def test_the_aggregation_answer_that_makes_calibration_apply_says_why_in_models():
+    """Ruling 3 (P1-FU): after the unit is changed, the aggregation answer (a first answer, decided
+    in Who's in) makes the regression-calibration question apply in a Models already worked and
+    complete. Models has been reopened, and says why: by that answer, in Who's in."""
     journey = path_fuzzer.run_journey(26)
     prev, snap = journey.snapshots[38], journey.snapshots[39]
     assert (snap.action, snap.kind) == ("answer", "set_aggregation")
     assert path_fuzzer.i11_monotone_progress(prev, snap) == []
+    before = next(s for s in prev.log.stages if s.key == "models")
+    models = next(s for s in snap.log.stages if s.key == "models")
+    assert before.progress.complete and not models.progress.complete
+    [line] = [l for l in models.lines if l.key == "set_measurement_error"]
+    answer = snap.records[-1]
+    assert answer.decision.kind == "set_aggregation"
+    assert (line.status, line.reopened_by.decision_id, line.reopened_by.stage) == (
+        "open", answer.id, "whos_in")
+    [reason] = [r for r in models.reopened if r.decision_id == answer.id]
+    assert reason.changed_in == "whos_in" and reason.questions == [line.id]
+    assert reason.sentence == "Your change to Who's in reopened 1 question in Models."
+
+
+def test_a_first_answer_into_a_stage_still_asking_reopens_nothing():
+    """A first answer that makes a declaration apply in a stage that was not complete is the
+    journey going forward: the exclusion rule (Who's in) makes the every-row sensitivity question
+    apply while Models still asks its adjustment set again; the new line is open, with no cause,
+    and Models names only the confirmation that asked the adjustment set again."""
+    from turbotab.core import decisions
+    from turbotab.core.tests.test_stage_registry import (EXCLUSION, TG_COVARIATE, _plan, record,
+                                                         stage, steps_until)
+
+    _state, records = _plan(TG_COVARIATE)
+    records = [*records, record(8, EXCLUSION)]
+    log = quest.quest_log(decisions.fold(records), records, steps_until("adjustment"))
+    models = stage(log, "models")
+    [sensitivity] = [l for l in models.lines if l.key == "set_sensitivity"]
+    assert (sensitivity.status, sensitivity.reopened_by) == ("open", None)
+    assert [r.kind for r in models.reopened] == ["confirm_role"]
+    # the same answer given after a complete Models reaches back into it (``_reaches_back``)
+    assert quest._reaches_back(quest._Log(records), records[-1], "models")
