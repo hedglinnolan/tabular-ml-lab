@@ -126,11 +126,25 @@ def test_a_fit_that_runs_out_of_steps_says_so() -> None:
 
 @pytest.mark.parametrize("params, says", [
     ({"t": 0.0}, "threshold"), ({"t": float("nan")}, "threshold"),
+    # the declaration sets the threshold by hand in [1, 3] (RECIPES §4.1): outside it, no fit
+    ({"t": 0.5}, "threshold"), ({"t": 5.0}, "threshold"),
     ({"scale": "Huber"}, "MAD"), ({"penalty": "l2"}, "no penalty")])
 def test_a_setting_outside_the_declaration_is_refused(params: dict, says: str) -> None:
     X, y = _data(n=60)
     with pytest.raises(ValueError, match=says):
         _fit(X, y, **params)
+
+
+def test_a_near_exact_fit_converges_without_a_warning() -> None:
+    """Most rows on the line put the MAD at floating-point dust, not 0: that fit is exact, so it
+    converges and says nothing. The line y = x is the hand answer."""
+    x = np.concatenate([np.zeros(40), np.arange(10.0)])
+    X = pd.DataFrame({"a": x})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = _fit(X, x.copy())
+    assert model.converged_
+    np.testing.assert_allclose([model.intercept_, *model.coef_], [0.0, 1.0], atol=1e-12)
 
 
 # ── invariance (C3) ──────────────────────────────────────────────────────────
@@ -244,14 +258,22 @@ def test_its_purposes_are_read_from_the_declaration_never_its_key() -> None:
     under_prediction = assessment(_family(), Situation(task="regression", purpose="prediction",
                                                        n_rows=400, n_features=3))
     assert under_prediction.fit == "good"
-    # and never above linear's own judgment of the same rows, so the shelf's first offer holds
-    from turbotab.core.models import get_family
+    # RECIPES_AND_TUNING §2.2's shelf table: "Robust linear | 1.5 (numeric only; after linear on
+    # ties)". Under prediction it scores as linear does on the same rows (1.5, a point less when
+    # the rows fall short); linear registers first, so a tie goes to linear.
+    assert under_prediction.score == 1.5
+    from turbotab.core.models import families, get_family
 
+    linear = get_family("linear")
     for purpose in ("prediction", "inference", None):
         for rows, columns in ((400, 3), (40, 12), (20, 30)):
             s = Situation(task="regression", purpose=purpose, n_rows=rows, n_features=columns)
-            assert assessment(_family(), s).score < assessment(get_family("linear"), s).score \
-                or assessment(get_family("linear"), s).score == 0.0, (purpose, rows, columns)
+            mine, theirs = assessment(_family(), s).score, assessment(linear, s).score
+            assert mine <= theirs, (purpose, rows, columns)
+            if purpose != "inference":
+                assert mine == theirs, (purpose, rows, columns)
+    keys = [g.key for g in families()]
+    assert keys.index("linear") < keys.index("huber")
 
 
 def test_no_warning_escapes_an_ordinary_fit() -> None:
@@ -259,3 +281,13 @@ def test_no_warning_escapes_an_ordinary_fit() -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         _fit(X, y)
+
+
+@pytest.mark.xfail(strict=True, reason="RECIPES §5 refuses robust linear under inference; the "
+                   "refusal belongs in a decisions.py validator reading family.purposes, which "
+                   "this package does not own (open issue for the integrator)")
+def test_choosing_it_under_inference_is_refused() -> None:
+    from turbotab.core.decisions import Refusal, SelectModels, validate
+
+    with pytest.raises(Refusal):
+        validate(SelectModels(models=["huber"]), {"task": "regression", "purpose": "inference"})

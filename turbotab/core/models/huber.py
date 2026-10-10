@@ -49,7 +49,14 @@ T_STANDARD = 1.345  # Huber (1964): 95% of least squares' efficiency under norma
 MAD_CONSTANT = 0.6745
 SCALE = "MAD"  # the only scale declared (RECIPES §4.1's table: "MAD scale; no penalty")
 PENALTY = "none"
-SCORE = 1.0  # under prediction: below linear's 1.5, so the shelf's first offer is unchanged
+# RECIPES §2.2's shelf table: "Robust linear | 1.5 (numeric only; after linear on ties)". Linear
+# registers first, so a tie goes to linear; rows that fall short cost a point, as they cost linear.
+SCORE = 1.5
+SHORT_ROWS_COST = 1.0
+T_RANGE = (1, 3)  # the threshold set by hand (RECIPES §4.1)
+# A MAD at or below this share of the outcome's size is floating-point dust left by an exact fit
+# (most rows on the line), not a scale: such a fit has converged.
+EXACT_FIT_SCALE = 1e3 * np.finfo(float).eps
 CAUTION = ("Its slopes match least squares' when the errors are spread the same way at every value "
            "of the predictors. With skewed errors its predictions shift from the mean toward the "
            "median, and squared error charges it for that.")
@@ -90,8 +97,10 @@ class RobustLinearRegression(RegressorMixin, BaseEstimator):
             t = float(self.t)
         except (TypeError, ValueError):
             t = math.nan
-        if not math.isfinite(t) or t <= 0:
-            raise ValueError(f"Huber's threshold t must be a positive number, not {self.t!r}")
+        low, high = T_RANGE
+        if not math.isfinite(t) or not low <= t <= high:
+            raise ValueError(f"Huber's threshold t is set by hand in [{low}, {high}], "
+                             f"not {self.t!r}")
         if self.scale != SCALE:
             raise ValueError(f"the scale is re-estimated as the {SCALE} at every step; "
                              f"{self.scale!r} is not declared")
@@ -120,7 +129,8 @@ class RobustLinearRegression(RegressorMixin, BaseEstimator):
         history = result.fit_history
         self.n_iter_ = int(history["iteration"])
         moves = history["sresid"]
-        self.converged_ = bool(self.scale_ == 0.0 or (
+        exact = self.scale_ <= EXACT_FIT_SCALE * float(np.max(np.abs(y)))
+        self.converged_ = bool(exact or (
             len(moves) >= 3 and np.all(np.abs(np.asarray(moves[-1]) - np.asarray(moves[-2]))
                                        < float(self.tol))))
         if not self.converged_:
@@ -182,7 +192,7 @@ class Huber(FamilyBase):
     tuning = TuningDecl(
         "none",
         by_hand=(Dimension("t", "how far a row may sit before it counts less", "Huber threshold",
-                           1, 3, "linear", source="Huber 1964; Holland & Welsch 1977"),),
+                           *T_RANGE, "linear", source="Huber 1964; Holland & Welsch 1977"),),
         standard={"t": T_STANDARD}, standard_source="Huber 1964",
         fixed={"scale": SCALE, "penalty": PENALTY}, space_version="huber/1",
         reason="Squared error would walk the threshold toward no robustness at all, so it is set, "
@@ -223,7 +233,7 @@ class Huber(FamilyBase):
                                      outcome_mean=s.outcome_mean, outcome_sd=s.outcome_sd)
         said = prediction_concern(minimum, s.n_rows) if minimum is not None else None
         if said:
-            return Assessment(SCORE / 4, "fair", (said,))
+            return Assessment(SCORE - SHORT_ROWS_COST, "fair", (said,))
         return Assessment(SCORE, "good")
 
 
