@@ -29,6 +29,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
+import { confirmAsk, confirmParts } from "./ask";
+import { fitOnceComputed } from "./fit";
 import { nhanesExport } from "./nhanes";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -210,12 +212,20 @@ async function confirmRoles(page: Page) {
   await expect(page.getByTestId("decision-roles")).toBeVisible({ timeout: 30_000 });
 }
 
-/** Fit the families (all of them, or the first `n` on the shelf), and wait for the Results. */
+/** Fit the families (the first `n` on the shelf, else its first three: the shelf now offers a dozen,
+ *  some estimated at most of an hour), press Fit once the fit has
+ *  computed (SIZING P0.8: no score is served before it), and wait for the Results. */
 async function fit(page: Page, n?: number): Promise<number> {
   const models = page.getByTestId("question-models");
   await expect(models).toBeVisible({ timeout: 60_000 });
-  const families = await models.getByRole("option").evaluateAll((els) => els.map((e) => e.getAttribute("data-key") ?? ""));
-  const chosen = families.slice(0, n ?? families.length);
+  // The shelf's own options (the ask card's selects hold options too); the roles proposed below
+  // high confidence are confirmed first, on the ledger's ask card, since the fit reads them.
+  const options = models.getByRole("listbox", { name: /Model families/ }).locator(':scope > [role="option"]');
+  await expect(options.first()).toBeVisible({ timeout: 60_000 });
+  await confirmAsk(page.locator('[data-slot="models"]'));
+  await expect(options.first()).toBeVisible({ timeout: 60_000 });
+  const families = await options.evaluateAll((els) => els.map((e) => e.getAttribute("data-key") ?? ""));
+  const chosen = families.slice(0, n ?? Math.min(3, families.length)); // all: the shelf's first three
   await page.getByTestId(`option-${chosen[0]}`).focus();
   for (let i = 0; i < chosen.length; i++) {
     if (i > 0) await page.keyboard.press("ArrowDown");
@@ -223,7 +233,10 @@ async function fit(page: Page, n?: number): Promise<number> {
   }
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("decision-models")).toBeVisible({ timeout: 30_000 });
-  return timed(() => expect(page.getByTestId("banner-result-value")).toBeVisible({ timeout: 300_000 }));
+  return timed(async () => {
+    await fitOnceComputed(page);
+    await expect(page.getByTestId("banner-result-value")).toBeVisible({ timeout: 300_000 });
+  });
 }
 
 /** The seal question: its basis is named on the card and on the stage, then 20% is held out. */
@@ -244,9 +257,12 @@ async function seal(page: Page, basis: string, name: string, themes?: ("light" |
 /** The first substitution the stage's matrix offers. */
 async function substitute(page: Page) {
   await expect(page.getByTestId("question-substitution")).toBeVisible({ timeout: 60_000 });
-  const move = page.getByRole("button", { name: /^Move energy from / }).first();
-  await move.click();
-  await expect(page.getByTestId("substitution-curves")).toBeVisible({ timeout: 120_000 });
+  const first = page.getByRole("button", { name: /^Move energy from / }).first();
+  await expect(first).toBeVisible({ timeout: 60_000 });
+  const name = (await first.getAttribute("aria-label")) ?? (await first.textContent()) ?? "";
+  const move = () => page.getByRole("button", { name, exact: true }).click();
+  await move();
+  await confirmParts(page, page.getByTestId("substitution-curves"), move);
   await expect(page.getByTestId("decision-substitution")).toBeVisible({ timeout: 30_000 });
 }
 
@@ -654,7 +670,9 @@ test("NHANES: SAS zeros repaired, the grain stated, meds_hbp kept as a Missing l
   const eligibility = page.getByTestId("question-exclusions");
   await expect(eligibility).toBeVisible({ timeout: 60_000 });
   await expect(eligibility).not.toContainText("glucose");
-  await eligibility.getByTestId("option-willett_by_sex").focus();
+  // The screens read kcal as one day's intake: the ledger's ask card says so before screening by it.
+  await confirmAsk(page.locator('[data-slot="exclusions"]'));
+  await eligibility.getByTestId("option-willett_2013_by_sex").focus();
   await previewed(page);
   await landed(page, "with");
   await expect(stage(page).locator("[data-card=distribution]")).not.toContainText("glucose");
