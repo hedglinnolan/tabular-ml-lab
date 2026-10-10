@@ -183,11 +183,18 @@ def test_a_compiled_tree_shap_replaces_the_engines_and_a_probability_keeps_its_s
         reg, Xr = _fitted("regression")
         assert E.attributions(E.anatomy(reg, list(Xr.columns), "regression"), Xr, Xr,
                               kind="trees", family="compiled_probe") is None
+        # explain() presents margin values only: a probability scale's label, predictions,
+        # curves and interactions are RT-5d's to decide, so it says they are not built here.
+        s = E.Setting(task="binary", purpose="prediction", target="y", event="case", X=X,
+                      y=np.zeros(len(X)))
+        fam = E.FamilyFit(key="compiled_probe", label="Probe trees", fitted=pipe, unfitted=pipe,
+                          versus=None, score=None, baseline=None)
+        said = E._work(fam, s, np.arange(len(X)))
+        assert isinstance(said, E.FamilyExplanation) and not said.explained
+        assert said.reason == "Probe trees: its SHAP values are not built here."
     finally:
         unregister_family("compiled_probe")
-    s = E.Setting(task="binary", purpose="prediction", target="y", event="case", X=X,
-                  y=np.zeros(len(X)))
-    assert E.probability_of(s) == "probability of `case`"
+    assert not hasattr(E, "probability_of")
 
 
 # ── "shrunk to zero" is the architecture's to say ─────────────────────────────

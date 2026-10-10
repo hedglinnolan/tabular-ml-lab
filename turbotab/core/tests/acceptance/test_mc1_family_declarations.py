@@ -9,8 +9,9 @@ registry's verified records.
 **Rules, not a roster** (WAVE_C6A_PLAN §3, RT-1a): a family that registers later in this wave (ridge,
 Huber, the random forest, XGBoost) meets these tests as it stands, with no edit here. What each
 family declares is checked against its row below, and what it adds is checked by the rules that tie
-a member to a declaration: ``trees`` is set exactly when the attribution is "trees", ``path``
-exactly when a task's tuning is a path, ``inference`` exactly when the table has intervals.
+a member to a declaration: ``trees`` is set exactly when the attribution or the architecture reads
+trees (TreeSHAP or the tree view), ``path`` exactly when a task's tuning is a path, ``inference``
+exactly when the table has intervals.
 """
 from __future__ import annotations
 
@@ -187,20 +188,24 @@ def test_the_family_info_carries_the_user_facing_declarations():
 
 def test_every_cited_source_is_a_verified_record():
     """Every source key a declaration cites is one of ``models.sources``, and each of those is a
-    record of SIZING X4's citation registry (every DOI checked against Crossref), so a source can
-    join before the family that cites it lands. Each dimension's source string resolves in the
-    same registry (C6)."""
+    record of SIZING X4's citation registry (every DOI checked against Crossref) whose reference
+    names that record. A source joins before the family that cites it lands only when the recipes
+    the family is built from cite it (RECIPES_AND_TUNING), so no key is an orphan. Each
+    dimension's source string resolves in the same registry (C6)."""
     from turbotab.core.export.citations import is_internal, registry, resolve, segments
     from turbotab.core.models.base import _declared_tunings
     from turbotab.core.models.sources import SOURCES
 
     records = registry()
     assert sorted(k for k in SOURCES if k not in records) == []
+    assert sorted(k for k, ref in SOURCES.items() if k not in resolve(ref, records)) == []
     families = _families().values()
     cited = {s.key for f in families
              for s in [*f.sources, *(t.source for t in f.bias_terms),
                        *(k.source for k in f.complexity if k.source)]}
     assert sorted(cited - set(SOURCES)) == []
+    recipes = (CONTRACT.parent / "RECIPES_AND_TUNING.md").read_text(encoding="utf-8")
+    assert sorted(set(SOURCES) - cited - set(resolve(recipes, records))) == []
     unresolved = [(f.key, d.name, part) for f in families
                   for decl in _declared_tunings(f)[0].values()
                   for d in (*decl.dimensions, *decl.by_hand) for part in segments(d.source)
@@ -217,8 +222,15 @@ def test_the_elastic_net_ridge_part_is_its_hat_matrix():
 
     from turbotab.core.models.formulas import FORMULAS
 
-    (knob,) = [k for k in get_family("elastic_net").complexity if k.formula]
-    assert knob.more_means == "simpler"
+    from turbotab.core.models.base import _declared_tunings
+
+    family = get_family("elastic_net")
+    (knob,) = [k for k in family.complexity if k.formula]
+    # The knob names the penalty the formula reads: the CV grid ``alpha_`` comes from, or a path
+    # dimension once its tuning declares one (RT-5f).
+    path = {d.name for decl in _declared_tunings(family)[0].values() if decl.kind == "path"
+            for d in decl.dimensions}
+    assert knob.setting in ({"alphas"} if not path else path) and knob.more_means == "simpler"
     formula = FORMULAS[knob.formula]
     rng = np.random.default_rng(11)
     n, p = 60, 6
@@ -333,6 +345,14 @@ def _probe(key: str = "probe", **declared: Any) -> Any:
       "settings": lambda self, values, **fit: {"C": 1.0 / values["lambda"], "depth": 3}},
      "its tuning names ['depth'], which are not parameters of the estimator it builds for "
      "['binary'], and its settings do not resolve them"),
+    ({"tuning": {"binary": _decl("lambda", 1e-3, 1e2, "log", kind="path", points=10)},
+      "path": lambda self, Z, y, grid, **kw: None,
+      "settings": lambda self, values, **fit: {"fit_intercept": True}},
+     "its settings drop ['lambda'] for ['binary']: moving them leaves the estimator's parameters "
+     "unchanged"),
+    ({"tuning": {"binary": _decl("C", 1e-3, 1e2, "log")},
+      "settings": lambda self, values, **fit: {**values, "C": 1.0}},
+     "its settings drop ['C'] for ['binary']"),
     ({"tuning": {"binary": _decl("lambda", 1e-3, 1e2, "log")},
       "settings": lambda self, values, **fit: {"C": 1.0 / values["lambda"] / fit["Z"].missing}},
      "its settings failed on a probe of its binary tuning (AttributeError"),
@@ -345,15 +365,22 @@ def _probe(key: str = "probe", **declared: Any) -> Any:
     ({"tuning": {"time_to_event": _decl("C", 1e-3, 1e2, "log")}},
      "tuning is declared for ['time_to_event'], which it does not model"),
     ({"attribution": "trees"}, "its attribution or architecture reads trees, so it declares trees"),
+    ({"architecture": ("trees",)}, "its attribution or architecture reads trees, so it declares "
+                                   "trees"),
     ({"trees": lambda self, step: None}, "trees is declared, but neither its attribution nor"),
     ({"consequence": " ".join(["word"] * (CONSEQUENCE_WORDS + 1))},
      f"consequence must say what choosing it means in at most {CONSEQUENCE_WORDS} words"),
     ({"defaults_version": ""}, "defaults_version must name the version of its defaults"),
 ])
 def test_a_declaration_outside_the_contract_is_refused_by_name(declared, says):
-    with pytest.raises(ValueError, match=re.escape(says)):
-        register_family(_probe(**declared))
-    assert "probe" not in {f.key for f in families()}
+    from turbotab.core.models.base import unregister_family
+
+    try:
+        with pytest.raises(ValueError, match=re.escape(says)):
+            register_family(_probe(**declared))
+        assert "probe" not in {f.key for f in families()}
+    finally:
+        unregister_family("probe")  # a probe let through must not leak into the next case
 
 
 # ── what the declarations now drive ──────────────────────────────────────────
@@ -417,18 +444,26 @@ def test_each_task_has_at_most_one_default_inference_family_with_intervals():
 def test_what_a_family_adds_is_declared_on_every_family():
     """§1: what a family adds of its own are members of the protocol, None where it adds nothing,
     each tied to a declaration by a rule: ``inference`` exactly when its table has intervals
-    (§3.1's C2 row), ``trees`` exactly when its attribution is "trees" (C10), ``path`` exactly
+    (§3.1's C2 row), ``trees`` exactly when its attribution is "trees" or its architecture
+    draws trees (C10: TreeSHAP and the tree view read it), ``path`` exactly
     when a task's tuning is a path (C6), ``tree_shap`` only beside ``trees``. Among today's nine,
     the screened elastic net adds its screen, the feature-wise tests build from the design, and
     three families refit a model matrix."""
     from turbotab.core.models.base import MEMBERS, OPTIONAL_MEMBERS, _declared_tunings
 
+    def reads_trees(f: Any) -> bool:
+        return f.attribution == "trees" or "trees" in f.architecture
+
     found = _families()
     assert set(OPTIONAL_MEMBERS) <= set(MEMBERS)
+    # A family with a tree view and no TreeSHAP meets the same rule register_family enforces.
+    viewed = _probe(key="tree_view_probe", architecture=("trees",), attribution="none",
+                    trees=lambda self, step: None)
+    assert contract_problems(viewed) == [] and reads_trees(viewed)
     for key, f in found.items():
         decl = f.inference_decl
         assert (f.inference is not None) == (decl is not None and decl.table == "intervals"), key
-        assert (f.trees is not None) == (f.attribution == "trees"), key
+        assert (f.trees is not None) == reads_trees(f), key
         assert (f.path is not None) == any(d.kind == "path"
                                            for d in _declared_tunings(f)[0].values()), key
         assert f.tree_shap is None or f.trees is not None, key
@@ -445,23 +480,30 @@ def test_what_a_family_adds_is_declared_on_every_family():
 def test_each_identity_names_the_classes_its_family_builds():
     """C1: the identity's estimator is for provenance, so it must name every class the family
     builds, for every task and purpose, narrow and wide (the elastic net's wide step past its
-    exact path, and its yes/no step since fix round 2)."""
+    exact path, and its yes/no step since fix round 2), and every class it names must be one of
+    them."""
     for f in _families().values():
         built = {type(f.build(t, p, rows, columns)).__name__ for t in f.tasks for p in f.purposes
                  for rows, columns in ((100, 2), (10, 20), (10, 600))}
         named = f.identity.estimator
         assert {n for n in built if not re.search(rf"\b{n}\b", named)} == set(), f.key
+        # and names no class it does not build (the elastic net's three CV classes, no more)
+        classes = set(re.findall(r"\b[A-Z][a-z0-9]+(?:[A-Z][A-Za-z0-9]*)+\b", named))
+        assert classes - built == set(), f.key
 
 
 def test_each_knob_is_a_parameter_of_the_estimator_its_family_builds():
     """C7: ``Knob.setting`` is the estimator's own parameter for some task the family models, a
-    setting its tuning declares (which ``settings`` resolves), or "time" for early stopping."""
+    setting its tuning declares (which ``settings`` resolves), or "time" when its tuning stops
+    early."""
     from turbotab.core.models.base import _declared_tunings
 
     for f in _families().values():
         params = set().union(*(f.build(t, "prediction" if "prediction" in f.purposes else
                                        "inference", 100, 2).get_params() for t in f.tasks))
-        params |= {n for d in _declared_tunings(f)[0].values() for n in d.names()} | {"time"}
+        decls = _declared_tunings(f)[0].values()
+        params |= {n for d in decls for n in d.names()}
+        params |= {"time"} if any(d.early_stopping is not None for d in decls) else set()
         assert [k.setting for k in f.complexity if k.setting not in params] == [], f.key
 
 

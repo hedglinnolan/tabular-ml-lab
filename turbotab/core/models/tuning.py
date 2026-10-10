@@ -283,6 +283,9 @@ class Candidate:
       ``param`` to its ``rounds``.
     * ``options``: each "Try both" slot's option for this candidate (RT-3; empty until then).
     * ``standard``: one of the standard candidates, which come first.
+
+    A sequence value is held as a tuple (a list given becomes one), so the canonical form, where
+    it is a list, reads back exactly; equal candidates hash alike (by their canonical JSON).
     """
 
     index: int
@@ -292,8 +295,11 @@ class Candidate:
 
     def __post_init__(self) -> None:
         # plain dicts, so the plan pickles (a MappingProxyType does not)
-        object.__setattr__(self, "values", dict(self.values))
+        object.__setattr__(self, "values", _held(self.values))
         object.__setattr__(self, "options", dict(self.options))
+
+    def __hash__(self) -> int:
+        return hash(_canonical(self.to_dict()))
 
     def to_dict(self) -> dict[str, Any]:
         return {"index": int(self.index), "values": _plain(dict(self.values)),
@@ -327,8 +333,9 @@ class TuningPlan:
     * ``plan_rows``: the rows of one outer training fold, for scikit-learn's own early-stopping
       rule on the standard candidates (``standard_stops``).
     * ``inner_k``: the inner folds every fit draws, after the floor (:func:`inner_k`); 0: no fit
-      draws inner folds, and the first standard candidate is used (§4.6). A fit holding fewer than
-      the floor keeps this K and draws its folds as evenly as its units allow.
+      draws inner folds, and the first standard candidate is used (§4.6). With one candidate
+      there is nothing to choose and no fit draws them either; :meth:`chooses` says which. A fit
+      holding fewer than the floor keeps this K and draws its folds as evenly as its units allow.
     * ``early_stopping``: the Sobol candidates stop early (decided once: ``n_plan`` ≥
       :data:`STOP_FROM_N`); ``standard_stops``: the standard candidates do (plan rows above the
       declaration's ``standard_rows``, scikit-learn's 10,000 unless it says otherwise).
@@ -344,8 +351,9 @@ class TuningPlan:
       wrapped, recalibrated model (each fit costs :data:`IMBALANCE_FITS`); ``threads``: the thread
       count every fit runs at.
 
-    It is frozen, holds only plain values (it pickles), and :meth:`to_dict` /
-    :meth:`from_dict` give its canonical JSON-safe form."""
+    It is frozen, holds only plain values (it pickles; a sequence value as a tuple), and
+    :meth:`to_dict` / :meth:`from_dict` give its canonical JSON-safe form, an exact round trip;
+    equal plans hash alike (by that form's canonical JSON)."""
 
     family: str
     kind: TuningKind
@@ -383,13 +391,24 @@ class TuningPlan:
                                  f"{list(get_args(allowed))}")
         object.__setattr__(self, "options", tuple((str(slot), tuple(str(o) for o in opts))
                                                   for slot, opts in self.options))
-        object.__setattr__(self, "manual", dict(self.manual))
+        object.__setattr__(self, "manual", _held(self.manual))
         object.__setattr__(self, "candidates", tuple(self.candidates))
+
+    def __hash__(self) -> int:
+        return hash(_canonical(self.to_dict()))
 
     def fits(self) -> int:
         """F: the fits one outer fit makes, in fits on that fit's rows, as the plan's strategy
         counts them (RECIPES §4.2)."""
         return STRATEGIES[self.strategy].fit_count(self)
+
+    def chooses(self) -> bool:
+        """Whether a fit scores candidates before its refit: more than one candidate, and inner
+        folds (``inner_k`` ≥ 2) or out-of-bag scoring. When False there is nothing to choose (one
+        candidate) or nothing to choose with (§4.6): no fit draws inner folds or scores out of
+        bag, whatever ``inner_k`` holds, and the fit is the first candidate's refit alone
+        (``fits()`` = w)."""
+        return len(self.candidates) > 1 and (self.inner_k >= 2 or self.out_of_bag)
 
     def to_dict(self) -> dict[str, Any]:
         """The plan as canonical JSON-safe values: every field, candidates as dicts, options as
@@ -419,6 +438,25 @@ class TuningPlan:
                                  for c in d.get("candidates", ()))
         kw["options"] = tuple((slot, tuple(opts)) for slot, opts in d.get("options", ()))
         return cls(**kw)
+
+
+def _tupled(value: Any) -> Any:
+    """A setting's value with every list, tuple or array in it as a tuple (recursively), so a
+    value read back from its canonical form (lists) equals the one written."""
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, (list, tuple, np.ndarray)):
+        return tuple(_tupled(v) for v in (value.tolist() if isinstance(value, np.ndarray)
+                                           else value))
+    return value
+
+
+def _held(values: Mapping[str, Any]) -> dict[str, Any]:
+    return {k: _tupled(v) for k, v in dict(values).items()}
+
+
+def _canonical(value: Any) -> str:
+    return json.dumps(_plain(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
 def _plain(value: Any) -> Any:
@@ -487,9 +525,11 @@ def plan_size(task: str, y: Any, units: Any, *, folds: int, order: Any = None
 
     Without ``order``: n_plan is ⌊n_eff·(K − 1)/K⌋ and plan_rows ⌊rows·(K − 1)/K⌋, which is the
     smallest training fold's. With ``order`` (each row's time), the folds follow time as the split
-    stage draws them (``folds.forward_blocks`` over K + 1 blocks, each scored fold fit on every
-    earlier block): n_plan and plan_rows are the median training fold's, the lower median when
-    the count is even, so each is a fold's own."""
+    stage draws them (``stages.rows._assign_folds``: ``folds.forward_blocks`` over K + 1 blocks,
+    each scored fold fit on every earlier block, a tie in time broken by the unit's key as text,
+    the key being the row's position when ``units`` is None and the unit otherwise, so pass the
+    unit keys the split stage was given): n_plan and plan_rows are the median training fold's, the
+    lower median when the count is even, so each is a fold's own."""
     y = np.asarray(y)
     k = int(folds)
     if k < 2:
@@ -499,9 +539,12 @@ def plan_size(task: str, y: Any, units: Any, *, folds: int, order: Any = None
         return n_eff * (k - 1) // k, len(y) * (k - 1) // k, unit
     from turbotab.core.models.folds import forward_blocks, forward_pairs
 
-    names = _unit_names(units, len(y))
+    # Keyed as the split stage keys them (``stages.rows._assign_folds``): each row by its position
+    # when rows are units, else the unit itself. ``forward_blocks`` breaks a tie in time by the key
+    # as text, so another keying (padded text) would draw other blocks when times tie.
+    keys = np.arange(len(y)) if units is None else np.asarray(units, dtype=object)
     classify = task not in ("regression", "time_to_event")
-    blocks, _, _ = forward_blocks(order, names, k + 1, labels=y if classify else None)
+    blocks, _, _ = forward_blocks(order, keys, k + 1, labels=y if classify else None)
     sizes = []
     for train, _ in forward_pairs(blocks):
         n_eff, unit = effective_size(task, y[train], None if units is None
@@ -558,16 +601,20 @@ def searched_size(decl: TuningDecl, *, n_plan: int, mode: str) -> int:
 
 def sobol_sample(d: int, n: int, seed: int) -> np.ndarray:
     """(n, d) points of scipy's scrambled Sobol sequence: ``qmc.Sobol(d, scramble=True,
-    rng=seed).random_base2(log2 n)``. ``n`` is 0 or a power of two (the sequence's balance holds at
-    powers of two)."""
+    rng=seed).random_base2(log2 n)`` (``seed=seed`` before scipy 1.15, the same sample). ``n`` is
+    0 or a power of two (the sequence's balance holds at powers of two)."""
     n, d = int(n), int(d)
     if n == 0 or d == 0:
         return np.zeros((n, d))
     if n < 0 or n & (n - 1):
         raise ValueError(f"a Sobol sample is a power of two, not {n}")
+    import inspect
+
     from scipy.stats import qmc
 
-    return qmc.Sobol(d, scramble=True, rng=int(seed)).random_base2(int(n).bit_length() - 1)
+    # rng= from scipy 1.15, seed= before (RECIPES §4.7); both seed numpy.random.default_rng(seed)
+    key = "rng" if "rng" in inspect.signature(qmc.Sobol).parameters else "seed"
+    return qmc.Sobol(d, scramble=True, **{key: int(seed)}).random_base2(int(n).bit_length() - 1)
 
 
 def map_unit(dim: Dimension, u: float, *, n_plan: int) -> Any:
@@ -659,9 +706,11 @@ class SobolStrategy:
     once per combination of options, the options slowest.
 
     **Fit count** (RECIPES §4.2), with w = :data:`IMBALANCE_FITS` under the imbalance correction
-    and 1 otherwise, C candidates and K inner folds: a search F = w·[(K − 1)·C + 1]; nothing to
-    choose (C = 1, or K = 0) F = w, the refit alone; out of bag F = C + 1; a path
-    F = w·[(K − 1)·r + 1], r the combinations of options (1 without "Try both")."""
+    and 1 otherwise, C candidates and K inner folds: nothing to choose (C = 1, whatever the kind,
+    out of bag or a path whose every dimension is set by hand; or K = 0) F = w, the refit alone,
+    and no fit draws inner folds or scores out of bag; otherwise a search F = w·[(K − 1)·C + 1],
+    out of bag F = C + 1, and a path F = w·[(K − 1)·r + 1], r the combinations of options (1
+    without "Try both")."""
 
     name = "sobol"
 
@@ -702,14 +751,16 @@ class SobolStrategy:
 
     def fit_count(self, plan: TuningPlan) -> int:
         w = IMBALANCE_FITS if plan.imbalance else 1
+        c = len(plan.candidates)
+        if c <= 1:
+            return w  # nothing to choose, whatever the kind: the refit alone
+        if plan.out_of_bag:
+            return c + 1
+        if plan.inner_k < 2:
+            return w
         if plan.kind == "path":
             r = math.prod(len(opts) for _, opts in plan.options) if plan.options else 1
             return w * ((plan.inner_k - 1) * r + 1)
-        c = len(plan.candidates)
-        if plan.out_of_bag:
-            return c + 1
-        if c <= 1 or plan.inner_k < 2:
-            return w
         return w * ((plan.inner_k - 1) * c + 1)
 
     def order(self, plan: TuningPlan) -> Sequence[int]:
@@ -749,7 +800,8 @@ def make_plan(family: Any, *, task: str, loss: str, n_plan: int, plan_rows: int,
 
     With no inner folds (K = 0, out of bag aside) the plan keeps only the first candidate: the
     first standard one, the first option of each slot. A path family there raises
-    :class:`NoInnerFolds`, a stated refusal."""
+    :class:`NoInnerFolds`, a stated refusal, unless every dimension is set by hand (nothing to
+    choose)."""
     decl = tuning_for(family, task)
     if decl is None:
         return None
@@ -770,7 +822,8 @@ def make_plan(family: Any, *, task: str, loss: str, n_plan: int, plan_rows: int,
     if rarest is None and unit != "units":
         rarest = n_plan
     k = inner_k(decl.kind, n_plan, rarest=rarest, psus=psus)
-    if decl.kind == "path" and k == 0:
+    # a path whose every dimension is set by hand has nothing to choose, so needs no inner folds
+    if decl.kind == "path" and k == 0 and any(d.name not in manual for d in decl.dimensions):
         short = (int(psus), "PSUs") if psus is not None and (
             rarest is None or int(psus) < int(rarest)) else (int(rarest or 0), _NOUNS[unit])
         raise NoInnerFolds(

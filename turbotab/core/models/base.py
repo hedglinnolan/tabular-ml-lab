@@ -579,10 +579,13 @@ def _tuning_problems(family: ModelFamily) -> list[str]:
     if family.path is not None and not paths:
         out.append("path is declared, but no task's tuning is a path (C6)")
     unresolved: dict[str, list[str]] = {}
+    dropped: dict[str, list[str]] = {}
     for task, decl in decls.items():
-        problem, odd = _unresolved_names(family, task, decl)
+        problem, odd, lost = _unresolved_names(family, task, decl)
         if problem:
             out.append(problem)
+        for name in lost:
+            dropped.setdefault(name, []).append(task)
         for name in odd:
             unresolved.setdefault(name, []).append(task)
     if unresolved:
@@ -591,23 +594,33 @@ def _tuning_problems(family: ModelFamily) -> list[str]:
         tasks = [t for t in family.tasks if any(t in v for v in unresolved.values())]
         out.append(f"its tuning names {sorted(unresolved)}, which are not parameters of the "
                    f"estimator it builds for {tasks}, and {by} (C6)")
+    if dropped:
+        tasks = [t for t in family.tasks if any(t in v for v in dropped.values())]
+        out.append(f"its settings drop {sorted(dropped)} for {tasks}: moving them leaves the "
+                   f"estimator's parameters unchanged, so every candidate fits the same model (C6)")
     out.extend(_dimension_sources(list(decls.values())))
     return out
 
 
 def _unresolved_names(family: ModelFamily, task: str, decl: TuningDecl
-                      ) -> tuple[str | None, list[str]]:
-    """(a problem with the probe, or None; the names that do not reach the estimator)."""
+                      ) -> tuple[str | None, list[str], list[str]]:
+    """(a problem with the probe, or None; the names that do not reach the estimator; the
+    dimensions ``settings`` drops).
+
+    A dimension (searched or by hand) is resolved by ``settings`` only when moving it moves the
+    parameters: each is set, the others at their centers, near its low end and near its high end
+    (``map_unit`` at 0.05 and 0.95), and the two parameter sets must differ wherever the two values
+    do. A ``settings`` that drops a name, or holds it at one value, is refused."""
     purpose = "prediction" if "prediction" in family.purposes else family.purposes[0]
     try:
         params = set(family.build(task, purpose, PROBE_ROWS, PROBE_COLUMNS).get_params())
     except Exception as e:  # noqa: BLE001 - said, not raised
-        return f"its {task} estimator could not be built to check its tuning ({e}) (C6)", []
+        return f"its {task} estimator could not be built to check its tuning ({e}) (C6)", [], []
     stop = decl.early_stopping or {}
     odd = [stop[k] for k in ("param", "patience_param") if k in stop and stop[k] not in params]
     if family.settings is None:
         odd += [n for n in (*decl.names(), *decl.standard, *decl.fixed) if n not in params]
-        return None, sorted(set(odd))
+        return None, sorted(set(odd)), []
     import numpy as np
 
     from turbotab.core.models.tuning import estimator_params, make_plan, map_unit
@@ -629,13 +642,36 @@ def _unresolved_names(family: ModelFamily, task: str, decl: TuningDecl
         center = {d.name: map_unit(d, 0.5, n_plan=n) for d in (*decl.dimensions, *decl.by_hand)}
         probes = [dict(plan.candidates[0].values)] if plan is not None and plan.candidates else []
         produced: set[str] = set()
+
+        def made(values: Mapping[str, Any]) -> dict[str, Any]:
+            return dict(estimator_params(family, task, values, n_units=n, n_rows=n, y=y, Z=Z,
+                                         plan=plan))
+
         for values in [*probes, center]:
-            produced |= set(estimator_params(family, task, values, n_units=n, n_rows=n, y=y, Z=Z,
-                                             plan=plan))
+            produced |= set(made(values))
+        lost = []
+        for d in (*decl.dimensions, *decl.by_hand):
+            low, high = (map_unit(d, u, n_plan=n) for u in (0.05, 0.95))
+            if not _same_value(low, high) and _same_params(made({**center, d.name: low}),
+                                                           made({**center, d.name: high})):
+                lost.append(d.name)
     except Exception as e:  # noqa: BLE001 - said, not raised
         return (f"its settings failed on a probe of its {task} tuning ({type(e).__name__}: {e}) "
-                f"(C6)"), sorted(set(odd))
-    return None, sorted(set(odd) | (produced - params))
+                f"(C6)"), sorted(set(odd)), []
+    return None, sorted(set(odd) | (produced - params)), lost
+
+
+def _same_value(a: Any, b: Any) -> bool:
+    import numpy as np
+
+    try:
+        return bool(np.array_equal(np.asarray(a, dtype=object), np.asarray(b, dtype=object)))
+    except Exception:  # noqa: BLE001 - values numpy cannot compare are compared as Python's
+        return a is b or a == b
+
+
+def _same_params(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
+    return set(a) == set(b) and all(_same_value(a[k], b[k]) for k in a)
 
 
 def _dimension_sources(decls: Sequence[TuningDecl]) -> list[str]:

@@ -472,3 +472,99 @@ def test_a_declaration_states_its_new_fields_and_refuses_what_cannot_run():
                    early_stopping={"param": "max_iter"})
     with pytest.raises(ValueError, match="a power of two"):
         replace(SCALES, max_drawn=6)
+
+
+# ── repairs after review ─────────────────────────────────────────────────────
+
+
+def test_nothing_to_choose_is_the_refit_alone_out_of_bag_and_on_a_path_too():
+    """RECIPES §4.2: "Nothing to choose (C = 1): F = w, the refit alone", whatever else the plan
+    says. Out of bag below an effective size of 300 the forest has only its standard candidate (S =
+    0), and a path whose penalty is set by hand has one point; neither has anything to score."""
+    forest_like = replace(SCALES, out_of_bag=True)
+    for n_plan in (250, 299):
+        small = T.make_plan(_family(forest_like), task="regression", loss="mse", n_plan=n_plan,
+                            plan_rows=n_plan, unit="units", split_seed=0, out_of_bag=True)
+        assert len(small.candidates) == 1 and small.fits() == 1 and not small.chooses()
+    held = T.make_plan(_family(RIDGE, key="probe_ridge"), task="regression", loss="mse",
+                       n_plan=340, plan_rows=340, unit="units", split_seed=0,
+                       manual={"lambda": 0.1})
+    assert [dict(c.values) for c in held.candidates] == [{"lambda": 0.1}]
+    assert held.fits() == 1 and not held.chooses()
+    assert T.make_plan(_family(RIDGE, key="probe_ridge"), task="regression", loss="mse",
+                       n_plan=340, plan_rows=340, unit="units", split_seed=0).chooses()
+    # with the imbalance correction, w = 5: the refit is the wrapped model's five fits
+    wrapped = T.make_plan(_family(RIDGE, key="probe_ridge"), task="binary", loss="log_loss",
+                          n_plan=340, plan_rows=2000, unit="events", split_seed=0,
+                          manual={"lambda": 0.1}, imbalance=True)
+    assert wrapped.fits() == 5
+    # A penalty set by hand needs no inner folds to choose it, so too few events is no refusal.
+    tiny = T.make_plan(_family(RIDGE, key="probe_ridge"), task="binary", loss="log_loss",
+                       n_plan=3, plan_rows=400, unit="events", split_seed=0,
+                       manual={"lambda": 0.1})
+    assert [dict(c.values) for c in tiny.candidates] == [{"lambda": 0.1}] and tiny.fits() == 1
+
+
+def _split_stage_sizes(y, order, folds):
+    """The split stage's own time-ordered folds (``stages.rows._assign_folds``, which keys each row
+    by its position), and the median training fold's events and rows counted by hand: fold j is
+    scored by a model fit on folds 0 … j − 1."""
+    from turbotab.core.stages.rows import _assign_folds
+
+    fold, k = _assign_folds(len(y), y.astype(str), None, folds, 0, True, [], order=order)
+    sizes = []
+    for j in range(1, k + 1):
+        train = fold < j
+        sizes.append((min(int((y[train] == 1).sum()), int((y[train] == 0).sum())),
+                      int(train.sum())))
+    middle = (len(sizes) - 1) // 2
+    return sorted(s[0] for s in sizes)[middle], sorted(s[1] for s in sizes)[middle]
+
+
+def test_t9_time_ordered_plan_size_draws_the_split_stages_own_folds_when_times_tie():
+    """Tied times (survey cycles, shared visit dates) are broken by the unit's key, so the plan must
+    key rows as the split stage does (by position, ``2`` before ``10``), not as padded text."""
+    for seed in range(20):
+        rng = np.random.default_rng(seed)
+        order = rng.integers(0, 6, 60).astype(float)
+        y = (rng.random(60) < 0.3).astype(int)
+        assert T.plan_size("binary", y, None, folds=3, order=order)[:2] == _split_stage_sizes(
+            y, order, 3), seed
+
+
+def test_the_plan_round_trips_tuple_values_and_hashes():
+    """A tuple setting (a network's layer sizes) is a list in the canonical form and a tuple again
+    after :meth:`from_dict`, so the round trip is exact; equal plans hash alike."""
+    layers = TuningDecl("search", dimensions=(
+        _dim("hidden_layer_sizes", 0, 0, "choice", choices=((50,), (100, 50))),),
+        standard={"hidden_layer_sizes": (100,)}, space_version="probe_net/1")
+    plan = T.make_plan(_family(layers, key="probe_net"), task="regression", loss="mse",
+                       n_plan=1200, plan_rows=1200, unit="units", split_seed=4)
+    d = plan.to_dict()
+    assert d["candidates"][0]["values"] == {"hidden_layer_sizes": [100]}
+    again = T.TuningPlan.from_dict(json.loads(json.dumps(d)))
+    assert again == plan
+    assert again.candidates[0].values["hidden_layer_sizes"] == (100,)
+    assert {c.values["hidden_layer_sizes"] for c in again.candidates} <= {(50,), (100, 50), (100,)}
+    assert hash(again) == hash(plan) and len({plan, again}) == 1
+    held = T.make_plan(_family(layers, key="probe_net"), task="regression", loss="mse",
+                       n_plan=1200, plan_rows=1200, unit="units", split_seed=4,
+                       manual={"hidden_layer_sizes": (50,)})
+    assert T.TuningPlan.from_dict(json.loads(json.dumps(held.to_dict()))) == held
+
+
+def test_sobol_sample_seeds_scipy_before_1_15_by_seed(monkeypatch):
+    """RECIPES §4.7: ``rng=`` from scipy 1.15, ``seed=`` before; both seed the same generator
+    (``numpy.random.default_rng(seed)``), so the sample is the same."""
+    real = qmc.Sobol
+
+    class OldSobol:  # scipy 1.13's signature: seed=, no rng=
+        def __init__(self, d, *, scramble=True, bits=None, seed=None, optimization=None):
+            self._inner = real(d, scramble=scramble, rng=np.random.default_rng(seed))
+
+        def random_base2(self, m):
+            return self._inner.random_base2(m)
+
+    monkeypatch.setattr(qmc, "Sobol", OldSobol)
+    assert np.array_equal(T.sobol_sample(3, 16, 12345),
+                          real(3, scramble=True, rng=12345).random_base2(4))

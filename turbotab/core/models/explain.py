@@ -157,6 +157,8 @@ class TreeEnsemble:
     * ``scale``: what ``out`` is: ``"margin"``, the model's raw score (the prediction for a number,
       the log-odds for a yes/no outcome, ``Anatomy.raw_score``); ``"probability"``, a class
       probability (a forest's averaged leaves: for a yes/no outcome, one output, the class coded 1).
+      :func:`attributions` computes values on either; :func:`explain` presents margin values only,
+      and says a probability scale's are not built here until RT-5d decides how they are shown.
     """
 
     base: np.ndarray  # (K,)
@@ -1175,7 +1177,6 @@ class _Work:
     base: float
     floor: Floor
     refits: list[tuple[Anatomy, pd.DataFrame]]  # each refit and its inputs for the explained rows
-    scale: str = "margin"  # its SHAP values' scale (:class:`Attributed`)
 
 
 def _fmt(value: float | None) -> str:
@@ -1210,19 +1211,6 @@ def scale_of(s: Setting, unit: str | None) -> str:
     if s.task == "binary":
         return f"log-odds of `{s.event}`" if s.event is not None else "log-odds of the event"
     return f"predicted `{s.target}`" + (f" ({unit})" if unit else "")
-
-
-def probability_of(s: Setting) -> str:
-    """The scale of a yes/no outcome's SHAP values that are probabilities (a forest's)."""
-    return f"probability of `{s.event}`" if s.event is not None else "probability of the event"
-
-
-def _predictions(w: _Work, A: pd.DataFrame) -> np.ndarray:
-    """The model's predictions on its SHAP values' scale: its raw score, or the probability of the
-    class coded 1."""
-    if w.scale == "probability":
-        return np.asarray(w.anat.rest.predict_proba(A), dtype=float)[:, 1]
-    return w.anat.raw_score(A)
 
 
 def input_of(raw: str, sources: Mapping[str, Sequence[str]]) -> str | None:
@@ -1273,10 +1261,15 @@ def _work(fam: FamilyFit, s: Setting, sample: np.ndarray) -> _Work | FamilyExpla
         return FamilyExplanation(family=fam.key, label=fam.label, explained=False,
                                  reason=f"{fam.label}: explanations are built for one output "
                                         f"(a numeric or yes/no outcome).")
+    if found.scale != "margin":
+        # Values on a probability scale (a forest's) are not presented here yet: their label, the
+        # predictions beside them and the curves and interactions on one scale are RT-5d's call.
+        return FamilyExplanation(family=fam.key, label=fam.label, explained=False,
+                                 reason=f"{fam.label}: its SHAP values are not built here.")
     phi = grouped(found.phi, anat.group)
     return _Work(fam=fam, anat=anat, kind=kind, A_all=A_all, A=A, phi=phi,
                  ranked=importance(phi).sort_values(ascending=False, kind="stable"),
-                 base=found.expected, floor=floor_of(fam, s), refits=[], scale=found.scale)
+                 base=found.expected, floor=floor_of(fam, s), refits=[])
 
 
 def _refits(w: _Work, s: Setting, sample: np.ndarray, refit: Refit,
@@ -1476,7 +1469,7 @@ def explain(families: Sequence[FamilyFit], s: Setting, refit: Refit,
                                           phi=[float(v) for v in points[a]], value=value,
                                           level=level, color=color))
         listed = w.phi.iloc[:OBSERVATION_ROWS]
-        prediction = _predictions(w, w.A.iloc[:OBSERVATION_ROWS])
+        prediction = w.anat.raw_score(w.A.iloc[:OBSERVATION_ROWS])
         observations = Observations(
             row_ids=[int(v) for v in listed.index], base=w.base,
             prediction=[float(v) for v in prediction], inputs=shown,
@@ -1486,8 +1479,7 @@ def explain(families: Sequence[FamilyFit], s: Setting, refit: Refit,
         interactions = _interactions(w, s, list(main.index)) if w.floor.passed else None
         explained.append(FamilyExplanation(
             family=fam.key, label=fam.label, explained=True,
-            method=METHOD_WORDS[w.kind],
-            scale=scale if w.scale == "margin" else probability_of(s), base=w.base,
+            method=METHOD_WORDS[w.kind], scale=scale, base=w.base,
             floor=None if s.purpose == "inference" else w.floor, importance=importance_rows,
             beeswarm=beeswarm,
             observations=observations, stability=_stability(w, s, again, main),
@@ -1841,7 +1833,7 @@ __all__ = [
     "ADJUSTMENT_TERM", "CONTRACT", "DESCRIBES", "ExplainArtifact", "FamilyFit", "Setting",
     "SINGLE_FILL", "UNDER_INFERENCE", "ale_curve", "ale_grid", "attributions", "anatomy",
     "Attributed", "LeafPaths", "TreeEnsemble", "decision_sentence", "equation_units", "explain",
-    "h_statistics", "hgb_ensemble", "leaf_paths", "probability_of",
+    "h_statistics", "hgb_ensemble", "leaf_paths",
     "linear_equation", "linear_shap", "partial_dependence_at_rows", "pd_curve", "resample",
     "shrinkage_path", "spearman", "tree_shap", "tree_structure",
 ]
