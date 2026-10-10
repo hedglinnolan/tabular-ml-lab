@@ -1007,7 +1007,7 @@ def test_5f_batch_correction_precedes_in_fold_screening():
     the same training rows without the outcome, the share kept falls to about the share planted
     (10%). Bounds: above 50% without the batch step, below 25% with it."""
     from turbotab.core.models import get_family
-    from turbotab.core.models.pipeline import DesignSpec, build_pipeline
+    from turbotab.core.models.pipeline import DesignSpec, build_pipeline, with_plans
 
     rng = np.random.default_rng(17)
     n, p = 120, 400
@@ -1023,6 +1023,7 @@ def test_5f_batch_correction_precedes_in_fold_screening():
                       batch={"column": "batch", "method": "reference_combat", "columns": feats,
                              "drop": True})
     family = get_family("screened_elastic_net")
+    spec = with_plans(spec, [family], "binary", y)  # a tuned family is built from its plan (RT-5f)
     pipe = build_pipeline(spec, family, "binary", "prediction", n, p)
     names = [name for name, _ in pipe.steps]
     assert names.index("batch") < names.index("screen") < names.index("scale")

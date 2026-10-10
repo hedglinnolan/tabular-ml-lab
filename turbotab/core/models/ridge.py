@@ -147,6 +147,7 @@ class Ridge(FamilyBase):
     )
     cost_model = "cross_product"  # Cholesky factors the p × p (or n × n) cross-product
     tuning = TUNING
+    onehot_drop = None  # RECIPES §2.2, §2.4: every level its own column (full coding)
     consequence = ("A penalized straight-line model that shrinks every effect and keeps every "
                    "predictor.")
 

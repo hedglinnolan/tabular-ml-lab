@@ -1058,62 +1058,58 @@ def tree_structure(anat: Anatomy, columns: Sequence[str], levels: int = TREE_LEV
 
 
 def shrinkage_path(anat: Anatomy, A_fit: pd.DataFrame, y: Any, *, lines: int = EQUATION_TERMS,
-                   points: int = PATH_POINTS) -> ShrinkagePath | None:
-    """The elastic net's coefficients along its penalty grid at the mixing it chose, on the
+                   points: int = PATH_POINTS, record: Any = None) -> ShrinkagePath | None:
+    """The elastic net's coefficients along its penalty path at the mix it chose, on the
     standardized columns it was fit on, with the chosen penalty marked.
 
-    Least squares: scikit-learn's ``enet_path`` over the chosen mix's own grid (``alphas_``), the
-    rows centered as the fit centers them. Logistic: a refit at each ``C`` of its grid (``Cs_``)
-    at the chosen mix. On a matrix of more than :data:`NARROW_PATH` columns the path runs from the
-    strongest penalty down to the chosen one: the weaker end, which the fit did not choose, costs
-    minutes at 20,000 columns (seconds down to the chosen penalty)."""
-    model = anat.model
+    It reads the fit's tuning record (``record``, the fitted pipeline's ``tuning_``; RT-5f): the
+    path search's grid (``tuning_.path``: each mix ρ and ratio r of λ_max it scored) and the point
+    it chose, whose penalty is the refit's own parameter (``alpha``, or ``C`` for the logistic
+    loss, in ``chosen_params``). The path is the family's own (``family.path``) on these rows, the
+    rows the refit was fit on, at the chosen mix and up to ``points`` of its ratios, the chosen one
+    among them: least squares at α = r·λ_max, the logistic loss at C = 1/(n·r·λ_max), so the
+    chosen point's coefficients are the fitted model's. On a matrix of more than
+    :data:`NARROW_PATH` columns the path runs from the strongest penalty down to the chosen one:
+    the weaker end, which the fit did not choose, costs minutes at 20,000 columns. None without a
+    path record, and for more than two classes (a line per column needs one coefficient each)."""
+    from turbotab.core.models.base import get_family
+
+    curve = None if record is None else record.path
+    if curve is None or not {"l1_ratio", "ratio"} <= set(curve.names):
+        return None
+    plan = record.plan
+    chosen_values = plan.candidates[int(record.chosen)].values
+    mix, ratio = float(chosen_values["l1_ratio"]), float(chosen_values["ratio"])
+    grid = np.asarray(curve.grid, dtype=float)
+    ratios = np.asarray(list(dict.fromkeys(grid[:, list(curve.names).index("ratio")].tolist())))
+    at = int(np.flatnonzero(ratios == ratio)[0])
     Z = anat.matrix(A_fit)
     columns = [str(c) for c in Z.columns]
     X = Z.to_numpy(dtype=float)
-    y = np.asarray(y, dtype=float)
-    l1 = float(np.atleast_1d(model.l1_ratio_)[0])
     narrow = len(columns) <= NARROW_PATH
-    if hasattr(model, "alpha_"):
-        from sklearn.linear_model import enet_path
-
-        grid = np.atleast_2d(np.asarray(model.alphas_, dtype=float))
-        mixes = np.atleast_1d(np.asarray(model.l1_ratio, dtype=float))
-        row = grid[int(np.argmin(np.abs(mixes - l1)))] if grid.shape[0] > 1 else grid[0]
-        chosen = float(model.alpha_)
-        row = row if narrow else row[row >= chosen]
-        pick = np.unique(np.concatenate([row[np.linspace(0, len(row) - 1, min(points, len(row)))
-                                             .round().astype(int)], [chosen]]))[::-1]
-        _, coefs, _ = enet_path(X - X.mean(axis=0), y - y.mean(), l1_ratio=l1, alphas=pick,
-                                tol=1e-12 if narrow else 1e-8, max_iter=200_000)
-        name, penalties = "alpha", pick
-    elif hasattr(model, "C_"):
-        import warnings
-
-        from sklearn.linear_model import LogisticRegression
-
-        chosen = float(np.atleast_1d(model.C_)[0])
-        grid = np.asarray(model.Cs_, dtype=float)
-        grid = grid if narrow else grid[grid <= chosen]
-        penalties = np.unique(np.concatenate([grid, [chosen]]))
-        rows = []
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            for c in penalties:
-                fit = LogisticRegression(C=float(c), l1_ratio=l1, solver="saga",
-                                         tol=1e-8 if narrow else 1e-6,
-                                         max_iter=20_000).fit(X, y)
-                rows.append(np.ravel(fit.coef_))
-        coefs = np.asarray(rows).T
-        name = "C"
-    else:
+    reach = len(ratios) if narrow else at + 1
+    picked = np.unique(np.concatenate([
+        np.linspace(0, reach - 1, min(points, reach)).round().astype(int), [at]]))
+    fitted = get_family(plan.family).path(X, np.asarray(y), {"l1_ratio": [mix],
+                                                             "ratio": ratios[picked]},
+                                          task=anat.task)
+    coefs = np.asarray(fitted.coefs, dtype=float)[0]  # (points, K, p)
+    if coefs.shape[1] != 1:
         return None
-    index = int(np.argmin(np.abs(np.asarray(penalties) - chosen)))
+    coefs = coefs[:, 0, :].T  # columns × penalties, the strongest first
+    index = int(np.flatnonzero(picked == at)[0])
+    if anat.task == "regression":
+        name, chosen = "alpha", float(record.chosen_params["alpha"])
+        penalties = np.asarray(fitted.values, dtype=float)[0]
+    else:
+        name, chosen = "C", float(record.chosen_params["C"])
+        penalties = 1.0 / (X.shape[0] * np.asarray(fitted.values, dtype=float)[0])
+    penalties[index] = chosen  # the refit's own value, whatever the last bit of r·λ_max
     reach = np.max(np.abs(coefs), axis=1)
     order = np.argsort(-reach, kind="stable")[:lines]
     return ShrinkagePath(
         penalty_name=name, penalties=[float(p) for p in penalties], chosen=chosen,
-        chosen_index=index, l1_ratio=l1, scale="per standard deviation of each column",
+        chosen_index=index, l1_ratio=mix, scale="per standard deviation of each column",
         lines=[PathLine(column=columns[j], input=anat.group.get(columns[j], columns[j]),
                         coefficients=[float(v) for v in coefs[j]]) for j in order],
         nonzero=[int(v) for v in (np.abs(coefs) > 0).sum(axis=0)], n_columns=len(columns))
@@ -1377,7 +1373,8 @@ def _architecture(w: _Work, s: Setting, outcome_unit: str | None, units: Mapping
                                family=w.fam.key)
     if "shrinkage" in declared:
         return Architecture(kind="shrinkage", equation=equation,
-                            path=shrinkage_path(w.anat, w.A_all, s.y))
+                            path=shrinkage_path(w.anat, w.A_all, s.y,
+                                                record=vars(w.fam.fitted).get("tuning_")))
     return Architecture(kind="equation", equation=equation)
 
 

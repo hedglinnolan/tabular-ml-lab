@@ -36,6 +36,12 @@ missing-values answer:
 Step order: detect → normalize → impute → energy adjustment → exposure form → levels → one-hot →
 scale → model.
 
+The coding of a category (RECIPES §2.2, §2.4): both one-hot paths, the one-hot step and the
+``levels`` step, read the family's ``onehot_drop`` (:func:`onehot_drop`). ``"first"``, every
+family's until it declares otherwise, makes the first level in sorted order the reference; None,
+the penalized families' full coding (ridge, the elastic net), gives every level its own column, so
+a penalty that shrinks toward zero does not shrink toward whichever level sorts first.
+
 The omics order (MODELING_SEQUENCE §1.1, MS7): when a logged normalization covers a column whose
 values lie below a detection limit, its log waits for their fill — d_ratio (the in-fold D-ratio
 filter, when the pooled-QC answer asks for it) → normalize (PQN alone) → detect → log → impute →
@@ -212,18 +218,20 @@ def _level_label(value: Any) -> str:
 class MissingLevelEncoder(TransformerMixin, BaseEstimator):
     """One-hot encoding in which a blank is a level of its own, :data:`MISSING_LEVEL`.
 
-    Per column, fit learns the observed levels in sorted order; the first is the reference (as
-    the one-hot step's ``drop="first"``), every other level gets a ``<column>_<level>`` indicator,
-    and blanks get ``<column>_Missing`` when the fitting rows have any. A level never seen in fit
-    reads as the reference, as the one-hot step's ``handle_unknown="ignore"`` does. A blank when
-    the fitting rows had none has no level of its own to read as: it reads as the fitting rows'
-    most frequent level, as the categorical imputer fills one (audit B23), not as the reference
-    whatever that happens to be. Every other column passes through. Row-local once fit: a row's
-    output depends on its own values.
+    Per column, fit learns the observed levels in sorted order; with ``drop="first"`` the first is
+    the reference (as the one-hot step's ``drop="first"``) and every other level gets a
+    ``<column>_<level>`` indicator; with ``drop=None`` (full coding, RECIPES §2.4) every level gets
+    one. Blanks get ``<column>_Missing`` when the fitting rows have any. A level never seen in fit
+    reads as no level (every indicator 0: the reference under ``"first"``), as the one-hot step's
+    ``handle_unknown="ignore"`` does. A blank when the fitting rows had none has no level of its own
+    to read as: it reads as the fitting rows' most frequent level, as the categorical imputer fills
+    one (audit B23), not as the reference whatever that happens to be. Every other column passes
+    through. Row-local once fit: a row's output depends on its own values.
     """
 
-    def __init__(self, columns: Sequence[str] = ()):
+    def __init__(self, columns: Sequence[str] = (), drop: str | None = "first"):
         self.columns = columns
+        self.drop = drop
 
     def fit(self, X: pd.DataFrame, y: Any = None) -> "MissingLevelEncoder":
         if not isinstance(X, pd.DataFrame):
@@ -245,7 +253,8 @@ class MissingLevelEncoder(TransformerMixin, BaseEstimator):
 
     def _outputs(self, column: str) -> list[tuple[str, str | None]]:
         """(output name, level it marks; None marks the blanks)."""
-        out = [(f"{column}_{level}", level) for level in self.levels_[column][1:]]
+        kept = self.levels_[column] if self.drop is None else self.levels_[column][1:]
+        out = [(f"{column}_{level}", level) for level in kept]
         if self.has_missing_[column]:
             out.append((f"{column}_{MISSING_LEVEL}", None))
         return out
@@ -593,12 +602,27 @@ def _energy_factors(state: Any, adj: Any, frame: pd.DataFrame,
 # ── building ────────────────────────────────────────────────────────────────
 
 
-def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
+ONEHOT_DROPS = ("first", None)
+
+
+def onehot_drop(family: Any) -> str | None:
+    """How ``family`` codes a category (RECIPES §2.4's ``onehot_drop``): ``"first"`` (the first
+    level in sorted order is the reference) unless the family declares None, every level its own
+    column (the penalized families' full coding, RECIPES §2.2)."""
+    drop = getattr(family, "onehot_drop", "first")
+    if drop not in ONEHOT_DROPS:
+        raise ValueError(f"{getattr(family, 'key', family)!r} declares onehot_drop {drop!r}, not "
+                         f"one of {list(ONEHOT_DROPS)}")
+    return drop
+
+
+def shared_steps(spec: DesignSpec, *, onehot_drop: str | None = "first") -> list[tuple[str, Any]]:
     """The steps every family shares: impute → energy adjustment → exposure form → levels →
     one-hot.
 
     Columns whose blanks are a level skip the imputer and the one-hot step: the levels step
-    encodes them, blanks included.
+    encodes them, blanks included. ``onehot_drop`` is the family's coding (:func:`onehot_drop`),
+    read by both one-hot paths.
     """
     from sklearn.compose import ColumnTransformer
     from sklearn.impute import SimpleImputer
@@ -685,10 +709,10 @@ def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
         # After the energy step a formed nutrient may carry the step's name (``protein_adj``).
         steps.append(("form", ExposureForms(adjusted_forms(spec.exposure_forms, spec.energy))))
     if levels:
-        steps.append(("levels", MissingLevelEncoder(levels)))
+        steps.append(("levels", MissingLevelEncoder(levels, drop=onehot_drop)))
     categorical = [c for c in spec.categorical if c in spec.predictors and c not in levels]
     if categorical:
-        encoder = OneHotEncoder(drop="first", handle_unknown="ignore", sparse_output=False)
+        encoder = OneHotEncoder(drop=onehot_drop, handle_unknown="ignore", sparse_output=False)
         steps.append(("onehot", ColumnTransformer([("onehot", encoder, categorical)],
                                                   remainder="passthrough",
                                                   verbose_feature_names_out=False)))
@@ -770,7 +794,7 @@ def family_steps(spec: DesignSpec, family: ModelFamily,
     """
     from sklearn.preprocessing import StandardScaler
 
-    steps = shared_steps(spec) + explore_steps(spec, task)
+    steps = shared_steps(spec, onehot_drop=onehot_drop(family)) + explore_steps(spec, task)
     extra = family.preprocess
     if extra is not None:
         steps.extend(extra(spec))
@@ -865,13 +889,29 @@ def energy_detail(adj: EnergyAdjustment | None, energy: Sequence[str] = (),
     return f"Splits {E} into kcal from {what} and kcal from everything else; {E} leaves the model."
 
 
+def coded_categories(spec: DesignSpec) -> int:
+    """The category columns the shared one-hot steps encode (:func:`shared_steps`: the levels
+    step's and the one-hot step's): full coding gives each one more column than ``"first"``."""
+    levels = [c for c in spec.levels if c in spec.predictors and c in spec.inputs]
+    return len(levels) + len([c for c in spec.categorical
+                              if c in spec.predictors and c not in levels])
+
+
 def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
                    purpose: Purpose | None, n_matrix_columns: int | None = None) -> list[dict[str, str]]:
-    """``[{key, label, detail}]`` for each step of this family's pipeline, in order."""
+    """``[{key, label, detail}]`` for each step of this family's pipeline, in order.
+
+    ``n_matrix_columns``: the shared steps' matrix width with the first level of each category
+    dropped (the design's); a family that codes every level (:func:`onehot_drop`) is described
+    with its own width, one more column per category (:func:`coded_categories`)."""
     out: list[dict[str, str]] = []
     from turbotab.core.methods.omics import splits_for_detection
 
     split = splits_for_detection(spec.normalization, getattr(spec, "censored", None))
+    full = onehot_drop(family) is None
+    coding = "; every level has its own column." if full else "; the first level is the reference."
+    if n_matrix_columns and full:
+        n_matrix_columns = int(n_matrix_columns) + coded_categories(spec)
     for name, step in family_steps(spec, family, task):
         if name in ("lever_forms", "lever_filter", "select"):
             from turbotab.core.methods.levers import describe_step as describe_lever
@@ -924,7 +964,7 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
             verb = "becomes" if len(cols) == 1 else "become"
             out.append({"key": "levels", "label": "Blanks as a level",
                         "detail": f"{', '.join(cols)} {verb} indicator columns with a blank as its "
-                                  f"own level, {MISSING_LEVEL}; the first level is the reference."})
+                                  f"own level, {MISSING_LEVEL}{coding}"})
         elif name == "energy":
             adj = spec.energy_adjustment()
             energy = [c for c in spec.predictors if spec.roles.get(c) == "energy"]
@@ -934,8 +974,7 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
             cats = [c for c in spec.categorical if c in spec.predictors]
             verb = "becomes" if len(cats) == 1 else "become"
             out.append({"key": "onehot", "label": "One-hot encode",
-                        "detail": f"{', '.join(cats)} {verb} indicator columns; the first level "
-                                  f"is the reference."})
+                        "detail": f"{', '.join(cats)} {verb} indicator columns{coding}"})
         elif name == "scale":
             width = f"all {n_matrix_columns} columns" if n_matrix_columns else "every column"
             detail = f"Centers and scales {width} on the training fold."
@@ -1077,12 +1116,13 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
 
 
 __all__ = [
-    "ADJUST_STEPS", "DesignSpec", "MISSING_LEVEL", "MissingLevelEncoder", "PREDICTOR_ROLES",
-    "PresentColumns", "build_pipeline", "describe_steps", "design_spec", "detect_detail",
-    "detect_step", "energy_detail", "explore_answers",
+    "ADJUST_STEPS", "DesignSpec", "MISSING_LEVEL", "MissingLevelEncoder", "ONEHOT_DROPS",
+    "PREDICTOR_ROLES", "PresentColumns", "build_pipeline", "coded_categories", "describe_steps",
+    "design_spec",
+    "detect_detail", "detect_step", "energy_detail", "explore_answers",
     "explore_candidates", "explore_steps", "family_steps", "impute_detail",
     "frame_level_columns", "input_columns", "is_categorical", "level_columns", "make_plans",
-    "missing_as_level", "model_predictors", "modeling_frame", "normalize_frame",
+    "missing_as_level", "model_predictors", "modeling_frame", "normalize_frame", "onehot_drop",
     "predictors_from_roles", "reads_outcome_before_model",
     "shared_steps", "takes_level", "transformer", "warnings_for", "with_plans",
 ]

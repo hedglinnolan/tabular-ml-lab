@@ -331,42 +331,84 @@ def test_a_line_over_two_megabytes_is_read(tmp_path):
 # ── the elastic net on a wide matrix ─────────────────────────────────────────
 
 def test_the_wide_elastic_net_chooses_what_the_default_chooses():
-    """Single precision changes the cost, not the fit: on two p > n tables, the same penalty,
-    mix and support as sklearn's float64 fit, and the same predictions to 1e-4 of the outcome's sd.
-    (A looser tolerance would not pass this: it moves the penalty and the support.)"""
+    """Single precision changes the cost, not the fit: on two p > n tables the family's path search
+    (each inner split's own λ_max, its paths by coordinate descent in float32, RT-5f) chooses the
+    grid point an independent float64 computation chooses on the same splits and ratios
+    (scikit-learn's ``enet_path`` at its default tolerance, λ_max from its definition on each
+    split's scaled training rows, the pooled squared error's rounded argmin), keeps the support of
+    scikit-learn's float64 ``ElasticNet`` at that penalty on every row, and predicts as it does to
+    1e-4 of the outcome's sd. (A looser tolerance would not pass this: it moves the penalty and the
+    support.)"""
     import warnings
 
-    from sklearn.linear_model import ElasticNetCV
+    from sklearn.linear_model import ElasticNet, enet_path
     from sklearn.preprocessing import StandardScaler
 
     from turbotab.core.bench.synth import wide_table
+    from turbotab.core.models import tuning as T
     from turbotab.core.models.elastic_net import (ELASTIC_NET, L1_RATIOS, SOLVER_TOL,
-                                                  PooledElasticNetCV)
-    from turbotab.core.models.wide import Float32ElasticNetCV
+                                                  ExactElasticNet)
+    from turbotab.core.models.inner_cv import fit_pipeline
+    from turbotab.core.models.wide import WideElasticNet
 
+    ratios = np.exp(np.linspace(0.0, np.log(1e-3), 100))  # RECIPES §4.1, strongest first
     narrow = ELASTIC_NET.build("regression", "prediction", 1_000, 50)
-    assert type(narrow) is PooledElasticNetCV and narrow.tol == SOLVER_TOL  # p <= n: untouched
+    assert type(narrow) is ExactElasticNet and narrow.tol == SOLVER_TOL  # p <= n: untouched
+
+    def scaled(train, *others):
+        m, s = train.mean(axis=0), train.std(axis=0)
+        s[s == 0] = 1.0
+        return [(f - m) / s for f in (train, *others)]
+
+    def lambda_max(Z, y, mix):
+        return float(np.max(np.abs((Z - Z.mean(axis=0)).T @ (y - y.mean())))) / (len(y) * mix)
+
     for seed in (4, 5):
         table = wide_table(n=150, genes=800, seed=seed)
         genes = [c for c in table.column_names if c.startswith("gene_")]
-        X = StandardScaler().fit_transform(np.column_stack([table[c].to_numpy() for c in genes])
-                                           .astype(float))
-        X = pd.DataFrame(X, columns=genes)
-        y = table["bmi"].to_numpy()
+        raw = np.column_stack([table[c].to_numpy() for c in genes]).astype(float)
+        X = pd.DataFrame(raw, columns=genes)
+        y = table["bmi"].to_numpy().astype(float)
         wide = ELASTIC_NET.build("regression", "prediction", 150, 800)
-        assert type(wide) is Float32ElasticNetCV and wide.tol == 1e-4 and wide.n_jobs >= 1
-        default = ElasticNetCV(l1_ratio=list(L1_RATIOS), cv=5, max_iter=5000)
+        assert type(wide) is WideElasticNet and wide.tol == 1e-4
+        plan = T.make_plan(ELASTIC_NET, task="regression", loss="mse", n_plan=150, plan_rows=150,
+                           unit="units", split_seed=seed)
+        pipe = T.TunedPipeline([("scale", StandardScaler()), ("model", wide)], search=plan)
+        drawn: list = []
+        with T.observing(drawn.append), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            fitted = fit_pipeline(pipe.set_output(transform="pandas"), X, y, seed=seed)
+        inner = [d for d in drawn if d.kind == "inner"]
+        sse = np.zeros((len(L1_RATIOS), len(ratios)))
+        for d in inner:
+            Zt, Zv = scaled(raw[d.train], raw[d.validation])
+            yt, yv = y[d.train], y[d.validation]
+            for m, mix in enumerate(L1_RATIOS):
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    _, coefs, _ = enet_path(Zt - Zt.mean(axis=0), yt - yt.mean(), l1_ratio=mix,
+                                            alphas=ratios * lambda_max(Zt, yt, mix),
+                                            max_iter=5000)
+                intercepts = yt.mean() - Zt.mean(axis=0) @ coefs
+                sse[m] += (((Zv @ coefs + intercepts) - yv[:, None]) ** 2).sum(axis=0)
+        pooled = (sse / sum(len(d.validation) for d in inner)).ravel()
+        chosen = int(np.argmin(np.round(pooled / (1e-9 * pooled.min()))))
+        record = fitted.tuning_
+        assert record.chosen == chosen, seed  # the same grid point
+        m, k = divmod(chosen, len(ratios))
+        Z = scaled(raw)[0]
+        alpha = ratios[k] * lambda_max(Z, y, L1_RATIOS[m])
+        model = fitted[-1]
+        assert model.l1_ratio == L1_RATIOS[m] and math.isclose(model.alpha, alpha, rel_tol=1e-6)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            wide.fit(X, y)
-            default.fit(X, y)
-        assert wide.l1_ratio_ == default.l1_ratio_, seed
-        assert math.isclose(wide.alpha_, default.alpha_, rel_tol=1e-6), seed  # one grid point
-        assert set(np.flatnonzero(wide.coef_)) == set(np.flatnonzero(default.coef_)), seed
-        assert list(wide.feature_names_in_) == genes
+            default = ElasticNet(alpha=alpha, l1_ratio=L1_RATIOS[m], max_iter=5000).fit(Z, y)
+        assert set(np.flatnonzero(model.coef_)) == set(np.flatnonzero(default.coef_)), seed
+        assert list(model.feature_names_in_) == genes
         scale = float(np.abs(default.coef_).max())
-        assert np.allclose(wide.coef_, default.coef_, atol=1e-4 * scale), seed
-        assert np.allclose(wide.predict(X), default.predict(X), atol=1e-4 * float(np.std(y))), seed
+        assert np.allclose(model.coef_, default.coef_, atol=1e-4 * scale), seed
+        assert np.allclose(fitted.predict(X), default.predict(Z),
+                           atol=1e-4 * float(np.std(y))), seed
 
 
 # ── the packs' shape readings, once per stage ────────────────────────────────

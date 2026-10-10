@@ -556,7 +556,7 @@ def test_3b_the_optimism_of_choosing_the_best_family_is_estimated_on_null_data()
 
     from turbotab.core.models.inner_cv import fit_pipeline
     from turbotab.core.models.metrics import cross_validate, fold_pairs
-    from turbotab.core.models.pipeline import DesignSpec, build_pipeline
+    from turbotab.core.models.pipeline import DesignSpec, build_pipeline, with_plans
     from turbotab.core.models.selection import OutOfFold, selection_optimism
 
     n, p = 150, 10

@@ -971,12 +971,48 @@ def test_4b_the_tree_structure_is_read_off_the_fitted_trees(regression):
     assert {s["input"]: s["root"] for s in trees["splits"] if s["root"]} == roots
 
 
+def _at_the_middle(Z: pd.DataFrame, beta: np.ndarray, rho: float) -> np.ndarray:
+    """glmnet's coefficients (columns × penalties) with each two-level category moved to the
+    middle of its tie, by hand, under a pure lasso (RT-5f). With every level its own column, a
+    two-level category's standardized columns are each other's negatives, so the fit depends on
+    β_a − β_b alone and the lasso penalty |β_a| + |β_b| is the same anywhere between (β_a − β_b, 0)
+    and (0, β_b − β_a): glmnet stops at one end. The middle is half the contrast each way,
+    β_a = (β_a − β_b)/2 = −β_b, which is what the family reports. At a mix below 1 the ridge part
+    makes the solution unique, and glmnet's coefficients are compared as they are."""
+    if rho != 1.0:
+        return beta
+    beta = np.array(beta, dtype=float)
+    X = Z.to_numpy(dtype=float)
+    two = [j for j in range(X.shape[1]) if len(np.unique(X[:, j])) == 2]
+    for i, a in enumerate(two):
+        for b in two[i + 1:]:
+            if np.max(np.abs(X[:, a] + X[:, b])) <= 1e-12 * np.max(np.abs(X[:, a])):
+                half = (beta[a] - beta[b]) / 2
+                beta[a], beta[b] = half, -half
+    return beta
+
+
+def _check_path_against_glmnet(path, Z, beta):
+    """Every line against glmnet's coefficients (``beta``, columns × penalties), a pure lasso's
+    two-level category at the middle of its tie (:func:`_at_the_middle`), to 1e-6, and the count
+    of nonzero coefficients at every penalty exactly."""
+    beta = _at_the_middle(Z, beta, path["l1_ratio"])
+    columns = [str(c) for c in Z.columns]
+    for line in path["lines"]:
+        want = beta[columns.index(line["column"])]
+        assert np.max(np.abs(np.asarray(line["coefficients"]) - want)) < 1e-6, line["column"]
+    assert path["nonzero"] == [int(v) for v in (np.abs(beta) > 0).sum(axis=0)]
+
+
 @needs_r
 def test_4c_the_elastic_net_path_is_glmnets(regression, tmp_path):
     """The shrinkage path at the chosen mix, on the standardized columns the elastic net was fit
-    on, against R's glmnet at every penalty: agreement to 1e-6. glmnet scales a Gaussian response
-    by its SD s, so scikit-learn's (α, ρ) is glmnet's λ = α(ρ + (1 − ρ)s), alpha = αρ/λ. The chosen
-    penalty is marked and its coefficients are the fitted model's, to the fit's own tolerance."""
+    on, against R's glmnet at every penalty: agreement to 1e-6, and the same count of nonzero
+    coefficients. glmnet scales a Gaussian response by its SD s, so scikit-learn's (α, ρ) is
+    glmnet's λ = α(ρ + (1 − ρ)s), alpha = αρ/λ. The chosen penalty is the refit's own (the tuning
+    record's, RT-5f) and its coefficients are the fitted model's. Every level of a category has
+    its own column (RT-5f), so under a pure lasso sex's two coefficients are tied: glmnet's are
+    moved to the middle of the tie by hand before they are compared (:func:`_at_the_middle`)."""
     path = regression.family("elastic_net")["architecture"]["path"]
     pipe = regression.fitted("elastic_net")
     Z = pipe[:-1].transform(regression.rows(regression.fit_ids()))
@@ -995,24 +1031,23 @@ def test_4c_the_elastic_net_path_is_glmnets(regression, tmp_path):
               "intercept = TRUE, control = list(thresh = 1e-22, maxit = 1e8))$beta)))\n"
               "cat(toJSON(out, digits = NA))")
     beta = np.asarray(run_r(script, {"m": frame}, tmp_path))  # columns × penalties
-    columns = [str(c) for c in Z.columns]
-    for line in path["lines"]:
-        want = beta[columns.index(line["column"])]
-        assert np.max(np.abs(np.asarray(line["coefficients"]) - want)) < 1e-6, line["column"]
-    assert path["chosen"] == pytest.approx(float(pipe[-1].alpha_), abs=0)
+    _check_path_against_glmnet(path, Z, beta)
+    assert path["chosen"] == pytest.approx(float(pipe[-1].alpha), abs=0)  # the refit's (RT-5f)
+    assert path["chosen"] == pipe.tuning_.chosen_params["alpha"]
     at = path["chosen_index"]
     assert path["penalties"][at] == path["chosen"]
+    columns = [str(c) for c in Z.columns]
     fitted = dict(zip(columns, np.ravel(pipe[-1].coef_)))
     for line in path["lines"]:
-        assert line["coefficients"][at] == pytest.approx(fitted[line["column"]], abs=1e-3)
-    assert path["nonzero"] == [int(v) for v in (np.abs(beta) > 0).sum(axis=0)]
+        assert line["coefficients"][at] == pytest.approx(fitted[line["column"]], abs=1e-10)
 
 
 @needs_r
 def test_4c_the_penalized_logistic_path_is_glmnets(binary, tmp_path):
     """A yes/no outcome's penalized logistic path against R's glmnet (binomial, which does not
     scale the response): scikit-learn's C on n rows is glmnet's λ = 1/(C n) at the same mix;
-    agreement to 1e-6 on the log-odds scale."""
+    agreement to 1e-6 on the log-odds scale and the same count of nonzero coefficients (a pure
+    lasso's two-level category at the middle of its tie, as above)."""
     path = binary.family("elastic_net")["architecture"]["path"]
     assert path["penalty_name"] == "C"
     pipe = binary.fitted("elastic_net")
@@ -1034,26 +1069,29 @@ def test_4c_the_penalized_logistic_path_is_glmnets(binary, tmp_path):
               "standardize = FALSE, control = list(thresh = 1e-22, maxit = 1e8))$beta)))\n"
               "cat(toJSON(out, digits = NA))")
     beta = np.asarray(run_r(script, {"m": frame}, tmp_path))
-    columns = [str(c) for c in Z.columns]
-    for line in path["lines"]:
-        want = beta[columns.index(line["column"])]
-        assert np.max(np.abs(np.asarray(line["coefficients"]) - want)) < 1e-6, line["column"]
+    _check_path_against_glmnet(path, Z, beta)
+    assert path["chosen"] == pipe[-1].C == pipe.tuning_.chosen_params["C"]
 
 
 def test_4e_a_wide_table_is_explained_within_its_bounds():
     """5,000 columns: the explained rows are capped so rows × inputs stays within CELLS, and the
-    shrinkage path runs from the strongest penalty down to the chosen one."""
-    from sklearn.linear_model import ElasticNetCV
-    from sklearn.pipeline import Pipeline
+    shrinkage path runs from the strongest penalty down to the chosen one (read from the path
+    search's record, its mix set by hand to keep the fit short)."""
     from sklearn.preprocessing import StandardScaler
+
+    from turbotab.core.models.base import get_family
+    from turbotab.core.models.tuning import TunedPipeline, make_plan
 
     rng = np.random.default_rng(8)
     n, p = 800, 5000
     X = pd.DataFrame(rng.normal(size=(n, p)), columns=[f"g{i}" for i in range(p)])
     y = X.iloc[:, :5].to_numpy() @ np.array([2.0, -1.0, 1.0, 0.5, 0.5]) + rng.normal(size=n)
-    pipe = Pipeline([("scale", StandardScaler()),
-                     ("model", ElasticNetCV(l1_ratio=[0.5, 1.0], cv=3, max_iter=5000))]
-                    ).set_output(transform="pandas").fit(X, y)
+    family = get_family("elastic_net")
+    plan = make_plan(family, task="regression", loss="mse", n_plan=n, plan_rows=n, unit="units",
+                     split_seed=8, manual={"l1_ratio": 1.0})
+    pipe = TunedPipeline([("scale", StandardScaler()),
+                          ("model", family.build("regression", "prediction", n, p))], search=plan
+                         ).set_output(transform="pandas").fit(X, y)
     fam = E.FamilyFit(key="elastic_net", label="Elastic net", fitted=pipe, unfitted=pipe,
                       versus={"verdict": "better"}, score=0.8, baseline=0.0)
     art = E.explain([fam], E.Setting(task="regression", purpose="prediction", target="y",
