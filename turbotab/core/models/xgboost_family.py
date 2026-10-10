@@ -33,10 +33,12 @@ margin, with xgboost's split rule (a row goes left when its value is ``<`` the t
 each split's learned default branch for blanks. **SHAP** (:meth:`XGBoost.tree_shap`) is
 xgboost's own ``pred_contribs``.
 
-**Loading.** xgboost is imported only when a model is fit or read, never when this module is. If
+**Loading.** xgboost is imported only when a model is fit or read, or the shelf or a selection
+asks whether it can load (``unavailable``), never when this module is. If
 it cannot load (libomp missing on a launcher, say), the family stays registered, every other
 family is unaffected, and a fit refuses with "XGBoost could not load" and the reason
-(:class:`XGBoostUnavailable`).
+(:class:`XGBoostUnavailable`). Its ``unavailable`` member says so before then: choosing it is
+refused, and the shelf keeps it last, marked (``base.unavailable``).
 """
 from __future__ import annotations
 
@@ -567,6 +569,15 @@ class XGBoost(FamilyBase):
 
     def methods_label(self, task: Task | None) -> str:
         return "gradient-boosted trees (XGBoost)"
+
+    def unavailable(self) -> str | None:
+        """Why XGBoost cannot be fit here (:func:`load_error`), in a plain sentence, or None: the
+        selection validator refuses it and the shelf marks it, so it is not only refused at fit."""
+        error = load_error()
+        if error is None:
+            return None
+        return (f"The xgboost library could not load here "
+                f"({error.removeprefix('XGBoost could not load: ')}).")
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         """XGBoost's defaults, one thread, never stopping early."""

@@ -69,6 +69,7 @@ import hashlib
 import itertools
 import json
 import math
+import numbers
 import threading
 import time
 from contextlib import contextmanager
@@ -815,6 +816,66 @@ class NoInnerFolds(ValueError):
 _NOUNS = {"units": "units", "events": "events", "rarest_class": "units of the rarest class"}
 
 
+class OutsideRange(ValueError):
+    """A value set by hand outside its dimension's declared range (RECIPES §4.1, §4.9): refused
+    before any fit, naming the range, rather than left for the estimator to refuse when it fits."""
+
+
+def _number(value: Any) -> bool:
+    return (isinstance(value, numbers.Real) and not isinstance(value, bool)
+            and math.isfinite(float(value)))
+
+
+def _shown(value: Any) -> str:
+    return f"{float(value):g}" if _number(value) else str(value)
+
+
+def range_words(d: Dimension) -> str:
+    """Where ``d`` runs, plainly: "it runs from 1 to 3", "it is one of a, b"."""
+    if d.scale == "choice":
+        return "it is one of " + ", ".join(_shown(c) for c in d.choices)
+    if d.scale == "share_of_units":
+        return f"it runs from just above 0 to {_shown(d.high)}"
+    whole = " in whole numbers" if d.scale in ("int", "log_int") else ""
+    return f"it runs from {_shown(d.low)} to {_shown(d.high)}{whole}"
+
+
+def _within(d: Dimension, value: Any) -> bool:
+    if d.scale == "choice":
+        return any(_tupled(value) == _tupled(c) for c in d.choices)
+    if not _number(value):
+        return False
+    v = float(value)
+    if d.scale == "share_of_units":
+        return 0 < v <= float(d.high)
+    if d.scale in ("int", "log_int") and not v.is_integer():
+        return False
+    return float(d.low) <= v <= float(d.high)
+
+
+def _standard(decl: TuningDecl, name: str, value: Any) -> bool:
+    return (name in decl.standard and not isinstance(value, bool)
+            and _tupled(value) == _tupled(decl.standard[name]))
+
+
+def by_hand_problems(decl: TuningDecl, values: Mapping[str, Any]) -> list[str]:
+    """One plain sentence for each value set by hand (``values``, by dimension name) that lies
+    outside its dimension's declared range (RECIPES §4.1): below ``low`` or above ``high``, not a
+    whole number on an integer scale, not among a choice's choices, not above 0 for a share of
+    units. A dimension's standard value is always allowed, even where it sits outside the searched
+    range (scikit-learn's ``l2_regularization = 0``, a symbolic ``"default"``). A name the
+    declaration does not hold is not checked here (:func:`make_plan` refuses it on its own)."""
+    dims = {d.name: d for d in (*decl.dimensions, *decl.by_hand)}
+    out: list[str] = []
+    for name, value in values.items():
+        d = dims.get(name)
+        if d is None or _within(d, value) or _standard(decl, name, value):
+            continue
+        label = d.label[:1].upper() + d.label[1:]
+        out.append(f"{label} ({d.term}) was set by hand to {_shown(value)}; {range_words(d)}.")
+    return out
+
+
 def make_plan(family: Any, *, task: str, loss: str, n_plan: int, plan_rows: int, unit: str,
               split_seed: int, rarest: int | None = None, psus: int | None = None,
               mode: str = "automatic", manual: Mapping[str, Any] | None = None,
@@ -827,8 +888,9 @@ def make_plan(family: Any, *, task: str, loss: str, n_plan: int, plan_rows: int,
     ``n_plan``, ``plan_rows`` and ``unit`` come from :func:`plan_size`; ``rarest`` defaults to
     ``n_plan`` for a yes/no or class outcome; ``psus`` is the fewest PSUs in any outer training
     fold under the population answer. ``manual`` holds values set by hand (dimension or by-hand
-    names only); ``options`` the "Try both" slots (RT-3). ``out_of_bag`` must be allowed by the
-    declaration, and never comes with the imbalance correction.
+    names only), each inside its dimension's range or its standard value (:func:`by_hand_problems`;
+    otherwise :class:`OutsideRange`); ``options`` the "Try both" slots (RT-3). ``out_of_bag``
+    must be allowed by the declaration, and never comes with the imbalance correction.
 
     With no inner folds (K = 0, out of bag aside) the plan keeps only the first candidate: the
     first standard one, the first option of each slot. A path family there raises
@@ -844,6 +906,9 @@ def make_plan(family: Any, *, task: str, loss: str, n_plan: int, plan_rows: int,
     if unknown:
         raise ValueError(f"a value set by hand for {', '.join(map(repr, unknown))}, which "
                          f"{family.key} does not tune")
+    outside = by_hand_problems(decl, manual)
+    if outside:
+        raise OutsideRange(" ".join(outside))
     if out_of_bag and not decl.out_of_bag:
         raise ValueError(f"{family.key} declares no out-of-bag scoring")
     if out_of_bag and imbalance:
@@ -1844,12 +1909,13 @@ def center(plan: TuningPlan) -> Candidate:
 __all__ = [
     "Activity", "Candidate", "Dimension", "Drawn", "EARLY_STOPPING_KEYS", "FitDesign", "Head",
     "IMBALANCE_FITS", "INNER_SPLITS", "LOSS_PRECISION", "Loss", "MID_N", "MissingPlan", "Mode",
-    "NoInnerFolds", "PER_FOLD_FLOOR", "PathCurve", "PathFit", "SEARCHED_K", "SMALL_N",
-    "STANDARD_ROWS_KEY", "STANDARD_STOP_ROWS", "STOPPING_SETS", "STOP_FLAG", "STOP_FROM_N",
-    "STOP_SHARE", "STOP_SHARE_PARAM", "STRATEGIES", "Scale", "SizeUnit", "SobolStrategy",
-    "Strategy", "StrategyName", "TunedPipeline", "TuningDecl", "TuningKind", "TuningPlan",
-    "TuningRecord", "cancel_scope", "center", "choose", "derive_seed", "effective_size",
-    "estimator_params", "fit_head", "fit_model", "fit_parts", "fit_seed", "inner_k",
-    "inner_splits_for", "make_plan", "map_unit", "observing", "path_folds", "path_grid",
-    "plan_size", "pooled_loss", "searched_size", "sobol_sample", "tuning_for", "tuning_problems",
+    "NoInnerFolds", "OutsideRange", "PER_FOLD_FLOOR", "PathCurve", "PathFit", "SEARCHED_K",
+    "SMALL_N", "STANDARD_ROWS_KEY", "STANDARD_STOP_ROWS", "STOPPING_SETS", "STOP_FLAG",
+    "STOP_FROM_N", "STOP_SHARE", "STOP_SHARE_PARAM", "STRATEGIES", "Scale", "SizeUnit",
+    "SobolStrategy", "Strategy", "StrategyName", "TunedPipeline", "TuningDecl", "TuningKind",
+    "TuningPlan", "TuningRecord", "by_hand_problems", "cancel_scope", "center", "choose",
+    "derive_seed", "effective_size", "estimator_params", "fit_head", "fit_model", "fit_parts",
+    "fit_seed", "inner_k", "inner_splits_for", "make_plan", "map_unit", "observing", "path_folds",
+    "path_grid", "plan_size", "pooled_loss", "range_words", "searched_size", "sobol_sample",
+    "tuning_for", "tuning_problems",
 ]

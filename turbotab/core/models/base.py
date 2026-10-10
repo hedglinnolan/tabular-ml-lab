@@ -255,7 +255,9 @@ class ModelFamily(Protocol):
     # ``path(Z, y, grid, *, task, weights=None)``: one split's whole grid, a ``tuning.PathFit``;
     # ``trees(step)``: its fitted model step as an ``explain.TreeEnsemble``;
     # ``tree_shap(step, Z)``: compiled TreeSHAP, ``(phi (n, p, K), expected (K,))`` on the scale
-    # ``trees(step).scale`` names, or None to use the engine's own.
+    # ``trees(step).scale`` names, or None to use the engine's own;
+    # ``unavailable()``: why it cannot be fit on this computer (its library cannot load), a plain
+    # sentence, or None when it can (:func:`unavailable`).
     preprocess: Callable[..., list[tuple[str, Any]]] | None
     build_for: Callable[..., Any] | None
     describe_step: Callable[[str], tuple[str, str] | None] | None
@@ -265,6 +267,7 @@ class ModelFamily(Protocol):
     path: Callable[..., Any] | None
     trees: Callable[[Any], Any] | None
     tree_shap: Callable[[Any, Any], Any] | None
+    unavailable: Callable[[], str | None] | None
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         """An unfitted sklearn estimator; the pipeline's last step."""
@@ -326,11 +329,11 @@ MEMBERS = ("key", "label", "tasks", "inductive_bias", "strengths", "cautions", "
            "architecture", "review_lenses", "solvable", "replay_tolerance", "sources", "cost_model",
            "tuning", "defaults_version", "consequence",
            "preprocess", "build_for", "describe_step", "inference", "inference_matrix",
-           "settings", "path", "trees", "tree_shap",
+           "settings", "path", "trees", "tree_shap", "unavailable",
            "build", "describe", "methods_label", "coefficients", "assess")
 # The members a family may leave as None: what it adds of its own (:class:`ModelFamily`).
 OPTIONAL_MEMBERS = ("preprocess", "build_for", "describe_step", "inference", "inference_matrix",
-                    "settings", "path", "trees", "tree_shap")
+                    "settings", "path", "trees", "tree_shap", "unavailable")
 # A family that reads another's assessment (``same_kind_as``) keeps at least this score, never more
 # than the family it reads: "Boosted trees' assessment less 1.0 (at least 0.5)" (RECIPES §2.2, a
 # convention).
@@ -750,23 +753,41 @@ def assessment(family: ModelFamily, situation: Situation) -> Assessment:
     return Assessment(max(read.score + offset, floor), read.fit, read.concerns)
 
 
+def unavailable(family: ModelFamily) -> str | None:
+    """Why ``family`` cannot be fit on this computer, as its ``unavailable`` member says (a plain
+    sentence: its library cannot load), or None when it can or declares nothing."""
+    return None if family.unavailable is None else family.unavailable()
+
+
+# The concern that leads an unavailable family's line on the shelf, before its reason.
+UNAVAILABLE = "Cannot be fit on this computer: "
+
+
 def rank(situation: Situation) -> list[tuple[ModelFamily, Assessment]]:
-    """Every family that can model the task, best first. The shelf is never shortened."""
+    """Every family that can model the task, best first. The shelf is never shortened: a family
+    that cannot be fit on this computer (:func:`unavailable`) stays, after every family that can,
+    judged poor, its first concern saying why."""
     order = {f.key: i for i, f in enumerate(families())}
     judged = []
+    missing: set[str] = set()
     for family in families(situation.task):
         judged_one = assessment(family, situation)
         if situation.task == "ordinal" and not family.ordered_levels:
             judged_one = Assessment(judged_one.score - ORDER_BLIND_COST, judged_one.fit,
                                     (ORDER_BLIND, *judged_one.concerns))
+        reason = unavailable(family)
+        if reason is not None:
+            missing.add(family.key)
+            judged_one = Assessment(judged_one.score, "poor",
+                                    (UNAVAILABLE + reason, *judged_one.concerns))
         judged.append((family, judged_one))
 
-    def place(fa: tuple[ModelFamily, Assessment]) -> tuple[float, bool, int]:
+    def place(fa: tuple[ModelFamily, Assessment]) -> tuple[bool, float, bool, int]:
         # Under prediction, a family that makes no predictions (WP11's feature-wise tests) goes
         # after every family that does and scores as well: it has nothing to offer the purpose.
         family, judged_one = fa
         silent = situation.purpose == "prediction" and not family.predicts
-        return (-judged_one.score, silent, order[family.key])
+        return (family.key in missing, -judged_one.score, silent, order[family.key])
 
     return sorted(judged, key=place)
 
@@ -865,6 +886,10 @@ class FamilyBase:
     # ``tree_shap(step, Z) -> (phi (n, p, K), expected (K,)) | None``: a compiled TreeSHAP on the
     # scale ``trees(step).scale`` names; None (the member, or its return) uses ``explain.tree_shap``.
     tree_shap: Callable[[Any, Any], Any] | None = None
+    # ``unavailable() -> str | None``: why it cannot be fit on this computer, in a plain sentence
+    # (its library could not load), or None when it can. The selection validator refuses it and
+    # the shelf marks it (:func:`unavailable`, :func:`rank`); None here: it is always available.
+    unavailable: Callable[[], str | None] | None = None
 
     def coefficients(self, pipeline: Any, X: Any, y: Any, *, task: Task,
                      purpose: Purpose | None, groups: Any = None) -> list[dict[str, Any]] | None:
@@ -925,5 +950,5 @@ __all__ = [
     "OPTIONAL_MEMBERS", "PURPOSES", "Prior", "RAW_SCALES", "SAME_KIND_FLOOR", "Situation",
     "Source", "TASKS", "assessment", "coefficient_rows", "contract_problems", "families",
     "get_family", "inference_default", "info", "rank",
-    "register_family", "reports_coefficients", "unregister_family",
+    "UNAVAILABLE", "register_family", "reports_coefficients", "unavailable", "unregister_family",
 ]

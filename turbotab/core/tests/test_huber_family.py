@@ -283,9 +283,6 @@ def test_no_warning_escapes_an_ordinary_fit() -> None:
         _fit(X, y)
 
 
-@pytest.mark.xfail(strict=True, reason="RECIPES §5 refuses robust linear under inference; the "
-                   "refusal belongs in a decisions.py validator reading family.purposes, which "
-                   "this package does not own (open issue for the integrator)")
 def test_choosing_it_under_inference_is_refused() -> None:
     from turbotab.core.decisions import Refusal, SelectModels, validate
 
