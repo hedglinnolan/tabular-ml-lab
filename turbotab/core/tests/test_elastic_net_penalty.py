@@ -22,6 +22,15 @@ included. For the logistic loss the system is not linear, so Newton's method sol
 active set and signs, from a proposal by scikit-learn's own ``saga``, until the step is below
 rounding; then every condition is checked the same way. The solver only proposes the active set;
 the numbers come from the solve, and a wrong active set fails the check.
+
+**Since RT-5f** the family chooses by the shared path search (``tuning``; RECIPES §4.3): each inner
+split's own λ_max, a ratio grid, the logistic C per row (``test_path_search`` holds it to
+scikit-learn's own fits). The cross-validated estimators these tests were written for,
+``PooledElasticNetCV`` and ``PooledLogisticRegressionCV``, are the selection step's now
+(``variable_selection``), built here as the family built them (:func:`_cv`). The family's path
+search is held to the same standard: its inner curve is the exact solution's on the engine's own
+splits, and its logistic choice and curve on the NHANES-like table are frozen for every platform,
+re-derived from the exact solution written here.
 """
 from __future__ import annotations
 
@@ -31,6 +40,65 @@ import numpy as np
 import pytest
 
 FOLD_SIZES = (30, 45, 60, 75, 90)  # unequal, so pooling the rows differs from averaging the folds
+CV_CS = tuple(float(c) for c in np.logspace(-3, 1, 8))  # the family's fixed C grid before RT-5f
+RATIOS = np.exp(np.linspace(0.0, np.log(1e-3), 100))  # RECIPES §4.1: of λ_max, strongest first
+LOGISTIC_RATIOS = np.exp(np.linspace(0.0, np.log(1e-3), 8))
+
+
+def _cv(task: str, folds):
+    """The cross-validated estimator the family built before RT-5f (the selection step's now):
+    six mixes over scikit-learn's own penalty grid for a number; three mixes over :data:`CV_CS`
+    otherwise."""
+    from turbotab.core.models.elastic_net import (L1_RATIOS, LOGISTIC_L1_RATIOS, SOLVER_MAX_ITER,
+                                                  SOLVER_TOL, PooledElasticNetCV,
+                                                  PooledLogisticRegressionCV)
+
+    if task == "regression":
+        return PooledElasticNetCV(l1_ratio=list(L1_RATIOS), cv=folds, max_iter=SOLVER_MAX_ITER,
+                                  tol=SOLVER_TOL)
+    return PooledLogisticRegressionCV(Cs=list(CV_CS), l1_ratios=LOGISTIC_L1_RATIOS, solver="saga",
+                                      cv=folds, scoring="neg_log_loss", max_iter=1000, tol=1e-3,
+                                      use_legacy_attributes=False, random_state=0)
+
+
+def _searched(task: str, X, y, *, manual=None, scale: bool = False):
+    """The family's path search through the engine (``inner_cv.fit_pipeline`` at seed 7): the
+    fitted pipeline and its inner splits, as positions."""
+    from sklearn.preprocessing import StandardScaler
+
+    from turbotab.core.models import tuning as T
+    from turbotab.core.models.elastic_net import ELASTIC_NET
+    from turbotab.core.models.inner_cv import fit_pipeline
+
+    unit = {"regression": "units", "binary": "events"}.get(task, "rarest_class")
+    plan = T.make_plan(ELASTIC_NET, task=task, loss="mse" if task == "regression" else "log_loss",
+                       n_plan=len(y), plan_rows=len(y), unit=unit, split_seed=7, manual=manual)
+    steps = [("scale", StandardScaler())] if scale else []
+    model = ELASTIC_NET.build(task, "prediction", len(y), X.shape[1])
+    pipe = T.TunedPipeline([*steps, ("model", model)], search=plan)
+    if scale:
+        pipe.set_output(transform="pandas")  # as the fit stage builds it
+    drawn: list = []
+    with T.observing(drawn.append), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fitted = fit_pipeline(pipe, X, y, seed=7)
+    inner = [(d.train, d.validation) for d in drawn if d.kind == "inner"]
+    if hasattr(X, "index"):
+        inner = [(X.index.get_indexer(a), X.index.get_indexer(b)) for a, b in inner]
+    return fitted, inner
+
+
+def _lambda_max(X, y, mix, classes=None) -> float:
+    """The largest |gradient| of the mean loss at zero coefficients, the intercepts fit, over the
+    mix: Xcᵀ(y − ȳ)/n; for classes Xᵀ(Y − Ȳ)/n, Y each class's indicator (the second's alone)."""
+    Xc = X - X.mean(axis=0)
+    if classes is None:
+        R = (y - y.mean())[:, None]
+    else:
+        Y = np.eye(classes)[y]
+        R = Y[:, 1:] if classes == 2 else Y
+        R = R - R.mean(axis=0)
+    return float(np.max(np.abs(Xc.T @ R))) / (len(X) * mix)
 
 
 def _table(seed: int = 0, n: int = 300, p: int = 12):
@@ -95,10 +163,10 @@ def test_the_inner_curve_is_the_exact_elastic_nets_and_the_choice_its_rounded_mi
     after rounding to 10⁻⁹ of its smallest, the first of any tie; where that differs from averaging
     the folds (as on these unequal folds), the coefficients are refit at it: they equal the exact
     solution on every row to 10⁻⁹ of the largest."""
-    from turbotab.core.models.elastic_net import ELASTIC_NET, L1_RATIOS
+    from turbotab.core.models.elastic_net import L1_RATIOS
 
     X, y, folds = _table()
-    model = ELASTIC_NET.build("regression", "prediction", len(y), X.shape[1]).set_params(cv=folds)
+    model = _cv("regression", folds)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         model.fit(X, y)
@@ -397,15 +465,15 @@ def test_the_logistic_inner_curve_is_the_exact_solutions_and_the_choice_its_roun
     refit's coefficients and probabilities are the exact solution's at them to 10⁻⁹."""
     from scipy.special import softmax
 
-    from turbotab.core.models.elastic_net import ELASTIC_NET, LOGISTIC_CS, LOGISTIC_L1_RATIOS
+    from turbotab.core.models.elastic_net import LOGISTIC_L1_RATIOS
 
     X, y, folds = _logistic_table(classes)
     task = "binary" if classes == 2 else "multiclass"
-    model = ELASTIC_NET.build(task, "prediction", len(y), X.shape[1]).set_params(cv=folds)
+    model = _cv(task, folds)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         model.fit(X, y)
-    mixes, Cs = list(LOGISTIC_L1_RATIOS), list(LOGISTIC_CS)
+    mixes, Cs = list(LOGISTIC_L1_RATIOS), list(CV_CS)
     pooled = _pooled(model, folds)
     exact = _exact_logistic_curve(X, y, folds, mixes, Cs)
     worst = float(np.max(np.abs(pooled - exact) / exact))
@@ -440,12 +508,10 @@ def test_a_last_bit_difference_in_the_matrix_moves_no_logistic_choice_or_curve()
     for its seed, also held it; what it did not hold is the exact curve, above.)"""
     from sklearn.base import clone
 
-    from turbotab.core.models.elastic_net import ELASTIC_NET
-
     for classes in (2, 3):
         X, y, folds = _logistic_table(classes, seed=4)
         task = "binary" if classes == 2 else "multiclass"
-        proto = ELASTIC_NET.build(task, "prediction", len(y), X.shape[1]).set_params(cv=folds)
+        proto = _cv(task, folds)
         rng = np.random.default_rng(classes)
         nudged = np.where(rng.random(X.shape) < 0.5, np.nextafter(X, np.inf),
                           np.nextafter(X, -np.inf))
@@ -462,23 +528,23 @@ def test_a_last_bit_difference_in_the_matrix_moves_no_logistic_choice_or_curve()
             assert np.max(np.abs(coef - np.atleast_2d(base.coef_))) <= 1e-11 * np.max(np.abs(base.coef_))
 
 
-# The same table on every platform: what macOS computed (2026-10-08: numpy 2.4.6, scikit-learn
-# 1.9.0, Accelerate), which CI's Linux (OpenBLAS) must give again; losses to 12 significant digits.
+# The same table on every platform (RT-5f's path search): the chosen grid point (mix 1.0, the third
+# ratio of LOGISTIC_RATIOS), its C on the fit's 400 rows and the pooled curve's four lowest values,
+# to 12 significant digits. Re-derived 2026-10-10 (macOS, numpy 2.4.6, scikit-learn 1.9.0) from the
+# exact solution written here (``_exact_logistic`` over the engine's own inner splits, at each
+# split's own λ_max from :func:`_lambda_max`; C = 1/(n·r·λ_max) on every row, by hand), which the
+# engine's curve met to 1.5 × 10⁻¹⁴; CI's Linux (OpenBLAS) and Windows must give them again.
 LOGISTIC_FROZEN = {
-    2: {"C": 0.19306977288832497, "mix": 1.0,
-        "loss": [0.531962574952, 0.533852080874, 0.536289013137, 0.537409917079]},
-    3: {"C": 0.19306977288832497, "mix": 1.0,
-        "loss": [0.921962519313, 0.930128154047, 0.930542685067, 0.940733429653]},
+    2: {"chosen": 18, "C": 0.09228796587795267, "mix": 1.0,
+        "loss": [0.542034921853, 0.542435286923, 0.542492450297, 0.547066702823]},
+    3: {"chosen": 18, "C": 0.10593063789759337, "mix": 1.0,
+        "loss": [0.923012955074, 0.926365002006, 0.928112554788, 0.929267290388]},
 }
 
 
 def _nhanes_logistic(classes: int):
-    """The WP7-like NHANES table through the family's own pipeline step and inner folds."""
-    from sklearn.pipeline import Pipeline
-    from sklearn.preprocessing import StandardScaler
-
-    from turbotab.core.models.elastic_net import ELASTIC_NET
-    from turbotab.core.models.inner_cv import fit_pipeline
+    """The WP7-like NHANES table through the family's path search (scaled as the fit stage scales
+    it), its inner splits drawn by the engine from row keys hashed in single precision."""
     from turbotab.core.tests import modeling_fixtures as mf
 
     frame = mf.nhanes_like(400, seed=707)
@@ -488,22 +554,65 @@ def _nhanes_logistic(classes: int):
     y = ((g > np.median(g)).astype(int) if classes == 2
          else np.digitize(g, np.quantile(g, [1 / 3, 2 / 3])))
     task = "binary" if classes == 2 else "multiclass"
-    pipe = Pipeline([("scale", StandardScaler()),
-                     ("model", ELASTIC_NET.build(task, "prediction", len(y), X.shape[1]))])
-    return fit_pipeline(pipe, X, y, seed=0)[-1]
+    return _searched(task, X, y, scale=True)[0]
 
 
 @pytest.mark.parametrize("classes", [2, 3], ids=["yes-no", "classes"])
 def test_the_logistic_choice_and_curve_are_the_ones_every_platform_computes(classes):
     """The WP7-like NHANES table (``nhanes_like``, 400 rows, seed 707): glucose above its median,
-    or its thirds, from every other column, through the family's pipeline step and its inner folds
-    (``inner_cv.fit_pipeline``: row keys hashed in single precision). The chosen C and mix, and the
-    pooled curve's four lowest values, are those frozen above, on every platform."""
+    or its thirds, from every other column, through the family's path search and the engine's
+    inner splits. The chosen grid point is the one frozen above, exactly; its C, which reads the
+    rows' λ_max through a matrix product, to 10⁻¹³; the pooled curve's four lowest values to
+    10⁻¹¹, on every platform."""
     frozen = LOGISTIC_FROZEN[classes]
-    model = _nhanes_logistic(classes)
-    lowest = [float(f"{v:.12g}") for v in np.sort(_pooled(model, model.cv).ravel())[:4]]
-    assert (model.C_, model.l1_ratio_) == (frozen["C"], frozen["mix"]), (model.C_, model.l1_ratio_)
+    fitted = _nhanes_logistic(classes)
+    record, model = fitted.tuning_, fitted[-1]
+    lowest = [float(f"{v:.12g}") for v in np.sort(np.asarray(record.losses))[:4]]
+    assert (record.chosen, model.l1_ratio) == (frozen["chosen"], frozen["mix"]), record.chosen
+    assert model.C == pytest.approx(frozen["C"], rel=1e-13, abs=0)
     assert np.allclose(lowest, frozen["loss"], rtol=1e-11, atol=0), lowest
+
+
+def test_the_familys_inner_curve_is_the_exact_elastic_nets_at_each_splits_own_lambda_max():
+    """The family's path search, through the engine on the unequal-fold table: at every mix and
+    ratio of each split's own λ_max (:func:`_lambda_max`, on the split's training rows), the pooled
+    inner curve equals the exact solution's (:func:`_exact`, its KKT conditions checked) to
+    10⁻¹¹, two orders below the 10⁻⁹ the choice rounds to; the choice is the exact curve's rounded
+    lowest; the refit is the exact solution at r·λ_max of every row, to 10⁻⁹ of the largest."""
+    from sklearn.linear_model import enet_path
+
+    from turbotab.core.models.elastic_net import L1_RATIOS
+
+    X, y, _ = _table()
+    fitted, inner = _searched("regression", X, y)
+    record = fitted.tuning_
+    sse = np.zeros((len(L1_RATIOS), len(RATIOS)))
+    for train, test in inner:
+        Xt, yt = X[train], y[train]
+        for m, mix in enumerate(L1_RATIOS):
+            alphas = RATIOS * _lambda_max(Xt, yt, mix)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")  # a proposal need not converge: the solve checks
+                _, proposed, _ = enet_path(Xt - Xt.mean(axis=0), yt - yt.mean(), l1_ratio=mix,
+                                           alphas=alphas, tol=1e-14, max_iter=100_000)
+            for k, alpha in enumerate(alphas):
+                # a proposal's rounding-sized coefficients (at λ_max itself) are not active
+                hint = np.where(np.abs(proposed[:, k]) > 1e-12, proposed[:, k], 0.0)
+                w, b = _exact(Xt, yt, alpha, mix, hint)
+                sse[m, k] += float(((y[test] - X[test] @ w - b) ** 2).sum())
+    exact = (sse / sum(len(t) for _, t in inner)).ravel()
+    worst = float(np.max(np.abs(np.asarray(record.losses) - exact) / exact))
+    assert worst <= 1e-11, f"the inner curve is {worst:.2g} from the exact solution's"
+    chosen = int(np.argmin(np.round(exact / (1e-9 * exact.min()))))
+    assert record.chosen == chosen
+    m, k = divmod(chosen, len(RATIOS))
+    model = fitted[-1]
+    alpha = RATIOS[k] * _lambda_max(X, y, L1_RATIOS[m])
+    assert (model.l1_ratio, model.alpha) == (L1_RATIOS[m], pytest.approx(alpha, rel=1e-13))
+    w, b = _exact(X, y, model.alpha, model.l1_ratio, model.coef_)
+    scale = float(np.max(np.abs(w)))
+    assert np.max(np.abs(model.coef_ - w)) <= 1e-9 * scale
+    assert abs(model.intercept_ - b) <= 1e-9 * max(scale, abs(b))
 
 
 def test_the_selection_steps_yes_no_penalty_is_the_familys_choice_on_the_log_loss():
@@ -534,25 +643,21 @@ def _lasso_objective(X, y, W, b, C):
 
 def _nhanes_quartiles(seed: int, toward: float | None = None):
     """The NHANES-like table's glucose in quartiles from every other column, through the family's
-    pipeline step and inner folds; ``toward``: every value moved one unit in the last place."""
-    from sklearn.pipeline import Pipeline
-    from sklearn.preprocessing import StandardScaler
-
-    from turbotab.core.models.elastic_net import ELASTIC_NET
-    from turbotab.core.models.inner_cv import fit_pipeline
+    path search with its mix set by hand to a pure lasso (the tie these tests are about), scaled
+    as the fit stage scales it; ``toward``: every value moved one unit in the last place."""
     from turbotab.core.tests import modeling_fixtures as mf
 
     frame = mf.nhanes_like(400, seed=seed)
     X = frame.drop(columns=["SEQN", "cycle_begin_year", "glucose", "gender"]).astype(float)
     X["male"] = (frame["gender"] == "male").astype(float)
     if toward is not None:
-        X = X.apply(lambda column: np.nextafter(column.to_numpy(), toward))
+        # every nonzero value; a zero moved toward −∞ is −0.0 in single precision, which
+        # ``inner_cv.row_keys`` hashes apart from 0.0, so every inner split would move with it
+        X = X.apply(lambda column: np.where(column.to_numpy() == 0, column.to_numpy(),
+                                            np.nextafter(column.to_numpy(), toward)))
     g = frame["glucose"].to_numpy()
     y = np.digitize(g, np.quantile(g, [0.25, 0.5, 0.75]))
-    pipe = Pipeline([("scale", StandardScaler()),
-                     ("model", ELASTIC_NET.build("multiclass", "prediction", len(y), X.shape[1]))
-                     ]).set_output(transform="pandas")  # as the fit stage builds it
-    return fit_pipeline(pipe, X, y, seed=0), X, y
+    return _searched("multiclass", X, y, manual={"l1_ratio": 1.0}, scale=True)[0], X, y
 
 
 @pytest.mark.parametrize("seed", [707, 708])
@@ -562,7 +667,8 @@ def test_four_classes_under_a_pure_lasso_report_the_middle_of_their_tied_set(see
     an even number of classes, it changes no penalty either while it stays between the feature's
     two middle coefficients. Every point of that interval is a solution. The verifier's NHANES-like
     glucose quartiles (seeds 707 to 712, the family's own folds, every value moved one unit in the
-    last place) found the exact path stopping where the last bit put it: the same C, mix and
+    last place; RT-5f: the family's path search, a pure lasso set by hand) found the exact path
+    stopping where the last bit put it: the same C, mix and
     probabilities, but coefficients 0.265 apart, two to four of them zero on one side and not on
     the other ('male [1]' 0.0 against −0.162 and 'male [2]' 0.162 against 0.0), the class
     intercepts shifted by 1.40. Each feature is now reported at the middle of its interval (its
@@ -573,13 +679,14 @@ def test_four_classes_under_a_pure_lasso_report_the_middle_of_their_tied_set(see
     fits = [_nhanes_quartiles(seed, toward) for toward in (None, np.inf, -np.inf)]
     (pipe, X, y), *others = fits
     model = pipe[-1]
-    assert model.l1_ratio_ == 1.0  # the tie this test is about
+    assert model.l1_ratio == 1.0  # the tie this test is about
     coef = np.asarray(model.coef_)
     scale = float(np.max(np.abs(coef)))
     rows = ELASTIC_NET.coefficients(pipe, X, y, task="multiclass", purpose="prediction")
     for other_pipe, other_X, _ in others:
         other = other_pipe[-1]
-        assert (other.C_, other.l1_ratio_) == (model.C_, model.l1_ratio_)
+        assert other_pipe.tuning_.chosen == pipe.tuning_.chosen
+        assert other.C == pytest.approx(model.C, rel=1e-12)  # λ_max read through the last bit
         assert np.max(np.abs(other.coef_ - coef)) <= 1e-9 * scale
         assert np.max(np.abs(other.intercept_ - model.intercept_)) <= 1e-9 * max(scale, 1.0)
         assert np.array_equal(other.coef_ == 0, coef == 0)
@@ -601,10 +708,8 @@ def test_the_middle_of_the_tied_set_is_the_problems_and_not_the_solvers():
     from sklearn.base import clone
     from sklearn.linear_model import LogisticRegression
 
-    from turbotab.core.models.elastic_net import ELASTIC_NET
-
     X, y, folds = _logistic_table(4, seed=10)
-    proto = ELASTIC_NET.build("multiclass", "prediction", len(y), X.shape[1]).set_params(cv=folds)
+    proto = _cv("multiclass", folds)
     rng = np.random.default_rng(4)
     nudged = np.where(rng.random(X.shape) < 0.5, np.nextafter(X, np.inf), np.nextafter(X, -np.inf))
     cols = rng.permutation(X.shape[1])
@@ -667,7 +772,6 @@ def test_many_classes_cost_fewer_solves_and_smaller_hessians_than_one_at_a_time(
     coordinates a step can move and kept for the last steps, at most 60% of the entries (44% when
     this was written); the curve stays exact (the tests above)."""
     import turbotab.core.models.exact_path as ep
-    from turbotab.core.models.elastic_net import ELASTIC_NET
 
     rng = np.random.default_rng(0)
     n, p, K = 600, 30, 8
@@ -699,6 +803,6 @@ def test_many_classes_cost_fewer_solves_and_smaller_hessians_than_one_at_a_time(
     monkeypatch.setattr(ep, "_solve_active", counting_solve_active)
     monkeypatch.setattr(ep._Logistic, "hessian", counting_hessian, raising=False)
     monkeypatch.setattr(ep, "_logistic_solve", counting_solve)
-    ELASTIC_NET.build("multiclass", "prediction", n, p).fit(X, y)
+    _cv("multiclass", 5).fit(X, y)  # the cross-validated estimator's five unshuffled folds
     assert counted["solves"] <= 2_500, counted
     assert counted["formed"] <= 0.6 * counted["full"], counted

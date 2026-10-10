@@ -1572,10 +1572,15 @@ class UnivariateScreen(TransformerMixin, BaseEstimator):
 
 def _register_screened_family() -> None:
     from turbotab.core.models.base import Assessment, register_family
-    from turbotab.core.models.elastic_net import ElasticNet
+    from turbotab.core.models.elastic_net import TUNING, ElasticNet
 
     class ScreenedElasticNet(ElasticNet):
-        """An elastic net after sure independence screening, both inside every training fold."""
+        """An elastic net after sure independence screening, both inside every training fold.
+
+        The screen is a step before the model, so the elastic net's path search (RECIPES §4.3)
+        refits it on the training rows of every inner split, with the scaling, before that split's
+        path: no screen is fit on the rows that score the penalty (F4). The final fit's screen is
+        then refit on all of its rows, as the penalty is."""
 
         key = "screened_elastic_net"
         label = "Screened elastic net"
@@ -1596,6 +1601,8 @@ def _register_screened_family() -> None:
         inference_decl = None
         raw_scale = {"regression": "value", "binary": "margin"}
         review_lenses = ("metabolomics", "genomics")
+        # the elastic net's path search on the screened family's two tasks
+        tuning = {task: TUNING[task] for task in ("regression", "binary")}
         consequence = ("Keeps the features most tied to the outcome in each training fold, then an "
                        "elastic net.")
 
@@ -1611,7 +1618,8 @@ def _register_screened_family() -> None:
                      else "Screened penalized logistic regression")
             return label, ("Keeps the n / log n study factors most correlated with the outcome on each "
                            "training fold (sure independence screening, Fan & Lv 2008), then chooses "
-                           "the penalty by an inner cross-validation within those rows.")
+                           "the penalty by an inner cross-validation within those rows, screening "
+                           "again in every inner split.")
 
         def describe_step(self, name: str) -> tuple[str, str] | None:
             if name == "screen":

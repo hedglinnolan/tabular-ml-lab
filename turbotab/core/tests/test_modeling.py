@@ -259,14 +259,18 @@ def test_every_fitted_step_sees_only_training_fold_rows(tmp_path, monkeypatch, p
     """Every step of every pipeline is fit on one training fold or on all training rows, never on a
     held-out row; except, under inference, the coefficient table, which is estimated from every
     analyzed row (BLUEPRINT §12 ruling 3, AUDIT_REPORT §5 WP8): one more fit of each family that
-    has coefficients (linear and elastic net, not boosted trees), on training and held-out rows."""
+    has coefficients (linear and elastic net, not boosted trees), on training and held-out rows.
+    The elastic net's path search (RT-5f) refits the steps before its model on each inner split's
+    training rows, drawn inside each of those fits (``tuning.observing``), and fits its model on
+    the fit's rows alone."""
     from sklearn.ensemble import HistGradientBoostingRegressor
     from sklearn.impute import SimpleImputer
     from sklearn.linear_model import LinearRegression
     from sklearn.preprocessing import OneHotEncoder, StandardScaler
     import statsmodels.api as sm
 
-    from turbotab.core.models.elastic_net import PooledElasticNetCV as ElasticNetCV  # its own path
+    from turbotab.core.models import tuning as T
+    from turbotab.core.models.elastic_net import ExactElasticNet as ElasticNet  # its refit
 
     frame = mf.nhanes_like(300, seed=7, missing=True)
     paths = mf.ingest_frame(frame, tmp_path)
@@ -289,7 +293,7 @@ def test_every_fitted_step_sees_only_training_fold_rows(tmp_path, monkeypatch, p
         monkeypatch.setattr(cls, "fit", fit)
 
     for cls, name in [(SimpleImputer, "imputer"), (EnergyAdjuster, "energy"), (OneHotEncoder, "onehot"),
-                      (StandardScaler, "scaler"), (LinearRegression, "ols"), (ElasticNetCV, "enet"),
+                      (StandardScaler, "scaler"), (LinearRegression, "ols"), (ElasticNet, "enet"),
                       (HistGradientBoostingRegressor, "trees")]:
         spy(cls, name)
     ols_rows: list[frozenset] = []
@@ -319,26 +323,38 @@ def test_every_fitted_step_sees_only_training_fold_rows(tmp_path, monkeypatch, p
     ols_rows.clear()
     design = design_stage(mf.context(st, {"split": split, "target_info": mf.target_info("regression")}, paths))
     seen.clear()
-    fit_stage(mf.context(st, {"design": design, "split": split,
-                              "target_info": mf.target_info("regression")}, paths))
+    drawn: list = []
+    with T.observing(drawn.append):
+        fit_stage(mf.context(st, {"design": design, "split": split,
+                                  "target_info": mf.target_info("regression")}, paths))
     holdout = set(hold_ids.tolist())
     every = frozenset(train_ids.tolist()) | frozenset(holdout)
     n_folds = len(np.unique(folds))
     inference = purpose == "inference"
+    # each search's inner training rows lie inside the rows of the fit that drew them
+    refits = {frozenset(d.train.tolist()) for d in drawn if d.kind == "refit"}
+    inner = [frozenset(d.train.tolist()) for d in drawn if d.kind == "inner"]
+    assert refits <= (allowed | {every} if inference else allowed) and inner
+    assert all(any(r < f for f in refits) for r in inner)
+    searched = set(inner)
     for name in ("imputer", "energy", "onehot", "scaler", "ols", "enet", "trees"):
         rows = seen[name]
         assert rows, name
         table = inference and name != "trees"  # boosted trees have no coefficient table
+        head = name in ("imputer", "energy", "onehot", "scaler")  # refit in each inner split
         for r in rows:
-            if table and r == every:
-                continue  # the coefficient table's fit on every analyzed row
-            assert r in allowed, f"{name} was fit on rows that are not one training fold"
+            if table and (r == every or (head and r in searched and r < every)):
+                continue  # the coefficient table's fit on every analyzed row, and its search
+            assert r in allowed or (head and r in searched), \
+                f"{name} was fit on rows that are not one training fold or an inner split of one"
             assert not (r & holdout), f"{name} saw held-out rows"
         # Every fold and the refit, each once per family that has the step (and, under inference,
-        # the table's fit on every analyzed row).
-        assert set(rows) == (allowed | {every} if table else allowed), name
+        # the table's fit on every analyzed row), and the steps before a model in every inner split
+        # of the elastic net's search.
+        want = allowed | {every} if table else allowed
+        assert set(rows) == (want | searched if head else want), name
     repeats = 1 if inference else 10  # MS6: the prediction substrate is 10 × K folds
-    assert len(seen["energy"]) == 3 * (n_folds * repeats + 1) + (2 if inference else 0)
+    assert len(seen["energy"]) == 3 * (n_folds * repeats + 1) + (2 if inference else 0) + len(inner)
     assert ols_rows == ([every] if inference else [])
 
 
@@ -753,10 +769,10 @@ def test_a_pinned_band_refit_stops_early_on_whole_rows(monkeypatch):
 def test_a_band_refit_keeps_every_copy_of_a_row_in_one_inner_fold(table, monkeypatch):
     """A bootstrap resample repeats rows, and elastic net tunes its penalty by an inner
     cross-validation. With a row's copies on both sides of an inner split, the penalty is scored
-    on rows it was fit on, which favors too little shrinkage. Each refit's inner folds are grouped
-    by row id (by unit when rows repeat), through ``inner_cv.fit_pipeline``, which draws every
-    inner split (``with_inner_cv``)."""
-    from turbotab.core.models import inner_cv
+    on rows it was fit on, which favors too little shrinkage. Each refit's inner splits are drawn
+    by its path search from its own rows, by row id (by unit when rows repeat), as
+    ``tuning.observing`` sees them (RT-5f)."""
+    from turbotab.core.models import tuning as T
 
     frame, paths = table
     split = mf.split_bundle(np.arange(len(frame)))
@@ -764,21 +780,17 @@ def test_a_band_refit_keeps_every_copy_of_a_row_in_one_inner_fold(table, monkeyp
                   substitution=SubstitutionSpec(donor="fat_total", recipient="carb", step_kcal=100.0,
                                                 n_boot=3))
     design, fit = run(st, paths, split)
-    seen = []
-    real = inner_cv.with_inner_cv
-
-    def spy(pipeline, **kwargs):
-        out = real(pipeline, **kwargs)
-        seen.append((np.asarray(kwargs["groups"]), out.steps[-1][1].get_params()["cv"]))
-        return out
-
-    monkeypatch.setattr(inner_cv, "with_inner_cv", spy)
-    sub = substitution_stage(mf.context(st, {"design": design, "fit": fit}, paths))
-    assert sub["band"]["n_boot"] == 3 and len(seen) == 3
-    for groups, splits in seen:
-        assert len(np.unique(groups)) < len(groups)  # the resample repeats rows
-        for train, test in splits:
-            assert not set(groups[train]) & set(groups[test])
+    drawn: list = []
+    with T.observing(drawn.append):
+        sub = substitution_stage(mf.context(st, {"design": design, "fit": fit}, paths))
+    assert sub["band"]["n_boot"] == 3
+    resampled = [d for d in drawn
+                 if d.kind == "refit" and len(set(d.train.tolist())) < len(d.train)]
+    assert len(resampled) == 3  # each resample repeats rows
+    inner = [d for d in drawn if d.kind == "inner"]
+    assert len(inner) >= 3 * 2
+    for d in inner:
+        assert not set(d.train.tolist()) & set(d.validation.tolist())
 
 
 # ── stratified residuals ─────────────────────────────────────────────────────

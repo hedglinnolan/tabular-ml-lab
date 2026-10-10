@@ -349,29 +349,26 @@ def test_3a_with_temporal_yes_the_folds_forward_chain_by_whole_unit(clinical, la
     assert len(fit.data["models"][0]["cv"]["auc"]["folds"]) == split.data["folds"]
 
 
-def test_3b_elastic_nets_inner_cv_receives_the_same_splitter(clinical, last_visit, monkeypatch):
+def test_3b_elastic_nets_inner_cv_receives_the_same_splitter(clinical, last_visit):
     """Every elastic-net fit (each outer fold and the refit) tunes its penalty on inner splits that
     forward-chain by whole subject: no subject on both sides, and every subject it learns from has
-    its last visit no later than any subject it is scored on."""
-    from turbotab.core.models.elastic_net import PooledLogisticRegressionCV
+    its last visit no later than any subject it is scored on. The path search draws them from each
+    fit's own rows (RT-5f), as ``tuning.observing`` sees them."""
+    from turbotab.core.models import tuning as T
 
-    seen = []
-    original = PooledLogisticRegressionCV.fit
-
-    def spy(self, X, y, *a, **k):
-        seen.append((np.asarray(X.index), self.cv))
-        return original(self, X, y, *a, **k)
-
-    monkeypatch.setattr(PooledLogisticRegressionCV, "fit", spy)
-    _, _, split, _ = _stages(clinical, _clinical_state(models=["elastic_net"]), fit=True)
+    drawn: list = []
+    with T.observing(drawn.append):
+        _, _, split, _ = _stages(clinical, _clinical_state(models=["elastic_net"]), fit=True)
     subjects = clinical.frame(["subject_id"])["subject_id"]
-    assert len(seen) == split.data["folds"] + 1
-    for row_ids, cv in seen:
-        assert isinstance(cv, list) and len(cv) >= 2
-        who = subjects.loc[row_ids].to_numpy()
-        for train, test in cv:
-            assert not set(who[train]) & set(who[test])
-            assert max(last_visit[s] for s in who[train]) <= min(last_visit[s] for s in who[test])
+    refits = [d for d in drawn if d.kind == "refit"]
+    assert len(refits) == split.data["folds"] + 1
+    inner = [d for d in drawn if d.kind == "inner"]
+    assert len(inner) >= 2 * len(refits)
+    for d in inner:
+        who_train = subjects.loc[d.train].to_numpy()
+        who_test = subjects.loc[d.validation].to_numpy()
+        assert not set(who_train) & set(who_test)
+        assert max(last_visit[s] for s in who_train) <= min(last_visit[s] for s in who_test)
 
 
 def test_3c_the_methods_sentence_says_time_ordered_folds(clinical):
@@ -484,7 +481,7 @@ def test_4_the_same_rows_in_any_order_choose_the_same_elastic_net_penalty(tmp_pa
         design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
         fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
         model = fit.objects["fitted"]["elastic_net"][-1]
-        chosen[name] = (float(model.alpha_), float(model.l1_ratio_))
+        chosen[name] = (float(model.alpha), float(model.l1_ratio))  # the refit's own (RT-5f)
         plain = make_pipeline(StandardScaler(), ElasticNetCV(l1_ratio=list(L1_RATIOS), cv=5, max_iter=5000))
         today[name] = float(plain.fit(frame[cols], frame["y"])[-1].alpha_)
     assert chosen["random"][0] == pytest.approx(chosen["sorted"][0], rel=1e-9), chosen

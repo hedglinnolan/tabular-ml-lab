@@ -556,13 +556,16 @@ def test_3b_the_optimism_of_choosing_the_best_family_is_estimated_on_null_data()
 
     from turbotab.core.models.inner_cv import fit_pipeline
     from turbotab.core.models.metrics import cross_validate, fold_pairs
-    from turbotab.core.models.pipeline import DesignSpec, build_pipeline
+    from turbotab.core.models.pipeline import DesignSpec, build_pipeline, with_plans
     from turbotab.core.models.selection import OutOfFold, selection_optimism
 
     n, p = 150, 10
     cols = [f"x{i}" for i in range(p)]
     spec = DesignSpec(predictors=cols, inputs=cols, categorical=[], numeric=cols, energy=None,
                       impute=False)
+    # a tuned family is built from its plan (RT-5f): one plan for the scenario's 150 rows, half
+    # of them events, as the design stage makes it once
+    spec = with_plans(spec, [get_family(k) for k in FAMILIES], "binary", np.arange(n) % 2)
     pipes = {k: build_pipeline(spec, get_family(k), "binary", "prediction", n, p) for k in FAMILIES}
     rng = np.random.default_rng(0)
     best_cv, corrected, estimated = [], [], []
