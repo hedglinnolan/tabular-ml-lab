@@ -408,6 +408,9 @@ class _QuestInputs:
     records: list[Any]
     steps: list[Any]
     findings: Any
+    # TRUST: the consumers' refusals measured on the table (``quest.fit_waits``), which the quest
+    # log lists as Decides and For the record leaves out.
+    asked: tuple[Any, ...] = ()
 
 
 PREVIEW_CELLS = 20_000_000  # the before-frame's budget: rows x columns
@@ -1115,7 +1118,7 @@ class ProjectService:
         what the engine recorded itself."""
         q = self._quest(pid)
         # TRUST: a step that waits on an answer is a Decide in the quest log, never For the record.
-        return for_the_record(q.log, record_steps(q.steps), q.records,
+        return for_the_record(q.log, record_steps(q.steps, q.asked), q.records,
                               ingest=self._shown(pid, "ingest"),
                               profile=self._shown(pid, "profile"))
 
@@ -1145,11 +1148,33 @@ class ProjectService:
             if older is not None:
                 made = read_meta(cache, name, older).get("created_at")
                 shown_at[name] = datetime.fromisoformat(made) if made else None
+        asked = self._asked(pid, state, stages)
         log = quest_log(state, records, steps, stages, findings=findings, columns=columns,
                         artifacts=artifacts, shown_at=shown_at,
                         readings=self._read_from_data(pid, state),
-                        fit=self.fit_lock(pid, stages, records))
-        return _QuestInputs(log=log, state=state, records=records, steps=steps, findings=findings)
+                        fit=self.fit_lock(pid, stages, records), asked=asked)
+        return _QuestInputs(log=log, state=state, records=records, steps=steps, findings=findings,
+                            asked=asked)
+
+    def _asked(self, pid: str, state: ProjectState, stages: dict[str, StageStatus]
+               ) -> tuple[Any, ...]:
+        """TRUST: what waits on an answer, measured on the table as the fit and the causal lane
+        read it (``quest.fit_waits``: the store's own column summaries). Empty before ingest."""
+        from turbotab.core.quest import fit_waits
+
+        ingest = stages.get("ingest")
+        if not getattr(state, "roles", None) or ingest is None or ingest.status != "fresh":
+            return ()
+        store = self._store_or_none(pid)
+        if store is None:
+            return ()
+        try:
+            info = {c.name: {"dtype": c.dtype, "n_unique": c.n_unique}
+                    for c in store.info().columns}
+        except Exception:  # noqa: BLE001 - a table that cannot be read refuses nothing here
+            return ()
+        found = fit_waits(state, info, store)
+        return (found,) if found is not None else ()
 
     def _store_or_none(self, pid: str) -> Any:
         try:
@@ -1889,8 +1914,9 @@ class ProjectService:
                   # P1-FU: the estimand's swap read on the values (the parts inside their totals),
                   # as the caption and Table 2 read it.
                   "set_estimand": {"nested": self._values_nesting(pid, decisions.fold(records))},
-                  # TRUST: the band's refits say which rows they resample on the table as it is.
-                  "set_substitution": {"n_rows": facts.n_rows}}
+                  # TRUST: the band's refits say which rows they resample: the analyzed rows,
+                  # as the participant flow counts them now (the table's rows bound them).
+                  "set_substitution": {"n_analyzed": facts.n_cohort, "n_rows": facts.n_rows}}
         return methods_text(records, {"detected_task": facts.detected_task, "counts": stages})
 
     def _flow_counts(self, pid: str) -> dict[str, Any]:
@@ -1907,11 +1933,17 @@ class ProjectService:
         out: dict[str, Any] = {}
         cc = next((s for s in steps if s.get("key") == "complete_cases"), None)
         if cc is not None:
-            # TRUST: the table too, so "no row is missing" names the values the data's provider
-            # imputed before the file arrived (``voice._imputed_upstream``).
+            # TRUST: the table, the rows that remain and the columns the models read now, so
+            # "no row is missing" names the values the data's provider imputed before the file
+            # arrived (``voice._imputed_upstream``).
+            from turbotab.core.voice import analyzed_columns
+
+            state = self.log(pid).state()
             out["set_missing"] = {"n_complete": int(cc["n"]),
                                   "n_before": int(cc["n"]) + int(cc["dropped"]),
-                                  "datastore": self._store_or_none(pid)}
+                                  "datastore": self._store_or_none(pid),
+                                  "row_ids": self._cohort_ids(pid, self.engine.status(pid)),
+                                  "analyzed_columns": analyzed_columns(state)}
         if any(str(s.get("key")).startswith("exclusion:") for s in steps):
             out["set_exclusions"] = {"exclusion_counts": rule_drops(steps)}
         return out

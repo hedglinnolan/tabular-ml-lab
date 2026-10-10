@@ -915,27 +915,60 @@ _TRUE = {"1", "1.0", "true", "yes", "y", "t"}
 def _table_columns(state: Any, ctx: Any) -> list[str]:
     names = [str(_attr(e, "name") if not isinstance(e, str) else e)
              for e in _get(ctx, "columns", ()) or ()]
-    store = _get(ctx, "datastore")
+    store, frame = _get(ctx, "datastore"), _get(ctx, "frame")
     try:
         held = [str(c) for c in (store.columns if store is not None else ())]
+        held += [str(c) for c in (frame.columns if frame is not None else ())]
     except Exception:  # noqa: BLE001 - a sentence never fails a decision
         held = []
     return list(dict.fromkeys([*names, *held, *((getattr(state, "roles", None) or {}).keys())]))
 
 
+def analyzed_columns(state: Any) -> list[str]:
+    """The columns some model reads on ``state``: the primary model's predictors (the settled
+    roles, less what the missing-values answer, a repair and the adjustment answers leave out:
+    ``models.pipeline.model_predictors``) and the further-adjusted model's (Model 3,
+    ``estimand.secondary_columns``). A covariate the adjustment answers leave out of every model
+    (a mediator under a total effect) is not among them."""
+    from turbotab.core.estimand import secondary_columns
+    from turbotab.core.models.pipeline import model_predictors
+
+    try:
+        primary = list(model_predictors(state))
+    except Exception:  # noqa: BLE001 - a sentence never fails a decision
+        return []
+    return list(dict.fromkeys([*primary, *secondary_columns(state)]))
+
+
+def _remaining(frame: Any, ctx: Any, n_rows: int | None) -> Any:
+    """``frame`` cut to the rows that remain (``row_ids``, the participant flow's); with none
+    given, the frame itself only where it holds exactly those rows (all ``n_before`` remain and it
+    has that many), else None: a flag on a row screened out names nothing."""
+    if frame is None:
+        return None
+    ids = _get(ctx, "row_ids")
+    if ids is not None:
+        return frame[frame.index.isin(list(ids))]
+    before = _get(ctx, "n_before")
+    rows = len(frame) if n_rows is None else n_rows
+    return frame if before is not None and rows == int(before) else None
+
+
 def _imputed_upstream(state: Any, ctx: Any) -> str:
     """TRUST: complete cases say "no row is missing", and a column the data's provider filled in
-    before the file arrived is complete only because of that. Each predictor of any model (Model 3's
-    body measures included) whose flag column (:data:`IMPUTED_FLAGS`) marks at least one value is
-    named with its flag, read from the table (``datastore`` or ``frame``); a flag that cannot be
-    read is not guessed from its name, so the clause is then left out."""
+    before the file arrived is complete only because of that. Each column a model reads
+    (``analyzed_columns`` as the participant flow has them, else :func:`analyzed_columns`; Model 3's
+    body measures included) whose flag column (:data:`IMPUTED_FLAGS`) marks at least one value on
+    the rows that remain is named with its flag, read from the table (``frame``, else
+    ``datastore``, on ``row_ids``); a flag that cannot be read on those rows is not guessed from
+    its name, so the clause is then left out."""
     if state is None:
         return ""
-    from turbotab.core.estimand import predictor_roles
-
+    given = _get(ctx, "analyzed_columns")
+    columns = [str(c) for c in given] if given is not None else analyzed_columns(state)
     have = set(_table_columns(state, ctx))
     pairs = []
-    for column in predictor_roles(state):
+    for column in columns:
         flag = next((p.format(column) for p in IMPUTED_FLAGS if p.format(column) in have), None)
         if flag is not None:
             pairs.append((column, flag))
@@ -944,9 +977,15 @@ def _imputed_upstream(state: Any, ctx: Any) -> str:
     flags = [f for _c, f in pairs]
     frame = _get(ctx, "frame")
     try:
-        if frame is None or any(f not in frame.columns for f in flags):
+        if frame is not None and all(f in frame.columns for f in flags):
+            frame = _remaining(frame, ctx, None)
+        else:
             store = _get(ctx, "datastore")
-            frame = store.materialize(flags) if store is not None else None
+            frame = None
+            if store is not None:
+                ids = _get(ctx, "row_ids")
+                read = store.materialize(flags, row_ids=None if ids is None else list(ids))
+                frame = read if ids is not None else _remaining(read, ctx, int(store.n_rows))
     except Exception:  # noqa: BLE001 - a sentence never fails a decision
         frame = None
     if frame is None:
@@ -955,9 +994,9 @@ def _imputed_upstream(state: Any, ctx: Any) -> str:
               and frame[f].astype(str).str.strip().str.lower().isin(_TRUE).any()]
     if not marked:
         return ""
-    columns = [c for c, _f in marked]
-    one = len(columns) == 1
-    return (f"; {listing(columns)} {'holds' if one else 'hold'} values the data's provider imputed "
+    named = [c for c, _f in marked]
+    one = len(named) == 1
+    return (f"; {listing(named)} {'holds' if one else 'hold'} values the data's provider imputed "
             f"before the file arrived (flagged in {listing([f for _c, f in marked])}), analyzed "
             f"as recorded")
 
@@ -1385,16 +1424,32 @@ BAND_ROWS = 10_000
 
 
 def _band_rows(state: Any, ctx: Any) -> str:
-    """Which rows the band's refits resample, as the band's own caption says it
-    (``stages.modeling``: the m-out-of-n bootstrap above ``BAND_ROWS`` rows). "Every analyzed
-    row" only where the table holds no more than that; otherwise the bound and the rescaling."""
+    """Which rows the band's refits resample, as the band computes them (``methods.substitution
+    .substitution_band`` with ``max_rows`` = ``BAND_ROWS``): every row while the rows number at
+    most the bound; above it, each resample draws the share of units that holds about that many
+    rows (whole units where a unit has several rows) and the band's spread is rescaled by
+    sqrt(m/n), m and n counted in units (Bickel, Götze & van Zwet 1997). The rows the band reads
+    are the analyzed rows under inference (``n_analyzed``, else the cohort's ``n_cohort``) and the
+    training rows under prediction; a table's own size (``n_rows``) settles only that they number
+    at most the bound. Unknown, both cases are said, each with its condition (TRUST: never "every
+    analyzed row" beside a caption that reads m of n)."""
     inference = getattr(state, "purpose", None) == "inference"
-    n = _n_rows(ctx)
-    if n is not None and n <= BAND_ROWS:
-        return "every analyzed row" if inference else "training rows"
     rows = "analyzed rows" if inference else "training rows"
-    return (f"the {rows}, each resample drawing {count(BAND_ROWS)} of them when there are more, "
-            f"with the spread rescaled to the full sample (an m-out-of-n bootstrap)")
+    every = "every analyzed row" if inference else "training rows"
+    sized = _get(ctx, "n_analyzed")
+    if sized is None:
+        sized = _get(ctx, "n_cohort")
+    sized = None if sized is None else int(sized)
+    table = _get(ctx, "n_rows")
+    if (sized is not None and sized <= BAND_ROWS) or (table is not None
+                                                      and int(table) <= BAND_ROWS):
+        return every
+    rescaled = ("drawn as whole units where a unit has several rows, the band's spread "
+                "rescaled by √(m/n) to the full sample (an m-out-of-n bootstrap)")
+    if inference and sized is not None:
+        return f"about {count(BAND_ROWS)} of the {count(sized)} {rows} each, {rescaled}"
+    return (f"{every}, or, above {count(BAND_ROWS)} {rows}, of about {count(BAND_ROWS)} of them "
+            f"each, {rescaled.replace('rescaled', 'then rescaled', 1)}")
 
 
 @register_sentence("set_substitution")
@@ -1774,28 +1829,36 @@ def _set_clusters(d: Any, state: Any, ctx: Any) -> str:
             f"without an intercept for each, so differences between groups stay in the estimate")
 
 
-def _swap_step(state: Any, exposure: str | None) -> str:
-    """Where the comparison's step is known (TRUST): the swap studied moves a set number of kcal,
-    and the exposure's kcal per gram turns that into its own amount ("`100` kcal, `25` g of
-    `sugar` at `4` kcal per g"), so a reader can scale the estimate per unit to the step the curve
-    and the card use. Said only for a swap in kcal that moves the exposure itself, with a kcal per
-    gram known (``methods.energy.energy_factor``); a unit the name does not declare is said as
-    the condition it is. Empty otherwise."""
+# A settled unit of food the estimand's sentence scales the step to (``readings.kcal_per_unit``).
+_STEP_UNITS = {"g": "g", "kg": "kg"}
+
+
+def _swap_step(state: Any, exposure: str | None, ctx: Any = None) -> str:
+    """TRUST (item 5b): the estimate is per unit of what you study; where that unit is settled
+    (``readings.kcal_per_unit``: the recorded unit, or grams by the registry's value test, never a
+    name) and a second comparison moves what you study in kcal, its step is said in that unit, as
+    the second comparison's ("`100` kcal, the second comparison's step, is `25` g of `sugar` at
+    `4` kcal per g"), so a reader can scale the estimate to the step the curve uses. Empty
+    otherwise: no settled unit, no swap moving what you study, or a swap in shares of energy."""
     sub = getattr(state, "substitution", None) if state is not None else None
     if (sub is None or not exposure or getattr(sub, "scale", "kcal") != "kcal"
             or exposure not in (getattr(sub, "donor", None), getattr(sub, "recipient", None))):
         return ""
-    from turbotab.core.methods.energy import energy_factor
+    from turbotab.core.readings import kcal_per_unit
 
-    found = energy_factor(str(exposure))
-    if not found.factor or found.unit not in ("grams", "unmarked"):
+    try:
+        found = kcal_per_unit(state, str(exposure), _get(ctx, "datastore"))
+    except Exception:  # noqa: BLE001 - a sentence never fails a decision
+        return ""
+    unit = _STEP_UNITS.get(str(found.unit or ""))
+    if not found.settled or not found.factor or unit is None:
         return ""
     step = float(sub.step_kcal)
-    grams = step / float(found.factor)
-    amount = number(grams) if float(grams).is_integer() else f"{grams:.3g}"
-    unless = "" if found.unit == "grams" else ", if it is recorded in grams"
-    return (f"; the swap studied moves {tick(number(step))} kcal, which is {tick(amount)} g of "
-            f"{tick(exposure)} at {tick(number(found.factor))} kcal per g{unless}")
+    amount = step / float(found.factor)
+    said = number(amount) if float(amount).is_integer() else f"{amount:.3g}"
+    return (f"; {tick(number(step))} kcal, the second comparison's step, is {tick(said)} {unit} "
+            f"of {tick(exposure)} at {tick(number(round(float(found.factor), 6)))} kcal per "
+            f"{unit}")
 
 
 @register_sentence("set_estimand")
@@ -1850,7 +1913,7 @@ def _set_estimand(d: Any, state: Any, ctx: Any) -> str:
         text = (f"The analysis estimates the {d.effect} effect of {subject}, "
                 f"as a {MEASURE_WORDS.get(d.measure, d.measure)} per {unit}")
         if measured is None and d.contrast == "substitution":
-            text += _swap_step(state, d.exposure)
+            text += _swap_step(state, d.exposure, ctx)
     if d.measure in NON_COLLAPSIBLE:
         text += ", given the adjustment set"
     from turbotab.core.estimand import G_COMPUTATION, MARGINAL

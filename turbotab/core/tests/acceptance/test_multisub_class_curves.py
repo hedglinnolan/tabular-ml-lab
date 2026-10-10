@@ -1257,8 +1257,9 @@ def test_4_the_label_states_the_probability_scale_the_isocaloric_move_and_the_po
         "`kcal` held fixed; the outcome `y` has unordered classes, so there is one curve per "
         "class, each the average change in that class's predicted probability, and the curves sum "
         "to zero at every k; each class's band comes from `200` refits of each model on bootstrap "
-        "resamples of the analyzed rows, each resample drawing `10,000` of them when there are "
-        "more, with the spread rescaled to the full sample (an m-out-of-n bootstrap).")
+        "resamples of every analyzed row, or, above `10,000` analyzed rows, of about `10,000` of "
+        "them each, drawn as whole units where a unit has several rows, the band's spread then "
+        "rescaled by √(m/n) to the full sample (an m-out-of-n bootstrap).")
     said = voice.sentence_for(SetSubstitution(donor="fat_g", recipient="carb_g", step_kcal=STEP,
                                               n_boot=200), population_run["state"])
     assert said == (

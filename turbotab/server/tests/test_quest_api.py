@@ -212,8 +212,11 @@ def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkey
     assert shows_estimates("fit", served)
     stages = quest(drive)
     assert all(s["reopened"] == [] for s in stages.values())
+    # Under Estimate Results counts the Estimate exhibits the engine serves (TRUST; the
+    # crosswalk's goals): Table 2 (effects) and Model 3 (secondary). Usual intake is Describe's,
+    # the performance table and the decision curve Predict's.
     assert stages["results"]["reached"] and stages["results"]["progress"] == {
-        "answered": 0, "required": 5, "complete": False}
+        "answered": 0, "required": 2, "complete": False}
     assert not stages["writeup"]["reached"] and stages["writeup"]["progress"] is None
 
     # 4 · Who's in → Models and Results: an eligibility rule leaves the shelf, the cards and the
@@ -225,10 +228,12 @@ def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkey
     assert shelf["sentence"] == out_of_date("Who's in", len(shelf["results"]), "Models")
     results = stages["results"]
     assert results["reached"] and not stages["writeup"]["reached"]
-    assert results["progress"] == {"answered": 0, "required": 5, "complete": False}
+    assert results["progress"] == {"answered": 0, "required": 2, "complete": False}
     [estimates] = results["reopened"]
     assert estimates["decision_id"] == changed and estimates["changed_in"] == "whos_in"
-    assert "fit" in estimates["results"]
+    # the reason names Results' own objectives: Table 2, never the Predict exhibits
+    assert "effects" in estimates["results"]
+    assert not {"fit", "evaluation", "usual_intake"} & set(estimates["results"])
     assert estimates["sentence"] == out_of_date("Who's in", len(estimates["results"]), "Results")
     settle(drive)
     stages = quest(drive)

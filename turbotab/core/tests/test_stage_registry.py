@@ -469,17 +469,23 @@ def test_results_stays_reached_after_the_fit_and_says_why_it_dropped_back():
     assert stage(log, "results").reached and not stage(log, "writeup").reached
     assert stage(log, "results").progress == quest.Progress(answered=0, required=0, complete=False)
     assert stage(log, "writeup").progress is None
-    # The rule recorded in Who's in after the fit: the fit is out of date, and Results stays
-    # reached and says why, until it is computed again (or, with Fit held, until Fit is pressed).
+    # The rule recorded in Who's in after the fit: the fit and Table 2 are out of date, and Results
+    # stays reached and says why, until they are computed again (or, with Fit held, until Fit is
+    # pressed). Under Estimate the reason names Table 2 (effects), an Estimate exhibit; the fit's
+    # performance table is a Predict exhibit, none of Results' objectives here (TRUST), so its
+    # being out of date is no reason Results dropped back.
     for status in ("stale", "queued", "running"):
         log = quest.quest_log(state, records, steps, {"fit": {"status": status}},
-                              shown_at={"fit": fitted})
+                              shown_at={"fit": fitted, "effects": fitted})
         results = stage(log, "results")
         assert results.reached and not stage(log, "writeup").reached, status
         assert results.progress == quest.Progress(answered=0, required=0, complete=False)
         assert results.reopened == [quest.Reopened(
-            changed_in="whos_in", decision_id="r8", kind="set_exclusions", results=["fit"],
+            changed_in="whos_in", decision_id="r8", kind="set_exclusions", results=["effects"],
             sentence="Your change to Who's in made 1 result in Results out of date.")]
+        log = quest.quest_log(state, records, steps, {"fit": {"status": status}},
+                              shown_at={"fit": fitted})
+        assert stage(log, "results").reopened == []
 
 
 def test_results_opens_when_fit_is_pressed_not_when_an_estimate_is_computed():
