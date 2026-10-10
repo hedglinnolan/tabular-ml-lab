@@ -149,7 +149,8 @@ class TreeEnsemble:
     * ``tables``: each tree's nodes, ``[output][tree]``, as structured arrays with scikit-learn's
       ``TreePredictor.nodes`` field names: ``value``, ``count`` (the training cover: rows, or a
       hessian sum), ``feature_idx``, ``num_threshold``, ``missing_go_to_left``, ``left``, ``right``,
-      ``depth`` and ``is_leaf`` (``is_categorical`` optional), the root at 0. :func:`leaf_paths`
+      ``depth`` and ``is_leaf`` (``is_categorical`` optional; ``rows`` optional, the training rows
+      reaching the node when ``count`` is a hessian sum), the root at 0. :func:`leaf_paths`
       reads one; :func:`tree_structure` reads the first output's.
     * ``rule``: how a row meets a split: ``"le"`` goes left when its value is ``<=`` the threshold
       (scikit-learn), ``"lt"`` when it is ``<`` (XGBoost). A blank goes where
@@ -821,6 +822,9 @@ class TreeStructure(_Model):
     levels: int
     first_tree: list[TreeNode]
     splits: list[SplitCount]
+    # How a row meets a split: "le" goes left at a value <= the threshold (scikit-learn), "lt" at a
+    # value < it (XGBoost); the tree view shows "≤" or "<" (TreeEnsemble.rule).
+    rule: Literal["le", "lt"] = "le"
 
 
 class PathLine(_Model):
@@ -1028,7 +1032,8 @@ def tree_structure(anat: Anatomy, columns: Sequence[str], levels: int = TREE_LEV
             input=None if column is None else anat.group.get(column, column),
             threshold=None if leaf else float(node["num_threshold"]),
             blanks=None if leaf else ("left" if bool(node["missing_go_to_left"]) else "right"),
-            n=int(node["count"]), value=float(node["value"]) if leaf else None,
+            n=int(node["rows"] if "rows" in first.dtype.names else node["count"]),
+            value=float(node["value"]) if leaf else None,
             left=int(node["left"]) if expand else None,
             right=int(node["right"]) if expand else None))
         if expand:
@@ -1048,7 +1053,8 @@ def tree_structure(anat: Anatomy, columns: Sequence[str], levels: int = TREE_LEV
                          median_threshold=float(np.median(root[name])) if root.get(name) else None)
               for name, n in splits.items()]
     counts.sort(key=lambda s: (-s.root, -s.splits, s.input))
-    return TreeStructure(n_trees=len(trees), levels=levels, first_tree=shown, splits=counts)
+    return TreeStructure(n_trees=len(trees), levels=levels, first_tree=shown, splits=counts,
+                         rule=ensemble.rule)
 
 
 def shrinkage_path(anat: Anatomy, A_fit: pd.DataFrame, y: Any, *, lines: int = EQUATION_TERMS,
