@@ -10,7 +10,8 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
+import { fireEvent, render, waitFor, within } from "@testing-library/react";
+import { api, RefusalError } from "../../api/client";
 import { keys } from "../../api/queries";
 import {
   QUESTION_KEYS,
@@ -18,7 +19,7 @@ import {
   type QuestionKey,
   type TeachingEntry,
 } from "../../api/m1-types";
-import type { ProjectView } from "../../api/schema";
+import type { Decision, ProjectView, Refusal } from "../../api/schema";
 import { artifactAt, expandView, viewsOf, type M3Fixture } from "../../mocks/m3";
 import { StageFocusProvider } from "../../state/focus";
 import { AskFor } from "./AskFor";
@@ -141,4 +142,147 @@ describe("AskFor renders the same card for a step key", () => {
       expect(normalize(blockOf(container, key).outerHTML)).toBe(before(key));
     });
   }
+});
+
+/* The question blocks that carry a coach line or the ledger's ask card, each as the base Record
+ * rendered it for one captured view (journey, snapshot index): coach~<journey>~<i>.html and
+ * ask~<journey>~<i>.html in __askfor_before__/, captured from bf289d1c's Record. */
+const CAPTURED: { kind: "coach" | "ask"; journey: string; i: number }[] = [
+  { kind: "coach", journey: "nhanes-inference", i: 4 },
+  { kind: "coach", journey: "nhanes-inference", i: 5 },
+  { kind: "coach", journey: "nhanes-prediction", i: 5 },
+  { kind: "coach", journey: "nhanes-prediction", i: 6 },
+  { kind: "coach", journey: "survey-design", i: 6 },
+  { kind: "ask", journey: "clinical", i: 14 },
+  { kind: "ask", journey: "dietary-recalls", i: 8 },
+  { kind: "ask", journey: "survey-design", i: 4 },
+];
+
+function capturedView(journey: string, i: number) {
+  const j = JOURNEYS.find((x) => x.name === journey)!;
+  const view = expandView(j.f, j.views[i]!, PID, "2026-10-05T00:00:00Z");
+  const key = view.interview.find((s) => s.status === "open")!.key;
+  return { view, f: j.f, key };
+}
+
+describe("the coach line and the ledger's ask card render as before, in the Record and in AskFor", () => {
+  for (const { kind, journey, i } of CAPTURED) {
+    const file = `${kind}~${journey}~${i}`;
+    const marker = kind === "coach" ? 'data-testid="coach-' : 'data-testid="ask-card"';
+    it(`${file}: the Record`, () => {
+      const html = before(file);
+      expect(html).toContain(marker); // the reference really holds what this case guards
+      const { view, f, key } = capturedView(journey, i);
+      const { container } = render(
+        <QueryClientProvider client={client(view, f)}>
+          <StageFocusProvider>
+            <Record pid={PID} view={view} />
+          </StageFocusProvider>
+        </QueryClientProvider>,
+      );
+      expect(normalize(blockOf(container, key).outerHTML)).toBe(html);
+    });
+    it(`${file}: AskFor`, () => {
+      const { view, f, key } = capturedView(journey, i);
+      const { container } = render(
+        <QueryClientProvider client={client(view, f)}>
+          <StageFocusProvider>
+            <AskFor pid={PID} view={view} stepKey={key} />
+          </StageFocusProvider>
+        </QueryClientProvider>,
+      );
+      expect(normalize(blockOf(container, key).outerHTML)).toBe(before(file));
+    });
+  }
+});
+
+describe("the Record holds every stage the cards read while it is mounted, with no card open", () => {
+  /** The stages and the column summaries the base Record subscribed to for the cards' sake. */
+  const CARD_STAGES = [
+    "structure",
+    "profile",
+    "roles",
+    "proposals",
+    "shelf",
+    "causal_design",
+    "time_varying",
+    "forms",
+  ] as const;
+
+  it("observes each started stage and the column summaries at the seal's opening", () => {
+    const j = JOURNEYS.find((x) => x.name === "nhanes-prediction")!;
+    const i = j.views.findIndex((v) =>
+      v.interview.some((s) => s.key === "open_seal" && s.status === "open"),
+    );
+    expect(i).toBeGreaterThan(-1);
+    const view = expandView(j.f, j.views[i]!, PID, "2026-10-05T00:00:00Z");
+    const qc = client(view, j.f);
+    const { container } = render(
+      <QueryClientProvider client={qc}>
+        <StageFocusProvider>
+          <Record pid={PID} view={view} />
+        </StageFocusProvider>
+      </QueryClientProvider>,
+    );
+    // No question card is mounted: only the Record can hold these.
+    expect(container.querySelector('[data-block="question"]')).toBeNull();
+    const observers = (key: readonly unknown[]) =>
+      qc.getQueryCache().find({ queryKey: key, exact: true })?.getObserversCount() ?? 0;
+    const started = CARD_STAGES.filter((st) => {
+      const status = view.stages[st]?.status;
+      return status !== undefined && status !== "idle" && status !== "blocked";
+    });
+    // The journey has run past the questions: the five that every Predict project computes.
+    expect(started).toEqual(
+      expect.arrayContaining(["structure", "profile", "roles", "proposals", "shelf"]),
+    );
+    for (const st of started) expect(observers(keys.stage(PID, st)), st).toBeGreaterThanOrEqual(1);
+    expect(view.stages.ingest?.status).toBe("fresh");
+    expect(observers(keys.columns(PID)), "columns").toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("AskFor on its own answers a press that did not record at its control", () => {
+  const { view, f, key } = capturedView("survey-design", 4);
+  const exitDecision = { kind: "set_purpose", purpose: "inference" } as unknown as Decision;
+  const refusal: Refusal = {
+    error: {
+      code: "conflict",
+      message: "The survey design needs its weight column first.",
+      exits: [{ label: "Set the purpose", decision: exitDecision }],
+    },
+  };
+  const renderPlain = () =>
+    render(
+      <QueryClientProvider client={client(view, f)}>
+        <StageFocusProvider>
+          <AskFor pid={PID} view={view} stepKey={key} />
+        </StageFocusProvider>
+      </QueryClientProvider>,
+    );
+
+  it("shows the server's refusal at the ask card's line, and an exit records its decision", async () => {
+    const decide = vi.spyOn(api, "decide").mockRejectedValue(new RefusalError(refusal));
+    const { container } = renderPlain();
+    const card = within(container.querySelector<HTMLElement>('[data-testid="ask-card"]')!);
+    fireEvent.click(card.getAllByTestId("ask-confirm")[0]!);
+    const note = await card.findByTestId("refusal");
+    expect(note.textContent).toContain("The survey design needs its weight column first.");
+    fireEvent.click(within(note).getByTestId("refusal-exit"));
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(2));
+    expect(decide.mock.calls[1]![1]).toEqual(exitDecision);
+    decide.mockRestore();
+  });
+
+  it("says the server did not record it when the request fails", async () => {
+    const decide = vi.spyOn(api, "decide").mockRejectedValue(new Error("connection reset"));
+    const { container } = renderPlain();
+    const card = within(container.querySelector<HTMLElement>('[data-testid="ask-card"]')!);
+    fireEvent.click(card.getAllByTestId("ask-confirm")[0]!);
+    const note = await card.findByTestId("failure");
+    expect(note.textContent).toContain("connection reset");
+    fireEvent.click(within(note).getByRole("button", { name: "Understood" }));
+    expect(card.queryByTestId("failure")).toBeNull();
+    decide.mockRestore();
+  });
 });

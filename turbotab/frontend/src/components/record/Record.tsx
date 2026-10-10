@@ -17,7 +17,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { LayoutGroup, motion } from "motion/react";
 import { isRefusalError } from "../../api/client";
-import { useDecide, useRunStage, useTeaching } from "../../api/queries";
+import { useColumnSummaries, useDecide, useRunStage, useTeaching } from "../../api/queries";
 import type { InterviewStep, QuestionKey, TeachingEntry } from "../../api/m1-types";
 import { NOT_YET } from "../../api/m2-types";
 import type {
@@ -114,6 +114,18 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
   const sealPlan = useStage(pid, view, "seal_plan");
   const split = useStage(pid, view, "split");
   const design = useStage(pid, view, "design");
+  // The stages only the cards read (AskFor) stay subscribed while the Record is mounted, as before
+  // the extraction: an event that invalidates one refetches it at once, even with no card open,
+  // so a card that opens later shows the newest result rather than waiting on its own fetch.
+  useStage(pid, view, "structure");
+  useStage(pid, view, "profile");
+  useStage(pid, view, "roles");
+  useStage(pid, view, "proposals");
+  useStage(pid, view, "shelf");
+  useStage(pid, view, "causal_design");
+  useStage(pid, view, "time_varying");
+  useStage(pid, view, "forms");
+  useColumnSummaries(pid, stages.ingest?.status === "fresh");
 
   const [reopened, setReopened] = useState<Partial<Record<QuestionKey, boolean>>>({});
   const [answer, setAnswer] = useState<Answer | null>(null);

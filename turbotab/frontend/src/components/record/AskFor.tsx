@@ -5,18 +5,25 @@
  *
  * The Record passes its own wiring (the recording, the refusal at the control, the arrival and
  * reopen state, the findings held for the question). Given only the project, its view and the
- * step key, AskFor wires itself plainly: it records through its own mutation and shows nothing
- * that depends on the Record's state, so another shell (the quest log) can render today's cards.
+ * step key, AskFor wires itself plainly, so another shell (the quest log) can render today's
+ * cards: it records through its own mutation, and a press the server refuses or fails to record
+ * answers at its control with the same note the Record shows (the refusal and its exits, or the
+ * failure), never a dead control. Arrival, reopening, the drawer and held findings are the
+ * shell's.
  */
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
+import { isRefusalError } from "../../api/client";
 import { useColumnSummaries, useDecide, useTeaching } from "../../api/queries";
 import type { QuestionKey, Role } from "../../api/m1-types";
-import type { Decision, ProjectView } from "../../api/schema";
+import { NOT_YET } from "../../api/m2-types";
+import type { Decision, ProjectView, Refusal } from "../../api/schema";
 import { useStage } from "../../state/stages";
+import { REOPEN_EVENT } from "../Failure";
 import { STAGE_LABEL } from "../JobChips";
 import { Prose } from "../Prose";
 import { StageRetry, needsRetry } from "../StageRetry";
 import { Pending } from "./blocks";
+import { FailureNote, RefusalNote } from "./Refusal";
 import {
   EnergyAsk,
   ExclusionsAsk,
@@ -97,6 +104,13 @@ export interface AskWiring {
 
 const NOOP = () => {};
 
+/** The plain wiring's answer to a press that did not record: where it was pressed, and why. */
+interface PlainAnswer {
+  at: string;
+  refusal?: Refusal;
+  failure?: string;
+}
+
 /* A const, not a function declaration: purposes.test.tsx registers every function the record/
  * folder exports, and AskFor is a structural wrapper (each card it renders is registered). When the
  * quest-log shell lands, register it in stage/purposes.ts and this can become a function. */
@@ -109,13 +123,15 @@ export const AskFor = ({
   pid: string;
   view: ProjectView;
   stepKey: QuestionKey;
-  /** Absent: the plain wiring (records through its own mutation; no drawer, arrival or refusals). */
+  /** Absent: the plain wiring (records through its own mutation and answers a refusal at its
+   *  control; no drawer, arrival, reopening or held findings). */
   wiring?: AskWiring;
 }): ReactNode => {
   const key = stepKey;
   const { state, decisions, stages } = view;
   const decide = useDecide(pid);
   const teaching = useTeaching();
+  const [plainAnswer, setPlainAnswer] = useState<PlainAnswer | null>(null);
   const entry = useMemo(
     () => (teaching.data ?? []).find((e) => e.key === key),
     [teaching.data, key],
@@ -159,10 +175,53 @@ export const AskFor = ({
     </Pending>
   );
 
+  /** The plain wiring's recording: a refusal or a failure answers at the control pressed. */
+  const plainRecord = (d: Decision, at = "") => {
+    setPlainAnswer(null);
+    decide.mutate(d, {
+      onError: (err) =>
+        setPlainAnswer(
+          isRefusalError(err)
+            ? { at, refusal: err.refusal }
+            : { at, failure: err instanceof Error ? err.message : String(err) },
+        ),
+    });
+  };
+  /** As the Record's: a refusal with its exits, or the failure; `not_yet` leads to the first open question. */
+  const plainAnswerAt = ((): AskProps["answerAt"] => {
+    if (wiring || !plainAnswer) return null;
+    const { at, refusal, failure } = plainAnswer;
+    const dismiss = () => setPlainAnswer(null);
+    const firstOpen = view.interview.find(
+      (st) => st.status === "open" || st.status === "waiting",
+    )?.key;
+    const onGo =
+      refusal?.error.code === NOT_YET && firstOpen
+        ? () => {
+            setPlainAnswer(null);
+            window.dispatchEvent(new CustomEvent(REOPEN_EVENT, { detail: firstOpen }));
+          }
+        : undefined;
+    return {
+      key: at,
+      node: refusal ? (
+        <RefusalNote
+          refusal={refusal}
+          onDismiss={dismiss}
+          onExit={(exit) =>
+            exit.decision ? plainRecord(exit.decision, at) : onGo ? onGo() : dismiss()
+          }
+        />
+      ) : (
+        <FailureNote message={failure ?? "no reason given"} onDismiss={dismiss} />
+      ),
+    };
+  })();
+
   const w: AskWiring = wiring ?? {
     pending: decide.isPending,
-    record: (d) => decide.mutate(d),
-    answerAt: null,
+    record: plainRecord,
+    answerAt: plainAnswerAt,
     now: stepOf(key)?.status === "open",
     arriving: false,
     onArrived: NOOP,
