@@ -821,6 +821,9 @@ class TreeStructure(_Model):
     levels: int
     first_tree: list[TreeNode]
     splits: list[SplitCount]
+    # How a row meets a split: "le" goes left at a value <= the threshold (scikit-learn), "lt" at a
+    # value < it (XGBoost); the tree view shows "≤" or "<" (TreeEnsemble.rule).
+    rule: Literal["le", "lt"] = "le"
 
 
 class PathLine(_Model):
@@ -1048,7 +1051,8 @@ def tree_structure(anat: Anatomy, columns: Sequence[str], levels: int = TREE_LEV
                          median_threshold=float(np.median(root[name])) if root.get(name) else None)
               for name, n in splits.items()]
     counts.sort(key=lambda s: (-s.root, -s.splits, s.input))
-    return TreeStructure(n_trees=len(trees), levels=levels, first_tree=shown, splits=counts)
+    return TreeStructure(n_trees=len(trees), levels=levels, first_tree=shown, splits=counts,
+                         rule=ensemble.rule)
 
 
 def shrinkage_path(anat: Anatomy, A_fit: pd.DataFrame, y: Any, *, lines: int = EQUATION_TERMS,
