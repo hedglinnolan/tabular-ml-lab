@@ -1075,6 +1075,18 @@ def _declaration_asked_again(log: _Log, decl: Declaration, facts: Facts) -> Reop
     return None
 
 
+def _goal_made_predict(log: _Log) -> ReopenedBy | None:
+    """The goal's change to Predict that asks the held-out rows again: a split recorded before it
+    (TurboTab's under Estimate, or the person's under another goal) is no draw under Predict."""
+    for record in reversed(log.live):
+        if record.decision.kind != "set_purpose":
+            continue
+        stage = log.stage_of(record)
+        if stage is not None:
+            return ReopenedBy(decision_id=record.id, kind=record.decision.kind, stage=stage)
+    return None
+
+
 def _stated_reason(key: str) -> str | None:
     """Why a default TurboTab recorded itself holds (the split under Estimate)."""
     if key == "split":
@@ -1235,6 +1247,7 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
             # Predict, holds no draw the person made: the question is open again, and the
             # outcome's views wait for it (``outcome_gate.drawn``).
             status, decision_id, writer = "open", None, None
+            reopened = reopened or _goal_made_predict(log)
         by_turbotab = getattr(writer, "recorded_by", "you") == "turbotab"
         changed = (_changed_since_decided(key, writer, log)
                    if status == "answered" and writer is not None else None)
@@ -1245,7 +1258,7 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
             lines.append((home.stage, QuestLine(
                 id=home.item, key=line_key, source="question", label=home.label, name=said,
                 status="set_for_you", counted=False, order=home.order, decision_id=decision_id,
-                changed_since=_changed_since_confirmed(writer, log, facts or Facts()))))
+                changed_since=_changed_since_confirmed(writer, log, facts or Facts()) or changed)))
         elif status == "answered" and by_turbotab and label != DECIDE:
             status = "skipped"  # a default TurboTab recorded: set for you, with a way to change it
         lines.append((place.stage, QuestLine(
@@ -1536,6 +1549,13 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     shown_at = shown_at or {}
     log = _Log(list(records))
     by_key = {_get(s, "key"): s for s in steps}
+    if getattr(state, "purpose", None) == "prediction" and "split" in by_key \
+            and _get(by_key["split"], "status") == "answered":
+        from turbotab.core.outcome_gate import drawn
+
+        if not drawn(log.records):
+            # the held-out rows are asked again (``_question_lines``): what reads them waits
+            by_key["split"] = {"key": "split", "status": "open"}
     facts = Facts(columns=tuple(columns or ()), artifacts=dict(artifacts or {}))
     placed = [*_question_lines(state, steps, log, facts),
               *_declaration_lines(state, by_key, log, facts),
