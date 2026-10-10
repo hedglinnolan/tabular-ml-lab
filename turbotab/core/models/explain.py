@@ -1296,7 +1296,9 @@ def _refits(w: _Work, s: Setting, sample: np.ndarray, refit: Refit,
         say(r)
         idx = resample(len(s.X), s.seed + r, s.units)
         units = None if s.units is None else np.asarray(s.units)[idx]
-        model = refit(reseeded(clone(w.fam.unfitted), r), s.X.iloc[idx], np.asarray(s.y)[idx], units)
+        # Each refit's model seed comes from the split's, as its resample's does (F15).
+        model = refit(reseeded(clone(w.fam.unfitted), s.seed + r), s.X.iloc[idx],
+                      np.asarray(s.y)[idx], units)
         anat = anatomy(model, list(s.X.columns), s.task)
         A = anat.inputs(X_ex)
         found = attributions(anat, A, anat.inputs(s.X.iloc[idx]), kind=w.kind,

@@ -138,7 +138,8 @@ def rows_of(store: Any, state: Any, ingest: Mapping[str, Any], rules: Sequence[A
 def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inputs: Sequence[str],
                 y: np.ndarray, task: str, unit_columns: Sequence[str], *, outcome: Any = None,
                 survey: Any = None, levels: Sequence[str] | None = None, missing: Any = None,
-                spec: Any = None) -> tuple[Any, Any, list[str]]:
+                spec: Any = None, seed: int | None = None, designs: Any = None,
+                cancelled: Any = None) -> tuple[Any, Any, list[str]]:
     """Refit ``pipeline`` on ``frame``'s rows; its coefficient table and concerns, as fit makes them.
 
     As the fit stage makes them (``stages.modeling.fit_stage``): a family that models the unit is
@@ -148,18 +149,29 @@ def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inp
     is unanswered; an ordinal model's cut-points carry the declared ``levels`` (WP12a). Under
     inference ``missing`` (``stages.modeling.TableMissing``) is the missing-values answer on these
     rows: the table pooled over their own multiple imputations, held while a single fill or the
-    missing-indicator method is unrecorded, or carrying complete cases' assumption (WP7)."""
+    missing-indicator method is unrecorded, or carrying complete cases' assumption (WP7).
+
+    F15 (RECIPES §4.3): every refit here is fit at the split's ``seed`` (the recorded split's when
+    None), with its rows' survey design under the population answer (``designs``,
+    ``stages.modeling.fit_designs``, by row id), inside a cancel scope asking ``cancelled``, so a
+    tuned family searches as its plan says and a pressed Cancel stops it."""
     from sklearn.base import clone
 
     from turbotab.core.models.inference import resolve_clusters
-    from turbotab.core.models.inner_cv import fit_pipeline
-    from turbotab.core.stages.modeling import _inference_table, with_units
+    from turbotab.core.stages.modeling import _inference_table, fit_with, with_units
+
+    if seed is None:
+        split = getattr(state, "split", None)
+        seed = int(getattr(split, "seed", 0) or 0) if split is not None else 0
+
+    def refit(model: Any, X_k: pd.DataFrame, y_k: Any) -> Any:
+        return fit_with(model, X_k, y_k, designs=designs, seed=seed, cancelled=cancelled)
 
     X = frame[list(inputs)]
     clusters = resolve_clusters(state, frame[list(unit_columns)]) if unit_columns else None
     units = (pd.Series(clusters.codes, index=frame.index)
              if clusters is not None and clusters.clustered else None)
-    fitted = fit_pipeline(with_units(clone(pipeline), units), X, y)
+    fitted = refit(with_units(clone(pipeline), units), X, y)
     if levels is not None:
         fitted[-1].level_names_ = list(levels)
     concerns: list[str] = []
@@ -184,7 +196,7 @@ def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inp
                     family, pipeline, missing.imputations, y, task=task, clusters=clusters,
                     outcome=outcome, survey=design, design=None, spec=spec, rows="all",
                     fit=lambda model, X_k: _with_levels(
-                        fit_pipeline(with_units(model, units), X_k, y), levels),
+                        refit(with_units(model, units), X_k, y), levels),
                     energy_rows=False, models=chosen)
             else:
                 table = _inference_table(family, fitted, X, y, task=task, clusters=clusters,
@@ -285,7 +297,8 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
     from turbotab.core.stages.data import open_store
     from turbotab.core.models.inference import Outcome
-    from turbotab.core.stages.modeling import _survey, _task, coded_outcome, outcome_levels
+    from turbotab.core.stages.modeling import (_survey, _task, coded_outcome, fit_designs,
+                                               outcome_levels)
     from turbotab.core.stages.working import table_info
 
     state = ctx.state
@@ -323,6 +336,9 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
         columns = list(dict.fromkeys([*spec.inputs, target, *unit_columns, *follow_up,
                                       *[c for a in analyses for r in a["rules"] for c in r.reads()]]))
         frame = modeling_frame(store, columns, every, outcome=target)
+        # F15: each row's stratum, PSU and weight under the population answer, for the refits.
+        designs = fit_designs(state, store, frame.index.to_numpy())
+    split_seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
 
     # The outcome as the fit stage codes it: the event as 1, an ordinal outcome's declared order
     # (WP12a), a time-to-event outcome with its follow-up (WP12b), named for the table's scale (WP8).
@@ -390,7 +406,8 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
                 fitted, (coef, info), worries = fit_on_rows(
                     state, family, pipelines[family.key], part, spec.inputs,
                     y_part, task, unit_columns, outcome=outcome,
-                    survey=survey, levels=levels, missing=missing_by.get(a["label"]), spec=spec)
+                    survey=survey, levels=levels, missing=missing_by.get(a["label"]), spec=spec,
+                    seed=split_seed, designs=designs, cancelled=ctx.cancelled)
             except Exception as exc:  # noqa: BLE001 - an analysis that cannot be fit says why
                 fits.append({"label": a["label"], "n_rows": int(len(rows)), "coefficients": None,
                              "concerns": [f"This analysis could not be fit: {exc}"]})
