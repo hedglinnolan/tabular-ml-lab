@@ -188,8 +188,9 @@ def test_every_cited_source_is_a_verified_record():
     """Every source key a declaration cites is one of ``models.sources``, and each of those is a
     record of SIZING X4's citation registry (every DOI checked against Crossref) whose reference
     names that record. A source joins before the family that cites it lands only when the recipes
-    the family is built from cite it (RECIPES_AND_TUNING), so no key is an orphan. Each
-    dimension's source string resolves in the same registry (C6)."""
+    the family is built from (RECIPES_AND_TUNING) or the contract's own sources (§7) cite it, as
+    ``models.sources`` documents, so no key is an orphan. Each dimension's source string resolves
+    in the same registry (C6)."""
     from turbotab.core.export.citations import is_internal, registry, resolve, segments
     from turbotab.core.models.base import _declared_tunings
     from turbotab.core.models.sources import SOURCES
@@ -203,7 +204,13 @@ def test_every_cited_source_is_a_verified_record():
                        *(k.source for k in f.complexity if k.source)]}
     assert sorted(cited - set(SOURCES)) == []
     recipes = (CONTRACT.parent / "RECIPES_AND_TUNING.md").read_text(encoding="utf-8")
-    assert sorted(set(SOURCES) - cited - set(resolve(recipes, records))) == []
+    contract = CONTRACT.read_text(encoding="utf-8")
+    section_7 = contract[contract.index("## 7 · Sources"):contract.index("## What changed after review")]
+    listed = set(resolve(recipes, records)) | {k for line in (*recipes.splitlines(),
+                                                               *section_7.splitlines())
+                                               if line.startswith("- ")
+                                               for k in resolve(line[2:], records)}
+    assert sorted(set(SOURCES) - cited - listed) == []
     unresolved = [(f.key, d.name, part) for f in families
                   for decl in _declared_tunings(f)[0].values()
                   for d in (*decl.dimensions, *decl.by_hand) for part in segments(d.source)

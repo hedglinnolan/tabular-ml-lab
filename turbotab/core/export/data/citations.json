@@ -8318,7 +8318,8 @@
    "key": "breiman2001forests",
    "kind": "article",
    "cited_as": [
-    "Breiman(?:,? L\\.)?,? \\(?2001\\)?[,.]? Random [Ff]orests?\\b"
+    "Breiman(?:,? L\\.)?,? \\(?2001\\)?[,.]? Random [Ff]orests?\\b",
+    "Breiman,? L\\.,? Random [Ff]orests\\. \\*?Mach(?:ine)? Learn"
    ],
    "doi": "10.1023/A:1010933404324",
    "verified_by": "crossref",
