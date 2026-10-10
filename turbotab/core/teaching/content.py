@@ -1139,16 +1139,26 @@ ENERGY_ADJUSTMENT = {
 }
 
 def family_options() -> list[dict[str, str]]:
-    """The models question's options, one per registered family, in registration order: its card
-    name (``card_label``, else ``label``) and its ``consequence``. A new family appears here by
-    registering; nothing in this module names one."""
+    """The models question's options, one per registered family: its card name (``card_label``,
+    else ``label``) and its ``consequence``. A new family appears here by registering; nothing in
+    this module names one. They follow registration order, except that the families a domain lens
+    reviews in full sit together at the first one's place (the feature-wise tests and the screened
+    elastic net, both omics families, side by side, although the omics chain registers the second
+    last)."""
     import turbotab.core.models  # noqa: F401 - registers the families
     from turbotab.core.contracts import contracts
     from turbotab.core.models.base import families
 
     contracts()  # the omics chain registers a family of its own
+    first: dict[tuple[str, ...], int] = {}
+
+    def place(i: int, f: Any) -> int:
+        domain = tuple(lens for lens in f.review_lenses if lens != "shared")
+        return first.setdefault(domain, i) if domain else i
+
+    ranked = sorted(enumerate(families()), key=lambda pair: (place(*pair), pair[0]))
     return [option(f.key, getattr(f, "card_label", "") or f.label, f.consequence)
-            for f in families()]
+            for _, f in ranked]
 
 
 MODELS = {
@@ -1163,7 +1173,9 @@ MODELS = {
            "coefficients. In one comparison of 30,000 models, the algorithm mattered less than the "
            "endpoint and the analyst.",
     "consumer": "The fit, the Results and the substitution curves read it.",
-    "options": family_options(),
+    # Read from the registry each time the card is built (``entries_now``), so a family registered
+    # after this module loads is on it too.
+    "options": [],
     "terms": [
         term("inductive bias", "What a model assumes before it sees data, such as straight lines "
                                "or interactions; it decides what the model can find."),
@@ -1627,3 +1639,8 @@ ENTRIES = [LENS, ORIENTATION, REPAIRS, TARGET, EVENT, TASK, FOLLOW_UP, DESIGN, P
            REPEAT_KIND, UNIT, AGGREGATION, TEMPORAL, ROLES, CLUSTERS, SURVEY, EXCLUSIONS, MISSING,
            SPLIT, ESTIMAND_QUESTION, ADJUSTMENT, TIME_VARYING, ENERGY_ADJUSTMENT, FORM,
            MODIFICATION, CAUSAL, MODELS, SUBSTITUTION, OPEN_SEAL]
+
+
+def entries_now() -> list[dict[str, Any]]:
+    """:data:`ENTRIES`, with the models card's options read from the registry as it stands now."""
+    return [dict(e, options=family_options()) if e is MODELS else e for e in ENTRIES]

@@ -1,16 +1,18 @@
 """MC-2b-1 · the family lists are read from the registry, and say what they said before.
 
 The tables below are the hand-kept ones as they stood before this package (the catalog's
-``FAMILY_LENSES``, the teaching card's ``MODELS`` options and the tasks ``decisions.model_families``
-gave), copied here as the reference. The registry must reproduce each exactly; and a family
+``FAMILY_LENSES``, the teaching card's ``MODELS`` options, labels, consequences and order, and the
+tasks ``decisions.model_families`` gave), copied here as the reference. The registry must reproduce each exactly; and a family
 registered with a lens, a label and a consequence of its own appears in every list without an edit
 to the catalog or the teaching content.
 """
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
+from pathlib import Path
 from typing import Any
-
-import pytest
 
 SHARED = "shared"
 
@@ -26,7 +28,7 @@ LENSES = {
     "screened_elastic_net": ("metabolomics", "genomics"),
 }
 
-# The teaching card's options, word for word: key -> (label, consequence).
+# The teaching card's options, word for word and in the card's order: key -> (label, consequence).
 CARD = {
     "linear": ("Linear model",
                "OLS or logistic regression: one reportable coefficient per predictor, with "
@@ -55,6 +57,10 @@ CARD = {
             "Hazard ratios for a time-to-event outcome, using every row's follow-up, censored "
             "or not."),
 }
+
+# The card's order as it stood: the two omics families side by side, after the boosted trees.
+ORDER = ["linear", "elastic_net", "boosted_trees", "featurewise", "screened_elastic_net",
+         "proportional_odds", "mixed", "gee", "cox"]
 
 TASKS = {
     "linear": {"binary", "multiclass", "ordinal", "regression"},
@@ -87,35 +93,64 @@ def _probe(**over: Any) -> Any:
                                      "inference_decl": declared, **over})()
 
 
-def test_the_registry_gives_the_lenses_the_catalog_table_gave():
+def _card() -> list[tuple[str, str, str]]:
+    from turbotab.core.teaching import entry
+
+    return [(o.value, o.label, o.consequence) for o in entry("models").options]
+
+
+def test_the_catalog_reads_each_familys_lenses_from_the_registry_as_its_table_gave_them():
+    from turbotab.core.models.base import register_family, unregister_family
     from turbotab.core.reference import catalog
 
     found = _registered()
-    assert {k: tuple(f.review_lenses) for k, f in found.items()} == LENSES
-    for key, lenses in LENSES.items():
-        assert catalog.lenses_of_family(key) == lenses
-
-
-def test_the_catalog_keeps_no_table_of_families():
-    from turbotab.core.reference import catalog
-
     assert not hasattr(catalog, "FAMILY_LENSES")
+    assert {k: tuple(f.review_lenses) for k, f in found.items()} == LENSES
+    assert {key: catalog.lenses_of_family(key) for key in LENSES} == LENSES
+    probe = register_family(_probe(review_lenses=("genomics",), consequence="A line."))
+    try:
+        assert catalog.lenses_of_family("mc2b1_probe") == ("genomics",)
+    finally:
+        unregister_family(probe.key)
 
 
-def test_the_teaching_card_gives_every_family_its_label_and_consequence_as_before():
-    from turbotab.core.teaching import entry
+def test_the_card_says_what_it_said_in_its_order_and_a_family_registered_later_joins_it():
+    card = _card()  # the teaching content is loaded and the card built before the probe registers
+    assert {value: (label, line) for value, label, line in card} == CARD
+    assert [value for value, _, _ in card] == ORDER
 
-    registered = _registered()
-    options = {o.value: (o.label, o.consequence) for o in entry("models").options}
-    assert options == CARD
-    assert [o.value for o in entry("models").options] == list(registered)
+    from turbotab.core.models.base import register_family, unregister_family
+
+    probe = register_family(_probe(review_lenses=("genomics",),
+                                   consequence="Stands in for any family added later."))
+    try:
+        assert _card() == card + [("mc2b1_probe", "Probe family",
+                                   "Stands in for any family added later.")]
+    finally:
+        unregister_family(probe.key)
+    assert _card() == card
 
 
-def test_the_registry_gives_the_families_and_their_tasks_the_validator_read():
-    from turbotab.core.decisions import model_families
+def test_a_later_omics_family_joins_the_omics_families_on_the_card():
+    from turbotab.core.models.base import register_family, unregister_family
 
-    _registered()
-    assert model_families() == TASKS
+    probe = register_family(_probe(review_lenses=("metabolomics", "genomics"),
+                                   consequence="Stands in for a later omics family."))
+    try:
+        omics = ORDER.index("screened_elastic_net") + 1
+        assert [v for v, _, _ in _card()] == ORDER[:omics] + ["mc2b1_probe"] + ORDER[omics:]
+    finally:
+        unregister_family(probe.key)
+
+
+def test_the_validator_reads_every_family_and_its_tasks_from_the_registry_in_a_fresh_process():
+    root = Path(__file__).resolve().parents[4]  # the checkout holding turbotab/
+    code = ("import json; from turbotab.core.decisions import model_families; "
+            "print(json.dumps({k: sorted(v) for k, v in model_families().items()}))")
+    out = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True,
+                         check=True, timeout=600)
+    found = json.loads(out.stdout.strip().splitlines()[-1])
+    assert {k: set(v) for k, v in found.items()} == TASKS
 
 
 def test_a_family_registered_with_a_lens_and_a_consequence_is_in_every_list():
@@ -123,18 +158,15 @@ def test_a_family_registered_with_a_lens_and_a_consequence_is_in_every_list():
     from turbotab.core.models.base import register_family, unregister_family
     from turbotab.core.reference import catalog
     from turbotab.core.reference import methods as ref
-    from turbotab.core.teaching.content import family_options
 
     _registered()
     probe = register_family(_probe(review_lenses=("genomics",),
                                    consequence="Stands in for any family added later."))
     try:
         assert catalog.lenses_of_family("mc2b1_probe") == ("genomics",)
-        assert "mc2b1_probe" in model_families()
+        assert model_families()["mc2b1_probe"] == {str(t) for t in probe.tasks}
         assert "mc2b1_probe" in [f.key for f in ref.families()]
-        card = {o["value"]: o for o in family_options()}["mc2b1_probe"]
-        assert (card["label"], card["consequence"]) == (
-            "Probe family", "Stands in for any family added later.")
+        assert ("mc2b1_probe", "Probe family", "Stands in for any family added later.") in _card()
     finally:
         unregister_family(probe.key)
 
@@ -147,8 +179,7 @@ def test_a_family_with_no_consequence_is_refused():
     assert not any("consequence" in p for p in contract_problems(_probe(consequence="A line.")))
 
 
-@pytest.mark.parametrize("key", sorted(LENSES))
-def test_every_registered_family_states_its_consequence_within_twenty_words(key):
-    f = _registered()[key]
-    assert f.consequence.strip() and len(f.consequence.split()) <= 20
-    assert f.consequence == CARD[key][1]
+def test_every_registered_family_states_the_cards_consequence_within_twenty_words():
+    found = {k: f.consequence for k, f in _registered().items()}
+    assert found == {key: line for key, (_, line) in CARD.items()}
+    assert all(line.strip() and len(line.split()) <= 20 for line in found.values())

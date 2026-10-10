@@ -626,19 +626,18 @@ def test_no_code_probes_what_a_family_adds_by_its_presence():
 def test_every_family_states_its_tuning_and_its_consequence_within_the_contract():
     """RT-1a: every family has ``tuning`` (None, or a declaration per task it models),
     ``defaults_version`` and a ``consequence`` of at most 20 words (required since MC-2b-1);
-    boosted trees' line is today's teaching option's, word for word, and its trees reach the
-    explanations through its ``trees`` member."""
+    boosted trees' line is the teaching option's as it stood before MC-2b-1, word for word, and
+    its trees reach the explanations through its ``trees`` member."""
     from turbotab.core.models.base import _declared_tunings
-    from turbotab.core.teaching.content import MODELS
 
     for key, f in _families().items():
         decls, problems = _declared_tunings(f)
         assert problems == [] and set(decls) <= set(f.tasks), key
         assert isinstance(f.defaults_version, str) and f.defaults_version, key
         assert len(f.consequence.split()) <= CONSEQUENCE_WORDS, key
-    taught = {o["value"]: o["consequence"] for o in MODELS["options"]}
     trees = get_family("boosted_trees")
-    assert trees.consequence == taught["boosted_trees"]
+    assert trees.consequence == ("Many shallow trees: finds curves and interactions; gives no "
+                                 "coefficients.")
     assert trees.trees is not None and trees.tree_shap is None
 
 
