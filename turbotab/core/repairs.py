@@ -2051,3 +2051,7 @@ __all__ = [
 # Audit RO-13 (WP18): pooled QC injections leave as reference rows before the seal; that family
 # registers itself, its validator and its reading of the pooled-QC level on import.
 from turbotab.core import reference_rows as _reference_rows  # noqa: E402,F401
+# WALKABLE_PLAN B5: blanks that mean "not asked" keep their own level when a fill leaves its
+# categorical treatment unsaid; ``methods.missing`` registers that completion of ``set_missing``
+# on import, loaded here with the decisions the server validates.
+from turbotab.core.methods import missing as _missing  # noqa: E402,F401

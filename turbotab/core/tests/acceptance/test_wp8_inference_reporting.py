@@ -493,7 +493,10 @@ def test_3a_opening_the_seal_needs_a_declared_final_family_whose_holdout_is_the_
     assert_nothing_held_out_in([undeclared.json(), stray.json()], sealed, constant)
 
     final = error["exits"][0]["decision"]["family"]
-    opened = _post(client, pid, {"kind": "open_seal", "family": final})
+    # The open noticings are triaged as the opening offers (``seal``'s gate), then it opens.
+    from turbotab.server.tests.conftest import answer_settled
+
+    opened = answer_settled(client, pid, None, {"kind": "open_seal", "family": final})
     assert opened.status_code == 200, opened.text
     record = opened.json()["decisions"][-1]
     assert (record["decision"]["kind"], record["decision"]["family"]) == ("open_seal", final)
@@ -514,7 +517,7 @@ def test_3a_opening_the_seal_needs_a_declared_final_family_whose_holdout_is_the_
     before = _post(client, single, {"kind": "open_seal"})  # the held-out rows open after Fit
     assert before.status_code == 409 and before.json()["error"]["code"] == "fit_not_yet"
     assert press_fit(client, single)
-    assert _post(client, single, {"kind": "open_seal"}).status_code == 200
+    assert answer_settled(client, single, None, {"kind": "open_seal"}).status_code == 200
     record = client.get(f"/api/projects/{single}").json()["decisions"][-1]
     assert (record["decision"]["kind"], record["decision"]["family"]) == ("open_seal", "linear")
     assert _fit(client, single)["final_model"] == "linear"

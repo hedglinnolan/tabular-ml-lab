@@ -25,7 +25,7 @@ from typing import Any
 
 import pandas as pd
 
-from turbotab.server.tests.conftest import prepare, wait_for
+from turbotab.server.tests.conftest import answer_settled, prepare, wait_for
 from turbotab.server.tests.test_seal_api import decide, sealed_project
 
 
@@ -180,8 +180,9 @@ def test_the_held_out_rows_open_only_after_fit_and_a_quoted_score_counts_as_seen
     assert quoted == sorted(families)
     assert sorted(read_seen(pdir).get("hba1c", [])) == quoted  # quoted, so seen
 
-    opened = client.post(f"/api/projects/{pid}/decisions",
-                         json={"kind": "open_seal", "family": "elastic_net"})
+    # The open noticings are triaged as the opening offers (``seal``'s gate, tested in
+    # ``test_opening_gate_api``), then the rows open.
+    opened = answer_settled(client, pid, None, {"kind": "open_seal", "family": "elastic_net"})
     assert opened.status_code == 200, opened.text
 
 

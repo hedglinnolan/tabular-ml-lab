@@ -5,15 +5,20 @@ was not asked. A most-frequent fill gives those blanks the commonest answer amon
 were asked, which is True ("on medication"): a claim about people nobody asked. So where the blanks
 read as "not asked":
 
-* the recommended fill for those columns is a level of their own, never the mode, and blanks as a
-  level is the method ranked first and recommended under prediction; elsewhere nothing changes;
-* the recommended answer, run through the real pipeline, gives every blank the ``Missing`` level
-  and never True;
+* the recommended fill for those columns is a level of their own, never the mode: blanks as a level
+  is the method ranked first and recommended under prediction, and under inference when they are
+  the only blanks (with the attestation the leash asks for); elsewhere nothing changes;
+* a fill that leaves its categorical treatment unsaid (``{"strategy": "impute"}``: a client, the
+  row floor's "fill the blanks instead" exit) is completed by the server as blanks as a level, and
+  run through the real pipeline gives every blank the ``Missing`` level and never True;
 * "not asked → No" is a repair the person chooses, with its sentence: afterwards the count of True
   is the answered True count and the blanks are False, both computed with pandas from the CSV;
-* the preview of a most-frequent fill says what it gives the not-asked blanks.
+* the preview of a most-frequent fill, said outright, says what it gives the not-asked blanks.
 
-Every expected number is computed independently with pandas from ``fixtures/nhanes.csv.gz``.
+Every expected number is computed independently with pandas from ``fixtures/nhanes.csv.gz``. The
+new names are imported inside each test, so on the base each test fails on its own behavior.
+Two tests are guards that hold on the base by design: the fixture's own facts (the stakes) and the
+unchanged global default where no blank means not asked.
 """
 from __future__ import annotations
 
@@ -25,10 +30,7 @@ from turbotab.core import coach, consequences, repairs, row_previews, sweep  # n
 from turbotab.core import decisions as d
 from turbotab.core.consequences import PreviewContext, plan
 from turbotab.core.decisions import FindingDisposition, MissingSpec, ProjectState
-from turbotab.core.methods.missing import (
-    METHODS, blanks_mean_not_asked, honest_default, methods_for, not_asked_columns,
-    recommended_fills,
-)
+from turbotab.core.methods import missing as mm
 from turbotab.core.stages.findings import findings_stage
 from turbotab.core.stages.proposals import build_proposals, missing_reading
 from turbotab.core.tests import modeling_fixtures as mf
@@ -53,6 +55,17 @@ def nhanes(tmp_path_factory):
     return table, columns, roles, reading
 
 
+def decision_ctx(frame, columns, roles, purpose, target="glucose"):
+    """What the server hands a validation (``DecisionContext``): the state, the fresh proposals
+    artifact and the ingest's column records."""
+    proposals = build_proposals(frame, columns, lens=None, target=target, roles=roles,
+                                purpose=purpose)
+    state = ProjectState(lens=["dietary"], target=target, roles=roles, purpose=purpose)
+    return state, {"state": state, "target": target,
+                   "artifact": lambda stage: proposals if stage == "proposals" else None,
+                   "column_info": {str(c["name"]): c for c in columns}}
+
+
 def test_the_reference_blanks_and_answers_are_nhanes_own(raw):
     """The stakes, from pandas alone: most blanks, and True the commonest answer among the asked."""
     assert int(raw["meds_hbp"].isna().sum()) == 15_552
@@ -62,59 +75,123 @@ def test_the_reference_blanks_and_answers_are_nhanes_own(raw):
 
 
 def test_the_recommended_fill_for_a_not_asked_column_is_never_the_mode(nhanes, raw):
-    _table, columns, _roles, reading = nhanes
+    table, columns, roles, reading = nhanes
     info = {str(c["name"]): c for c in columns}
-    assert sorted(not_asked_columns(reading, info)) == sorted(MEDS)
+    assert sorted(mm.not_asked_columns(reading, info)) == sorted(MEDS)
     for purpose in ("prediction", "inference", None):
-        fills = recommended_fills(reading, info, purpose)
+        fills = mm.recommended_fills(reading, info, purpose)
         for c in MEDS:
             assert fills[c] == "missing_category", (purpose, c)
             assert fills[c] != "most_frequent"
     # Blanks as a level is first and the only recommended method under prediction.
-    ranked = methods_for("prediction", not_asked_columns(reading, info))
+    ranked = mm.methods_for("prediction", mm.not_asked_columns(reading, info))
     assert ranked[0]["key"] == "missing_category" and ranked[0]["rung"] == "recommended"
     assert [m["key"] for m in ranked if m["rung"] == "recommended"] == ["missing_category"]
     single = next(m for m in ranked if m["key"] == "impute")
     assert "`meds_chol`" in single["sound"] and "not asked" in single["sound"]
-    assert honest_default("prediction", MEDS) == {"kind": "set_missing", "strategy": "impute",
-                                                  "categorical": "missing_category"}
-    assert honest_default(None, MEDS) == honest_default("prediction", MEDS)
+    assert single["decision"] == {"strategy": "impute", "categorical": "impute"}  # said outright
+    assert mm.honest_default("prediction", MEDS) == {"kind": "set_missing", "strategy": "impute",
+                                                     "categorical": "missing_category"}
+    assert mm.honest_default(None, MEDS) == mm.honest_default("prediction", MEDS)
+    # From the reading as the proposals hold it: on NHANES the meds are the only predictors with
+    # blanks (pandas), so under inference too blanks as a level is first, with the attestation
+    # the leash asks for, and the leash accepts it as it stands.
+    blank = sorted(c for c in raw.columns if raw[c].isna().any() and c in roles)
+    assert blank == sorted(MEDS)
+    for purpose in ("prediction", "inference"):
+        first = mm.methods_for_reading(purpose, reading, info)[0]
+        assert first["key"] == "missing_category" and first["rung"] == "recommended", purpose
+        answer = mm.honest_default(purpose, mm.not_asked_columns(reading, info), only=True)
+        assert answer == {"kind": "set_missing", **first["decision"]}
+        _state, ctx = decision_ctx(table.frame(), columns, roles, purpose)
+        accepted = d.validate(answer, ctx)
+        assert accepted.categorical == "missing_category"
+    mi = next(m for m in mm.methods_for_reading("inference", reading, info)
+              if m["key"] == "multiple_imputation")
+    assert mi["rung"] == "available" and "not asked" in mi["sound"]
+    assert first["decision"]["acknowledged"] is True and "not asked" in first["decision"]["reason"]
 
 
 def test_nothing_changes_where_no_blank_means_not_asked():
-    """The global default is untouched: no not-asked columns, the same ranking; a column with
-    random blanks on a quarter of its rows (the WP7 fixture's ``meds_hbp``) keeps the mode."""
+    """A guard (it holds on the base by design): the global default is untouched. No not-asked
+    columns, the same ranking; a column with random blanks on a quarter of its rows (the WP7
+    fixture's ``meds_hbp``) keeps the mode, and an unsaid fill there stays the most frequent."""
     for purpose in ("prediction", "inference", None):
-        assert methods_for(purpose, ()) == methods_for(purpose)
-    assert methods_for("prediction")[0]["key"] == "impute"
-    assert methods_for("prediction")[0]["rung"] == "recommended"
+        assert mm.methods_for(purpose, ()) == mm.methods_for(purpose)
+    assert mm.methods_for("prediction")[0]["key"] == "impute"
+    assert mm.methods_for("prediction")[0]["rung"] == "recommended"
     assert MissingSpec(strategy="impute").categorical == "impute"
     assert d.SetMissing(strategy="impute").categorical == "impute"
-    assert honest_default("prediction", ()) is None
-    assert honest_default("inference", MEDS) is None  # MI stays first under inference
+    assert mm.honest_default("prediction", ()) is None
+    # Under inference with other blanks, multiple imputation stays first.
+    assert mm.honest_default("inference", MEDS) is None
     # The WP7 fixture: seed 707's table with meds_hbp blanked at random on about 25% of rows.
     from turbotab.core.tests.acceptance.test_wp7_missing_data import prediction_fixture
 
     frame = prediction_fixture()
     share = float(frame["meds_hbp"].isna().mean())
     assert 0.15 < share < 0.35
-    assert not blanks_mean_not_asked(frame["meds_hbp"])
+    assert not mm.blanks_mean_not_asked(frame["meds_hbp"])
     columns = [{"name": c, "dtype": "boolean" if c == "meds_hbp" else "float",
                 "n_unique": int(frame[c].nunique()), "n_missing": int(frame[c].isna().sum())}
                for c in frame.columns]
     roles = {c: "covariate" for c in frame.columns if c != "glucose"}
     reading = missing_reading(frame, columns, roles, "glucose")
     info = {c["name"]: c for c in columns}
-    assert not_asked_columns(reading, info) == []
-    assert recommended_fills(reading, info, "prediction")["meds_hbp"] == "most_frequent"
+    assert mm.not_asked_columns(reading, info) == []
+    assert mm.recommended_fills(reading, info, "prediction")["meds_hbp"] == "most_frequent"
+    assert mm.methods_for_reading("prediction", reading, info) == mm.methods_for("prediction")
+    _state, ctx = decision_ctx(frame, columns, roles, "prediction")
+    assert d.validate({"kind": "set_missing", "strategy": "impute"}, ctx).categorical == "impute"
 
 
-def test_the_recommended_answer_gives_every_not_asked_blank_its_own_level_in_the_pipeline(nhanes, raw):
+def test_an_unsaid_categorical_fill_is_completed_as_blanks_as_a_level_on_nhanes(nhanes):
+    """The default fill where blanks mean not asked: ``{"strategy": "impute"}`` leaves the
+    categorical treatment unsaid, and the server completes it as blanks as a level. Said outright,
+    the most-frequent fill is the person's to choose; with the meds left out nothing is not asked."""
+    table, columns, roles, _reading = nhanes
+    _state, ctx = decision_ctx(table.frame(), columns, roles, "prediction")
+    unsaid = d.validate({"kind": "set_missing", "strategy": "impute"}, ctx)
+    assert unsaid.categorical == "missing_category"
+    said = d.validate({"kind": "set_missing", "strategy": "impute", "categorical": "impute"}, ctx)
+    assert said.categorical == "impute"
+    left_out = d.validate({"kind": "set_missing", "strategy": "impute",
+                           "drop_columns": list(MEDS)}, ctx)
+    assert left_out.categorical == "impute"
+    indicators = d.validate({"kind": "set_missing", "strategy": "impute", "indicators": True}, ctx)
+    assert indicators.categorical == "missing_category" and indicators.indicators
+    # Undeclared purpose: as prediction, the strictest reading for a blank.
+    _state, undeclared = decision_ctx(table.frame(), columns, roles, None)
+    assert d.validate({"kind": "set_missing", "strategy": "impute"},
+                      undeclared).categorical == "missing_category"
+
+
+def test_the_row_floors_fill_exit_never_offers_the_mode_for_not_asked_blanks(nhanes):
+    """``row_floor.fill_exits`` (a refusal's "Fill the blanks instead"; complete cases keep 2,996
+    of 21,849 NHANES rows) offers each fill as the record would accept it: blanks as a level."""
+    from turbotab.core import row_floor
+
+    table, columns, roles, _reading = nhanes
+    state, ctx = decision_ctx(table.frame(), columns, roles, "prediction")
+    exits = row_floor.fill_exits(state, ctx)
+    assert exits, "a fill is offered"
+    for e in exits:
+        assert e["decision"]["categorical"] == "missing_category", e
+        assert "single fill in each training fold" not in e["label"]
+    assert exits[0]["label"] == "Fill the blanks instead: blanks as their own level"
+
+
+def test_the_default_fill_gives_every_not_asked_blank_its_own_level_in_the_pipeline(nhanes, raw):
+    """The fill the server records for ``{"strategy": "impute"}``, run through the real design
+    and pipeline: every training-row blank is ``Missing`` and none is read as on medication (the
+    base read all 12,469 ``meds_hbp`` and 13,804 ``meds_chol`` training blanks as True)."""
     from turbotab.core.models.pipeline import modeling_frame
     from turbotab.core.stages.modeling import design_stage
 
-    table, _columns, _roles, _reading = nhanes
-    answer = {k: v for k, v in honest_default("prediction", MEDS).items() if k != "kind"}
+    table, columns, roles, _reading = nhanes
+    _state, ctx = decision_ctx(table.frame(), columns, roles, "prediction")
+    recorded = d.validate({"kind": "set_missing", "strategy": "impute"}, ctx)
+    answer = recorded.model_dump(exclude={"kind"})
     st = mf.state(missing=MissingSpec(**answer), energy_adjustment=None, models=["linear"])
     rows = np.arange(len(raw))
     split = mf.split_bundle(rows, seed=0)
@@ -226,17 +303,19 @@ def test_the_preview_of_a_most_frequent_fill_says_what_it_gives_the_not_asked_bl
     proposals = build_proposals(frame, columns, lens=None, target="glucose", roles=roles,
                                 purpose="prediction")
     ctx = _ctx(table, state, {"proposals": proposals})
-    said = [(v.kind, n.text, n.anchor.ref) for v in plan(d.SetMissing(strategy="impute"), ctx,
-                                                          basis="").views for n in v.coach]
+    most_frequent = d.SetMissing(strategy="impute", categorical="impute")
+    said = [(v.kind, n.text, n.anchor.ref) for v in plan(most_frequent, ctx, basis="").views
+            for n in v.coach]
     measured = raw["glucose"].notna()
     for c in MEDS:
         n = int((raw[c].isna() & measured).sum())
         mode = raw.loc[measured, c].dropna().value_counts().idxmax()
         assert ("table_focus", f"This fill gives `{n:,}` not-asked `{c}` blanks `{mode}`.", c) in said
     # With the blanks as their own level, nothing is given them: the note says they mean not asked.
-    level = d.SetMissing(**{k: v for k, v in honest_default("prediction", MEDS).items() if k != "kind"})
+    level = d.SetMissing(**{k: v for k, v in mm.honest_default("prediction", MEDS).items()
+                            if k != "kind"})
     said = [n.text for v in plan(level, ctx, basis="").views for n in v.coach]
     assert not any(t.startswith("This fill gives") for t in said)
     assert any(t.endswith("likely a question not asked.") for t in said)
-    assert METHODS["missing_category"].decision == {"strategy": "impute",
+    assert mm.METHODS["missing_category"].decision == {"strategy": "impute",
                                                     "categorical": "missing_category"}

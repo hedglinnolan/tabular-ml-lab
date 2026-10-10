@@ -1032,7 +1032,11 @@ def test_diet_the_held_out_score_at_the_opening_is_the_one_result(diet):
     assert results["estimate"].iloc[0] == fit["at_opening"]["scores"]["linear"][primary]
     methods = json.loads(files["methods.json"])
     kinds = [e["kind"] for s in methods["sections"] for e in s["entries"]]
-    assert kinds[-2:] == ["open_seal", "provenance"]  # the opening closes the methods
+    # The opening closes the methods; after it only "Other decisions" (the triage of the open
+    # noticings it waited for: the opening gate, W1-H) and the provenance line.
+    other = [e["kind"] for s in methods["sections"] if s["key"] == "other" for e in s["entries"]]
+    assert set(other) <= {"confirm_sweep", "revert"} and "confirm_sweep" in other
+    assert [k for k in kinds if k not in other][-2:] == ["open_seal", "provenance"]
     report = json.loads(files["checklist/tripod_ai.json"])
     assert report["checklist"] == "TRIPOD+AI" and report["counts"]["items"] == 52
 

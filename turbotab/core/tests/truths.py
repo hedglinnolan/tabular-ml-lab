@@ -82,17 +82,31 @@ def answers(error: dict[str, Any], truth: Truth) -> list[dict[str, Any]]:
     return out
 
 
+# The opening of the held-out rows waits for the triage of open noticings (``seal``'s gate).
+TRIAGE = ("triage_open",)
+
+
+def triage_answers(error: dict[str, Any]) -> list[dict[str, Any]]:
+    """The decisions a refused opening offers to settle the triage, in its order: the triage's
+    "Confirm all" (each noticing as the engine recommends), then, for one recorded "act on it" and
+    not acted on, recording it as a limitation. For a test whose subject is not the triage; the
+    gate itself is tested in ``test_opening_gate``."""
+    return [e["decision"] for e in error.get("exits") or []
+            if (e.get("decision") or {}).get("kind") == "confirm_sweep"]
+
+
 def answer_refusal(post: Callable[[dict[str, Any]], Any], response: Any, truth: Truth,
                    retry: Callable[[], Any], rounds: int = 4) -> Any:
     """While ``response`` is a refusal that only asks for readings, post the answers ``truth``
-    declares (:func:`answers`) and ``retry``; returns the last response."""
+    declares (:func:`answers`) and ``retry``; an opening refused while the triage is open is
+    settled as it offers (:func:`triage_answers`) and retried. Returns the last response."""
     for _ in range(rounds):
         if response.status_code != 409:
             return response
         error = response.json().get("error") or {}
-        if error.get("code") not in ASKING:
+        if error.get("code") not in (*ASKING, *TRIAGE):
             return response
-        decisions = answers(error, truth)
+        decisions = triage_answers(error) if error.get("code") in TRIAGE else answers(error, truth)
         if not decisions:
             return response
         for decision in decisions:
@@ -102,8 +116,8 @@ def answer_refusal(post: Callable[[dict[str, Any]], Any], response: Any, truth: 
     return response
 
 
-__all__ = ["ASKING", "FIXTURE_TRUTHS", "Truth", "answer_refusal", "answers", "asked",
-           "fixture_truth"]
+__all__ = ["ASKING", "FIXTURE_TRUTHS", "TRIAGE", "Truth", "answer_refusal", "answers", "asked",
+           "fixture_truth", "triage_answers"]
 
 
 # The sample fixtures' truths, each from the fixture's own data card (``turbotab/sample_data/*.md``)

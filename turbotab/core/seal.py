@@ -1702,45 +1702,92 @@ def _open_seal_once_on_a_fresh_fit(decision: Any, ctx: Any) -> None:
 
 def _the_opening_waits_for_the_triage(decision: Any, ctx: Any) -> None:
     """The opening gate (WALKABLE_PLAN §3 P2; ``sweep.triage``): the held-out rows open once, so
-    every open noticing is triaged before they do, while its disposition can still be chosen
-    without the held-out scores in view. Refused while the triage holds a blocker or a noticing
-    with no recorded disposition, with a plain reason and an exit to the triage. Where nothing
-    can say what the triage holds (no ``triage`` reader: a replay), nothing is refused."""
+    every open noticing is settled before they do, while its disposition can still be chosen
+    without the held-out scores in view. Refused, naming each noticing, with a plain reason:
+
+    * while the triage holds a blocker (decided on its own first);
+    * while a noticing has no recorded disposition: the exits are the triage, and its own
+      "Confirm all", which records each as the engine recommends, with its reason;
+    * while a noticing recorded "act on it" is still open (not acted on): recording the intent is
+      not the act. Each is acted on where it is decided, or recorded as a limitation (a
+      disposition the triage allows the person to choose, which drafts its limitation sentence).
+
+    Where nothing can say what the triage holds (no ``triage`` reader: a replay), nothing is
+    refused; a reader that fails refuses, since the opening cannot be undone."""
     reader = _ctx(ctx, "triage")
     if not callable(reader):
         return
     try:
         t = reader()
-    except Exception:  # noqa: BLE001 - a triage that cannot be read refuses nothing
-        return
-    if t is None or getattr(t, "passed", False) or getattr(t, "answered", True):
+    except Exception as error:  # noqa: BLE001 - the opening cannot be undone, so it waits
+        raise Refusal(
+            "triage_unreadable",
+            "The held-out rows open once, after every open noticing is settled, and the open "
+            "noticings could not be read just now, so the rows stay sealed. Try again once the "
+            "project's stages have settled.",
+            exits=[{"label": "Triage the open noticings in Results", "decision": None}],
+        ) from error
+    if t is None or getattr(t, "passed", False):
         return
     from turbotab.core.quest import STAGE_NAMES
 
     items = list(getattr(t, "items", None) or [])
-    where = STAGE_NAMES.get(getattr(t, "stage", ""), "the triage")
+    stage = getattr(t, "stage", "results")
+    where = STAGE_NAMES.get(stage, "the triage")
     blocking = [i for i in items if getattr(i, "blocker", False)]
     if blocking:
-        names = "; ".join(i.summary for i in blocking)
         raise Refusal(
             "triage_open",
             f"The held-out rows open once, after every open noticing is settled. "
-            f"{len(blocking)} must be resolved first: {names}.",
+            f"{_noticings(len(blocking))} must be resolved first: "
+            f"{_named(blocking)}.",
             exits=[{"label": f"Decide: {i.summary}", "decision": None} for i in blocking])
     waiting = [i for i in items if getattr(i, "recorded", None) is None]
-    n = len(waiting)
-    # The triage's own "Confirm all" (``sweep._confirm_the_triage``): each noticing as the person
-    # set it, else as recorded while that stands, else as the engine recommends, each with its
-    # reason; a page without the triage on it still has a way through.
-    confirm = {"kind": "confirm_sweep", "stage": getattr(t, "stage", "results"),
-               "sweep": "noticings", "lines": []}
-    raise Refusal(
-        "triage_open",
-        f"The held-out rows open once, after every open noticing is triaged: {n} "
-        f"{'is' if n == 1 else 'are'} still open. Triage {'it' if n == 1 else 'them'} in {where} "
-        f"first, so each is decided before any held-out score is seen.",
-        exits=[{"label": f"Triage the open noticings in {where}", "decision": None},
-               {"label": "Keep the recommended dispositions", "decision": confirm}])
+    if waiting:
+        n = len(waiting)
+        named = "; ".join(f"{_said(i.summary)} ({i.label.lower()})" for i in waiting)
+        # The triage's own "Confirm all" (``sweep._confirm_the_triage``): each noticing as the
+        # person set it, else as recorded while that stands, else as the engine recommends, each
+        # with its reason. One recorded "act on it" keeps the rows sealed until it is acted on.
+        confirm = {"kind": "confirm_sweep", "stage": stage, "sweep": "noticings", "lines": []}
+        raise Refusal(
+            "triage_open",
+            f"The held-out rows open once, after every open noticing is triaged: {n} "
+            f"{'is' if n == 1 else 'are'} still open, each with its recommended disposition: "
+            f"{named}. Triage {'it' if n == 1 else 'them'} in {where} first, so each is decided "
+            f"before any held-out score is seen.",
+            exits=[{"label": f"Triage the open noticings in {where}", "decision": None},
+                   {"label": "Keep the recommended dispositions", "decision": confirm}])
+    unacted = [i for i in items if getattr(i, "recorded", None) == "act_on_it"]
+    if unacted:
+        n = len(unacted)
+        exits: list[dict[str, Any]] = []
+        for i in unacted:
+            exits.append({"label": f"Decide: {i.summary}", "decision": None})
+            exits.append({"label": f"Record as a limitation: {i.summary}", "decision": {
+                "kind": "confirm_sweep", "stage": stage, "sweep": "noticings",
+                "lines": [{"id": i.line, "key": i.id, "value": "could_bias"}]}})
+        raise Refusal(
+            "triage_open",
+            f"The held-out rows open once, after every open noticing is settled: {n} marked "
+            f"\"act on it\" {'is' if n == 1 else 'are'} not acted on yet: "
+            f"{_named(unacted)}. Act on {'it' if n == 1 else 'each'} where "
+            f"it is decided, or record it as a limitation, before any "
+            f"held-out score is seen.",
+            exits=exits)
+
+
+def _noticings(n: int) -> str:
+    return f"{n} noticing{'' if n == 1 else 's'}"
+
+
+def _said(summary: str) -> str:
+    """A noticing's summary inside a sentence: without its own closing period."""
+    return summary.strip().rstrip(".")
+
+
+def _named(items: Sequence[Any]) -> str:
+    return "; ".join(_said(i.summary) for i in items)
 
 
 # ── after the opening: the scores kept, and the rows held still (audit WP16, RO-05) ──

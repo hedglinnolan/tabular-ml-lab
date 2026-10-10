@@ -100,3 +100,78 @@ def test_nothing_open_or_no_triage_to_read_refuses_nothing():
                                            opening_ctx(state, t))
     seal._the_opening_waits_for_the_triage(decisions.OpenSeal(family="linear"),
                                            {"state": state, "artifact": lambda s: FRESH})
+
+
+# ── the repair round: the gate is no rubber stamp, names what it holds, and fails closed ──
+
+TO_ACT_ON = {"findings": [
+    {"id": "binary_text__age", "severity": "warning", "summary": "Age is written as text",
+     "affected_columns": ["age"], "routes_to": None, "repairs": [{"key": "level"}],
+     "answered_by": None},
+]}
+
+
+def _refusal(state, t) -> Refusal:
+    with pytest.raises(Refusal) as refused:
+        seal._the_opening_waits_for_the_triage(decisions.OpenSeal(family="linear"),
+                                               opening_ctx(state, t))
+    return refused.value
+
+
+def _confirm(log, t, lines=()):
+    body = {"kind": "confirm_sweep", "stage": "results", "sweep": "noticings",
+            "lines": list(lines)}
+    return decisions.validate(body, Ctx(log, t))
+
+
+def test_the_refusal_names_each_open_noticing_with_its_recommended_disposition():
+    state, _log, t = triaged({"findings": [*OPEN_NOTICING["findings"], *TO_ACT_ON["findings"]]})
+    by_id = {i.id: i for i in t.items}
+    # The dispositions by hand, from the triage's rules (``sweep.recommend``): a column the
+    # model reads with no repair here could bias the score; one with a repair is acted on.
+    assert by_id["heaping__age"].recommended == "could_bias"
+    assert by_id["binary_text__age"].recommended == "act_on_it"
+    r = _refusal(state, t)
+    assert r.code == "triage_open" and "2 are still open" in r.message
+    assert "Ages heap on round numbers (could bias the score)" in r.message
+    assert "Age is written as text (act on it)" in r.message
+
+
+def test_keeping_an_act_on_it_disposition_does_not_open_the_rows_until_it_is_settled():
+    """Recording "act on it" is not acting on it: the one-click confirm records the dispositions,
+    and the rows stay sealed while one marked to act on is still open, named, with its own way
+    through (decide it, or record it as a limitation, which the triage lets the person choose)."""
+    state, log, t = triaged(TO_ACT_ON)
+    kept = _confirm(log, t)
+    assert [(l.key, l.value) for l in kept.lines] == [("binary_text__age", "act_on_it")]
+    records = [record(1, kept.model_dump(mode="json"))]
+    state, log, after = triaged(TO_ACT_ON, records)
+    assert after.answered  # every noticing has a recorded disposition: the old gate opened here
+    r = _refusal(state, after)
+    assert r.code == "triage_open"
+    assert "1 marked \"act on it\" is not acted on yet: Age is written as text" in r.message
+    decide, limit = r.exits
+    assert decide == {"label": "Decide: Age is written as text", "decision": None}
+    assert limit["label"] == "Record as a limitation: Age is written as text"
+    # The exit is a disposition of that noticing alone, accepted as it stands.
+    taken = _confirm(log, after, limit["decision"]["lines"])
+    assert [(l.key, l.value) for l in taken.lines] == [("binary_text__age", "could_bias")]
+    records.append(record(2, taken.model_dump(mode="json")))
+    state, _log, settled = triaged(TO_ACT_ON, records)
+    assert [i.recorded for i in settled.items] == ["could_bias"]
+    seal._the_opening_waits_for_the_triage(decisions.OpenSeal(family="linear"),
+                                           opening_ctx(state, settled))
+
+
+def test_a_triage_that_cannot_be_read_keeps_the_rows_sealed():
+    state, _log, _t = triaged(OPEN_NOTICING)
+
+    def broken():
+        raise RuntimeError("the materiality measure failed")
+
+    with pytest.raises(Refusal) as refused:
+        seal._the_opening_waits_for_the_triage(
+            decisions.OpenSeal(family="linear"),
+            {"state": state, "artifact": lambda stage: FRESH, "triage": broken})
+    assert refused.value.code == "triage_unreadable"
+    assert "stay sealed" in refused.value.message
