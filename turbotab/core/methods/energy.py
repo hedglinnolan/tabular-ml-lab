@@ -1755,6 +1755,22 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
     # with no whole beside it also displaces the rest of its own source (Q-b).
     whole = {t.source for t, _ in present if not t.share and _part_of(t.column) is None}
     swapping = form in ("standard", "residual")
+    # P1-FU: under a density or the energy-dropped residual each row states the measure the
+    # caption and the methods sentence state (``exposure_form.scale_words``): per unit of energy,
+    # or per unit of the nutrient's residual on it.
+    strata = getattr(adjustment, "strata", None)
+    within = f" within each level of {strata}" if strata else ""
+
+    def measured(what: str) -> str | None:
+        if form in ("density", "density_multivariate"):
+            return f"{what} per unit of {E} (a density)"
+        if form == "residual_energy_dropped" and log:
+            return (f"{what}'s energy-adjusted residual (log {what} on log {E}{within}, "
+                    f"back-transformed at the geometric mean of {E})")
+        if form == "residual_energy_dropped":
+            return f"{what}'s energy-adjusted residual on {E}{within}, at mean energy"
+        return None
+
     for t, m in present:
         if t.share:
             # One percentage point of energy from the source (audit B24): with total energy in the
@@ -1775,10 +1791,14 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
                                 (f"total {whole_source}", *(("energy",) if energy_in else ())))
                 meanings[m] = swaps[m].phrase
             else:
-                meanings[m] = f"{t.column} in place of the rest of {parent} ({parent} fixed)"
+                unit = measured(t.column)
+                meanings[m] = (f"{f'{unit},' if unit else t.column} in place of the rest of "
+                               f"{parent} ({parent} fixed)")
             continue
+        # A measured row names its own nutrient (sugar per unit of energy, not carbohydrate's);
+        # the other rows keep their source's name, as before.
         what = (f"remaining {t.source} (holding {', '.join(groups[t.column])} fixed)"
-                if t.column in groups else t.source)
+                if t.column in groups else _noun(t) if measured("") else t.source)
         if swapping:
             if t.column in groups:
                 # The remainder (WP6.7: "remaining fat (holding SFA, MUFA, PUFA fixed)"), its
@@ -1797,13 +1817,13 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
             # the card say it (Q-b repair): one wording for one coefficient.
             meanings[m] = swaps[m].phrase
         elif form == "residual_energy_dropped":
-            meanings[m] = f"energy-adjusted {what}; total energy not in the outcome model"
+            meanings[m] = f"{measured(what)}; total energy not in the outcome model"
         elif form == "none":
             meanings[m] = f"absolute intake of {what}; total energy not in the model"
         elif form == "density_multivariate":
-            meanings[m] = f"{what} per kcal, total energy fixed (an obscure quantity: Tomova 2022)"
+            meanings[m] = f"{measured(what)}, total energy fixed (an obscure quantity: Tomova 2022)"
         elif form == "density":
-            meanings[m] = f"{what} per kcal; total energy not in the model (obscure)"
+            meanings[m] = f"{measured(what)}; total energy not in the model (obscure)"
         else:
             meanings[m] = f"adding kcal from {what}, every other source fixed (total effect)"
     rest = _and([*omitted[:-1], "other energy"])

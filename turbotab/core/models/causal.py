@@ -187,16 +187,31 @@ def total_variance(u: np.ndarray, design: Design) -> float:
 Split = tuple[np.ndarray, np.ndarray]  # (train rows, test rows)
 
 
+class Folds(list):
+    """One partition's splits, with the units they were dealt by (``None``: by row).
+
+    The units travel with the partition, so a learner fit on one of its training folds splits its
+    own rows (the lasso's penalty) by the same whole units even where a caller names none: the
+    causal stage's positivity gate and the method preview read the estimator's own propensity from
+    the partition alone."""
+
+    def __init__(self, splits: Sequence[Split], units: np.ndarray | None = None) -> None:
+        super().__init__(splits)
+        self.units = units
+
+
+
 def sample_splits(n: int, folds: int = 5, repetitions: int = 1, seed: int = 0,
-                  groups: np.ndarray | None = None) -> list[list[Split]]:
+                  groups: np.ndarray | None = None) -> list[Folds]:
     """``repetitions`` random partitions of the rows into ``folds`` test folds, reproducible from
     ``seed``. With ``groups`` (PSUs or clusters), whole groups are dealt to folds, so no group's
-    rows are on both sides of a split."""
+    rows are on both sides of a split, and each partition carries them (:class:`Folds`)."""
     if folds < 2:
         raise ValueError("Cross-fitting needs at least two folds.")
     rng = np.random.default_rng(seed)
-    out: list[list[Split]] = []
+    out: list[Folds] = []
     rows = np.arange(n)
+    units = None if groups is None else np.asarray(groups)
     for _ in range(repetitions):
         if groups is None:
             order = rng.permutation(n)
@@ -211,7 +226,7 @@ def sample_splits(n: int, folds: int = 5, repetitions: int = 1, seed: int = 0,
             group_fold = np.empty(G, dtype=np.int64)
             group_fold[order] = np.arange(G) % folds
             fold_of = group_fold[codes]
-        out.append([(rows[fold_of != k], rows[fold_of == k]) for k in range(folds)])
+        out.append(Folds([(rows[fold_of != k], rows[fold_of == k]) for k in range(folds)], units))
     return out
 
 
@@ -228,7 +243,8 @@ def _design_matrix(X: np.ndarray) -> np.ndarray:
 class _OLS:
     """Least squares with an intercept (R's ``lm``; DoubleML's ``regr.lm``), weighted when asked."""
 
-    def fit(self, X: np.ndarray, y: np.ndarray, w: np.ndarray | None = None) -> "_OLS":
+    def fit(self, X: np.ndarray, y: np.ndarray, w: np.ndarray | None = None,
+            groups: np.ndarray | None = None) -> "_OLS":
         A = _design_matrix(X)
         root = np.ones(len(A)) if w is None else np.sqrt(np.asarray(w, dtype=float))
         self.coef_ = np.linalg.lstsq(A * root[:, None], np.asarray(y, float) * root, rcond=None)[0]
@@ -283,7 +299,8 @@ class _Logit:
     """Unpenalized logistic regression with an intercept (R's ``glm``; DoubleML's
     ``classif.log_reg``), weighted when asked."""
 
-    def fit(self, X: np.ndarray, y: np.ndarray, w: np.ndarray | None = None) -> "_Logit":
+    def fit(self, X: np.ndarray, y: np.ndarray, w: np.ndarray | None = None,
+            groups: np.ndarray | None = None) -> "_Logit":
         self.coef_ = logistic_fit(_design_matrix(X), y, w)
         return self
 
@@ -294,14 +311,23 @@ class _Logit:
 
 class _Sklearn:
     """A scikit-learn estimator behind the same interface; ``predict`` is a classifier's
-    probability of the level coded 1."""
+    probability of the level coded 1.
 
-    def __init__(self, estimator: Any, classifier: bool):
+    ``groups`` (each training row's unit: a person, a cluster, a PSU) reaches a pipeline whose
+    model step tunes itself by an inner cross-validation (the lasso's penalty): when a unit holds
+    more than one row, the inner folds are drawn from whole units by the inner-split rule
+    (:func:`turbotab.core.models.inner_cv.inner_splits`, seeded by ``seed``), so no unit sits on
+    both sides of a fold (RECIPES F9). With one row per unit the step keeps its own splitter."""
+
+    def __init__(self, estimator: Any, classifier: bool, seed: int = 0):
         self.estimator = estimator
         self.classifier = classifier
+        self.seed = seed
 
-    def fit(self, X: np.ndarray, y: np.ndarray, w: np.ndarray | None = None) -> "_Sklearn":
+    def fit(self, X: np.ndarray, y: np.ndarray, w: np.ndarray | None = None,
+            groups: np.ndarray | None = None) -> "_Sklearn":
         from sklearn.base import clone
+        from sklearn.pipeline import Pipeline
 
         model = clone(self.estimator)
         X = np.asarray(X, dtype=float)
@@ -311,6 +337,10 @@ class _Sklearn:
             if len(np.unique(y)) < 2:
                 raise ValueError("A training fold holds one level only; the propensity cannot be "
                                  "learned from it.")
+        if groups is not None and isinstance(model, Pipeline) and _repeats(groups):
+            from turbotab.core.models.inner_cv import with_inner_cv
+
+            with_inner_cv(model, groups=groups, y=y, seed=self.seed)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             if w is None:
@@ -327,6 +357,12 @@ class _Sklearn:
             classes = list(self.model_.classes_)
             return proba[:, classes.index(1)] if 1 in classes else np.zeros(len(X))
         return np.asarray(self.model_.predict(X), dtype=float)
+
+
+def _repeats(groups: Any) -> bool:
+    """Whether some unit holds more than one of these rows."""
+    groups = np.asarray(groups)
+    return len(np.unique(groups)) < len(groups)
 
 
 def _fit_weighted(model: Any, X: np.ndarray, y: np.ndarray, w: np.ndarray) -> None:
@@ -354,12 +390,17 @@ class L1LogisticCV(ClassifierMixin, BaseEstimator):
     """The L1-penalized logistic regression with its penalty chosen by 5-fold cross-validated
     deviance over glmnet's path: 100 values from the smallest penalty that zeroes every coefficient
     down to 10⁻⁴ of it (Friedman, Hastie & Tibshirani 2010, *J Stat Softw* 33(1)), as
-    ``C = 1/(nλ)``."""
+    ``C = 1/(nλ)``.
 
-    def __init__(self, seed: int = 0, n_lambdas: int = 100, ratio: float = 1e-4):
+    ``cv``: the folds (a splitter, or a list of (train, test) positions); None draws
+    ``StratifiedKFold(5, shuffle)`` by ``seed``. A learner fit with repeated units is given
+    whole-unit folds here (:class:`_Sklearn`)."""
+
+    def __init__(self, seed: int = 0, n_lambdas: int = 100, ratio: float = 1e-4, cv: Any = None):
         self.seed = seed
         self.n_lambdas = n_lambdas
         self.ratio = ratio
+        self.cv = cv
 
     def fit(self, X: Any, y: Any, sample_weight: Any = None) -> "L1LogisticCV":
         from sklearn.linear_model import LogisticRegressionCV
@@ -374,7 +415,9 @@ class L1LogisticCV(ClassifierMixin, BaseEstimator):
         lams = np.geomspace(top, top * self.ratio, self.n_lambdas)
         model = LogisticRegressionCV(
             Cs=list(1.0 / (len(y) * lams)), l1_ratios=(1.0,), solver="saga",
-            scoring="neg_log_loss", cv=StratifiedKFold(5, shuffle=True, random_state=self.seed),
+            scoring="neg_log_loss",
+            cv=(StratifiedKFold(5, shuffle=True, random_state=self.seed) if self.cv is None
+                else self.cv),
             max_iter=5000, tol=1e-4, random_state=self.seed, use_legacy_attributes=False)
         model.fit(X, y, sample_weight=sample_weight)
         self.model_ = model
@@ -406,18 +449,18 @@ def make_learner(name: str, classifier: bool, seed: int = 0) -> Any:
             est = make_pipeline(StandardScaler(), LassoCV(
                 alphas=100, eps=1e-4, cv=KFold(5, shuffle=True, random_state=seed),
                 max_iter=50_000, tol=1e-7, random_state=seed))
-        return _Sklearn(est, classifier)
+        return _Sklearn(est, classifier, seed)
     if name == "nuisance_forest":
         from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
         cls = RandomForestClassifier if classifier else RandomForestRegressor
         return _Sklearn(cls(n_estimators=200, min_samples_leaf=5, random_state=seed, n_jobs=1),
-                        classifier)
+                        classifier, seed)
     if name == "untuned_boosted_trees":  # scikit-learn's defaults, never tuned
         from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
 
         cls = HistGradientBoostingClassifier if classifier else HistGradientBoostingRegressor
-        return _Sklearn(cls(random_state=seed), classifier)
+        return _Sklearn(cls(random_state=seed), classifier, seed)
     from turbotab.core.decisions import refuse_retired
 
     refuse_retired("causal_learner", name)  # a retired key names its successor
@@ -445,17 +488,26 @@ def least_squares(learner: str | Factory) -> bool:
 def cross_fit(factory: Factory, classifier: bool, X: np.ndarray, y: np.ndarray,
               splits: Sequence[Split], w: np.ndarray | None = None, seed: int = 0,
               train_mask: np.ndarray | None = None,
-              predict_at: Callable[[np.ndarray], list[np.ndarray]] | None = None) -> list[np.ndarray]:
+              predict_at: Callable[[np.ndarray], list[np.ndarray]] | None = None,
+              groups: np.ndarray | None = None) -> list[np.ndarray]:
     """Out-of-fold predictions: each test fold predicted by a learner fit on its training rows
     (restricted to ``train_mask`` where given, as DoubleML's ``get_cond_samples`` restricts an
     outcome model to one exposure level). ``predict_at(X_test)`` lists the matrices to predict
-    each test fold at (default: as observed); one array is returned per matrix."""
+    each test fold at (default: as observed); one array is returned per matrix.
+
+    ``groups``: each row's unit (a design's PSUs or clusters). Given them, the learner's ``fit``
+    takes its training rows' units as ``groups``, and a learner that splits its own rows (the
+    lasso's penalty) splits them by whole unit. Named none, they are the units the partition was
+    dealt by (:func:`sample_splits`), if any."""
+    if groups is None and isinstance(splits, Folds):
+        groups = splits.units
     n = len(y)
     outs: list[np.ndarray] | None = None
     for k, (train, test) in enumerate(splits):
         rows = train if train_mask is None else train[train_mask[train]]
         model = factory(classifier, seed + k)
-        model.fit(X[rows], y[rows], None if w is None else w[rows])
+        units = {} if groups is None else {"groups": np.asarray(groups)[rows]}
+        model.fit(X[rows], y[rows], None if w is None else w[rows], **units)
         at = [X[test]] if predict_at is None else predict_at(X[test])
         if outs is None:
             outs = [np.full(n, np.nan) for _ in at]
@@ -596,13 +648,15 @@ def dml_plr(y: Any, d: Any, X: Any, *, learner: str | Factory = "linear",
     flexible = not least_squares(learner)
     l_classifier = bool(outcome_binary and flexible)
     d_binary = is_binary(d)
+    units = None if design is None else design.groups
     thetas, ses, r2, final = [], [], [], []
     for s, rep in enumerate(splits):
         [l_hat] = cross_fit(factory, l_classifier, X, y, rep, None if design is None else design.weight,
-                            seed + 1000 * s)
+                            seed + 1000 * s, groups=units)
         m_classifier = bool(d_binary and flexible)
         [m_hat] = cross_fit(factory, m_classifier, X, d, rep,
-                            None if design is None else design.weight, seed + 1000 * s + 500)
+                            None if design is None else design.weight, seed + 1000 * s + 500,
+                            groups=units)
         v = d - m_hat
         u = y - l_hat
         theta, se = _solve_score(-v * v, v * u, w, design, n)
@@ -635,6 +689,7 @@ def dml_irm(y: Any, d: Any, X: Any, *, learner: str | Factory = "linear",
     n = len(y)
     w = _weights(design, n)
     weight = None if design is None else design.weight
+    units = None if design is None else design.groups
     factory = learner_factory(learner) if isinstance(learner, str) else learner
     thetas, ses = [], []
     log_rrs: list[float] = []
@@ -642,13 +697,13 @@ def dml_irm(y: Any, d: Any, X: Any, *, learner: str | Factory = "linear",
     refused = ratio_refusals(y, d)[0] if outcome_binary else None
     propensities = []
     for s, rep in enumerate(splits):
-        [m_hat] = cross_fit(factory, True, X, d, rep, weight, seed + 1000 * s)
+        [m_hat] = cross_fit(factory, True, X, d, rep, weight, seed + 1000 * s, groups=units)
         [g0] = cross_fit(factory, outcome_binary, X, y, rep, weight, seed + 1000 * s + 100,
-                         train_mask=(d == 0))
+                         train_mask=(d == 0), groups=units)
         g1 = None
         if score == "ATE":
             [g1] = cross_fit(factory, outcome_binary, X, y, rep, weight, seed + 1000 * s + 200,
-                             train_mask=(d == 1))
+                             train_mask=(d == 1), groups=units)
         propensities.append(m_hat.copy())
         m = np.clip(m_hat, bound, 1.0 - bound)
         u0 = y - g0
@@ -850,6 +905,7 @@ def tmle(y: Any, a: Any, W: Any, *, learner: str | Factory = "linear",
         raise ValueError("A flexible learner's Q and g are cross-fitted: give the sample splits.")
     thetas, ses, last = [], [], None
     weight = None if design is None else design.weight
+    units = None if design is None else design.groups
     for s, rep in enumerate(splits):
         AW = np.column_stack([a, W])
 
@@ -861,8 +917,8 @@ def tmle(y: Any, a: Any, W: Any, *, learner: str | Factory = "linear",
         # Q is learned on the scale _tmle_once maps the outcome to: [0, 1] by its range.
         target = y if family == "binomial" else (y - y.min()) / (y.max() - y.min())
         Q = np.column_stack(cross_fit(factory, family == "binomial", AW, target, rep, weight,
-                                      seed + 1000 * s, predict_at=at_levels))
-        [g] = cross_fit(factory, True, W, a, rep, weight, seed + 1000 * s + 500)
+                                      seed + 1000 * s, predict_at=at_levels, groups=units))
+        [g] = cross_fit(factory, True, W, a, rep, weight, seed + 1000 * s + 500, groups=units)
         parts = _tmle_once(y, a, W, family=family, gbound=bound, w=w, Q=Q, g=g)
         theta, se = finish(parts)
         thetas.append(theta)

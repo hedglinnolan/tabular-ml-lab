@@ -122,7 +122,9 @@ def quest(request: Request, pid: str) -> QuestLog:
     Confirm and For the record, with "Waiting for" on a line whose earlier answers are missing;
     progress as answered over required, null for a stage not reached, with ``complete`` once every
     objective is answered (a reached stage that asks nothing, 0 of 0, is complete: its segment is
-    full); and, when an answer decided in another stage asked its questions again or left its
+    full; except Results under Estimate and Describe, which counts the exhibits the engine serves
+    after Fit, so it reads 0 of N until they are placed, and Write-up is not reached until Results
+    is placed); and, when an answer decided in another stage asked its questions again or left its
     results out of date, or another answer in the stage itself asked its questions again
     (``within``), why, in plain words. ``version`` changes when the shape or the meaning of this
     log does."""

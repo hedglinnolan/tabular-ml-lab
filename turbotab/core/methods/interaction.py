@@ -54,8 +54,36 @@ HOSMER = "Hosmer & Lemeshow 1992, Epidemiology 3:452"
 VANDERWEELE_2009 = "VanderWeele 2009, Epidemiology 20:863"
 RARE = ("a RERI from odds ratios approximates the RERI of risk ratios only when the outcome is "
         "rare (VanderWeele & Knol 2014)")
-SUPPORTED = ("linear", "cox", "proportional_odds")
 TIMES = "×"
+
+
+def tests_product_terms(family: Any) -> bool:
+    """Whether ``family`` tests product terms here: it reports coefficients and its
+    ``inference_decl`` declares ``product_terms`` (MODEL_FAMILY_CONTRACT C2)."""
+    from turbotab.core.models.base import reports_coefficients
+
+    decl = family.inference_decl
+    return reports_coefficients(family) and decl is not None and decl.product_terms
+
+
+def weighted_products(family: Any) -> bool:
+    """Whether the survey weights enter ``family``'s product terms under the surveyed population:
+    it has a design-based estimator (``design_based``) and its model is a weighted sum of the
+    values as given (``linear_in_values``), the least-squares and logistic fits the weighted
+    interaction is built for. Any other family's interaction is fit without the weights and says
+    so."""
+    decl = family.inference_decl
+    return decl is not None and decl.design_based and family.linear_in_values
+
+
+def __getattr__(name: str) -> Any:
+    """``SUPPORTED``, the families that test product terms, read from the registry: the agreement
+    check in ``test_mc1_family_declarations`` still imports the name the declaration replaced."""
+    if name == "SUPPORTED":
+        from turbotab.core.models.base import families
+
+        return tuple(f.key for f in families() if tests_product_terms(f))
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _get(obj: Any, name: str, default: Any = None) -> Any:
@@ -598,10 +626,25 @@ RATIO_TASKS = {"binary": "odds ratio", "time_to_event": "hazard ratio",
                "ordinal": "cumulative odds ratio"}
 
 
-def _measure(task: str, family: str, target: str) -> tuple[str, bool]:
-    if family == "cox" or task == "time_to_event":
+def _registered(key: str) -> Any:
+    """The registered family named ``key``, or None."""
+    from turbotab.core.models.base import get_family
+
+    try:
+        return get_family(key)
+    except KeyError:
+        return None
+
+
+def _measure(task: str, family: Any, target: str) -> tuple[str, bool]:
+    """The measure each contrast is reported on: the exponentiated contrast on ``family``'s raw
+    scale for ``task`` (``raw_scale``: a log hazard gives a hazard ratio, a cumulative logit's
+    latent scale a cumulative odds ratio, a yes/no outcome's log-odds an odds ratio), else the
+    difference in the outcome's mean. ``family`` None: no family is known, and the task decides."""
+    scale = family.raw_scale.get(task) if family is not None else None
+    if scale == "log_hazard" or task == "time_to_event":
         return "hazard ratio", True
-    if family == "proportional_odds" or task == "ordinal":
+    if scale == "latent" or task == "ordinal":
         return "cumulative odds ratio", True
     if task == "binary":
         return "odds ratio", True
@@ -657,7 +700,6 @@ def adjusted_sets(state: Any, modifier: str, spec: Any) -> tuple[list[str], list
 
 def _one(ctx: Any, state: Any, exposure: str, modifier: str, spec: Any) -> ModificationResult:
     from turbotab.core.models import get_family
-    from turbotab.core.models.base import reports_coefficients
     from turbotab.core.models.inference import Outcome, cluster_columns, resolve_clusters
     from turbotab.core.models.pipeline import DesignSpec, design_spec, modeling_frame
     from turbotab.core.stages.data import open_store
@@ -682,7 +724,7 @@ def _one(ctx: Any, state: Any, exposure: str, modifier: str, spec: Any) -> Modif
     design = ctx.inputs["design"]
     spec_d = DesignSpec.from_dict(design.objects["spec"])
     families = [get_family(k) for k in (state.models or [])]
-    families = [f for f in families if reports_coefficients(f) and f.key in SUPPORTED]
+    families = [f for f in families if tests_product_terms(f)]
     assignment = read_assignment(ctx.inputs["split"])
     wanted = [c for c in [modifier, *extra] if c not in spec_d.inputs]
     with open_store(ctx) as store:
@@ -745,7 +787,7 @@ def _one(ctx: Any, state: Any, exposure: str, modifier: str, spec: Any) -> Modif
                 from turbotab.core.jobs import Cancelled
 
                 raise Cancelled() from exc
-            measure, ratio = _measure(task, family.key, target)
+            measure, ratio = _measure(task, family, target)
             fits.append(ModificationFit(
                 family=family.key, label=family.label, measure=measure,
                 scale="ratio" if ratio else "difference", n_rows=len(frame),
@@ -801,7 +843,7 @@ def _family(ctx: Any, state: Any, family: Any, spec_m: Any, frame: pd.DataFrame,
     pipeline = build_pipeline(spec_m, family, task, "inference", len(frame), len(spec_m.inputs) + 1)
     design = survey.design if survey is not None and getattr(survey, "answer", None) == \
         "population" else None
-    if design is not None and family.key != "linear":
+    if design is not None and not weighted_products(family):
         concerns.append("Fit without the survey weights: these estimates describe these "
                         "participants, not the surveyed population.")
         design = None
@@ -823,7 +865,7 @@ def _family(ctx: Any, state: Any, family: Any, spec_m: Any, frame: pd.DataFrame,
         pooled_words = (f"Multiple imputation compatible with the product terms (SMC-FCS with "
                         f"them in the substantive model), m = {imputations.m}: each quantity "
                         f"pooled by Rubin's rules, the heterogeneity test by D1")
-    measure, ratio = _measure(task, family.key, target)
+    measure, ratio = _measure(task, family, target)
     per_copy, Q, U, names0, info0, rows0, df = [], [], [], None, None, None, None
     df_com: float | None = None
     df_scalar: float | None = None
@@ -1130,7 +1172,7 @@ def sentence(state: Any, r: ModificationResult, *, task: str | None = None,
     estimated = next((f for f in r.families if f.effects), None)
     if estimated is None:
         task = task or getattr(state, "task", None)
-        measure, _ = _measure(str(task), r.families[0].family if r.families else "",
+        measure, _ = _measure(str(task), _registered(r.families[0].family if r.families else ""),
                               str(getattr(state, "target", None)))
         what = (f"The interaction of {a} and {m} on {target}" if r.kind == "interaction" else
                 f"Effect modification of {a}'s effect on {target} by {m}")
@@ -1470,6 +1512,6 @@ __all__ = [
     "complete_modifications", "contrast_vectors", "declared", "family_count", "firth_contrast",
     "impute_with_products", "layout", "linear_combination", "measures", "missing_answers",
     "modification_answer", "modification_followup", "modification_gate", "modification_stage",
-    "pool_measures", "reri", "second_covariates", "sentence", "strata_problems", "with_products",
-    "withdrawn_after_estimates",
+    "pool_measures", "reri", "second_covariates", "sentence", "strata_problems",
+    "tests_product_terms", "weighted_products", "with_products", "withdrawn_after_estimates",
 ]

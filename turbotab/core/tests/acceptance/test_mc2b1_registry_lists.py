@@ -19,7 +19,11 @@ SHARED = "shared"
 LENSES = {
     "linear": (SHARED,),
     "elastic_net": (SHARED,),
+    "ridge": (SHARED,),
+    "huber": (SHARED,),
     "boosted_trees": (SHARED,),
+    "random_forest": (SHARED,),
+    "xgboost": (SHARED,),
     "featurewise": ("metabolomics", "genomics"),
     "proportional_odds": (SHARED,),
     "mixed": (SHARED,),
@@ -36,8 +40,21 @@ CARD = {
     "elastic_net": ("Elastic net",
                     "A penalized linear model: shrinks correlated nutrients together, tuned "
                     "inside training folds."),
+    # C6a phase 2: the families registered after this package, with their own declarations' lines.
+    "ridge": ("Ridge",
+              "A penalized straight-line model that shrinks every effect and keeps every "
+              "predictor."),
+    "huber": ("Robust linear regression",
+              "Straight-line effects where rows far from the line count less: steadier against "
+              "outliers; for prediction only."),
     "boosted_trees": ("Boosted trees",
                       "Many shallow trees: finds curves and interactions; gives no coefficients."),
+    "random_forest": ("Random forest",
+                      "Many deep trees averaged: finds curves and interactions with little "
+                      "tuning; gives no coefficients."),
+    "xgboost": ("XGBoost",
+                "The same kind of model as boosted trees, in the XGBoost library reviewers "
+                "often name."),
     "featurewise": ("Feature-wise tests",
                     "Tests each factor on its own, adjusted for the covariates, with "
                     "Benjamini–Hochberg false-discovery control; no predictions."),
@@ -58,14 +75,19 @@ CARD = {
             "or not."),
 }
 
-# The card's order as it stood: the two omics families side by side, after the boosted trees.
-ORDER = ["linear", "elastic_net", "boosted_trees", "featurewise", "screened_elastic_net",
-         "proportional_odds", "mixed", "gee", "cox"]
+# The card's order as it stood: the two omics families side by side, after the boosted trees; the
+# phase-2 families in their registration order (models/__init__.py).
+ORDER = ["linear", "elastic_net", "ridge", "huber", "boosted_trees", "random_forest", "xgboost",
+         "featurewise", "screened_elastic_net", "proportional_odds", "mixed", "gee", "cox"]
 
 TASKS = {
     "linear": {"binary", "multiclass", "ordinal", "regression"},
     "elastic_net": {"binary", "multiclass", "ordinal", "regression"},
+    "ridge": {"binary", "multiclass", "ordinal", "regression"},
+    "huber": {"regression"},
     "boosted_trees": {"binary", "multiclass", "ordinal", "regression"},
+    "random_forest": {"binary", "multiclass", "ordinal", "regression"},
+    "xgboost": {"binary", "multiclass", "ordinal", "regression"},
     "featurewise": {"binary", "regression"},
     "proportional_odds": {"ordinal"},
     "mixed": {"regression"},

@@ -96,20 +96,22 @@ class _AppFitted:
     ``inner_cv.fit_pipeline``, which the acceptance tests check on their own), so that
     scikit-learn's ``cross_validate`` can run the outer loop and the scoring independently."""
 
-    def __init__(self, pipeline=None):
+    def __init__(self, pipeline=None, seed=0):
         self.pipeline = pipeline
+        self.seed = seed  # the split's, as the fit stage passes it (F15)
 
     def get_params(self, deep=True):
-        return {"pipeline": self.pipeline}
+        return {"pipeline": self.pipeline, "seed": self.seed}
 
     def set_params(self, **params):
         self.pipeline = params.get("pipeline", self.pipeline)
+        self.seed = params.get("seed", self.seed)
         return self
 
     def fit(self, X, y):
         from turbotab.core.models.inner_cv import fit_pipeline
 
-        self.fitted_ = fit_pipeline(clone(self.pipeline), X, y)
+        self.fitted_ = fit_pipeline(clone(self.pipeline), X, y, seed=self.seed)
         if hasattr(self.fitted_, "classes_"):
             self.classes_ = self.fitted_.classes_
         return self
@@ -153,7 +155,7 @@ def test_cv_metrics_equal_an_independent_cross_validate(table, task, target):
     by_family = {m["family"]: m for m in fit.data["models"]}
     wrapper = _AppRegressor if task == "regression" else _AppClassifier
     for key in FAMILIES:
-        result = cross_validate(wrapper(design.objects["pipelines"][key]), X, y,
+        result = cross_validate(wrapper(design.objects["pipelines"][key], split.data["seed"]), X, y,
                                 cv=PredefinedSplit(folds), scoring=SCORING[task],
                                 return_estimator=True, return_indices=True)
         for metric in SCORING[task]:
@@ -215,10 +217,11 @@ def test_holdout_metrics_equal_direct_computation_from_the_refit_pipeline(table)
         assert m["holdout"]["rmse"] == pytest.approx(root_mean_squared_error(y_hold, pred), abs=1e-12)
         assert m["holdout"]["mae"] == pytest.approx(mean_absolute_error(y_hold, pred), abs=1e-12)
         # The refit pipeline is the pipeline fit once on every training row, nothing else (its
-        # inner splits drawn by fit_pipeline, as in every fold).
+        # inner splits drawn by fit_pipeline at the split's seed, as in every fold).
         from turbotab.core.models.inner_cv import fit_pipeline
 
-        again = fit_pipeline(clone(design.objects["pipelines"][m["family"]]), X_train, y_train)
+        again = fit_pipeline(clone(design.objects["pipelines"][m["family"]]), X_train, y_train,
+                             seed=split.data["seed"])
         np.testing.assert_allclose(again.predict(X_hold), pred, rtol=0, atol=1e-9)
 
 
@@ -867,7 +870,7 @@ def test_select_models_refuses_an_unknown_family_and_offers_the_known_ones():
     from turbotab.core.decisions import Refusal, validate
 
     with pytest.raises(Refusal) as refused:
-        validate({"kind": "select_models", "models": ["linear", "random_forest"]}, {"task": "regression"})
+        validate({"kind": "select_models", "models": ["linear", "lightgbm"]}, {"task": "regression"})
     assert refused.value.code == "unknown_model"
     assert refused.value.exits[0]["decision"]["models"] == ["linear"]
     validate({"kind": "select_models", "models": ["boosted_trees"]}, {"task": "multiclass"})

@@ -947,6 +947,20 @@ def uncorrected_alongside(others: Sequence[str]) -> str:
             f"attenuated, inflated, or can even change direction” (Freedman et al. 2011).")
 
 
+def _correction_model(key: Any) -> str:
+    """The outcome model of a correction on the odds-ratio scale, in the sentence's words, from
+    the family registered as ``key`` (the task's default inference family): one that models the
+    outcome's ordered levels (``ordered_levels``) is a proportional-odds model, any other a
+    logistic one; "" for a key no family is registered under."""
+    from turbotab.core.models import get_family
+
+    try:
+        family = get_family(str(key))
+    except KeyError:
+        return ""
+    return "proportional-odds" if family.ordered_levels else "logistic"
+
+
 def methods_sentence(spec: Any, result: Mapping[str, Any]) -> str:
     """One scale's methods sentence, from its stage result (``turbotab.core.stages.scales``)."""
     s = spec
@@ -971,8 +985,7 @@ def methods_sentence(spec: Any, result: Mapping[str, Any]) -> str:
         tail += (f" It was calibrated jointly with {_and(jointly)} (multivariate regression "
                  f"calibration; Rosner, Spiegelman & Willett 1990), their errors assumed "
                  f"independent.")
-    model = {"proportional_odds": "proportional-odds", "linear": "logistic"}.get(
-        str(corr.get("family")), "")
+    model = _correction_model(corr.get("family"))
     approximate = (f" In a {model} model the calibrated score is an approximation (Carroll et al. "
                    f"2006)." if corr.get("scale") == "odds_ratio" else "")
     source = rel.get("source")

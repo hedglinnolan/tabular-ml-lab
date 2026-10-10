@@ -1377,6 +1377,11 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
         ctx.progress(0.2, "Reading the energy, nutrient and blank columns")
         frame = store.materialize(wanted)
         survey = _survey_proposal(state, store)
+        # P1-FU: the substitution option says the swap Table 2 will, on the values' reading of
+        # the parts inside their totals (``estimand.values_nesting``, the design's own test).
+        from turbotab.core.estimand import values_nesting
+
+        nested = values_nesting(state, store=store) if state.purpose == "inference" else None
     ctx.progress(0.6, "Counting what each exclusion rule would remove")
     from turbotab.core.readings import settled_columns
 
@@ -1417,7 +1422,7 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
 
     share = (event_share(frame[target], state.event)
              if task == "binary" and target and target in frame.columns else None)
-    out["estimand"] = estimand_card(state, task, prevalence=share)
+    out["estimand"] = estimand_card(state, task, prevalence=share, nested=nested)
     out["adjustment"] = adjustment_card(state)
     # LEASH (the routing gate's leash note): the grouping question's card, every column it asks
     # about with the guess it shows and that guess's evidence (``estimand.grouping_card``).

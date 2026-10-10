@@ -538,7 +538,13 @@ def test_2_prediction_results_reproduce_todays_to_1e_9(prediction_run):
     exact bits, and the fixture's simulated values differ in their last bit between the platforms
     (``test_elastic_net_penalty``). The keys are now hashed in single precision, the paths
     converge to 10⁻¹², and the penalty is the pooled inner loss's lowest, rounded to 10⁻⁹. Linear
-    and boosted trees draw no inner folds; their entries are 514336c's, unchanged."""
+    and boosted trees draw no inner folds; their entries are 514336c's, unchanged.
+
+    The elastic net's entries were captured again on 2026-10-10 (C6a phase 2), when the split's
+    seed began to reach every fit (RECIPES F15). Before that, fits drew their inner folds at seed 0
+    whatever the split's seed; now they draw them at 707, the fixture's. turbotab-next at 05325dca
+    with only that seed changed gives the same numbers, and linear and boosted trees still match
+    their stored entries to 5e-11."""
     reference = json.loads(REFERENCE.read_text())["configs"]
     _, _, _, now = prediction_run
     assert set(now) == set(reference)

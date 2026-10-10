@@ -183,15 +183,15 @@ def test_a_compiled_tree_shap_replaces_the_engines_and_a_probability_keeps_its_s
         reg, Xr = _fitted("regression")
         assert E.attributions(E.anatomy(reg, list(Xr.columns), "regression"), Xr, Xr,
                               kind="trees", family="compiled_probe") is None
-        # explain() presents margin values only: a probability scale's label, predictions,
-        # curves and interactions are RT-5d's to decide, so it says they are not built here.
+        # explain() keeps a probability scale's values on it (RT-5d decided: SHAP on the
+        # probability, curves on the log-odds, each labeled; test_random_forest checks the labels).
         s = E.Setting(task="binary", purpose="prediction", target="y", event="case", X=X,
                       y=np.zeros(len(X)))
         fam = E.FamilyFit(key="compiled_probe", label="Probe trees", fitted=pipe, unfitted=pipe,
                           versus=None, score=None, baseline=None)
-        said = E._work(fam, s, np.arange(len(X)))
-        assert isinstance(said, E.FamilyExplanation) and not said.explained
-        assert said.reason == "Probe trees: its SHAP values are not built here."
+        work = E._work(fam, s, np.arange(len(X)))
+        assert isinstance(work, E._Work) and work.shap_scale == "probability"
+        assert np.array_equal(work.phi.to_numpy(), stated[:, :, 0]) and work.base == 0.25
     finally:
         unregister_family("compiled_probe")
     assert not hasattr(E, "probability_of")
