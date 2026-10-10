@@ -22,6 +22,7 @@ from turbotab.server.tests.test_quest_api import ROLES, needs_nhanes, rule, sett
 SCREEN = "diet-implausible-reporters"
 DAYS = "diet-day-to-day-variance"
 ENERGY = "diet-energy-carries-the-nutrient"
+COLLINEAR = "shared-collinear-predictors"
 
 
 def journey(client):
@@ -55,7 +56,11 @@ def test_the_triage_and_the_ledger_carry_the_measured_noticings_through_the_lock
     # ── the triage before the lock: the measured noticings beside the findings ──
     t = drive.c.get(f"/api/projects/{drive.pid}/triage").json()
     noticed = {i["id"]: i for i in t["items"] if i["severity"] == "noticing"}
-    assert set(noticed) == {SCREEN, DAYS}  # energy's decision is answered: it dropped out
+    # Energy's decision is answered: it dropped out. The adjustment terms (kcal beside its parts)
+    # are nearly collinear with sugar outside the dependency: exact by theorem, no number moves.
+    assert set(noticed) == {SCREEN, DAYS, COLLINEAR}
+    assert noticed[COLLINEAR]["recommended"] == "no_change" and noticed[COLLINEAR]["band"] == 0
+    assert noticed[COLLINEAR]["family"] == "K5" and not noticed[COLLINEAR]["limitation"]
     screen = noticed[SCREEN]
     kcal = pd.read_csv(NHANES, usecols=["kcal"])["kcal"]
     gone = int(((kcal < 500) | (kcal > 5000)).sum())

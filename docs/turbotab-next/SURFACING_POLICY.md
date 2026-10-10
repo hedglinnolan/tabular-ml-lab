@@ -404,6 +404,15 @@ A threshold change is a recorded methods decision with a reason. Where the calib
 case for an instrument, the proxy is marked uncalibrated and its band is capped at 1: the engine
 may say "could bias" but never "doesn't change your numbers here" from an uncalibrated proxy.
 
+**Amended 2026-10-10 (WAVE_C6A_PLAN §7 ruling 2).** An instrument that is exact by theorem is not
+floored at band 1. Examples are Frisch–Waugh–Lovell, and a reparameterization of a column that is
+not focal (not what you study, not the outcome, not a declared modifier): either leaves the model
+matrix's column space unchanged, so the focal estimate, its interval and the fitted values move by
+exactly 0. Such an instrument (`invariance` in `materiality_calibration.json`) may say "doesn't
+change your numbers here" without calibration cases. `calibrate` keeps it as it is, and the ledger
+names the theorem (the entry's `theorem`, carried on each movement it measures). Every proxy that is
+not exact keeps the floor.
+
 This is the concrete form of Nolan's thesis. Each journey adds rows that say which decisions moved
 which estimates by how much. After a dozen journeys the ledger is a small, honest, replayable
 dataset on the materiality of modeling decisions in nutrition and omics data, and it is what
