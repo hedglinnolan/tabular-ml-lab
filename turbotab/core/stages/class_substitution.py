@@ -66,12 +66,18 @@ def _plain_multinomial(family: Any, model: Any) -> bool:
     """Whether ``model``, ``family``'s fitted model step, is an unpenalized, unweighted multinomial
     logit with an intercept: the family declares a weighted sum of the values as given
     (``linear_in_values``) read out as a margin (``output``, the log-odds), and the fit's own
-    settings hold no penalty, no class weights and an intercept, over three classes or more."""
+    settings hold no penalty, no class weights and an intercept, over three classes or more.
+
+    A fit that does not state its penalty is read as penalized: its settings must hold the
+    logit's inverse penalty ``C``, and either name no penalty or set ``C`` infinite. A ridge-type
+    classifier (``alpha``, no ``C``) or a wrapper that states no settings is never refined."""
     if family is None or not family.linear_in_values or family.output != "margin":
         return False
     params = model.get_params(deep=False)
-    unpenalized = (params.get("penalty") in (None, "none")
-                   or not math.isfinite(float(params.get("C", 1.0))))
+    if "C" not in params:
+        return False
+    unpenalized = (params.get("penalty", "unstated") in (None, "none")
+                   or not math.isfinite(float(params["C"])))
     return (unpenalized and params.get("class_weight") is None
             and bool(params.get("fit_intercept", True)) and len(getattr(model, "classes_", ())) >= 3)
 

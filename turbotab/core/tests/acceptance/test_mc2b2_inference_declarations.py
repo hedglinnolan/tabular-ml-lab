@@ -332,6 +332,87 @@ def test_the_refinement_still_reads_the_fit_s_own_settings():
         assert _plain_multinomial(linear, model) is False
 
 
+class _Wrapper:
+    """A fitted classifier that states none of its settings, as a wrapper might."""
+
+    classes_ = np.array([0, 1, 2])
+
+    def get_params(self, deep: bool = False) -> dict[str, Any]:
+        return {}
+
+
+def test_a_fit_that_does_not_state_its_penalty_is_not_refined():
+    """The class check stood guard over a fit with no ``penalty`` or ``C`` among its settings (a
+    ridge-type classifier, a wrapper): the declaration alone must not read one as unpenalized.
+    Reference: the old class check, which refused both."""
+    from sklearn.linear_model import RidgeClassifier
+
+    from turbotab.core.stages.class_substitution import _plain_multinomial
+
+    rng = np.random.default_rng(7)
+    X = rng.normal(size=(90, 2))
+    y = np.array([0, 1, 2])[rng.integers(0, 3, size=90)]
+    linear = get_family("linear")
+    for model in (RidgeClassifier().fit(X, y), _Wrapper()):
+        assert old_plain_multinomial(model) is False
+        assert _plain_multinomial(linear, model) is False
+
+
+def test_the_stage_s_refit_reaches_the_maximum_likelihood_estimate():
+    """``class_predictor`` as the stage calls it on a refit (``class_family_entries`` and the
+    pooled refit pass the family) gives the multinomial logit's maximum-likelihood probabilities.
+    Reference: statsmodels' ``MNLogit`` on the same rows, converged to a 1e-12 step."""
+    import statsmodels.api as sm
+    from sklearn.pipeline import Pipeline
+
+    from turbotab.core.stages.class_substitution import class_predictor
+
+    rng = np.random.default_rng(11)
+    n = 300
+    X = pd.DataFrame({"a": rng.normal(size=n), "b": rng.normal(size=n)})
+    eta = np.column_stack([np.zeros(n), 0.8 * X["a"] - 0.4, -0.6 * X["b"] + 0.3 * X["a"]])
+    p = np.exp(eta) / np.exp(eta).sum(axis=1, keepdims=True)
+    y = np.array(["high", "low", "mid"])[[rng.choice(3, p=row) for row in p]]
+    linear = get_family("linear")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        pipeline = Pipeline([("model", linear.build("multiclass", "inference", n, 2))]).fit(X, y)
+    classes = ["low", "mid", "high"]
+    predict = class_predictor(pipeline, X, y, classes, linear)
+
+    codes = pd.Categorical(y, categories=classes).codes
+    reference = sm.MNLogit(codes, sm.add_constant(X.to_numpy())).fit(
+        method="newton", maxiter=200, tol=1e-12, disp=False)
+    expected = reference.predict(sm.add_constant(X.to_numpy()))
+    assert np.max(np.abs(predict(X) - expected)) < 1e-8
+    with pytest.raises(ValueError, match="does not hold every class"):
+        class_predictor(pipeline, X, y, ["low", "mid"], linear)
+
+
+# ── models/survey.py: the words tables stay keyed by labels that exist ───────
+
+
+def test_each_word_table_key_is_a_registered_family_s_methods_label():
+    """``_DESIGN_WORDS`` and ``_NO_DESIGN_WORDS`` are keyed by ``methods_label``: a family that
+    renames its estimator would fall back to its label in silence and change the methods
+    sentence. Each key must be the label of a registered family that has (or lacks) a
+    design-based estimator for a task of its own. Reference: the old tables' families, written
+    in the test."""
+    from turbotab.core.models.survey import _DESIGN_WORDS, _NO_DESIGN_WORDS, has_design_estimator
+
+    design, other = {}, {}
+    for f, t in _pairs():
+        if t in f.tasks:
+            (design if has_design_estimator(f, t) else other).setdefault(
+                f.methods_label(t), set()).add(f.key)
+    assert set(_DESIGN_WORDS) <= set(design), sorted(set(_DESIGN_WORDS) - set(design))
+    assert set(_NO_DESIGN_WORDS) <= set(other), sorted(set(_NO_DESIGN_WORDS) - set(other))
+    assert set().union(*(design[k] for k in _DESIGN_WORDS)) == {
+        "linear", "proportional_odds", "cox"}
+    assert set().union(*(other[k] for k in _NO_DESIGN_WORDS)) >= {
+        "mixed", "gee", "featurewise", "elastic_net", "boosted_trees"}
+
+
 # ── estimand.py: the feature-wise family by its declarations ─────────────────
 
 

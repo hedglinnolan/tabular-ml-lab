@@ -13,7 +13,8 @@ substantive model, so a scan for the words could never reach zero. It flags:
   ``model_key``, ``chosen_family``), a value drawn from ``x.models``, or ``x.get("family")``. A
   family's key looked up in ``x.models``, ``models``, ``pipelines`` or ``fitted`` counts too, and so
   does a ``match`` on such a value with a family's key as a case, or its ``startswith``;
-* **a table keyed by family:** a dictionary whose keys each are, or hold, a family key, or whose
+* **a table keyed by family:** a dictionary whose keys each are, or hold, a family key or what the
+  methods text calls a family (its ``methods_label``, a key by another name), or whose
   values are all family keys (``{"regression": "linear", ...}``); a list of two or more family keys,
   or of entries each named by one (``option("linear", ...)``); and a lookup in a dictionary keyed by
   family with a value that holds a family's key;
@@ -85,6 +86,14 @@ EXITS: dict[Place, Pin] = {
 # MODEL_FAMILY_CONTRACT §3.3's census, V2X_SEAMS row 21, the MC-1 verifier's census, or this test,
 # which found the rest.
 NOT_YET: dict[Place, Pin] = {
+    # The design's words for each estimator, keyed by what the methods text calls the family:
+    # they retire when the declaration carries the words (``InferenceDecl``, models/base.py).
+    ("core/models/survey.py", "_DESIGN_WORDS"):
+        pin("MC-2b (found here: the words on InferenceDecl)", 1, "linear", "proportional_odds",
+            "cox"),
+    ("core/models/survey.py", "_NO_DESIGN_WORDS"):
+        pin("MC-2b (found here: the words on InferenceDecl)", 1, "mixed", "gee", "featurewise",
+            "elastic_net", "boosted_trees"),
     ("core/methods/omics.py", "chain_choices"): pin("MC-2b (found here)", 1, "featurewise"),
     ("core/methods/omics.py", "fit_methods"): pin("MC-2b (found here)", 1, "featurewise"),
     ("core/methods/omics.py", "methods_paragraph"): pin("MC-2b (found here)", 1, "featurewise"),
@@ -133,6 +142,21 @@ def _registry() -> tuple[dict[str, str], dict[str, set[type]]]:
 
 
 KEYS, STEPS = _registry()
+
+
+def _labels() -> dict[str, set[str]]:
+    """{what the methods text calls a family for a task of its own: the families it names}. A
+    table keyed by these words is keyed by family under another name."""
+    from turbotab.core.models.base import families
+
+    out: dict[str, set[str]] = {}
+    for family in families():
+        for task in family.tasks:
+            out.setdefault(family.methods_label(task), set()).add(family.key)
+    return out
+
+
+LABELS = _labels()
 FAMILY_ESTIMATORS: set[type] = set().union(*STEPS.values())
 
 
@@ -221,10 +245,16 @@ def _module(source: str, name: str) -> _Module:
     return m
 
 
+def _named(strings: set[str]) -> set[str]:
+    """The family keys ``strings`` hold: a family's key, or what the methods text calls it."""
+    return (strings & KEYS.keys()).union(*(LABELS[s] for s in strings if s in LABELS))
+
+
 def _keyed(node: ast.Dict) -> set[str]:
-    """The family keys a dictionary is keyed by: each of its keys is one, or holds one (a tuple
-    key); empty when any key is neither, as in a table of selection methods or forms."""
-    keys = [_strings(k) & KEYS.keys() for k in node.keys if k is not None]
+    """The family keys a dictionary is keyed by: each of its keys is one, holds one (a tuple
+    key), or is what the methods text calls one (its ``methods_label``); empty when any key is
+    none of these, as in a table of selection methods or forms."""
+    keys = [_named(_strings(k)) for k in node.keys if k is not None]
     return set().union(*keys) if keys and all(keys) else set()
 
 
@@ -629,6 +659,7 @@ from sklearn.linear_model import LinearRegression as OLS, LogisticRegression
 SUPPORTED = ("linear", "cox")
 WORDS = {"mixed": "the mixed model", "gee": "the GEE model"}
 FOR_TASK = {"regression": "linear", "ordinal": "proportional_odds"}
+LABELED = {"linear regression": "least squares", "Cox proportional hazards": "Cox regression"}
 OPTIONS = [option("linear", "Linear model"), option("boosted_trees", "Boosted trees")]
 
 def measure(task, family):
@@ -674,6 +705,7 @@ LEARNERS = ("linear", "lasso", "random_forest", "boosted_trees")
 SUBSTANTIVE = {"regression": "linear", "binary": "logistic", "time_to_event": "cox"}
 FORMS = [option("linear", "Straight line"), option("spline", "A smooth curve")]
 METHODS = {"none": "No selection", "elastic_net": "Elastic net, in each training fold"}
+PHRASES = {"linear regression": "a straight line", "a smooth curve": "a spline"}
 
 def form(spec, decision, learner, model, fn, kind):
     if spec.form == "linear" or decision.learner in (None, "linear") or learner == "linear":
@@ -692,12 +724,14 @@ def form(spec, decision, learner, model, fn, kind):
 def test_the_scan_catches_each_kind_of_switch_and_nothing_else():
     """Reference: the switches written into CAUGHT by hand, counted per place, and PASSED's other
     vocabularies ("linear" as a form, a learner and a substantive model; "cox" as a substantive
-    model), wrappers, transformers and names."""
+    model; "linear regression" beside a phrase no family is called), wrappers, transformers and
+    names."""
     caught = scan_source(CAUGHT, "turbotab.core.not_a_family")
     assert {where: len(hits) for where, hits in caught.items()} == {
-        "SUPPORTED": 1, "WORDS": 1, "FOR_TASK": 1, "OPTIONS": 1, "measure": 1, "table": 3,
-        "cost": 1, "kind": 2, "identity": 3, "named": 2, "words": 2, "matched": 2, "prefix": 1}
+        "SUPPORTED": 1, "WORDS": 1, "FOR_TASK": 1, "LABELED": 1, "OPTIONS": 1, "measure": 1,
+        "table": 3, "cost": 1, "kind": 2, "identity": 3, "named": 2, "words": 2, "matched": 2, "prefix": 1}
     assert [h.names for h in caught["words"]] == [{"mixed", "gee"}, {"proportional_odds", "linear"}]
+    assert [h.names for h in caught["LABELED"]] == [{"linear", "cox"}]
     assert [h.names for h in caught["matched"]] == [{"cox", "gee"}, {"LinearRegression"}]
     assert scan_source(PASSED, "turbotab.core.not_a_family") == {}
 
