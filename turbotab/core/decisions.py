@@ -627,7 +627,7 @@ class SetMeasurementError(_DecisionModel):
     @classmethod
     def _unique(cls, value: list[str]) -> list[str]:
         if len(set(value)) != len(value):
-            raise ValueError("each exposure may be named only once")
+            raise ValueError("each study factor may be named only once")
         return value
 
 
@@ -1317,9 +1317,9 @@ class SetEstimand(_DecisionModel):
     @model_validator(mode="after")
     def _one_or_a_family(self) -> "SetEstimand":
         if self.family == (self.exposure is not None and self.exposure != ""):
-            raise ValueError("name one exposure, or declare the exposure family, not both")
+            raise ValueError("name one study factor, or declare the family of study factors, not both")
         if self.multiplicity is not None and not self.family:
-            raise ValueError("a multiplicity method belongs to an exposure family")
+            raise ValueError("a multiplicity method belongs to a family of study factors")
         return self
 
 
@@ -1640,9 +1640,9 @@ class SetTimeVarying(_DecisionModel):
     def _columns_once(self) -> "SetTimeVarying":
         named = [*self.confounders, *self.baseline]
         if len(set(named)) != len(named):
-            raise ValueError("a column is a time-varying confounder or a baseline covariate, not both")
+            raise ValueError("a column is a time-varying covariate that could explain the link or a baseline covariate, not both")
         if self.exposure in named or (self.censoring is not None and self.censoring in named):
-            raise ValueError("the exposure and the censoring indicator are not covariates")
+            raise ValueError("what you study and the censoring indicator are not covariates")
         return self
 
 
@@ -1674,8 +1674,9 @@ class SetExplain(_DecisionModel):
 # ``methods/levers.py``, ``models/variable_selection.py``, ``models/decision_curve.py``).
 # ``view_outcome``: an outcome view the user opened in Explore, recorded as looked at under both
 # purposes (forking paths; Gelman & Loken 2013). ``target``, ``rows``, ``n_rows`` and ``levers``
-# (each viewed column's lever answers at its first look) are filled by the server.
-OutcomeView = Literal["relationship", "distribution"]
+# (each viewed column's lever answers at its first look) are filled by the server. ``table``: the
+# outcome's values by row beside the other columns, as a data route's row window shows them.
+OutcomeView = Literal["relationship", "distribution", "table"]
 
 
 class OutcomeViewSpec(_Value):
@@ -1685,6 +1686,9 @@ class OutcomeViewSpec(_Value):
     rows: Literal["training", "analyzed"] | None = None
     n_rows: int | None = None
     levers: dict[str, str] = Field(default_factory=dict)
+    # The rows the view was drawn on, as the server digests them (``outcome_gate.rows_key``): a data
+    # route serves an outcome view only once it is recorded for the rows it reads now.
+    rows_key: str | None = None
 
 
 class ViewOutcome(_DecisionModel):
@@ -1695,6 +1699,7 @@ class ViewOutcome(_DecisionModel):
     rows: Literal["training", "analyzed"] | None = None
     n_rows: int | None = None
     levers: dict[str, dict[str, str]] | None = None
+    rows_key: str | None = None  # handed back by the data route that serves the view
 
 
 # ``set_levers`` (prediction): Explore's levers as in-fold rules the resampling repeats. ``forms``:
@@ -2760,7 +2765,7 @@ register_kind(SetExplain, "explain", value=lambda d: ExplainSpec(**d.model_dump(
 register_kind(ViewOutcome, "outcome_views", value=lambda d: None,
               entries=lambda d: [("outcome_views", f"{d.view}:{c}", OutcomeViewSpec(
                   view=d.view, column=c, target=d.target, rows=d.rows, n_rows=d.n_rows,
-                  levers=dict((d.levers or {}).get(c) or {})))
+                  levers=dict((d.levers or {}).get(c) or {}), rows_key=d.rows_key))
                   for c in (d.columns or ([d.target] if d.target else []))])
 register_kind(SetLevers, "levers", value=lambda d: LeverSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetSelection, "selection",
@@ -3068,8 +3073,8 @@ def _roles_name_real_columns(decision: SetRoles, ctx: Any) -> None:
     if not any(role in PREDICTOR_ROLES for role in decision.roles.values()):
         raise Refusal(
             "no_predictors",
-            "No column is an exposure, a covariate or energy, so the models would have nothing to use.",
-            exits=[{"label": "Mark at least one column as an exposure or a covariate", "decision": None}],
+            "No column is a study factor, a covariate or energy, so the models would have nothing to use.",
+            exits=[{"label": "Mark at least one column as a study factor or a covariate", "decision": None}],
         )
 
 
@@ -4067,8 +4072,8 @@ def _energy_adjustment_fits_the_roles(decision: SetEnergyAdjustment, ctx: Any) -
     if not decision.nutrients or len(exposures) != len(decision.nutrients):
         others = [n for n in decision.nutrients if n not in exposures]
         message = ("Name the nutrients to adjust." if not decision.nutrients else
-                   f"{_and(others)} {'is' if len(others) == 1 else 'are'} not an exposure; only exposures are adjusted.")
-        exits = [{"label": "Adjust only the exposures", "decision": with_(nutrients=exposures)}] if exposures else []
+                   f"{_and(others)} {'is' if len(others) == 1 else 'are'} not a study factor; only study factors are adjusted.")
+        exits = [{"label": "Adjust only the study factors", "decision": with_(nutrients=exposures)}] if exposures else []
         raise Refusal("nutrients_not_exposures", message,
                       exits=exits + [{"label": "Choose the nutrients to adjust", "decision": None}])
     gone = [c for c in (decision.energy_column, *decision.nutrients) if c in left_out(state)]
@@ -4630,7 +4635,7 @@ def _substitution_has_every_energy_source(decision: SetSubstitution, ctx: Any) -
         # BLUEPRINT §14.1: each column the names read as an energy source is added on its own,
         # one reading per answer, never several at once.
         for c in addable[:4]:
-            exits.append({"label": f"Add `{c}` to the model as an exposure",
+            exits.append({"label": f"Add `{c}` to the model as a study factor",
                           "decision": SetRoles(roles={**roles, c: "exposure"})})
     exits += [
         {"label": "Keep this swap; the curve carries their confounding",
@@ -4763,7 +4768,7 @@ def _missing_fits_the_purpose(decision: SetMissing, ctx: Any) -> None:
                   "decision": _missing_base(decision, acknowledged=True)})
     raise Refusal(
         "single_fill_under_inference",
-        f"Under inference {SINGLE_FILL_CAUTION}. With a confounder 40% missing at random, a median "
+        f"Under inference {SINGLE_FILL_CAUTION}. With a covariate that could explain the link 40% missing at random, a median "
         f"fill's 95% intervals never covered the truth (audit ME-01). Multiple imputation with the "
         f"outcome and energy in the imputation model, pooled by Rubin's rules, is the sound "
         f"answer.",
@@ -5079,7 +5084,7 @@ def _form_fits_the_column(decision: SetExposureForm, ctx: Any) -> None:
     if roles and roles.get(decision.column) not in PREDICTOR_ROLES:
         raise Refusal(
             "not_a_predictor",
-            f"`{decision.column}` is not an exposure, a covariate or energy, so it does not enter "
+            f"`{decision.column}` is not a study factor, a covariate or energy, so it does not enter "
             f"the models.",
             exits=[{"label": "Choose a predictor", "decision": None}])
     from turbotab.core.readings import confirmed_codes
@@ -5145,7 +5150,7 @@ def _calibrated_exposures_are_columns(decision: SetMeasurementError, ctx: Any) -
         rest = [c for c in decision.exposures if c not in unknown]
         raise Refusal(
             "unknown_column", f"This dataset has no column named {_and(unknown)}.",
-            exits=[{"label": "Calibrate every energy-adjusted exposure",
+            exits=[{"label": "Calibrate every energy-adjusted study factor",
                     "decision": decision.model_copy(update={"exposures": rest})}])
 
 
@@ -5158,7 +5163,7 @@ def _calibration_is_for_inference(decision: SetMeasurementError, ctx: Any) -> No
     raise Refusal(
         "not_for_prediction",
         "Under prediction the model is used on recalls measured the same way as these, so its "
-        "predictions need no correction; regression calibration corrects an exposure's coefficient, "
+        "predictions need no correction; regression calibration corrects a study factor's coefficient, "
         "which is an inference question.",
         exits=[{"label": "Keep the recalls' mean uncorrected",
                 "decision": SetMeasurementError(method="none")},

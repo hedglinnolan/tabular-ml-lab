@@ -182,8 +182,8 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
     clusters = INDEPENDENT if clusters is None else clusters
     tested, adjust = split_columns(list(matrix.columns), features)
     if not tested:
-        raise ValueError("No exposure to test: feature-wise regression tests the columns with the "
-                         "exposure role, one at a time, adjusted for the rest.")
+        raise ValueError("No study factor to test: feature-wise regression tests the columns with the "
+                         "role of what you study, one at a time, adjusted for the rest.")
     values = matrix.to_numpy(dtype=float, na_value=np.nan)
     if not np.isfinite(values).all():
         raise ValueError("The model matrix has missing values; feature-wise tests need complete "
@@ -197,10 +197,10 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
     if binary:
         g, level, other = event_indicator(y)
         against = f"`{other}`" if other is not None else "the other level"
-        estimand = f"the difference in each exposure's mean between `{event or level}` and {against}"
+        estimand = f"the difference in each study factor's mean between `{event or level}` and {against}"
     elif task == "regression":
         yv = np.asarray(y, dtype=float)
-        estimand = "the change in the outcome per unit of each exposure"
+        estimand = "the change in the outcome per unit of each study factor"
     else:
         raise ValueError("Feature-wise regression models a numeric or a two-level outcome.")
     m = len(tested)
@@ -260,11 +260,11 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
         how = (f"from each test's own residual variance (classical least squares, exact under "
                f"the null for normal errors), on t({df_resid:,.0f})")
         covariance = "model"
-    caption = (f"Each of {m:,} exposures tested on its own {adjusted}; the estimate is {estimand}. "
+    caption = (f"Each of {m:,} study factors tested on its own {adjusted}; the estimate is {estimand}. "
                f"95% intervals {how}. Benjamini–Hochberg q < {FDR:g}: {found:,} of {m:,}.")
     smallest = np.nanmin(q) if np.isfinite(q).any() else float("nan")
     if found == 0 and np.isfinite(smallest):
-        concerns.append(f"No exposure passes the false-discovery threshold (smallest q = "
+        concerns.append(f"No study factor passes the false-discovery threshold (smallest q = "
                         f"{format_p(float(smallest))}): {m:,} tests at p < 0.05 would give about "
                         f"{0.05 * m:,.0f} false positives by chance alone.")
     return InferenceTable(rows, _info(estimator, covariance, caption, clusters), concerns)
@@ -319,14 +319,14 @@ class FeatureWise(FamilyBase):
     purposes = ("inference",)
     predicts = False
     linear_in_values = True
-    inductive_bias = ("Each exposure tested on its own with the covariates; Benjamini–Hochberg "
+    inductive_bias = ("Each study factor tested on its own with the covariates; Benjamini–Hochberg "
                       "holds the false-discovery rate.")
     strengths = (
         "Valid tests with more features than rows.",
         "Holds the false-discovery rate across thousands of features (Benjamini–Hochberg).",
     )
     cautions = (
-        "Each estimate ignores the other exposures: one separate question per feature.",
+        "Each estimate ignores the other study factors: one separate question per feature.",
         "Tests only: it makes no predictions and has no cross-validated score.",
         "Intervals assume equal residual variance; robust ones fail at the thresholds it tests.",
     )
@@ -360,14 +360,14 @@ class FeatureWise(FamilyBase):
 
     def describe(self, task: Task, purpose: Purpose | None) -> tuple[str, str]:
         if task == "binary":
-            what = ("Regresses each exposure on the event and the covariates (the limma design): "
+            what = ("Regresses each study factor on the event and the covariates (the limma design): "
                     "the estimate is the adjusted difference in its mean.")
         else:
-            what = ("Regresses the outcome on each exposure and the covariates, one exposure at a "
-                    "time: the estimate is per unit of that exposure.")
+            what = ("Regresses the outcome on each study factor and the covariates, one study factor at a "
+                    "time: the estimate is per unit of what you study.")
         return "Feature-wise least squares", (f"{what} Classical least-squares intervals, CR2 when "
                                               f"a unit's rows repeat; Benjamini–Hochberg q-values "
-                                              f"across the exposures.")
+                                              f"across the study factors.")
 
     def _matrix(self, pipeline: Any, X: Any) -> pd.DataFrame:
         from turbotab.core.models.linear import model_matrix
@@ -389,7 +389,7 @@ class FeatureWise(FamilyBase):
 
     def assess(self, s: Situation) -> Assessment:
         if s.purpose != "inference":
-            return Assessment(0.0, "poor", ("Tests each exposure on its own and makes no "
+            return Assessment(0.0, "poor", ("Tests each study factor on its own and makes no "
                                             "predictions, so it adds nothing to a prediction.",))
         lenses = tuple(getattr(s, "lenses", ()) or ())
         omics = any(lens in OMICS for lens in lenses)
@@ -397,8 +397,8 @@ class FeatureWise(FamilyBase):
             # AUDIT_REPORT ME-18: PLS-DA is not on the shelf, and the one line says why.
             pls = (PLS_DA_ABSENT,) if "metabolomics" in lenses else ()
             return Assessment(3.5, "good", pls)
-        return Assessment(2.0, "fair", ("Each exposure is adjusted for the covariates but not for the "
-                                        "other exposures: a separate question for each.",))
+        return Assessment(2.0, "fair", ("Each study factor is adjusted for the covariates but not for the "
+                                        "other study factors: a separate question for each.",))
 
 
 FEATUREWISE = register_family(FeatureWise())

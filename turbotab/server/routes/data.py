@@ -50,9 +50,11 @@ def table(
 ) -> dict:
     """Rows ``[offset, offset + limit)`` in file order, of the ``columns`` asked for (the ones a
     grid shows): only those are read, so a window of a 20,000-column table costs what its
-    visible columns cost."""
-    store = get_service(request).store(pid)
-    return store.window(offset, limit, parse_columns(columns, store.columns))
+    visible columns cost. Once the outcome is chosen, a window leaves it out until the outcome
+    beside a column opens, and says so in ``withheld`` (CROSSWALK disagreement 2)."""
+    service = get_service(request)
+    store = service.store(pid)
+    return service.table_window(pid, offset, limit, parse_columns(columns, store.columns))
 
 
 def matching(names: list[str], query: str | None) -> list[str]:
@@ -79,14 +81,15 @@ def columns(
 ) -> list[dict]:
     """Column summaries in table order. A wide table's roles list searches with ``query`` and
     pages with ``offset``/``limit``; ``X-Total-Count`` is the number of matches before paging."""
-    store = get_service(request).store(pid)
+    service = get_service(request)
+    store = service.store(pid)
     if query is None and names is None and offset == 0 and limit is None:
-        return store.summaries()
+        return service.column_summaries(pid, store, store.summaries())
     chosen = parse_columns(names, store.columns) if names else store.columns
     found = matching(chosen, query)
     response.headers["X-Total-Count"] = str(len(found))
     page = found[offset:] if limit is None else found[offset:offset + limit]
-    return store.summaries(page) if page else []
+    return service.column_summaries(pid, store, store.summaries(page)) if page else []
 
 
 @router.get(
@@ -95,15 +98,17 @@ def columns(
     responses={
         400: refusal("Not a numeric column"),
         404: refusal("No such project or column"),
-        409: NOT_READY,
+        409: refusal("The table is not read yet, or the outcome's distribution is not open or "
+                     "not recorded yet"),
     },
 )
 def histogram(
     request: Request, pid: str, name: str, bins: int = Query(30, ge=1, le=MAX_HISTOGRAM_BINS)
 ) -> dict:
-    store = get_service(request).store(pid)
+    """The column's histogram. The outcome's is the outcome alone: refused with its line until
+    its gate opens, then drawn on the rows its view reads (``turbotab.core.outcome_gate``)."""
     try:
-        return store.histogram(name, bins)
+        return get_service(request).column_histogram(pid, name, bins)
     except UnknownColumn:
         raise
     except ValueError as exc:

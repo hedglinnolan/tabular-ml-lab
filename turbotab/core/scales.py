@@ -92,7 +92,7 @@ CONTRACT = register_contract(MethodContract(
         "reliability (ω; α labeled customary)": "training_fold",
         "regression calibration of the score's coefficient": "training_fold",
     },
-    needs=("three or more numeric items on one response scale, each a confirmed exposure or "
+    needs=("three or more numeric items on one response scale, each a confirmed study factor or "
            "covariate (a reflective scale's answers whole numbers; a formative index's components "
            "may be continuous scores)",
            "the instrument's key: its reverse-coded items and its response scale",
@@ -119,7 +119,7 @@ CONTRACT = register_contract(MethodContract(
                {"inference": "rank_lower", "prediction": "rank_lower"}),
         Option("none", "No correction: the uncorrected estimate",
                "Customary: most papers report the score's coefficient as estimated",
-               {"inference": "Sound as the primary analysis: for one error-prone exposure its test "
+               {"inference": "Sound as the primary analysis: for one error-prone study factor its test "
                              "of no association stays valid, though the estimate is attenuated "
                              "(Freedman et al. 2011).",
                 "prediction": "Sound: a new row's score carries the same error, so the model "
@@ -309,7 +309,7 @@ def _scale_items_are_settled_predictors(decision: SetScales, ctx: Any) -> None:
         raise Refusal(
             "items_not_predictors",
             f"{_and(outside)} {'is' if len(outside) == 1 else 'are'} not among the predictors "
-            f"(an exposure or a covariate), so {'it' if len(outside) == 1 else 'they'} cannot be "
+            f"(a study factor or a covariate), so {'it' if len(outside) == 1 else 'they'} cannot be "
             f"scored into the scale that replaces {'it' if len(outside) == 1 else 'them'} in the "
             f"models.", exits=exits + [{"label": "Choose the items among the predictors",
                                         "decision": None}])
@@ -835,7 +835,7 @@ def _answers_keep_the_scales_whole(decision: Any, ctx: Any) -> None:
             said = (f"{_and(new_lost)} {'is an item' if one else 'are items'} of `{name}`, whose "
                     f"score replaces its items in the models. This answer would take "
                     f"{'it' if one else 'them'} out of the predictors (no longer a confirmed "
-                    f"exposure or covariate, left out, or the outcome), so the score could not be "
+                    f"study factor or covariate, left out, or the outcome), so the score could not be "
                     f"formed as declared.")
         else:
             one = len(new_entered) == 1
@@ -943,7 +943,7 @@ def uncorrected_alongside(others: Sequence[str]) -> str:
     one = len(others) == 1
     return (f"{_and(list(others))} {'is' if one else 'are'} also a scale score in the model, "
             f"entered uncorrected, so this correction reads {'it' if one else 'them'} as measured "
-            f"without error; with two or more error-prone exposures, estimates “may become "
+            f"without error; with two or more error-prone study factors, estimates “may become "
             f"attenuated, inflated, or can even change direction” (Freedman et al. 2011).")
 
 

@@ -296,7 +296,7 @@ def offered(state: Any, pooled_cycle: str | None = None, frame: Any = None,
     out.append({"key": "sample", "label": "These participants",
                 "consequence": ("Unweighted; the scores are the procedure's performance on these "
                                 "rows." if scores else
-                                "Unweighted; the methods state the estimand is this sample's."),
+                                "Unweighted; the methods state the comparison is this sample's."),
                 "decision": {"kind": "set_survey", "estimand": "sample"}})
     return out
 
@@ -325,7 +325,7 @@ def _offered_by_values(reading: DesignReading, placed: Mapping[str, Any],
                                      "four_year_weight": None, "acknowledged": False},
                         "needs_confirmation": []})
     out.append({"key": "sample", "label": "These participants",
-                "consequence": "Unweighted; the methods state the estimand is this sample's.",
+                "consequence": "Unweighted; the methods state the comparison is this sample's.",
                 "decision": {"kind": "set_survey", "estimand": "sample"}})
     return out
 

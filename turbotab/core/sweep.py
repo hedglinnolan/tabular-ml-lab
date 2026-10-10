@@ -54,6 +54,17 @@ from turbotab.core.decisions import (
     register_completion,
     sweep_key,
 )
+from turbotab.core.materiality import (
+    Movement,
+    Noticing,
+    TriageRow,
+    finding_done,
+    in_triage,
+    limitation_owed,
+    triage_rows,
+    would_change,
+)
+from turbotab.core.materiality import recommend as recommend_noticing
 from turbotab.core.quest import (
     CONFIRM,
     DECIDE,
@@ -68,6 +79,7 @@ from turbotab.core.quest import (
     QuestStage,
     ReadItem,
     ReadOption,
+    ReopenedBy,
     Sweep,
     _get,
     _Log,
@@ -164,7 +176,7 @@ def _modifier_changes(state: Any, facts: Facts, line: QuestLine) -> Change:
     if candidates:
         return True, (f"A modifier such as {_tick(candidates[:1])} would report the effect in each "
                       f"of its groups.")
-    return False, ("No column besides the exposure and the outcome could modify the effect, so "
+    return False, ("No column besides what you study and the outcome could modify the effect, so "
                    "there is no other choice to make here.")
 
 
@@ -173,7 +185,7 @@ def _multiplicity_changes(state: Any, facts: Facts, line: QuestLine) -> Change:
     the tests are accounted for changes their p-values."""
     n = len([c for c, r in (_get(state, "roles") or {}).items() if r == "exposure"])
     if n == 1:
-        return False, "The family holds one exposure, so there is no other test to account for."
+        return False, "The family holds one study factor, so there is no other test to account for."
     counted = f"the {n} tests" if n else "the family's tests"
     return True, f"Another way of accounting for {counted} changes their p-values and intervals."
 
@@ -222,15 +234,30 @@ def _test_for(line: QuestLine) -> WouldChange | None:
     return None
 
 
+def measured(facts: Facts, line: QuestLine) -> Movement | None:
+    """The movement measured for this line's best alternative (SURFACING_POLICY §2), where one is:
+    ``Facts.artifacts["materiality"]`` maps a line's key to its :class:`Movement`."""
+    found = ((facts.artifacts or {}).get("materiality") or {}).get(line.key)
+    if found is None:
+        return None
+    return found if isinstance(found, Movement) else Movement.model_validate(found)
+
+
 def weigh(placed: Sequence[tuple[str, QuestLine]], state: Any, facts: Facts) -> None:
     """Each default set for the person: a Confirm when another choice would change a number here,
     with what it would change; else For the record, with why nothing would. A line its own answer
-    settled is the person's, and stays as it is."""
+    settled is the person's, and stays as it is. Where the best alternative's movement is measured
+    it decides (``materiality.would_change``: it reaches τ_confirm; an uncalibrated instrument
+    never says the choice changes nothing); elsewhere the line's hand test does."""
     for _stage, line in placed:
         if line.label != CONFIRM or line.status not in ("set_for_you", "waiting"):
             continue
-        test = _test_for(line)
-        changes, why = test(state, facts, line) if test is not None else (True, GENERIC)
+        m = measured(facts, line)
+        if m is not None:
+            changes, why = would_change(m)
+        else:
+            test = _test_for(line)
+            changes, why = test(state, facts, line) if test is not None else (True, GENERIC)
         if changes:
             line.would_change = why
         else:
@@ -302,6 +329,18 @@ def _writer(log: _Log, stage: str, sweep: str) -> str | None:
     return found.id if found is not None else None
 
 
+def _withdrawn(log: _Log, stage: str, sweep: str) -> Any:
+    """The latest live revert of this stage's "Confirm all", or None."""
+    for r in reversed(log.live):
+        if r.decision.kind != "revert":
+            continue
+        target = log.by_id.get(r.decision.decision_id)
+        if (target is not None and target.decision.kind == "confirm_sweep"
+                and target.decision.stage == stage and target.decision.sweep == sweep):
+            return r
+    return None
+
+
 def _sweep_words(n: int) -> tuple[str, str]:
     if n == 1:
         return "Here is the other choice set for you", "Confirm it"
@@ -325,6 +364,15 @@ def sweep_of(stage: str, lines: Sequence[QuestLine], state: Any, log: _Log) -> S
             line.status, line.decision_id = "answered", writer
         elif held is not None:
             changed.append(line.key)
+    if held is None:
+        # "Confirm all" withdrawn (a revert of it, none since): each default it confirmed is set
+        # for the person again, and says so (the path fuzzer, I11).
+        withdrawn = _withdrawn(log, stage, "defaults")
+        if withdrawn is not None:
+            for line in confirms:
+                if line.status == "set_for_you" and line.reopened_by is None:
+                    line.reopened_by = ReopenedBy(decision_id=withdrawn.id,
+                                                  kind=withdrawn.decision.kind, stage=stage)
     heading, action = _sweep_words(len(confirms))
     return Sweep(lines=len(confirms), answered=all(l.status == "answered" for l in confirms),
                  id=SWEEP_ITEMS.get(stage, ""), heading=heading, action=action,
@@ -372,6 +420,16 @@ class TriageItem(BaseModel):
     reason: str
     blocker: bool
     recorded: Disposition | None = None
+    # SURFACING_POLICY §2: the family it belongs to (a finding's is "finding"), the band of its
+    # predicted movement with the instrument as a quiet label and whether that instrument is
+    # calibrated (None where no movement is measured: a finding), whether a limitation sentence is
+    # owed (it could bias and nothing was done), and what was done about it.
+    family: str = "finding"
+    band: int | None = None
+    measure: str | None = None
+    calibrated: bool | None = None
+    limitation: bool = False
+    done: str | None = None
 
 
 class Triage(BaseModel):
@@ -394,6 +452,9 @@ class Triage(BaseModel):
     confirmed_by: str | None = None
     changed: list[str] = []
     passed: bool = False
+    # At most six rows (SURFACING_POLICY §4.1): one per item while they fit, else one per family
+    # with its count. Every item is in a row.
+    rows: list[TriageRow] = []
 
 
 def gate_stage(state: Any) -> str:
@@ -459,10 +520,36 @@ def _held_noticings(state: Any) -> dict[str, SweptLine]:
     return {l.key: l for l in held.lines} if held is not None else {}
 
 
-def triage(state: Any, log: QuestLog, findings: Any, records: Sequence[Any] = ()) -> Triage:
+def _noticing_item(n: Noticing, state: Any, held: Mapping[str, SweptLine], changed: list[str]
+                   ) -> TriageItem:
+    """A measured noticing at the gate (``materiality.recommend``): its disposition from the band
+    of its predicted movement, and the one recorded while it stands."""
+    disposition, reason, owed = recommend_noticing(n, purpose=_get(state, "purpose"))
+    stands = _stands(held.get(n.thread), (disposition, False, reason))
+    if n.thread in held and not stands:
+        changed.append(n.thread)
+    label = DISPOSITION_WORDS[disposition]
+    if disposition == "could_bias" and _get(state, "purpose") == "prediction":
+        label = "Could bias the score"
+    if n.predicted.not_measurable:
+        label += " (not measurable here)"
+    return TriageItem(
+        id=n.thread, line=f"noticing:{n.thread}", stage=n.stage, summary=n.summary,
+        severity="noticing", columns=list(n.subject),
+        question=n.question if n.question in QUESTIONS and not n.answered else None,
+        recommended=disposition, label=label, reason=reason, blocker=False,
+        recorded=held[n.thread].value if stands else None, family=n.family,
+        band=n.predicted.band, measure=n.predicted.label, calibrated=n.predicted.calibrated,
+        limitation=owed, done=n.done)
+
+
+def triage(state: Any, log: QuestLog, findings: Any, records: Sequence[Any] = (),
+           noticed: Sequence[Noticing] = ()) -> Triage:
     """Every noticing that feeds the plan (each finding still open where it is decided, and each
     the last confirmation disposed of) with the engine's recommended disposition and the one
-    recorded, while it stands. ``findings``: the findings artifact as served."""
+    recorded, while it stands. ``findings``: the findings artifact as served. ``noticed``: the
+    noticings measured on this table (``materiality.noticings_for``), each recommended from the
+    band of its predicted movement; one to act on whose decision is answered has dropped out."""
     stage = gate_stage(state)
     by_id = {str(f.get("id")): f for f in _get(findings, "findings") or []}
     lines = {l.key: (s.key, l) for s in log.stages for l in s.lines if l.source == "finding"}
@@ -484,20 +571,28 @@ def triage(state: Any, log: QuestLog, findings: Any, records: Sequence[Any] = ()
         label = DISPOSITION_WORDS[disposition]
         if disposition == "could_bias" and _get(state, "purpose") == "prediction":
             label = "Could bias the score"
+        done = finding_done(state, finding.get("affected_columns") or []) \
+            if disposition == "could_bias" else None
         items.append(TriageItem(
             id=fid, line=line.id if line.id.startswith("finding:") else f"finding:{fid}",
             stage=where, summary=line.name, severity=str(finding.get("severity") or "info"),
             columns=[str(c) for c in finding.get("affected_columns") or []],
             question=finding.get("routes_to") if finding.get("routes_to") in QUESTIONS else None,
             recommended=disposition, label=label, reason=reason, blocker=blocker,
-            recorded=held[fid].value if stands else None))
-    items.sort(key=lambda i: not i.blocker)
+            recorded=held[fid].value if stands else None,
+            # Nolan's rule (2026-10-09): a limitation sentence only when it could bias and nothing
+            # was done; a declared sensitivity analysis on its columns counts as done.
+            limitation=disposition == "could_bias" and limitation_owed(1, done), done=done))
+    items += [_noticing_item(n, state, held, changed) for n in noticed if in_triage(n)]
+    # Blockers first, then by band (a finding, unmeasured, sits with "could bias").
+    items.sort(key=lambda i: (not i.blocker, -(1 if i.band is None else i.band)))
     blockers = sum(i.blocker for i in items)
     passed = gate_passed(state)
     return Triage(stage=stage, gate=GATES[stage], items=items, blockers=blockers,
                   confirmable=bool(items) and not blockers and not passed,
                   answered=not blockers and all(i.recorded is not None for i in items),
-                  confirmed_by=writer, changed=changed, passed=passed)
+                  confirmed_by=writer, changed=changed, passed=passed,
+                  rows=triage_rows([(i.id, i.family) for i in items]))
 
 
 def cover_noticings(placed: Sequence[tuple[str, QuestLine]], state: Any, log: _Log,

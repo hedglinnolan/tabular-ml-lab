@@ -664,16 +664,16 @@ def propose_roles(
             head = "A nutrient that carries energy" if carries else "A nutrient intake"
             if unit is not None:
                 put("exposure", "medium",
-                    f"A nutrient intake {unit}: an exposure, not a day's amount.")
+                    f"A nutrient intake {unit}: what you study, not a day's amount.")
             elif check is not None and check.by_values and "add up to" in check.why:
-                put("exposure", "high", f"{head}: an exposure; {check.why}.")
+                put("exposure", "high", f"{head}: what you study; {check.why}.")
             elif check is not None and check.by_values:
                 put("exposure", "high",
-                    f"{head}: an exposure; it rises with total energy (r = {check.r:.2f}).")
+                    f"{head}: what you study; it rises with total energy (r = {check.r:.2f}).")
             else:
                 put("exposure", "medium", f"Named as {head[0].lower()}{head[1:]}; {_doubt(check)}.")
         elif numeric and dietary and _intake_by_unit(name, summary.get("median")):
-            put("exposure", "medium", "An intake by its unit, not a nutrient: an exposure under the "
+            put("exposure", "medium", "An intake by its unit, not a nutrient: what you study under the "
                                       "dietary lens.")
         elif study_group(name) and has_id_tail(name) and n_unique > CATEGORY_LEVELS:
             # ``group_id`` with dozens of groups numbers clusters (therapy groups, litters), not
@@ -681,9 +681,9 @@ def propose_roles(
             put("cluster", "medium", f"`{n_unique:,}` groups, too many to be a study's arms: groups "
                                      f"rows, such as therapy groups or litters; not a trait.")
         elif study_group(name):
-            put("exposure", "medium", "A study arm or group: what the study compares, an exposure.")
+            put("exposure", "medium", "A study arm or group: what the study compares.")
         elif tokens & _FASTING_TOKENS:
-            put("covariate", "medium", "Fasting status: a known confounder, adjusted for rather than studied.")
+            put("covariate", "medium", "Fasting status: a known influence on other measures, adjusted for rather than studied.")
         elif reads_as_time(name) and timed and time_share is not None and time_share >= TIME_VARIES:
             # BLUEPRINT §14.3 (the gate: a sleep diary's ``hours``, an activity log's ``days``):
             # any measurement changes within units, so varying is no evidence of time. The best
@@ -737,16 +737,16 @@ def propose_roles(
                     f"A category with `{n_unique:,}` labels (the most common on `{top:.0%}` of "
                     f"rows): many levels for a model; say whether to keep it or leave it out.")
         elif is_rate(name) and not (dietary or omics):
-            put("exposure", "low", "An amount per day or week: a rate, read as an exposure for now.")
+            put("exposure", "low", "An amount per day or week: a rate, read as what you study for now.")
         elif omics and numeric:
             put("exposure", "medium" if n_unique > 2 else "low",
-                "A measured feature: an exposure under the omics lens.")
+                "A measured feature: what you study under the omics lens.")
         elif dietary or omics:
             put("covariate", "low", "Not a nutrient or feature: read as a covariate until you say otherwise.")
         elif dtype == "boolean" or (not numeric):
             put("covariate", "low", "A category that describes the row: read as a covariate for now.")
         else:
-            put("exposure", "low", "A measured column: read as an exposure until you say otherwise.")
+            put("exposure", "low", "A measured column: read as what you study until you say otherwise.")
     for p in out:
         p["attention"] = p["confidence"] != "high"
     return out

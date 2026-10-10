@@ -611,7 +611,7 @@ def fit_gformula(d: pd.DataFrame, spec: GFormulaSpec) -> GFormulaModels:
             ranges[c.name] = (float(d[c.name].min()), float(d[c.name].max()))
     rows = d.loc[later & ((d[LAG + spec.exposure] == 0) if spec.absorbing else True)]
     X, names = design(rows, spec.exposure_terms)
-    with _naming("the exposure model", "no exposed, or no unexposed, rows in some stratum: a "
+    with _naming("the model of what you study", "no exposed, or no unexposed, rows in some stratum: a "
                                        "positivity violation"):
         exposure = fit_glm(X, rows[spec.exposure].to_numpy(float), names)
     X, names = design(d, spec.outcome_terms)

@@ -63,10 +63,11 @@ Rules:
   adjustment set; ``not_applicable`` when the ``time_varying`` stage reads the exposure as fixed
   within every unit. It is answered by the lane for the current exposure, and the weights' lane
   only once its truncation is declared after the diagnostics.
-* ``open_seal`` is the last step (M2_CONTRACT §12.1): asked once the fit is fresh (it waits on the
-  fit while the fit is computing; a fit that failed or was stopped holds it no longer, and opening
-  is refused with the failure), ``not_applicable`` when nothing is held out, and answered once
-  opened. Its slot is ``seal_opened``.
+* ``open_seal`` is the last step (M2_CONTRACT §12.1): asked once Fit opened Results (``pressed``
+  under Predict, the plan locked under Estimate and Describe; it waits on ``fit`` until then) and
+  the fit is fresh (it waits on the fit while the fit is computing; a fit that failed or was
+  stopped holds it no longer, and opening is refused with the failure), ``not_applicable`` when
+  nothing is held out, and answered once opened. Its slot is ``seal_opened``.
 * A skip's ``reason`` is the clause after the client's own "Not asked:" label, so it never begins
   with those words itself.
 * ``task`` (audit WP18, RO-10) stays open while its answer is incomplete (``followup``): a positive,
@@ -163,6 +164,12 @@ NEEDS: dict[str, tuple[str, ...]] = {
     "open_seal": ("fit",),
 }
 MUST_BE_FRESH = {"substitution": "fit", "open_seal": "fit"}
+# The questions that wait for Fit itself, not only for the fit stage to be fresh: they sit in
+# Results, which Fit opens (``fit_press.results_open``). Under Predict a fit expected to take under
+# about 2 minutes computes before the press, so the fit's freshness says nothing about it (the path
+# fuzzer, I1). The substitution is a Models question, part of the plan the lock fixes, so it waits
+# for the fit's options alone.
+AFTER_FIT = frozenset({"open_seal"})
 NOT_ASKED = "Not asked:"  # the client's label before a skip's reason
 
 
@@ -284,7 +291,7 @@ def _energy_applicability(state: Any, bearing: Callable[[str], bool]) -> str | N
     if not any(r == "energy" for r in roles.values()):
         return "No column has the energy role, so there is no total energy to adjust against."
     if not any(r == "exposure" for r in roles.values()):
-        return "No column is an exposure, so there is nothing to adjust."
+        return "No column is marked as what you study, so there is nothing to adjust."
     # BLUEPRINT §14.1 (the readings ledger): "carries no energy" is a reading of the name, never
     # settled by it; an exposure no name reads as a nutrient (``Energykcal``'s NDNS ``Protein``,
     # a food group) may still carry energy, so the estimand question is asked rather than
@@ -303,8 +310,8 @@ def _substitution_applicability(state: Any, bearing: Callable[[str], bool]) -> s
     n = sum(1 for c, r in state.roles.items()
             if r == "exposure" and (bearing(c) or is_percent_of_energy(c)))
     if n < 2:
-        return (f"Only {n} exposure carries energy; a substitution swaps kcal between two."
-                if n == 1 else "No exposure carries energy; a substitution swaps kcal between two.")
+        return (f"Only {n} study factor carries energy; a substitution swaps kcal between two."
+                if n == 1 else "No study factor carries energy; a substitution swaps kcal between two.")
     return None
 
 
@@ -472,6 +479,7 @@ def route(
     deps: Mapping[str, Sequence[str]] | None = None,
     energy_bearing: Callable[[str], bool] | None = None,
     ask: AskContext | None = None,
+    pressed: bool | None = None,
 ) -> list[InterviewStep]:
     """The interview, in asking order.
 
@@ -481,60 +489,20 @@ def route(
     ``records``: the decision log, for each answered step's ``decision_id``. WP17: ``roles`` (the
     roles stage's proposals) tells the cluster question which columns read as groups. ``ask``:
     what the open question's ask card may read (the table's summaries and store); without it the
-    card reads the state and the artifacts alone.
+    card reads the state and the artifacts alone. ``pressed``: Fit was pressed for the outcome
+    (``fit_press.pressed_for``); the seal question waits for it under Predict (None reads as not
+    pressed), and for the plan's lock under Estimate and Describe (:data:`AFTER_FIT`).
     """
     from turbotab.core import causal, estimand, time_varying
     from turbotab.core.methods import exposure_form, interaction
 
-    if energy_bearing is None:
-        from turbotab.core.stages.rows import energy_bearing as bearing
-    else:
-        bearing = energy_bearing
     artifacts = artifacts or {}
     pending = pending_stages(stages, deps)
     writers = _live_writer(records, state)
     target_info = artifacts.get("target_info")
-    oriented = artifacts.get("oriented")
     structure = artifacts.get("structure")
-    # FORM (the repair of the Router race): the form question reads only the card computed for the
-    # present answers. The card last computed answered for other answers (a confirmed reading that
-    # makes `bmi` a continuous confounder, a changed row set that re-derives k), so while the
-    # fresh one computes the question waits on it and no later question is answered meanwhile.
-    # Only when the card's stage failed or was cancelled does the card last computed stand in.
-    forms_status = _get(stages.get("forms"), "status")
-    forms_card = artifacts.get("forms")
-    if forms_card is None and (forms_status == "error"
-                               or _get(stages.get("forms"), "cancelled", False)):
-        forms_card = artifacts.get("forms_shown")
-    gates: dict[str, Callable[[], Gate]] = {
-        "orientation": lambda: _orientation_gate(state, oriented),
-        "event": lambda: _event_gate(state, target_info),
-        "grain": lambda: _grain_gate(state, structure),
-        "repeat_kind": lambda: _repeat_kind_gate(state, structure),
-        "unit": lambda: _unit_gate(state, structure),
-        "aggregation": lambda: _aggregation_gate(state, structure),
-        "temporal": lambda: _temporal_gate(state, structure),
-        "design": lambda: _design_gate(state),
-        "survey": lambda: _survey_gate(state),
-        "open_seal": lambda: _open_seal_gate(state),
-        # WP17 (turbotab/core/estimand.py)
-        "follow_up": lambda: estimand.follow_up_gate(state, target_info),
-        "clusters": lambda: estimand.clusters_gate(state, artifacts.get("roles")),
-        "estimand": lambda: estimand.estimand_gate(state),
-        "adjustment": lambda: estimand.adjustment_gate(state),
-        # The causal lane (turbotab/core/causal.py): never under prediction; else stated, its
-        # top-ranked estimator one step away (rung (d) ranks high when candidates are many).
-        "causal": lambda: causal.causal_gate(state, artifacts.get("causal_design"),
-                                             artifacts.get("time_varying")),
-        # V2 causal row (turbotab/core/time_varying.py)
-        "time_varying": lambda: time_varying.lane_gate(state, structure,
-                                                       artifacts.get("time_varying")),
-        # FORM (turbotab/core/methods/exposure_form.py, interaction.py): the form is asked after
-        # the domain transforms, on the exposure's final scale; the modifiers are stated until
-        # one is declared.
-        "form": lambda: exposure_form.form_gate(state, forms_card),
-        "modification": lambda: interaction.modification_gate(state),
-    }
+    forms_card = _forms_card(stages, artifacts)
+    gates = _gates(state, stages, artifacts)
     # A question whose answer is not simply its slot's value (WP17): the follow-up is answered by a
     # time to event's follow-up or a yes/no outcome's "same for everyone"; the estimand while its
     # exposure is in the model; the adjustment once every covariate has answers for that exposure.
@@ -562,14 +530,8 @@ def route(
         if key == "orientation" and value is not None:  # its slot turns the table whatever the lens
             steps.append(InterviewStep(key=key, status="answered", decision_id=decision_id))
             continue
-        not_applicable = None
         gate = gates[key]() if key in gates else None
-        if key == "energy_adjustment":
-            not_applicable = _energy_applicability(state, bearing)
-        elif key == "substitution":
-            not_applicable = _substitution_applicability(state, bearing)
-        elif gate is not None and gate[0] == "not_applicable":
-            not_applicable = gate[1] or ""
+        not_applicable = _not_applicable(key, state, gate, energy_bearing)
         if not_applicable is not None:
             steps.append(InterviewStep(key=key, status="not_applicable", reason=not_applicable,
                                        decision_id=decision_id if value is not None else None))
@@ -625,6 +587,13 @@ def route(
             # like any other stage: the step opens and says why it cannot be taken (the zero-row
             # crash's seal step waited on a failed fit for good).
             own.append(fresh_stage)
+        if key in AFTER_FIT and "fit" not in own:
+            from turbotab.core.fit_press import results_open
+
+            if not results_open(state, pressed):
+                # The seal sits in Results, which Fit opens: a fit that computed on its own (under
+                # the hold, or done before the press) does not open it, nor does one that failed.
+                own.append("fit")
         if first_unanswered is None:
             first_unanswered = key
             status = "waiting" if own else "open"
@@ -641,6 +610,104 @@ def route(
     return with_deferred(steps, state)
 
 
+def _forms_card(stages: Mapping[str, Any], artifacts: Mapping[str, Any]) -> Any:
+    """The form question's card. FORM (the repair of the Router race): the form question reads only
+    the card computed for the present answers. The card last computed answered for other answers
+    (a confirmed reading that makes `bmi` a continuous confounder, a changed row set that
+    re-derives k), so while the fresh one computes the question waits on it and no later question
+    is answered meanwhile. Only when the card's stage failed or was cancelled does the card last
+    computed stand in."""
+    forms_status = _get(stages.get("forms"), "status")
+    forms_card = artifacts.get("forms")
+    if forms_card is None and (forms_status == "error"
+                               or _get(stages.get("forms"), "cancelled", False)):
+        forms_card = artifacts.get("forms_shown")
+    return forms_card
+
+
+def _not_applicable(key: str, state: Any, gate: Gate,
+                    energy_bearing: Callable[[str], bool] | None) -> str | None:
+    """The reason a question does not apply, from its gate (or, for the energy model and the
+    substitution, from the columns that bear energy); None when it applies."""
+    if key in ("energy_adjustment", "substitution"):
+        if energy_bearing is None:
+            from turbotab.core.stages.rows import energy_bearing as bearing
+        else:
+            bearing = energy_bearing
+        if key == "energy_adjustment":
+            return _energy_applicability(state, bearing)
+        return _substitution_applicability(state, bearing)
+    if gate is not None and gate[0] == "not_applicable":
+        return gate[1] or ""
+    return None
+
+
+def applicability(key: str, state: Any, artifacts: Mapping[str, Any] | None = None,
+                  stages: Mapping[str, Any] | None = None, *,
+                  energy_bearing: Callable[[str], bool] | None = None) -> str | None:
+    """Why the Router finds question ``key`` not applicable here, as :func:`route` reads it (the
+    same gates); None when it applies (the question fires: asked, stated or answered). The
+    surfacing registry's ``fires`` for a Router question (``turbotab/core/surfacing.py``)."""
+    artifacts = artifacts or {}
+    stages = stages or {}
+    gates = _gates(state, stages, artifacts)
+    gate = gates[key]() if key in gates else None
+    return _not_applicable(key, state, gate, energy_bearing)
+
+
+def stated(key: str, state: Any, artifacts: Mapping[str, Any] | None = None,
+           stages: Mapping[str, Any] | None = None) -> str | None:
+    """The reason the Router states question ``key``'s answer instead of asking it, from its gate
+    (``skipped``: the design read as observational, a grain read from a unique identifier, the
+    form under prediction); None when its gate states nothing. The task's skip on a settled
+    reading of the outcome is :func:`route`'s, not a gate's."""
+    artifacts = artifacts or {}
+    gates = _gates(state, stages or {}, artifacts)
+    gate = gates[key]() if key in gates else None
+    return (gate[1] or "") if gate is not None and gate[0] == "skipped" else None
+
+
+def _gates(state: Any, stages: Mapping[str, Any],
+           artifacts: Mapping[str, Any]) -> dict[str, Callable[[], Gate]]:
+    """Each gated question's gate on this state, lazily (a gate reads only what it needs)."""
+    from turbotab.core import causal, estimand, time_varying
+    from turbotab.core.methods import exposure_form, interaction
+
+    target_info = artifacts.get("target_info")
+    oriented = artifacts.get("oriented")
+    structure = artifacts.get("structure")
+    forms_card = _forms_card(stages, artifacts)
+    return {
+        "orientation": lambda: _orientation_gate(state, oriented),
+        "event": lambda: _event_gate(state, target_info),
+        "grain": lambda: _grain_gate(state, structure),
+        "repeat_kind": lambda: _repeat_kind_gate(state, structure),
+        "unit": lambda: _unit_gate(state, structure),
+        "aggregation": lambda: _aggregation_gate(state, structure),
+        "temporal": lambda: _temporal_gate(state, structure),
+        "design": lambda: _design_gate(state),
+        "survey": lambda: _survey_gate(state),
+        "open_seal": lambda: _open_seal_gate(state),
+        # WP17 (turbotab/core/estimand.py)
+        "follow_up": lambda: estimand.follow_up_gate(state, target_info),
+        "clusters": lambda: estimand.clusters_gate(state, artifacts.get("roles")),
+        "estimand": lambda: estimand.estimand_gate(state),
+        "adjustment": lambda: estimand.adjustment_gate(state),
+        # The causal lane (turbotab/core/causal.py): never under prediction; else stated, its
+        # top-ranked estimator one step away (rung (d) ranks high when candidates are many).
+        "causal": lambda: causal.causal_gate(state, artifacts.get("causal_design"),
+                                             artifacts.get("time_varying")),
+        # V2 causal row (turbotab/core/time_varying.py)
+        "time_varying": lambda: time_varying.lane_gate(state, structure,
+                                                       artifacts.get("time_varying")),
+        # FORM (turbotab/core/methods/exposure_form.py, interaction.py): the form is asked after
+        # the domain transforms, on the exposure's final scale; the modifiers are stated until
+        # one is declared.
+        "form": lambda: exposure_form.form_gate(state, forms_card),
+        "modification": lambda: interaction.modification_gate(state),
+    }
+
+
 def with_deferred(steps: list[InterviewStep], state: Any) -> list[InterviewStep]:
     """Each step with the findings deferred to it (``turbotab.core.repairs.deferred_to``)."""
     from turbotab.core.repairs import deferred_to
@@ -655,5 +722,6 @@ def first_unanswered(steps: Sequence[InterviewStep]) -> InterviewStep | None:
     return next((s for s in steps if s.status in ("open", "waiting")), None)
 
 
-__all__ = ["InterviewStep", "NEEDS", "QUESTION_KEYS", "QuestionKey", "SLOT_OF", "first_unanswered",
-           "pending_stages", "route", "with_deferred"]
+__all__ = ["AFTER_FIT", "InterviewStep", "NEEDS", "QUESTION_KEYS", "QuestionKey", "SLOT_OF",
+           "applicability", "first_unanswered",
+           "pending_stages", "route", "stated", "with_deferred"]

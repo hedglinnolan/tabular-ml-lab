@@ -133,6 +133,14 @@ def relationships_served(artifact: Any, state: Any, pressed: bool) -> Any:
     if gate is None:
         return artifact
     reason = RELATIONSHIPS_AFTER_LOCK if _get(state, "purpose") is not None else PURPOSE_FIRST
+    return withhold_relationships(artifact, reason)
+
+
+def withhold_relationships(artifact: Any, reason: str) -> Any:
+    """The explore artifact with each outcome relationship's points withheld, ``reason`` in their
+    place, and nothing offered to record as viewed. ``artifact`` is never changed in place."""
+    if not isinstance(artifact, Mapping):
+        return artifact
     findings = []
     for f in artifact.get("findings") or []:
         if isinstance(f, Mapping) and f.get("kind") == "outcome_relationship":
@@ -281,6 +289,19 @@ def fit_lock(state: Any, records: Sequence[Any], *, pressed: bool, held: bool,
         reason=reason)
 
 
+def results_open(state: Any, pressed: bool | None) -> bool:
+    """Whether Fit has opened Results now: under Estimate and Describe the plan locked (pressing
+    Fit records the lock), under Predict Fit pressed for the outcome (``pressed``: None, not
+    known, reads as not pressed, the strictest case); never with no goal. The quest log's
+    frontier (:class:`FitLock`) and the Router's seal question read the same rule."""
+    purpose = _get(state, "purpose")
+    if purpose is None:
+        return False
+    if purpose == "prediction":
+        return bool(pressed)
+    return bool(_get(state, "plan_locked"))
+
+
 def opened_by(press: Mapping[str, Any] | None) -> bool:
     """Whether a press of Fit is kept and not withdrawn, whatever outcome it was pressed for."""
     return press is not None and not press.get("withdrawn")
@@ -289,4 +310,6 @@ def opened_by(press: Mapping[str, Any] | None) -> bool:
 __all__ = ["FIT_FIRST", "FitLock", "HOLD_SECONDS", "LOCK_FIRST", "PRESS_FILE", "PRESS_FIT",
            "PURPOSE_FIRST", "RELATIONSHIPS_AFTER_LOCK", "REARM", "fit_estimate", "fit_lock", "gate",
            "holds", "opened_by", "pressed_for", "read_press", "record_press", "relationships_served",
+           "withhold_relationships",
+           "results_open",
            "served", "serving_gate", "withdraw_press"]

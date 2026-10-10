@@ -1103,7 +1103,7 @@ def test_4_the_question_is_asked_only_of_an_exposure_followed_through_time():
         "repeats of one measurement": feedback_state(
             repeat_kind=d.RepeatSpec(repeat_kind="repeats")),
         "Each unit's rows are combined": feedback_state(unit="unit"),
-        "An exposure family": feedback_state(
+        "A family of study factors": feedback_state(
             roles={"pid": "identifier", "visit": "time", "dash": "exposure", "sbp": "exposure",
                    "female": "covariate", "age": "covariate", "lost": "excluded"},
             estimand=d.EstimandSpec(family=True, measure="exposure_mean_difference"),
@@ -1158,7 +1158,7 @@ def test_4_the_lane_needs_repeated_measures_a_settled_time_column_and_a_declared
     for ordering in ("same_time", "unknown"):
         refused = _refused(lane.model_copy(update={"ordering": ordering}), _ctx(feedback_state()))
         assert refused.code == "time_ordering"
-        assert "g-methods need each time point's exposure to precede" in refused.message
+        assert "g-methods need each time point's value of what you study to precede" in refused.message
         assert refused.exits[0]["decision"]["ordering"] == "exposure_precedes_outcome"
         standard = refused.exits[1]["decision"]
         assert standard["method"] == "standard" and standard["ordering_acknowledged"]
@@ -1185,8 +1185,8 @@ def test_4_standard_regression_of_a_concurrent_exposure_is_block_and_record(tmp_
     assert refused.code == "time_ordering"
     assert "reverse causation" in refused.message
     assert [e["label"] for e in refused.exits] == [
-        "The exposure precedes the outcome it is paired with",
-        "Keep standard regression; record that the exposure is measured with its outcome"]
+        "What you study precedes the outcome it is paired with",
+        "Keep standard regression; record that what you study is measured with its outcome"]
     recorded = d.validate(refused.exits[1]["decision"], _ctx(unaffected))
     assert recorded.ordering == "same_time" and recorded.ordering_acknowledged
     assert voice.sentence_for(recorded, unaffected) == (
@@ -1208,7 +1208,7 @@ def test_4_standard_regression_of_a_concurrent_exposure_is_block_and_record(tmp_
     both = _refused(recorded, _ctx(feedback_state()))
     assert both.code == "affected_confounder"
     labels = [e["label"] for e in both.exits]
-    assert labels[0] == ("Declare that the exposure precedes its outcome; estimate by a marginal "
+    assert labels[0] == ("Declare that what you study precedes its outcome; estimate by a marginal "
                          "structural model (weights)")
     assert both.exits[0]["decision"]["ordering"] == "exposure_precedes_outcome"
     assert both.exits[2]["decision"]["ordering"] == "same_time"
@@ -1355,11 +1355,11 @@ def test_4_an_exposure_that_is_not_0_or_1_is_offered_no_g_method_it_cannot_run()
                                 ordering="exposure_precedes_outcome")
     refused = _refused(standard, ctx)
     assert refused.code == "affected_confounder"
-    assert refused.message.endswith("The g-methods here need an exposure of 0 or 1 at each time "
+    assert refused.message.endswith("The g-methods here need a study factor of 0 or 1 at each time "
                                     "point, and `dash` takes 409 values.")
     assert [e["label"] for e in refused.exits] == [
         "Keep standard regression; record that the estimate is biased by it",
-        "Declare a yes/no exposure (the exposure question)"]
+        "Declare a yes/no study factor (the question on what you study)"]
     assert d.validate(refused.exits[0]["decision"], ctx) is not None
     ranked = lane_options(["sbp"], binary=False)
     assert [(o["key"], o["rung"]) for o in ranked] == [

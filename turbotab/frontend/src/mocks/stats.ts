@@ -61,6 +61,10 @@ export function columnSummary(col: MockColumn): ColumnSummary {
     n_missing: missing,
     n_unique: nUnique(col),
     n_infinite: 0,
+    // the mock serves every column as the server does once its views are open
+    withheld: null,
+    rows: null,
+    record: null,
   };
   if (isNumericDtype(col.dtype)) {
     const xs = numbers(col).sort((a, b) => a - b);
@@ -100,7 +104,7 @@ export function histogram(col: MockColumn, bins = 20): Histogram {
     edges.push(b.x1 ?? 0);
     cts.push(b.length);
   });
-  return { column: col.name, edges, counts: cts, n_missing: nMissing(col) };
+  return { column: col.name, edges, counts: cts, n_missing: nMissing(col), rows: null };
 }
 
 export function findColumn(ds: MockDataset, name: string): MockColumn | undefined {

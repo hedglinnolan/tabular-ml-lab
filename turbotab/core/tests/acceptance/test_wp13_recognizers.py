@@ -178,7 +178,7 @@ def test_1c_on_a_diet_and_body_composition_table_only_intakes_are_adjusted(tmp_p
     assert roles["fatty_fish_g"]["proposed"] == "exposure"
     assert roles["fatty_fish_g"]["reason"].startswith("An intake by its unit, not a nutrient")
     # Gate repair: the reason says what corroborated it (here, rising with the energy it builds).
-    assert roles["protein_g"]["reason"].startswith("A nutrient that carries energy: an exposure")
+    assert roles["protein_g"]["reason"].startswith("A nutrient that carries energy: what you study")
     # Recognition's leash (BLUEPRINT §14): "high" says which values corroborated it: rising with
     # total energy at r >= 0.3, or adding up with the other macronutrients to the energy column.
     assert ("rises with total energy" in roles["protein_g"]["reason"]
@@ -931,7 +931,7 @@ def test_1f_the_values_corroborate_a_name_or_withdraw_it(tmp_path):
         for name in CORROBORATION_ONLY:
             assert roles[name]["reason"].startswith("Named like"), (name, roles[name])
         for name in ("protein_g", "carb_g", "fat_g"):
-            assert roles[name]["reason"].startswith("A nutrient that carries energy: an exposure"), (name, roles[name])
+            assert roles[name]["reason"].startswith("A nutrient that carries energy: what you study"), (name, roles[name])
             assert roles[name]["confidence"] == "high", (name, roles[name])
     roles = _roles(path, lens=["dietary"], target="hba1c", purpose="inference")
     columns = [{"name": c, "dtype": "numeric" if frame[c].dtype.kind in "if" else "categorical",

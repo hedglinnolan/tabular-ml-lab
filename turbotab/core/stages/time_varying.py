@@ -287,14 +287,14 @@ def lane_options(affected: Sequence[str], binary: bool = True) -> list[dict[str,
             if o["key"] != "standard":
                 o.update(rung="refused", order=o["order"] + 10,
                          sound="not available here: the weights and the always-or-never "
-                               "strategies need an exposure of 0 or 1 at each time point")
+                               "strategies need a study factor of 0 or 1 at each time point")
     if not affected:
         for o in out:
             if o["key"] == "standard":
                 o.update(rung="recommended", order=-1,
-                         sound="sound here: no time-varying confounder is affected by prior "
-                               "exposure, so adjusting for each at each time point blocks no part "
-                               "of the effect")
+                         sound="sound here: earlier values of what you study changed nothing that "
+                               "could explain the link, so adjusting for each at each time point "
+                               "blocks no part of the effect")
             elif o["rung"] == "recommended":
                 o["rung"] = "available"
     out.sort(key=lambda o: o["order"])
@@ -314,7 +314,7 @@ def time_varying_stage(ctx: StageContext) -> Bundle:
                                          exposure=exposure))
     if exposure is None:
         return _dump(TimeVaryingArtifact(purpose="inference", applies=False,
-                                         reason="No single exposure is declared yet."))
+                                         reason="No single study factor is declared yet."))
     affected = affected_confounders(state)
     options = [LaneOption(**o) for o in lane_options(affected)]
     base = dict(purpose="inference", applies=True, exposure=exposure, options=options,
@@ -611,7 +611,7 @@ def _complete(frame: pd.DataFrame, setting: Setting, lane: Any) -> None:
         raise NotReady(f"`{setting.exposure}` is not 0 or 1 at every time point.")
     if lane.pattern == "initiation" and setting.exposure_stops:
         raise NotReady(f"`{setting.exposure}` stops after starting in {setting.exposure_stops:,} "
-                       f"units, so it is not an exposure that, once started, stays.")
+                       f"units, so it is not a study factor that, once started, stays.")
 
 
 def _fired(lane: Any, present: set[str]) -> list[str]:
@@ -696,7 +696,7 @@ def _msm(ctx: StageContext, frame: pd.DataFrame, setting: Setting, lane: Any,
     if setting.outcome_kind not in ("event", "repeated_binary", "measure"):
         raise NotReady("The marginal structural model here needs a yes/no outcome at each time "
                        "point or a repeated measure.")
-    ctx.progress(0.1, "Modeling the exposure at each time point")
+    ctx.progress(0.1, "Modeling what you study at each time point")
     design, names = _design_columns(frame, [*lane.confounders, *lane.baseline], _codes(ctx.state))
     d = pd.concat([frame[["__unit", "__time", "__y"]], design], axis=1)
     d["__a"] = pd.to_numeric(frame[setting.exposure]).to_numpy(float)
@@ -738,7 +738,7 @@ def _msm(ctx: StageContext, frame: pd.DataFrame, setting: Setting, lane: Any,
                         f"model alone.")
     near = sum(p["near_zero"] + p["near_one"] for p in positivity)
     if near:
-        concerns.append(f"{near:,} rows have a fitted probability of exposure within {tv.NEAR} of "
+        concerns.append(f"{near:,} rows have a fitted probability of being exposed within {tv.NEAR} of "
                         f"0 or 1 (near-violations of positivity).")
     lost = _loss_concern(setting, lane)
     if lost:
@@ -901,7 +901,7 @@ def _gformula(ctx: StageContext, frame: pd.DataFrame, setting: Setting, lane: An
     several = [c for c in several if frame[c].nunique(dropna=True) > 2]
     if several:
         raise NotReady(f"{', '.join(f'`{c}`' for c in several)} {'has' if len(several) == 1 else 'have'} "
-                       f"several categories; the g-formula here simulates a time-varying confounder "
+                       f"several categories; the g-formula here simulates a covariate over time "
                        f"that is 0 or 1, or a number. The marginal structural model reads it.")
     design, names = _design_columns(frame, [*lane.confounders, *lane.baseline], codes)
     for c in lane.confounders:  # a two-level code's one indicator stands for the confounder
@@ -922,7 +922,7 @@ def _gformula(ctx: StageContext, frame: pd.DataFrame, setting: Setting, lane: An
                                     kind="first" if lane.pattern == "initiation" else "all",
                                     label=f"`{setting.exposure}`")
     except tv.NotEstimable as exc:
-        raise NotReady(f"The exposure model cannot be estimated: {exc}.") from None
+        raise NotReady(f"The model of what you study cannot be estimated: {exc}.") from None
     positivity = tv.positivity(h["__time"].to_numpy(), h["__a"], exposure_w.p_event,
                                exposure_w.modeled)
     concerns = []

@@ -1113,7 +1113,7 @@ def test_5b_under_inference_they_are_never_offered_as_effect_estimates(inference
 def test_5c_reporting_an_explanation_as_an_effect_is_refused_under_both_purposes():
     for purpose, code_exit in (("inference", "Report the declared estimate from the coefficient "
                                              "table"),
-                               ("prediction", "Declare an inference analysis with an exposure and "
+                               ("prediction", "Declare an inference analysis with a study factor and "
                                               "its effect")):
         state = mf.state(purpose=purpose)
         with pytest.raises(d.Refusal) as refused:

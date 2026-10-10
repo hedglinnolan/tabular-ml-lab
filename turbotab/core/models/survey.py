@@ -1106,7 +1106,7 @@ def _register_contracts() -> None:
                 Option("population", "The surveyed population (weights, strata and PSUs)",
                        "NCHS's analytic guidelines for NHANES: the sample weights with the "
                        "design's strata and PSUs (NHANES Analytic Guidelines 2011–2016)",
-                       {"inference": "Sound for a population estimand: every family and display "
+                       {"inference": "Sound for a whole-population comparison: every family and display "
                                      "is design-based, or blocked and recorded where none exists "
                                      "(MODELING_SEQUENCE §0 ruling 6).",
                         "prediction": not_asked},

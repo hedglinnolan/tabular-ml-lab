@@ -497,7 +497,7 @@ def test_5_a_curve_is_bounded_through_its_straight_line_estimate(tmp_path):
         (r["point"], r["limit"]), rel=1e-8)
     low, high = line.conf_int().loc["fiber"]
     assert sens["reading"].startswith(
-        f"The exposure enters as a curve (a restricted cubic spline), which no single coefficient "
+        f"What you study enters as a curve (a restricted cubic spline), which no single coefficient "
         f"carries; this analysis bounds the straight-line estimate beside it, the same model with "
         f"the spline's nonlinear terms left out ({line.params['fiber']:.4g} per unit, 95% CI "
         f"{low:.4g} to {high:.4g}).")

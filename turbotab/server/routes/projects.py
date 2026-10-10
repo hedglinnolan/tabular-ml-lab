@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request, Response
 from starlette.concurrency import run_in_threadpool
 
 from turbotab.core.fit_press import FitLock
+from turbotab.core.materiality import Ledger
 from turbotab.core.plan_lock import PlanExport
 from turbotab.core.provenance import MethodsText
 from turbotab.core.quest import QuestLog
@@ -169,6 +170,20 @@ def for_the_record(request: Request, pid: str) -> ForTheRecord:
     was not asked, the defaults no other choice changes a number on here (with why), and the
     answers TurboTab recorded itself. A stage not reached yet has none."""
     return get_service(request).record(pid)
+
+
+@router.get(
+    "/projects/{pid}/materiality",
+    response_model=Ledger,
+    responses={404: refusal("No such project")},
+)
+def materiality_ledger(request: Request, pid: str) -> Ledger:
+    """The materiality ledger (SURFACING_POLICY §2.2): for each noticing measured on the table,
+    how far its alternative is predicted to move the numbers before the plan is fixed (outcome-
+    blind), the triage's recommendation and the disposition recorded, what was done about it,
+    and once the plan is fixed its realized movement and whether it matched. Derived from the
+    record each time, so a replay gives the same rows."""
+    return get_service(request).materiality(pid)
 
 
 @router.get(

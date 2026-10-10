@@ -416,7 +416,7 @@ def effects_stage(ctx: StageContext) -> Bundle:
     if state.purpose != "inference" or spec_e is None:
         why = ("Under prediction no coefficient is read as an effect, so no effect is reported."
                if state.purpose != "inference" else
-               "No effect is reported until the exposure and its effect are declared.")
+               "No effect is reported until what you study and its effect are declared.")
         return _not_applicable(state, "", why)
     key = est.exposure_key(spec_e)
     copies = imputed_copies_column(state)
@@ -941,7 +941,7 @@ class _Run:
         if measure not in est.MARGINAL or family.key != "linear" or self.task != "binary":
             return None
         method = (f"Standardization over the analyzed rows (g-computation) from the logistic "
-                  f"model: each row's predicted risk with the exposure set each way, averaged; "
+                  f"model: each row's predicted risk with what you study set each way, averaged; "
                   f"95% percentile intervals from {effects.BOOT:,} bootstrap resamples that refit "
                   f"the whole chain")
         out = Marginal(declared=measure, method=method)  # type: ignore[arg-type]
@@ -1028,7 +1028,7 @@ class _Run:
             out.interval_refused = refusal[0]
             out.exits = [InferenceExit(**e) for e in refusal[1]]
             out.method = (f"Standardization over the analyzed rows (g-computation) from the "
-                          f"logistic model: each row's predicted risk with the exposure set each "
+                          f"logistic model: each row's predicted risk with what you study set each "
                           f"way, averaged; no interval is reported ({_first_sentence(refusal[0])})")
         out.concerns = self._marginal_concerns(out.contrasts)
         return out
@@ -1091,7 +1091,7 @@ class _Run:
 
         actions = [a for a in est.DIAGNOSTIC_ACTIONS[check]
                    if single or a == "keep_labeled"]
-        return [InferenceExit(label=est.ACTION_WORDS[a][0].upper() + est.ACTION_WORDS[a][1:],
+        return [InferenceExit(label=est.ACTION_LABELS[a][0].upper() + est.ACTION_LABELS[a][1:],
                               decision={"kind": "respond_diagnostic", "exposure": self.key,
                                         "check": check, "action": a}) for a in actions]
 
@@ -1121,7 +1121,7 @@ class _Run:
         failed = [r for r in mine if r["p"] < effects.PH_ALPHA]
         g = zph["global"]
         if not failed:
-            reading = (f"The exposure's hazard ratio shows no departure from proportional hazards "
+            reading = (f"The hazard ratio of what you study shows no departure from proportional hazards "
                        f"at the customary {effects.PH_ALPHA:g} level (p = "
                        f"{format_p(min(r['p'] for r in mine)) if mine else 'not tested'}; global "
                        f"χ²({g['df']}) = {g['chisq']:.2f}, p = {format_p(g['p'])}).")
@@ -1129,7 +1129,7 @@ class _Run:
                               reading=reading, tests=tests)
         worst = min(failed, key=lambda r: r["p"])
         single = len(features) == 1
-        reading = (f"The exposure's hazard ratio changes over follow-up (χ²({worst['df']}) = "
+        reading = (f"The hazard ratio of what you study changes over follow-up (χ²({worst['df']}) = "
                    f"{worst['chisq']:.2f}, p = {format_p(worst['p'])}, below the customary "
                    f"{effects.PH_ALPHA:g}): the reported ratio is an average over follow-up.")
         out = Diagnostic(check="proportional_hazards", status="failed", method=method,
@@ -1148,7 +1148,7 @@ class _Run:
                     ratio=p["ratio"], ratio_low=p["ratio_low"], ratio_high=p["ratio_high"])
                     for p in periods["periods"]]
                 out.change_label = (f"The hazard ratio before and after {cut:.4g}, the median "
-                                    f"event time: follow-up split there, the exposure's product "
+                                    f"event time: follow-up split there, the product of what you study "
                                     f"with the later period added.")
         return out
 
@@ -1264,7 +1264,7 @@ class _Run:
         row = next((r for r in (table.rows or []) if r["feature"] == straight), None) if table else None
         if row is None or row.get("estimate") is None:
             return Sensitivity(feature=whole, methods=[], reading="",
-                               not_computed="The exposure enters as a curve, and its straight-line "
+                               not_computed="What you study enters as a curve, and its straight-line "
                                             "estimate, which the sensitivity analysis would bound, "
                                             "could not be fit.")
         companion = Coefficient(**{k: v for k, v in row.items() if k in Coefficient.model_fields})
@@ -1280,7 +1280,7 @@ class _Run:
             low, high = companion.ci_low, companion.ci_high
         if low is not None and high is not None:
             said += f", 95% CI {low:.4g} to {high:.4g}"
-        lead = ("The exposure enters as a curve (a restricted cubic spline), which no single "
+        lead = ("What you study enters as a curve (a restricted cubic spline), which no single "
                 "coefficient carries; this analysis bounds the straight-line estimate beside it, "
                 f"the same model with the spline's nonlinear terms left out ({said}).")
         out.reading = f"{lead} {out.reading}".strip()
@@ -1385,8 +1385,8 @@ class _Run:
             return self._sensitivity(feature, found, imputed, reason, what=what)
         if family.key == "featurewise":
             return Sensitivity(feature=feature, methods=[], reading="",
-                               not_computed="The feature-wise design models each exposure on the "
-                                            "outcome, so the exposure is no regressor whose "
+                               not_computed="The feature-wise design models each study factor on the "
+                                            "outcome, so what you study is no regressor whose "
                                             "confounding these analyses bound.")
         contrast = self._contrast_for(marginal, feature, features)
         if contrast is not None and contrast.rr is not None:
@@ -1446,7 +1446,7 @@ def sensitivity_reading(found: Mapping[str, Any], feature: str, target: str,
     parts = []
     if r is not None:
         bench = r.get("benchmarks") or []
-        lead = (f"An unmeasured confounder would need a partial R² of {r['rv']:.1%} with both "
+        lead = (f"An unmeasured common cause would need a partial R² of {r['rv']:.1%} with both "
                 f"{tick(feature)} and {tick(target)}, beyond the measured covariates, to bring the "
                 f"estimate to zero")
         if r.get("rv_alpha") is not None:
@@ -1472,7 +1472,7 @@ def sensitivity_reading(found: Mapping[str, Any], feature: str, target: str,
             limit = "not computed"
         parts.append(f"E-value for {what}: {e['point']:.2f}, and for the confidence limit "
                      f"nearer the null {limit} ({effects.VANDERWEELE_DING}); an E-value is read "
-                     f"against the confounders one can name, never as a pass or a fail.")
+                     f"against the common causes one can name, never as a pass or a fail.")
     return " ".join(parts)
 
 
@@ -1764,7 +1764,7 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
         options=(
             _option("declared_sequence", "Unadjusted, Model 1, the primary and Model 3",
                     "customary: the nutrition-cohort Table 2 (Westreich & Greenland 2013)",
-                    "Sound when only the exposure's rows are read as effects", "recommended"),
+                    "Sound when only the rows of what you study are read as effects", "recommended"),
         ),
         relations=(
             _relation("exposure-enables-display", "enables", "the effect display",
@@ -1853,7 +1853,7 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
                     "Sound: bounded by named measured covariates; ranked first for a linear "
                     "outcome", "recommended"),
             _option("e_value", "E-value", "customary (growing), limited (Blum et al. 2020)",
-                    "Conditional: no threshold exists; read against named confounders",
+                    "Conditional: no threshold exists; read against named common causes",
                     "available"),
         ),
         relations=(
@@ -1884,7 +1884,7 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
         storyboard=("each exposure in turn", "the multiplicity method", "every member shown"),
         sentence="turbotab.core.voice:_set_estimand",
         options=(
-            _option("family", "Each exposure in turn, every member shown",
+            _option("family", "Each study factor in turn, every member shown",
                     "customary for metabolome-wide and nutrient-wide association studies",
                     "Sound with its multiplicity method stated; this is not selection",
                     "available"),

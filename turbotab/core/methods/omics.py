@@ -628,7 +628,7 @@ def _offer(finding: dict[str, Any], p: dict[str, Any], oc: Any) -> list[Any]:
     n = len(columns)
     zeros = int(p.get("n_zero") or 0)
     params = {"kind": kind, "columns": columns, "n_zero": zeros}
-    exposures = "those of them the models take as exposures"
+    exposures = "those of them the models take as study factors"
 
     def option(key: str, label: str, consequence: str, sentence: str, in_fold: bool) -> Any:
         return RepairOption(
@@ -1057,7 +1057,7 @@ def design_refusal(state: Any, frame: pd.DataFrame, families: Sequence[Any]) -> 
     if reading is None:
         return None
     names = ", ".join(f.label for f in linear)
-    return (f"{len(reading.columns):,} exposures are raw {reading.kind} and no normalization was "
+    return (f"{len(reading.columns):,} study factors are raw {reading.kind} and no normalization was "
             f"chosen: {names} would read depth or dilution as biology. Choose one on the finding "
             f"about them, or state that the values are already normalized.")
 
@@ -1309,7 +1309,7 @@ def detection_limit_options(purpose: str | None, share: float | None) -> list[di
                   f"Sound enough at {at} below the limit ({LUBIN}: the bias is small at 5–10%).")
     options = [
         {"key": "censoring_aware", "label": "Censored-normal",
-         "customary": f"Recommended for exposures below detection ({LUBIN})",
+         "customary": f"Recommended for study factors below detection ({LUBIN})",
          "sound": f"Sound: {aware}.", "rung": "recommended"},
         {"key": "qrilc", "label": "QRILC",
          "customary": f"Customary in metabolomics for left-censored values ({WEI}; {LAZAR})",
@@ -1607,13 +1607,13 @@ def _register_screened_family() -> None:
         def describe(self, task: Any, purpose: Any) -> tuple[str, str]:
             label = ("Screened elastic net regression" if task == "regression"
                      else "Screened penalized logistic regression")
-            return label, ("Keeps the n / log n exposures most correlated with the outcome on each "
+            return label, ("Keeps the n / log n study factors most correlated with the outcome on each "
                            "training fold (sure independence screening, Fan & Lv 2008), then chooses "
                            "the penalty by an inner cross-validation within those rows.")
 
         def describe_step(self, name: str) -> tuple[str, str] | None:
             if name == "screen":
-                return ("Screen the features", "Keeps the n / log n exposures with the largest "
+                return ("Screen the features", "Keeps the n / log n study factors with the largest "
                         "absolute correlation with the outcome, recomputed on each training fold; "
                         "every other column passes.")
             return None
@@ -1700,7 +1700,7 @@ def multiplicity_options(n_tests: int | None) -> list[dict[str, Any]]:
                    "result is shown and the number of tests is stated."),
          "rung": multiplicity_rung("stated_count", n_tests)},
         {"key": "none", "label": "No multiplicity control",
-         "customary": "Not customary for an exposure family",
+         "customary": "Not customary for a family of study factors",
          "sound": "Unsound: a table of unadjusted tests reads chance findings as discoveries.",
          "rung": "block_and_record"},
     ]
@@ -1759,9 +1759,9 @@ def _multiplicity_leash(decision: Any, ctx: Any) -> None:
     if (multiplicity_rung(decision.method, n_tests, omics) != "block_and_record"
             or decision.acknowledged):
         return
-    what = (f"Unadjusted p-values for {'an omics' if omics else 'an exposure'} family of "
+    what = (f"Unadjusted p-values for {'an omics' if omics else 'a'} family of "
             f"{n_tests:,} tests" if decision.method == "stated_count" and n_tests else
-            "An exposure family without multiplicity control")
+            "A family of study factors without multiplicity control")
     raise Refusal(
         "family_without_multiplicity",
         f"{what} reads chance findings as discoveries: at p < 0.05 about one test in twenty passes "
@@ -1873,7 +1873,7 @@ def _register_contracts() -> None:
         run_order=3.0, needs=("columns whose blanks are non-detections",),
         question="These blanks lie below a detection limit: how are they filled?",
         options=(
-            opt("censoring_aware", "Censored-normal", f"Recommended for exposures ({LUBIN})",
+            opt("censoring_aware", "Censored-normal", f"Recommended for study factors ({LUBIN})",
                 ("Sound: the expected value below the limit, fit on the training fold.",
                  "Sound: a draw below the limit within the multiple imputation."), "recommended", 0),
             opt("qrilc", "QRILC", f"Customary for left-censored metabolomics data ({WEI})",
@@ -1953,7 +1953,7 @@ def _register_contracts() -> None:
     register_contract(MethodContract(
         key="multiplicity", label="Multiplicity control", slot="evaluation", scope="model",
         run_order=1.0, needs=("an exposure family",),
-        question="The exposures are tested as a family: how is multiplicity controlled?",
+        question="The study factors are tested as a family: how is multiplicity controlled?",
         options=(
             opt("bh", "Benjamini–Hochberg q-values", "Customary for MWAS and EWAS",
                 f"Sound: holds the false-discovery rate ({BH}).", "recommended", 0),

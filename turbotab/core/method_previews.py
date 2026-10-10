@@ -591,7 +591,7 @@ def time_varying_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         ctx.read["note"] = found["withheld"]
         return []
     setting = found["setting"]
-    ctx.read["basis"] = (f"The exposure models fitted on all {setting.rows:,} analyzed rows of "
+    ctx.read["basis"] = (f"The models of what you study fitted on all {setting.rows:,} analyzed rows of "
                          f"{setting.units:,} units; no outcome read.")
     # MODELING_SEQUENCE §4: the g-methods have no design-based estimator, so under the surveyed
     # population the lane blocks and records its estimates (``stages.time_varying.
@@ -608,10 +608,10 @@ def time_varying_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         ctx.read["time_varying"] = {"near": near}
         return [DistributionView(
             title=title(f"Positivity of {tick(setting.exposure)} over time"),
-            caption=caption(f"{fmt_count(near)} rows have a fitted probability of exposure within "
+            caption=caption(f"{fmt_count(near)} rows have a fitted probability of being exposed within "
                             f"{tv.NEAR} of 0 or 1."),
             emphasis=[setting.exposure],
-            column="probability of exposure",
+            column="probability of being exposed",
             before=histogram(p[modeled & (a == 0)], edges=edges),
             after=histogram(p[modeled & (a == 1)], edges=edges),
             before_label="unexposed rows", after_label="exposed rows",
@@ -791,7 +791,7 @@ def calibration_numbers(sctx: Any, after: Any) -> dict[str, Any] | None:
 
 def measurement_error_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     if decision.method == "none":
-        ctx.read["note"] = ("The energy-adjusted exposures stay as each person's mean of recalls, "
+        ctx.read["note"] = ("The energy-adjusted study factors stay as each person's mean of recalls, "
                             "uncorrected.")
         return []
     from turbotab.core.consequences import Caution, CautionExit

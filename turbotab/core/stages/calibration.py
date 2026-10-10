@@ -70,8 +70,8 @@ ENERGY_ADJUSTED = ("residual", "density")
 ALL_SOURCES = ("partition", "all_components")
 
 PREDICTION = ("Under prediction the model is used on recalls measured the same way as these, so its "
-              "predictions need no correction; regression calibration corrects an exposure's "
-              "coefficient, which is an inference question.")
+              "predictions need no correction; regression calibration corrects the coefficient of "
+              "what you study, which is an inference question.")
 NO_LINEAR = ("Regression calibration corrects a coefficient, and only the linear model reports one "
              "with an interval; choose it among the model families.")
 # MS4 → MS5: under the population answer the calibration is design-based (weighted, with a
@@ -133,7 +133,7 @@ NOT_COMBINED = ("Each analysis row is one record, not the mean of a person's rep
                 "by the mean.")
 TIME_POINTS = ("The rows repeat as time points, not as repeated recalls of one usual intake, so their "
                "spread is change over time rather than day-to-day error.")
-NONE_ERROR_PRONE = ("No column of the outcome model is measured by the recalls (no exposure, and no "
+NONE_ERROR_PRONE = ("No column of the outcome model is measured by the recalls (nothing you study, and no "
                     "energy model's term), so there is nothing to calibrate.")
 TEST = ("The test of no association is the uncorrected model's: “the usual statistical test of the "
         f"null hypothesis (no exposure effect) remains theoretically valid” ({FREEDMAN}); the "
@@ -499,7 +499,7 @@ def main_clause(run: Mapping[str, Any]) -> str | None:
                 f"Usual intakes of {listing(list(run.get('calibrated') or []), limit=8)} were "
                 f"calibrated jointly")
     else:
-        (column,) = run.get("calibrated") or ["the exposure"]
+        (column,) = run.get("calibrated") or ["what you study"]
         what = f"The usual intake of `{column}` was calibrated"
     parts = [f"{what} with every outcome-model covariate in the calibration model"]
     if run.get("contrast"):

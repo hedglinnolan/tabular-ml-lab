@@ -240,7 +240,7 @@ def _exposure_column(sources: Mapping[str, Sequence[str]], exposure: str) -> str
         raise Withheld(
             f"`{exposure}` enters the model as {len(found)} columns "
             f"({', '.join(f'`{c}`' for c in found[:4])}), and the causal lane estimates one effect "
-            f"of one column: a numeric exposure per unit, or a yes/no exposure's two levels.",
+            f"of one column: a numeric study factor per unit, or a yes/no study factor's two levels.",
             [{"label": "Keep the primary model only", "decision": None}])
     return found[0]
 
@@ -292,13 +292,13 @@ def prepare(ctx: StageContext) -> Prepared:
     if n_complete < n_rows:
         lost = n_rows - n_complete
         if blocked:
-            reason = (f"{lost:,} of the {n_rows:,} analyzed rows miss the outcome, the exposure or "
+            reason = (f"{lost:,} of the {n_rows:,} analyzed rows miss the outcome, what you study or "
                       f"an adjusted covariate. The missing-values answer "
                       f"({str(strategy).replace('_', ' ')}) would need every causal estimate pooled "
                       f"over imputations, which the causal lane does not do in v2; it can run on "
                       f"the {n_complete:,} complete rows, assuming they represent the rest.")
         else:
-            reason = (f"{lost:,} of the {n_rows:,} analyzed rows miss the outcome, the exposure or "
+            reason = (f"{lost:,} of the {n_rows:,} analyzed rows miss the outcome, what you study or "
                       f"an adjusted covariate, so the lane runs on the {n_complete:,} complete "
                       f"rows, as complete cases do.")
     missing = MissingView(n_rows=n_rows, n_complete=n_complete, n_incomplete=n_rows - n_complete,
@@ -466,7 +466,7 @@ def _causal_design(ctx: StageContext) -> Bundle:
     if state.purpose != "inference":
         reason = reason or "The causal lane is asked under inference."
     if reason is None and spec is None:
-        reason = "Declare the exposure and its effect first; the causal lane estimates that effect."
+        reason = "Declare what you study and its effect first; the causal lane estimates that effect."
     if reason is None and adjustment_answer(state) is None:
         reason = "Answer the adjustment set first; the causal lane adjusts for what it keeps."
     if reason is None:
@@ -486,7 +486,7 @@ def _causal_design(ctx: StageContext) -> Bundle:
     weights = None if design is None else design.weight
     seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
     groups = None if design is None else design.groups
-    ctx.progress(0.4, "Reading positivity from the exposure and the covariates")
+    ctx.progress(0.4, "Reading positivity from what you study and the covariates")
     try:
         splits = est.sample_splits(len(prep.y), 5, 1, seed=seed, groups=groups)
     except ValueError as exc:
@@ -535,7 +535,7 @@ def _causal_design(ctx: StageContext) -> Bundle:
         variation=variation_view, positivity=positivity, positivity_att=positivity_att,
         missing=prep.missing,
         survey=SurveyView(population=population, weight=weight_column),
-        leash=("Offered under inference after the exposure, its effect and the adjustment set are "
+        leash=("Offered under inference after what you study, its effect and the adjustment set are "
                "declared; the assumptions are declared before any estimate."))
     ctx.progress(1.0, "Done")
     return Bundle(data=artifact.model_dump(mode="json"))
@@ -559,13 +559,13 @@ def _positivity_reason(prep: Prepared, found: Any, *, target: str = "ATE",
                 f"impossible given the covariates, so no comparable unexposed row informs what "
                 f"their outcome would have been and the estimate leans on extrapolation there "
                 f"(practical positivity violation; Hernán & Robins 2020, §3.3). Trim to the rows "
-                f"where both levels are plausible, which changes the estimand to the average "
+                f"where both levels are plausible, which changes the comparison you want to the average "
                 f"effect among them, or keep every row and record it.")
     return (f"{head} have a propensity outside [{b:.4f}, {1 - b:.4f}], the bound "
             f"the estimator caps at: for them one level of `{prep.exposure}` is all but "
             f"impossible given the covariates, so their weights are capped and the estimate leans "
             f"on extrapolation there (practical positivity violation; Hernán & Robins 2020, §3.3). "
-            f"Trim to the rows where both levels are plausible, which changes the estimand to "
+            f"Trim to the rows where both levels are plausible, which changes the comparison you want to "
             f"them, or keep every row and record it.")
 
 
@@ -584,7 +584,7 @@ def _violation_clause(prep: Prepared, found: Any = None, found_v: Any = None, *,
 def _variation_reason(prep: Prepared, found: Any) -> str:
     return (f"The covariates explain {found.r2:.0%} of `{prep.exposure}`'s variance (at least "
             f"{0.9:.0%}, a variance inflation factor of 10 or more): the effect rests on little of "
-            f"the exposure's own variation, and the estimate extrapolates where it does not vary. "
+            f"the variation of what you study itself, and the estimate extrapolates where it does not vary. "
             f"Keep every row and record it, or revisit the adjustment set.")
 
 
@@ -622,7 +622,7 @@ def causal_stage(ctx: StageContext) -> Bundle:
                             "method_label": causal.METHOD_LABELS.get(method, method)}
     if spec is None:
         reason = causal.plan_reason(state) or (
-            "The causal answer was given for another exposure, or before the plan; it is re-asked, "
+            "The causal answer was given for another study factor, or before the plan; it is re-asked, "
             "never kept.")
         return _withheld(base, reason)
     if method == "none":
@@ -663,7 +663,7 @@ def causal_stage(ctx: StageContext) -> Bundle:
                          [{"label": "Estimate on the complete rows, its assumption stated",
                            "decision": decision.model_copy(update={"complete_rows": True})}])
     if method in ("dml_irm", "tmle") and not binary:
-        return _withheld(base, f"{causal.METHOD_LABELS[method]} needs a yes/no exposure; "
+        return _withheld(base, f"{causal.METHOD_LABELS[method]} needs a yes/no study factor; "
                                f"`{prep.exposure}` is numeric.",
                          [{"label": causal.METHOD_LABELS["dml_plr"], "decision": decision.model_copy(
                              update={"method": "dml_plr", "trim": None, "population": "all"})}])
@@ -721,7 +721,7 @@ def causal_stage(ctx: StageContext) -> Bundle:
             n_trimmed = int((~keep).sum())
             if keep.sum() < 20 or len(np.unique(d[keep])) < 2:
                 return _withheld(base, f"Trimming at {spec.trim:g} leaves {int(keep.sum()):,} rows "
-                                       f"or one exposure level: no overlap population to estimate "
+                                       f"or one level of what you study: no overlap population to estimate "
                                        f"on.")
             y, d, X = y[keep], d[keep], X[keep]
             design = None if design is None else design.subset(keep)

@@ -1781,7 +1781,8 @@ def _set_adjustment(d: Any, state: Any, ctx: Any) -> str:
     from turbotab.core.estimand import precision_note
 
     note = precision_note(getattr(spec, "measure", None),
-                          [c for c, f in derived.items() if f.role == "precision" and f.adjusted])
+                          [c for c, f in derived.items() if f.role == "precision" and f.adjusted],
+                          methods=True)
     if note:
         text += ". " + note[:-1] if note.endswith(".") else ". " + note
     return text
@@ -2219,9 +2220,9 @@ _QUESTION_NAME = {
     "roles": "the column roles",
     "clusters": "the grouping question",
     "survey": "the survey question",
-    "estimand": "the exposure and effect question",
+    "estimand": "the question on what you study and its effect",
     "adjustment": "the adjustment-set question",
-    "time_varying": "the time-varying exposure question",
+    "time_varying": "the question on what you study over time",
     "exclusions": "the eligibility question",
     "missing": "the missing-values question",
     "split": "the held-out rows question",

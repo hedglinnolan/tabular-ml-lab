@@ -416,7 +416,7 @@ def test_1_a_covariate_declared_the_exposure_is_not_listed_among_those_coming_ba
     fiber); declaring ``hscrp`` the exposure brings ``bmi`` back, and ``hscrp`` is the exposure."""
     decision = d.SetEstimand(exposure="hscrp", measure="mean_difference")
     result, _ = est.preview("hscrp", decision)
-    assert result.note == ("The adjustment answers were given for another exposure, so they are "
+    assert result.note == ("The adjustment answers were given for another study factor, so they are "
                            "asked again; until then `bmi` is back in the model.")
     state, out = est.after("hscrp", decision, ["design"])
     nodes = {n["id"] for n in out["design"].data["lineage"]["nodes"]}

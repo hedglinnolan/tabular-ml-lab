@@ -383,5 +383,5 @@ def test_2_the_levers_are_refused_under_inference_with_ways_forward():
         d.validate(d.SetLevers(forms="inner_cv"), {"state": state})
     assert caught.value.code == "levers_not_inference"
     assert [e["label"] for e in caught.value.exits] == [
-        "Declare the exposure's form (the functional-form question)", "Make the purpose prediction"]
+        "Declare the form of what you study (the functional-form question)", "Make the purpose prediction"]
     assert d.validate(d.SetLevers(), {"state": state}).forms == "none"

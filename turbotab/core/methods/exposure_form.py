@@ -469,7 +469,7 @@ class ExposureForms(TransformerMixin, BaseEstimator):
         for column, spec in (self.forms or {}).items():
             form, _ = _form_of(spec)
             if form not in FORMS:
-                raise ValueError(f"Unknown exposure form {form!r} for {column}.")
+                raise ValueError(f"Unknown form {form!r} for {column}.")
             if form != "linear":
                 specs[str(column)] = spec
         return specs
@@ -1054,12 +1054,12 @@ def options(purpose: str | None, role: Role = "exposure", *, mass_at_zero: bool 
         "(NUTRITION_PACK §07G; Desquilbet & Mariotti 2010).",
         "Sound: a smooth curve with few parameters, linear in the tails, with a test of "
         "nonlinearity; knots at Harrell's percentiles of the fitting rows." + on_residual,
-        "Adds a curve's terms per exposure and a test of whether it bends.", "recommended")
+        "Adds a curve's terms for what you study and a test of whether it bends.", "recommended")
     linear = _option(
         "linear", "Straight line", "Customary: one coefficient per unit of intake.",
         ("Sound when the relation is close to a line; a curve it misses biases the slope."
          if role == "exposure" else
-         "Often controls a confounder well (Brenner & Blettner 1997); a curve it misses leaves "
+         "Often controls a covariate that could explain the link well (Brenner & Blettner 1997); a curve it misses leaves "
          "residual confounding."),
         "One coefficient per unit; no curvature.", "available")
     quintiles = _option(
@@ -1073,9 +1073,9 @@ def options(purpose: str | None, role: Role = "exposure", *, mass_at_zero: bool 
         "Four indicators against the lowest fifth, and a trend across medians.", "rank_lower")
     categories = _option(
         "categories", "Categories at declared cut points",
-        "Customary for clinical bands (BMI classes, age bands) and for confounders.",
-        ("Coarser than the variable: the categories assume a step at each cut. A confounder in "
-         "three or fewer groups leaves serious residual confounding (Brenner & Blettner 1997)."
+        "Customary for clinical bands (BMI classes, age bands) and for covariates that could explain the link.",
+        ("Coarser than the variable: the categories assume a step at each cut. A covariate that could explain the link, cut into "
+         "three or fewer groups, leaves serious residual confounding (Brenner & Blettner 1997)."
          if role == "confounder" else
          "Coarser than the variable; cut points declared from outside these data."),
         "One indicator per group above the lowest, the boundaries stated.", "rank_lower")
@@ -1099,7 +1099,7 @@ def options(purpose: str | None, role: Role = "exposure", *, mass_at_zero: bool 
         out.insert(0, zero)
         if inference:
             out.insert(1, _option(
-                "consumers_only", "Consumers only (an estimand change)",
+                "consumers_only", "Consumers only (changes the comparison you want)",
                 "Common for episodically consumed foods; STROBE-nut nut-14 asks which population.",
                 "Answers a different question: the effect among consumers, not in everyone.",
                 "Non-consumers leave the analysis; the spline is among consumers.", "available"))
@@ -1220,7 +1220,7 @@ def form_plan(state: Any, info: Mapping[str, Any] | None,
     exposure = None if family else str(_field(spec, "exposure"))
     if family:
         for c in est.family_exposures(state):
-            stated.append({"column": c, "why": "a member of the exposure family: each member "
+            stated.append({"column": c, "why": "a member of the family of study factors: each member "
                                                "enters as a straight line, one test per member"})
     elif exposure is not None:
         if exposure in partitioned:
@@ -1285,7 +1285,7 @@ def form_gate(state: Any, card: Mapping[str, Any] | None) -> tuple[str, str | No
     if card.get("purpose") != "inference" or not card.get("ready", True):
         return None
     if not card.get("needs") and not card.get("waiting"):
-        return ("not_applicable", "No continuous exposure or confounder is in the model, so no "
+        return ("not_applicable", "No continuous study factor or covariate is in the model, so no "
                                   "form is declared; each enters as recorded.")
     return None
 
@@ -1452,7 +1452,7 @@ def forms_card(state: Any, frame: pd.DataFrame | None, info: Mapping[str, Any] |
             "rule": rule_words(k, n_eff, task), "needs": entries, "stated": stated,
             "waiting": plan["waiting"],
             "answer": ({"kind": "set_forms", "forms": answer} if answer else None),
-            "beside": ("Quintiles are produced beside the exposure's spline, their boundaries and "
+            "beside": ("Quintiles are produced beside the spline of what you study, their boundaries and "
                        "reference stated, with the p for linear trend (customary)."
                        if purpose == "inference" else None)}
     return FormsArtifact.model_validate(card).model_dump(mode="json")
@@ -1698,7 +1698,7 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
     tests: list[dict[str, Any]] = []
     concerns: list[str] = []
     if task == "multiclass" or (task == "ordinal" and not getattr(family, "ordered_levels", False)):
-        return [], ["Tests of an exposure's form are not computed for a multinomial model: each "
+        return [], ["Tests of a study factor's form are not computed for a multinomial model: each "
                     "level has its own curve."]
     if info.get("refused"):
         return [], []
@@ -1996,7 +1996,7 @@ def describe(forms: Mapping[str, Any]) -> str:
             if "data-derived cut points" not in learned:
                 learned.append("data-derived cut points")
     if not parts:
-        return "Every exposure enters as a straight line."
+        return "Every study factor enters as a straight line."
     joined = parts[0] if len(parts) == 1 else f"{'; '.join(parts[:-1])}; and {parts[-1]}"
     tail = (f" The {' and '.join(learned)} are learned on the rows each fit sees, every training "
             f"fold included." if learned else "")
@@ -2144,7 +2144,7 @@ def _form_kind_fits(decision: Any, ctx: Any) -> None:
                                   "decision": SetExposureForm(column=column, form="zero_spline")}])
         if state is not None and exposure_of(state) not in (None, column):
             raise Refusal("domain_of_the_exposure",
-                          f"The consumers-only domain is the declared exposure's "
+                          f"The consumers-only domain is the declared study factor's "
                           f"(`{exposure_of(state)}`); restricting by `{column}` would change the "
                           f"population of another effect.",
                           exits=[{"label": f"Keep everyone; a form of `{column}`", "decision":
@@ -2252,8 +2252,8 @@ def _cuts_are_declared_or_recorded(decision: Any, ctx: Any) -> None:
         groups = len(decision.cuts or []) + 1
         raise Refusal(
             "coarse_confounder",
-            f"`{column}` is a confounder cut into {groups} groups: within each group it still "
-            f"varies with the exposure, so its confounding is only partly removed (Brenner & "
+            f"`{column}` could explain the link and is cut into {groups} groups: within each group it still "
+            f"varies with what you study, so its confounding is only partly removed (Brenner & "
             f"Blettner 1997: \"categorization of the confounder may often lead to serious "
             f"residual confounding if the number of categories is small\").",
             exits=[spline, {"label": "A straight line",
@@ -2541,7 +2541,7 @@ def _register_contracts() -> None:
                              "rank_lower", "rank_lower"),
             _contract_option("categories", "Categories at declared cut points",
                              "customary for clinical bands",
-                             "Coarser; a confounder in three or fewer groups is blocked and "
+                             "Coarser; a covariate that could explain the link, in three or fewer groups, is blocked and "
                              "recorded", "Coarser", "rank_lower", "rank_lower"),
             _contract_option("optimal", "A data-derived cut point",
                              "seen in clinical papers (the minimum p-value)",

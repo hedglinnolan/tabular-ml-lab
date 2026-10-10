@@ -69,10 +69,39 @@ def plan_slots() -> tuple[str, ...]:
     return tuple(sorted({slot for name in names for slot in graph[name].reads}))
 
 
+# Slots the estimates read that record looks, not choices: an outcome view opened (``view_outcome``,
+# forking paths) is disclosed beside the plan and never changes it, so a look after the lock, such
+# as the outcome beside a column that opens with it (CROSSWALK disagreement 2), keeps the lock.
+LOOKS = ("outcome_views",)
+TRIAGE = "triage"  # the plan's key for the dispositions of the open noticings
+
+
 def plan_of(state: Any) -> dict[str, Any]:
-    """The plan as ``state`` holds it: each answered slot the estimates read, as JSON."""
+    """The plan as ``state`` holds it: each answered slot the estimates read, as JSON (the looks
+    recorded left out), and the triage of the open noticings before the lock once it is confirmed
+    (SURFACING_POLICY §3.3: the lock's digest covers the dispositions, each with the
+    recommendation it was recorded on)."""
     values = state.model_dump(mode="json")
-    return {slot: values[slot] for slot in plan_slots() if values.get(slot) is not None}
+    plan = {slot: values[slot] for slot in plan_slots()
+            if slot not in LOOKS and values.get(slot) is not None}
+    held = (values.get("sweeps") or {}).get(decisions.sweep_key("models", "noticings"))
+    if held is not None:
+        plan[TRIAGE] = held["lines"]
+    return plan
+
+
+def plan_changed(lock: Any, state: Any) -> bool:
+    """Whether ``state``'s plan differs from the one ``lock`` recorded. A lock whose plan holds no
+    triage was recorded before the dispositions were part of the plan: it fixed the answers alone,
+    so the triage is left out of the comparison (a confirmed triage then is no change to it)."""
+    plan = plan_of(state)
+    recorded = getattr(lock, "plan", None)
+    if isinstance(recorded, Mapping) and TRIAGE not in recorded:
+        plan.pop(TRIAGE, None)
+    if isinstance(recorded, Mapping) and any(slot in recorded for slot in LOOKS):
+        # recorded before the looks left the plan: its answers alone are compared
+        return digest({k: v for k, v in recorded.items() if k not in LOOKS}) != digest(plan)
+    return digest(plan) != getattr(lock, "digest", None)
 
 
 def digest(plan: Mapping[str, Any]) -> str:

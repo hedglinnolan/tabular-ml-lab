@@ -360,12 +360,12 @@ def test_a_the_plan_exports_byte_identically_and_never_calls_itself_registered(d
 
 def test_b_a_cause_of_the_outcome_only_changes_the_conditional_hazard_ratio_and_the_app_says_so(cox):
     note = ("Under a conditional hazard ratio, adjusting for `activity`, a cause of the outcome only, "
-            "changes the conditional estimand, not only its precision: the ratio is non-collapsible "
-            "(Daniel, Zhang & Farewell 2021, Biom J 63:528).")
+            "changes the conditional comparison you want, not only its precision: the ratio is "
+            "non-collapsible (Daniel, Zhang & Farewell 2021, Biom J 63:528).")
     card = cox["adjustment_card"]
     assert card["answered"]["activity"]["estimand_note"] == note == card["estimand_note"]
     sentences = [r["sentence"] for r in _records(cox["view"], "set_adjustment")]
-    assert any(s.endswith(note) for s in sentences)
+    assert any(s.endswith(note.replace("comparison you want", "estimand")) for s in sentences)
     assert ("a conditional ratio, which changes with the covariates even without confounding: "
             "adjusting for `activity`, a cause of the outcome only, changes the conditional "
             "estimand, not only its precision" in cox["fit"]["estimand"]["caption"])

@@ -100,7 +100,7 @@ def test_energy_adjustment_says_which_ingredient_is_missing():
     assert step.status in ("open", "waiting")
     no_exposure = {"energy_kcal": "energy", "age": "covariate"}
     step = _by_key(route(ProjectState(roles=no_exposure, **base), _stages()))["energy_adjustment"]
-    assert step.status == "not_applicable" and "exposure" in step.reason
+    assert step.status == "not_applicable" and "what you study" in step.reason
 
 
 def test_substitution_waits_for_a_fresh_fit_and_needs_two_energy_nutrients():
@@ -205,9 +205,13 @@ def test_opening_the_seal_is_the_last_step_once_the_fit_is_fresh():
                 missing="complete_case", split={"holdout": 0.2}, models=["linear"])
     state = ProjectState(**base)
     assert QUESTION_KEYS[-1] == "open_seal"
-    fresh = _by_key(route(state, _stages()))
+    fresh = _by_key(route(state, _stages(), pressed=True))
     assert fresh["open_seal"].status == "open"
-    stale = _by_key(route(state, _stages(fit="running")))
+    # Results is Fit's to open: a fit fresh before the press (a short fit computes live) opens
+    # nothing, and the step waits on Fit
+    unpressed = _by_key(route(state, _stages()))
+    assert unpressed["open_seal"].status == "waiting" and unpressed["open_seal"].waiting_on == ["fit"]
+    stale = _by_key(route(state, _stages(fit="running"), pressed=True))
     assert stale["open_seal"].status == "waiting" and stale["open_seal"].waiting_on == ["fit"]
     opened = _by_key(route(state.model_copy(update={"seal_opened": True}), _stages(), records=records))
     assert opened["open_seal"].status == "answered" and opened["open_seal"].decision_id == "r1"
@@ -228,11 +232,11 @@ def test_no_step_waits_on_a_fit_that_failed_or_was_stopped():
     seal = ProjectState(**base, substitution={"donor": "fat_g", "recipient": "carbohydrate_g",
                                               "step_kcal": 100})
     for failed in (_stages(fit="error"), _stages(design="error", fit="error")):
-        step = _by_key(route(seal, failed))["open_seal"]
+        step = _by_key(route(seal, failed, pressed=True))["open_seal"]
         assert step.status == "open" and step.waiting_on == []
     stopped = _stages()
     stopped["fit"] = {"status": "stale", "cancelled": True}
-    assert _by_key(route(seal, stopped))["open_seal"].status == "open"
-    assert _by_key(route(seal, _stages(fit="running")))["open_seal"].waiting_on == ["fit"]
+    assert _by_key(route(seal, stopped, pressed=True))["open_seal"].status == "open"
+    assert _by_key(route(seal, _stages(fit="running"), pressed=True))["open_seal"].waiting_on == ["fit"]
     substitution = _by_key(route(ProjectState(**base), _stages(fit="error")))["substitution"]
     assert substitution.status == "open" and substitution.waiting_on == []

@@ -180,8 +180,8 @@ def test_1_a_transform_of_the_exposure_leaves_its_form_stale_and_reasks_it(journ
     # the estimates wait for the question, and the design applies no stale spline
     withheld = journey["fit_withheld"]
     assert withheld["withheld"] == ("No estimate is shown until the functional-form question is "
-                                    "answered: the form of the exposure and of each continuous "
-                                    "confounder is declared on its final scale before any "
+                                    "answered: the form of what you study and of each continuous "
+                                    "covariate is declared on its final scale before any "
                                     "estimate.")
     links = journey["design_stale"]["lineage"]["links"]
     assert not any("protein_g_adj" in str(link) and "spline" in link["operation"]

@@ -141,7 +141,7 @@ def modification_gate(state: Any) -> tuple[str, str | None] | None:
     purpose = getattr(state, "purpose", None)
     if purpose == "prediction":
         return ("not_applicable", "Under prediction no effect is estimated, so no effect modifier "
-                                  "or second exposure is declared.")
+                                  "or second study factor is declared.")
     if purpose != "inference":
         return None
     spec = est.current_estimand(state)
@@ -150,10 +150,10 @@ def modification_gate(state: Any) -> tuple[str, str | None] | None:
         found = est.estimand_gate(state)
         return found if found is not None and found[0] == "not_applicable" else None
     if _get(spec, "family"):
-        return ("not_applicable", "An exposure family reports each member in turn; effect "
-                                  "modification is declared for one exposure.")
+        return ("not_applicable", "A family of study factors reports each member in turn; effect "
+                                  "modification is declared for one study factor.")
     if not declared(state):
-        return ("skipped", "No effect modifier or second exposure is declared; one can be, before "
+        return ("skipped", "No effect modifier or second study factor is declared; one can be, before "
                            "the estimates are seen (afterwards it is labeled suggested by data "
                            "inspection).")
     return None
@@ -1239,9 +1239,9 @@ def _modifier_is_declarable(decision: Any, ctx: Any) -> None:
     exposure = bound_exposure(state)
     if exposure is None:
         raise Refusal("estimand_first",
-                      "Effect modification is of one declared exposure's effect: declare the "
-                      "exposure and its effect first.",
-                      exits=[{"label": "Answer the exposure and effect question", "decision": None}])
+                      "Effect modification is of one declared study factor's effect: declare "
+                      "what you study and its effect first.",
+                      exits=[{"label": "Answer the question on what you study and its effect", "decision": None}])
     columns = _columns_of(ctx)
     if columns is not None and (decision.modifier not in columns or decision.modifier == ROW_ID):
         raise Refusal("unknown_column", f"This dataset has no column named `{decision.modifier}`.",
@@ -1253,7 +1253,7 @@ def _modifier_is_declarable(decision: Any, ctx: Any) -> None:
                       exits=[{"label": "Choose another column", "decision": None}])
     if decision.exposure not in (None, exposure):
         raise Refusal("not_the_exposure",
-                      f"The declared exposure is `{exposure}`, not `{decision.exposure}`.",
+                      f"The declared study factor is `{exposure}`, not `{decision.exposure}`.",
                       exits=[{"label": f"Declare it for `{exposure}`",
                               "decision": decision.model_copy(update={"exposure": exposure})}])
     if decision.modification == "interaction" and decision.answers:
@@ -1262,7 +1262,7 @@ def _modifier_is_declarable(decision: Any, ctx: Any) -> None:
         if stray:
             raise Refusal("not_a_covariate",
                           f"{_listing(stray)} {'is' if len(stray) == 1 else 'are'} not a "
-                          f"covariate of the model with `{decision.modifier}` as the exposure.",
+                          f"covariate of the model with `{decision.modifier}` as what you study.",
                           exits=[{"label": "Answer for the model's covariates", "decision":
                                   decision.model_copy(update={"answers": {
                                       c: a for c, a in decision.answers.items()
@@ -1317,9 +1317,9 @@ def _strata_hold_the_effect(decision: Any, ctx: Any) -> None:
         raise Refusal(
             "modifier_stratum_not_estimable",
             f"{'; '.join(problems)[0].upper()}{'; '.join(problems)[1:]}. A modifier needs every "
-            f"stratum to carry the exposure's effect.",
+            f"stratum to carry the effect of what you study.",
             exits=[{"label": "Choose another modifier (one whose every stratum holds the "
-                             "exposure's contrast and the outcome's both kinds)", "decision": None}])
+                             "study factor's contrast and the outcome's both kinds)", "decision": None}])
 
 
 def _modifier_records_when(decision: Any, ctx: Any) -> Any:
@@ -1388,7 +1388,7 @@ def _register_contracts() -> None:
                  "modifier", "it is part of the plan; one declared after the estimates were seen "
                  "is marked so", by="turbotab.core.plan_lock:plan_of"),
         relation("stratum-estimable", "conflicts", "a stratum that cannot carry the effect",
-                 "a modifier stratum with one row, one exposure value, or no event (or only "
+                 "a modifier stratum with one row, one study factor value, or no event (or only "
                  "events)", "refused with the reason, never fit to an overflow; if the rows "
                  "change later, the stage says it in plain words and the family names it",
                  rung="refused", exits=("another modifier",), by=f"{me}:_strata_hold_the_effect"),
@@ -1440,7 +1440,7 @@ def _register_contracts() -> None:
         sentence=_SENTENCE,
         options=(option("declared", "Declared before the estimates",
                         "customary: a product-term p (multiplicative only)",
-                        "Sound: both exposures' confounders adjusted, both scales reported",
+                        "Sound: what could explain the link is adjusted for each study factor, both scales reported",
                         "recommended"),),
         relations=(*[r for r in shared],
                    relation("interaction-reasks-adjustment", "invalidates",

@@ -88,9 +88,11 @@ def test_1_the_app_says_a_precision_covariate_changes_a_conditional_ratio(measur
     card = estimand.adjustment_card(st)
     note = card["answered"]["activity"]["estimand_note"]
     words = estimand.MEASURE_WORDS[measure]
-    expected = (f"Under a {words}, adjusting for `activity`, a cause of the outcome only, changes "
-                f"the conditional estimand, not only its precision: the ratio is non-collapsible "
-                f"(Daniel, Zhang & Farewell 2021, Biom J 63:528).")
+    methods = (f"Under a {words}, adjusting for `activity`, a cause of the outcome only, changes "
+               f"the conditional estimand, not only its precision: the ratio is non-collapsible "
+               f"(Daniel, Zhang & Farewell 2021, Biom J 63:528).")
+    # the card says the comparison you want; the record's sentence keeps the term
+    expected = methods.replace("conditional estimand", "conditional comparison you want")
     assert (note == expected) is said and (note is None) is (not said)
     assert (card["estimand_note"] == expected) is said
     assert all(card["answered"][c]["estimand_note"] is None for c in ("age", "sex", "smoking"))
@@ -98,7 +100,7 @@ def test_1_the_app_says_a_precision_covariate_changes_a_conditional_ratio(measur
         **ef.PRECISION)})
     sentence = voice.sentence_for(decision, st, None)
     assert (sentence == "For the effect of `fiber`, by the disjunctive cause criterion: `activity` "
-                        "is a cause of the outcome only, adjusted for. " + expected) is said
+                        "is a cause of the outcome only, adjusted for. " + methods) is said
     caption = estimand.caption(st)
     assert ("; a conditional ratio, which changes with the covariates even without confounding: "
             "adjusting for `activity`, a cause of the outcome only, changes the conditional "

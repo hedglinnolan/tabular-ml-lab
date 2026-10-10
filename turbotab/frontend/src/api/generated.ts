@@ -249,6 +249,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/materiality": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Materiality Ledger
+         * @description The materiality ledger (SURFACING_POLICY §2.2): for each noticing measured on the table,
+         *     how far its alternative is predicted to move the numbers before the plan is fixed (outcome-
+         *     blind), the triage's recommendation and the disposition recorded, what was done about it,
+         *     and once the plan is fixed its realized movement and whether it matched. Derived from the
+         *     record each time, so a replay gives the same rows.
+         */
+        get: operations["materiality_ledger_api_projects__pid__materiality_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/triage": {
         parameters: {
             query?: never;
@@ -418,7 +442,8 @@ export interface paths {
          * Table
          * @description Rows ``[offset, offset + limit)`` in file order, of the ``columns`` asked for (the ones a
          *     grid shows): only those are read, so a window of a 20,000-column table costs what its
-         *     visible columns cost.
+         *     visible columns cost. Once the outcome is chosen, a window leaves it out until the outcome
+         *     beside a column opens, and says so in ``withheld`` (CROSSWALK disagreement 2).
          */
         get: operations["table_api_projects__pid__table_get"];
         put?: never;
@@ -457,7 +482,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Histogram */
+        /**
+         * Histogram
+         * @description The column's histogram. The outcome's is the outcome alone: refused with its line until
+         *     its gate opens, then drawn on the rows its view reads (``turbotab.core.outcome_gate``).
+         */
         get: operations["histogram_api_projects__pid__columns__name__histogram_get"];
         put?: never;
         post?: never;
@@ -1380,6 +1409,14 @@ export interface components {
             top: components["schemas"]["ValueCount"][] | null;
             /** N Infinite */
             n_infinite: number;
+            /** Withheld */
+            withheld: string | null;
+            /** Rows */
+            rows: ("training" | "analyzed") | null;
+            /** Record */
+            record: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * ColumnUnitSpec
@@ -2404,6 +2441,8 @@ export interface components {
             counts: number[];
             /** N Missing */
             n_missing: number;
+            /** Rows */
+            rows: ("training" | "analyzed") | null;
         };
         /** HistogramData */
         HistogramData: {
@@ -2817,6 +2856,73 @@ export interface components {
             counts: components["schemas"]["JoinCounts-Output"] | null;
         };
         /**
+         * Ledger
+         * @description The materiality ledger: derived from the record, the data and the artifacts, never kept.
+         */
+        Ledger: {
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+            /** Locked */
+            locked: boolean;
+            /** Gate */
+            gate: string;
+            /**
+             * Rows
+             * @default []
+             */
+            rows: components["schemas"]["LedgerRow"][];
+            /**
+             * Limitations
+             * @default 0
+             */
+            limitations: number;
+            /** Budget */
+            budget: number;
+        };
+        /**
+         * LedgerRow
+         * @description One row of the materiality ledger (§2.2).
+         */
+        LedgerRow: {
+            /** Thread */
+            thread: string;
+            /** Family */
+            family: string;
+            /** Subject */
+            subject: string[];
+            /** Alternative */
+            alternative: string;
+            predicted: components["schemas"]["Movement"];
+            /** Recommended */
+            recommended: ("no_change" | "could_bias" | "act_on_it") | null;
+            /** Reason */
+            reason: string | null;
+            /** Recorded */
+            recorded: ("no_change" | "could_bias" | "act_on_it") | null;
+            /** Done */
+            done: string | null;
+            /**
+             * Limitation
+             * @default false
+             */
+            limitation: boolean;
+            realized: components["schemas"]["Movement"] | null;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "pending" | "confirmed" | "upgraded" | "downgraded" | "not_verifiable" | "not_graded";
+            /** Exhibit */
+            exhibit: string | null;
+            /** Label */
+            label: string | null;
+            /** Sentence */
+            sentence: string;
+        };
+        /**
          * LevelValues
          * @description A number per level of another column (a PAL per activity category).
          */
@@ -3175,6 +3281,46 @@ export interface components {
              */
             withdrawn: boolean;
         };
+        /**
+         * Movement
+         * @description One measurement of ``M``: its instrument and regime, the value (None where it is not graded
+         *     by a number), its band, whether the instrument is calibrated, and in plain words what was
+         *     measured (``words``) with the technical name as a quiet label (``label``).
+         */
+        Movement: {
+            /** Instrument */
+            instrument: string;
+            /**
+             * Regime
+             * @enum {string}
+             */
+            regime: "predicted" | "realized";
+            /** Value */
+            value: number | null;
+            /** Band */
+            band: number;
+            /** Calibrated */
+            calibrated: boolean;
+            /**
+             * Changes Question
+             * @default false
+             */
+            changes_question: boolean;
+            /**
+             * Not Measurable
+             * @default false
+             */
+            not_measurable: boolean;
+            /**
+             * Crosses
+             * @default false
+             */
+            crosses: boolean;
+            /** Words */
+            words: string;
+            /** Label */
+            label: string;
+        };
         /** MultiplicitySpec */
         MultiplicitySpec: {
             /**
@@ -3276,7 +3422,7 @@ export interface components {
              * View
              * @enum {string}
              */
-            view: "relationship" | "distribution";
+            view: "relationship" | "distribution" | "table";
             /** Column */
             column: string;
             /** Target */
@@ -3289,6 +3435,8 @@ export interface components {
             levers: {
                 [key: string]: string;
             };
+            /** Rows Key */
+            rows_key: string | null;
         };
         /**
          * PlanExport
@@ -6918,6 +7066,18 @@ export interface components {
             total_rows: number;
             /** Offset */
             offset: number;
+            /** Withheld */
+            withheld: {
+                [key: string]: string;
+            };
+            /** Record */
+            record: {
+                [key: string]: unknown;
+            } | null;
+            /** Labels */
+            labels: {
+                [key: string]: string;
+            };
         };
         /** TeachingEntry */
         TeachingEntry: {
@@ -7068,6 +7228,11 @@ export interface components {
              * @default false
              */
             passed: boolean;
+            /**
+             * Rows
+             * @default []
+             */
+            rows: components["schemas"]["TriageRow"][];
         };
         /**
          * TriageItem
@@ -7108,6 +7273,38 @@ export interface components {
             blocker: boolean;
             /** Recorded */
             recorded: ("no_change" | "could_bias" | "act_on_it") | null;
+            /**
+             * Family
+             * @default finding
+             */
+            family: string;
+            /** Band */
+            band: number | null;
+            /** Measure */
+            measure: string | null;
+            /** Calibrated */
+            calibrated: boolean | null;
+            /**
+             * Limitation
+             * @default false
+             */
+            limitation: boolean;
+            /** Done */
+            done: string | null;
+        };
+        /**
+         * TriageRow
+         * @description One row of the triage sweep: a noticing on its own, or a family of them with a count.
+         */
+        TriageRow: {
+            /** Family */
+            family: string;
+            /** Name */
+            name: string;
+            /** Items */
+            items: string[];
+            /** Count */
+            count: number;
         };
         /** UpdatingSpec */
         UpdatingSpec: {
@@ -7196,7 +7393,7 @@ export interface components {
              * View
              * @enum {string}
              */
-            view: "relationship" | "distribution";
+            view: "relationship" | "distribution" | "table";
             /** Columns */
             columns?: string[];
             /** Target */
@@ -7211,6 +7408,8 @@ export interface components {
                     [key: string]: string;
                 };
             } | null;
+            /** Rows Key */
+            rows_key?: string | null;
         };
         /** ViewOutcome */
         "ViewOutcome-Output": {
@@ -7223,7 +7422,7 @@ export interface components {
              * View
              * @enum {string}
              */
-            view: "relationship" | "distribution";
+            view: "relationship" | "distribution" | "table";
             /** Columns */
             columns: string[];
             /** Target */
@@ -7238,6 +7437,8 @@ export interface components {
                     [key: string]: string;
                 };
             } | null;
+            /** Rows Key */
+            rows_key: string | null;
         };
         /**
          * Waiting
@@ -16143,7 +16344,7 @@ export interface components {
              * View
              * @enum {string}
              */
-            view: "relationship" | "distribution";
+            view: "relationship" | "distribution" | "table";
             /** Columns */
             columns: string[];
             /**
@@ -16170,6 +16371,11 @@ export interface components {
                     [key: string]: string;
                 };
             } | null;
+            /**
+             * Rows Key
+             * @default null
+             */
+            rows_key: string | null;
         };
         /** WeightSummary */
         WeightSummary: {
@@ -16764,6 +16970,46 @@ export interface operations {
             };
         };
     };
+    materiality_ledger_api_projects__pid__materiality_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ledger"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     triage_api_projects__pid__triage_get: {
         parameters: {
             query?: never;
@@ -17221,7 +17467,7 @@ export interface operations {
                     "application/json": components["schemas"]["Refusal"];
                 };
             };
-            /** @description The table has not been read yet (the ingest stage is not fresh) */
+            /** @description The table is not read yet, or the outcome's distribution is not open or not recorded yet */
             409: {
                 headers: {
                     [name: string]: unknown;

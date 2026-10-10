@@ -209,7 +209,7 @@ RECHECK: dict[int, dict[str, Any]] = {
                     "baseline covariate data\""),
     21: dict(where=lambda: taught("aggregation"),
              gone=["unbiased in direction"],
-             says=["attenuated toward zero only as the model's one error-prone exposure",
+             says=["attenuated toward zero only as the model's one error-prone study factor",
                    "a coefficient can be attenuated, inflated or change sign"],
              source=f"{_FREEDMAN}; Keogh et al. 2020 (STRATOS Part 1, PMC7450672) §3.1.3: \"the "
                     f"estimated coefficients in model (11) may be larger or smaller than the true "

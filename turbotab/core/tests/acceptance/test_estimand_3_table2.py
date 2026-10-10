@@ -124,8 +124,8 @@ def test_3_a_modifier_main_effect_is_never_an_effect_estimate():
     shown, appendix = split_rows(rows, ["fiber"], modifiers=["sex"])
     assert [r["feature"] for r in shown] == ["fiber"]
     why = {r["feature"]: r["why"] for r in appendix}
-    assert why["sex_male"] == ("a modifier's main effect: the exposure's effect is read within its "
-                               "levels")
+    assert why["sex_male"] == ("a modifier's main effect: the effect of what you study is read "
+                               "within its levels")
     assert why["age"].startswith("an adjustment term")
 
 

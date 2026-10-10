@@ -140,6 +140,8 @@ F10 is why the design below stays small. F11–F16 must be fixed before the sear
 
 F11 is fixed in `inner_cv.fit_pipeline` (2026-10-09, `turbotab/core/tests/test_stopping_rows.py`): the stopping units are drawn first, and the steps and their inner splits are fit on the other rows. RT-1's `fit_parts` keeps that order.
 
+F12 is fixed in `methods/levers.ImbalanceCorrected` (2026-10-09, `turbotab/core/tests/test_imbalance_stopping_rows.py`). The wrapper declares `early_stopping` and `validation_fraction`, so `fit_pipeline` hands it the stopping rows as `X_val`. Only the other rows are resampled. The deployed fit and every recalibration fit stop on the stopping rows as they are, and the recalibration splits cover only the rows the fit trains on. The 10,000-row threshold reads the rows the wrapper receives, never the resampled count. `inner_cv` reads the wrapper's effective setting (`stopping_setting`, which defers to the wrapped model), so a wrapper built with its defaults takes the same path. Fit on its own, the wrapper draws whole units by the `groups` or `order` it is handed; given inner splits without either, it refuses rather than draw rows that split a person. This is RT-4's interface; the search itself is still to come.
+
 **How Classic did it, for contrast.**
 - One preprocessing tab per model, with a Smart Defaults / Advanced radio. Smart Defaults filled the options in from the data profile.
 - Optuna's TPE ran 30 unseeded trials, each scored by accuracy or RMSE on one validation split outside the cross-validation.

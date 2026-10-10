@@ -1944,6 +1944,58 @@ class DataStore:
             counts[int(b)] += int(n)
         return {"column": col, "edges": edges, "counts": counts, "n_missing": n_rows - n_ok}
 
+    def summary_of_rows(self, column: str, row_ids: Sequence[int] | np.ndarray) -> dict[str, Any]:
+        """ColumnSummary of ``column`` over the rows ``row_ids`` only (the rows a view may read,
+        such as the training rows), with the statistics :meth:`summaries` gives."""
+        (col,) = self._resolve([column])
+        ci = self._column_map()[col]
+        ids = np.asarray(row_ids, dtype=np.int64)
+        series = self.materialize([col], ids)[col] if ids.size else pd.Series([], dtype=object)
+        present = series.dropna()
+        n = int(present.size)
+        summary = {"name": col, "dtype": ci.dtype, "n": n, "n_missing": int(ids.size) - n,
+                   "n_unique": int(present.nunique()), "mean": None, "std": None, "min": None,
+                   "q25": None, "median": None, "q75": None, "max": None, "top": None,
+                   "n_infinite": 0}
+        if ci.dtype in ("numeric", "integer"):
+            if n:
+                integer = _is_int(ci.physical_type)
+                values = present.to_numpy(dtype=np.int64 if integer else np.float64)
+                summary.update(_number_summary(values, integer=integer))
+        elif ci.dtype == "boolean":
+            n_true = int(present.astype(bool).sum())
+            summary["mean"] = n_true / n if n else None
+            top = [{"value": True, "count": n_true}, {"value": False, "count": n - n_true}]
+            summary["top"] = sorted([t for t in top if t["count"] > 0], key=lambda t: -t["count"])
+        elif n:
+            ranked = sorted(present.value_counts().items(), key=lambda kv: (-kv[1], str(kv[0])))
+            summary["top"] = [{"value": json_safe(v), "count": int(c)} for v, c in ranked[:TOP_K]]
+        return summary
+
+    def histogram_of_rows(self, column: str, row_ids: Sequence[int] | np.ndarray,
+                          bins: int = 30) -> dict[str, Any]:
+        """:meth:`histogram` over the rows ``row_ids`` only, binned by the same rule."""
+        from turbotab.core.detectors import bins as binning
+
+        (col,) = self._resolve([column])
+        ci = self._column_map()[col]
+        if ci.dtype not in ("numeric", "integer"):
+            raise ValueError(f"column {col!r} is {ci.dtype}; a histogram needs a numeric "
+                             "or integer column")
+        bins = int(bins)
+        if not 1 <= bins <= MAX_HISTOGRAM_BINS:
+            raise ValueError(f"bins must be between 1 and {MAX_HISTOGRAM_BINS}")
+        ids = np.asarray(row_ids, dtype=np.int64)
+        x = (pd.to_numeric(self.materialize([col], ids)[col], errors="coerce").to_numpy(dtype=float)
+             if ids.size else np.array([], dtype=float))
+        finite = x[np.isfinite(x)]
+        if not finite.size:
+            return {"column": col, "edges": [], "counts": [], "n_missing": int(ids.size)}
+        start, width, nb, edges = binning.layout(float(finite.min()), float(finite.max()),
+                                                 binning.resolution(finite), bins)
+        return {"column": col, "edges": edges, "counts": binning.counts(finite, start, width, nb),
+                "n_missing": int(ids.size) - int(finite.size)}
+
     def whole_numbers(self, columns: Sequence[str]) -> dict[str, dict[str, Any]]:
         """For each numeric or integer column: whether its present, finite values are all whole
         numbers (``whole``; an integer type is whole by its type), whether they are exactly 0 and 1
