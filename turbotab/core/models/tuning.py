@@ -26,9 +26,35 @@ MODEL_FAMILY_CONTRACT C6; WAVE_C6A_PLAN §2).
 * Seeds: :func:`derive_seed`, the SHA-256 of canonical JSON, never Python's salted ``hash()``.
 * What a fit records: :class:`TuningRecord` and, for a path, :class:`PathCurve`.
 
-**What is not here yet (RT-1b): the engine** that reads a plan: the head fitted once per inner
-split, the inner splits drawn as the outer ones are, ``TunedPipeline``, the time estimate's
-center candidate, cancel and the test seam that observes every split.
+**The engine (RT-1b)** reads a plan, nested in every fit (RECIPES §4.3):
+
+* :func:`fit_parts`, the one per-fit helper, shared with the plain path of
+  ``inner_cv.fit_pipeline``: on the rows it is given (the rows stay an argument, V2X_SEAMS row 1)
+  it draws the stopping units first, fits the steps before the model on the other rows
+  (:func:`fit_head`), draws every nested split those rows need and fits the model
+  (:func:`fit_model`).
+* :func:`inner_splits_for`: the inner splits, drawn inside each fit from its own rows as the
+  outer ones are: whole units; forward chaining by unit under time; ``GroupKFold`` over
+  stratum × PSU under the population answer, never stratified within strata (a unit in more
+  than one PSU joins them); otherwise content keys shuffled by the seed, stratified by class
+  where the splitter allows.
+* :class:`TunedPipeline`: a ``Pipeline`` whose ``fit`` always searches when it carries a plan. One
+  head per inner split is shared by every candidate; each candidate is scored on the pooled inner
+  loss (survey-weighted under the population answer); the chosen one is refit on every row of the
+  fit; ``tuning_`` holds the :class:`TuningRecord`. ``at`` returns a plain ``Pipeline`` at chosen
+  settings (pinned refits, timing).
+* :func:`center` (the candidate the time estimate times), :func:`cancel_scope` (checked before
+  every candidate fit) and :func:`observing` (the test seam: every set the search draws).
+
+Seeds (RECIPES §4.7): the candidates' from :func:`derive_seed` of (split seed, family, space
+version); the inner splits' from :func:`derive_seed` of (split seed, ``"inner splits"``) over each
+fit's own content keys or units; the stopping sets and every split nested in a candidate (a step's
+``cv``, the imbalance correction's recalibration) from :func:`derive_seed` of (split seed,
+``"stopping sets"``), :func:`fit_seed`, so pinned replay (``fit_pipeline(tuned.at(record
+.chosen_params), …, seed=fit_seed(plan))``) reproduces the deployed fit without searching.
+
+**Early stopping** is the plan's alone: every candidate's switch is set (off where the plan does
+not stop), so no model draws its own stopping split by position (F11, F13).
 
 **How a candidate becomes the estimator's parameters** (:func:`estimator_params`): the
 declaration's ``fixed`` settings, then the candidate's ``values``, passed through the family's
@@ -43,11 +69,16 @@ import hashlib
 import itertools
 import json
 import math
+import threading
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field, fields
 from types import MappingProxyType
-from typing import Any, Literal, Mapping, Protocol, Sequence, get_args, runtime_checkable
+from typing import (Any, Callable, Iterator, Literal, Mapping, Protocol, Sequence, get_args,
+                    runtime_checkable)
 
 import numpy as np
+from sklearn.pipeline import Pipeline
 
 TuningKind = Literal["none", "path", "search"]
 Scale = Literal["log", "linear", "int", "log_int", "choice", "share_of_units"]
@@ -341,8 +372,9 @@ class TuningPlan:
       declaration's ``standard_rows``, scikit-learn's 10,000 unless it says otherwise).
     * ``stop_share``: the stopping set's share of a fit's units, whole units, drawn first.
     * ``seed``: :func:`derive_seed` of (``split_seed``, family, ``space_version``); it seeds the
-      candidates. The inner splits and stopping sets derive their own seeds from ``split_seed``
-      and each fit's content keys (RT-1b).
+      candidates. The inner splits (:data:`INNER_SPLITS`) and each fit's own draws, its
+      stopping set and nested splits (:data:`STOPPING_SETS`, :func:`fit_seed`), derive their own
+      seeds from ``split_seed``, ordered by each fit's content keys (RT-1b).
     * ``options``: each "Try both" slot and the options it tries, in order (empty until RT-3).
     * ``manual``: values set by hand, held in every candidate (``mode="manual"``: the only
       candidate is the standard settings with them).
@@ -958,13 +990,866 @@ class TuningRecord:
     seconds: float
 
 
+
+# ═════════════════════════════════════════════════════════════════════════════
+# the engine (RT-1b): the search, nested in every fit
+# ═════════════════════════════════════════════════════════════════════════════
+
+# The early-stopping interface's switch and stopping share (``inner_cv.stopping_setting``): set on
+# the model step itself, a wrapper's own when it wraps the model (``ImbalanceCorrected``), so the
+# fit hands it its stopping rows. Every other parameter reaches the wrapped estimator through the
+# wrapper's ``inner_param``.
+STOP_FLAG = "early_stopping"
+STOP_SHARE_PARAM = "validation_fraction"
+_STOP_PARAMS = (STOP_FLAG, STOP_SHARE_PARAM)
+INNER_SPLITS = "inner splits"  # derive_seed(split seed, INNER_SPLITS): the inner splits' seed
+# derive_seed(split seed, STOPPING_SETS): the seed of every fit's own draws in a search, its
+# stopping set first, then its steps' and its model's nested splits (RECIPES §4.7: "stopping sets
+# likewise"). A pinned replay through ``inner_cv.fit_pipeline`` passes it (:func:`fit_seed`).
+STOPPING_SETS = "stopping sets"
+
+
+def fit_seed(plan: TuningPlan) -> int:
+    """The seed of every fit's own draws in ``plan``'s search (its stopping set, then its steps'
+    and its model's nested splits): :func:`derive_seed` of (split seed, :data:`STOPPING_SETS`).
+    A pinned replay passes it to ``inner_cv.fit_pipeline`` with the pipeline :meth:`at` the
+    recorded settings, and reproduces the deployed predictions without searching (§4.7)."""
+    return derive_seed(int(plan.split_seed), STOPPING_SETS)
+
+
+class MissingPlan(ValueError):
+    """A tuned family's pipeline asked for with no plan: every fit of a tuned family follows the
+    one plan the design stage made (RECIPES §4.2), so no call site can skip the search."""
+
+
+def _take(data: Any, rows: Any) -> Any:
+    """``rows`` (positions) of ``data``: by position for a frame or series, else of the array."""
+    if data is None:
+        return None
+    if hasattr(data, "iloc"):
+        return data.iloc[np.asarray(rows)]
+    return np.asarray(data)[np.asarray(rows)]
+
+
+def _every(rows: np.ndarray, n: int) -> bool:
+    return len(rows) == n and bool(np.array_equal(rows, np.arange(n)))
+
+
+def _row_labels(data: Any, rows: Any) -> np.ndarray:
+    """The rows' index labels (row ids) when ``data`` is a frame, else their positions."""
+    rows = np.asarray(rows, dtype=np.int64)
+    index = getattr(data, "index", None)
+    return np.asarray(index)[rows] if index is not None else rows
+
+
+@dataclass
+class Head:
+    """One fit's steps before the model (RECIPES §4.3, steps 1–3), fit on its rows less the
+    stopping units.
+
+    ``fitted``: those steps, fitted (None when the pipeline is the model alone). ``Z``, ``y``,
+    ``groups``, ``order``: the rows the model trains on, after the steps. ``Z_stop``, ``y_stop``:
+    the stopping rows, transformed by the fitted steps; None when the fit draws none. ``keys``: the
+    training rows' content keys, when the rows carry no units or times (the nested splits are
+    drawn over them). ``rows`` and ``stopping``: the positions, in the data the fit was handed, of
+    the training rows and of the stopping rows."""
+
+    fitted: Any | None
+    Z: Any
+    y: Any
+    groups: Any
+    order: Any
+    Z_stop: Any | None
+    y_stop: np.ndarray | None
+    keys: np.ndarray | None = None
+    rows: np.ndarray | None = None
+    stopping: np.ndarray | None = None
+
+    def transform(self, X: Any) -> Any:
+        """``X`` through the fitted steps; as it is when there are none."""
+        return X if self.fitted is None else self.fitted.transform(X)
+
+    @property
+    def n_units(self) -> int:
+        """The units the model trains on: each unit once, every row its own without units."""
+        if self.groups is None:
+            return int(len(self.y))
+        from turbotab.core.models.inner_cv import unit_labels
+
+        return int(len(np.unique(unit_labels(self.groups))))
+
+
+def fit_head(pipeline: Any, X: Any, y: Any, rows: Any, *, groups: Any = None, order: Any = None,
+             seed: int, stop_share: float | None, classify: bool) -> Head:
+    """RECIPES §4.3 steps 1–3 on ``rows`` (positions into ``X``; ``y``, ``groups`` and ``order``
+    align with ``X``), with ``pipeline``'s own steps, fitted in place.
+
+    1. The stopping units are drawn first: ``stop_share`` of the units, whole units, stratified by
+       class when ``classify``, the latest when ``order`` is given (``inner_cv.validation_rows``,
+       at ``seed``); none when ``stop_share`` is None or 0.
+    2. Each step's own inner splits (a step with ``cv``) are drawn on the remaining rows, and the
+       steps are fitted on them.
+    3. The stopping rows are transformed by the fitted steps, so a step that reads the outcome
+       never sees them (F11)."""
+    from sklearn.pipeline import Pipeline
+
+    from turbotab.core.models.inner_cv import (_steps_with_cv, row_keys, validation_rows,
+                                               with_step_cv)
+
+    rows = np.asarray(rows, dtype=np.int64)
+    whole = _every(rows, len(y))
+    X_r = X if whole else _take(X, rows)
+    y_r = y if whole else _take(y, rows)
+    y_arr = np.asarray(y_r)
+    g_r = None if groups is None else np.asarray(groups)[rows]
+    o_r = None if order is None else np.asarray(order)[rows]
+    model = pipeline.steps[-1][1]
+    share = float(stop_share or 0.0)
+    nested = bool(_steps_with_cv(pipeline)) or "cv" in model.get_params(deep=False)
+    keys = (row_keys(X_r, y_arr) if (share > 0 or nested) and g_r is None and o_r is None
+            else None)
+    held = rest = None
+    if share > 0:
+        mask = validation_rows(share, groups=g_r, keys=keys, order=o_r,
+                               y=y_arr if classify else None, seed=seed)
+        held, rest = np.flatnonzero(mask), np.flatnonzero(~mask)
+    if held is None:
+        X_f, y_f, g_f, o_f, k_f = X_r, y_r, g_r, o_r, keys
+    else:
+        X_f, y_f = _take(X_r, rest), _take(y_r, rest)
+        g_f, o_f, k_f = (None if a is None else a[rest] for a in (g_r, o_r, keys))
+    with_step_cv(pipeline, groups=g_f, keys=k_f, order=o_f, y=np.asarray(y_f), seed=seed)
+    head = (Pipeline(pipeline.steps[:-1], memory=pipeline.memory, verbose=pipeline.verbose)
+            if len(pipeline.steps) > 1 else None)
+    Z = X_f if head is None else head.fit_transform(X_f, y_f)
+    Z_stop = y_stop = None
+    if held is not None:
+        X_s = _take(X_r, held)
+        Z_stop = X_s if head is None else head.transform(X_s)
+        y_stop = y_arr[held]
+    return Head(fitted=head, Z=Z, y=y_f, groups=g_f, order=o_f, Z_stop=Z_stop, y_stop=y_stop,
+                keys=k_f, rows=rows if held is None else rows[rest],
+                stopping=None if held is None else rows[held])
+
+
+def fit_model(model: Any, head: Head, *, seed: int) -> Any:
+    """RECIPES §4.3 steps 3–4: the model's own nested splits (its ``cv``: the imbalance
+    correction's recalibration, an inner cross-validation) drawn on the head's rows, as the outer
+    folds are (whole units, time order, else content keys, at ``seed``), then the model fitted;
+    a model that stops early (its switch on) is handed the head's stopping rows. Returns it."""
+    from turbotab.core.models.inner_cv import stopping_setting, with_inner_cv
+
+    with_inner_cv(Pipeline([("model", model)]), groups=head.groups, keys=head.keys,
+                  order=head.order, y=np.asarray(head.y), seed=seed)
+    if head.Z_stop is not None and stopping_setting(model)[0] is True:
+        return model.fit(head.Z, head.y, X_val=head.Z_stop, y_val=head.y_stop)
+    return model.fit(head.Z, head.y)
+
+
+def fit_parts(pipeline: Any, X: Any, y: Any, rows: Any, *, groups: Any = None, order: Any = None,
+              design: FitDesign | None = None, seed: int, stop_share: float | None = None) -> Any:
+    """Fit ``pipeline`` (in place) on ``rows`` of ``X`` (RECIPES §4.3 steps 1–4): the stopping units
+    first, the steps on the other rows, every nested split those rows need, then the model
+    (:func:`fit_head`, :func:`fit_model`). The rows stay an argument (V2X_SEAMS row 1), so a
+    strategy can hand it a subsample.
+
+    ``stop_share``: None lets the model's own setting decide (``early_stopping`` True, or
+    ``"auto"`` above 10,000 of these rows, scikit-learn's rule) at its ``validation_fraction``; a
+    share draws that share and switches the model's early stopping on; 0 draws none. ``design``
+    is accepted so that every fit receives it: the steps and the model are fit unweighted (only a
+    search's inner loss is weighted), and a plain pipeline's own nested splits are drawn as the
+    outer folds are, by units, time or content keys. ``seed`` is used as it is given: the plain
+    path's fits pass the split's (as they always have), a search's and its pinned replay
+    :func:`fit_seed`. Returns ``pipeline``."""
+    from sklearn.base import is_classifier
+
+    from turbotab.core.models.inner_cv import _stops_early, stopping_setting
+
+    rows = np.asarray(rows, dtype=np.int64)
+    model = pipeline.steps[-1][1]
+    if stop_share is None:
+        share = float(stopping_setting(model)[1]) if _stops_early(model, len(rows)) else 0.0
+    else:
+        share = float(stop_share)
+    head = fit_head(pipeline, X, y, rows, groups=groups, order=order, seed=seed,
+                    stop_share=share, classify=is_classifier(model))
+    if head.Z_stop is not None:
+        model.set_params(**{STOP_FLAG: True})
+    fit_model(model, head, seed=seed)
+    return pipeline
+
+
+def inner_splits_for(plan: TuningPlan, X: Any, y: Any, rows: Any, *, groups: Any = None,
+                     order: Any = None, design: FitDesign | None = None, seed: int
+                     ) -> list[tuple[np.ndarray, np.ndarray]] | None:
+    """The plan's ``inner_k`` inner splits of ``rows`` (positions into ``X``; ``y``, ``groups``,
+    ``order`` and ``design`` align with ``X``), as (training, validation) positions into ``X``;
+    None when fewer than two units can be told apart.
+
+    Drawn as the outer folds are (``inner_cv.inner_splits``): under the population answer
+    (``design`` with PSUs) whole PSUs, ``GroupKFold`` over stratum × PSU, never stratified within
+    strata, forward-chained when ``order`` is given (a unit in more than one PSU joins them, so
+    neither is split: :func:`_joined`); otherwise whole units when ``groups`` is given;
+    forward chaining by whole unit when ``order`` is; else content keys (``inner_cv.row_keys``)
+    shuffled by ``seed``. A class outcome keeps its classes in proportion where the splitter
+    allows, except under the design. A fit with fewer units than ``inner_k`` draws as many folds
+    as it has units."""
+    from turbotab.core.models.inner_cv import inner_splits, row_keys
+
+    rows = np.asarray(rows, dtype=np.int64)
+    y_r = np.asarray(y)[rows]
+    o_r = None if order is None else np.asarray(order)[rows]
+    k = int(plan.inner_k)
+    if design is not None and design.psu is not None:
+        labels = _psu_labels(design)[rows]
+        if groups is not None:
+            labels = _joined(labels, np.asarray(groups)[rows])
+        splits = inner_splits(labels, k, seed, order=o_r)
+    else:
+        g_r = None if groups is None else np.asarray(groups)[rows]
+        keys = row_keys(_take(X, rows), y_r) if g_r is None and o_r is None else None
+        classify = plan.task not in ("regression", "time_to_event")
+        splits = inner_splits(g_r, k, seed, keys=keys, order=o_r, y=y_r if classify else None)
+    if splits is None:
+        return None
+    return [(rows[np.asarray(a)], rows[np.asarray(b)]) for a, b in splits]
+
+
+def _psu_labels(design: FitDesign) -> np.ndarray:
+    """Each row's stratum × PSU label (a PSU is its label within its stratum)."""
+    psu = np.asarray(design.psu, dtype=object)
+    strata = (np.zeros(len(psu), dtype=object) if design.strata is None
+              else np.asarray(design.strata, dtype=object))
+    return np.asarray([f"{s}|{p}" for s, p in zip(strata, psu)], dtype=object)
+
+
+def _joined(labels: np.ndarray, groups: Any) -> np.ndarray:
+    """Each row's block: its stratum × PSU, with the PSUs that any one unit sits in joined, so an
+    inner split keeps every unit and every PSU whole. A block is named by its first PSU as text,
+    so where units nest in PSUs (a survey's persons) every block is its PSU and the labels are
+    returned as they were."""
+    from turbotab.core.models.inner_cv import unit_labels
+
+    names, psu_of = np.unique(np.asarray(labels, dtype=object).astype(str), return_inverse=True)
+    parent = list(range(len(names)))
+
+    def root(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    first: dict[str, int] = {}
+    for unit, p in zip(unit_labels(groups).tolist(), psu_of.tolist()):
+        if unit not in first:
+            first[unit] = p
+            continue
+        a, b = root(first[unit]), root(p)
+        if a != b:
+            parent[max(a, b)] = min(a, b)  # the root is the block's first PSU as text
+    roots = np.asarray([root(i) for i in range(len(names))])
+    if np.array_equal(roots, np.arange(len(names))):
+        return labels
+    return np.asarray(names[roots[psu_of]], dtype=object)
+
+
+def _below_floor(plan: TuningPlan, y: Any, groups: Any, design: FitDesign | None) -> bool:
+    """Whether this fit holds fewer than :data:`PER_FOLD_FLOOR` per inner fold at the plan's K:
+    of the rarest class's units (a class outcome), of PSUs (under the design), or fewer units than
+    folds (RECIPES §4.2: it keeps the plan's K, and the record counts it)."""
+    k = int(plan.inner_k)
+    if k < 2:
+        return False
+    from turbotab.core.models.inner_cv import unit_labels
+
+    n_units = len(np.unique(unit_labels(groups))) if groups is not None else len(np.asarray(y))
+    if n_units < k:
+        return True
+    if design is not None and design.psu is not None:
+        if len(np.unique(_psu_labels(design))) < PER_FOLD_FLOOR * k:
+            return True
+    if plan.task not in ("regression", "time_to_event"):
+        rarest, _ = effective_size(plan.task, y, groups)
+        if rarest < PER_FOLD_FLOOR * k:
+            return True
+    return False
+
+
+# ── cancel and the test seam ──────────────────────────────────────────────────
+
+_local = threading.local()
+_OBSERVERS: list[Callable[["Drawn"], None]] = []
+_OBSERVERS_LOCK = threading.Lock()
+
+
+def _cancel_checks() -> list[Callable[[], bool]]:
+    checks = getattr(_local, "cancel", None)
+    if checks is None:
+        checks = _local.cancel = []
+    return checks
+
+
+@contextmanager
+def cancel_scope(check: Callable[[], bool]) -> Iterator[None]:
+    """While open, every fit the search makes in this thread first asks ``check()`` (before each
+    candidate fit, each head and the refit) and raises ``jobs.Cancelled`` once it says so: a
+    pressed Cancel stops a search within one candidate fit (RECIPES §4.3: about 2 seconds)."""
+    checks = _cancel_checks()
+    checks.append(check)
+    try:
+        yield
+    finally:
+        checks.pop()
+
+
+def _check_cancelled() -> None:
+    for check in tuple(_cancel_checks()):
+        if check():
+            from turbotab.core.jobs import Cancelled
+
+            raise Cancelled()
+
+
+@dataclass(frozen=True, eq=False)
+class Drawn:
+    """One set of rows the search drew (the test seam, :func:`observing`): ``kind`` is
+    ``"inner"`` (an inner split, ``split`` its index), ``"out_of_bag"`` (the candidates' one fit)
+    or ``"refit"`` (the chosen candidate on every row of the fit). ``train``, ``validation`` and
+    ``stopping`` are the rows' index labels (row ids) when the fit was handed a frame, else their
+    positions; ``validation`` is None outside an inner split, ``stopping`` when none was drawn."""
+
+    plan: TuningPlan
+    kind: str
+    split: int | None
+    train: np.ndarray
+    validation: np.ndarray | None
+    stopping: np.ndarray | None
+
+
+@contextmanager
+def observing(callback: Callable[[Drawn], None]) -> Iterator[None]:
+    """The test seam (RECIPES T3, T17): while open, ``callback`` receives a :class:`Drawn` for
+    every (training, validation, stopping) set every search draws, in any thread."""
+    with _OBSERVERS_LOCK:
+        _OBSERVERS.append(callback)
+    try:
+        yield
+    finally:
+        with _OBSERVERS_LOCK:
+            _OBSERVERS.remove(callback)
+
+
+def _emit(plan: TuningPlan, kind: str, split: int | None, X: Any, head: Head,
+          validation: np.ndarray | None) -> None:
+    with _OBSERVERS_LOCK:
+        observers = tuple(_OBSERVERS)
+    if not observers:
+        return
+    drawn = Drawn(plan, kind, split, _row_labels(X, head.rows),
+                  None if validation is None else _row_labels(X, validation),
+                  None if head.stopping is None else _row_labels(X, head.stopping))
+    for callback in observers:
+        callback(drawn)
+
+
+# ── a candidate's parameters ──────────────────────────────────────────────────
+
+
+def _scalar(value: Any) -> Any:
+    return value.item() if isinstance(value, np.generic) else value
+
+
+def _stops(plan: TuningPlan, decl: TuningDecl, candidate: Candidate) -> bool:
+    """Whether ``candidate`` stops early under ``plan``: a standard one by scikit-learn's rule
+    (``standard_stops``), a Sobol one by the plan's ``early_stopping``, decided once."""
+    if decl.early_stopping is None or plan.kind != "search":
+        return False
+    return plan.standard_stops if candidate.standard else plan.early_stopping
+
+
+def _candidate_params(family: Any, plan: TuningPlan, decl: TuningDecl, candidate: Candidate, *,
+                      n_units: int, n_rows: int, y: Any, Z: Any) -> dict[str, Any]:
+    """The model step's parameters for one fit at ``candidate``: :func:`estimator_params` on the
+    fit's own rows, then the early-stopping settings the plan decides. A Sobol candidate that
+    stops runs to the declaration's ``rounds`` with its ``patience``; a standard one keeps its own
+    (scikit-learn's ``"auto"``, decided by the plan's rows instead of each fit's: F13).
+
+    The plan alone decides early stopping in every fit: the switch is always set, so a model
+    whose declaration names no early stopping but which keeps ``"auto"`` or True never draws its
+    own stopping split by position (F11, F13); :func:`_set_params` leaves it out for a model with
+    no switch."""
+    params = estimator_params(family, plan.task, candidate.values, n_units=n_units,
+                              n_rows=n_rows, y=y, Z=Z, plan=plan)
+    stop = decl.early_stopping
+    stops = _stops(plan, decl, candidate)
+    if stops and not candidate.standard:
+        params[stop["param"]] = stop["rounds"]
+        params[stop["patience_param"]] = stop["patience"]
+    params[STOP_FLAG] = bool(stops)
+    if stops:
+        params[STOP_SHARE_PARAM] = float(plan.stop_share)
+    return {str(k): _scalar(v) for k, v in params.items()}
+
+
+def _set_params(model: Any, params: Mapping[str, Any]) -> dict[str, Any]:
+    """``params`` on the model step: the early-stopping switch and share on the step itself (a
+    wrapper's own), every other one on the estimator it wraps (``inner_param``: the wrapper's
+    parameter holding it), else on the step. A switch the model does not have is left out: such a
+    model is never handed stopping rows. Returns the parameters set (the record's)."""
+    own = model.get_params(deep=False)
+    inner = getattr(type(model), "inner_param", None)
+    wrapped = own.get(inner) if inner else None
+    wrapped_own = wrapped.get_params(deep=False) if wrapped is not None else {}
+    direct, rest, applied = {}, {}, {}
+    for k, v in params.items():
+        if k in _STOP_PARAMS and k in own:
+            direct[k] = v
+        elif k in _STOP_PARAMS and not (inner and k in wrapped_own):
+            continue
+        else:
+            rest[k] = v
+        applied[k] = v
+    if inner:
+        rest = {f"{inner}__{k}": v for k, v in rest.items()}
+    if rest:
+        model.set_params(**rest)
+    if direct:
+        model.set_params(**direct)
+    return applied
+
+
+# ── the search ───────────────────────────────────────────────────────────────
+
+
+def _predicted(task: str, model: Any, Z: Any, classes: np.ndarray | None) -> np.ndarray:
+    """ŷ for a number; the probability of each of ``classes``, in that order, otherwise."""
+    if task == "regression":
+        return np.asarray(model.predict(Z), dtype=float)
+    proba = np.asarray(model.predict_proba(Z), dtype=float)
+    return _aligned(proba, list(model.classes_), classes)
+
+
+def _aligned(proba: np.ndarray, have: Sequence[Any], classes: np.ndarray) -> np.ndarray:
+    if len(have) == len(classes) and all(a == b for a, b in zip(have, classes)):
+        return proba
+    out = np.zeros((len(proba), len(classes)))
+    where = {c: j for j, c in enumerate(classes.tolist())}
+    for j, c in enumerate(have):
+        out[:, where[_scalar(c)]] = proba[:, j]
+    return out
+
+
+def _from_scores(task: str, eta: np.ndarray, classes: np.ndarray | None) -> np.ndarray:
+    """A path's linear scores (n, K) as predictions: the value for a number; for a yes/no outcome
+    the log-odds of the second class in sorted order (as scikit-learn's ``coef_``); softmax over
+    the classes otherwise."""
+    if task == "regression":
+        return eta[:, 0]
+    if eta.shape[1] == 1:
+        p = 1.0 / (1.0 + np.exp(-eta[:, 0]))
+        return np.column_stack([1.0 - p, p])
+    e = np.exp(eta - eta.max(axis=1, keepdims=True))
+    return e / e.sum(axis=1, keepdims=True)
+
+
+def _oob(task: str, model: Any, classes: np.ndarray | None) -> tuple[np.ndarray, np.ndarray]:
+    """The fitted model's out-of-bag predictions (scikit-learn's ``oob_prediction_`` or
+    ``oob_decision_function_``), aligned with ``classes``, and which rows they are real for.
+
+    scikit-learn leaves no blank for a row that no tree left out: it counts such a row once, so
+    its prediction is 0 (all-zero probabilities). A row is kept when some tree's sample
+    (``estimators_samples_``) left it out; a model that does not list its trees' samples keeps
+    every finite row, less, for classes, a row whose probabilities are all zero."""
+    if task == "regression":
+        oob = np.asarray(model.oob_prediction_, dtype=float)
+    else:
+        oob = _aligned(np.asarray(model.oob_decision_function_, dtype=float),
+                       list(model.classes_), classes)
+    n = len(oob)
+    ok = np.isfinite(oob) if oob.ndim == 1 else np.isfinite(oob).all(axis=1)
+    try:
+        samples = model.estimators_samples_
+    except AttributeError:
+        samples = None
+    if samples is not None:
+        left_out = np.zeros(n, dtype=bool)
+        for sample in samples:
+            out = np.ones(n, dtype=bool)
+            out[np.asarray(sample, dtype=np.int64)] = False
+            left_out |= out
+        ok &= left_out
+    elif oob.ndim == 2:
+        ok &= oob.sum(axis=1) > 0
+    return oob, ok
+
+
+@dataclass
+class _Run:
+    """What one tuned fit is doing: its plan, family and declaration, its data, and its count."""
+
+    pipe: Any
+    plan: TuningPlan
+    family: Any
+    decl: TuningDecl
+    X: Any
+    y: Any
+    groups: Any
+    order: Any
+    design: FitDesign | None
+    classes: np.ndarray | None
+    n_fits: int = 0
+
+    @property
+    def classify(self) -> bool:
+        return self.plan.task not in ("regression", "time_to_event")
+
+    def weights(self) -> np.ndarray | None:
+        if not self.plan.weighted or self.design is None or self.design.weights is None:
+            return None
+        return np.nan_to_num(np.asarray(self.design.weights, dtype=float), nan=0.0)
+
+    def template(self) -> Any:
+        from sklearn.base import clone
+        from sklearn.pipeline import Pipeline
+
+        p = self.pipe
+        return clone(Pipeline(p.steps, memory=p.memory, verbose=p.verbose))
+
+    def head(self, pipeline: Any, rows: np.ndarray, stops: bool) -> Head:
+        _check_cancelled()
+        return fit_head(pipeline, self.X, self.y, rows, groups=self.groups, order=self.order,
+                        seed=fit_seed(self.plan),
+                        stop_share=self.plan.stop_share if stops else 0.0,
+                        classify=self.classify)
+
+    def fit(self, model: Any, candidate: Candidate, head: Head) -> dict[str, Any]:
+        """``model`` fitted at ``candidate`` on ``head``; returns the parameters it was given."""
+        _check_cancelled()
+        params = _candidate_params(self.family, self.plan, self.decl, candidate,
+                                   n_units=head.n_units, n_rows=len(head.y),
+                                   y=np.asarray(head.y), Z=head.Z)
+        applied = _set_params(model, params)
+        fit_model(model, head, seed=fit_seed(self.plan))
+        self.n_fits += 1
+        return applied
+
+
+def _searched(run: _Run, splits: list[tuple[np.ndarray, np.ndarray]],
+              order: Sequence[int]) -> list[float | None]:
+    """Each candidate's pooled inner loss: one head per inner split, shared by every candidate,
+    fit on the split's training rows less its stopping units (drawn whenever any candidate stops
+    early; a candidate that does not stop trains on the same rows and ignores them)."""
+    from sklearn.base import clone
+
+    plan, cands = run.plan, run.plan.candidates
+    stops = any(_stops(plan, run.decl, c) for c in cands)
+    weights = run.weights()
+    y_all = np.asarray(run.y)
+    pooled_y, pooled_w = [], []
+    predictions: dict[int, list[np.ndarray]] = {c: [] for c in order}
+    for i, (train, validation) in enumerate(splits):
+        template = run.template()
+        head = run.head(template, train, stops)
+        _emit(plan, "inner", i, run.X, head, validation)
+        Z_val = head.transform(_take(run.X, validation))
+        pooled_y.append(y_all[validation])
+        if weights is not None:
+            pooled_w.append(weights[validation])
+        base = template.steps[-1][1]
+        for c in order:
+            model = clone(base)
+            run.fit(model, cands[c], head)
+            predictions[c].append(_predicted(plan.task, model, Z_val, run.classes))
+    return _pooled(run, order, pooled_y, pooled_w, predictions)
+
+
+def _pooled(run: _Run, order: Sequence[int], pooled_y: list, pooled_w: list,
+            predictions: Mapping[int, list[np.ndarray]]) -> list[float | None]:
+    plan = run.plan
+    y = np.concatenate(pooled_y)
+    w = np.concatenate(pooled_w) if pooled_w else None
+    classes = None if run.classes is None else list(run.classes)
+    losses: list[float | None] = [None] * len(plan.candidates)
+    for c in order:
+        losses[c] = pooled_loss(plan.task, plan.loss, y, np.concatenate(predictions[c]),
+                                classes=classes, weights=w)
+    return losses
+
+
+def _path_grid(plan: TuningPlan, decl: TuningDecl) -> dict[str, np.ndarray]:
+    """The path's grid with each value set by hand held at it (one point), in declaration order,
+    so the grid's flat order is the candidates' (the first dimension slowest)."""
+    return {name: (np.asarray([plan.manual[name]]) if name in plan.manual else values)
+            for name, values in path_grid(decl).items()}
+
+
+def _path_searched(run: _Run, splits: list[tuple[np.ndarray, np.ndarray]]
+                   ) -> tuple[list[float | None], tuple[int, ...]]:
+    """Each grid point's pooled inner loss: per inner split, the head refit on its training rows,
+    the family's whole path on them (``family.path``), and every point scored on the split's
+    validation rows."""
+    plan = run.plan
+    grid = _path_grid(plan, run.decl)
+    shape = tuple(len(v) for v in grid.values())
+    if math.prod(shape) != len(plan.candidates):
+        raise ValueError(f"the plan holds {len(plan.candidates)} candidates for a grid of "
+                         f"{math.prod(shape)} points: it was made for another declaration")
+    weights = run.weights()
+    y_all = np.asarray(run.y)
+    pooled_y, pooled_w = [], []
+    order = tuple(range(len(plan.candidates)))
+    predictions: dict[int, list[np.ndarray]] = {c: [] for c in order}
+    for i, (train, validation) in enumerate(splits):
+        head = run.head(run.template(), train, False)
+        _emit(plan, "inner", i, run.X, head, validation)
+        _check_cancelled()
+        fitted = run.family.path(head.Z, np.asarray(head.y), grid, task=plan.task, weights=None)
+        run.n_fits += 1
+        Z_val = np.asarray(head.transform(_take(run.X, validation)), dtype=float)
+        coefs = np.asarray(fitted.coefs, dtype=float)
+        k, p = coefs.shape[-2], coefs.shape[-1]
+        eta = (Z_val @ coefs.reshape(-1, p).T).reshape(len(Z_val), -1, k)
+        eta = eta + np.asarray(fitted.intercepts, dtype=float).reshape(1, -1, k)
+        pooled_y.append(y_all[validation])
+        if weights is not None:
+            pooled_w.append(weights[validation])
+        for c in order:
+            predictions[c].append(_from_scores(plan.task, eta[:, c, :], run.classes))
+    return _pooled(run, order, pooled_y, pooled_w, predictions), shape
+
+
+def _out_of_bag(run: _Run, order: Sequence[int]) -> list[float | None]:
+    """Each candidate fit once on every row of the fit and scored on its out-of-bag predictions
+    (tuneRanger's method; the plan allows it only where no step reads the outcome)."""
+    from sklearn.base import clone
+
+    plan = run.plan
+    template = run.template()
+    rows = np.arange(len(np.asarray(run.y)))
+    head = run.head(template, rows, False)
+    _emit(plan, "out_of_bag", None, run.X, head, None)
+    y = np.asarray(head.y)
+    classes = None if run.classes is None else list(run.classes)
+    losses: list[float | None] = [None] * len(plan.candidates)
+    base = template.steps[-1][1]
+    for c in order:
+        model = clone(base)
+        run.fit(model, plan.candidates[c], head)
+        oob, ok = _oob(plan.task, model, run.classes)
+        if ok.any():
+            losses[c] = pooled_loss(plan.task, plan.loss, y[ok], oob[ok], classes=classes)
+    return losses
+
+
+def _path_curve(plan: TuningPlan, decl: TuningDecl, losses: Sequence[float | None],
+                shape: tuple[int, ...], chosen: int) -> PathCurve:
+    grid = _path_grid(plan, decl)
+    names = tuple(grid)
+    rows = [[c.values[n] for n in names] for c in plan.candidates]
+    try:
+        values = np.asarray(rows, dtype=float)
+    except (TypeError, ValueError):
+        values = np.asarray(rows, dtype=object)
+    at = tuple(int(i) for i in np.unravel_index(int(chosen), shape))
+    return PathCurve(names=names, grid=values,
+                     losses=np.asarray([np.nan if v is None else v for v in losses], dtype=float),
+                     chosen=at, at_edge=shape[-1] > 1 and at[-1] in (0, shape[-1] - 1))
+
+
+def _libraries(model: Any) -> dict[str, str]:
+    import sys
+
+    import scipy
+    import sklearn
+
+    out = {"numpy": np.__version__, "scipy": scipy.__version__, "scikit-learn": sklearn.__version__}
+    root = type(model).__module__.split(".")[0]
+    version = getattr(sys.modules.get(root), "__version__", None)
+    if root not in ("sklearn", "numpy", "scipy", "turbotab") and isinstance(version, str):
+        out[root] = version
+    return out
+
+
+def _threads(plan: TuningPlan) -> dict[str, int]:
+    out = {"plan": int(plan.threads)}
+    try:
+        from threadpoolctl import threadpool_info
+
+        for pool in threadpool_info():
+            out[str(pool.get("internal_api") or pool.get("user_api"))] = int(pool["num_threads"])
+    except Exception:  # noqa: BLE001 - the record still holds the plan's count
+        pass
+    return out
+
+
+def _tuned_fit(pipe: "TunedPipeline", X: Any, y: Any, *, groups: Any, order: Any,
+               design: FitDesign | None) -> "TunedPipeline":
+    """The search and the refit (RECIPES §4.2–§4.3, §4.7), in place on ``pipe``."""
+    from turbotab.core.models.base import get_family
+
+    started = time.perf_counter()
+    plan = pipe.search
+    family = get_family(plan.family)
+    decl = tuning_for(family, plan.task)
+    if decl is None:
+        raise ValueError(f"{family.key} declares no tuning for {plan.task}, so it has no plan")
+    if plan.options:
+        raise ValueError("a \"Try both\" slot needs one head per option, which the recipes bring "
+                         "(RT-3): this plan's options cannot be searched yet")
+    y_arr = np.asarray(y)
+    n = len(y_arr)
+    if design is not None:
+        for name in ("strata", "psu", "weights"):
+            values = getattr(design, name)
+            if values is not None and len(values) != n:
+                raise ValueError(f"the fit's design gives {len(values)} {name} for {n} rows")
+    classify = plan.task not in ("regression", "time_to_event")
+    run = _Run(pipe, plan, family, decl, X, y, groups, order, design,
+               np.unique(y_arr) if classify else None)
+    order_eval = tuple(int(i) for i in STRATEGIES[plan.strategy].order(plan))
+    losses: list[float | None] = [None] * len(plan.candidates)
+    chosen, k_used, below, curve = 0, 0, False, None
+    every = np.arange(n)
+    if plan.chooses():
+        if plan.out_of_bag:
+            losses = _out_of_bag(run, order_eval)
+        else:
+            below = _below_floor(plan, y_arr, groups, design)
+            splits = inner_splits_for(plan, X, y_arr, every, groups=groups, order=order,
+                                      design=design,
+                                      seed=derive_seed(plan.split_seed, INNER_SPLITS))
+            if splits is None or len(splits) < 2:
+                below = True
+            else:
+                k_used = len(splits)
+                if plan.kind == "path":
+                    losses, shape = _path_searched(run, splits)
+                else:
+                    losses = _searched(run, splits, order_eval)
+        if any(v is not None for v in losses):
+            chosen = choose(losses)
+        if plan.kind == "path" and k_used:
+            curve = _path_curve(plan, decl, losses, shape, chosen)
+    candidate = plan.candidates[chosen]
+    plain = _plain_pipeline(pipe)
+    head = run.head(plain, every, _stops(plan, decl, candidate))
+    _emit(plan, "refit", None, X, head, None)
+    params = run.fit(pipe.steps[-1][1], candidate, head)
+    pipe.tuning_ = TuningRecord(
+        plan=plan, libraries=_libraries(pipe.steps[-1][1]), threads=_threads(plan),
+        order=order_eval, losses=tuple(losses), chosen=int(chosen), chosen_params=params,
+        chosen_options=dict(candidate.options), path=curve, inner_k_used=int(k_used),
+        below_floor=bool(below), n_fits=int(run.n_fits),
+        seconds=float(time.perf_counter() - started))
+    return pipe
+
+
+def _plain_pipeline(pipe: Any) -> Any:
+    """A plain ``Pipeline`` over ``pipe``'s own step objects (fitting it fits them)."""
+    from sklearn.pipeline import Pipeline
+
+    return Pipeline(pipe.steps, memory=pipe.memory, verbose=pipe.verbose)
+
+
+class TunedPipeline(Pipeline):
+    """A family's pipeline with its plan (RECIPES §4.3): ``search``, the one
+    :class:`TuningPlan` every fit of the family follows.
+
+    ``fit`` always searches when ``search`` is set: the candidates scored on inner splits drawn from
+    the rows it is given (:func:`inner_splits_for`; out of bag where the plan says), the lowest
+    pooled inner loss chosen (:func:`choose`), and the chosen candidate refit on every row
+    (:func:`fit_parts`' steps), with the record in ``tuning_``. ``search=None`` (the default, so
+    scikit-learn's slicing and cloning, which rebuild with ``self.__class__(steps, …)``, work)
+    behaves as a plain ``Pipeline``. A direct ``.fit(X, y)`` draws its splits from row keys;
+    ``inner_cv.fit_pipeline`` passes the units, times and design. ``at`` returns a plain
+    ``Pipeline`` at chosen settings."""
+
+    def __init__(self, steps: Any, *, search: TuningPlan | None = None, transform_input: Any = None,
+                 memory: Any = None, verbose: bool = False):
+        super().__init__(steps, transform_input=transform_input, memory=memory, verbose=verbose)
+        self.search = search
+
+    def fit(self, X: Any, y: Any = None, *, groups: Any = None, order: Any = None,
+            design: FitDesign | None = None, **params: Any) -> "TunedPipeline":
+        if self.search is None:
+            return super().fit(X, y, **params)
+        if params:
+            raise TypeError(f"a tuned fit takes no fit parameters, not {sorted(params)}")
+        return _tuned_fit(self, X, y, groups=groups, order=order, design=design)
+
+    def at(self, chosen: Candidate | Mapping[str, Any], *, X: Any = None, y: Any = None,
+           groups: Any = None) -> Any:
+        """A plain, unfitted ``Pipeline`` of fresh copies of these steps with the model step at
+        ``chosen``: a fitted search's ``tuning_.chosen_params`` (the estimator's own parameters at
+        the refit, held as they are: pinned refits, RECIPES §4.3), or a :class:`Candidate`, whose
+        values are resolved on the rows it will be fit on, ``X`` and ``y`` (and ``groups``, the
+        unit per row), as every fit resolves them: the steps fitted on those rows (a copy) and
+        ``settings`` called with their outcome and model matrix, as the time estimate times
+        :func:`center` on its timing sample. A candidate without ``X`` and ``y`` is refused."""
+        from sklearn.base import clone, is_classifier
+        from sklearn.pipeline import Pipeline
+
+        plan = self.search
+        if plan is None:
+            raise ValueError("this pipeline carries no plan, so it has no settings to fix")
+        steps = [(name, clone(step) if hasattr(step, "get_params") else step)
+                 for name, step in self.steps]
+        if isinstance(chosen, Candidate):
+            from turbotab.core.models.base import get_family
+
+            if X is None or y is None:
+                raise TypeError("a candidate's settings are resolved on the rows it will be fit "
+                                "on: pass them as X and y")
+            family = get_family(plan.family)
+            decl = tuning_for(family, plan.task)
+            template = clone(_plain_pipeline(self))
+            head = fit_head(template, X, y, np.arange(len(np.asarray(y))), groups=groups,
+                            seed=fit_seed(plan), stop_share=0.0,
+                            classify=is_classifier(template.steps[-1][1]))
+            params = _candidate_params(family, plan, decl, chosen, n_units=head.n_units,
+                                       n_rows=len(head.y), y=np.asarray(head.y), Z=head.Z)
+        else:
+            params = dict(chosen)
+        _set_params(steps[-1][1], params)
+        return Pipeline(steps, transform_input=self.transform_input, memory=self.memory,
+                        verbose=self.verbose)
+
+
+def center(plan: TuningPlan) -> Candidate:
+    """The candidate the time estimate times (RECIPES §4.4): every searched dimension at the
+    midpoint of its scale (:func:`map_unit` at ½; a dimension active only without early stopping
+    is left to the plan's rounds when it stops early), a path's middle grid point, the standard
+    settings for a declaration of kind ``"none"``, values set by hand held, and the first option
+    of each "Try both" slot. Its index is −1: it is not one of the plan's candidates."""
+    from turbotab.core.models.base import get_family
+
+    decl = tuning_for(get_family(plan.family), plan.task)
+    if decl is None:
+        raise ValueError(f"{plan.family} declares no tuning for {plan.task}")
+    options = {slot: opts[0] for slot, opts in plan.options if opts}
+    manual = dict(plan.manual)
+    if plan.kind == "path":
+        values = {name: _plain(v[len(v) // 2]) for name, v in path_grid(decl).items()
+                  if name not in manual}
+        return Candidate(-1, {**values, **manual}, options, False)
+    if plan.kind == "none":
+        return Candidate(-1, {**decl.standard, **manual}, options, True)
+    searched = {d.name for d in decl.dimensions}
+    rest = {k: v for k, v in decl.standard.items() if k not in searched}
+    values = {d.name: map_unit(d, 0.5, n_plan=plan.n_plan) for d in decl.dimensions
+              if d.name not in manual and (d.active == "always" or not plan.early_stopping)}
+    return Candidate(-1, {**rest, **values, **manual}, options, False)
+
+
 __all__ = [
-    "Activity", "Candidate", "Dimension", "EARLY_STOPPING_KEYS", "FitDesign", "IMBALANCE_FITS",
-    "LOSS_PRECISION", "Loss", "MID_N", "Mode", "NoInnerFolds", "PER_FOLD_FLOOR", "PathCurve",
-    "PathFit", "SEARCHED_K", "SMALL_N", "STANDARD_ROWS_KEY", "STANDARD_STOP_ROWS", "STOP_FROM_N",
-    "STOP_SHARE", "STRATEGIES", "Scale", "SizeUnit", "SobolStrategy", "Strategy", "StrategyName",
-    "TuningDecl", "TuningKind", "TuningPlan", "TuningRecord", "choose", "derive_seed",
-    "effective_size", "estimator_params", "inner_k", "make_plan", "map_unit", "path_folds",
-    "path_grid", "plan_size", "pooled_loss", "searched_size", "sobol_sample", "tuning_for",
-    "tuning_problems",
+    "Activity", "Candidate", "Dimension", "Drawn", "EARLY_STOPPING_KEYS", "FitDesign", "Head",
+    "IMBALANCE_FITS", "INNER_SPLITS", "LOSS_PRECISION", "Loss", "MID_N", "MissingPlan", "Mode",
+    "NoInnerFolds", "PER_FOLD_FLOOR", "PathCurve", "PathFit", "SEARCHED_K", "SMALL_N",
+    "STANDARD_ROWS_KEY", "STANDARD_STOP_ROWS", "STOPPING_SETS", "STOP_FLAG", "STOP_FROM_N",
+    "STOP_SHARE", "STOP_SHARE_PARAM", "STRATEGIES", "Scale", "SizeUnit", "SobolStrategy",
+    "Strategy", "StrategyName", "TunedPipeline", "TuningDecl", "TuningKind", "TuningPlan",
+    "TuningRecord", "cancel_scope", "center", "choose", "derive_seed", "effective_size",
+    "estimator_params", "fit_head", "fit_model", "fit_parts", "fit_seed", "inner_k",
+    "inner_splits_for", "make_plan", "map_unit", "observing", "path_folds", "path_grid",
+    "plan_size", "pooled_loss", "searched_size", "sobol_sample", "tuning_for", "tuning_problems",
 ]

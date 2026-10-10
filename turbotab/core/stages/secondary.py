@@ -115,6 +115,11 @@ def secondary_stage(ctx: StageContext) -> Bundle:
     spec2 = design_spec(state, frame[[*spec.inputs, *extra]],
                         [*spec.predictors, *[c for c in extra if c not in spec.predictors]],
                         column_info=info, energy_factors=spec.energy_factors)
+    # A fresh spec carries the design's plans (RECIPES §4.2): every fit of a tuned family
+    # follows the one plan the design stage made, and ``build_pipeline`` refuses one without it.
+    from dataclasses import replace
+
+    spec2 = replace(spec2, plans=spec.plans)
 
     outcome = Outcome(name=target, labels=outcome_levels(task, frame[target].to_numpy(), state.event))
     levels = None

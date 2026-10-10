@@ -188,7 +188,8 @@ def test_selection_optimism_under_repeated_kfold_bootstraps_one_repeats_predicti
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             for key in families:
-                wrapped = oof.wrap(key, lambda m, Xf, yf, r: fit_pipeline(m, Xf, yf))
+                wrapped = oof.wrap(key, lambda m, Xf, yf, r: fit_pipeline(  # the split's seed (F15)
+                    m, Xf, yf, seed=int(split.data.get("seed") or 0)))
                 results[key] = cross_validate("binary", lambda _k=key: clone(pipelines[_k]), Xs, ys,
                                               pairs, fit=wrapped)
         # The best family and its CV score are the fit's own: MS6 chooses on the strictly proper

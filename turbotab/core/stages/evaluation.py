@@ -218,12 +218,25 @@ def _prediction(ctx: StageContext, task: str, fit: Any, comparison: Mapping[str,
     labels[BENCHMARK] = BENCHMARK_LABEL
     reported = _reported(data)
 
+    # F15 (RECIPES §4.3): the split's seed and, under the population answer, each row's stratum,
+    # PSU and weight reach every fit, as in the fit stage, so one procedure is scored here and
+    # deployed there; Cancel is checked before each candidate fit of a search.
+    from turbotab.core.models.tuning import TunedPipeline, cancel_scope
+    from turbotab.core.stages.modeling import design_for, fit_designs
+
+    split_seed = int(getattr(state.split, "seed", 0) or 0)
+    designs = None
+    if any(isinstance(p, TunedPipeline) for p in pipelines.values()):
+        with open_store(ctx) as store:
+            designs = fit_designs(state, store, frame.index.to_numpy())
+
     def fit_rows(model: Any, X_fit: Any, y_fit: Any, rows: Any = None) -> Any:
         take = slice(None) if rows is None else rows
-        with warnings.catch_warnings():
+        with warnings.catch_warnings(), cancel_scope(ctx.cancelled):
             warnings.simplefilter("ignore")
             return fit_pipeline(model, X_fit, y_fit,
-                                groups=None if groups is None else np.asarray(groups)[take])
+                                groups=None if groups is None else np.asarray(groups)[take],
+                                design=design_for(designs, X_fit.index), seed=split_seed)
 
     def check() -> None:
         if ctx.cancelled():

@@ -30,7 +30,7 @@ from turbotab.core.contracts import contracts
 from turbotab.core.models import families
 from turbotab.core.models.inner_cv import fit_pipeline
 from turbotab.core.models.metrics import predict
-from turbotab.core.models.pipeline import DesignSpec, build_pipeline
+from turbotab.core.models.pipeline import DesignSpec, build_pipeline, with_plans
 from turbotab.core.tests import modeling_fixtures as mf
 
 contracts()  # every family registered, the screened elastic net with the omics chain included
@@ -199,7 +199,10 @@ COVERED = {"impute", "indicators", "two_valued", "energy_fill", "levels", "energ
 NOT_A_STEP = {"predictors", "inputs", "numeric", "roles", "lenses",
               # the missing-values answer as recorded: its single fill is ``impute`` (above); its
               # multiple imputation pools completed copies of the table, each fit by this pipeline
-              "missing"}
+              "missing",
+              # a tuned family's plan (RT-1b): no step, but the search nested in each fit, whose
+              # inner splits are drawn from the fit's own rows (tests/test_tuning_engine.py)
+              "plans"}
 
 
 def _applies(option: str, task: str) -> bool:
@@ -241,10 +244,13 @@ def _fitted(family_key: str, task: str, spec: DesignSpec, frame: pd.DataFrame):
     train, hold = frame.iloc[:N_TRAIN], frame.iloc[N_TRAIN:]
     X_train, X_hold = train[spec.inputs], hold[spec.inputs]
     y_train = _outcome(train, task)
-    pipe = build_pipeline(spec, get_family(family_key), task, "prediction", N_TRAIN,
-                          len(spec.predictors))
-    with_units(pipe, _units(frame))
     groups = train["person"].to_numpy()
+    family = get_family(family_key)
+    # a tuned family is built from its plan, made from the training rows as the design makes it
+    # (RT-1b: ``build_pipeline`` refuses a tuned family without one)
+    spec = with_plans(spec, [family], task, y_train, units=groups)
+    pipe = build_pipeline(spec, family, task, "prediction", N_TRAIN, len(spec.predictors))
+    with_units(pipe, _units(frame))
     return fit_pipeline(pipe, X_train, y_train, groups=groups), X_train, y_train, X_hold
 
 
