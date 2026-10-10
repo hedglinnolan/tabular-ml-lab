@@ -804,11 +804,29 @@ def test_1_a_sentence_that_counts_rows_states_the_rows_as_they_stand(name, infer
     if name == "inference":
         screened = frame[frame["glucose"].notna() & frame["kcal"].between(SCREEN["low"],
                                                                           SCREEN["high"])]
-        columns = ["sugar", *seen["effects"]["families"][0]["sequence"][-1]["adjusted_for"]]
+        sequence = seen["effects"]["families"][0]["sequence"]
+        columns = ["sugar", *sequence[-1]["adjusted_for"]]
         n = len(screened)
         assert len(screened.dropna(subset=columns)) == n  # every analyzed column recorded
-        assert line["text"] == (f"A complete-case analysis was applied: no row is missing any "
-                                f"predictor, so all `{n:,}` rows remain.")
+        head = (f"A complete-case analysis was applied: no row is missing any predictor, so all "
+                f"`{n:,}` rows remain")
+        # TRUST: a column some model reads (any model of Table 2's sequence, Model 3's added
+        # columns included) whose values the data's provider imputed, its flag ``imputed_<column>``
+        # true on a row that remains (read here with pandas), is named, so "no row is missing"
+        # does not hide them; a column no model reads (a mediator left out) never is.
+        read = list(dict.fromkeys(["sugar", *(c for m in sequence for c in m["adjusted_for"])]))
+        imputed = sorted(c for c in read if f"imputed_{c}" in screened.columns
+                         and screened[f"imputed_{c}"].astype(str).str.strip().str.lower()
+                         .isin({"1", "1.0", "true", "yes", "y", "t"}).any())
+        if imputed:
+            assert line["text"].startswith(head + "; ") and line["text"].endswith(
+                "), analyzed as recorded.")
+            clause = line["text"][len(head) + 2:].split(" hold")[0]
+            assert sorted(re.findall(r"`([^`]+)`", clause)) == imputed
+            flagged = line["text"].split("(flagged in ")[1].split(")")[0]
+            assert sorted(re.findall(r"`([^`]+)`", flagged)) == [f"imputed_{c}" for c in imputed]
+        else:
+            assert line["text"] == head + "."
     else:
         predictors = seen["cohort"]["predictors"]
         n = len(frame[frame["glucose"].notna()])

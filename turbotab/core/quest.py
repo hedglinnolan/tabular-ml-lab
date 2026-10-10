@@ -101,7 +101,11 @@ from turbotab.core.fit_press import FitLock
 # stages the engine serves on the state, ``served_exhibits``), not complete; Write-up is not
 # reached until Results is placed; a goal changed to Estimate says why Results counts them, and a
 # goal changed to Predict says why Who's in asks the split (§7.2 I11, ruling 3).
-QUEST_VERSION = 4
+# 5 (TRUST): Results counts only the exhibits its goal serves (``EXHIBITS``), the substitution
+# curve among them, and is complete at 0 of 0 only when none waits on the fit; a consumer's refusal
+# measured on the table (``Asked``) is a Decide ahead of the question whose consumer refused, never
+# For the record (``waits_on_an_answer``).
+QUEST_VERSION = 5
 
 STAGES: tuple[tuple[str, str], ...] = (
     ("data", "Your data"),
@@ -242,6 +246,63 @@ OTHER_KINDS: dict[str, Place] = {
     "reseal": Place("results", "decision:reseal", DECIDE, 36),
     "set_explain": Place("results", "decision:set_explain", DECIDE, 45),
 }
+# The readings ledger's one ask card: the card that opens a reading's answers.
+ASK_CARD = OTHER_KINDS["confirm_readings"]
+
+
+@dataclass(frozen=True)
+class Asked:
+    """A consumer's refusal to read what nobody settled (``readings.Unsettled``: "it asks, never
+    guesses"), measured on the state where the table is at hand (:func:`fit_waits`): the Router
+    question whose consumer refused (``ask.CONSUMERS``; ``models`` is the fit), the refusal's own
+    words, the readings it waits on and its ways forward (one confirmation per reading)."""
+
+    question: str
+    message: str
+    readings: tuple[Any, ...] = ()
+    exits: tuple[Mapping[str, Any], ...] = ()
+
+
+def fit_waits(state: Any, info: Mapping[str, Any] | None = None, store: Any = None
+              ) -> Asked | None:
+    """The fit's refusal on ``state`` (``readings.predictors_or_ask``, as the fit, the causal lane
+    and the time-varying lane each call it), or None when every reading it rests on is settled.
+    ``info`` is the table's column summaries and ``store`` the table, as those consumers read
+    them. Every kind of refusal it raises is one (a role, codes or amounts, a detection limit, a
+    comma, an energy source's unit, a codes answer the energy or scales answer contradicts)."""
+    from turbotab.core.decisions import left_out
+    from turbotab.core.readings import Unsettled, predictors_or_ask
+
+    if state is None or not getattr(state, "roles", None):
+        return None
+    try:
+        predictors_or_ask(state, info, drop=left_out(state), store=store)
+    except Unsettled as waiting:
+        return Asked("models", str(waiting), tuple(waiting.readings),
+                     tuple(dict(e) for e in waiting.exits))
+    except Exception:  # noqa: BLE001 - a table that cannot be read refuses nothing here
+        return None
+    return None
+
+
+def waits_on_an_answer(step: Any, asked: Sequence[Asked] = ()) -> bool:
+    """TRUST (the quest-log critique's blocking question in the wrong drawer): a Router step stated
+    as not applicable because a consumer refused to read an unsettled reading (its reason is that
+    refusal, :class:`Asked`, whatever its wording) is no question that does not apply. Its gate
+    reported what something waits on, which the quest log lists as a Decide (:func:`_asked_lines`),
+    never For the record."""
+    if _get(step, "status") != "not_applicable":
+        return False
+    reason = str(_get(step, "reason") or "").strip()
+    return bool(reason) and any(reason == a.message.strip() for a in asked)
+
+
+def record_steps(steps: Sequence[Any], asked: Sequence[Asked] = ()) -> list[Any]:
+    """The Router's steps For the record reads (``sweep.for_the_record``): every one but those
+    that wait on an answer (:func:`waits_on_an_answer`)."""
+    return [s for s in steps if not waits_on_an_answer(s, asked)]
+
+
 # A revert sits where the record it undoes sits.
 FOLLOWS_WHAT_IT_UNDOES = "revert"
 # "Confirm all" sits in the stage whose sweep it confirms (P0.5; ``turbotab/core/sweep.py``).
@@ -305,6 +366,8 @@ class Facts:
 
     columns: Sequence[str] = ()
     artifacts: Mapping[str, Any] = field(default_factory=dict)
+    # The consumers' refusals measured on the table (:func:`fit_waits`): what waits on an answer.
+    asked: Sequence["Asked"] = ()
 
 
 def _goal(*goals: str) -> Callable[[Any, Facts], bool]:
@@ -541,6 +604,19 @@ def explore_place(kind: str, state: Any = None, *, noticed: Any = None,
     return replace(place, label=collinear_label(state, noticed, pairs))
 
 
+def explore_label(finding: Mapping[str, Any], state: Any = None, *, noticed: Any = None) -> str:
+    """The label the person sees on one of Explore's findings (an ``ExploreFinding`` as served):
+    its kind's place, labeled by :func:`explore_place`. For the collinear finding, ``noticed`` is
+    the K5 noticing measured on the table (``materiality.collinear_noticing``), and with none the
+    finding's own columns (the union of the pairs it shows) stand for its pairs, so what you study
+    among them makes it a Decide. A kind with no place keeps For the record."""
+    kind = str(_get(finding, "kind") or "")
+    if kind not in EXPLORE_FINDINGS:
+        return RECORD
+    columns = [str(c) for c in _get(finding, "columns") or []]
+    return explore_place(kind, state, noticed=noticed, pairs=[(c,) for c in columns]).label
+
+
 def finding_place(finding: Mapping[str, Any], state: Any = None) -> tuple[Place, str | None]:
     """Where a finding is decided, and the question it is decided at (None: its own repair).
 
@@ -629,23 +705,87 @@ COMPUTE: dict[str, tuple[str, str | None]] = {
 }
 
 
-# The compute stages whose result is an exhibit of Results (the card that shows it is an
-# ``exhibit:``). After Fit under Estimate and Describe, each one the engine serves on the state is
-# one of Results' objectives (:func:`served_exhibits`).
-EXHIBIT_STAGES: tuple[str, ...] = tuple(
-    name for name, (stage, card) in COMPUTE.items()
-    if stage == "results" and card is not None and card.startswith("exhibit:"))
+# The exhibit map: each compute stage whose result is an exhibit of Results, with the goals its
+# exhibit serves (the crosswalk card's ``goals``: ``inference`` is Estimate, ``describe``
+# Describe, ``prediction`` Predict). After Fit under Estimate and Describe, each one the engine
+# serves on the state for the goal is one of Results' objectives (:func:`served_exhibits`). Every
+# stage whose card is an ``exhibit:`` is here; the substitution curve is too (TRUST: the second
+# comparison is an exhibit of Results), with its question's goals (``decision:substitution-pair``)
+# while the crosswalk gives the curve no card of its own (disagreement 13).
+EXHIBITS: dict[str, tuple[str, ...]] = {
+    "usual_intake": ("describe",),
+    "fit": ("prediction",),
+    "substitution": ("inference", "prediction"),
+    "sensitivity": ("inference", "prediction"),
+    "calibration": ("inference",),
+    "secondary": ("inference",),
+    "scales": ("inference", "prediction"),
+    "effects": ("inference",),
+    "causal": ("inference",),
+    "time_varying": ("inference",),
+    "modification": ("inference",),
+    "explain": ("prediction", "inference"),
+    "evaluation": ("prediction",),
+}
+EXHIBIT_STAGES: tuple[str, ...] = tuple(EXHIBITS)
+
+
+def goal_of(state: Any) -> str | None:
+    """The goal Results serves, in the crosswalk's words: Predict (``prediction``); under the
+    engine's ``inference``, Estimate (``inference``) once what you study is declared, else Describe
+    (``describe``: no single effect to estimate). None with no goal answered."""
+    purpose = getattr(state, "purpose", None)
+    if purpose == "prediction":
+        return "prediction"
+    if purpose == "inference":
+        return "inference" if getattr(state, "estimand", None) is not None else "describe"
+    return None
 
 
 def served_exhibits(state: Any) -> tuple[str, ...]:
-    """The exhibit-bearing stages the engine serves on ``state``: those whose ``requires`` (and
-    their upstream stages') are all answered, the scheduler's own rule (``surfacing.computable``,
-    ``graph.unmet_requires``). A stage it never computes here (no causal answer, no explain
-    answer) is no exhibit to word and place, so it is not counted."""
+    """The exhibits the engine serves on ``state`` for its goal: the stages of :data:`EXHIBITS`
+    whose goals hold this state's (:func:`goal_of`; TRUST: under Estimate, a Describe or a Predict
+    exhibit is no objective of Results) and whose ``requires`` (and their upstream stages') are all
+    answered, the scheduler's own rule (``surfacing.computable``, ``graph.unmet_requires``). A
+    stage it never computes here (no causal answer, no explain answer) is no exhibit to word and
+    place, so it is not counted."""
     from turbotab.core.surfacing import computable
 
+    goal = goal_of(state)
     can = computable(state)
-    return tuple(name for name in EXHIBIT_STAGES if name in can)
+    return tuple(name for name in EXHIBIT_STAGES if name in can and goal in EXHIBITS[name])
+
+
+def exhibits_waiting(state: Any) -> tuple[str, ...]:
+    """The goal's exhibits not served on ``state`` that wait only on what the fit waits on (every
+    slot each misses, the fit misses too; ``surfacing.blocked``): answering the fit serves them, so
+    Results waits for them. An exhibit that also misses an answer of its own (a swap, an explain
+    answer, a unit) is not waited for."""
+    from turbotab.core.surfacing import blocked
+
+    goal = goal_of(state)
+    missing = blocked(state)
+    fit = set(missing.get("fit") or ())
+    return tuple(name for name in EXHIBIT_STAGES
+                 if goal in EXHIBITS[name] and missing.get(name)
+                 and fit and set(missing[name]) <= fit)
+
+
+def _goal_reasons(reasons: list[Reopened], state: Any) -> list[Reopened]:
+    """Results' reasons under its goal (TRUST): a result that is no exhibit of the goal (the
+    performance table under Estimate) is none of Results' objectives, so its being out of date is
+    no reason Results dropped back. Each reason keeps the rest, and one left with nothing goes."""
+    goal = goal_of(state)
+    out = []
+    for r in reasons:
+        kept = [n for n in r.results if n not in EXHIBITS or goal in EXHIBITS[n]]
+        if kept == r.results:
+            out.append(r)
+        elif kept or r.questions:
+            out.append(r.model_copy(update={"results": kept, "sentence": _sentence(
+                STAGE_NAMES[r.changed_in], STAGE_NAMES["results"], len(r.questions), len(kept),
+                within=r.within)}))
+    return out
 
 
 @lru_cache(maxsize=1)
@@ -1319,6 +1459,10 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
     for step in steps:
         key, status = _get(step, "key"), _get(step, "status")
         place = GOAL_PLACES.get((key, purpose)) or QUESTIONS.get(key)
+        if waits_on_an_answer(step, facts.asked if facts is not None else ()):
+            # TRUST: a gate that read a consumer's refusal reports what waits on an answer: that
+            # wait is a Decide (``_asked_lines``), never a question For the record.
+            continue
         if place is None or status == "not_applicable":
             continue
         label = place.label
@@ -1384,6 +1528,99 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
             waiting_for=waiting_for, computing=computing, reopened_by=reopened,
             changed_since=changed)))
     return lines
+
+
+def _ask_items(asked: Asked, state: Any) -> list[ReadItem]:
+    """The readings a refusal waits on, each with the refusal's own ways forward for its column
+    (a way forward that names no column, such as changing the energy answer, under each)."""
+    from turbotab.core.readings import guess_words
+
+    def column_of(exit_: Mapping[str, Any]) -> str | None:
+        decision = exit_.get("decision")
+        if decision is not None and hasattr(decision, "model_dump"):
+            decision = decision.model_dump(mode="json")
+        return str(decision.get("column")) if isinstance(decision, Mapping) and \
+            decision.get("column") is not None else None
+
+    def option(exit_: Mapping[str, Any]) -> ReadOption:
+        decision = exit_.get("decision")
+        if decision is not None and hasattr(decision, "model_dump"):
+            decision = decision.model_dump(mode="json")
+        return ReadOption(label=str(exit_.get("label")), decision=decision)
+
+    items = []
+    for r in asked.readings:
+        column = str(getattr(r, "column", ""))
+        mine = [e for e in asked.exits if column_of(e) in (column, None)]
+        try:
+            words = guess_words(r)
+        except Exception:  # noqa: BLE001 - a reading the ledger cannot word keeps its value
+            words = str(getattr(r, "value", ""))
+        items.append(ReadItem(kind=str(getattr(r, "kind", "")), column=column,
+                              value=str(getattr(r, "value", "")), words=str(words),
+                              evidence=str(getattr(r, "evidence", "") or ""),
+                              options=[option(e) for e in mine]))
+    return items
+
+
+def _since_answered(log: _Log, key: str) -> ReopenedBy | None:
+    """Why a question answered before now waits on another answer: of the live records after its
+    answer, the latest that changed what it rests on (:func:`question_reads`), else the latest
+    decided in a stage (its answer could not be recorded while the wait held, so a later record
+    made it)."""
+    answer = log.last_answer(answering_kinds(key))
+    if answer is None:
+        return None
+    found = _reopened_by(log, answering_kinds(key), question_reads(key))
+    if found is not None:
+        return found
+    for record in reversed(log.live):
+        if record.seq <= answer.seq:
+            break
+        stage = log.stage_of(record)
+        if stage is not None:
+            return ReopenedBy(decision_id=record.id, kind=record.decision.kind, stage=stage)
+    return None
+
+
+def _asked_lines(state: Any, steps: Sequence[Any], log: _Log,
+                 facts: Facts) -> list[tuple[str, QuestLine]]:
+    """TRUST: what something waits on is a Decide. A consumer's refusal (:class:`Asked`) is one
+    line in the stage of the question whose consumer refused (the fit's: Models), just ahead of
+    it, unless that question is still to be answered and the Router's ask card on it asks the
+    readings (``interview.route``, ``ask.card``): its own Decide line carries the ask then, and
+    while it waits behind an earlier question the ledger asks them where their first consumer
+    needs them. With its question answered, the line is that question asked again (its answer
+    cannot be fit), and it names the record after which it was (SURFACING_POLICY §7.2 as ruling 3
+    amends it: a complete stage that gains a line says why)."""
+    by_key = {_get(s, "key"): s for s in steps}
+    lines = []
+    for asked in facts.asked:
+        if asked.question not in QUESTIONS:
+            continue
+        step = by_key.get(asked.question)
+        status = _get(step, "status")
+        if step is None or status == "waiting" or (status == "open"
+                                                   and _get(step, "ask") is not None):
+            continue
+        place = QUESTIONS[asked.question]
+        lines.append((place.stage, QuestLine(
+            id=ASK_CARD.item, key=f"ask:{asked.question}", source="question", label=DECIDE,
+            name=asks(asked.message), status="open", counted=True, order=place.order - 0.5,
+            reason=asked.message, items=_ask_items(asked, state),
+            reopened_by=_since_answered(log, asked.question))))
+    return lines
+
+
+def asks(message: str) -> str:
+    """A refusal's question as the quest line names it: from the ledger's ask
+    (``readings.ask_text``: "Tell me about …") where the refusal holds one, else its own words."""
+    text = str(message or "")
+    for lead in ("Tell me about this column: ", "Tell me about these columns: "):
+        at = text.find(lead)
+        if at >= 0:
+            return text[at:]
+    return text
 
 
 def _declaration_reads(decl: Declaration) -> frozenset[str]:
@@ -1690,7 +1927,7 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
               artifacts: Mapping[str, Any] | None = None,
               shown_at: Mapping[str, datetime | None] | None = None,
               readings: Sequence[Mapping[str, Any]] | None = None,
-              fit: FitLock | None = None) -> QuestLog:
+              fit: FitLock | None = None, asked: Sequence[Asked] | None = None) -> QuestLog:
     """The seven stages for this project now.
 
     ``steps``: the Router's answer (``interview.route``). ``stages``: each compute stage's status.
@@ -1703,7 +1940,8 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     stage among them keeps Results reached. ``fit``: Fit and the plan's lock
     (``fit_press.fit_lock``), which opens Results and is reported with the log. ``readings``: what
     the values settled with no question asked (``readings.read_from_data``), Your data's line in
-    its sweep.
+    its sweep. ``asked``: the consumers' refusals measured on the table (:func:`fit_waits`), each a
+    Decide where its question is answered, and never For the record (:func:`waits_on_an_answer`).
 
     P0.5 (``turbotab/core/sweep.py``): a default stated for the person is a Confirm only when
     another choice would change a number here, else For the record with why; the Confirm lines
@@ -1723,8 +1961,10 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
         if not drawn(log.records):
             # the held-out rows are asked again (``_question_lines``): what reads them waits
             by_key["split"] = {"key": "split", "status": "open"}
-    facts = Facts(columns=tuple(columns or ()), artifacts=dict(artifacts or {}))
+    facts = Facts(columns=tuple(columns or ()), artifacts=dict(artifacts or {}),
+                  asked=tuple(asked or ()))
     placed = [*_question_lines(state, steps, log, facts),
+              *_asked_lines(state, steps, log, facts),
               *_declaration_lines(state, by_key, log, facts),
               *_finding_lines(state, findings, by_key, log),
               *sweeps.reading_lines(state, readings)]
@@ -1750,26 +1990,38 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
             swept = int(sweep is not None and sweep.answered)
             answered = sum(l.status == "answered" for l in decide) + swept
             required = len(decide) + int(sweep is not None)
+            complete = answered >= required
             if estimates and key == "results":
-                required += len(served_exhibits(state))
-            progress = Progress(answered=answered, required=required, complete=answered >= required)
+                served = len(served_exhibits(state))
+                required += served
+                # TRUST: with no exhibit of the goal served yet while some wait only on what the
+                # fit waits on (the families withdrawn, say), Results waits for them: it is not
+                # complete at 0 of 0, so the exhibits that answer serves are not lines gained by
+                # a complete stage. A goal with nothing of its own to serve is complete at 0 of 0.
+                complete = answered >= required and (served > 0 or not exhibits_waiting(state))
+            progress = Progress(answered=answered, required=required, complete=complete)
         # A stage not reached yet has nothing to drop back from.
         reasons = _reasons(key, mine, log, stages, shown_at) if reached else []
         if reached and estimates and key == "results":
-            reasons = _exhibits_reopened(reasons, log, served_exhibits(state))
+            reasons = _exhibits_reopened(_goal_reasons(reasons, state), log,
+                                         served_exhibits(state))
         out.append(QuestStage(key=key, name=name, reached=reached, progress=progress, sweep=sweep,
                               lines=mine, reopened=reasons))
     return QuestLog(stages=out, kinds=kind_stages(), fit=fit)
 
 
 __all__ = [
-    "COMPLETED", "COMPUTE", "ChangedSince", "DECLARATIONS", "Declaration", "EXHIBIT_STAGES",
+    "ASK_CARD", "Asked", "COMPLETED", "COMPUTE", "ChangedSince", "DECLARATIONS",
+    "Declaration", "EXHIBITS", "EXHIBIT_STAGES",
     "EXPLORE_FINDINGS", "FINDING_ROUTES", "FOLLOWS_ITS_STAGE", "FOLLOWS_WHAT_IT_UNDOES", "Facts",
     "GOAL_PLACES", "LABELS", "NORMALIZATION", "OTHER_KINDS", "Place", "Progress", "QUESTIONS",
     "QUEST_VERSION", "QuestLine", "QuestLog", "QuestStage", "READ_BY_GATE", "ReadItem",
     "ReadOption", "Reopened", "ReopenedBy", "STAGES", "STAGE_NAMES", "STATED", "SWEEP_ITEMS",
     "Sweep", "TIER_RULINGS", "Waiting", "answer_holds", "answering_kinds", "contract_tier",
-    "explore_place", "finding_place", "kind_place", "kind_stages", "noticing_place",
+    "exhibits_waiting",
+    "asks", "explore_label", "explore_place", "finding_place", "fit_waits", "goal_of", "kind_place",
+    "kind_stages", "noticing_place",
     "noticing_places", "noticing_stage", "noticing_stages", "quest_log", "question_reads",
-    "record_stage", "served_exhibits", "stage_reads", "written_slots",
+    "record_stage", "record_steps", "served_exhibits", "stage_reads", "waits_on_an_answer",
+    "written_slots",
 ]

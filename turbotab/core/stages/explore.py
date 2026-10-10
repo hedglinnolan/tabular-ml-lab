@@ -122,6 +122,9 @@ class ExploreFinding(_Model):
     detail: str | None = None
     lever: Lever | None = None
     record: dict[str, Any] | None = None  # the ``view_outcome`` a client records on opening it
+    # The label the person sees (Decide, Confirm, For the record), set where it is served
+    # (``quest.explore_label``: the collinear finding's from the K5 noticing); None as computed.
+    label: str | None = None
 
 
 class HandLever(_Model):
