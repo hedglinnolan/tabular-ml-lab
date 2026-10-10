@@ -104,3 +104,57 @@ def test_each_record_carries_the_published_facts(key, facts):
         assert rec.kind == "periodical" and rec.url.startswith("https://") and rec.verified_by == "url"
     else:
         assert rec.verified_by in ("crossref", "datacite")
+
+
+# The issue numbers of the JMLR records, from each paper's JMLR page (its citation_issue meta tag).
+JMLR_ISSUES = {
+    "probst2019tunability": "53",
+    "bergstra2012random": "10",
+    "cawley2010overfitting": "70",
+    "kobak2020ridge": "169",
+    "mentch2020randomization": "171",
+}
+
+
+@pytest.mark.parametrize("key,issue", sorted(JMLR_ISSUES.items()))
+def test_a_jmlr_record_carries_its_issue_number(key, issue):
+    rec = C.registry()[key]
+    assert rec.issue == issue
+    assert f"{rec.volume}({issue}):{rec.pages.split('-')[0]}" in SOURCES[key]
+
+
+def test_bergstra_and_cawley_read_volume_issue_pages_in_the_bib_file():
+    from pathlib import Path
+    bib = (Path(C.__file__).parent / "data" / "refs.bib").read_text(encoding="utf-8")
+    for key, (volume, number, pages) in {"bergstra2012random": ("13", "10", "281--305"),
+                                         "cawley2010overfitting": ("11", "70", "2079--2107")}.items():
+        entry = bib[bib.index("{" + key + ","):]
+        entry = entry[:entry.index("\n}")]
+        assert f"volume = {{{volume}}}" in entry and f"number = {{{number}}}" in entry, key
+        assert f"pages = {{{pages}}}" in entry, key
+
+
+def _listed_lines() -> list[str]:
+    """The '- ' lines of MODEL_FAMILY_CONTRACT §7 and of RECIPES_AND_TUNING's Sources."""
+    from pathlib import Path
+    docs = Path(__file__).resolve().parents[3] / "docs" / "turbotab-next"
+    contract = (docs / "MODEL_FAMILY_CONTRACT.md").read_text(encoding="utf-8")
+    recipes = (docs / "RECIPES_AND_TUNING.md").read_text(encoding="utf-8")
+    sections = (contract[contract.index("## 7 · Sources"):contract.index("## What changed after review")],
+                recipes[recipes.index("### Sources"):recipes.index("## Rulings folded in")])
+    return [line for s in sections for line in s.splitlines() if line.startswith("- ")]
+
+
+@pytest.mark.parametrize("key", sorted(SOURCES))
+def test_every_source_is_listed_in_section_7_or_the_recipes_sources(key):
+    """sources.py's documented rule: a source joins only once the contract's §7 or RECIPES' Sources
+    lists it. The listing line names the first author and the year, and either the title's first
+    long word or the volume and first page; the spec's own line is the reference."""
+    import re
+    rec = C.registry()[key]
+    family = rec.authors[0].split(",")[0]
+    word = next(w for w in re.findall(r"[A-Za-z]+", rec.title) if len(w) >= 5).lower()
+    first = rec.pages.split("-")[0] if rec.pages else ""
+    hits = [line for line in _listed_lines() if family in line and str(rec.year) in line
+            and (word in line.lower() or (rec.volume and first and rec.volume in line and first in line))]
+    assert hits, key

@@ -1,9 +1,11 @@
 """The sources a model family's declarations may cite, by key (MODEL_FAMILY_CONTRACT C5, §7).
 
 A :class:`~turbotab.core.models.base.Source` names one of these keys, and ``register_family``
-refuses a key that is not here. Each entry is a verified reference listed in MODEL_FAMILY_CONTRACT §7
-or in RECIPES_AND_TUNING's Sources; a source joins only once one of them lists it, and only when a
-declaration cites it. A long author list is written "First, A., Second, B., et al."
+refuses a key that is not here. Each entry is a verified reference that MODEL_FAMILY_CONTRACT §7 or
+RECIPES_AND_TUNING's Sources lists; a source joins only once one of them lists it. A source may be
+listed before a declaration cites it: C6a's ridge, Huber, random-forest and XGBoost families cite
+the RECIPES sources here when they land. ``test_c6a_sources`` holds the listing rule. A long author list
+is written "First, A., Second, B., et al."
 Each key is also a record of SIZING X4's citation registry (:mod:`turbotab.core.export.citations`,
 every DOI checked against Crossref), under the same key; ``test_citations`` holds them together.
 """
@@ -37,14 +39,14 @@ SOURCES: dict[str, str] = {
                        "Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge "
                        "Discovery and Data Mining, pp. 785–794. https://doi.org/10.1145/2939672.2939785",
     "bergstra2012random": "Bergstra, J., Bengio, Y. (2012). Random Search for Hyper-Parameter Optimization. "
-                          "Journal of Machine Learning Research 13:281–305. "
+                          "Journal of Machine Learning Research 13(10):281–305. "
                           "https://jmlr.org/papers/v13/bergstra12a.html",
     "bischl2023hpo": "Bischl, B., Binder, M., Lang, M., et al. (2023). Hyperparameter optimization: "
                      "Foundations, algorithms, best practices, and open challenges. WIREs Data Mining "
                      "and Knowledge Discovery 13(2):e1484. https://doi.org/10.1002/widm.1484",
     "cawley2010overfitting": "Cawley, G. C., Talbot, N. L. C. (2010). On Over-fitting in Model Selection and "
                              "Subsequent Selection Bias in Performance Evaluation. Journal of Machine Learning "
-                             "Research 11:2079–2107. https://jmlr.org/papers/v11/cawley10a.html",
+                             "Research 11(70):2079–2107. https://jmlr.org/papers/v11/cawley10a.html",
     "riley2021penalization": "Riley, R. D., Snell, K. I. E., Martin, G. P., et al. (2021). Penalization and "
                              "shrinkage methods produced unreliable clinical prediction models especially when "
                              "sample size was small. Journal of Clinical Epidemiology 132:88–96. "
