@@ -38,7 +38,8 @@
   "family": "For a catalog thread: its family (UNDERSTANDING_LAYER §3.1; Appendix A, or for the 34 threads the completeness review added, the family its failure_prevented text names; family_source says so).",
   "families": "For an item carrying catalog threads: the families of those threads.",
   "display_gate": "Added by the display-order audit (2026-10-08): what the line says while an answer it depends on is open or its gate is shut, and when it opens; or what records an answer the engine fills in and where that shows. Cites the disagreement it comes from.",
-  "order_audit": "Top level, not an item field: the display-order rule, the gates it names, each order conflict's verdict on the rule's three conditions, what changed, and the items touched; and the same day's review (what it found, the minor notes taken, and the notes not taken)."
+  "order_audit": "Top level, not an item field: the display-order rule, the gates it names, each order conflict's verdict on the rule's three conditions, what changed, and the items touched; and the same day's review (what it found, the minor notes taken, and the notes not taken).",
+  "rule": "module:function, the executable predicate of fires_when (turbotab/core/surfacing.py): true when an engine object the item carries fires. Absent while fires_when is prose; the registry test counts such an item as UNWIRED."
  },
  "stages": [
   {
@@ -578,6 +579,7 @@
     "all"
    ],
    "fires_when": "Always offered and optional. NHANES ships one file per component, joined on SEQN. The options are 'Keep every row of the table' (left, recommended) and 'Keep only rows with a partner' (inner). One-to-one, one-to-many and many-to-one joins are allowed.",
+   "rule": "turbotab.core.surfacing:fires_decision_join_files",
    "depends_on": [
     "q:upload"
    ],
@@ -685,6 +687,7 @@
     "all"
    ],
    "fires_when": "Always, once ingest is fresh. The answers are dietary, clinical, metabolomics, genomics and survey (any combination), or 'Something else, or not sure', which must stand alone.",
+   "rule": "turbotab.core.surfacing:fires_q_lens",
    "depends_on": [
     "q:upload"
    ],
@@ -753,6 +756,7 @@
     "genomics"
    ],
    "fires_when": "Fires under an assay lens whenever the reading is not a settled 'one row per sample'. The reader is never high-confidence, so under an assay lens it is always asked, with the reading as its proposal. Without an assay lens it is not applicable.",
+   "rule": "turbotab.core.surfacing:fires_q_orientation",
    "depends_on": [
     "q:lens"
    ],
@@ -794,6 +798,7 @@
     "genomics"
    ],
    "fires_when": "Fires inside the orientation question when the turn's label or annotation reading needs the user (TurnCheck exits).",
+   "rule": "turbotab.core.surfacing:fires_decision_set_feature_table",
    "depends_on": [
     "q:orientation"
    ],
@@ -822,6 +827,7 @@
     "all"
    ],
    "fires_when": "Always offered (import, recommended; or no codebook). Three forms are read: a variable table, an NHANES codebook page, or the labels an XPT file carries (stage_codebook labels=True). The offer can be pre-filled when the source is XPT.",
+   "rule": "turbotab.core.surfacing:fires_decision_import_codebook",
    "depends_on": [
     "q:upload",
     "q:lens"
@@ -889,6 +895,7 @@
     "all"
    ],
    "fires_when": "Fires on every finding with repairs. A deferral names the question it resurfaces at.",
+   "rule": "turbotab.core.surfacing:fires_decision_finding_disposition",
    "depends_on": [
     "q:lens"
    ],
@@ -1696,6 +1703,7 @@
     "all"
    ],
    "fires_when": "Fires on the open Router question whose consumer reads unsettled readings: aggregation, survey, exclusions, estimand, adjustment, energy_adjustment or models. None of these are in Your data.",
+   "rule": "turbotab.core.surfacing:fires_decision_readings_ask_card",
    "depends_on": [
     "q:lens"
    ],
@@ -1754,6 +1762,7 @@
     "all"
    ],
    "fires_when": "The roles stage runs as soon as the working table exists (lens answered). The Router asks the question only after target, event, task, follow_up, purpose, grain, repeat_kind, unit, aggregation and temporal.",
+   "rule": "turbotab.core.surfacing:fires_q_roles",
    "depends_on": [
     "q:lens"
    ],
@@ -1784,6 +1793,7 @@
     "all"
    ],
    "fires_when": "Fires for each proposal below high confidence (roles artifact needs_confirmation), before any number-changing consumer reads that role.",
+   "rule": "turbotab.core.surfacing:fires_decision_confirm_role",
    "depends_on": [
     "q:roles"
    ],
@@ -1813,6 +1823,7 @@
     "all"
    ],
    "fires_when": "Fires for a whole-valued predictor with 10 or fewer values (CODE_LEVELS) inside a consumer's scope (the fit's predictors), and for any whole number that changes within units (structure stage, for combining). It becomes a Confirm when the values settle it (decimals that fill their grid: an amount; three or more text labels: codes).",
+   "rule": "turbotab.core.surfacing:fires_reading_code_or_amount",
    "depends_on": [
     "q:roles"
    ],
@@ -1856,6 +1867,7 @@
     "dietary"
    ],
    "fires_when": "Fires when total energy's unit or day count is only proposed (by its name, its median, or an Atwater ratio that fits several readings, such as 4.00). It becomes a Confirm when the Atwater identity settles kcal.",
+   "rule": "turbotab.core.surfacing:fires_reading_energy_unit_and_days",
    "depends_on": [
     "q:lens"
    ],
@@ -2442,6 +2454,7 @@
     "all"
    ],
    "fires_when": "Covers: a role proposed high and recorded as proposed; total energy in kcal by the Atwater identity; a height by the human band; a predictor whose decimals fill their grid (an amount); text with three or more labels (codes); an energy source's grams by Atwater; a sex coding spelled by its labels. Listed only while the user has not answered that reading.",
+   "rule": "turbotab.core.surfacing:fires_default_read_from_data",
    "depends_on": [
     "q:lens",
     "q:roles"
@@ -2765,6 +2778,7 @@
     "all"
    ],
    "fires_when": "End of the stage, after its Decide objectives, when at least one default set for you here has an alternative that would change a number; otherwise it does not appear.",
+   "rule": "turbotab.core.surfacing:fires_other_confirm_sweep_data",
    "depends_on": [
     "default:read-from-data",
     "reading:nested-parts",
@@ -2796,6 +2810,7 @@
     "all"
    ],
    "fires_when": "Once ingest is fresh.",
+   "rule": "turbotab.core.surfacing:fires_record_ingest_facts",
    "depends_on": [
     "q:upload"
    ],
@@ -2852,6 +2867,7 @@
     "all"
    ],
    "fires_when": "Once the oriented stage is fresh.",
+   "rule": "turbotab.core.surfacing:fires_record_profile",
    "depends_on": [
     "q:upload"
    ],
@@ -3542,6 +3558,7 @@
     "all"
    ],
    "fires_when": "Always, first in the stage, once the lens is answered and the oriented table is read; under an assay lens it waits behind an open orientation question (sequence.py:_orientation_turns_before_the_target refuses turning the table once an outcome exists).",
+   "rule": "turbotab.core.surfacing:fires_q_target",
    "depends_on": [
     "q:lens (Your data)",
     "q:orientation (Your data)",
@@ -3574,6 +3591,7 @@
     "all"
    ],
    "fires_when": "The outcome is answered or detected as yes/no or time to event, once target_info is read for this outcome; not applicable for any other task, with the reason shown. Never guessed: no proposal, levels in the data's order.",
+   "rule": "turbotab.core.surfacing:fires_q_event",
    "depends_on": [
     "q:target",
     "stage:target_info"
@@ -3617,6 +3635,7 @@
     "all"
    ],
    "fires_when": "The values do not settle the task: three or more labels, whole numbers (a count, a score and a measurement look alike), decimals that do not fill a grid, or more than 20 classes (proposed as regression at low confidence). Two values, or grid-filling decimals, settle it: see default:task_settled.",
+   "rule": "turbotab.core.surfacing:fires_q_task",
    "depends_on": [
     "q:target",
     "stage:target_info (needs working)"
@@ -3647,6 +3666,7 @@
     "all"
    ],
    "fires_when": "A regression outcome with every value above 0, at least 20 values (SCALE_MIN_ROWS), skewness above 2 (SKEW_MARKED), and a log that is not skewed; the task step stays open with followup 'scale'.",
+   "rule": "turbotab.core.surfacing:fires_q_outcome_scale",
    "depends_on": [
     "q:task",
     "stage:target_info"
@@ -3691,6 +3711,7 @@
     "all"
    ],
    "fires_when": "3 to 10 levels (ORDER_LEVELS) when detected multiclass or answered multiclass/ordinal; a text ordinal outcome stays open (followup 'order') until its order is declared. Numbers are ordered by value.",
+   "rule": "turbotab.core.surfacing:fires_q_outcome_order",
    "depends_on": [
     "q:task"
    ],
@@ -3736,6 +3757,7 @@
     "all"
    ],
    "fires_when": "A regression outcome whose unit is neither recorded nor documented by a codebook; the header's letters and the clinical pack only propose one (BLUEPRINT §14.3).",
+   "rule": "turbotab.core.surfacing:fires_q_outcome_unit",
    "depends_on": [
     "q:target",
     "q:task"
@@ -3766,6 +3788,7 @@
     "all"
    ],
    "fires_when": "A yes/no outcome under the clinical or dietary lens or no lens: always. Under an assay or survey lens: only beside a numeric column that reads as a follow-up time. A time to event: always, because its follow-up must be named. Not applicable for any other task.",
+   "rule": "turbotab.core.surfacing:fires_q_follow_up",
    "depends_on": [
     "q:target",
     "q:task",
@@ -4183,6 +4206,7 @@
     "all"
    ],
    "fires_when": "An arm column, a case/control label with a matching key, or a period column. The design card asks it.",
+   "rule": "turbotab.core.surfacing:fires_q_study_design",
    "depends_on": [
     "q:target"
    ],
@@ -4240,6 +4264,7 @@
     "all"
    ],
    "fires_when": "Always, after the outcome's event, kind and follow-up: sequence.py:_answers_in_order refuses it as 'not yet' while one of them is open.",
+   "rule": "turbotab.core.surfacing:fires_q_goal",
    "depends_on": [
     "q:target",
     "q:event",
@@ -4312,6 +4337,7 @@
     "all"
    ],
    "fires_when": "Prediction with a yes/no outcome (the decision curve); subgroups for any task. Refused under inference.",
+   "rule": "turbotab.core.surfacing:fires_q_intended_use",
    "depends_on": [
     "q:goal",
     "q:event"
@@ -4951,6 +4977,7 @@
     "all"
    ],
    "fires_when": "Always, unless a design signal fires (then thread:design-signals asks).",
+   "rule": "turbotab.core.surfacing:fires_default_design_observational",
    "depends_on": [
     "q:target"
    ],
@@ -5071,6 +5098,7 @@
     "all"
    ],
    "fires_when": "End of the stage, after its Decide objectives, when at least one default set for you here has an alternative that would change a number; otherwise it does not appear.",
+   "rule": "turbotab.core.surfacing:fires_other_confirm_sweep_question",
    "depends_on": [
     "default:design_observational",
     "default:follow_up_one_period",
@@ -5101,6 +5129,7 @@
     "all"
    ],
    "fires_when": "The registry's value test settles the task.",
+   "rule": "turbotab.core.surfacing:fires_default_task_settled",
    "depends_on": [
     "q:target"
    ],
@@ -5130,6 +5159,7 @@
     "all"
    ],
    "fires_when": "The task makes event or follow-up inapplicable.",
+   "rule": "turbotab.core.surfacing:fires_default_outcome_steps_not_applicable",
    "depends_on": [
     "q:task"
    ],
@@ -5902,6 +5932,7 @@
     "all"
    ],
    "fires_when": "After the lens (requires lens); reads every row of the oriented table; recomputed when the target, units, sex codings, numbers read, categorical or aggregation answers change",
+   "rule": "turbotab.core.surfacing:fires_noticing_findings_stage",
    "depends_on": [
     "q:lens",
     "q:target (O2 batch and energy-outcome findings)",
@@ -5958,6 +5989,7 @@
     "prediction"
    ],
    "fires_when": "The user opens an O1 or O3 view behind the outcome door",
+   "rule": "turbotab.core.surfacing:fires_decision_view_outcome",
    "depends_on": [
     "q:target",
     "q:split (n_rows from the split artifact)"
@@ -6273,6 +6305,7 @@
     "describe"
    ],
    "fires_when": "Question 1 (ruled 2026-10-08). Estimate and Describe: the outcome alone after Who's in, on the rows analyzed; the outcome beside a column after Fit locks the track's plan, labeled exploratory. Predict: once the held-out rows are drawn, both on the training rows. Several goals: the strictest rule. 'No single outcome': no door.",
+   "rule": "turbotab.core.surfacing:fires_other_first_look_outcome_door",
    "depends_on": [
     "q:target",
     "q:split",
@@ -6305,6 +6338,7 @@
     "prediction"
    ],
    "fires_when": "Inside the door, once opened; regression → 20-bin histogram; binary/multiclass/ordinal → class shares; rare when the rarer class < RARE_CLASS 0.20",
+   "rule": "turbotab.core.surfacing:fires_noticing_explore_outcome_distribution",
    "depends_on": [
     "q:target",
     "q:task",
@@ -6335,6 +6369,7 @@
     "prediction"
    ],
    "fires_when": "Inside the door: numeric predictors with ≥ MIN_DISTINCT 10 values (methods/levers.py), regression or binary outcomes only; first MAX_SHOWN 12 in predictor order, the rest counted in 'more'",
+   "rule": "turbotab.core.surfacing:fires_noticing_explore_relationship",
    "depends_on": [
     "q:target",
     "q:split",
@@ -6778,6 +6813,7 @@
     "all"
    ],
    "fires_when": "Always routed after the goal. It is skipped (stated) when the structure stage finds a recognized person identifier unique on every row (structure.grain.stated); that case belongs in For the record. 'I don't know' (grain=unknown) makes the seal's basis 'undetermined' and exploratory.",
+   "rule": "turbotab.core.surfacing:fires_q_grain",
    "depends_on": [
     "q:target",
     "stage:structure",
@@ -6842,6 +6878,7 @@
     "all"
    ],
    "fires_when": "Only when grain=repeated. It is skipped (stated, so Confirm) when the reading is settled and the units column is the grain's id column. The options are repeats, time points, or imputed copies (an implicate column such as _MULT_).",
+   "rule": "turbotab.core.surfacing:fires_q_repeat_kind",
    "depends_on": [
     "q:grain"
    ],
@@ -6903,6 +6940,7 @@
     "all"
    ],
    "fires_when": "When grain=repeated (not applicable for one row per unit or unknown).",
+   "rule": "turbotab.core.surfacing:fires_q_unit",
    "depends_on": [
     "q:grain",
     "q:repeat_kind"
@@ -6933,6 +6971,7 @@
     "all"
    ],
    "fires_when": "When unit=unit. When the outcome varies within units it also asks which outcome to keep (first, last or mean). The ask card asks each whole-number column 'codes or counts?' and asks for the time column that orders records.",
+   "rule": "turbotab.core.surfacing:fires_q_aggregation",
    "depends_on": [
     "q:unit",
     "q:target",
@@ -6966,6 +7005,7 @@
     "all"
    ],
    "fires_when": "When time points stay as rows (unit=row, repeat kind is time points). It is routed under every goal, though under inference it only orders the folds.",
+   "rule": "turbotab.core.surfacing:fires_q_temporal",
    "depends_on": [
     "q:unit",
     "q:repeat_kind",
@@ -6999,6 +7039,7 @@
     "all"
    ],
    "fires_when": "After the roles, when a column reads as a group: named, or under inference by its structure. Otherwise it is skipped (For the record). Under inference the options are fixed effects plus CR2 (recommended), cluster only, or none; 'none' over a 'yes' guess is block-and-record. Under prediction the answer names the cluster for internal–external validation folds.",
+   "rule": "turbotab.core.surfacing:fires_q_clusters",
    "depends_on": [
     "q:roles",
     "stage:roles",
@@ -7065,6 +7106,7 @@
     "all"
    ],
    "fires_when": "Under inference, when a weight, stratum or PSU column reads as one. It is not applicable under prediction or when no design is present. set_survey is still accepted under prediction for design-based CV (survey.py:_asked_under_inference, ruling 13).",
+   "rule": "turbotab.core.surfacing:fires_q_survey",
    "depends_on": [
     "q:roles",
     "q:goal",
@@ -7243,6 +7285,7 @@
     "all"
    ],
    "fires_when": "Always routed (there is no gate) once the proposals exist. Under the dietary lens the screens are offered: Willett 2013 by sex, NHS/HPFS, sex-neutral 500–5,000 and 500–3,500, and Goldberg. Under prediction 'keep every row' comes first; under inference the Goldberg screen comes first when it can run. A custom range on any numeric column is offered under every lens.",
+   "rule": "turbotab.core.surfacing:fires_q_exclusions",
    "depends_on": [
     "q:roles",
     "reading:energy-unit-and-days",
@@ -7273,6 +7316,7 @@
     "all"
    ],
    "fires_when": "A finding is deferred to exclusions or missing, or routes there by its voice.",
+   "rule": "turbotab.core.surfacing:fires_noticing_findings_routed_here",
    "status": "built+rendered",
    "notes": "Findings.tsx and the resurfacing of deferred findings. They must be decided or dismissed before the lock or the seal.",
    "merged_from": [
@@ -7300,6 +7344,7 @@
     "all"
    ],
    "fires_when": "Always routed, even when no predictor has a blank. Under inference, multiple imputation (m ≥ 20, compatible with the analysis model) comes first. Under prediction, a fill in each training fold comes first. Columns can be left out, blanks can become their own level, and indicators are offered.",
+   "rule": "turbotab.core.surfacing:fires_q_missing",
    "depends_on": [
     "q:roles",
     "q:goal",
@@ -7592,6 +7637,7 @@
     "all"
    ],
    "fires_when": "Routed under every goal. Under prediction it is the seal: a holdout share ranked by what that size can measure, and a validation scheme (bootstrap first below 20,000 units; repeated k-fold; k-fold; internal–external by the clusters answer; nested CV at p≫n). Under inference, cross-validation alone leads and the question should be For the record.",
+   "rule": "turbotab.core.surfacing:fires_q_split",
    "depends_on": [
     "q:grain",
     "q:temporal",
@@ -10248,6 +10294,7 @@
     "all"
    ],
    "fires_when": "grain=repeated and the repeat-kind reading is settled on the grain's id column.",
+   "rule": "turbotab.core.surfacing:fires_default_repeat_kind_stated",
    "reopens_when": "After the seal (Decision A slots are read by the draw).",
    "status": "built+rendered",
    "notes": "It feeds regression calibration and NCI usual intake (effective_repeat_kind). It must be swept before the seal.",
@@ -10324,6 +10371,7 @@
     "inference"
    ],
    "fires_when": "Multiple imputation is chosen.",
+   "rule": "turbotab.core.surfacing:fires_default_missing_m",
    "status": "partial",
    "notes": "There is no UI control. The Monte Carlo error is reported.",
    "merged_from": [
@@ -10714,6 +10762,7 @@
     "all"
    ],
    "fires_when": "A recognized person identifier is unique on every row and nothing repeats like a roster.",
+   "rule": "turbotab.core.surfacing:fires_default_grain_stated",
    "status": "built+rendered",
    "notes": "StatedSkip shows the reason; 'Ask me anyway' reopens the question. Relabeled Confirm (crosswalk patch): another grain changes the grouping, the intervals and, under Predict, the draw.",
    "merged_from": [
@@ -10785,6 +10834,7 @@
     "clinical"
    ],
    "fires_when": "repeat_kind=imputed_copies (NHANES DXA _MULT_).",
+   "rule": "turbotab.core.surfacing:fires_default_imputed_copies_pooled",
    "status": "partial",
    "notes": "The UI cannot answer imputed_copies directly. Relabeled Confirm (crosswalk patch): combining the copies into one row is the blocked-and-recorded alternative, with intervals too narrow.",
    "merged_from": [
@@ -10840,6 +10890,7 @@
     "all"
    ],
    "fires_when": "End of the stage, after its Decide objectives, when at least one default set for you here has an alternative that would change a number; otherwise it does not appear. Under Predict it runs just before the seal (disagreement 6).",
+   "rule": "turbotab.core.surfacing:fires_other_confirm_sweep_whos_in",
    "depends_on": [
     "default:grain_stated",
     "default:repeat_kind_stated",
@@ -10901,6 +10952,7 @@
     "all"
    ],
    "fires_when": "The primary excludes rows and set_sensitivity is answered.",
+   "rule": "turbotab.core.surfacing:fires_default_every_row_analysis",
    "status": "built-engine-only",
    "merged_from": [
     "whos_in|default:every_row_analysis"
@@ -10921,6 +10973,7 @@
     "inference"
    ],
    "fires_when": "Under inference; no cross-validated score is shown.",
+   "rule": "turbotab.core.surfacing:fires_default_split_under_inference",
    "status": "partial",
    "notes": "The Router still asks the question; nothing records this as a stated default.",
    "lenses": [
@@ -10979,6 +11032,7 @@
     "prediction"
    ],
    "fires_when": "missing=complete_case.",
+   "rule": "turbotab.core.surfacing:fires_default_complete_case_predictors",
    "reopens_when": "A role is confirmed, or the adjustment set changes in Models.",
    "status": "built-engine-only",
    "merged_from": [
@@ -11200,6 +11254,7 @@
     "all"
    ],
    "fires_when": "Missingness gap by group.",
+   "rule": "turbotab.core.surfacing:fires_noticing_explore_quality_by_group",
    "status": "partial",
    "tapestry": "Strip",
    "notes": "Computed in the explore stage, which needs the split.",
@@ -12927,6 +12982,7 @@
     "all"
    ],
    "fires_when": "An outcome is chosen; it recomputes on every row-changing answer.",
+   "rule": "turbotab.core.surfacing:fires_result_cohort",
    "status": "built+rendered",
    "tapestry": "Flow at rest ('your data now'), changed step lit.",
    "notes": "LiveScenes.tsx RowsCard. complete_case_loss is unread.",
@@ -12949,6 +13005,7 @@
     "prediction"
    ],
    "fires_when": "Target, cohort and structure are fresh.",
+   "rule": "turbotab.core.surfacing:fires_result_seal_plan",
    "status": "partial",
    "tapestry": "Angles: precision by size against CV.",
    "notes": "validation, floor and labels are unread.",
@@ -13015,6 +13072,7 @@
     "all"
    ],
    "fires_when": "purpose = inference and the settled roles hold at least one exposure or covariate predictor (estimand_gate); proposals stage fresh; every earlier Router question answered (split included). Not applicable under prediction.",
+   "rule": "turbotab.core.surfacing:fires_q_estimand",
    "depends_on": [
     "q:goal",
     "roles (Your data)",
@@ -13047,6 +13105,7 @@
     "all"
    ],
    "fires_when": "inference, an exposure (or family) declared, and at least one covariate besides it in the model (adjustment_gate); answered once every asked covariate has answers for the current exposure",
+   "rule": "turbotab.core.surfacing:fires_q_adjustment",
    "depends_on": [
     "q:estimand",
     "roles (Your data)"
@@ -13079,6 +13138,7 @@
     "all"
    ],
    "fires_when": "inference; rows are a unit's time points kept as rows (stage requires estimand and unit); one exposure (not a family) that the stage reads as changing within units; else not applicable with the reason",
+   "rule": "turbotab.core.surfacing:fires_q_time_varying",
    "depends_on": [
     "q:estimand",
     "q:adjustment",
@@ -13123,6 +13183,7 @@
     "dietary"
    ],
    "fires_when": "dietary lens on, a column with the energy role and an exposure (kept asked while readings are unsettled)",
+   "rule": "turbotab.core.surfacing:fires_q_energy_adjustment",
    "depends_on": [
     "q:estimand (substitution vs addition contrast)",
     "roles and energy unit/days (Your data)"
@@ -13176,6 +13237,7 @@
     "all"
    ],
    "fires_when": "inference with a continuous exposure or adjusted confounder on the fresh forms card (after the energy model, on the final scale); waits while the forms stage recomputes; not applicable when none",
+   "rule": "turbotab.core.surfacing:fires_q_form",
    "depends_on": [
     "q:estimand",
     "q:adjustment",
@@ -13209,6 +13271,7 @@
     "all"
    ],
    "fires_when": "roles answered and the shelf fresh (it depends on cohort and split); every earlier Router question answered",
+   "rule": "turbotab.core.surfacing:fires_q_models",
    "depends_on": [
     "q:split",
     "q:form",
@@ -13243,6 +13306,7 @@
     "all"
    ],
    "fires_when": "inference with an estimand declared and the adjustment set answered; no Router key (the card rides on proposals)",
+   "rule": "turbotab.core.surfacing:fires_decision_set_model_sequence",
    "depends_on": [
     "q:estimand",
     "q:adjustment"
@@ -13276,6 +13340,7 @@
     "all"
    ],
    "fires_when": "an exclusion rule is recorded (Who's in); no Router key; the stage runs only once the slot is answered, adding the every-row analysis when the primary excludes rows",
+   "rule": "turbotab.core.surfacing:fires_decision_set_sensitivity",
    "depends_on": [
     "q:exclusions (Who's in)",
     "q:models"
@@ -13317,6 +13382,7 @@
     "dietary"
    ],
    "fires_when": "inference with rows that are each person's mean of 2+ recalls (repeats combined by mean) and the linear family chosen; no Router key",
+   "rule": "turbotab.core.surfacing:fires_decision_set_measurement_error",
    "depends_on": [
     "q:adjustment",
     "q:energy_adjustment",
@@ -13351,6 +13417,7 @@
     "survey"
    ],
    "fires_when": "survey-instrument items in the predictors; METHODS_REFERENCE says 'Asked: never' today",
+   "rule": "turbotab.core.surfacing:fires_decision_set_scales",
    "depends_on": [
     "roles (Your data)",
     "code readings"
@@ -13384,6 +13451,7 @@
     "genomics"
    ],
    "fires_when": "a settled batch column, especially one unevenly spread over the outcome (Cramer's V); METHODS_REFERENCE says 'Asked: never' today",
+   "rule": "turbotab.core.surfacing:fires_decision_set_batch",
    "depends_on": [
     "roles (Your data)",
     "findings (First look)"
@@ -13415,6 +13483,7 @@
     "genomics"
    ],
    "fires_when": "An assay block read as raw counts or raw intensities (noticing:omics-value-scale settles the reading in Your data). Ranked by the data: log-CPM with TMM for counts, PQN then log2 for intensities, PQN to pooled QCs when they exist; \"Already normalized\" when the reading says so.",
+   "rule": "turbotab.core.surfacing:fires_decision_omics_normalization",
    "depends_on": [
     "noticing:omics-value-scale",
     "decision:qc-rlsc",
@@ -13449,6 +13518,7 @@
     "dietary"
    ],
    "fires_when": "Two or more columns carry energy; declared beside the contrast on the estimand card, before Fit (disagreement 13). The engine today waits for a fresh fit (MUST_BE_FRESH).",
+   "rule": "turbotab.core.surfacing:fires_decision_substitution_pair",
    "depends_on": [
     "q:estimand (contrast)",
     "q:energy_adjustment",
@@ -13540,6 +13610,7 @@
     "all"
    ],
    "fires_when": "a finding routes to or was deferred to a Models question",
+   "rule": "turbotab.core.surfacing:fires_noticing_findings_routed_to_models",
    "depends_on": [
     "findings (First look)"
    ],
@@ -13567,6 +13638,7 @@
     "prediction"
    ],
    "fires_when": "Predictors ≥ analyzed (or training) rows",
+   "rule": "turbotab.core.surfacing:fires_noticing_explore_wide",
    "depends_on": [
     "roles",
     "q:split (engine)"
@@ -13618,6 +13690,7 @@
     "prediction"
    ],
    "fires_when": "|r| ≥ COLLINEAR 0.90; skipped above MAX_PAIRS_P 500 numeric predictors",
+   "rule": "turbotab.core.surfacing:fires_noticing_explore_collinear",
    "depends_on": [
     "roles",
     "q:split (engine)"
@@ -13671,6 +13744,7 @@
     "all"
    ],
    "fires_when": "prediction (row 8); in-fold screening ranks first at p much greater than n; the pre-selection question is TRIPOD+AI 9a; under inference only as a labeled sensitivity analysis",
+   "rule": "turbotab.core.surfacing:fires_decision_set_selection",
    "depends_on": [
     "q:models",
     "decision:set_levers"
@@ -13729,6 +13803,7 @@
     "dietary"
    ],
    "fires_when": "dietary lens with repeated recalls and enough repeaters (MIN_REPEATERS); runs under either purpose today",
+   "rule": "turbotab.core.surfacing:fires_decision_set_usual_intake",
    "depends_on": [
     "q:repeat_kind (Who's in)",
     "q:survey (Who's in)"
@@ -18547,6 +18622,7 @@
     "all"
    ],
    "fires_when": "inference with one declared exposure: stated 'none declared' (Router skipped, one tap away); asked (followup 'adjustment') while a declared interaction's second exposure lacks adjustment answers; not applicable for a family or under prediction",
+   "rule": "turbotab.core.surfacing:fires_q_modification",
    "depends_on": [
     "q:estimand",
     "q:adjustment"
@@ -18577,6 +18653,7 @@
     "all"
    ],
    "fires_when": "inference, a declared point exposure (not a family, not time-varying, not a direct effect), numeric or yes/no outcome, estimand and adjustment answered: stated (skipped), the top-ranked estimator one step away; rung (d) ranks it high when candidates are many relative to n",
+   "rule": "turbotab.core.surfacing:fires_q_causal",
    "depends_on": [
     "q:estimand",
     "q:adjustment",
@@ -18623,6 +18700,7 @@
     "survey"
    ],
    "fires_when": "an exposure family is declared or a feature-wise analysis is chosen; Benjamini-Hochberg is implied when unanswered",
+   "rule": "turbotab.core.surfacing:fires_decision_set_multiplicity",
    "depends_on": [
     "q:estimand",
     "q:models"
@@ -18675,6 +18753,7 @@
     "all"
    ],
    "fires_when": "prediction; nested-CV offered at p much greater than n with its time; internal-external CV when a grouping is named; design-based CV under the population answer",
+   "rule": "turbotab.core.surfacing:fires_default_validation_scheme",
    "depends_on": [
     "q:split",
     "q:clusters (Who's in)",
@@ -18726,6 +18805,7 @@
     "all"
    ],
    "fires_when": "prediction; offered from Explore findings (curvature, near-zero variance, a rare class) first as in-fold rules; refused under inference",
+   "rule": "turbotab.core.surfacing:fires_decision_set_levers",
    "depends_on": [
     "First look (explore findings)",
     "q:split"
@@ -18865,6 +18945,7 @@
     "all"
    ],
    "fires_when": "prediction (Router step form is skipped with this reason)",
+   "rule": "turbotab.core.surfacing:fires_default_form_under_prediction",
    "depends_on": [
     "q:models"
    ],
@@ -19146,6 +19227,7 @@
     "prediction"
    ],
    "fires_when": "One value, or the commonest ≥ 19 × the next with ≤ 10% distinct values",
+   "rule": "turbotab.core.surfacing:fires_noticing_explore_low_variance",
    "depends_on": [
     "roles",
     "q:split (engine)"
@@ -21015,6 +21097,7 @@
     "all"
    ],
    "fires_when": "end of the stage, before the flowchart, when at least one stated default has a number-changing alternative",
+   "rule": "turbotab.core.surfacing:fires_other_confirm_sweep",
    "depends_on": [
     "default:causal-settings",
     "q:modification",
@@ -21133,6 +21216,7 @@
     "all"
    ],
    "fires_when": "under inference the server records lock_plan when an estimate stage first serves an estimate; a client posting it is refused",
+   "rule": "turbotab.core.surfacing:fires_other_plan_lock",
    "depends_on": [
     "other:fit"
    ],
@@ -22094,6 +22178,7 @@
     "all"
    ],
    "fires_when": "every Models question answered or stated, noticings cleared, Confirm sweep done",
+   "rule": "turbotab.core.surfacing:fires_flowchart_analysis",
    "depends_on": [
     "q:models",
     "decision:set_model_sequence",
@@ -22628,6 +22713,7 @@
     "all"
    ],
    "fires_when": "After Fit (other:fit). Under Estimate, Fit comes after the open-noticings gate, the Models Confirm sweep and the analysis flowchart, and its first estimate locks the plan. The engine computes it when: Inference, after the exposure, its effect and the adjustment set are answered and models chosen (stage requires models, estimand); withheld while a question it rests on is open (estimand.served_gate).",
+   "rule": "turbotab.core.surfacing:fires_exhibit_table2",
    "depends_on": [
     "q:estimand",
     "q:adjustment",
@@ -22766,6 +22852,7 @@
     "all"
    ],
    "fires_when": "After Fit (other:fit). Under Estimate, Fit comes after the open-noticings gate, the Models Confirm sweep and the analysis flowchart, and its first estimate locks the plan. The engine computes it when: Time points kept as rows, one exposure declared, the lane complete and declared after these very diagnostics (diagnostics_key).",
+   "rule": "turbotab.core.surfacing:fires_exhibit_time_varying_estimate",
    "depends_on": [
     "q:time_varying",
     "other:fit",
@@ -22818,6 +22905,7 @@
     "all"
    ],
    "fires_when": "After Fit (other:fit). Under Estimate, Fit comes after the open-noticings gate, the Models Confirm sweep and the analysis flowchart, and its first estimate locks the plan. The engine computes it when: set_causal with a method other than none, declared with the model families; withheld on practical positivity violation, an unanswered survey question, too few clusters or incomplete rows.",
+   "rule": "turbotab.core.surfacing:fires_exhibit_causal_estimate",
    "depends_on": [
     "q:causal",
     "q:models",
@@ -22873,6 +22961,7 @@
     "all"
    ],
    "fires_when": "A diagnostic of the exposure fails; ranked by the data: period_hazard_ratios first for a failed PH check, without_influential for an influence failure.",
+   "rule": "turbotab.core.surfacing:fires_decision_respond_diagnostic",
    "depends_on": [
     "exhibit:diagnostics"
    ],
@@ -22922,6 +23011,7 @@
     "all"
    ],
    "fires_when": "After Fit (other:fit). Under Estimate, Fit comes after the open-noticings gate, the Models Confirm sweep and the analysis flowchart, and its first estimate locks the plan. The engine computes it when: Adjustment answers declare unknown timing or 'further adjusted for' columns.",
+   "rule": "turbotab.core.surfacing:fires_exhibit_secondary_further_adjusted",
    "depends_on": [
     "q:adjustment",
     "exhibit:table2",
@@ -22972,6 +23062,7 @@
     "dietary"
    ],
    "fires_when": "After Fit (other:fit). Under Estimate, Fit comes after the open-noticings gate, the Models Confirm sweep and the analysis flowchart, and its first estimate locks the plan. The engine computes it when: measurement_error declared (not none) and rows are each person's mean of two or more recalls; refused under prediction, with splines or quintiles on the error-prone term, or below the cluster floor (blocked and recorded).",
+   "rule": "turbotab.core.surfacing:fires_exhibit_regression_calibration",
    "depends_on": [
     "decision:set_measurement_error (Models)",
     "q:adjustment",
@@ -23036,6 +23127,7 @@
     "survey"
    ],
    "fires_when": "After Fit (other:fit). Under Estimate, Fit comes after the open-noticings gate, the Models Confirm sweep and the analysis flowchart, and its first estimate locks the plan. The engine computes it when: set_scales declared; the correction only under inference for a reflective scale (refused for formative indices).",
+   "rule": "turbotab.core.surfacing:fires_exhibit_scales_reliability",
    "depends_on": [
     "decision:set_scales",
     "q:models",
@@ -23091,6 +23183,7 @@
     "all"
    ],
    "fires_when": "After Fit (other:fit). Under Estimate, Fit comes after the open-noticings gate, the Models Confirm sweep and the analysis flowchart, and its first estimate locks the plan. The engine computes it when: set_modification declares an effect modifier or a second exposure (with its adjustment answers).",
+   "rule": "turbotab.core.surfacing:fires_exhibit_effect_modification",
    "depends_on": [
     "q:modification",
     "q:adjustment",
@@ -23203,6 +23296,7 @@
     "all"
    ],
    "fires_when": "After Fit (other:fit). Under Estimate, Fit comes after the open-noticings gate, the Models Confirm sweep and the analysis flowchart, and its first estimate locks the plan. The engine computes it when: set_sensitivity recorded; the every-row analysis is added when the primary excludes rows (Banna et al. 2017). Under prediction no analysis reads a sealed row.",
+   "rule": "turbotab.core.surfacing:fires_exhibit_declared_sensitivity",
    "depends_on": [
     "q:exclusions",
     "q:models",
@@ -23544,6 +23638,7 @@
     "all"
    ],
    "fires_when": "After Fit (other:fit). Under Estimate, Fit comes after the open-noticings gate, the Models Confirm sweep and the analysis flowchart, and its first estimate locks the plan. The engine computes it when: Prediction fit fresh. Before opening: CV scores with the declared basis (selection_corrected, own_score, or not_declared with its exit); after opening: the held-out column.",
+   "rule": "turbotab.core.surfacing:fires_exhibit_performance_table",
    "depends_on": [
     "q:split",
     "q:models",
@@ -23656,6 +23751,7 @@
     "all"
    ],
    "fires_when": "An unpenalized regression family under prediction (relation shrinkage_offered); thread shared-overfit-calibration-slope gives the moment.",
+   "rule": "turbotab.core.surfacing:fires_decision_set_updating",
    "depends_on": [
     "exhibit:calibration_curves"
    ],
@@ -23774,6 +23870,7 @@
     "all"
    ],
    "fires_when": "Rows are held out and the fit is fresh (waits on fit otherwise); not applicable under cross-validation alone. The family is required when several are fitted (final_model_needed).",
+   "rule": "turbotab.core.surfacing:fires_q_open_seal",
    "depends_on": [
     "exhibit:performance_table",
     "decision:set_updating",
@@ -23906,6 +24003,7 @@
     "all"
    ],
    "fires_when": "After Fit (other:fit). Under Estimate, Fit comes after the open-noticings gate, the Models Confirm sweep and the analysis flowchart, and its first estimate locks the plan. The engine computes it when: set_intended_use = decision_support with a yes/no outcome.",
+   "rule": "turbotab.core.surfacing:fires_exhibit_decision_curve",
    "depends_on": [
     "q:intended_use",
     "default:decision_threshold",
@@ -24377,6 +24475,7 @@
     "all"
    ],
    "fires_when": "Only as an exit after opening, when a change would redraw the held-out rows (refusal seal_opened).",
+   "rule": "turbotab.core.surfacing:fires_decision_reseal",
    "depends_on": [
     "q:open_seal"
    ],
@@ -24492,6 +24591,7 @@
     "dietary"
    ],
    "fires_when": "After Fit (other:fit). Under Estimate, Fit comes after the open-noticings gate, the Models Confirm sweep and the analysis flowchart, and its first estimate locks the plan. The engine computes it when: set_usual_intake recorded for a component with repeat recalls (stage requires lens and purpose).",
+   "rule": "turbotab.core.surfacing:fires_exhibit_usual_intake_distribution",
    "depends_on": [
     "decision:set_usual_intake",
     "q:survey",
@@ -24862,6 +24962,7 @@
     "all"
    ],
    "fires_when": "After the comparison (prediction) or the lock (inference); heavy.",
+   "rule": "turbotab.core.surfacing:fires_decision_set_explain",
    "depends_on": [
     "stage:fit",
     "exhibit:performance_table"
@@ -24893,6 +24994,7 @@
     "all"
    ],
    "fires_when": "set_explain recorded; a family at or below the baseline draws nothing, with the reason (prediction floor).",
+   "rule": "turbotab.core.surfacing:fires_exhibit_shap_importance",
    "depends_on": [
     "decision:set_explain"
    ],
@@ -25622,6 +25724,7 @@
     "all"
    ],
    "fires_when": "End of the stage, after its Decide objectives, when at least one default set for you here has an alternative that would change a number; otherwise it does not appear.",
+   "rule": "turbotab.core.surfacing:fires_other_confirm_sweep_results",
    "depends_on": [
     "default:decision_threshold",
     "default:explain_curve_method",
@@ -25852,6 +25955,7 @@
     "all"
    ],
    "fires_when": "Under inference.",
+   "rule": "turbotab.core.surfacing:fires_default_fit_statistics_withheld",
    "status": "built-engine-only",
    "merged_from": [
     "models|default:fit-statistics-withheld",
@@ -25909,6 +26013,7 @@
     "all"
    ],
    "fires_when": "Bootstrap validation chosen in the split question.",
+   "rule": "turbotab.core.surfacing:fires_default_bootstrap_optimism",
    "status": "built-engine-only",
    "merged_from": [
     "results|default:bootstrap_optimism"
@@ -27115,6 +27220,7 @@
     "all"
    ],
    "fires_when": "End of the stage, after its Decide objectives, when at least one default set for you here has an alternative that would change a number; otherwise it does not appear.",
+   "rule": "turbotab.core.surfacing:fires_other_confirm_sweep_writeup",
    "depends_on": [
     "default:small-cell-threshold"
    ],
@@ -27358,6 +27464,7 @@
     "all"
    ],
    "fires_when": "The plan is locked (the first estimate is served)",
+   "rule": "turbotab.core.surfacing:fires_default_plan_wording",
    "depends_on": [
     "other:plan-lock"
    ],

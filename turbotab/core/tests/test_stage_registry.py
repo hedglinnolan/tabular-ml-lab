@@ -359,9 +359,13 @@ def test_a_question_asked_again_by_a_change_in_another_stage_says_why():
                             "measure": "mean_difference"})
     log = quest.quest_log(state, records, steps)
     assert line(log, "adjustment").reopened_by.stage == "models"
+    # The causal lane, stated for the old exposure, is asked again for the new one (the Router
+    # holds it until the new exposure's adjustment answers are in), and says so too.
+    assert line(log, "causal").reopened_by.decision_id == "r7"
     assert stage(log, "models").reopened == [quest.Reopened(
-        changed_in="models", decision_id="r7", kind="set_estimand", questions=["q:adjustment"],
-        within=True, sentence="Your change to another answer in Models reopened 1 question.")]
+        changed_in="models", decision_id="r7", kind="set_estimand",
+        questions=["q:adjustment", "q:causal"], within=True,
+        sentence="Your change to another answer in Models reopened 2 questions.")]
 
 
 EXCLUSION = {"kind": "set_exclusions", "rules": [

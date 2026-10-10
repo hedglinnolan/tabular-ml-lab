@@ -274,9 +274,17 @@ def kind_stages() -> dict[str, str]:
 def answering_kinds(key: str) -> tuple[str, ...]:
     """The decision kinds whose record answers the Router question ``key``."""
     from turbotab.core.decisions import SLOTS
+
+    return _answering_kinds(key, tuple(SLOTS.items()))
+
+
+@lru_cache(maxsize=256)
+def _answering_kinds(key: str, slots: tuple[tuple[str, str], ...]) -> tuple[str, ...]:
+    # Keyed by the registered kinds, so a kind registered later is read (the quest log asks this
+    # for every line of every log; the path fuzzer, I14).
     from turbotab.core.sequence import question_of
 
-    return tuple(k for k in SLOTS if question_of(k) == key) + ALSO_ANSWERS.get(key, ())
+    return tuple(k for k, _slot in slots if question_of(k) == key) + ALSO_ANSWERS.get(key, ())
 
 
 # ── declarations: the decisions with no Router key that are lines of their own ─
@@ -908,6 +916,28 @@ class _Log:
     def last_answer(self, kinds: Sequence[str]) -> Any:
         return next((r for r in reversed(self.live) if r.decision.kind in kinds), None)
 
+    def supersedes(self, record: Any) -> bool:
+        """Whether a record changes an earlier answer: a revert, or a record of a kind an earlier
+        live record already answered (a first answer is not a change)."""
+        if record.decision.kind == FOLLOWS_WHAT_IT_UNDOES:
+            return True
+        return any(r.seq < record.seq and r.decision.kind == record.decision.kind
+                   for r in self.live)
+
+    def withdrawal(self, kinds: Sequence[str], *, after_seq: int = 0) -> Any:
+        """The latest live revert, after ``after_seq``, of an answer of one of ``kinds``: the
+        person withdrew the answer itself (the path fuzzer, I11: the line was asked again with
+        nothing saying why)."""
+        for r in reversed(self.live):
+            if r.seq <= after_seq:
+                break
+            if r.decision.kind != FOLLOWS_WHAT_IT_UNDOES:
+                continue
+            target = self.by_id.get(r.decision.decision_id)
+            if target is not None and target.decision.kind in kinds:
+                return r
+        return None
+
     def changes(self, slots: frozenset[str] | set[str], *, after_seq: int = 0,
                 after_time: datetime | None = None) -> list[Any]:
         """The live records, after ``after_seq`` (and ``after_time``), that changed one of
@@ -948,8 +978,14 @@ def _reopened_by(log: _Log, kinds: Sequence[str], reads: frozenset[str],
     """The record that asked a line again: of the live records after its last answer that changed
     a slot it reads, the one after which its answer stopped holding (``holds``, replayed on the log
     as it stood after each), so a later change that left it as it was never displaces the cause;
-    the latest of them when the answers alone cannot say (an artifact reopened it)."""
+    the latest of them when the answers alone cannot say (an artifact reopened it). An answer the
+    person withdrew (a revert of it, after the answer that stands, if any) is its own cause."""
     answer = log.last_answer(kinds)
+    withdrawn = log.withdrawal(kinds, after_seq=answer.seq if answer is not None else 0)
+    if withdrawn is not None:
+        stage = log.stage_of(withdrawn)
+        if stage is not None:
+            return ReopenedBy(decision_id=withdrawn.id, kind=withdrawn.decision.kind, stage=stage)
     if answer is None:
         return None
     changes = log.changes(reads, after_seq=answer.seq)
@@ -969,6 +1005,74 @@ def _reopened_by(log: _Log, kinds: Sequence[str], reads: frozenset[str],
     if stage is None:
         return None
     return ReopenedBy(decision_id=cause.id, kind=cause.decision.kind, stage=stage)
+
+
+def _verdict(key: str, state: Any, facts: Facts) -> str | None:
+    """How the Router takes question ``key`` on ``state``: "na" (not applicable), "stated" or
+    "asked" (gates only, on today's readings); "unknown" where today's reading of the outcome is
+    not that state's outcome's; None when the state cannot be read."""
+    from turbotab.core.interview import applicability, stated
+
+    if state is None:
+        return None
+    info = facts.artifacts.get("target_info")
+    info = _get(info, "data", info)
+    if info is not None and _get(info, "column") != getattr(state, "target", None):
+        return "unknown"  # today's reading of the outcome is another outcome's: not known then
+    try:
+        if applicability(key, state, facts.artifacts) is not None:
+            return "na"
+        return "stated" if stated(key, state, facts.artifacts) is not None else "asked"
+    except Exception:  # noqa: BLE001 - a gate that cannot read an older state says nothing
+        return None
+
+
+def _asked_again(log: _Log, key: str, now: str, facts: Facts) -> ReopenedBy | None:
+    """The change that asked an unanswered question again (the path fuzzer, I11): the latest live
+    change of an earlier answer, or revert, it reads, after which the Router asks it (``now``,
+    "asked") or states it (``now``, "stated") where before it did not apply or was stated (the goal
+    changed to Estimate, so the form is asked; the unit changed, so the records are combined).
+    A first answer is the journey going forward, not a reopening, so it is never the cause."""
+    from turbotab.core.interview import SLOT_OF
+    from turbotab.core.surfacing import QUESTION_READS
+
+    reads = frozenset(SLOT_OF.get(k, k) for k in QUESTION_READS.get(key, ()))
+    for record in reversed(log.changes(reads)):
+        if not log.supersedes(record):
+            continue
+        before = _verdict(key, log.state_at(record.seq - 1), facts)
+        after = _verdict(key, log.state_at(record.seq), facts)
+        if after not in (now, "unknown") or before is None:
+            continue
+        # asked before already (or stated, for a stated line) is no reopening; a question read
+        # for another outcome (a changed outcome's event, task and follow-up) is asked anew
+        if before == now or (now == "stated" and before == "asked"):
+            continue
+        stage = log.stage_of(record)
+        if stage is not None:
+            return ReopenedBy(decision_id=record.id, kind=record.decision.kind, stage=stage)
+    return None
+
+
+def _declaration_asked_again(log: _Log, decl: Declaration, facts: Facts) -> ReopenedBy | None:
+    """The change after which a declaration applies where it did not (the goal changed to
+    Predict, so the intended use is asked; rows left out, so the every-row sensitivity analysis
+    is), as :func:`_asked_again` reads a question's."""
+    for record in reversed(log.live):
+        if not log.supersedes(record):
+            continue
+        before, after = log.state_at(record.seq - 1), log.state_at(record.seq)
+        if before is None or after is None:
+            continue
+        try:
+            flipped = not decl.applies(before, facts) and decl.applies(after, facts)
+        except Exception:  # noqa: BLE001 - an older state the card cannot read says nothing
+            continue
+        if flipped:
+            stage = log.stage_of(record)
+            if stage is not None:
+                return ReopenedBy(decision_id=record.id, kind=record.decision.kind, stage=stage)
+    return None
 
 
 def _stated_reason(key: str) -> str | None:
@@ -1002,6 +1106,33 @@ def _changed_since_decided(key: str, writer: Any, log: _Log) -> ChangedSince | N
         since="decided", decision_id=cause.id, kind=changed.kind,
         reason=f"Changed since you decided: {name} was answered after you decided this early, so "
                f"what its card counted may have moved.")
+
+
+def _rests_on_asked(key: str, asking: set[str], writer: Any, log: _Log) -> ChangedSince | None:
+    """An answer that stands while a question it reads is asked again (the outcome changed, so
+    its kind is asked, and the models chosen for the old one stay answered: the Router never
+    reopens a later answer) says so, naming the change (the path fuzzer, I6: nothing shown rests
+    on an unanswered decision without saying so)."""
+    from turbotab.core.interview import SLOT_OF
+    from turbotab.core.surfacing import QUESTION_READS
+    from turbotab.core.voice import question_name
+
+    for read in QUESTION_READS.get(key, ()):
+        if read not in asking:
+            continue
+        slots = {SLOT_OF.get(k, k) for k in (read, *QUESTION_READS.get(read, ()))}
+        cause = next((r for r in reversed(log.changes(slots)) if log.supersedes(r)), None)
+        if cause is None:
+            continue
+        changed = log.undone(cause)
+        asked = f"{question_name(read)} is asked again, so this answer may not fit its new answer."
+        # an answer given again after that change, while the question still waits, says so too
+        reason = (f"Changed since you decided: {asked}" if cause.seq > writer.seq
+                  else asked[0].upper() + asked[1:])
+        return ChangedSince(
+            since="decided", decision_id=cause.id,
+            kind=getattr(changed, "kind", cause.decision.kind), reason=reason)
+    return None
 
 
 def _changed_since_confirmed(writer: Any, log: _Log, facts: Facts) -> ChangedSince | None:
@@ -1057,6 +1188,11 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
     first = next((s for s in steps if _get(s, "status") in ("open", "waiting")), None)
     purpose = getattr(state, "purpose", None)
     drew_under_predict = purpose == "prediction" and drawn(log.records)
+    # the questions still asking (an answer holding while its own reading recomputes is not)
+    asking = {_get(s, "key") for s in steps if _get(s, "status") in ("open", "waiting")
+              and not _holding(s, state)}
+    if purpose == "prediction" and not drew_under_predict:
+        asking.add("split")     # asked again below: no draw the person made under Predict
     lines = []
     for step in steps:
         key, status = _get(step, "key"), _get(step, "status")
@@ -1084,9 +1220,14 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
             else:
                 counted = False
         reopened = None
-        if status in ("open", "waiting"):
+        # A stated line answered before (the causal lane, the modifiers) is set for the person
+        # again when that answer is withdrawn or stops holding, and says why as an asked one does.
+        if status in ("open", "waiting", "skipped"):
             reopened = _reopened_by(log, answering_kinds(key), question_reads(key),
                                     answer_holds(key))
+            if reopened is None:
+                reopened = _asked_again(log, key, "stated" if status == "skipped" else "asked",
+                                        facts or Facts())
         writer = log.by_id.get(decision_id) if decision_id else None
         if key == "split" and purpose == "prediction" and status == "answered" \
                 and not drew_under_predict:
@@ -1097,6 +1238,8 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
         by_turbotab = getattr(writer, "recorded_by", "you") == "turbotab"
         changed = (_changed_since_decided(key, writer, log)
                    if status == "answered" and writer is not None else None)
+        if changed is None and status == "answered" and writer is not None:
+            changed = _rests_on_asked(key, asking, writer, log)
         if status == "answered" and by_turbotab and key in COMPLETED:
             home, line_key, said = COMPLETED[key]
             lines.append((home.stage, QuestLine(
@@ -1154,8 +1297,10 @@ def _declaration_lines(state: Any, steps: Mapping[str, Any], log: _Log,
         else:
             status = "waiting" if unanswered else "open"
         reopened = None
-        if not answered and writer is not None:
+        if not answered:
             reopened = _reopened_by(log, (decl.kind,), _declaration_reads(decl), decl.holds)
+            if reopened is None:
+                reopened = _declaration_asked_again(log, decl, facts)
         lines.append((place.stage, QuestLine(
             id=place.item, key=decl.kind, source="declaration", label=place.label,
             name=decl.name, status=status, counted=decl.counted and place.label == DECIDE,
@@ -1166,8 +1311,8 @@ def _declaration_lines(state: Any, steps: Mapping[str, Any], log: _Log,
     return lines
 
 
-def _finding_lines(state: Any, findings: Any, steps: Mapping[str, Any]
-                   ) -> list[tuple[str, QuestLine]]:
+def _finding_lines(state: Any, findings: Any, steps: Mapping[str, Any],
+                   log: _Log | None = None) -> list[tuple[str, QuestLine]]:
     """Each finding of the findings stage as a line where it is decided: a Decide when it has a
     question or a repair to decide by, For the record otherwise. ``findings`` is the artifact as
     served (``repairs.annotate``: each finding's ``answered_by``)."""
@@ -1187,13 +1332,39 @@ def _finding_lines(state: Any, findings: Any, steps: Mapping[str, Any]
             answered_by = f.get("answered_by")
             answered = answered_by is not None
         decide = bool(question or f.get("repairs") or f.get("routes_to"))
+        # A disposition the person withdrew (a revert of it) opens the finding again, and says so.
+        reopened = None
+        if log is not None and not answered:
+            reopened = _finding_withdrawal(log, str(f.get("id")))
+            if (reopened is None and question is not None
+                    and (disposition is None or disposition.action == "deferred")):
+                # Decided by its question (held for it, or answered by it): a question whose
+                # answer was withdrawn or stopped holding is why it is open again.
+                reopened = _reopened_by(log, answering_kinds(question), question_reads(question),
+                                        answer_holds(question))
         lines.append((place.stage, QuestLine(
             id=f"finding:{f.get('id')}", key=str(f.get("id")), source="finding",
             label=DECIDE if decide else RECORD,
             name=str(f.get("summary") or f.get("title") or f.get("id")),
             status="answered" if answered else "open", counted=decide, order=place.order,
-            decision_id=answered_by)))
+            decision_id=answered_by, reopened_by=reopened)))
     return lines
+
+
+FINDING_DISPOSITIONS = ("apply_repair", "defer_finding", "dismiss_finding")
+
+
+def _finding_withdrawal(log: _Log, finding_id: str) -> ReopenedBy | None:
+    for r in reversed(log.live):
+        if r.decision.kind != FOLLOWS_WHAT_IT_UNDOES:
+            continue
+        target = log.by_id.get(r.decision.decision_id)
+        if (target is not None and target.decision.kind in FINDING_DISPOSITIONS
+                and getattr(target.decision, "finding_id", None) == finding_id):
+            stage = log.stage_of(r)
+            return (ReopenedBy(decision_id=r.id, kind=r.decision.kind, stage=stage)
+                    if stage is not None else None)
+    return None
 
 
 def _hold_the_families(placed: Sequence[tuple[str, QuestLine]]) -> None:
@@ -1215,8 +1386,18 @@ def _hold_the_families(placed: Sequence[tuple[str, QuestLine]]) -> None:
                           *(Waiting(key=l.key, stage="models", name=l.name) for l in ahead)]
 
 
+def _holding(step: Any, state: Any) -> bool:
+    """A step waiting only for its own reading to recompute, whose recorded answer still holds:
+    it stands answered meanwhile (:func:`_question_lines`), so it holds no stage back."""
+    key = _get(step, "key")
+    waiting_on = set(_get(step, "waiting_on") or ())
+    return (state is not None and _get(step, "status") == "waiting" and bool(waiting_on)
+            and waiting_on <= READ_BY_GATE.get(key, frozenset()) and answer_holds(key)(state))
+
+
 def _frontier(steps: Sequence[Any], stages: Mapping[str, Any],
-              shown_at: Mapping[str, datetime | None], fit: FitLock | None = None) -> int:
+              shown_at: Mapping[str, datetime | None], fit: FitLock | None = None,
+              state: Any = None) -> int:
     """The furthest stage the Router has reached: every question answered, stated or open so far,
     and the first one still waiting. Results opens when Fit is pressed (``fit``: under Estimate and
     Describe the plan locked, under Predict Fit pressed for the outcome; never with no purpose),
@@ -1227,23 +1408,36 @@ def _frontier(steps: Sequence[Any], stages: Mapping[str, Any],
     nothing). Write-up opens with Results."""
     from turbotab.core.estimand import ESTIMATE_STAGES
 
-    first = next((s for s in steps if _get(s, "status") in ("open", "waiting")), None)
+    # A question whose own reading recomputes while its answer holds is answered meanwhile (the
+    # path fuzzer, I11: a dismissed finding re-reads the outcome, and First look and Who's in fell
+    # out of reach while the task waited for it).
+    holding = [_holding(s, state) for s in steps]
+    first = next((s for s, held in zip(steps, holding)
+                  if _get(s, "status") in ("open", "waiting") and not held), None)
     # A default stated past the first unanswered question (the design, observational until it is
     # answered; P0.6) is not a question the Router has reached.
     ahead = list(steps).index(first) if first is not None else len(steps)
     reached = [STAGE_INDEX[QUESTIONS[_get(s, "key")].stage] for i, s in enumerate(steps)
                if _get(s, "key") in QUESTIONS
-               and (_get(s, "status") in ("answered", "open")
+               and (_get(s, "status") in ("answered", "open") or holding[i]
                     or (_get(s, "status") == "skipped" and i < ahead))]
     if first is not None and _get(first, "key") in QUESTIONS:
         reached.append(STAGE_INDEX[QUESTIONS[_get(first, "key")].stage])
-    furthest = max(reached, default=0)
+    # The Router's questions open the stages up to Models; Results opens by Fit alone (the path
+    # fuzzer, I1: under Predict the seal question waits in Results for the fit, and reaching it
+    # read as Results reached before Fit was pressed).
+    furthest = min(max(reached, default=0), STAGE_INDEX["models"])
     if fit is not None:
         opened = fit.purpose is not None and (fit.locked if fit.locks else fit.pressed)
         # Opened by a press since kept (for an earlier outcome, or before the goal was withdrawn),
         # Results stays reached while a result it showed is out of date, and says why.
-        opened = opened or (fit.opened and any(name in shown_at for name in ESTIMATE_STAGES
-                                               if name != "usual_intake"))
+        # A fresh estimate withheld for the answers now (the goal changed to Estimate after a
+        # press under Predict: the plan is not locked yet) keeps it reached too, and its gate says
+        # why (the path fuzzer, I11: Results emptied with nothing saying why).
+        opened = opened or (fit.opened and any(
+            name in shown_at or (fit.purpose is not None
+                                 and _get(stages.get(name), "status") == "fresh")
+            for name in ESTIMATE_STAGES if name != "usual_intake"))
     else:
         opened = any(_get(stages.get(name), "status") == "fresh" or name in shown_at
                      for name in ESTIMATE_STAGES if name != "usual_intake")
@@ -1345,11 +1539,12 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     facts = Facts(columns=tuple(columns or ()), artifacts=dict(artifacts or {}))
     placed = [*_question_lines(state, steps, log, facts),
               *_declaration_lines(state, by_key, log, facts),
-              *_finding_lines(state, findings, by_key), *sweeps.reading_lines(state, readings)]
+              *_finding_lines(state, findings, by_key, log),
+              *sweeps.reading_lines(state, readings)]
     _hold_the_families(placed)
     sweeps.weigh(placed, state, facts)
     sweeps.cover_noticings(placed, state, log, findings)
-    frontier = _frontier(steps, stages, shown_at, fit)
+    frontier = _frontier(steps, stages, shown_at, fit, state)
     out = []
     for key, name in STAGES:
         mine = sorted((l for stage, l in placed if stage == key),

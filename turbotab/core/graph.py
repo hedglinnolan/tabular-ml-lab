@@ -56,7 +56,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Literal, Mapping
+from typing import Any, Callable, Literal, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict
 
@@ -274,6 +274,20 @@ def register_key_view(slot: str, view: Callable[[Any], Any]) -> None:
 def key_value(slot: str, value: Any) -> Any:
     view = KEY_VIEWS.get(slot)
     return value if view is None or value is None else view(value)
+
+
+def unmet_requires(order: Sequence[Stage], values: Mapping[str, Any]) -> dict[str, list[str]]:
+    """Each stage (in topological ``order``) -> the slots it or a stage upstream ``requires`` that
+    are unset in ``values`` (a state's JSON dump), deduplicated in order; empty when it can
+    compute. The scheduler's rule (:meth:`Engine._compute_keys`), read by the surfacing registry
+    too (``surfacing.blocked``), so the two cannot drift."""
+    out: dict[str, list[str]] = {}
+    for stage in order:
+        missing = [slot for slot in stage.requires if values.get(slot) is None]
+        for dep in stage.deps:
+            missing.extend(out[dep])
+        out[stage.name] = list(dict.fromkeys(missing))
+    return out
 
 
 def stage_key(
@@ -777,6 +791,7 @@ class Engine:
         state = p.ctx.state
         fields = type(state).model_fields
         values = state.model_dump(mode="json")
+        unmet = unmet_requires(self._order, values)
         for stage in self._order:
             for slot in (*stage.reads, *stage.requires):
                 if slot not in fields:
@@ -784,10 +799,7 @@ class Engine:
                         f"stage {stage.name!r} reads slot {slot!r}, which "
                         f"{type(state).__name__} does not have"
                     )
-            missing = [slot for slot in stage.requires if values.get(slot) is None]
-            for dep in stage.deps:
-                missing.extend(p.missing[dep])
-            missing = list(dict.fromkeys(missing))
+            missing = unmet[stage.name]
             p.missing[stage.name] = missing
             if missing:
                 p.keys[stage.name] = None
