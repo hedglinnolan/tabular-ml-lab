@@ -3609,7 +3609,7 @@ None declared.
   - a numeric or yes/no outcome
   - the whole pipeline, refitted per site
   - optional: the unit when rows repeat (each in one site)
-- **Question:** How are the sites' scores pooled?
+- **Question:** (stated: REML random effects with the Hartung–Knapp–Sidik–Jonkman interval)
 - **Where:** recorded by `set_validation`; placed at 11 · Tuning and comparison.
 - **Lenses:** every lens (shared). Declared by the SITEVAL package.
 

@@ -535,7 +535,9 @@ def _register_contract() -> None:
         needs=("a declared site, cluster or batch column with at least three levels",
                "a numeric or yes/no outcome", "the whole pipeline, refitted per site",
                "optional: the unit when rows repeat (each in one site)"),
-        question="How are the sites' scores pooled?",
+        # Stated, not asked: the validation scheme is a Confirm line in the quest (the stage
+        # registry holds an asked contract to a Decide), and the pooling is its stated default.
+        question="(stated: REML random effects with the Hartung–Knapp–Sidik–Jonkman interval)",
         options=(
             ContractOption(
                 "reml_hksj", "REML random effects, Hartung–Knapp–Sidik–Jonkman interval",

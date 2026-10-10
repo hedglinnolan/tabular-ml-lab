@@ -108,7 +108,12 @@ CONF = 0.95
 TRIAL_DESIGNS: tuple[str, ...] = ("parallel_trial", "cluster_randomized_trial")
 SETS: tuple[str, ...] = ("itt", "per_protocol")
 MEASURES: tuple[str, ...] = ("mean_difference", "risk_difference", "risk_ratio")
-CLUSTER_METHODS: tuple[str, ...] = ("mixed", "gee")
+# The trial core's own cluster analyses, fitted here (``_mixed``, ``_gee``): they share their names
+# with the mixed and GEE model families but are not those families, so nothing here reads or
+# switches on a family's key.
+MIXED_MODEL = "mixed"
+GEE_MODEL = "gee"
+CLUSTER_METHODS: tuple[str, ...] = (MIXED_MODEL, GEE_MODEL)
 CORRECTIONS: tuple[str, ...] = ("auto", "kc", "fg", "md")
 GOALS: tuple[str, ...] = ("inference", "prediction", "describe")
 FG_BOUND = 0.75  # Fay & Graubard's b, geesmv's default
