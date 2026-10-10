@@ -10200,7 +10200,7 @@
           "complete"
         ],
         "title": "Progress",
-        "description": "A reached stage's objectives: each counted Decide one, its Confirm sweep one. ``complete``\nonce every one is answered. A reached stage that asks nothing (0 of 0: First look until its\nnoticings are wired, Write-up under Predict) is complete, its segment full; a stage not\nreached has no progress at all (empty, never \"0 of N\").\n\nResults under Estimate and Describe is the exception (FOUNDATION §3, §8): once Fit is pressed\neach exhibit's wording and placement is an objective of Results, so it reads 0 of N, N the\nexhibit-bearing stages (``EXHIBIT_STAGES``), and is not complete, not \"0 of 0\" full; and\nWrite-up is not reached (no progress) until Results is placed (C7a adds placement)."
+        "description": "A reached stage's objectives: each counted Decide one, its Confirm sweep one. ``complete``\nonce every one is answered. A reached stage that asks nothing (0 of 0: First look until its\nnoticings are wired, Write-up under Predict) is complete, its segment full; a stage not\nreached has no progress at all (empty, never \"0 of N\").\n\nResults under Estimate and Describe is the exception (FOUNDATION §3, §8): once Fit is pressed\neach exhibit's wording and placement is an objective of Results, so it reads 0 of N, N the\nexhibit-bearing stages the engine serves (:func:`served_exhibits`), and is not complete, not\n\"0 of 0\" full; and Write-up is not reached (no progress) until Results is placed (C7a adds\nplacement)."
       },
       "ProjectState": {
         "properties": {

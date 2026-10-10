@@ -187,8 +187,11 @@ def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkey
     assert stages["models"]["progress"] == models_before
 
     # 3 · The fit: computed, but Results opens only when Fit is pressed, which locks the plan
-    # (P0.8); then Results is reached and reads 0 of 12, the exhibits the engine serves, none
-    # decided (Q-c; calm/FOUNDATION §3, §8), and Write-up waits for Results to be placed.
+    # (P0.8); then Results is reached and reads 0 of 5, the exhibits the engine serves on this
+    # plan, none decided (Q-c; calm/FOUNDATION §3, §8): usual intake (the dietary lens), the
+    # performance table, the further-adjusted model, Table 2 and the decision curve; nothing
+    # declares sensitivity, calibration, scales, the causal lane, a unit, modifiers or explain.
+    # Write-up waits for Results to be placed.
     drive.answer("energy_adjustment", {"kind": "set_energy_adjustment", "method": "standard",
                                        "energy_column": "kcal", "nutrients": ["sugar"]})
     drive.decide({"kind": "select_models", "models": ["linear"]})
@@ -210,7 +213,7 @@ def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkey
     stages = quest(drive)
     assert all(s["reopened"] == [] for s in stages.values())
     assert stages["results"]["reached"] and stages["results"]["progress"] == {
-        "answered": 0, "required": 12, "complete": False}
+        "answered": 0, "required": 5, "complete": False}
     assert not stages["writeup"]["reached"] and stages["writeup"]["progress"] is None
 
     # 4 · Who's in → Models and Results: an eligibility rule leaves the shelf, the cards and the
@@ -222,7 +225,7 @@ def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkey
     assert shelf["sentence"] == out_of_date("Who's in", len(shelf["results"]), "Models")
     results = stages["results"]
     assert results["reached"] and not stages["writeup"]["reached"]
-    assert results["progress"] == {"answered": 0, "required": 12, "complete": False}
+    assert results["progress"] == {"answered": 0, "required": 5, "complete": False}
     [estimates] = results["reopened"]
     assert estimates["decision_id"] == changed and estimates["changed_in"] == "whos_in"
     assert "fit" in estimates["results"]

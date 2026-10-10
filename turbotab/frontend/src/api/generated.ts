@@ -3492,8 +3492,9 @@ export interface components {
          *
          *     Results under Estimate and Describe is the exception (FOUNDATION §3, §8): once Fit is pressed
          *     each exhibit's wording and placement is an objective of Results, so it reads 0 of N, N the
-         *     exhibit-bearing stages (``EXHIBIT_STAGES``), and is not complete, not "0 of 0" full; and
-         *     Write-up is not reached (no progress) until Results is placed (C7a adds placement).
+         *     exhibit-bearing stages the engine serves (:func:`served_exhibits`), and is not complete, not
+         *     "0 of 0" full; and Write-up is not reached (no progress) until Results is placed (C7a adds
+         *     placement).
          */
         Progress: {
             /** Answered */
