@@ -1,0 +1,626 @@
+"""The offline path fuzzer (SURFACING_POLICY §7.1, U16): seeded journeys over ``decisions.fold_onto``
+and ``interview.route``, headless, with mocked stage artifacts, and the policy's invariants
+(§7.2) checked on every intermediate state.
+
+A journey starts from an empty project on one of two fixtures (the committed NHANES fixture's
+columns under the dietary lens; an untargeted metabolomics table) and takes up to ``max_steps``
+actions, each drawn by the seed: answer the Router's open question, answer an open declaration,
+dispose of a finding, "Confirm all" in a reached stage, change an earlier answer or revert a
+record (the two stated reopenings), or press Fit. Compute stages that read what an answer wrote
+are marked running and settle at random, so questions wait on their cards as they do live.
+
+The invariants held now (the rest need the ledger, the caps or the timing harness):
+
+* **I1** no estimate before the lock: while ``consequences.estimates_unseen``, every estimate stage
+  is withheld (``fit_press.served``); with no goal none can compute; Results is never reached
+  before Fit is pressed; the substitution and the seal never open before it.
+* **I2** (its half that needs no materiality) the registry and the quest log agree: every
+  question, declaration and finding that fires is a line, and every line is an item that fires.
+* **I4** every Decide is answerable or says so: an open line waits for nothing, and every
+  question it reads is answered, stated or not applicable.
+* **I6** the display-order rule: every answer the engine filled is a Confirm or For the record
+  line; the outcome alone waits for Who's in (the explore stage requires the split); under
+  Estimate, and with no goal, the outcome beside a column waits for the lock.
+* **I8** determinism: the same log gives the same quest log, and the preview's fold
+  (``fold_onto``) agrees with the log's fold outside the conditional slots it documents.
+* **I10** tier is mode-independent: the Decide and Confirm sets are the same in every mode
+  (``surfacing.disclosure``), and at most one line is drawn at level 3.
+* **I11** progress is monotone except by a stated reopening: a line answered before and listed
+  now is answered still, unless the action was a change or a revert, or the line or its stage
+  says why (``reopened_by``, ``changed_since``, the stage's ``reopened``, the sweep's
+  ``changed``); a reached stage stays reached on the same terms.
+"""
+from __future__ import annotations
+
+import gzip
+import random
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Callable, Iterable
+
+from pydantic import ValidationError
+
+from turbotab.core import decisions, fit_press, quest, surfacing
+from turbotab.core.consequences import estimates_unseen
+from turbotab.core.decisions import DecisionRecord, ProjectState, Refusal, parse_decision
+from turbotab.core.interview import QUESTION_KEYS, InterviewStep, route
+from turbotab.core.quest import Facts, QuestLog
+
+T0 = datetime(2026, 10, 9, tzinfo=timezone.utc)
+NHANES_CSV = Path(__file__).resolve().parent / "fixtures" / "nhanes.csv.gz"
+SETTLED = ("answered", "skipped", "not_applicable")
+
+
+# ── fixtures ─────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class Fixture:
+    name: str
+    lens: tuple[str, ...]
+    columns: tuple[str, ...]
+    targets: dict[str, str]  # outcome -> its task as the reading settles it
+    identifier: str
+    exposures: tuple[str, ...]
+    covariates: tuple[str, ...]
+    energy: str | None = None
+    batch: str | None = None
+    findings: tuple[dict[str, Any], ...] = ()
+
+
+def _nhanes_columns() -> tuple[str, ...]:
+    with gzip.open(NHANES_CSV, "rt", encoding="utf-8") as f:
+        return tuple(f.readline().strip().split(","))
+
+
+NHANES = Fixture(
+    name="nhanes", lens=("dietary",), columns=_nhanes_columns(),
+    targets={"glucose": "regression", "meds_hbp": "binary"}, identifier="SEQN",
+    exposures=("sugar", "fat_total"), covariates=("age", "gender", "bmi"), energy="kcal",
+    findings=(
+        {"id": "pack::dietary::implausible_intake#1", "routes_to": "exclusions",
+         "affected_columns": ["kcal"], "repairs": [], "summary": "Implausible reported intakes"},
+        {"id": "pack::dietary::energy_adjustment#1", "routes_to": "energy_adjustment",
+         "affected_columns": ["kcal"], "repairs": [], "summary": "Energy carries the nutrients"},
+        {"id": "unnamed_columns__x", "routes_to": None, "affected_columns": [], "repairs": [],
+         "summary": "A column has no name"},
+    ))
+METABOLOMICS = Fixture(
+    name="metabolomics", lens=("metabolomics",),
+    columns=("sample_id", "batch", "run_order", "m_001", "m_002", "m_003", "m_004", "age",
+             "responder"),
+    targets={"responder": "binary"}, identifier="sample_id", exposures=("m_001",),
+    covariates=("age",), batch="batch",
+    findings=(
+        {"id": "pack::metabolomics::left_censored#1", "routes_to": "missing",
+         "affected_columns": ["m_002"], "repairs": [], "summary": "Values below detection"},
+        {"id": "pack::metabolomics::acquisition_design#1", "routes_to": "roles",
+         "affected_columns": ["batch"], "repairs": [], "summary": "How samples were run"},
+    ))
+FIXTURES = (NHANES, METABOLOMICS)
+
+
+# ── what each question and declaration can be answered with ──────────────────
+
+
+def _exposure(state: Any, fx: Fixture) -> str:
+    roles = state.roles or {}
+    return next((c for c, r in roles.items() if r == "exposure"), fx.exposures[0])
+
+
+def _covariates(state: Any, fx: Fixture) -> list[str]:
+    roles = state.roles or {}
+    return [c for c, r in roles.items() if r == "covariate"] or list(fx.covariates)
+
+
+def question_options(key: str, state: Any, fx: Fixture) -> list[dict[str, Any]]:
+    """Answers to the Router question ``key`` on this fixture (empty: the fuzzer cannot answer it,
+    and the journey goes on with what else it can do)."""
+    target = state.target
+    task = fx.targets.get(target or "", "regression")
+    exposure = _exposure(state, fx)
+    measure = "mean_difference" if task == "regression" else "odds_ratio"
+    yes = {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "no"}
+    roles = {fx.identifier: "identifier", **{e: "exposure" for e in fx.exposures[:1]},
+             **{c: "covariate" for c in fx.covariates}}
+    if fx.energy:
+        roles[fx.energy] = "energy"
+    other = {**roles, **{e: "covariate" for e in fx.exposures[1:2]}}
+    holdout = 0.0 if state.purpose == "inference" else 0.2
+    return {
+        "lens": [{"kind": "set_lens", "lenses": list(fx.lens)}],
+        "orientation": [{"kind": "set_orientation", "orientation": "sample_major"}],
+        "target": [{"kind": "set_target", "column": t} for t in fx.targets],
+        "event": [{"kind": "set_event", "column": target, "level": "1"}] if target else [],
+        "task": [{"kind": "set_task", "column": target, "task": task}] if target else [],
+        "follow_up": [{"kind": "set_censoring", "column": target}] if target else [],
+        "design": [{"kind": "set_design", "design": "observational"}],
+        "purpose": [{"kind": "set_purpose", "purpose": p} for p in ("inference", "prediction")],
+        "grain": [{"kind": "set_grain", "grain": "one_row_per_unit"},
+                  {"kind": "set_grain", "grain": "repeated", "id_column": fx.identifier}],
+        "repeat_kind": [{"kind": "set_repeat_kind", "repeat_kind": "repeats"}],
+        "unit": [{"kind": "set_unit", "unit": u} for u in ("unit", "row")],
+        "aggregation": [{"kind": "set_aggregation", "method": "mean"}],
+        "temporal": [{"kind": "set_temporal", "temporal": False}],
+        "roles": [{"kind": "set_roles", "roles": roles}, {"kind": "set_roles", "roles": other}],
+        "clusters": [{"kind": "set_clusters", "column": None}],
+        "survey": [{"kind": "set_survey", "estimand": "sample"}],
+        "exclusions": [{"kind": "set_exclusions", "rules": []},
+                       {"kind": "set_exclusions", "rules": [
+                           {"column": fx.covariates[0], "low": 18, "high": 80,
+                            "reason": "adults"}]}],
+        "missing": [{"kind": "set_missing", "strategy": s} for s in ("complete_case", "impute")],
+        "split": [{"kind": "set_split", "holdout": holdout, "seed": 0}],
+        "estimand": [{"kind": "set_estimand", "exposure": exposure, "measure": measure}],
+        "adjustment": [{"kind": "set_adjustment", "exposure": exposure,
+                        "answers": {c: yes for c in _covariates(state, fx)}}],
+        "energy_adjustment": [{"kind": "set_energy_adjustment", "method": "none"}],
+        "form": [{"kind": "set_forms", "forms": {exposure: {"form": "linear"}}}],
+        "modification": [],
+        "causal": [{"kind": "set_causal", "exposure": exposure, "method": "none"}],
+        "time_varying": [],
+        "models": [{"kind": "select_models", "models": ["linear"]},
+                   {"kind": "select_models", "models": ["linear", "elastic_net"]}],
+        "substitution": [],
+        "open_seal": [{"kind": "open_seal"}],
+    }.get(key, [])
+
+
+def declaration_options(kind: str, state: Any, fx: Fixture) -> list[dict[str, Any]]:
+    exposure = _exposure(state, fx)
+    return {
+        "set_intended_use": [{"kind": kind, "use": "risk_estimation"}],
+        "set_batch": [{"kind": kind, "column": fx.batch, "method": m}
+                      for m in ("reference_combat", "none") if fx.batch],
+        "set_selection": [{"kind": kind, "method": "none"}],
+        "set_model_sequence": [{"kind": kind, "exposure": exposure,
+                                "model_1": list(fx.covariates[:1])}],
+        "set_sensitivity": [{"kind": kind, "analyses": [{"label": "Every row", "rules": []}]}],
+        "set_measurement_error": [{"kind": kind, "method": "none"}],
+        "set_multiplicity": [{"kind": kind, "method": "bh"}],
+        "set_levers": [{"kind": kind}],
+        "set_updating": [{"kind": kind, "method": "none"}],
+        "set_explain": [{"kind": kind, "reseeds": 0}],
+        "set_validation": [{"kind": kind, "folds": 4}],
+    }.get(kind, [])
+
+
+# ── mocked stage artifacts and statuses ──────────────────────────────────────
+
+
+def artifacts_for(state: Any, fx: Fixture, records: list[DecisionRecord], steps_hint: Any = None,
+                  *, confidence: str = "high") -> dict[str, Any]:
+    from turbotab.core.repairs import annotate
+
+    out: dict[str, Any] = {}
+    if state.target is not None:
+        out["target_info"] = {"column": state.target, "task": fx.targets.get(state.target),
+                              "confidence": confidence,
+                              "reason": "The outcome's values settle its kind."}
+    if any(lens in ("metabolomics", "genomics") for lens in state.lens or ()):
+        out["oriented"] = {"reading": {"reading": "sample_major", "confidence": "medium"}}
+    if state.purpose == "inference":
+        out["forms"] = {"purpose": "inference", "ready": True, "needs": [], "waiting": []}
+    if state.lens is not None:
+        out["findings"] = annotate({"findings": [dict(f) for f in fx.findings]}, state, records)
+    return out
+
+
+def stages_for(running: Iterable[str], pressed: bool) -> dict[str, dict[str, Any]]:
+    out = {name: {"status": "running"} for name in running}
+    out["fit"] = {"status": "fresh" if pressed else "idle"}
+    return out
+
+
+# ── a journey ────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class Snapshot:
+    fixture: Fixture
+    index: int
+    action: str
+    reopening: bool
+    kind: str | None
+    state: ProjectState
+    records: list[DecisionRecord]
+    steps: list[InterviewStep]
+    stages: dict[str, Any]
+    artifacts: dict[str, Any]
+    pressed: bool
+    pressed_ever: bool
+    log: QuestLog
+    onto: ProjectState | None = None  # the preview's fold, beside the log's
+
+
+@dataclass
+class Journey:
+    seed: int
+    fixture: str
+    snapshots: list[Snapshot] = field(default_factory=list)
+    refused: int = 0
+
+
+def quest_of(state: Any, records: list[DecisionRecord], steps: list[InterviewStep],
+             stages: dict[str, Any], artifacts: dict[str, Any], fx: Fixture, pressed: bool,
+             pressed_ever: bool) -> QuestLog:
+    fit = fit_press.fit_lock(state, records, pressed=pressed, held=False, estimate=None,
+                             opened=pressed_ever)
+    return quest.quest_log(state, records, steps, stages, findings=artifacts.get("findings"),
+                           columns=fx.columns, artifacts=artifacts, fit=fit)
+
+
+def _record(records: list[DecisionRecord], decision: Any) -> DecisionRecord:
+    seq = len(records) + 1
+    return DecisionRecord(id=f"r{seq}", seq=seq, at=T0 + timedelta(minutes=seq), decision=decision)
+
+
+def _validate(payload: dict[str, Any], state: Any, fx: Fixture) -> Any | None:
+    try:
+        return decisions.validate(payload, {"columns": list(fx.columns), "target": state.target})
+    except (Refusal, ValidationError, ValueError, KeyError, TypeError):
+        return None
+
+
+def run_journey(seed: int, max_steps: int = 40) -> Journey:
+    rng = random.Random(seed)
+    fx = FIXTURES[seed % len(FIXTURES)]
+    confidence = rng.choice(("high", "medium"))
+    journey = Journey(seed=seed, fixture=fx.name)
+    state = ProjectState()
+    records: list[DecisionRecord] = []
+    running: set[str] = set()
+    pressed_for: str | None = None
+    pressed_ever = False
+
+    def snap(index: int, action: str, reopening: bool, kind: str | None,
+             onto: ProjectState | None = None) -> Snapshot:
+        pressed = pressed_for is not None and pressed_for == state.target
+        stages = stages_for(running, pressed)
+        artifacts = artifacts_for(state, fx, records, confidence=confidence)
+        steps = route(state, stages, artifacts, records)
+        log = quest_of(state, records, steps, stages, artifacts, fx, pressed, pressed_ever)
+        return Snapshot(fx, index, action, reopening, kind, state, list(records), steps, stages,
+                        artifacts, pressed, pressed_ever, log, onto)
+
+    journey.snapshots.append(snap(0, "start", False, None))
+    for index in range(1, max_steps + 1):
+        cur = journey.snapshots[-1]
+        running = {s for s in sorted(running) if rng.random() < 0.35}
+        choices = _choices(cur, fx)
+        if running:  # waiting for a card to compute is an action too
+            choices.append((3.0, "wait", None, False))
+        if not choices:
+            if running:
+                running = set()
+                journey.snapshots.append(snap(index, "settle", False, None))
+                continue
+            break
+        weights = [w for w, *_ in choices]
+        _w, action, payload, reopening = rng.choices(choices, weights=weights)[0]
+        onto = None
+        if action == "wait":
+            journey.snapshots.append(snap(index, "wait", False, None))
+            continue
+        if action == "fit":
+            if state.purpose == "inference" and not state.plan_locked:
+                decision = parse_decision({"kind": "lock_plan", "seen_target": state.target})
+                records.append(_record(records, decision))
+                state = decisions.fold(records)
+            pressed_for, pressed_ever = state.target, True
+            kind = "fit"
+        elif action == "revert":
+            decision = parse_decision({"kind": "revert", "decision_id": payload})
+            records.append(_record(records, decision))
+            state = decisions.fold(records)
+            kind = "revert"
+        else:
+            decision = _validate(payload, state, fx)
+            if decision is None:
+                journey.refused += 1
+                continue
+            records.append(_record(records, decision))
+            onto = decisions.fold_onto(state, decision)
+            state = decisions.fold(records)
+            kind = decision.kind
+            written = quest.written_slots(decision)
+            running |= {name for name in quest.COMPUTE
+                        if name != "fit" and written & quest.stage_reads(name)
+                        and rng.random() < 0.5}
+        journey.snapshots.append(snap(index, action, reopening, kind, onto))
+    return journey
+
+
+def _choices(cur: Snapshot, fx: Fixture) -> list[tuple[float, str, Any, bool]]:
+    """Each action the journey can take now: (weight, action, payload, a stated reopening)."""
+    out: list[tuple[float, str, Any, bool]] = []
+    state, steps, log = cur.state, cur.steps, cur.log
+    first = next((s for s in steps if s.status in ("open", "waiting")), None)
+    if first is not None and first.status == "open":
+        for payload in question_options(first.key, state, fx):
+            out.append((10.0, "answer", payload, False))
+    for stage in log.stages:
+        for line in stage.lines:
+            if line.source == "declaration" and line.status in ("open", "set_for_you"):
+                for payload in declaration_options(line.key, state, fx):
+                    out.append((3.0, "declare", payload, False))
+            if line.source == "finding" and line.status == "open" and stage.reached:
+                out.append((1.0, "dispose", {"kind": "dismiss_finding", "finding_id": line.key},
+                            False))
+        sweep = stage.sweep
+        if stage.reached and sweep is not None and not sweep.answered:
+            from turbotab.core.sweep import sweep_lines
+
+            lines = [l.model_dump() for l in sweep_lines(stage)]
+            out.append((2.0, "sweep", {"kind": "confirm_sweep", "stage": stage.key, "lines": lines},
+                        False))
+    changes = [payload for step in steps if step.status == "answered"
+               for payload in question_options(step.key, state, fx)]
+    for payload in changes:  # a change, or a revert, about one action in twenty
+        out.append((0.5 / len(changes), "change", payload, True))
+    live = [r for r in cur.records if r.decision.kind not in ("revert", "lock_plan")]
+    if live:
+        out.append((0.25, "revert", live[-1].id, True))
+    models = next(s for s in log.stages if s.key == "models")
+    if (state.purpose is not None and state.models and models.reached
+            and not cur.pressed and models.progress is not None and models.progress.complete):
+        out.append((4.0, "fit", None, False))
+    return out
+
+
+# ── the invariants ───────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class Violation:
+    invariant: str
+    seed: int
+    index: int
+    message: str
+
+    def __str__(self) -> str:
+        return f"{self.invariant} (seed {self.seed}, step {self.index}): {self.message}"
+
+
+def _lines(log: QuestLog) -> Iterable[tuple[Any, Any]]:
+    for stage in log.stages:
+        for line in stage.lines:
+            yield stage, line
+
+
+def _status(steps: list[InterviewStep]) -> dict[str, str]:
+    return {s.key: s.status for s in steps}
+
+
+def i1_no_estimate_before_the_lock(snap: Snapshot) -> list[str]:
+    from turbotab.core.estimand import ESTIMATE_STAGES
+
+    out = []
+    unseen = estimates_unseen(snap.state, snap.pressed)
+    if unseen and fit_press.serving_gate(snap.state, snap.pressed) is None:
+        out.append("estimates are unseen but the serving gate lets one through")
+    if unseen:
+        for stage in ESTIMATE_STAGES:
+            artifact = ({"models": [{"coefficients": [1.0], "inference": {"p": 0.01}}]}
+                        if stage == "fit" else {"estimate": 1.0})
+            served = fit_press.served(stage, artifact, snap.state, pressed=snap.pressed)
+            if "withheld" not in served:
+                out.append(f"{stage} is served an estimate before the lock")
+    if snap.state.purpose is None:
+        early = sorted(set(ESTIMATE_STAGES) & surfacing.computable(snap.state))
+        if early:
+            out.append(f"with no goal, {early} can compute")
+    results = next(s for s in snap.log.stages if s.key == "results")
+    if results.reached and not snap.pressed_ever:
+        out.append("Results is reached before Fit was ever pressed")
+    status = _status(snap.steps)
+    for key in ("substitution", "open_seal"):
+        if status.get(key) == "open" and not snap.pressed:
+            out.append(f"{key} opens before Fit")
+    return out
+
+
+def facts_of(snap: Snapshot) -> Facts:
+    return Facts(columns=snap.fixture.columns, artifacts=snap.artifacts)
+
+
+def i2_registry_agrees_with_the_quest_log(snap: Snapshot) -> list[str]:
+    from turbotab.core.stages.finding_words import family
+
+    out = []
+    facts = facts_of(snap)
+    reg = surfacing.registry()
+    listed = {(line.source, line.key) for _stage, line in _lines(snap.log)}
+    status = _status(snap.steps)
+    for key in QUESTION_KEYS:
+        fires = reg[f"question:{key}"].fires(snap.state, facts)
+        if fires != (status[key] != "not_applicable"):
+            out.append(f"question {key} fires={fires} but the Router says {status[key]}")
+        if fires and ("question", key) not in listed:
+            out.append(f"question {key} fires but is not listed")
+    for decl in quest.DECLARATIONS:
+        if decl.only_recorded:
+            continue
+        fires = reg[f"decision:{decl.kind}"].fires(snap.state, facts)
+        listed_now = ("declaration", decl.kind) in listed
+        if fires != listed_now:
+            out.append(f"declaration {decl.kind} fires={fires} but listed={listed_now}")
+    findings = surfacing._listed(snap.artifacts.get("findings"))
+    for f in findings:
+        if ("finding", str(f.get("id"))) not in listed:
+            out.append(f"finding {f.get('id')} fires but is not listed")
+        fam = reg.get(f"noticing:{family(str(f.get('id')))}")
+        if fam is None or not fam.fires(snap.state, facts):
+            out.append(f"finding {f.get('id')} has no registry item that fires")
+    return out
+
+
+def i4_every_decide_is_answerable(snap: Snapshot) -> list[str]:
+    out = []
+    status = _status(snap.steps)
+    reg = surfacing.registry()
+    for stage, line in _lines(snap.log):
+        if line.status != "open":
+            continue
+        if line.waiting_for or line.computing:
+            out.append(f"{line.id} is open and waits for {[w.key for w in line.waiting_for]} "
+                       f"{line.computing}")
+        item = reg.get(f"question:{line.key}") if line.source == "question" else (
+            reg.get(f"decision:{line.key}") if line.source == "declaration" else None)
+        if item is None:
+            continue
+        unsettled = [k for k in item.reads if k in status and status[k] not in SETTLED]
+        if unsettled:
+            out.append(f"{line.id} is open but reads unanswered {unsettled}")
+    opened = [s.key for s in snap.steps if s.status == "open"]
+    if len(opened) > 1:
+        out.append(f"the Router opens {opened} at once")
+    return out
+
+
+def i6_display_order(snap: Snapshot) -> list[str]:
+    out = []
+    listed = {line.key: line for _stage, line in _lines(snap.log) if line.source == "question"}
+    for step in snap.steps:
+        if step.status == "skipped":
+            line = listed.get(step.key)
+            if line is None or line.label not in ("Confirm", "For the record"):
+                out.append(f"{step.key} was filled by the engine but is not a Confirm or For the "
+                           f"record line ({line.label if line else 'not listed'})")
+    if "explore" in surfacing.computable(snap.state) and snap.state.split is None:
+        out.append("the outcome is shown before Who's in is answered")
+    explore = {"findings": [{"kind": "outcome_relationship", "points": [{"x": 1.0, "y": 2.0}],
+                             "record": {"kind": "view_outcome"}}]}
+    served = fit_press.relationships_served(explore, snap.state, snap.pressed)
+    shown = bool(served["findings"][0]["points"])
+    if snap.state.purpose != "prediction" and not snap.state.plan_locked and shown:
+        out.append("the outcome is shown beside a column before the lock")
+    return out
+
+
+def i8_determinism(snap: Snapshot) -> list[str]:
+    out = []
+    if snap.index % 4 == 0:  # every fourth state: recomputing the quest log is the costly half
+        again = quest_of(snap.state, snap.records, snap.steps, snap.stages, snap.artifacts,
+                         snap.fixture, snap.pressed, snap.pressed_ever)
+        if again.model_dump() != snap.log.model_dump():
+            out.append("the same log gave another quest log")
+    if snap.onto is not None:
+        conditional = {decisions.SLOTS[k] for k in decisions._HOLDS}
+        for name in ProjectState.model_fields:
+            if name in conditional:
+                continue
+            if getattr(snap.onto, name) != getattr(snap.state, name):
+                out.append(f"fold_onto and fold disagree on {name}")
+    return out
+
+
+def i10_mode_independence(snap: Snapshot) -> list[str]:
+    out = []
+    remembered = tuple(line.key for _s, line in _lines(snap.log))[::2]
+    views = {mode: surfacing.disclosure(snap.log, mode, remembered) for mode in surfacing.MODES}
+    tiers = {mode: {(s.stage, s.id, s.key, s.label) for s in shown
+                    if s.label in ("Decide", "Confirm")} for mode, shown in views.items()}
+    base = tiers[surfacing.MODES[0]]
+    for mode, tier in tiers.items():
+        if tier != base:
+            out.append(f"the Decide and Confirm sets differ under {mode}")
+        if sum(s.level == 3 for s in views[mode]) > 1:
+            out.append(f"more than one line is drawn at level 3 under {mode}")
+    return out
+
+
+def i11_monotone_progress(prev: Snapshot, snap: Snapshot) -> list[str]:
+    if snap.reopening:
+        return []
+    out = []
+    now = {(stage.key, line.source, line.key, line.id): (stage, line) for stage, line in _lines(snap.log)}
+    for stage, line in _lines(prev.log):
+        if line.status != "answered":
+            continue
+        found = now.get((stage.key, line.source, line.key, line.id))
+        if found is None:
+            continue  # it no longer applies
+        new_stage, new_line = found
+        if new_line.status == "answered":
+            continue
+        said = (new_line.reopened_by is not None or new_line.changed_since is not None
+                or bool(new_stage.reopened)
+                or (new_stage.sweep is not None and bool(new_stage.sweep.changed)))
+        if not said:
+            out.append(f"{line.id} ({stage.key}) was answered and is {new_line.status} now, "
+                       f"with nothing saying why (after {snap.action} {snap.kind})")
+    before = {s.key for s in prev.log.stages if s.reached}
+    after = {s.key for s in snap.log.stages if s.reached}
+    dropped = before - after
+    if dropped and not any(s.reopened for s in snap.log.stages):
+        out.append(f"{sorted(dropped)} stopped being reached with nothing saying why "
+                   f"(after {snap.action} {snap.kind})")
+    return out
+
+
+ONE_STATE: tuple[tuple[str, Callable[[Snapshot], list[str]]], ...] = (
+    ("I1", i1_no_estimate_before_the_lock),
+    ("I2", i2_registry_agrees_with_the_quest_log),
+    ("I4", i4_every_decide_is_answerable),
+    ("I6", i6_display_order),
+    ("I8", i8_determinism),
+    ("I10", i10_mode_independence),
+)
+def check(journey: Journey) -> list[Violation]:
+    out: list[Violation] = []
+    prev = None
+    for snap in journey.snapshots:
+        for name, fn in ONE_STATE:
+            out += [Violation(name, journey.seed, snap.index, m) for m in fn(snap)]
+        if prev is not None:
+            out += [Violation("I11", journey.seed, snap.index, m)
+                    for m in i11_monotone_progress(prev, snap)]
+        prev = snap
+    return out
+
+
+@dataclass
+class Report:
+    journeys: int = 0
+    states: int = 0
+    refused: int = 0
+    fits: int = 0
+    reopenings: int = 0
+    decide_load: int = 0  # the most counted Decide lines one stage held in one state (§4.2)
+    locked: int = 0  # states with the plan locked
+    reached: dict[str, int] = field(default_factory=dict)  # states that reached each stage
+    goals: dict[str, int] = field(default_factory=dict)  # journeys by their last goal
+    violations: list[Violation] = field(default_factory=list)
+
+    def summary(self) -> str:
+        by: dict[str, int] = {}
+        for v in self.violations:
+            by[v.invariant] = by.get(v.invariant, 0) + 1
+        return (f"{self.journeys} journeys ({self.goals}), {self.states} states, {self.fits} "
+                f"fits, {self.locked} locked states, {self.reopenings} reopenings, "
+                f"{self.refused} refused answers, Decide load {self.decide_load}, reached "
+                f"{self.reached}; violations {by or 'none'}")
+
+
+def fuzz(n: int, seed: int = 0, max_steps: int = 40) -> Report:
+    report = Report()
+    for s in range(seed, seed + n):
+        journey = run_journey(s, max_steps)
+        report.journeys += 1
+        report.states += len(journey.snapshots)
+        report.refused += journey.refused
+        report.fits += sum(snap.action == "fit" for snap in journey.snapshots)
+        report.reopenings += sum(snap.reopening for snap in journey.snapshots)
+        goal = str(journey.snapshots[-1].state.purpose)
+        report.goals[goal] = report.goals.get(goal, 0) + 1
+        for snap in journey.snapshots:
+            report.locked += bool(snap.state.plan_locked)
+            for stage in snap.log.stages:
+                load = sum(l.label == "Decide" and l.counted for l in stage.lines)
+                report.decide_load = max(report.decide_load, load)
+                if stage.reached:
+                    report.reached[stage.key] = report.reached.get(stage.key, 0) + 1
+        report.violations += check(journey)
+    return report

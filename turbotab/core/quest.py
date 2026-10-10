@@ -274,9 +274,17 @@ def kind_stages() -> dict[str, str]:
 def answering_kinds(key: str) -> tuple[str, ...]:
     """The decision kinds whose record answers the Router question ``key``."""
     from turbotab.core.decisions import SLOTS
+
+    return _answering_kinds(key, tuple(SLOTS.items()))
+
+
+@lru_cache(maxsize=256)
+def _answering_kinds(key: str, slots: tuple[tuple[str, str], ...]) -> tuple[str, ...]:
+    # Keyed by the registered kinds, so a kind registered later is read (the quest log asks this
+    # for every line of every log; the path fuzzer, I14).
     from turbotab.core.sequence import question_of
 
-    return tuple(k for k in SLOTS if question_of(k) == key) + ALSO_ANSWERS.get(key, ())
+    return tuple(k for k, _slot in slots if question_of(k) == key) + ALSO_ANSWERS.get(key, ())
 
 
 # ── declarations: the decisions with no Router key that are lines of their own ─
@@ -1206,8 +1214,18 @@ def _hold_the_families(placed: Sequence[tuple[str, QuestLine]]) -> None:
                           *(Waiting(key=l.key, stage="models", name=l.name) for l in ahead)]
 
 
+def _holding(step: Any, state: Any) -> bool:
+    """A step waiting only for its own reading to recompute, whose recorded answer still holds:
+    it stands answered meanwhile (:func:`_question_lines`), so it holds no stage back."""
+    key = _get(step, "key")
+    waiting_on = set(_get(step, "waiting_on") or ())
+    return (state is not None and _get(step, "status") == "waiting" and bool(waiting_on)
+            and waiting_on <= READ_BY_GATE.get(key, frozenset()) and answer_holds(key)(state))
+
+
 def _frontier(steps: Sequence[Any], stages: Mapping[str, Any],
-              shown_at: Mapping[str, datetime | None], fit: FitLock | None = None) -> int:
+              shown_at: Mapping[str, datetime | None], fit: FitLock | None = None,
+              state: Any = None) -> int:
     """The furthest stage the Router has reached: every question answered, stated or open so far,
     and the first one still waiting. Results opens when Fit is pressed (``fit``: under Estimate and
     Describe the plan locked, under Predict Fit pressed for the outcome; never with no purpose),
@@ -1218,17 +1236,25 @@ def _frontier(steps: Sequence[Any], stages: Mapping[str, Any],
     nothing). Write-up opens with Results."""
     from turbotab.core.estimand import ESTIMATE_STAGES
 
-    first = next((s for s in steps if _get(s, "status") in ("open", "waiting")), None)
+    # A question whose own reading recomputes while its answer holds is answered meanwhile (the
+    # path fuzzer, I11: a dismissed finding re-reads the outcome, and First look and Who's in fell
+    # out of reach while the task waited for it).
+    holding = [_holding(s, state) for s in steps]
+    first = next((s for s, held in zip(steps, holding)
+                  if _get(s, "status") in ("open", "waiting") and not held), None)
     # A default stated past the first unanswered question (the design, observational until it is
     # answered; P0.6) is not a question the Router has reached.
     ahead = list(steps).index(first) if first is not None else len(steps)
     reached = [STAGE_INDEX[QUESTIONS[_get(s, "key")].stage] for i, s in enumerate(steps)
                if _get(s, "key") in QUESTIONS
-               and (_get(s, "status") in ("answered", "open")
+               and (_get(s, "status") in ("answered", "open") or holding[i]
                     or (_get(s, "status") == "skipped" and i < ahead))]
     if first is not None and _get(first, "key") in QUESTIONS:
         reached.append(STAGE_INDEX[QUESTIONS[_get(first, "key")].stage])
-    furthest = max(reached, default=0)
+    # The Router's questions open the stages up to Models; Results opens by Fit alone (the path
+    # fuzzer, I1: under Predict the seal question waits in Results for the fit, and reaching it
+    # read as Results reached before Fit was pressed).
+    furthest = min(max(reached, default=0), STAGE_INDEX["models"])
     if fit is not None:
         opened = fit.purpose is not None and (fit.locked if fit.locks else fit.pressed)
         # Opened by a press since kept (for an earlier outcome, or before the goal was withdrawn),
@@ -1340,7 +1366,7 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     _hold_the_families(placed)
     sweeps.weigh(placed, state, facts)
     sweeps.cover_noticings(placed, state, log, findings)
-    frontier = _frontier(steps, stages, shown_at, fit)
+    frontier = _frontier(steps, stages, shown_at, fit, state)
     out = []
     for key, name in STAGES:
         mine = sorted((l for stage, l in placed if stage == key),
