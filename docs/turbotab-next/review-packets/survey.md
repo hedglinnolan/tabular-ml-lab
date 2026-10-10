@@ -8,7 +8,61 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
 
 ## 1 · The methods this lens offers
 
-### 1.1 · Its own methods (6)
+### 1.1 · Its own methods (8)
+
+#### Stacking NHANES cycles into one sample (`stack_cycles`)
+
+- **Slot:** ingest (as the table is read); place in it 0.5.
+- **Data scope:** row-local: needs no other row. A stacked row's values are its own (renamed or converted by a rule declared for its cycle); its pooled weight is its own weight times its cycle's share of the stacked years, a formula of the cycles' lengths, never of another row's values. What it flags (codes or a typical value that differ between cycles) reads every row but changes none and informs no modeling choice.
+- **Needs:**
+  - two or more NHANES files, each one cycle, with the same weight kind
+  - each file's masked variance strata and PSUs (SDMVSTRA, SDMVPSU)
+  - the four-year weight, when 1999–2000 is stacked with another cycle
+  - optional: renames and conversions declared from the release documentation, and measurements declared incompatible across cycles
+- **Question:** Stack these NHANES cycles into one sample?
+- **Where:** placed at before the opening sequence (the ingest stage builds the table).
+- **Lenses:** Dietary assessment, Clinical, Survey instruments. Declared by the C1b package.
+
+**Options**, each labeled customary and sound for each purpose, with its leash rung and its rank (1 is offered first):
+
+| Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
+|---|---|---|---|---|---|
+| `stack`: Stack the cycles, each weight scaled by its cycle's share of the years | NCHS's rule for pooled cycles (NHANES Analytic Guidelines 2011–2016 §3.1.3–3.1.4; Akinbami et al. 2022) | Sound when every stacked variable was measured alike in every cycle; the cycles' strata and PSUs stay distinct, so the standard errors keep each cycle's design | recommended, 1 | Sound when every stacked variable was measured alike in every cycle; the cycles' strata and PSUs stay distinct, so the standard errors keep each cycle's design | recommended, 1 |
+| `one_cycle`: Analyze one cycle alone | Customary when a measurement changed between cycles | Sound always; fewer rows, so wider intervals | available, 2 | Sound always; fewer rows, so wider intervals | available, 2 |
+
+**Storyboard** (the transform player's real steps):
+
+1. name each file's cycle and its years
+2. refuse cycles that overlap or repeat a participant
+3. rename and convert as declared, flag what differs
+4. scale each weight by its cycle's share of the stacked years
+5. keep each cycle's strata and PSUs distinct
+
+**Methods sentence:**
+
+- Written by `turbotab.core.methods.cycles:stack_sentence`: The methods sentence of a stack of NHANES cycles: which cycles, the pooled weight and its rule, the strata kept apart, and what was renamed or converted.
+
+**Relations:**
+
+| Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
+|---|---|---|---|---|---|
+| implies | `pooled_weights` (id `pooled_weight`) | `stack`; when two or more cycles | prediction, inference | each cycle's weight is multiplied by its years over the stacked years: 1 ÷ k for k two-year cycles, and 3.2 over the stacked years for the 3.2-year prepandemic file | `turbotab.core.methods.cycles:stack_cycles` |
+| implies | `strata_by_cycle` (id `strata_kept_apart`) | `stack`; when always | prediction, inference | strata and PSUs are coded by cycle, so no two cycles share one | `turbotab.core.methods.cycles:stack_cycles` |
+| conflicts | `four_year_weight_needed` (id `four_year`) | `stack`; when 1999–2000 and another cycle, no four-year weight | prediction, inference | 1999–2000 stacked with another cycle needs the four-year weight on the 1999–2002 rows *(rung: refused, with an exit)* Exits: name the four-year weight; leave 1999–2000 out. | `turbotab.core.methods.cycles:stack_cycles` |
+| conflicts | `overlapping_cycles` (id `overlap`) | `stack`; when two cycles whose years overlap, or an identifier in two cycles | prediction, inference | cycles covering the same years (2017–2018 and the prepandemic file, which holds its participants) are refused: the same participants would count twice *(rung: refused, with an exit)* Exits: leave one of them out. | `turbotab.core.methods.cycles:stack_cycles` |
+| conflicts | `weight_kinds_differ` (id `weight_kind`) | `stack`; when two kinds of weight among the cycles, the four-year weight included | prediction, inference | weights of different samples (examination and interview) are refused, the four-year weight of the 1999–2002 rows among them; a weight whose kind is not known is stacked with a concern that it could not be checked *(rung: refused, with an exit)* Exits: use one kind of weight in every cycle; name the four-year weight of the same kind. | `turbotab.core.methods.cycles:stack_cycles` |
+| conflicts | `combined_across_the_pandemic_gap` (id `stands_alone`) | `stack`; when the 2021–2023 cycle and another cycle | prediction, inference | the 2021–2023 cycle (release 12) stacked with any other cycle is refused, as the NHANES weighting tutorial advises: a year and a half of unobserved pandemic months lies between it and the prepandemic file *(rung: refused, with an exit)* Exits: analyze the 2021–2023 cycle alone; leave it out. | `turbotab.core.methods.cycles:stack_cycles` |
+| conflicts | `measurement_not_comparable` (id `incompatible`) | `stack`; when a measurement declared incompatible across cycles | prediction, inference | a variable declared to be measured differently in a cycle is refused unless its conversion is declared *(rung: refused, with an exit)* Exits: leave the variable out; stack only the cycles measured alike; declare the documented conversion. | `turbotab.core.methods.cycles:stack_cycles` |
+| conflicts | `variable_missing_in_a_cycle` (id `absent`) | `stack`; when a requested variable absent from a cycle | prediction, inference | a variable asked for that a cycle lacks is refused, with a likely earlier name when one is found *(rung: refused, with an exit)* Exits: declare the rename; leave the variable out; stack only the cycles that have it. | `turbotab.core.methods.cycles:stack_cycles` |
+| implies | `differences_flagged` (id `flags`) | `stack`; when always | prediction, inference | codes that differ between cycles and a typical value that moves by a factor of five or more are flagged, never changed | `turbotab.core.methods.cycles:stack_cycles` |
+| enables | `cycle_trends` (id `trends`) | `stack`; when two or more cycles stacked | prediction, inference | a stack of three or more cycles can be tested for a trend across them, which checks the no-trend assumption a pooled estimate makes | `turbotab.core.methods.cycles:stack_cycles` |
+
+**Primary sources:**
+
+- NHANES Analytic Guidelines 2011–2016, §2.6 and §3.1.3–3.1.4 (NCHS)
+- Akinbami et al. 2022, Vital Health Stat 2(190), "Combining Survey Cycles" (doi:10.15620/cdc:115434)
+- NHANES DEMO documentation, SDDSRVYR (the data release cycle)
+- NHANES weighting tutorial, Constructing Weights for Combined NHANES Survey Cycles (NCHS)
 
 #### Scale scores, their reliability and the correction for measurement error (`scales`)
 
@@ -305,6 +359,60 @@ None declared.
 - Wieczorek, Guerin & McMahon, Stat 2022;11:e454
 - MODELING_SEQUENCE §0 ruling 13
 
+#### Trends across stacked survey cycles (`cycle_trends`)
+
+- **Slot:** evaluation (after the fit); place in it 8.5.
+- **Data scope:** descriptive: may read every row to say whether the data are corrupted, but informs no modeling choice. It reads every analyzed row of every cycle, as an estimate does, and the survey design over the stacked table; nothing is fitted per fold, and nothing it computes is applied to a row or informs a modeling choice.
+- **Needs:**
+  - a stack of two or more cycles (three or more to look for a bend), with each cycle's time
+  - a numeric measure (a mean) or a yes-or-no one (a prevalence)
+  - the survey design over the stacked rows, or the answer that the estimates describe these participants
+  - optional: covariates (regression and joinpoint only), and joinpoints named in advance
+- **Question:** Did the measure change across the cycles?
+- **Lenses:** Dietary assessment, Clinical, Survey instruments. Declared by the D6 package.
+
+**Options**, each labeled customary and sound for each purpose, with its leash rung and its rank (1 is offered first):
+
+| Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
+|---|---|---|---|---|---|
+| `contrasts`: Orthogonal polynomial contrasts of the cycle estimates | NCHS's usual test for NHANES trends (Ingram et al. 2018, Issue 7; SUDAAN DESCRIPT POLY; R svycontrast with contr.poly) | Not offered under Predict: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) | not offered, 1 | Not offered under Estimate an effect: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) | not offered, 1 |
+| `regression`: Polynomial regression on time, survey-weighted | Ingram et al. 2018, Issues 7–9; R svyglm with the cycle's year as a predictor | Not offered under Predict: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) | not offered, 2 | Not offered under Estimate an effect: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) | not offered, 2 |
+| `joinpoint`: Joinpoint regression at joinpoints named beforehand | Ingram et al. 2018, Issues 11–12 and Appendix IV (the model fitted with survey software; the location found by NCI's Joinpoint, not done here) | Not offered under Predict: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) | not offered, 3 | Not offered under Estimate an effect: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) | not offered, 3 |
+
+**Storyboard** (the transform player's real steps):
+
+1. place each cycle at its midpoint year
+2. estimate each cycle's mean or prevalence with its interval
+3. test the highest-order term first
+4. then the linear trend
+5. say whether it rose, fell, stayed or bent
+
+**Methods sentence:**
+
+- Written by `turbotab.core.methods.cycle_trends:trend_sentence`: The methods sentence of a trend across cycles: the estimates, their intervals, the test and its degrees of freedom.
+
+**Relations:**
+
+| Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
+|---|---|---|---|---|---|
+| implies | `design_based_trend` (id `design_based`) | any option; when a survey design answered as the surveyed population | describe | the cycle estimates, their covariance and every test are design-based, on the design's degrees of freedom (PSUs minus strata) | `turbotab.core.methods.cycle_trends:cycle_trend` |
+| implies | `korn_graubard_intervals` (id `korn_graubard`) | any option; when a yes-or-no measure | describe | a prevalence's interval in each cycle is Korn and Graubard's | `turbotab.core.methods.cycle_trends:cycle_trend` |
+| implies | `nonlinearity_first` (id `highest_first`) | `contrasts`, `regression`; when three or more cycles | describe | the highest-order term is tested first; the linear trend is read only when no bend is found | `turbotab.core.methods.cycle_trends:cycle_trend` |
+| conflicts | `contrasts_take_no_covariates` (id `contrasts_unadjusted`) | `contrasts`; when covariates with the contrasts | describe | contrasts of the cycle estimates cannot be adjusted for covariates *(rung: refused, with an exit)* Exits: polynomial regression; leave the adjustment out. | `turbotab.core.methods.cycle_trends:cycle_trend` |
+| conflicts | `contrasts_on_their_own_scale` (id `contrasts_linear`) | `contrasts`; when the logit scale with the contrasts | describe | contrasts on the log-odds scale are refused *(rung: refused, with an exit)* Exits: the linear scale; logistic regression. | `turbotab.core.methods.cycle_trends:cycle_trend` |
+| conflicts | `prevalence_line_leaves_unit_interval` (id `unit_interval`) | `regression`, `joinpoint`; when a fitted prevalence outside 0 to 1 | describe | a straight-line trend in a prevalence that runs below 0 or above 1 is refused *(rung: refused, with an exit)* Exits: the log-odds scale. | `turbotab.core.methods.cycle_trends:cycle_trend` |
+| conflicts | `joinpoint_not_searched` (id `no_search`) | `joinpoint`; when a joinpoint search, or a joinpoint outside the inner cycles | describe | the joinpoint's location is not searched for; it must be named in advance at an inner cycle *(rung: refused, with an exit)* Exits: name the joinpoint cycle; polynomial regression. | `turbotab.core.methods.cycle_trends:cycle_trend` |
+| conflicts | `no_design_df` (id `design_df`) | any option; when the analyzed rows lie in as many PSUs as strata | describe | no design degrees of freedom are left for a test *(rung: refused, with an exit)* Exits: the sample-only attestation. | `turbotab.core.methods.cycle_trends:cycle_trend` |
+| conflicts | `not_an_effect` (id `describe_only`) | any option; when the Estimate or Predict goal | inference, prediction | not offered under Estimate an effect or Predict: a trend across cycles is a description *(rung: refused, with an exit)* Exits: ask it under Describe. | `turbotab.core.methods.cycle_trends:eligible` |
+
+**Primary sources:**
+
+- Ingram et al. 2018, Vital Health Stat 2(179), Issues 4–12 and Appendix IV
+- Korn & Graubard 1998, Survey Methodology 24:193
+- NHANES Analytic Guidelines 2011–2016, §3.2.3
+- Lumley 2010, Complex Surveys: A Guide to Analysis Using R
+- R survey (svyby, svyciprop, svycontrast, svyglm)
+
 ### 1.2 · Model families
 
 The shelf ranks every family that can model the outcome by its own assessment of the data and never shortens the list: no family is withheld from a lens, so every family is offered here.
@@ -539,12 +647,23 @@ Every relation this lens's own methods take part in: declared by them, or declar
 
 ```mermaid
 flowchart LR
+  n_stack_cycles["Stacking NHANES cycles into one sample"]:::own
   n_scales["Scale scores, their reliability and the correction for measurement error"]:::own
   n_survey_population["The population estimand under a survey design"]:::own
   n_survey_cox["Survey-weighted Cox regression (Binder's pseudo-likelihood)"]:::own
   n_survey_linear["Survey-weighted linear, logistic and multinomial models"]:::own
   n_survey_ordinal["Survey-weighted proportional-odds model"]:::own
   n_design_based_cv["Design-based cross-validation"]:::own
+  n_cycle_trends["Trends across stacked survey cycles"]:::own
+  n_pooled_weights(["pooled_weights"]):::named
+  n_strata_by_cycle(["strata_by_cycle"]):::named
+  n_four_year_weight_needed(["four_year_weight_needed"]):::named
+  n_overlapping_cycles(["overlapping_cycles"]):::named
+  n_weight_kinds_differ(["weight_kinds_differ"]):::named
+  n_combined_across_the_pandemic_gap(["combined_across_the_pandemic_gap"]):::named
+  n_measurement_not_comparable(["measurement_not_comparable"]):::named
+  n_variable_missing_in_a_cycle(["variable_missing_in_a_cycle"]):::named
+  n_differences_flagged(["differences_flagged"]):::named
   n_dietary_patterns["Dietary patterns: foods eaten together"]:::other
   n_pattern_clusters["Dietary patterns: how many groups of people"]:::other
   n_pattern_count["Dietary patterns: how many to keep"]:::other
@@ -581,6 +700,25 @@ flowchart LR
   n_multiclass_substitution["Substitution curves for a multiclass outcome, one per class"]:::other
   n_design_folds(["design_folds"]):::named
   n_no_cv_under_inference(["no_cv_under_inference"]):::named
+  n_design_based_trend(["design_based_trend"]):::named
+  n_korn_graubard_intervals(["korn_graubard_intervals"]):::named
+  n_nonlinearity_first(["nonlinearity_first"]):::named
+  n_contrasts_take_no_covariates(["contrasts_take_no_covariates"]):::named
+  n_contrasts_on_their_own_scale(["contrasts_on_their_own_scale"]):::named
+  n_prevalence_line_leaves_unit_interval(["prevalence_line_leaves_unit_interval"]):::named
+  n_joinpoint_not_searched(["joinpoint_not_searched"]):::named
+  n_no_design_df(["no_design_df"]):::named
+  n_not_an_effect(["not_an_effect"]):::named
+  n_stack_cycles -->|implies| n_pooled_weights
+  n_stack_cycles -->|implies| n_strata_by_cycle
+  n_stack_cycles -.->|conflicts| n_four_year_weight_needed
+  n_stack_cycles -.->|conflicts| n_overlapping_cycles
+  n_stack_cycles -.->|conflicts| n_weight_kinds_differ
+  n_stack_cycles -.->|conflicts| n_combined_across_the_pandemic_gap
+  n_stack_cycles -.->|conflicts| n_measurement_not_comparable
+  n_stack_cycles -.->|conflicts| n_variable_missing_in_a_cycle
+  n_stack_cycles -->|implies| n_differences_flagged
+  n_stack_cycles -.->|enables| n_cycle_trends
   n_dietary_patterns -->|implies| n_survey_population
   n_pattern_clusters -->|implies| n_survey_population
   n_pattern_count -->|implies| n_survey_population
@@ -624,6 +762,15 @@ flowchart LR
   n_multiclass_substitution -.->|conflicts| n_survey_population
   n_design_based_cv -->|implies| n_design_folds
   n_design_based_cv -->|implies| n_no_cv_under_inference
+  n_cycle_trends -->|implies| n_design_based_trend
+  n_cycle_trends -->|implies| n_korn_graubard_intervals
+  n_cycle_trends -->|implies| n_nonlinearity_first
+  n_cycle_trends -.->|conflicts| n_contrasts_take_no_covariates
+  n_cycle_trends -.->|conflicts| n_contrasts_on_their_own_scale
+  n_cycle_trends -.->|conflicts| n_prevalence_line_leaves_unit_interval
+  n_cycle_trends -.->|conflicts| n_joinpoint_not_searched
+  n_cycle_trends -.->|conflicts| n_no_design_df
+  n_cycle_trends -.->|conflicts| n_not_an_effect
   classDef own fill:#e8f0fe,stroke:#1a56db,color:#111
   classDef other fill:#f4f4f5,stroke:#71717a,color:#111
   classDef named fill:#fff7ed,stroke:#c2410c,color:#111
@@ -633,6 +780,9 @@ The relations, with the sentence the app states when each fires:
 
 | From | Kind | Toward | Fires for | Purposes | What the app says |
 |---|---|---|---|---|---|
+| `cycle_trends` | implies | `design_based_trend` | any option; when a survey design answered as the surveyed population | describe | the cycle estimates, their covariance and every test are design-based, on the design's degrees of freedom (PSUs minus strata) |
+| `cycle_trends` | implies | `korn_graubard_intervals` | any option; when a yes-or-no measure | describe | a prevalence's interval in each cycle is Korn and Graubard's |
+| `cycle_trends` | implies | `nonlinearity_first` | `contrasts`, `regression`; when three or more cycles | describe | the highest-order term is tested first; the linear trend is read only when no bend is found |
 | `design_based_cv` | implies | `design_folds` | `population`; when the surveyed-population answer under prediction | prediction | folds keep whole PSUs together within strata, and every loss, calibration and comparison is survey-weighted, labeled design-based cross-validation |
 | `design_based_cv` | implies | `no_cv_under_inference` | any option | inference | no cross-validated score is shown under inference |
 | `dietary_patterns` | implies | `survey_population` | any option; when a survey weight column | prediction, inference | The correlations, cluster centers and reduced rank regression are weighted by the survey weights, so the patterns are the surveyed population's. |
@@ -648,6 +798,9 @@ The relations, with the sentence the app states when each fires:
 | `scales` | implies | `the items read as answers, not codes` | any option | prediction, inference | The scale's answer settles each item's code-or-amount reading for the fit: its items are answers on the response scale, summed into one score. |
 | `scales` | implies | `the reference measure read as an amount` | any option | prediction, inference | The calibration regresses a substudy's reference measure on the score, so its code-or-amount reading is settled (by its values or the user) and it holds no missing-value code before it is read (BLUEPRINT §14.3). |
 | `scales` | implies | `the repeat administration and the reference stay out of the model` | any option | prediction, inference | A repeat administration or a reference measure is read by the reliability only, never as a predictor. |
+| `stack_cycles` | implies | `differences_flagged` | `stack`; when always | prediction, inference | codes that differ between cycles and a typical value that moves by a factor of five or more are flagged, never changed |
+| `stack_cycles` | implies | `pooled_weights` | `stack`; when two or more cycles | prediction, inference | each cycle's weight is multiplied by its years over the stacked years: 1 ÷ k for k two-year cycles, and 3.2 over the stacked years for the 3.2-year prepandemic file |
+| `stack_cycles` | implies | `strata_by_cycle` | `stack`; when always | prediction, inference | strata and PSUs are coded by cycle, so no two cycles share one |
 | `subgroups` | implies | `survey_population` | `kmeans_silhouette`; when the surveyed-population answer | prediction, inference | With survey weights, k-means weighs each person by their weight in the standardization, its objective and the silhouette, none changed by the weights' scale, and the stability uses the rescaled bootstrap: PSUs within strata, the weights rescaled (Rao, Wu & Yue 1992, Surv Methodol 18:209). |
 | `survey_cox` | implies | `adjusted Wald F for joint tests` | any option | inference | A spline's overall and nonlinear tests are adjusted Wald F tests on (q, d − q + 1) degrees of freedom (Korn & Graubard 1990). |
 | `survey_cox` | implies | `design-based intervals` | any option | inference | Every interval is design-based: Taylor linearization over the strata and PSUs, on t with the design's degrees of freedom (the PSUs minus the strata that hold the analysis rows). |
@@ -665,15 +818,28 @@ The relations, with the sentence the app states when each fires:
 | `survey_population` | implies | `multiple imputation on the design's degrees of freedom` | any option | inference | Each completed copy is analyzed design-based, and Rubin's rules take the design's degrees of freedom as the complete-data degrees of freedom (MS2). |
 | `survey_population` | implies | `regression calibration by PSU within strata` | any option | inference | Regression calibration and its outcome model are survey-weighted, and its interval comes from a bootstrap resampling PSUs within strata over the whole chain (Rao and Wu's); with no stratum of two PSUs it is blocked and recorded, with the sample-only attestation or no correction as its exits. |
 | `survey_population` | implies | `the record restated` | any option | inference | Every sentence that says what the survey answer does to a family, a curve or a correction is restated in the methods text on the answer as it stands; the Record keeps it as said. |
+| `stack_cycles` | enables | `cycle_trends` | `stack`; when two or more cycles stacked | prediction, inference | a stack of three or more cycles can be tested for a trend across them, which checks the no-trend assumption a pooled estimate makes |
 | `scales` | invalidates | `a functional form recorded on an item` | any option | prediction, inference | Scoring replaces the item with the score, so a form recorded on the item is re-asked, never silently kept. |
 | `scales` | invalidates | `the calibration when the adjustment set changes` | any option | prediction, inference | The calibration reads the model's covariates, so a change to the roles recomputes it. |
 | `scales` | invalidates | `the scales answer when an item leaves the predictors` | any option | prediction, inference | An answer that takes an item out of the predictors (another role, an exclusion, the outcome, a left-out column) or puts a repeat administration in the model is refused until the scales answer changes; the scale is asked again, never kept. |
 | `survey_population` | invalidates | `the substitution band from row resampling` | any option | inference | A row bootstrap ignores the strata and PSUs, so the curve's band is the design's linearization instead, and the refits asked for are not drawn. |
+| `cycle_trends` | conflicts | `contrasts_on_their_own_scale` | `contrasts`; when the logit scale with the contrasts | describe | contrasts on the log-odds scale are refused *(rung: refused, with an exit)* Exits: the linear scale; logistic regression. |
+| `cycle_trends` | conflicts | `contrasts_take_no_covariates` | `contrasts`; when covariates with the contrasts | describe | contrasts of the cycle estimates cannot be adjusted for covariates *(rung: refused, with an exit)* Exits: polynomial regression; leave the adjustment out. |
+| `cycle_trends` | conflicts | `joinpoint_not_searched` | `joinpoint`; when a joinpoint search, or a joinpoint outside the inner cycles | describe | the joinpoint's location is not searched for; it must be named in advance at an inner cycle *(rung: refused, with an exit)* Exits: name the joinpoint cycle; polynomial regression. |
+| `cycle_trends` | conflicts | `no_design_df` | any option; when the analyzed rows lie in as many PSUs as strata | describe | no design degrees of freedom are left for a test *(rung: refused, with an exit)* Exits: the sample-only attestation. |
+| `cycle_trends` | conflicts | `not_an_effect` | any option; when the Estimate or Predict goal | inference, prediction | not offered under Estimate an effect or Predict: a trend across cycles is a description *(rung: refused, with an exit)* Exits: ask it under Describe. |
+| `cycle_trends` | conflicts | `prevalence_line_leaves_unit_interval` | `regression`, `joinpoint`; when a fitted prevalence outside 0 to 1 | describe | a straight-line trend in a prevalence that runs below 0 or above 1 is refused *(rung: refused, with an exit)* Exits: the log-odds scale. |
 | `multiclass_substitution` | conflicts | `survey_population` | any option; when the survey answer "the surveyed population" and a family with no design-based estimator | inference | A family with no design-based estimator draws no class curves under the surveyed population: blocked and recorded. *(rung: blocked until recorded)* Exits: the design-based family in its place, every other chosen family kept; the sample-only attestation. |
 | `multiclass_substitution` | conflicts | `survey_population` | any option; when the survey answer "the surveyed population" with no design degrees of freedom (every PSU alone in its stratum) | inference | A design whose analysis rows lie in no more PSUs than strata leaves no degrees of freedom for an interval: the coefficient table is refused, and no class curve is drawn either, blocked and recorded, never shown as points under a caption that promises intervals. *(rung: blocked until recorded)* Exits: the sample-only attestation. |
 | `scales` | conflicts | `a correction under prediction` | any option | prediction, inference | Refused: Under prediction the deployed model sees a new row's score with the same error, so its predictions need no correction; correcting a coefficient is an inference question. *(rung: refused, with an exit)* Exits: the uncorrected score. |
 | `scales` | conflicts | `codes counted as answers` | any option | prediction, inference | Refused until each value outside the response scale (or, for a repeat administration recorded as one score, outside the range that score can take; for a reference measure, a missing-value code beyond its values) is recoded to missing. *(rung: refused, with an exit)* Exits: recode the codes to missing (the findings' code repair); a wider response scale; the internal consistency instead; the uncorrected estimate. |
 | `scales` | conflicts | `disattenuation of a formative index by α or ω` | any option | prediction, inference | Refused under inference: A formative index (a diet-quality score, an FFQ-derived score) is defined by its components, not caused by one construct: its internal consistency is not the error that dilutes the regression, so dividing by α or ω over-corrects (Reedy et al. 2018: the HEI-2015's components showed “at least four dimensions”). Its reliability comes from a test–retest ICC of a repeat administration or from a calibration substudy. *(rung: refused, with an exit)* Exits: a test–retest ICC from a repeat administration; a calibration substudy; the uncorrected estimate. |
+| `stack_cycles` | conflicts | `combined_across_the_pandemic_gap` | `stack`; when the 2021–2023 cycle and another cycle | prediction, inference | the 2021–2023 cycle (release 12) stacked with any other cycle is refused, as the NHANES weighting tutorial advises: a year and a half of unobserved pandemic months lies between it and the prepandemic file *(rung: refused, with an exit)* Exits: analyze the 2021–2023 cycle alone; leave it out. |
+| `stack_cycles` | conflicts | `four_year_weight_needed` | `stack`; when 1999–2000 and another cycle, no four-year weight | prediction, inference | 1999–2000 stacked with another cycle needs the four-year weight on the 1999–2002 rows *(rung: refused, with an exit)* Exits: name the four-year weight; leave 1999–2000 out. |
+| `stack_cycles` | conflicts | `measurement_not_comparable` | `stack`; when a measurement declared incompatible across cycles | prediction, inference | a variable declared to be measured differently in a cycle is refused unless its conversion is declared *(rung: refused, with an exit)* Exits: leave the variable out; stack only the cycles measured alike; declare the documented conversion. |
+| `stack_cycles` | conflicts | `overlapping_cycles` | `stack`; when two cycles whose years overlap, or an identifier in two cycles | prediction, inference | cycles covering the same years (2017–2018 and the prepandemic file, which holds its participants) are refused: the same participants would count twice *(rung: refused, with an exit)* Exits: leave one of them out. |
+| `stack_cycles` | conflicts | `variable_missing_in_a_cycle` | `stack`; when a requested variable absent from a cycle | prediction, inference | a variable asked for that a cycle lacks is refused, with a likely earlier name when one is found *(rung: refused, with an exit)* Exits: declare the rename; leave the variable out; stack only the cycles that have it. |
+| `stack_cycles` | conflicts | `weight_kinds_differ` | `stack`; when two kinds of weight among the cycles, the four-year weight included | prediction, inference | weights of different samples (examination and interview) are refused, the four-year weight of the 1999–2002 rows among them; a weight whose kind is not known is stacked with a concern that it could not be checked *(rung: refused, with an exit)* Exits: use one kind of weight in every cycle; name the four-year weight of the same kind. |
 | `survey_population` | conflicts | `a scale's corrected coefficient` | any option | inference | A scale's correction and the uncorrected coefficient beside it are fit on the rows as sampled, so they are blocked and recorded. *(rung: blocked until recorded)* Exits: the sample-only attestation. |
 | `survey_population` | conflicts | `families with no design-based estimator` | any option | inference | The mixed model, GEE, feature-wise tests, the elastic net and boosted trees have no design-based estimator: their estimates are blocked and recorded. *(rung: blocked until recorded)* Exits: the design-based family for the task in its place, every other chosen family kept; the sample-only attestation. |
 | `multiple_imputation_compatible` | precedes | `scales` | any option; when a declared scale with missing items | inference | a scale's items are imputed before it is scored in each copy, never the score itself (MODELING_SEQUENCE §1.1) |
@@ -686,12 +852,14 @@ The option each method offers first for each purpose, its rung, and the reason i
 
 | Method | Prediction | Inference |
 |---|---|---|
+| Stacking NHANES cycles into one sample (`stack_cycles`) | `stack` (recommended): Sound when every stacked variable was measured alike in every cycle; the cycles' strata and PSUs stay distinct, so the standard errors keep each cycle's design | `stack` (recommended): Sound when every stacked variable was measured alike in every cycle; the cycles' strata and PSUs stay distinct, so the standard errors keep each cycle's design |
 | Scale scores, their reliability and the correction for measurement error (`scales`) | never asked, so never applied from the app (§1); posted to the API, the registry ranks `omega` first (recommended): Sound, and descriptive: under prediction the reliability changes no modeling choice. | never asked, so never applied from the app (§1); posted to the API, the registry ranks `omega` first (recommended): Sound: ω does not assume equal loadings (McNeish 2018). |
 | The population estimand under a survey design (`survey_population`) | not offered under prediction: Not asked: under prediction the scores describe the rows they were computed on, and the weights are noted, not used. | `population` (recommended): Sound for a population estimand: every family and display is design-based, or blocked and recorded where none exists (MODELING_SEQUENCE §0 ruling 6). |
 | Survey-weighted Cox regression (Binder's pseudo-likelihood) (`survey_cox`) | `unweighted` (recommended): The fit prediction uses: its scores describe these rows. | `design_based` (recommended): Sound for the surveyed population: weighted estimating equations with a linearized variance (Binder 1983; Lumley 2010). |
 | Survey-weighted linear, logistic and multinomial models (`survey_linear`) | `unweighted` (recommended): The fit prediction uses: its scores describe these rows. | `design_based` (recommended): Sound for the surveyed population: weighted estimating equations with a linearized variance (Binder 1983; Lumley 2010). |
 | Survey-weighted proportional-odds model (`survey_ordinal`) | `unweighted` (recommended): The fit prediction uses: its scores describe these rows. | `design_based` (recommended): Sound for the surveyed population: weighted estimating equations with a linearized variance (Binder 1983; Lumley 2010). |
 | Design-based cross-validation (`design_based_cv`) | `population` (recommended): Sound for performance in the surveyed population (Wieczorek et al. 2022) | not offered under inference: Not shown: under inference no cross-validated score is reported |
+| Trends across stacked survey cycles (`cycle_trends`) | not offered under prediction: Not offered under Predict: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) | not offered under inference: Not offered under Estimate an effect: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) |
 
 ### 3.2 · Questions labeled outside the registry
 
