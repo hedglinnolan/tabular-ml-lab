@@ -127,6 +127,10 @@ CONTRACT_LENSES: dict[str, tuple[str, ...]] = {
     "manuscript_export": (SHARED,),
     # D5: agreement between two measurement methods (Describe) or two models (Predict), any lens
     "bland_altman": (SHARED,),
+    # C1b and D6: stacking NHANES cycles and the trends across them, a complex survey design's
+    # methods, reviewed in full by the dietary, clinical and survey lenses as the design is
+    "stack_cycles": ("dietary", "clinical", "survey"),
+    "cycle_trends": ("dietary", "clinical", "survey"),
 }
 
 # Every registered model family: the lenses whose packet reviews it in full, or (SHARED,). No

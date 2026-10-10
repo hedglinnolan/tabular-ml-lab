@@ -7628,6 +7628,126 @@
    "verified_by": "url",
    "verified_on": "2026-10-09",
    "disagreements": []
+  },
+  {
+   "key": "akinbami2022prepandemic",
+   "kind": "report",
+   "cited_as": [
+    "Akinbami et al\\.?,? \\(?2022\\b"
+   ],
+   "doi": "10.15620/cdc:115434",
+   "authors": [
+    "Akinbami, Lara",
+    "Chen, Te-Ching",
+    "Davy, Orlando",
+    "Ogden, Cynthia",
+    "Fink, Steven",
+    "Clark, Jason",
+    "Riddles, Minsun",
+    "Mohadjer, Leyla"
+   ],
+   "title": "National Health and Nutrition Examination Survey, 2017–March 2020 Prepandemic File: Sample Design, Estimation, and Analytic Guidelines.",
+   "year": 2022,
+   "overrides": {
+    "fields": {
+     "authors": [
+      "Akinbami, Lara",
+      "Chen, Te-Ching",
+      "Davy, Orlando",
+      "Ogden, Cynthia",
+      "Fink, Steven",
+      "Clark, Jason",
+      "Riddles, Minsun",
+      "Mohadjer, Leyla"
+     ]
+    },
+    "why": "Crossref's deposit spells the first author's family name \"Akinbam\"; the report's own suggested citation (Vital Health Stat 2(190), inside the cover) reads \"Akinbami LJ, Chen TC, Davy O, Ogden CL, Fink S, Clark J, et al.\""
+   },
+   "verified_by": "crossref",
+   "disagreements": [
+    "'Akinbami et al. 2022': author Akinbami is not among the record's authors (the registry keeps authors ['Akinbami, Lara', 'Chen, Te-Ching', 'Davy, Orlando', 'Ogden, Cynthia', 'Fink, Steven', 'Clark, Jason', 'Riddles, Minsun', 'Mohadjer, Leyla']: Crossref's deposit spells the first author's family name \"Akinbam\"; the report's own suggested citation (Vital Health Stat 2(190), inside the cover) reads \"Akinbami LJ, Chen TC, Davy O, Ogden CL, Fink S, Clark J, et al.\")",
+    "'Akinbami et al. 2022, Vital Health Stat 2(190': author Akinbami is not among the record's authors (the registry keeps authors ['Akinbami, Lara', 'Chen, Te-Ching', 'Davy, Orlando', 'Ogden, Cynthia', 'Fink, Steven', 'Clark, Jason', 'Riddles, Minsun', 'Mohadjer, Leyla']: Crossref's deposit spells the first author's family name \"Akinbam\"; the report's own suggested citation (Vital Health Stat 2(190), inside the cover) reads \"Akinbami LJ, Chen TC, Davy O, Ogden CL, Fink S, Clark J, et al.\")"
+   ],
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "National Center for Health Statistics (U.S.)",
+   "crossref_type": "report",
+   "years_seen": [
+    2022
+   ],
+   "crossref_original": {
+    "authors": [
+     "Akinbam, Lara",
+     "Chen, Te-Ching",
+     "Davy, Orlando",
+     "Ogden, Cynthia",
+     "Fink, Steven",
+     "Clark, Jason",
+     "Riddles, Minsun",
+     "Mohadjer, Leyla"
+    ]
+   },
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "ingram2018trends",
+   "kind": "book",
+   "cited_as": [
+    "Ingram et al\\.?,? \\(?2018\\b"
+   ],
+   "doi": null,
+   "title": "National Center for Health Statistics Guidelines for Analysis of Trends",
+   "year": 2018,
+   "authors": [
+    "Ingram, Deborah D.",
+    "Malec, Donald J.",
+    "Makuc, Diane M.",
+    "Kruszon-Moran, Deanna",
+    "Gindi, Renee M.",
+    "Albert, Michael",
+    "Beresovsky, Vladislav",
+    "Hamilton, Brady E.",
+    "Holmes, Julia",
+    "Schiller, Jeannine",
+    "Sengupta, Manisha"
+   ],
+   "issue": "179",
+   "publisher": "National Center for Health Statistics",
+   "isbn": "9780840606891",
+   "url": "https://www.cdc.gov/nchs/data/series/sr_02/sr02_179.pdf",
+   "no_doi": "Vital and Health Statistics Series 2, Number 179 (2018) has no DOI in Crossref or DataCite; NCHS published it with an ISBN, as a monograph in the series.",
+   "note": "The authors are the Trends Analysis Workgroup as the report's title page lists them; its suggested citation reads \"Ingram DD, Malec DJ, Makuc DM, Kruszon-Moran D, Gindi RM, Albert M, et al.\"",
+   "verified_by": "isbn",
+   "disagreements": [],
+   "verified_on": "2026-10-09",
+   "venue": "Vital and Health Statistics, Series 2"
+  },
+  {
+   "key": "korn1998intervals",
+   "kind": "periodical",
+   "cited_as": [
+    "Korn & Graubard,? \\(?1998\\b"
+   ],
+   "doi": null,
+   "title": "Confidence intervals for proportions with small expected number of positive counts estimated from survey data",
+   "year": 1998,
+   "authors": [
+    "Korn, Edward L.",
+    "Graubard, Barry I."
+   ],
+   "venue": "Survey Methodology",
+   "volume": "24",
+   "issue": "2",
+   "pages": "193-201",
+   "publisher": "Statistics Canada",
+   "url": "https://www150.statcan.gc.ca/n1/en/catalogue/12-001-X19980024356",
+   "no_doi": "Survey Methodology (Statistics Canada) registers no DOIs.",
+   "note": "Statistics Canada's catalog page (issue 1998002) lists the authors alphabetically, Graubard then Korn; R survey's svyciprop documentation and NCHS's Data Presentation Standards for Proportions cite Korn and Graubard. R's documentation prints volume 23; issue 1998002 is volume 24 (volume 28 is 2002, as bell2002brl records), and the article's PDF runs to nine pages, 193-201.",
+   "verified_by": "url",
+   "disagreements": [],
+   "verified_on": "2026-10-09"
   }
  ]
 }

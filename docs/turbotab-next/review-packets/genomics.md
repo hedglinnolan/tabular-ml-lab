@@ -325,12 +325,13 @@ Every lens offers these; their full contracts are in the methods reference.
 | Agreement between two measurements (Bland–Altman) | `bland_altman` | evaluation | descriptive | not declared |
 | The manuscript bundle and its replay | `manuscript_export` | evaluation | descriptive | not declared |
 
-### 1.4 · Methods another lens reviews in full (24)
+### 1.4 · Methods another lens reviews in full (26)
 
 No method contract is declared for one lens: the app reaches each of these through the data it needs, not through the lens, though some are reached through findings or stages their own lens raises. Each is offered here whenever this lens's data hold what it needs, and is reviewed in full in the packet named.
 
 | Method | Key | Reviewed in full in | Slot | What it needs |
 |---|---|---|---|---|
+| Stacking NHANES cycles into one sample | `stack_cycles` | the dietary assessment, clinical and survey instruments packets | ingest | two or more NHANES files, each one cycle, with the same weight kind; each file's masked variance strata and PSUs (SDMVSTRA, SDMVPSU); the four-year weight, when 1999–2000 is stacked with another cycle; optional: renames and conversions declared from the release documentation, and measurements declared incompatible across cycles |
 | Values below a detection limit belong to the below-detection repair | `censored_below_detection` | the metabolomics and clinical packets | repairs | a text column with values below a detection limit (<0.20) |
 | QC detection-rate filter | `qc_detection_filter` | the metabolomics packet | repairs | pooled-QC injections |
 | QC-RLSC drift and batch correction | `qc_rlsc` | the metabolomics packet | repairs | pooled-QC injections; an injection order (a reading each option names); a batch column, or the whole run as one batch (a reading each option names); at least five QCs per batch |
@@ -355,6 +356,7 @@ No method contract is declared for one lens: the app reaches each of these throu
 | The substitution curve over the surveyed population | `survey_substitution` | the dietary assessment packet | evaluation | the survey answer: the surveyed population (a weight, and strata and PSUs); a substitution answer; the linear family chosen |
 | Substitution curves for a multiclass outcome, one per class | `multiclass_substitution` | the dietary assessment packet | evaluation | a multiclass outcome (three or more unordered classes); two energy-bearing exposures whose kcal per unit is settled; a fitted family that predicts each class's probability; the substitution answer (donor, recipient and step) |
 | Design-based cross-validation | `design_based_cv` | the dietary assessment, clinical and survey instruments packets | evaluation | the surveyed-population answer; the weight, and the strata and PSUs if named |
+| Trends across stacked survey cycles | `cycle_trends` | the dietary assessment, clinical and survey instruments packets | evaluation | a stack of two or more cycles (three or more to look for a bend), with each cycle's time; a numeric measure (a mean) or a yes-or-no one (a prevalence); the survey design over the stacked rows, or the answer that the estimates describe these participants; optional: covariates (regression and joinpoint only), and joinpoints named in advance |
 
 ### 1.5 · Methods with no contract yet (17)
 

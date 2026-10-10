@@ -262,6 +262,10 @@ DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.methods.subgroups",
     # D3, dietary patterns (engine only until D1 asks them)
     "turbotab.core.methods.dietary_patterns",
+    # C1b: stacking NHANES cycles (engine only until C1 asks it)
+    "turbotab.core.methods.cycles",
+    # D6: trends across stacked cycles (engine only; D1 wires it into Describe)
+    "turbotab.core.methods.cycle_trends",
 )
 
 

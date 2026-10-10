@@ -617,12 +617,13 @@ Every lens offers these; their full contracts are in the methods reference.
 | Agreement between two measurements (Bland–Altman) | `bland_altman` | evaluation | descriptive | not declared |
 | The manuscript bundle and its replay | `manuscript_export` | evaluation | descriptive | not declared |
 
-### 1.4 · Methods another lens reviews in full (16)
+### 1.4 · Methods another lens reviews in full (18)
 
 No method contract is declared for one lens: the app reaches each of these through the data it needs, not through the lens, though some are reached through findings or stages their own lens raises. Each is offered here whenever this lens's data hold what it needs, and is reviewed in full in the packet named.
 
 | Method | Key | Reviewed in full in | Slot | What it needs |
 |---|---|---|---|---|
+| Stacking NHANES cycles into one sample | `stack_cycles` | the dietary assessment, clinical and survey instruments packets | ingest | two or more NHANES files, each one cycle, with the same weight kind; each file's masked variance strata and PSUs (SDMVSTRA, SDMVPSU); the four-year weight, when 1999–2000 is stacked with another cycle; optional: renames and conversions declared from the release documentation, and measurements declared incompatible across cycles |
 | Rows read as imputed copies are not repeats | `copies_not_repeats` | the dietary assessment and clinical packets | reshape | rows read as imputed copies (a copy number such as NHANES's _MULT_) |
 | The data's own imputed copies, pooled by Rubin's rules | `imputed_copies_pooled` | the dietary assessment and clinical packets | reshape | the column numbering the copies; the unit the copies belong to |
 | Dietary patterns: how the food groups are made comparable | `pattern_inputs` | the dietary assessment packet | in_fold | the food-group intake columns; total energy, for the energy-adjusted forms |
@@ -639,6 +640,7 @@ No method contract is declared for one lens: the app reaches each of these throu
 | The substitution curve over the surveyed population | `survey_substitution` | the dietary assessment packet | evaluation | the survey answer: the surveyed population (a weight, and strata and PSUs); a substitution answer; the linear family chosen |
 | Substitution curves for a multiclass outcome, one per class | `multiclass_substitution` | the dietary assessment packet | evaluation | a multiclass outcome (three or more unordered classes); two energy-bearing exposures whose kcal per unit is settled; a fitted family that predicts each class's probability; the substitution answer (donor, recipient and step) |
 | Design-based cross-validation | `design_based_cv` | the dietary assessment, clinical and survey instruments packets | evaluation | the surveyed-population answer; the weight, and the strata and PSUs if named |
+| Trends across stacked survey cycles | `cycle_trends` | the dietary assessment, clinical and survey instruments packets | evaluation | a stack of two or more cycles (three or more to look for a bend), with each cycle's time; a numeric measure (a mean) or a yes-or-no one (a prevalence); the survey design over the stacked rows, or the answer that the estimates describe these participants; optional: covariates (regression and joinpoint only), and joinpoints named in advance |
 
 ### 1.5 · Methods with no contract yet (17)
 
