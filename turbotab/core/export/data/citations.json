@@ -6674,6 +6674,26 @@
    "disagreements": []
   },
   {
+   "key": "nhanes_weighting_tutorial",
+   "kind": "web",
+   "cited_as": [
+    "NHANES weighting tutorial"
+   ],
+   "doi": null,
+   "title": "NHANES Tutorials: Weighting Module (Constructing Weights for Combined NHANES Survey Cycles)",
+   "authors": [
+    "National Center for Health Statistics"
+   ],
+   "publisher": "Centers for Disease Control and Prevention",
+   "url": "https://wwwn.cdc.gov/nchs/nhanes/tutorials/weighting.aspx",
+   "no_doi": "An agency web tutorial; it has no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": [],
+   "note": "The page is undated; the passages cited discuss the August 2021-August 2023 files, first published in September 2024 (the DEMO_L documentation), so the year given is the earliest the version read can date from. Read 2026-10-09, it says \"It is generally not recommended to combine the August 2021-August 2023 cycle with other cycles given the 1.5-year gap between this cycle and the 2017-March 2020 cycle\", and that multi-year weights from 2001-2002 onward are computed \"by simply dividing the two-year sample weights by the number of two-year cycles in the analysis\".",
+   "year": 2024
+  },
+  {
    "key": "nhanes_dxa_mi",
    "kind": "web",
    "cited_as": [
@@ -7628,6 +7648,619 @@
    "verified_by": "url",
    "verified_on": "2026-10-09",
    "disagreements": []
+  },
+  {
+   "key": "akinbami2022prepandemic",
+   "kind": "report",
+   "cited_as": [
+    "Akinbami et al\\.?,? \\(?2022\\b"
+   ],
+   "doi": "10.15620/cdc:115434",
+   "authors": [
+    "Akinbami, Lara",
+    "Chen, Te-Ching",
+    "Davy, Orlando",
+    "Ogden, Cynthia",
+    "Fink, Steven",
+    "Clark, Jason",
+    "Riddles, Minsun",
+    "Mohadjer, Leyla"
+   ],
+   "title": "National Health and Nutrition Examination Survey, 2017–March 2020 Prepandemic File: Sample Design, Estimation, and Analytic Guidelines.",
+   "year": 2022,
+   "overrides": {
+    "fields": {
+     "authors": [
+      "Akinbami, Lara",
+      "Chen, Te-Ching",
+      "Davy, Orlando",
+      "Ogden, Cynthia",
+      "Fink, Steven",
+      "Clark, Jason",
+      "Riddles, Minsun",
+      "Mohadjer, Leyla"
+     ]
+    },
+    "why": "Crossref's deposit spells the first author's family name \"Akinbam\"; the report's own suggested citation (Vital Health Stat 2(190), inside the cover) reads \"Akinbami LJ, Chen TC, Davy O, Ogden CL, Fink S, Clark J, et al.\""
+   },
+   "verified_by": "crossref",
+   "disagreements": [
+    "'Akinbami et al. 2022': author Akinbami is not among the record's authors (the registry keeps authors ['Akinbami, Lara', 'Chen, Te-Ching', 'Davy, Orlando', 'Ogden, Cynthia', 'Fink, Steven', 'Clark, Jason', 'Riddles, Minsun', 'Mohadjer, Leyla']: Crossref's deposit spells the first author's family name \"Akinbam\"; the report's own suggested citation (Vital Health Stat 2(190), inside the cover) reads \"Akinbami LJ, Chen TC, Davy O, Ogden CL, Fink S, Clark J, et al.\")",
+    "'Akinbami et al. 2022, Vital Health Stat 2(190': author Akinbami is not among the record's authors (the registry keeps authors ['Akinbami, Lara', 'Chen, Te-Ching', 'Davy, Orlando', 'Ogden, Cynthia', 'Fink, Steven', 'Clark, Jason', 'Riddles, Minsun', 'Mohadjer, Leyla']: Crossref's deposit spells the first author's family name \"Akinbam\"; the report's own suggested citation (Vital Health Stat 2(190), inside the cover) reads \"Akinbami LJ, Chen TC, Davy O, Ogden CL, Fink S, Clark J, et al.\")"
+   ],
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "National Center for Health Statistics (U.S.)",
+   "crossref_type": "report",
+   "years_seen": [
+    2022
+   ],
+   "crossref_original": {
+    "authors": [
+     "Akinbam, Lara",
+     "Chen, Te-Ching",
+     "Davy, Orlando",
+     "Ogden, Cynthia",
+     "Fink, Steven",
+     "Clark, Jason",
+     "Riddles, Minsun",
+     "Mohadjer, Leyla"
+    ]
+   },
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "ingram2018trends",
+   "kind": "book",
+   "cited_as": [
+    "Ingram et al\\.?,? \\(?2018\\b"
+   ],
+   "doi": null,
+   "title": "National Center for Health Statistics Guidelines for Analysis of Trends",
+   "year": 2018,
+   "authors": [
+    "Ingram, Deborah D.",
+    "Malec, Donald J.",
+    "Makuc, Diane M.",
+    "Kruszon-Moran, Deanna",
+    "Gindi, Renee M.",
+    "Albert, Michael",
+    "Beresovsky, Vladislav",
+    "Hamilton, Brady E.",
+    "Holmes, Julia",
+    "Schiller, Jeannine",
+    "Sengupta, Manisha"
+   ],
+   "issue": "179",
+   "publisher": "National Center for Health Statistics",
+   "isbn": "9780840606891",
+   "url": "https://www.cdc.gov/nchs/data/series/sr_02/sr02_179.pdf",
+   "no_doi": "Vital and Health Statistics Series 2, Number 179 (2018) has no DOI in Crossref or DataCite; NCHS published it with an ISBN, as a monograph in the series.",
+   "note": "The authors are the Trends Analysis Workgroup as the report's title page lists them; its suggested citation reads \"Ingram DD, Malec DJ, Makuc DM, Kruszon-Moran D, Gindi RM, Albert M, et al.\"",
+   "verified_by": "isbn",
+   "disagreements": [],
+   "verified_on": "2026-10-09",
+   "venue": "Vital and Health Statistics, Series 2"
+  },
+  {
+   "key": "korn1998intervals",
+   "kind": "periodical",
+   "cited_as": [
+    "Korn & Graubard,? \\(?1998\\b"
+   ],
+   "doi": null,
+   "title": "Confidence intervals for proportions with small expected number of positive counts estimated from survey data",
+   "year": 1998,
+   "authors": [
+    "Korn, Edward L.",
+    "Graubard, Barry I."
+   ],
+   "venue": "Survey Methodology",
+   "volume": "24",
+   "issue": "2",
+   "pages": "193-201",
+   "publisher": "Statistics Canada",
+   "url": "https://www150.statcan.gc.ca/n1/en/catalogue/12-001-X19980024356",
+   "no_doi": "Survey Methodology (Statistics Canada) registers no DOIs.",
+   "note": "Statistics Canada's catalog page (issue 1998002) lists the authors alphabetically, Graubard then Korn; R survey's svyciprop documentation and NCHS's Data Presentation Standards for Proportions cite Korn and Graubard. R's documentation prints volume 23; issue 1998002 is volume 24 (volume 28 is 2002, as bell2002brl records), and the article's PDF runs to nine pages, 193-201.",
+   "verified_by": "url",
+   "disagreements": [],
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "white2011itt",
+   "kind": "article",
+   "cited_as": [
+    "White, Horton, Carpenter & Pocock,? \\(?2011\\b"
+   ],
+   "doi": "10.1136/bmj.d40",
+   "disagreements": [],
+   "authors": [
+    "White, I. R.",
+    "Horton, N. J.",
+    "Carpenter, J.",
+    "statistics, r. i. m. a. s.",
+    "Pocock, S. J."
+   ],
+   "title": "Strategy for intention to treat analysis in randomised trials with missing outcome data",
+   "year": 2011,
+   "venue": "BMJ",
+   "volume": "342",
+   "issue": "feb07 1",
+   "pages": "d40-d40",
+   "publisher": "BMJ",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2011
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "vickers2001ancova",
+   "kind": "article",
+   "cited_as": [
+    "Vickers & Altman,? \\(?2001\\b"
+   ],
+   "doi": "10.1136/bmj.323.7321.1123",
+   "disagreements": [],
+   "authors": [
+    "Vickers, Andrew J",
+    "Altman, Douglas G"
+   ],
+   "title": "Analysing controlled trials with baseline and follow up measurements",
+   "year": 2001,
+   "venue": "BMJ",
+   "volume": "323",
+   "issue": "7321",
+   "pages": "1123-1124",
+   "publisher": "BMJ",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2001
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "ye2023covariate",
+   "kind": "article",
+   "cited_as": [
+    "Ye, Shao, Yi & Zhao,? \\(?2023\\b",
+    "Ye et al\\.,? \\(?2023\\b"
+   ],
+   "doi": "10.1080/01621459.2022.2049278",
+   "disagreements": [],
+   "authors": [
+    "Ye, Ting",
+    "Shao, Jun",
+    "Yi, Yanyao",
+    "Zhao, Qingyuan"
+   ],
+   "title": "Toward Better Practice of Covariate Adjustment in Analyzing Randomized Clinical Trials",
+   "year": 2023,
+   "venue": "Journal of the American Statistical Association",
+   "volume": "118",
+   "issue": "544",
+   "pages": "2370-2382",
+   "publisher": "Informa UK Limited",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2022,
+    2023
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "kenward1997kr",
+   "kind": "article",
+   "cited_as": [
+    "Kenward & Roger,? \\(?1997\\b"
+   ],
+   "doi": "10.2307/2533558",
+   "disagreements": [],
+   "authors": [
+    "Kenward, Michael G.",
+    "Roger, James H."
+   ],
+   "title": "Small Sample Inference for Fixed Effects from Restricted Maximum Likelihood",
+   "year": 1997,
+   "venue": "Biometrics",
+   "volume": "53",
+   "issue": "3",
+   "pages": "983",
+   "publisher": "JSTOR",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1997
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "halekoh2014pbkrtest",
+   "kind": "article",
+   "cited_as": [
+    "Halekoh & Højsgaard,? \\(?2014\\b"
+   ],
+   "doi": "10.18637/jss.v059.i09",
+   "disagreements": [],
+   "authors": [
+    "Halekoh, Ulrich",
+    "Højsgaard, Søren"
+   ],
+   "title": "A Kenward-Roger Approximation and Parametric Bootstrap Methods for Tests in Linear Mixed Models - The R Package pbkrtest",
+   "year": 2014,
+   "venue": "Journal of Statistical Software",
+   "volume": "59",
+   "issue": "9",
+   "pages": "",
+   "publisher": "Foundation for Open Access Statistic",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2014
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "liang1986gee",
+   "kind": "article",
+   "cited_as": [
+    "Liang & Zeger,? \\(?1986\\b"
+   ],
+   "doi": "10.1093/biomet/73.1.13",
+   "disagreements": [],
+   "authors": [
+    "LIANG, KUNG-YEE",
+    "ZEGER, SCOTT L."
+   ],
+   "title": "Longitudinal data analysis using generalized linear models",
+   "year": 1986,
+   "venue": "Biometrika",
+   "volume": "73",
+   "issue": "1",
+   "pages": "13-22",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1986
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "kauermann2001sandwich",
+   "kind": "article",
+   "cited_as": [
+    "Kauermann & Carroll,? \\(?2001\\b"
+   ],
+   "doi": "10.1198/016214501753382309",
+   "disagreements": [],
+   "authors": [
+    "Kauermann, Göran",
+    "Carroll, Raymond J"
+   ],
+   "title": "A Note on the Efficiency of Sandwich Covariance Matrix Estimation",
+   "year": 2001,
+   "venue": "Journal of the American Statistical Association",
+   "volume": "96",
+   "issue": "456",
+   "pages": "1387-1396",
+   "publisher": "Informa UK Limited",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2001
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "fay2001sandwich",
+   "kind": "article",
+   "cited_as": [
+    "Fay & Graubard,? \\(?2001\\b"
+   ],
+   "doi": "10.1111/j.0006-341X.2001.01198.x",
+   "disagreements": [],
+   "authors": [
+    "Fay, Michael P.",
+    "Graubard, Barry I."
+   ],
+   "title": "Small-Sample Adjustments for Wald-Type Tests Using Sandwich Estimators",
+   "year": 2001,
+   "venue": "Biometrics",
+   "volume": "57",
+   "issue": "4",
+   "pages": "1198-1206",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2001,
+    2004
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "mancl2001gee",
+   "kind": "article",
+   "cited_as": [
+    "Mancl & DeRouen,? \\(?2001\\b"
+   ],
+   "doi": "10.1111/j.0006-341X.2001.00126.x",
+   "disagreements": [],
+   "authors": [
+    "Mancl, Lloyd A.",
+    "DeRouen, Timothy A."
+   ],
+   "title": "A Covariance Estimator for GEE with Improved Small‐Sample Properties",
+   "year": 2001,
+   "venue": "Biometrics",
+   "volume": "57",
+   "issue": "1",
+   "pages": "126-134",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2001,
+    2004
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "li2015gee",
+   "kind": "article",
+   "cited_as": [
+    "Li & Redden,? \\(?2015\\b"
+   ],
+   "doi": "10.1002/sim.6344",
+   "disagreements": [],
+   "authors": [
+    "Li, Peng",
+    "Redden, David T."
+   ],
+   "title": "Small sample performance of bias‐corrected sandwich estimators for cluster‐randomized trials with binary outcomes",
+   "year": 2015,
+   "venue": "Statistics in Medicine",
+   "volume": "34",
+   "issue": "2",
+   "pages": "281-296",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2014,
+    2015
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "ratitch2013pmm",
+   "kind": "article",
+   "cited_as": [
+    "Ratitch, O'Kelly & Tosiello,? \\(?2013\\b"
+   ],
+   "doi": "10.1002/pst.1549",
+   "disagreements": [],
+   "authors": [
+    "Ratitch, Bohdana",
+    "O'Kelly, Michael",
+    "Tosiello, Robert"
+   ],
+   "title": "Missing data in clinical trials: from clinical assumptions to statistical analysis using pattern mixture models",
+   "year": 2013,
+   "venue": "Pharmaceutical Statistics",
+   "volume": "12",
+   "issue": "6",
+   "pages": "337-347",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2013
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "cro2020delta",
+   "kind": "article",
+   "cited_as": [
+    "Cro, Morris, Kenward & Carpenter,? \\(?2020\\b"
+   ],
+   "doi": "10.1002/sim.8569",
+   "disagreements": [],
+   "authors": [
+    "Cro, Suzie",
+    "Morris, Tim P.",
+    "Kenward, Michael G.",
+    "Carpenter, James R."
+   ],
+   "title": "Sensitivity analysis for clinical trials with missing continuous outcome data using controlled multiple imputation: A practical guide",
+   "year": 2020,
+   "venue": "Statistics in Medicine",
+   "volume": "39",
+   "issue": "21",
+   "pages": "2815-2842",
+   "publisher": "Wiley",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2020
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "gail1981likelihood",
+   "kind": "article",
+   "cited_as": [
+    "Gail\\b[^;()]{0,90}?\\(?1981\\b"
+   ],
+   "doi": "10.1093/biomet/68.3.703",
+   "authors": [
+    "GAIL, MITCHELL H.",
+    "LUBIN, JAY H.",
+    "RUBINSTEIN, LAWRENCE V."
+   ],
+   "title": "Likelihood calculations for matched case-control studies and survival studies with tied death times",
+   "year": 1981,
+   "venue": "Biometrika",
+   "volume": "68",
+   "issue": "3",
+   "pages": "703-707",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1981
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "simonsohn2020spec",
+   "kind": "article",
+   "cited_as": [
+    "Simonsohn, Simmons & Nelson,? \\(?2020\\b"
+   ],
+   "doi": "10.1038/s41562-020-0912-z",
+   "disagreements": [],
+   "authors": [
+    "Simonsohn, Uri",
+    "Simmons, Joseph P.",
+    "Nelson, Leif D."
+   ],
+   "title": "Specification curve analysis",
+   "year": 2020,
+   "venue": "Nature Human Behaviour",
+   "volume": "4",
+   "issue": "11",
+   "pages": "1208-1214",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2020
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "riley2016bigdata",
+   "kind": "article",
+   "cited_as": [
+    "Riley et al\\.,? \\(?2016\\b"
+   ],
+   "doi": "10.1136/bmj.i3140",
+   "disagreements": [],
+   "authors": [
+    "Riley, Richard D",
+    "Ensor, Joie",
+    "Snell, Kym I E",
+    "Debray, Thomas P A",
+    "Altman, Doug G",
+    "Moons, Karel G M",
+    "Collins, Gary S"
+   ],
+   "title": "External validation of clinical prediction models using big datasets from e-health records or IPD meta-analysis: opportunities and challenges",
+   "year": 2016,
+   "venue": "BMJ",
+   "volume": "",
+   "issue": "",
+   "pages": "i3140",
+   "publisher": "BMJ",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "snell2018scales",
+   "kind": "article",
+   "cited_as": [
+    "Snell et al\\.,? \\(?2018\\b"
+   ],
+   "doi": "10.1177/0962280217705678",
+   "disagreements": [],
+   "authors": [
+    "Snell, Kym IE",
+    "Ensor, Joie",
+    "Debray, Thomas PA",
+    "Moons, Karel GM",
+    "Riley, Richard D"
+   ],
+   "title": "Meta-analysis of prediction model performance across multiple studies: Which scale helps ensure between-study normality for the C -statistic and calibration measures?",
+   "year": 2018,
+   "venue": "Statistical Methods in Medical Research",
+   "volume": "27",
+   "issue": "11",
+   "pages": "3505-3522",
+   "publisher": "SAGE Publications",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2017,
+    2018
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "higgins2009reeval",
+   "kind": "article",
+   "cited_as": [
+    "Higgins, Thompson & Spiegelhalter,? \\(?2009\\b"
+   ],
+   "doi": "10.1111/j.1467-985X.2008.00552.x",
+   "disagreements": [],
+   "authors": [
+    "Higgins, Julian P. T.",
+    "Thompson, Simon G.",
+    "Spiegelhalter, David J."
+   ],
+   "title": "A Re-Evaluation of Random-Effects Meta-Analysis",
+   "year": 2009,
+   "venue": "Journal of the Royal Statistical Society Series A: Statistics in Society",
+   "volume": "172",
+   "issue": "1",
+   "pages": "137-159",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2008,
+    2009
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "viechtbauer2010metafor",
+   "kind": "article",
+   "cited_as": [
+    "Viechtbauer,? \\(?2010\\b"
+   ],
+   "doi": "10.18637/jss.v036.i03",
+   "disagreements": [],
+   "authors": [
+    "Viechtbauer, Wolfgang"
+   ],
+   "title": "Conducting Meta-Analyses in R with the metafor Package",
+   "year": 2010,
+   "venue": "Journal of Statistical Software",
+   "volume": "36",
+   "issue": "3",
+   "pages": "",
+   "publisher": "Foundation for Open Access Statistic",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2010
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
   }
  ]
 }

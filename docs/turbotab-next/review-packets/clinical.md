@@ -8,7 +8,61 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
 
 ## 1 · The methods this lens offers
 
-### 1.1 · Its own methods (8)
+### 1.1 · Its own methods (13)
+
+#### Stacking NHANES cycles into one sample (`stack_cycles`)
+
+- **Slot:** ingest (as the table is read); place in it 0.5.
+- **Data scope:** row-local: needs no other row. A stacked row's values are its own (renamed or converted by a rule declared for its cycle); its pooled weight is its own weight times its cycle's share of the stacked years, a formula of the cycles' lengths, never of another row's values. What it flags (codes or a typical value that differ between cycles) reads every row but changes none and informs no modeling choice.
+- **Needs:**
+  - two or more NHANES files, each one cycle, with the same weight kind
+  - each file's masked variance strata and PSUs (SDMVSTRA, SDMVPSU)
+  - the four-year weight, when 1999–2000 is stacked with another cycle
+  - optional: renames and conversions declared from the release documentation, and measurements declared incompatible across cycles
+- **Question:** Stack these NHANES cycles into one sample?
+- **Where:** placed at before the opening sequence (the ingest stage builds the table).
+- **Lenses:** Dietary assessment, Clinical, Survey instruments. Declared by the C1b package.
+
+**Options**, each labeled customary and sound for each purpose, with its leash rung and its rank (1 is offered first):
+
+| Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
+|---|---|---|---|---|---|
+| `stack`: Stack the cycles, each weight scaled by its cycle's share of the years | NCHS's rule for pooled cycles (NHANES Analytic Guidelines 2011–2016 §3.1.3–3.1.4; Akinbami et al. 2022) | Sound when every stacked variable was measured alike in every cycle; the cycles' strata and PSUs stay distinct, so the standard errors keep each cycle's design | recommended, 1 | Sound when every stacked variable was measured alike in every cycle; the cycles' strata and PSUs stay distinct, so the standard errors keep each cycle's design | recommended, 1 |
+| `one_cycle`: Analyze one cycle alone | Customary when a measurement changed between cycles | Sound always; fewer rows, so wider intervals | available, 2 | Sound always; fewer rows, so wider intervals | available, 2 |
+
+**Storyboard** (the transform player's real steps):
+
+1. name each file's cycle and its years
+2. refuse cycles that overlap or repeat a participant
+3. rename and convert as declared, flag what differs
+4. scale each weight by its cycle's share of the stacked years
+5. keep each cycle's strata and PSUs distinct
+
+**Methods sentence:**
+
+- Written by `turbotab.core.methods.cycles:stack_sentence`: The methods sentence of a stack of NHANES cycles: which cycles, the pooled weight and its rule, the strata kept apart, and what was renamed or converted.
+
+**Relations:**
+
+| Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
+|---|---|---|---|---|---|
+| implies | `pooled_weights` (id `pooled_weight`) | `stack`; when two or more cycles | prediction, inference | each cycle's weight is multiplied by its years over the stacked years: 1 ÷ k for k two-year cycles, and 3.2 over the stacked years for the 3.2-year prepandemic file | `turbotab.core.methods.cycles:stack_cycles` |
+| implies | `strata_by_cycle` (id `strata_kept_apart`) | `stack`; when always | prediction, inference | strata and PSUs are coded by cycle, so no two cycles share one | `turbotab.core.methods.cycles:stack_cycles` |
+| conflicts | `four_year_weight_needed` (id `four_year`) | `stack`; when 1999–2000 and another cycle, no four-year weight | prediction, inference | 1999–2000 stacked with another cycle needs the four-year weight on the 1999–2002 rows *(rung: refused, with an exit)* Exits: name the four-year weight; leave 1999–2000 out. | `turbotab.core.methods.cycles:stack_cycles` |
+| conflicts | `overlapping_cycles` (id `overlap`) | `stack`; when two cycles whose years overlap, or an identifier in two cycles | prediction, inference | cycles covering the same years (2017–2018 and the prepandemic file, which holds its participants) are refused: the same participants would count twice *(rung: refused, with an exit)* Exits: leave one of them out. | `turbotab.core.methods.cycles:stack_cycles` |
+| conflicts | `weight_kinds_differ` (id `weight_kind`) | `stack`; when two kinds of weight among the cycles, the four-year weight included | prediction, inference | weights of different samples (examination and interview) are refused, the four-year weight of the 1999–2002 rows among them; a weight whose kind is not known is stacked with a concern that it could not be checked *(rung: refused, with an exit)* Exits: use one kind of weight in every cycle; name the four-year weight of the same kind. | `turbotab.core.methods.cycles:stack_cycles` |
+| conflicts | `combined_across_the_pandemic_gap` (id `stands_alone`) | `stack`; when the 2021–2023 cycle and another cycle | prediction, inference | the 2021–2023 cycle (release 12) stacked with any other cycle is refused, as the NHANES weighting tutorial advises: a year and a half of unobserved pandemic months lies between it and the prepandemic file *(rung: refused, with an exit)* Exits: analyze the 2021–2023 cycle alone; leave it out. | `turbotab.core.methods.cycles:stack_cycles` |
+| conflicts | `measurement_not_comparable` (id `incompatible`) | `stack`; when a measurement declared incompatible across cycles | prediction, inference | a variable declared to be measured differently in a cycle is refused unless its conversion is declared *(rung: refused, with an exit)* Exits: leave the variable out; stack only the cycles measured alike; declare the documented conversion. | `turbotab.core.methods.cycles:stack_cycles` |
+| conflicts | `variable_missing_in_a_cycle` (id `absent`) | `stack`; when a requested variable absent from a cycle | prediction, inference | a variable asked for that a cycle lacks is refused, with a likely earlier name when one is found *(rung: refused, with an exit)* Exits: declare the rename; leave the variable out; stack only the cycles that have it. | `turbotab.core.methods.cycles:stack_cycles` |
+| implies | `differences_flagged` (id `flags`) | `stack`; when always | prediction, inference | codes that differ between cycles and a typical value that moves by a factor of five or more are flagged, never changed | `turbotab.core.methods.cycles:stack_cycles` |
+| enables | `cycle_trends` (id `trends`) | `stack`; when two or more cycles stacked | prediction, inference | a stack of three or more cycles can be tested for a trend across them, which checks the no-trend assumption a pooled estimate makes | `turbotab.core.methods.cycles:stack_cycles` |
+
+**Primary sources:**
+
+- NHANES Analytic Guidelines 2011–2016, §2.6 and §3.1.3–3.1.4 (NCHS)
+- Akinbami et al. 2022, Vital Health Stat 2(190), "Combining Survey Cycles" (doi:10.15620/cdc:115434)
+- NHANES DEMO documentation, SDDSRVYR (the data release cycle)
+- NHANES weighting tutorial, Constructing Weights for Combined NHANES Survey Cycles (NCHS)
 
 #### Values below a detection limit belong to the below-detection repair (`censored_below_detection`)
 
@@ -128,6 +182,53 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
 
 - NCHS, NHANES DXA multiple imputation data files (2008)
 - Rubin 1987
+
+#### Who a randomized trial analyzes (the analysis set) (`trial_analysis_set`)
+
+- **Slot:** eligibility (before the seal); place in it 4.
+- **Data scope:** row-local: needs no other row. Whether a person is in the set reads only that person's randomized arm and adherence; never the outcome or another person's row.
+- **Needs:**
+  - the arm each person was randomized to, and the control arm
+  - for the per-protocol set: whether each person followed the protocol (yes/no)
+  - optional: the arm each person received (for the CONSORT flow)
+- **Question:** Who is analyzed?
+- **Lenses:** Clinical, Dietary assessment. Declared by the TRIALS package.
+
+**Options**, each labeled customary and sound for each purpose, with its leash rung and its rank (1 is offered first):
+
+| Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
+|---|---|---|---|---|---|
+| `itt`: Intention to treat: everyone randomized, in the arm they were randomized to | The primary analysis of a randomized trial (Moher et al. 2010, item 16; White, Horton, Carpenter & Pocock 2011) | Not offered under Predict: the effect of an assigned treatment is an Estimate question | not offered, 1 | Sound: randomization protects the comparison, and the effect is that of being assigned, whether or not the treatment was taken | recommended, 1 |
+| `per_protocol`: Per protocol: those who followed the protocol, in the arm they were randomized to | Reported beside intention to treat (Moher et al. 2010, item 16) | Not offered under Predict: the effect of an assigned treatment is an Estimate question | not offered, 2 | Not protected by randomization: who adheres may differ between the arms; a set, not the effect of following the protocol, and reported beside intention to treat, never instead | ranked lower, concern stated, 2 |
+
+**Storyboard** (the transform player's real steps):
+
+1. read each person's randomized arm
+2. keep everyone randomized (intention to treat), or those who followed the protocol (per protocol)
+3. count each arm by stage for the CONSORT flow
+
+**Methods sentence:**
+
+- Written by `turbotab.core.methods.trials:trial_sentence`: The methods and results sentences of a trial analysis. A per-protocol result is reported beside intention to treat, never alone (refused).
+
+**Relations:**
+
+| Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
+|---|---|---|---|---|---|
+| implies | `no_exclusion_after_randomization` (id `itt_keeps_everyone`) | `itt`; when always | inference | the primary analysis keeps every randomized person in the arm they were randomized to; no one leaves for what happened after randomization | `turbotab.core.methods.trials:analysis_sets` |
+| conflicts | `per_protocol_effect` (id `pp_effect_v2x`) | `per_protocol`; when the per-protocol effect asked for | inference | the effect of following the protocol (weighting for adherence over time) is not available yet; the per-protocol set analyzed as randomized is *(rung: refused, with an exit)* Exits: the per-protocol set, analyzed as randomized; the intention-to-treat effect. | `turbotab.core.designs:effect_refusal` |
+| conflicts | `per_protocol_alone` (id `pp_beside_itt`) | `per_protocol`; when a per-protocol result without the intention-to-treat one | inference | a per-protocol result is reported beside intention to treat, never alone *(rung: refused, with an exit)* Exits: report intention to treat beside it. | `turbotab.core.methods.trials:trial_sentence` |
+| conflicts | `per_protocol_needs_adherence` (id `pp_adherence`) | `per_protocol`; when no adherence column | inference | the per-protocol set is refused without a yes/no adherence column *(rung: refused, with an exit)* Exits: intention to treat; name the adherence column. | `turbotab.core.methods.trials:analysis_sets` |
+| implies | `consort_counts` (id `consort_flow`) | any option; when always | inference | each arm's counts by stage (allocated, received, followed up, lost, analyzed; clusters in a cluster trial) are returned for the CONSORT flow | `turbotab.core.methods.trials:consort_flow` |
+| conflicts | `prediction_not_offered` (id `set_not_predicted`) | any option; when the Predict goal | prediction | not offered under Predict: an assigned treatment's effect is estimated, not predicted *(rung: refused, with an exit)* Exits: ask it under Estimate an effect. | `turbotab.core.methods.trials:eligible` |
+| conflicts | `survey_design_refused` (id `set_no_survey`) | any option; when a survey design | inference | survey weights are refused: a trial's inference rests on its randomization *(rung: refused, with an exit)* Exits: the sample-only answer. | `turbotab.core.methods.trials:consort_flow` |
+
+**Primary sources:**
+
+- Moher et al. 2010, BMJ 340:c869 (CONSORT 2010 explanation and elaboration, items 15 and 16)
+- White, Horton, Carpenter & Pocock 2011, BMJ 342:d40 (doi:10.1136/bmj.d40)
+- Schulz et al. 2010, BMJ 340:c332 (CONSORT 2010 statement)
+- Campbell et al. 2012, BMJ 345:e5661 (CONSORT 2010 for cluster-randomized trials)
 
 #### The population estimand under a survey design (`survey_population`)
 
@@ -319,6 +420,81 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
 - Lumley 2010, Complex Surveys
 - R survey::svyolr
 
+#### The effect of the assigned treatment in a randomized trial (`trial_effect`)
+
+- **Slot:** the model; place in it 1.5.
+- **Data scope:** model: the outcome model itself. It is fitted to the analysis set's outcomes. A missing baseline value takes the covariate's mean over the analysis set (never the arm or the outcome).
+- **Needs:**
+  - a declared randomized trial (parallel or cluster-randomized)
+  - the arm, the control arm and the outcome (a number, or yes/no)
+  - the randomization factors and the baseline covariates named before the data were seen (the baseline measure of the outcome among them)
+  - a cluster-randomized trial: the randomized cluster of each person
+- **Question:** How is the effect of the assigned treatment estimated?
+- **Lenses:** Clinical, Dietary assessment. Declared by the TRIALS package.
+
+**Options**, each labeled customary and sound for each purpose, with its leash rung and its rank (1 is offered first):
+
+| Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
+|---|---|---|---|---|---|
+| `ancova`: Regression on the arm, the randomization factors and the baseline covariates (analysis of covariance) | The standard analysis of a numeric outcome with a baseline measure (Vickers & Altman 2001); the randomization factors adjusted for (Kahan & Morris 2012) | Not offered under Predict: the effect of an assigned treatment is an Estimate question | not offered, 1 | Sound for a numeric outcome in a parallel trial: adjustment for precision only, the covariates named before the data were seen | recommended, 1 |
+| `standardized_risk`: Risk difference and ratio standardized from a logistic regression on the same terms | Ye, Shao, Yi & Zhao 2023 (their variance); R's beeca | Not offered under Predict: the effect of an assigned treatment is an Estimate question | not offered, 2 | Sound for a yes/no outcome in a parallel trial: the marginal risk difference and ratio, valid when the logistic model is wrong | recommended, 2 |
+| `mixed_kr`: Linear mixed model with a random intercept per cluster, Kenward–Roger intervals | Kenward & Roger 1997; Leyrat et al. 2018 (cluster trials with few clusters); pbkrtest in R (Halekoh & Højsgaard 2014) | Not offered under Predict: the effect of an assigned treatment is an Estimate question | not offered, 3 | Sound for a numeric outcome in a cluster trial, also with few clusters; refused for a yes/no outcome | recommended, 3 |
+| `gee_corrected`: Estimating equations with a small-sample corrected sandwich (Kauermann–Carroll, Fay–Graubard or Mancl–DeRouen) | Li & Redden 2015 (Kauermann–Carroll below a 0.6 coefficient of variation of cluster sizes, Fay–Graubard above); Mancl & DeRouen 2001; Fay & Graubard 2001; Kauermann & Carroll 2001 | Not offered under Predict: the effect of an assigned treatment is an Estimate question | not offered, 4 | Sound for a yes/no or numeric outcome in a cluster trial; intervals on the clusters less the cluster-level terms | recommended, 4 |
+
+**Storyboard** (the transform player's real steps):
+
+1. build the model from the arm, the randomization factors and the named baseline covariates
+2. fill a missing baseline value by its mean, with an indicator
+3. fit the outcome model (with the cluster in a cluster trial)
+4. read the arm's effect against the control, with its interval
+5. word it: causal only for intention to treat
+
+**Methods sentence:**
+
+- Written by `turbotab.core.methods.trials:trial_sentence`: The methods and results sentences of a trial analysis. A per-protocol result is reported beside intention to treat, never alone (refused).
+
+**Relations:**
+
+| Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
+|---|---|---|---|---|---|
+| implies | `precision_adjustment_only` (id `no_confounder_selection`) | any option; when always | inference | the adjustment is the randomization factors and the baseline covariates named before the data were seen, for precision only; nothing is searched for or selected | `turbotab.core.methods.trials:estimate` |
+| implies | `randomization_factors_adjusted` (id `strata_adjusted`) | any option; when randomization factors declared | inference | the factors the randomization was stratified or minimized on are adjusted for (Kahan & Morris 2012) | `turbotab.core.methods.trials:estimate` |
+| implies | `baseline_outcome_adjusted` (id `ancova_baseline`) | `ancova`, `mixed_kr`; when a baseline measure named | inference | the baseline measure of the outcome is a covariate (analysis of covariance; Vickers & Altman 2001) | `turbotab.core.methods.trials:estimate` |
+| conflicts | `post_hoc_covariates` (id `post_hoc_refused`) | any option; when covariates not named in advance | inference | covariates chosen after the data were seen are refused from the primary analysis *(rung: refused, with an exit)* Exits: leave them out; a labeled secondary analysis. | `turbotab.core.methods.trials:estimate` |
+| conflicts | `post_randomization_covariate` (id `post_randomization`) | any option; when an adjustment term that is adherence or the treatment received | inference | adherence or the treatment received is refused as a covariate: it is known only after randomization *(rung: refused, with an exit)* Exits: leave it out of the adjustment. | `turbotab.core.methods.trials:analysis_sets` |
+| implies | `missing_baselines_filled` (id `baseline_mean_imputation`) | any option; when a baseline covariate with missing values | inference | a missing baseline value takes its mean over the analysis set with a missing-value indicator (White & Thompson 2005) | `turbotab.core.methods.trials:estimate` |
+| conflicts | `baseline_balance_tests` (id `no_balance_tests`) | any option; when tests of baseline balance asked for | inference | baseline differences between the arms are described, never tested (Moher et al. 2010, item 15; Senn 1994) *(rung: refused, with an exit)* Exits: describe each arm. | `turbotab.core.methods.trials:baseline_table` |
+| implies | `causal_wording` (id `causal_itt_only`) | any option; when always | inference | causal wording only for intention to treat under a declared randomization, as the effect of being assigned; per protocol is worded as a difference among those who followed the protocol | `turbotab.core.methods.trials:trial_sentence` |
+| conflicts | `not_randomized` (id `needs_randomization`) | any option; when an observational or undeclared design | inference | refused unless the design is a declared randomized trial *(rung: refused, with an exit)* Exits: declare how people were randomized. | `turbotab.core.methods.trials:estimate` |
+| implies | `icc_reported` (id `icc`) | `mixed_kr`, `gee_corrected`; when a cluster-randomized trial | inference | the intraclass correlation is reported (Campbell et al. 2012) | `turbotab.core.methods.trials:estimate` |
+| conflicts | `arm_varies_within_cluster` (id `cluster_is_randomized`) | `mixed_kr`, `gee_corrected`; when a cluster with more than one arm | inference | refused when people in one cluster are in different arms *(rung: refused, with an exit)* Exits: declare a parallel trial; name the randomized cluster. | `turbotab.core.methods.trials:estimate` |
+| conflicts | `too_few_clusters` (id `cluster_floor`) | `mixed_kr`, `gee_corrected`; when one cluster in an arm, or clusters ≤ cluster-level terms | inference | refused with fewer than two clusters per arm or no clusters left over the cluster-level terms *(rung: refused, with an exit)* Exits: choose the column of the randomized cluster; leave the cluster-level covariates out (when they are what uses the clusters up); describe the outcome in each arm. | `turbotab.core.methods.trials:estimate` |
+| implies | `few_clusters_noticed` (id `few_clusters`) | `mixed_kr`, `gee_corrected`; when fewer than 10 clusters | inference | fewer than 10 clusters are named among the concerns (the fewest Li & Redden 2015 studied), beside the missing-outcome notice, neither displacing the other | `turbotab.core.methods.trials:estimate` |
+| implies | `correction_by_cluster_sizes` (id `kc_or_fg`) | `gee_corrected`; when the correction left to the rule | inference | Kauermann–Carroll when the cluster sizes' coefficient of variation is below 0.6, Fay–Graubard otherwise (Li & Redden 2015) | `turbotab.core.methods.trials:estimate` |
+| conflicts | `kenward_roger_binary` (id `kr_numeric_only`) | `mixed_kr`; when a yes/no outcome | inference | the mixed model with Kenward–Roger is refused for a yes/no outcome *(rung: refused, with an exit)* Exits: estimating equations with a corrected sandwich. | `turbotab.core.methods.trials:estimate` |
+| conflicts | `separation` | `standardized_risk`, `gee_corrected`; when separation | inference | refused when the logistic model's risks run to 0% or 100% *(rung: refused, with an exit)* Exits: adjust for fewer covariates; describe the events in each arm. | `turbotab.core.methods.trials:estimate` |
+| precedes | `trial_missing_outcomes` (id `primary_first`) | any option; when always | inference | the primary analysis is fitted before its sensitivity to missing outcomes | `turbotab.core.methods.trials:tipping_point` |
+| conflicts | `survey_design_refused` (id `effect_no_survey`) | any option; when a survey design | inference | survey weights are refused: a trial's inference rests on its randomization *(rung: refused, with an exit)* Exits: the sample-only answer. | `turbotab.core.methods.trials:estimate` |
+| conflicts | `prediction_not_offered` (id `effect_not_predicted`) | any option; when the Predict goal | prediction | not offered under Predict: an assigned treatment's effect is estimated, not predicted *(rung: refused, with an exit)* Exits: ask it under Estimate an effect. | `turbotab.core.methods.trials:eligible` |
+
+**Primary sources:**
+
+- Vickers & Altman 2001, BMJ 323:1123 (doi:10.1136/bmj.323.7321.1123)
+- Kahan & Morris 2012, Stat Med 31:328 (doi:10.1002/sim.4431)
+- Moher et al. 2010, BMJ 340:c869 (CONSORT 2010 explanation and elaboration, items 15 and 16)
+- Senn 1994, Stat Med 13:1715 (doi:10.1002/sim.4780131703)
+- White & Thompson 2005, Stat Med 24:993 (doi:10.1002/sim.1981)
+- Ye, Shao, Yi & Zhao 2023, J Am Stat Assoc 118:2370 (doi:10.1080/01621459.2022.2049278)
+- Kenward & Roger 1997, Biometrics 53:983 (doi:10.2307/2533558)
+- Halekoh & Højsgaard 2014, J Stat Softw 59(9) (doi:10.18637/jss.v059.i09)
+- Leyrat et al. 2018, Int J Epidemiol 47:321 (doi:10.1093/ije/dyx169)
+- Liang & Zeger 1986, Biometrika 73:13 (doi:10.1093/biomet/73.1.13)
+- Kauermann & Carroll 2001, J Am Stat Assoc 96:1387 (doi:10.1198/016214501753382309)
+- Fay & Graubard 2001, Biometrics 57:1198 (doi:10.1111/j.0006-341X.2001.01198.x)
+- Mancl & DeRouen 2001, Biometrics 57:126 (doi:10.1111/j.0006-341X.2001.00126.x)
+- Li & Redden 2015, Stat Med 34:281 (doi:10.1002/sim.6344)
+- Campbell et al. 2012, BMJ 345:e5661 (CONSORT 2010 for cluster-randomized trials)
+
 #### Design-based cross-validation (`design_based_cv`)
 
 - **Slot:** evaluation (after the fit); place in it 8.
@@ -360,6 +536,110 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
 - Wieczorek, Guerin & McMahon, Stat 2022;11:e454
 - MODELING_SEQUENCE §0 ruling 13
 
+#### Trends across stacked survey cycles (`cycle_trends`)
+
+- **Slot:** evaluation (after the fit); place in it 8.5.
+- **Data scope:** descriptive: may read every row to say whether the data are corrupted, but informs no modeling choice. It reads every analyzed row of every cycle, as an estimate does, and the survey design over the stacked table; nothing is fitted per fold, and nothing it computes is applied to a row or informs a modeling choice.
+- **Needs:**
+  - a stack of two or more cycles (three or more to look for a bend), with each cycle's time
+  - a numeric measure (a mean) or a yes-or-no one (a prevalence)
+  - the survey design over the stacked rows, or the answer that the estimates describe these participants
+  - optional: covariates (regression and joinpoint only), and joinpoints named in advance
+- **Question:** Did the measure change across the cycles?
+- **Lenses:** Dietary assessment, Clinical, Survey instruments. Declared by the D6 package.
+
+**Options**, each labeled customary and sound for each purpose, with its leash rung and its rank (1 is offered first):
+
+| Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
+|---|---|---|---|---|---|
+| `contrasts`: Orthogonal polynomial contrasts of the cycle estimates | NCHS's usual test for NHANES trends (Ingram et al. 2018, Issue 7; SUDAAN DESCRIPT POLY; R svycontrast with contr.poly) | Not offered under Predict: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) | not offered, 1 | Not offered under Estimate an effect: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) | not offered, 1 |
+| `regression`: Polynomial regression on time, survey-weighted | Ingram et al. 2018, Issues 7–9; R svyglm with the cycle's year as a predictor | Not offered under Predict: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) | not offered, 2 | Not offered under Estimate an effect: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) | not offered, 2 |
+| `joinpoint`: Joinpoint regression at joinpoints named beforehand | Ingram et al. 2018, Issues 11–12 and Appendix IV (the model fitted with survey software; the location found by NCI's Joinpoint, not done here) | Not offered under Predict: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) | not offered, 3 | Not offered under Estimate an effect: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) | not offered, 3 |
+
+**Storyboard** (the transform player's real steps):
+
+1. place each cycle at its midpoint year
+2. estimate each cycle's mean or prevalence with its interval
+3. test the highest-order term first
+4. then the linear trend
+5. say whether it rose, fell, stayed or bent
+
+**Methods sentence:**
+
+- Written by `turbotab.core.methods.cycle_trends:trend_sentence`: The methods sentence of a trend across cycles: the estimates, their intervals, the test and its degrees of freedom.
+
+**Relations:**
+
+| Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
+|---|---|---|---|---|---|
+| implies | `design_based_trend` (id `design_based`) | any option; when a survey design answered as the surveyed population | describe | the cycle estimates, their covariance and every test are design-based, on the design's degrees of freedom (PSUs minus strata) | `turbotab.core.methods.cycle_trends:cycle_trend` |
+| implies | `korn_graubard_intervals` (id `korn_graubard`) | any option; when a yes-or-no measure | describe | a prevalence's interval in each cycle is Korn and Graubard's | `turbotab.core.methods.cycle_trends:cycle_trend` |
+| implies | `nonlinearity_first` (id `highest_first`) | `contrasts`, `regression`; when three or more cycles | describe | the highest-order term is tested first; the linear trend is read only when no bend is found | `turbotab.core.methods.cycle_trends:cycle_trend` |
+| conflicts | `contrasts_take_no_covariates` (id `contrasts_unadjusted`) | `contrasts`; when covariates with the contrasts | describe | contrasts of the cycle estimates cannot be adjusted for covariates *(rung: refused, with an exit)* Exits: polynomial regression; leave the adjustment out. | `turbotab.core.methods.cycle_trends:cycle_trend` |
+| conflicts | `contrasts_on_their_own_scale` (id `contrasts_linear`) | `contrasts`; when the logit scale with the contrasts | describe | contrasts on the log-odds scale are refused *(rung: refused, with an exit)* Exits: the linear scale; logistic regression. | `turbotab.core.methods.cycle_trends:cycle_trend` |
+| conflicts | `prevalence_line_leaves_unit_interval` (id `unit_interval`) | `regression`, `joinpoint`; when a fitted prevalence outside 0 to 1 | describe | a straight-line trend in a prevalence that runs below 0 or above 1 is refused *(rung: refused, with an exit)* Exits: the log-odds scale. | `turbotab.core.methods.cycle_trends:cycle_trend` |
+| conflicts | `joinpoint_not_searched` (id `no_search`) | `joinpoint`; when a joinpoint search, or a joinpoint outside the inner cycles | describe | the joinpoint's location is not searched for; it must be named in advance at an inner cycle *(rung: refused, with an exit)* Exits: name the joinpoint cycle; polynomial regression. | `turbotab.core.methods.cycle_trends:cycle_trend` |
+| conflicts | `no_design_df` (id `design_df`) | any option; when the analyzed rows lie in as many PSUs as strata | describe | no design degrees of freedom are left for a test *(rung: refused, with an exit)* Exits: the sample-only attestation. | `turbotab.core.methods.cycle_trends:cycle_trend` |
+| conflicts | `not_an_effect` (id `describe_only`) | any option; when the Estimate or Predict goal | inference, prediction | not offered under Estimate an effect or Predict: a trend across cycles is a description *(rung: refused, with an exit)* Exits: ask it under Describe. | `turbotab.core.methods.cycle_trends:eligible` |
+
+**Primary sources:**
+
+- Ingram et al. 2018, Vital Health Stat 2(179), Issues 4–12 and Appendix IV
+- Korn & Graubard 1998, Survey Methodology 24:193
+- NHANES Analytic Guidelines 2011–2016, §3.2.3
+- Lumley 2010, Complex Surveys: A Guide to Analysis Using R
+- R survey (svyby, svyciprop, svycontrast, svyglm)
+
+#### How sensitive a trial's result is to its missing outcomes (the tipping point) (`trial_missing_outcomes`)
+
+- **Slot:** evaluation (after the fit); place in it 9.
+- **Data scope:** model: the outcome model itself. Refits the outcome model on every randomized person's completed outcomes: the imputation model is fitted to the observed outcomes, so it reads the outcome.
+- **Needs:**
+  - a parallel trial analyzed by intention to treat
+  - at least one randomized person with a missing outcome
+- **Question:** How sensitive is the result to the outcomes that are missing?
+- **Lenses:** Clinical, Dietary assessment. Declared by the TRIALS package.
+
+**Options**, each labeled customary and sound for each purpose, with its leash rung and its rank (1 is offered first):
+
+| Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
+|---|---|---|---|---|---|
+| `delta_tipping_point`: Impute the missing outcomes, shift them by δ, and find the shift that changes the conclusion (the tipping point) | Ratitch, O'Kelly & Tosiello 2013; Cro, Morris, Kenward & Carpenter 2020 | Not offered under Predict: the effect of an assigned treatment is an Estimate question | not offered, 1 | Sound: says how different the missing would have to be, in the outcome's own units, before the conclusion changes | recommended, 1 |
+| `missing_at_random_only`: Only the primary analysis: the missing outcomes like the observed ones with the same arm and covariates | The primary analysis's assumption (White, Horton, Carpenter & Pocock 2011) | Not offered under Predict: the effect of an assigned treatment is an Estimate question | not offered, 2 | Untested: the assumption cannot be checked from the data, so it is stated without a sensitivity analysis | ranked lower, concern stated, 2 |
+
+**Storyboard** (the transform player's real steps):
+
+1. fit the imputation model to the observed outcomes
+2. draw m completed data sets under missing at random
+3. shift one arm's imputed outcomes by δ
+4. analyze each and pool by Rubin's rules
+5. search δ until the 95% interval's conclusion changes
+
+**Methods sentence:**
+
+- Written by `turbotab.core.methods.trials:trial_sentence`: The methods and results sentences of a trial analysis. A per-protocol result is reported beside intention to treat, never alone (refused).
+
+**Relations:**
+
+| Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
+|---|---|---|---|---|---|
+| implies | `every_randomized_person` (id `all_randomized`) | `delta_tipping_point`; when always | inference | the sensitivity analysis counts every randomized person (White, Horton, Carpenter & Pocock 2011) | `turbotab.core.methods.trials:tipping_point` |
+| implies | `imputations_by_rule` (id `m_rule`) | `delta_tipping_point`; when always | inference | at least as many imputations as the percentage of people with a missing outcome (White, Royston & Wood 2011) | `turbotab.core.methods.trials:tipping_point` |
+| implies | `rubin_pooling` (id `pooled`) | `delta_tipping_point`; when always | inference | each completed set is analyzed as the primary analysis and pooled by Rubin's rules (Rubin 1987) with Barnard & Rubin 1999's degrees of freedom | `turbotab.core.methods.trials:tipping_point` |
+| conflicts | `cluster_trial_imputation` (id `no_cluster_mi`) | `delta_tipping_point`; when a cluster-randomized trial | inference | refused for a cluster trial: a multilevel imputation model is not built *(rung: refused, with an exit)* Exits: the primary analysis, its assumption stated. | `turbotab.core.methods.trials:tipping_point` |
+| conflicts | `per_protocol_imputation` (id `itt_only`) | `delta_tipping_point`; when the per-protocol set | inference | refused for the per-protocol set: the sensitivity analysis counts every randomized person *(rung: refused, with an exit)* Exits: intention to treat. | `turbotab.core.methods.trials:tipping_point` |
+| conflicts | `survey_design_refused` (id `tipping_no_survey`) | any option; when a survey design | inference | survey weights are refused: a trial's inference rests on its randomization *(rung: refused, with an exit)* Exits: the sample-only answer. | `turbotab.core.methods.trials:tipping_point` |
+| conflicts | `prediction_not_offered` (id `tipping_not_predicted`) | any option; when the Predict goal | prediction | not offered under Predict: an assigned treatment's effect is estimated, not predicted *(rung: refused, with an exit)* Exits: ask it under Estimate an effect. | `turbotab.core.methods.trials:eligible` |
+
+**Primary sources:**
+
+- Ratitch, O'Kelly & Tosiello 2013, Pharm Stat 12:337 (doi:10.1002/pst.1549)
+- Cro, Morris, Kenward & Carpenter 2020, Stat Med 39:2815 (doi:10.1002/sim.8569)
+- White, Horton, Carpenter & Pocock 2011, BMJ 342:d40 (doi:10.1136/bmj.d40)
+- White, Royston & Wood 2011, Stat Med 30:377 (doi:10.1002/sim.4067)
+- Rubin 1987, Multiple Imputation for Nonresponse in Surveys (Wiley)
+- Barnard & Rubin 1999, Biometrika 86:948
+
 ### 1.2 · Model families
 
 The shelf ranks every family that can model the outcome by its own assessment of the data and never shortens the list: no family is withheld from a lens, so every family is offered here.
@@ -378,7 +658,7 @@ Every other family on the shelf, each in full in the methods reference:
 | Cox proportional hazards (`cox`) | time_to_event | prediction, inference | Each predictor multiplies the hazard by a constant ratio over all of follow-up; effects add on the log scale. | every lens (shared): the methods reference |
 | Screened elastic net (`screened_elastic_net`) | regression, binary | prediction | Only features with a strong marginal association survive; among them, straight-line effects shrunk toward zero. | the metabolomics and genomics packets |
 
-### 1.3 · Shared methods (43)
+### 1.3 · Shared methods (47)
 
 Every lens offers these; their full contracts are in the methods reference.
 
@@ -409,6 +689,8 @@ Every lens offers these; their full contracts are in the methods reference.
 | Post-double-selection lasso | `pds_lasso` | model | model | `set_causal` |
 | A time-varying exposure by g-methods | `time_varying` | model | model | `set_time_varying` |
 | Targeted maximum likelihood | `tmle` | model | model | `set_causal` |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) | `case_control_effects` | model | model | not declared |
+| Risks from a model trained on a case-control sample | `case_control_risks` | model | model | not declared |
 | Diagnostics of the primary model | `diagnostics` | evaluation | descriptive | `respond_diagnostic` |
 | The E-value of a difference, standardized by the estimand's SD | `evalue_sd` | evaluation | descriptive | not declared |
 | An exposure family and its multiplicity | `exposure_family` | evaluation | descriptive | `set_estimand` |
@@ -424,8 +706,10 @@ Every lens offers these; their full contracts are in the methods reference.
 | Bootstrap optimism correction | `bootstrap_optimism` | evaluation | training_fold | `set_split` |
 | Calibration by a horizon, and by level | `horizon_calibration` | evaluation | training_fold | `set_split` |
 | The nested cross-validation interval | `nested_cv_interval` | evaluation | training_fold | `set_split` |
+| Leave-one-site-out validation, pooled across sites | `site_validation` | evaluation | training_fold | `set_validation` |
 | Intended use, the decision curve and the threshold | `intended_use` | evaluation | training_fold | `set_intended_use` |
 | Agreement between two measurements (Bland–Altman) | `bland_altman` | evaluation | descriptive | not declared |
+| Which of my decisions mattered? (specification curve) | `specification_curve` | evaluation | model | not declared |
 | The manuscript bundle and its replay | `manuscript_export` | evaluation | descriptive | not declared |
 
 ### 1.4 · Methods another lens reviews in full (21)
@@ -593,20 +877,41 @@ Every relation this lens's own methods take part in: declared by them, or declar
 
 ```mermaid
 flowchart LR
+  n_stack_cycles["Stacking NHANES cycles into one sample"]:::own
   n_censored_below_detection["Values below a detection limit belong to the below-detection repair"]:::own
   n_copies_not_repeats["Rows read as imputed copies are not repeats"]:::own
   n_imputed_copies_pooled["The data's own imputed copies, pooled by Rubin's rules"]:::own
+  n_trial_analysis_set["Who a randomized trial analyzes (the analysis set)"]:::own
   n_survey_population["The population estimand under a survey design"]:::own
   n_survey_cox["Survey-weighted Cox regression (Binder's pseudo-likelihood)"]:::own
   n_survey_linear["Survey-weighted linear, logistic and multinomial models"]:::own
   n_survey_ordinal["Survey-weighted proportional-odds model"]:::own
+  n_trial_effect["The effect of the assigned treatment in a randomized trial"]:::own
   n_design_based_cv["Design-based cross-validation"]:::own
+  n_cycle_trends["Trends across stacked survey cycles"]:::own
+  n_trial_missing_outcomes["How sensitive a trial's result is to its missing outcomes (the tipping point)"]:::own
+  n_pooled_weights(["pooled_weights"]):::named
+  n_strata_by_cycle(["strata_by_cycle"]):::named
+  n_four_year_weight_needed(["four_year_weight_needed"]):::named
+  n_overlapping_cycles(["overlapping_cycles"]):::named
+  n_weight_kinds_differ(["weight_kinds_differ"]):::named
+  n_combined_across_the_pandemic_gap(["combined_across_the_pandemic_gap"]):::named
+  n_measurement_not_comparable(["measurement_not_comparable"]):::named
+  n_variable_missing_in_a_cycle(["variable_missing_in_a_cycle"]):::named
+  n_differences_flagged(["differences_flagged"]):::named
   n_the_below_detection_repair(["the below-detection repair"]):::named
   n_the_plausibility_checks_on_its_numbers(["the plausibility checks on its numbers"]):::named
   n_repeats_over_imputed_copies(["repeats over imputed copies"]):::named
   n_pooling_by_Rubin_s_rules(["pooling by Rubin's rules"]):::named
   n_rubins_rules(["rubins_rules"]):::named
   n_combined_copies(["combined_copies"]):::named
+  n_no_exclusion_after_randomization(["no_exclusion_after_randomization"]):::named
+  n_per_protocol_effect(["per_protocol_effect"]):::named
+  n_per_protocol_alone(["per_protocol_alone"]):::named
+  n_per_protocol_needs_adherence(["per_protocol_needs_adherence"]):::named
+  n_consort_counts(["consort_counts"]):::named
+  n_prediction_not_offered(["prediction_not_offered"]):::named
+  n_survey_design_refused(["survey_design_refused"]):::named
   n_dietary_patterns["Dietary patterns: foods eaten together"]:::other
   n_pattern_clusters["Dietary patterns: how many groups of people"]:::other
   n_pattern_count["Dietary patterns: how many to keep"]:::other
@@ -625,15 +930,63 @@ flowchart LR
   n_adjusted_Wald_F_for_joint_tests(["adjusted Wald F for joint tests"]):::named
   n_proportional_hazards_checked_on_these_participants(["proportional hazards checked on these participants"]):::named
   n_proportional_odds_checked_on_these_participants(["proportional odds checked on these participants"]):::named
+  n_precision_adjustment_only(["precision_adjustment_only"]):::named
+  n_randomization_factors_adjusted(["randomization_factors_adjusted"]):::named
+  n_baseline_outcome_adjusted(["baseline_outcome_adjusted"]):::named
+  n_post_hoc_covariates(["post_hoc_covariates"]):::named
+  n_post_randomization_covariate(["post_randomization_covariate"]):::named
+  n_missing_baselines_filled(["missing_baselines_filled"]):::named
+  n_baseline_balance_tests(["baseline_balance_tests"]):::named
+  n_causal_wording(["causal_wording"]):::named
+  n_not_randomized(["not_randomized"]):::named
+  n_icc_reported(["icc_reported"]):::named
+  n_arm_varies_within_cluster(["arm_varies_within_cluster"]):::named
+  n_too_few_clusters(["too_few_clusters"]):::named
+  n_few_clusters_noticed(["few_clusters_noticed"]):::named
+  n_correction_by_cluster_sizes(["correction_by_cluster_sizes"]):::named
+  n_kenward_roger_binary(["kenward_roger_binary"]):::named
+  n_separation(["separation"]):::named
   n_multiclass_substitution["Substitution curves for a multiclass outcome, one per class"]:::other
   n_design_folds(["design_folds"]):::named
   n_no_cv_under_inference(["no_cv_under_inference"]):::named
+  n_design_based_trend(["design_based_trend"]):::named
+  n_korn_graubard_intervals(["korn_graubard_intervals"]):::named
+  n_nonlinearity_first(["nonlinearity_first"]):::named
+  n_contrasts_take_no_covariates(["contrasts_take_no_covariates"]):::named
+  n_contrasts_on_their_own_scale(["contrasts_on_their_own_scale"]):::named
+  n_prevalence_line_leaves_unit_interval(["prevalence_line_leaves_unit_interval"]):::named
+  n_joinpoint_not_searched(["joinpoint_not_searched"]):::named
+  n_no_design_df(["no_design_df"]):::named
+  n_not_an_effect(["not_an_effect"]):::named
+  n_specification_curve["Which of my decisions mattered? (specification curve)"]:::other
+  n_every_randomized_person(["every_randomized_person"]):::named
+  n_imputations_by_rule(["imputations_by_rule"]):::named
+  n_rubin_pooling(["rubin_pooling"]):::named
+  n_cluster_trial_imputation(["cluster_trial_imputation"]):::named
+  n_per_protocol_imputation(["per_protocol_imputation"]):::named
+  n_stack_cycles -->|implies| n_pooled_weights
+  n_stack_cycles -->|implies| n_strata_by_cycle
+  n_stack_cycles -.->|conflicts| n_four_year_weight_needed
+  n_stack_cycles -.->|conflicts| n_overlapping_cycles
+  n_stack_cycles -.->|conflicts| n_weight_kinds_differ
+  n_stack_cycles -.->|conflicts| n_combined_across_the_pandemic_gap
+  n_stack_cycles -.->|conflicts| n_measurement_not_comparable
+  n_stack_cycles -.->|conflicts| n_variable_missing_in_a_cycle
+  n_stack_cycles -->|implies| n_differences_flagged
+  n_stack_cycles -.->|enables| n_cycle_trends
   n_censored_below_detection -->|implies| n_the_below_detection_repair
   n_censored_below_detection -->|implies| n_the_plausibility_checks_on_its_numbers
   n_copies_not_repeats -.->|conflicts| n_repeats_over_imputed_copies
   n_copies_not_repeats -->|implies| n_pooling_by_Rubin_s_rules
   n_imputed_copies_pooled -->|implies| n_rubins_rules
   n_imputed_copies_pooled -.->|conflicts| n_combined_copies
+  n_trial_analysis_set -->|implies| n_no_exclusion_after_randomization
+  n_trial_analysis_set -.->|conflicts| n_per_protocol_effect
+  n_trial_analysis_set -.->|conflicts| n_per_protocol_alone
+  n_trial_analysis_set -.->|conflicts| n_per_protocol_needs_adherence
+  n_trial_analysis_set -->|implies| n_consort_counts
+  n_trial_analysis_set -.->|conflicts| n_prediction_not_offered
+  n_trial_analysis_set -.->|conflicts| n_survey_design_refused
   n_dietary_patterns -->|implies| n_survey_population
   n_pattern_clusters -->|implies| n_survey_population
   n_pattern_count -->|implies| n_survey_population
@@ -658,10 +1011,46 @@ flowchart LR
   n_survey_ordinal -->|implies| n_lonely_PSUs_centered
   n_survey_ordinal -->|implies| n_adjusted_Wald_F_for_joint_tests
   n_survey_ordinal -->|implies| n_proportional_odds_checked_on_these_participants
+  n_trial_effect -->|implies| n_precision_adjustment_only
+  n_trial_effect -->|implies| n_randomization_factors_adjusted
+  n_trial_effect -->|implies| n_baseline_outcome_adjusted
+  n_trial_effect -.->|conflicts| n_post_hoc_covariates
+  n_trial_effect -.->|conflicts| n_post_randomization_covariate
+  n_trial_effect -->|implies| n_missing_baselines_filled
+  n_trial_effect -.->|conflicts| n_baseline_balance_tests
+  n_trial_effect -->|implies| n_causal_wording
+  n_trial_effect -.->|conflicts| n_not_randomized
+  n_trial_effect -->|implies| n_icc_reported
+  n_trial_effect -.->|conflicts| n_arm_varies_within_cluster
+  n_trial_effect -.->|conflicts| n_too_few_clusters
+  n_trial_effect -->|implies| n_few_clusters_noticed
+  n_trial_effect -->|implies| n_correction_by_cluster_sizes
+  n_trial_effect -.->|conflicts| n_kenward_roger_binary
+  n_trial_effect -.->|conflicts| n_separation
+  n_trial_effect -->|precedes| n_trial_missing_outcomes
+  n_trial_effect -.->|conflicts| n_survey_design_refused
+  n_trial_effect -.->|conflicts| n_prediction_not_offered
   n_multiclass_substitution -->|implies| n_survey_population
   n_multiclass_substitution -.->|conflicts| n_survey_population
   n_design_based_cv -->|implies| n_design_folds
   n_design_based_cv -->|implies| n_no_cv_under_inference
+  n_cycle_trends -->|implies| n_design_based_trend
+  n_cycle_trends -->|implies| n_korn_graubard_intervals
+  n_cycle_trends -->|implies| n_nonlinearity_first
+  n_cycle_trends -.->|conflicts| n_contrasts_take_no_covariates
+  n_cycle_trends -.->|conflicts| n_contrasts_on_their_own_scale
+  n_cycle_trends -.->|conflicts| n_prevalence_line_leaves_unit_interval
+  n_cycle_trends -.->|conflicts| n_joinpoint_not_searched
+  n_cycle_trends -.->|conflicts| n_no_design_df
+  n_cycle_trends -.->|conflicts| n_not_an_effect
+  n_specification_curve -->|implies| n_survey_population
+  n_trial_missing_outcomes -->|implies| n_every_randomized_person
+  n_trial_missing_outcomes -->|implies| n_imputations_by_rule
+  n_trial_missing_outcomes -->|implies| n_rubin_pooling
+  n_trial_missing_outcomes -.->|conflicts| n_cluster_trial_imputation
+  n_trial_missing_outcomes -.->|conflicts| n_per_protocol_imputation
+  n_trial_missing_outcomes -.->|conflicts| n_survey_design_refused
+  n_trial_missing_outcomes -.->|conflicts| n_prediction_not_offered
   classDef own fill:#e8f0fe,stroke:#1a56db,color:#111
   classDef other fill:#f4f4f5,stroke:#71717a,color:#111
   classDef named fill:#fff7ed,stroke:#c2410c,color:#111
@@ -674,6 +1063,9 @@ The relations, with the sentence the app states when each fires:
 | `censored_below_detection` | implies | `the below-detection repair` | any option; when a lab column's values below a detection limit that the app's own finding reads | prediction, inference | the lab pack's censored-values finding leaves them to that finding's repair, never saying it has no control |
 | `censored_below_detection` | implies | `the plausibility checks on its numbers` | any option; when a text predictor confirmed to hold amounts | prediction, inference | its values are checked as the numbers the fit reads, before the seal |
 | `copies_not_repeats` | implies | `pooling by Rubin's rules` | any option; when the imputed-copies answer under inference, each copy kept as a record | inference | every estimate is pooled over the copies (MODELING_SEQUENCE §2) |
+| `cycle_trends` | implies | `design_based_trend` | any option; when a survey design answered as the surveyed population | describe | the cycle estimates, their covariance and every test are design-based, on the design's degrees of freedom (PSUs minus strata) |
+| `cycle_trends` | implies | `korn_graubard_intervals` | any option; when a yes-or-no measure | describe | a prevalence's interval in each cycle is Korn and Graubard's |
+| `cycle_trends` | implies | `nonlinearity_first` | `contrasts`, `regression`; when three or more cycles | describe | the highest-order term is tested first; the linear trend is read only when no bend is found |
 | `design_based_cv` | implies | `design_folds` | `population`; when the surveyed-population answer under prediction | prediction | folds keep whole PSUs together within strata, and every loss, calibration and comparison is survey-weighted, labeled design-based cross-validation |
 | `design_based_cv` | implies | `no_cv_under_inference` | any option | inference | no cross-validated score is shown under inference |
 | `dietary_patterns` | implies | `survey_population` | any option; when a survey weight column | prediction, inference | The correlations, cluster centers and reduced rank regression are weighted by the survey weights, so the patterns are the surveyed population's. |
@@ -682,6 +1074,10 @@ The relations, with the sentence the app states when each fires:
 | `pattern_clusters` | implies | `survey_population` | any option; when a survey weight column | prediction, inference | The cluster centers are weighted means and the silhouette widths are averaged with the survey weights. |
 | `pattern_count` | implies | `survey_population` | `parallel_analysis`; when a survey weight column | prediction, inference | Parallel analysis draws its random data under the same survey weights as the food groups' correlations. |
 | `regression_calibration` | implies | `survey_population` | any option; when the surveyed-population answer | inference | The calibration and the outcome model are survey-weighted, and PSUs are resampled within strata (Rao & Wu 1988, J Am Stat Assoc 83:231); with no stratum of two PSUs it is blocked and recorded, the sample-only attestation its exit. |
+| `specification_curve` | implies | `survey_population` | any option; when a survey design answered as the surveyed population | inference | under the surveyed-population answer every specification is design-based, and an exclusion rule is a domain of the full design |
+| `stack_cycles` | implies | `differences_flagged` | `stack`; when always | prediction, inference | codes that differ between cycles and a typical value that moves by a factor of five or more are flagged, never changed |
+| `stack_cycles` | implies | `pooled_weights` | `stack`; when two or more cycles | prediction, inference | each cycle's weight is multiplied by its years over the stacked years: 1 ÷ k for k two-year cycles, and 3.2 over the stacked years for the 3.2-year prepandemic file |
+| `stack_cycles` | implies | `strata_by_cycle` | `stack`; when always | prediction, inference | strata and PSUs are coded by cycle, so no two cycles share one |
 | `subgroups` | implies | `survey_population` | `kmeans_silhouette`; when the surveyed-population answer | prediction, inference | With survey weights, k-means weighs each person by their weight in the standardization, its objective and the silhouette, none changed by the weights' scale, and the stability uses the rescaled bootstrap: PSUs within strata, the weights rescaled (Rao, Wu & Yue 1992, Surv Methodol 18:209). |
 | `survey_cox` | implies | `adjusted Wald F for joint tests` | any option | inference | A spline's overall and nonlinear tests are adjusted Wald F tests on (q, d − q + 1) degrees of freedom (Korn & Graubard 1990). |
 | `survey_cox` | implies | `design-based intervals` | any option | inference | Every interval is design-based: Taylor linearization over the strata and PSUs, on t with the design's degrees of freedom (the PSUs minus the strata that hold the analysis rows). |
@@ -699,13 +1095,59 @@ The relations, with the sentence the app states when each fires:
 | `survey_population` | implies | `multiple imputation on the design's degrees of freedom` | any option | inference | Each completed copy is analyzed design-based, and Rubin's rules take the design's degrees of freedom as the complete-data degrees of freedom (MS2). |
 | `survey_population` | implies | `regression calibration by PSU within strata` | any option | inference | Regression calibration and its outcome model are survey-weighted, and its interval comes from a bootstrap resampling PSUs within strata over the whole chain (Rao and Wu's); with no stratum of two PSUs it is blocked and recorded, with the sample-only attestation or no correction as its exits. |
 | `survey_population` | implies | `the record restated` | any option | inference | Every sentence that says what the survey answer does to a family, a curve or a correction is restated in the methods text on the answer as it stands; the Record keeps it as said. |
+| `trial_analysis_set` | implies | `consort_counts` | any option; when always | inference | each arm's counts by stage (allocated, received, followed up, lost, analyzed; clusters in a cluster trial) are returned for the CONSORT flow |
+| `trial_analysis_set` | implies | `no_exclusion_after_randomization` | `itt`; when always | inference | the primary analysis keeps every randomized person in the arm they were randomized to; no one leaves for what happened after randomization |
+| `trial_effect` | implies | `baseline_outcome_adjusted` | `ancova`, `mixed_kr`; when a baseline measure named | inference | the baseline measure of the outcome is a covariate (analysis of covariance; Vickers & Altman 2001) |
+| `trial_effect` | implies | `causal_wording` | any option; when always | inference | causal wording only for intention to treat under a declared randomization, as the effect of being assigned; per protocol is worded as a difference among those who followed the protocol |
+| `trial_effect` | implies | `correction_by_cluster_sizes` | `gee_corrected`; when the correction left to the rule | inference | Kauermann–Carroll when the cluster sizes' coefficient of variation is below 0.6, Fay–Graubard otherwise (Li & Redden 2015) |
+| `trial_effect` | implies | `few_clusters_noticed` | `mixed_kr`, `gee_corrected`; when fewer than 10 clusters | inference | fewer than 10 clusters are named among the concerns (the fewest Li & Redden 2015 studied), beside the missing-outcome notice, neither displacing the other |
+| `trial_effect` | implies | `icc_reported` | `mixed_kr`, `gee_corrected`; when a cluster-randomized trial | inference | the intraclass correlation is reported (Campbell et al. 2012) |
+| `trial_effect` | implies | `missing_baselines_filled` | any option; when a baseline covariate with missing values | inference | a missing baseline value takes its mean over the analysis set with a missing-value indicator (White & Thompson 2005) |
+| `trial_effect` | implies | `precision_adjustment_only` | any option; when always | inference | the adjustment is the randomization factors and the baseline covariates named before the data were seen, for precision only; nothing is searched for or selected |
+| `trial_effect` | implies | `randomization_factors_adjusted` | any option; when randomization factors declared | inference | the factors the randomization was stratified or minimized on are adjusted for (Kahan & Morris 2012) |
+| `trial_missing_outcomes` | implies | `every_randomized_person` | `delta_tipping_point`; when always | inference | the sensitivity analysis counts every randomized person (White, Horton, Carpenter & Pocock 2011) |
+| `trial_missing_outcomes` | implies | `imputations_by_rule` | `delta_tipping_point`; when always | inference | at least as many imputations as the percentage of people with a missing outcome (White, Royston & Wood 2011) |
+| `trial_missing_outcomes` | implies | `rubin_pooling` | `delta_tipping_point`; when always | inference | each completed set is analyzed as the primary analysis and pooled by Rubin's rules (Rubin 1987) with Barnard & Rubin 1999's degrees of freedom |
+| `stack_cycles` | enables | `cycle_trends` | `stack`; when two or more cycles stacked | prediction, inference | a stack of three or more cycles can be tested for a trend across them, which checks the no-trend assumption a pooled estimate makes |
 | `survey_population` | invalidates | `the substitution band from row resampling` | any option | inference | A row bootstrap ignores the strata and PSUs, so the curve's band is the design's linearization instead, and the refits asked for are not drawn. |
 | `copies_not_repeats` | conflicts | `repeats over imputed copies` | any option; when the repeats or time-points answer over rows read as imputed copies, under inference | inference | blocked and recorded: the exits answer imputed copies (Rubin's rules) or record the answer *(rung: blocked until recorded)* Exits: imputed copies, each analyzed and pooled by Rubin's rules; keep the answer, recorded: intervals too narrow. |
+| `cycle_trends` | conflicts | `contrasts_on_their_own_scale` | `contrasts`; when the logit scale with the contrasts | describe | contrasts on the log-odds scale are refused *(rung: refused, with an exit)* Exits: the linear scale; logistic regression. |
+| `cycle_trends` | conflicts | `contrasts_take_no_covariates` | `contrasts`; when covariates with the contrasts | describe | contrasts of the cycle estimates cannot be adjusted for covariates *(rung: refused, with an exit)* Exits: polynomial regression; leave the adjustment out. |
+| `cycle_trends` | conflicts | `joinpoint_not_searched` | `joinpoint`; when a joinpoint search, or a joinpoint outside the inner cycles | describe | the joinpoint's location is not searched for; it must be named in advance at an inner cycle *(rung: refused, with an exit)* Exits: name the joinpoint cycle; polynomial regression. |
+| `cycle_trends` | conflicts | `no_design_df` | any option; when the analyzed rows lie in as many PSUs as strata | describe | no design degrees of freedom are left for a test *(rung: refused, with an exit)* Exits: the sample-only attestation. |
+| `cycle_trends` | conflicts | `not_an_effect` | any option; when the Estimate or Predict goal | inference, prediction | not offered under Estimate an effect or Predict: a trend across cycles is a description *(rung: refused, with an exit)* Exits: ask it under Describe. |
+| `cycle_trends` | conflicts | `prevalence_line_leaves_unit_interval` | `regression`, `joinpoint`; when a fitted prevalence outside 0 to 1 | describe | a straight-line trend in a prevalence that runs below 0 or above 1 is refused *(rung: refused, with an exit)* Exits: the log-odds scale. |
 | `imputed_copies_pooled` | conflicts | `combined_copies` | any option; when imputed copies combined into one row per unit, under inference | inference | blocked and recorded: imputed values treated as measured *(rung: blocked until recorded)* Exits: Keep each copy as a record, pooled by Rubin's rules; Combine them, recorded: intervals too narrow. |
 | `multiclass_substitution` | conflicts | `survey_population` | any option; when the survey answer "the surveyed population" and a family with no design-based estimator | inference | A family with no design-based estimator draws no class curves under the surveyed population: blocked and recorded. *(rung: blocked until recorded)* Exits: the design-based family in its place, every other chosen family kept; the sample-only attestation. |
 | `multiclass_substitution` | conflicts | `survey_population` | any option; when the survey answer "the surveyed population" with no design degrees of freedom (every PSU alone in its stratum) | inference | A design whose analysis rows lie in no more PSUs than strata leaves no degrees of freedom for an interval: the coefficient table is refused, and no class curve is drawn either, blocked and recorded, never shown as points under a caption that promises intervals. *(rung: blocked until recorded)* Exits: the sample-only attestation. |
+| `stack_cycles` | conflicts | `combined_across_the_pandemic_gap` | `stack`; when the 2021–2023 cycle and another cycle | prediction, inference | the 2021–2023 cycle (release 12) stacked with any other cycle is refused, as the NHANES weighting tutorial advises: a year and a half of unobserved pandemic months lies between it and the prepandemic file *(rung: refused, with an exit)* Exits: analyze the 2021–2023 cycle alone; leave it out. |
+| `stack_cycles` | conflicts | `four_year_weight_needed` | `stack`; when 1999–2000 and another cycle, no four-year weight | prediction, inference | 1999–2000 stacked with another cycle needs the four-year weight on the 1999–2002 rows *(rung: refused, with an exit)* Exits: name the four-year weight; leave 1999–2000 out. |
+| `stack_cycles` | conflicts | `measurement_not_comparable` | `stack`; when a measurement declared incompatible across cycles | prediction, inference | a variable declared to be measured differently in a cycle is refused unless its conversion is declared *(rung: refused, with an exit)* Exits: leave the variable out; stack only the cycles measured alike; declare the documented conversion. |
+| `stack_cycles` | conflicts | `overlapping_cycles` | `stack`; when two cycles whose years overlap, or an identifier in two cycles | prediction, inference | cycles covering the same years (2017–2018 and the prepandemic file, which holds its participants) are refused: the same participants would count twice *(rung: refused, with an exit)* Exits: leave one of them out. |
+| `stack_cycles` | conflicts | `variable_missing_in_a_cycle` | `stack`; when a requested variable absent from a cycle | prediction, inference | a variable asked for that a cycle lacks is refused, with a likely earlier name when one is found *(rung: refused, with an exit)* Exits: declare the rename; leave the variable out; stack only the cycles that have it. |
+| `stack_cycles` | conflicts | `weight_kinds_differ` | `stack`; when two kinds of weight among the cycles, the four-year weight included | prediction, inference | weights of different samples (examination and interview) are refused, the four-year weight of the 1999–2002 rows among them; a weight whose kind is not known is stacked with a concern that it could not be checked *(rung: refused, with an exit)* Exits: use one kind of weight in every cycle; name the four-year weight of the same kind. |
 | `survey_population` | conflicts | `a scale's corrected coefficient` | any option | inference | A scale's correction and the uncorrected coefficient beside it are fit on the rows as sampled, so they are blocked and recorded. *(rung: blocked until recorded)* Exits: the sample-only attestation. |
 | `survey_population` | conflicts | `families with no design-based estimator` | any option | inference | The mixed model, GEE, feature-wise tests, the elastic net and boosted trees have no design-based estimator: their estimates are blocked and recorded. *(rung: blocked until recorded)* Exits: the design-based family for the task in its place, every other chosen family kept; the sample-only attestation. |
+| `trial_analysis_set` | conflicts | `per_protocol_alone` | `per_protocol`; when a per-protocol result without the intention-to-treat one | inference | a per-protocol result is reported beside intention to treat, never alone *(rung: refused, with an exit)* Exits: report intention to treat beside it. |
+| `trial_analysis_set` | conflicts | `per_protocol_effect` | `per_protocol`; when the per-protocol effect asked for | inference | the effect of following the protocol (weighting for adherence over time) is not available yet; the per-protocol set analyzed as randomized is *(rung: refused, with an exit)* Exits: the per-protocol set, analyzed as randomized; the intention-to-treat effect. |
+| `trial_analysis_set` | conflicts | `per_protocol_needs_adherence` | `per_protocol`; when no adherence column | inference | the per-protocol set is refused without a yes/no adherence column *(rung: refused, with an exit)* Exits: intention to treat; name the adherence column. |
+| `trial_analysis_set` | conflicts | `prediction_not_offered` | any option; when the Predict goal | prediction | not offered under Predict: an assigned treatment's effect is estimated, not predicted *(rung: refused, with an exit)* Exits: ask it under Estimate an effect. |
+| `trial_analysis_set` | conflicts | `survey_design_refused` | any option; when a survey design | inference | survey weights are refused: a trial's inference rests on its randomization *(rung: refused, with an exit)* Exits: the sample-only answer. |
+| `trial_effect` | conflicts | `arm_varies_within_cluster` | `mixed_kr`, `gee_corrected`; when a cluster with more than one arm | inference | refused when people in one cluster are in different arms *(rung: refused, with an exit)* Exits: declare a parallel trial; name the randomized cluster. |
+| `trial_effect` | conflicts | `baseline_balance_tests` | any option; when tests of baseline balance asked for | inference | baseline differences between the arms are described, never tested (Moher et al. 2010, item 15; Senn 1994) *(rung: refused, with an exit)* Exits: describe each arm. |
+| `trial_effect` | conflicts | `kenward_roger_binary` | `mixed_kr`; when a yes/no outcome | inference | the mixed model with Kenward–Roger is refused for a yes/no outcome *(rung: refused, with an exit)* Exits: estimating equations with a corrected sandwich. |
+| `trial_effect` | conflicts | `not_randomized` | any option; when an observational or undeclared design | inference | refused unless the design is a declared randomized trial *(rung: refused, with an exit)* Exits: declare how people were randomized. |
+| `trial_effect` | conflicts | `post_hoc_covariates` | any option; when covariates not named in advance | inference | covariates chosen after the data were seen are refused from the primary analysis *(rung: refused, with an exit)* Exits: leave them out; a labeled secondary analysis. |
+| `trial_effect` | conflicts | `post_randomization_covariate` | any option; when an adjustment term that is adherence or the treatment received | inference | adherence or the treatment received is refused as a covariate: it is known only after randomization *(rung: refused, with an exit)* Exits: leave it out of the adjustment. |
+| `trial_effect` | conflicts | `prediction_not_offered` | any option; when the Predict goal | prediction | not offered under Predict: an assigned treatment's effect is estimated, not predicted *(rung: refused, with an exit)* Exits: ask it under Estimate an effect. |
+| `trial_effect` | conflicts | `separation` | `standardized_risk`, `gee_corrected`; when separation | inference | refused when the logistic model's risks run to 0% or 100% *(rung: refused, with an exit)* Exits: adjust for fewer covariates; describe the events in each arm. |
+| `trial_effect` | conflicts | `survey_design_refused` | any option; when a survey design | inference | survey weights are refused: a trial's inference rests on its randomization *(rung: refused, with an exit)* Exits: the sample-only answer. |
+| `trial_effect` | conflicts | `too_few_clusters` | `mixed_kr`, `gee_corrected`; when one cluster in an arm, or clusters ≤ cluster-level terms | inference | refused with fewer than two clusters per arm or no clusters left over the cluster-level terms *(rung: refused, with an exit)* Exits: choose the column of the randomized cluster; leave the cluster-level covariates out (when they are what uses the clusters up); describe the outcome in each arm. |
+| `trial_missing_outcomes` | conflicts | `cluster_trial_imputation` | `delta_tipping_point`; when a cluster-randomized trial | inference | refused for a cluster trial: a multilevel imputation model is not built *(rung: refused, with an exit)* Exits: the primary analysis, its assumption stated. |
+| `trial_missing_outcomes` | conflicts | `per_protocol_imputation` | `delta_tipping_point`; when the per-protocol set | inference | refused for the per-protocol set: the sensitivity analysis counts every randomized person *(rung: refused, with an exit)* Exits: intention to treat. |
+| `trial_missing_outcomes` | conflicts | `prediction_not_offered` | any option; when the Predict goal | prediction | not offered under Predict: an assigned treatment's effect is estimated, not predicted *(rung: refused, with an exit)* Exits: ask it under Estimate an effect. |
+| `trial_missing_outcomes` | conflicts | `survey_design_refused` | any option; when a survey design | inference | survey weights are refused: a trial's inference rests on its randomization *(rung: refused, with an exit)* Exits: the sample-only answer. |
+| `trial_effect` | precedes | `trial_missing_outcomes` | any option; when always | inference | the primary analysis is fitted before its sensitivity to missing outcomes |
 
 ## 3 · The defaults, by purpose
 
@@ -715,14 +1157,19 @@ The option each method offers first for each purpose, its rung, and the reason i
 
 | Method | Prediction | Inference |
 |---|---|---|
+| Stacking NHANES cycles into one sample (`stack_cycles`) | `stack` (recommended): Sound when every stacked variable was measured alike in every cycle; the cycles' strata and PSUs stay distinct, so the standard errors keep each cycle's design | `stack` (recommended): Sound when every stacked variable was measured alike in every cycle; the cycles' strata and PSUs stay distinct, so the standard errors keep each cycle's design |
 | Values below a detection limit belong to the below-detection repair (`censored_below_detection`) | `half_limit` (available): Conditional: a censoring indicator beside it helps | `half_limit` (available): Conditional: biased as the censored share grows |
 | Rows read as imputed copies are not repeats (`copies_not_repeats`) | `imputed_copies` (available): Sound | `imputed_copies` (recommended): Sound: the imputation's variability enters the intervals |
 | The data's own imputed copies, pooled by Rubin's rules (`imputed_copies_pooled`) | `supplied` (available): The copies are kept as records; the concern is stated | `supplied` (recommended): Sound: each copy carries its own outcome; Rubin's rules carry the imputation's uncertainty |
+| Who a randomized trial analyzes (the analysis set) (`trial_analysis_set`) | not offered under prediction: Not offered under Predict: the effect of an assigned treatment is an Estimate question | `itt` (recommended): Sound: randomization protects the comparison, and the effect is that of being assigned, whether or not the treatment was taken |
 | The population estimand under a survey design (`survey_population`) | not offered under prediction: Not asked: under prediction the scores describe the rows they were computed on, and the weights are noted, not used. | `population` (recommended): Sound for a population estimand: every family and display is design-based, or blocked and recorded where none exists (MODELING_SEQUENCE §0 ruling 6). |
 | Survey-weighted Cox regression (Binder's pseudo-likelihood) (`survey_cox`) | `unweighted` (recommended): The fit prediction uses: its scores describe these rows. | `design_based` (recommended): Sound for the surveyed population: weighted estimating equations with a linearized variance (Binder 1983; Lumley 2010). |
 | Survey-weighted linear, logistic and multinomial models (`survey_linear`) | `unweighted` (recommended): The fit prediction uses: its scores describe these rows. | `design_based` (recommended): Sound for the surveyed population: weighted estimating equations with a linearized variance (Binder 1983; Lumley 2010). |
 | Survey-weighted proportional-odds model (`survey_ordinal`) | `unweighted` (recommended): The fit prediction uses: its scores describe these rows. | `design_based` (recommended): Sound for the surveyed population: weighted estimating equations with a linearized variance (Binder 1983; Lumley 2010). |
+| The effect of the assigned treatment in a randomized trial (`trial_effect`) | not offered under prediction: Not offered under Predict: the effect of an assigned treatment is an Estimate question | `ancova` (recommended): Sound for a numeric outcome in a parallel trial: adjustment for precision only, the covariates named before the data were seen |
 | Design-based cross-validation (`design_based_cv`) | `population` (recommended): Sound for performance in the surveyed population (Wieczorek et al. 2022) | not offered under inference: Not shown: under inference no cross-validated score is reported |
+| Trends across stacked survey cycles (`cycle_trends`) | not offered under prediction: Not offered under Predict: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) | not offered under inference: Not offered under Estimate an effect: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) |
+| How sensitive a trial's result is to its missing outcomes (the tipping point) (`trial_missing_outcomes`) | not offered under prediction: Not offered under Predict: the effect of an assigned treatment is an Estimate question | `delta_tipping_point` (recommended): Sound: says how different the missing would have to be, in the outcome's own units, before the conclusion changes |
 
 ### 3.2 · Questions labeled outside the registry
 
@@ -761,6 +1208,8 @@ The option each method offers first for each purpose, its rung, and the reason i
 | Post-double-selection lasso (`pds_lasso`) | refused under prediction (`pds_lasso`): Refused: under prediction no coefficient is read as an effect. | ranked by the data: §3.4 (the causal lane's estimator, `causal`) |
 | A time-varying exposure by g-methods (`time_varying`) | refused under prediction (`msm_iptw`): not offered: under prediction no coefficient is read as an effect | `msm_iptw` (recommended): sound with a confounder affected by prior exposure: the weights adjust for it without blocking the earlier exposure's effect; it needs a correct exposure model and positivity |
 | Targeted maximum likelihood (`tmle`) | refused under prediction (`tmle`): Refused: under prediction no coefficient is read as an effect. | ranked by the data: §3.4 (the causal lane's estimator, `causal`) |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | ranked by the data: §3.4 | ranked by the data: §3.4 |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | ranked by the data: §3.4 | not offered under inference: Not offered under Estimate an effect: a case-control sample gives no absolute risk there; its odds ratios are its effects |
 | Diagnostics of the primary model (`diagnostics`) | not offered under prediction: Not offered: a prediction reports no effect measure. | ranked by the data: §3.4 |
 | The E-value of a difference, standardized by the estimand's SD (`evalue_sd`) | not offered under prediction: Not offered: a prediction reports no effect | ranked by the data: §3.4 |
 | An exposure family and its multiplicity (`exposure_family`) | not offered under prediction: Not offered: a prediction reports no effect measure. | `family` (available): Sound with its multiplicity method stated; this is not selection |
@@ -776,8 +1225,10 @@ The option each method offers first for each purpose, its rung, and the reason i
 | Bootstrap optimism correction (`bootstrap_optimism`) | `bootstrap` (recommended): Asked (the split question), ranked first below 20,000 units; at least 500 resamples (Collins et al. 2024) | `bootstrap` (available): Offered after one cross-validation run |
 | Calibration by a horizon, and by level (`horizon_calibration`) | `by_horizon_and_level` (recommended): Stated: the prediction horizon is declared with the follow-up, else the median follow-up time | `by_horizon_and_level` (available): Stated beside the fit scores |
 | The nested cross-validation interval (`nested_cv_interval`) | `nested_cv` (available): Offered with its compute estimate where p/n > 1; else the interval is labeled likely too narrow | not offered under inference: Not applicable |
+| Leave-one-site-out validation, pooled across sites (`site_validation`) | `reml_hksj` (recommended): Sound with few sites: the interval allows for τ² being estimated; the prediction interval says where a new site would land | not offered under inference: Not offered under Estimate an effect: it validates a prediction model at a site it never saw |
 | Intended use, the decision curve and the threshold (`intended_use`) | `decision_support` (recommended): Sound: net benefit over the declared threshold range (Vickers & Elkin 2006; STRATOS TG6 lists it as essential) | not offered under inference: Not asked: no score is reported under inference |
 | Agreement between two measurements (Bland–Altman) (`bland_altman`) | `differences` (available): Sound for two models' out-of-fold predictions of a number; describes how far apart they are, not which is right | not offered under inference: Not offered under Estimate an effect: agreement describes two measurements and is not an effect (offered under Describe; see DESCRIBE_LABELS) |
+| Which of my decisions mattered? (specification curve) (`specification_curve`) | not offered under prediction: Not offered under Predict: the choices are made inside each training fold and compared by their scores | `all` (recommended): Sound as sensitivity after the lock: every declared fork crossed; above 1,000 combinations a stated rule draws them |
 | The manuscript bundle and its replay (`manuscript_export`) | `bundle` (recommended): every sentence is the record's own and the result is the declared one (selection-corrected without a holdout), so a reviewer can reconstruct the analysis and replay it | `bundle` (recommended): every sentence is the record's own, the plan's hash is the lock's, and Table 2 shows the exposure only, so a reviewer can reconstruct the analysis and replay it |
 
 ### 3.4 · Where the app ranks by the data
@@ -804,6 +1255,17 @@ Each condition the app ranks by, and what it offers first under it, computed by 
 | The effect measure (difference or ratio; conditional or marginal) (`effect_measure`) | inference | a multiclass outcome | `relative_risk_ratio`: conditional and non-collapsible: adding a covariate that predicts the outcome changes it even without confounding |
 | The effect measure (difference or ratio; conditional or marginal) (`effect_measure`) | inference | an exposure family (each exposure in turn), a numeric outcome | `mean_difference`: collapsible: the conditional and the marginal difference agree in a linear model |
 | The effect measure (difference or ratio; conditional or marginal) (`effect_measure`) | inference | an exposure family (each exposure in turn), a yes/no outcome | `exposure_mean_difference`: the feature-wise family's: each exposure modeled on the outcome and the covariates |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | prediction | an unmatched case-control sample | `unconditional`: The logistic model, trained in each fold; its probabilities are not risks until recalibrated. |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | prediction | a frequency-matched case-control sample | `unconditional`: The logistic model, trained in each fold; its probabilities are not risks until recalibrated. |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | prediction | individually matched sets | `conditional`: Each case ranked against its own matched controls, by the conditional model fitted in each training fold. |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | inference | an unmatched case-control sample | `unconditional`: Odds ratios, by logistic regression. |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | inference | a frequency-matched case-control sample | `unconditional`: Odds ratios, by logistic regression adjusted for the matching factors. |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | inference | individually matched sets | `conditional`: Odds ratios, by conditional logistic regression within the matched sets. |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | prediction | an unmatched case-control sample, with the population prevalence stated | `prior_correction`: Risks recalibrated to the population prevalence (prior correction), the correction learned in each training fold. |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | prediction | an unmatched case-control sample, with no population prevalence | `ranking_only`: How well the model separates cases from controls; it gives no risks. |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | prediction | a frequency-matched case-control sample, with the prevalence stated within each matching stratum | `prior_correction`: Risks recalibrated to the population prevalence within each matching stratum (prior correction), the correction learned in each training fold. |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | prediction | a frequency-matched case-control sample, with one prevalence for every stratum | `ranking_only`: How well the model separates cases from controls; it gives no risks. The controls were matched to the cases on some factors, so how well those factors separate cases from controls here understates it in the population (Janes & Pepe 2008). |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | prediction | individually matched sets, with or without a prevalence | `within_set_ranking`: Each case ranked against its own matched controls, by the conditional model fitted in each training fold. |
 | Diagnostics of the primary model (`diagnostics`) | inference | a failed proportional-hazards check (a Cox fit) | `period_hazard_ratios`: the exposure's hazard ratio before and after the median event time, beside the average over follow-up |
 | Diagnostics of the primary model (`diagnostics`) | inference | a failed influence check (Cook's distance) | `without_influential`: the primary model refit without the influential rows, beside it |
 | Diagnostics of the primary model (`diagnostics`) | inference | no check failed | nothing is asked: the checks are reported beside the estimate |

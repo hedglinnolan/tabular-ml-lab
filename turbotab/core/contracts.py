@@ -262,6 +262,16 @@ DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.methods.subgroups",
     # D3, dietary patterns (engine only until D1 asks them)
     "turbotab.core.methods.dietary_patterns",
+    # C1b: stacking NHANES cycles (engine only until C1 asks it)
+    "turbotab.core.methods.cycles",
+    # D6: trends across stacked cycles (engine only; D1 wires it into Describe)
+    "turbotab.core.methods.cycle_trends",
+    # E2: randomized-trial analyses (engine only until E1 routes the declared design to them)
+    "turbotab.core.methods.trials",
+    # E4: case-control samples and matched sets (engine only until E1/D1/C1 route them)
+    "turbotab.core.methods.case_control",
+    # T3: the specification curve and leave-one-site-out validation (engine only until routed)
+    "turbotab.core.methods.spec_curve", "turbotab.core.methods.site_validation",
 )
 
 

@@ -567,7 +567,7 @@ Every other family on the shelf, each in full in the methods reference:
 | GEE (exchangeable) (`gee`) | regression, binary | prediction, inference | Population-average straight-line or log-odds effects; a unit's rows share one correlation. | every lens (shared): the methods reference |
 | Cox proportional hazards (`cox`) | time_to_event | prediction, inference | Each predictor multiplies the hazard by a constant ratio over all of follow-up; effects add on the log scale. | every lens (shared): the methods reference |
 
-### 1.3 · Shared methods (43)
+### 1.3 · Shared methods (47)
 
 Every lens offers these; their full contracts are in the methods reference.
 
@@ -598,6 +598,8 @@ Every lens offers these; their full contracts are in the methods reference.
 | Post-double-selection lasso | `pds_lasso` | model | model | `set_causal` |
 | A time-varying exposure by g-methods | `time_varying` | model | model | `set_time_varying` |
 | Targeted maximum likelihood | `tmle` | model | model | `set_causal` |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) | `case_control_effects` | model | model | not declared |
+| Risks from a model trained on a case-control sample | `case_control_risks` | model | model | not declared |
 | Diagnostics of the primary model | `diagnostics` | evaluation | descriptive | `respond_diagnostic` |
 | The E-value of a difference, standardized by the estimand's SD | `evalue_sd` | evaluation | descriptive | not declared |
 | An exposure family and its multiplicity | `exposure_family` | evaluation | descriptive | `set_estimand` |
@@ -613,18 +615,22 @@ Every lens offers these; their full contracts are in the methods reference.
 | Bootstrap optimism correction | `bootstrap_optimism` | evaluation | training_fold | `set_split` |
 | Calibration by a horizon, and by level | `horizon_calibration` | evaluation | training_fold | `set_split` |
 | The nested cross-validation interval | `nested_cv_interval` | evaluation | training_fold | `set_split` |
+| Leave-one-site-out validation, pooled across sites | `site_validation` | evaluation | training_fold | `set_validation` |
 | Intended use, the decision curve and the threshold | `intended_use` | evaluation | training_fold | `set_intended_use` |
 | Agreement between two measurements (Bland–Altman) | `bland_altman` | evaluation | descriptive | not declared |
+| Which of my decisions mattered? (specification curve) | `specification_curve` | evaluation | model | not declared |
 | The manuscript bundle and its replay | `manuscript_export` | evaluation | descriptive | not declared |
 
-### 1.4 · Methods another lens reviews in full (16)
+### 1.4 · Methods another lens reviews in full (21)
 
 No method contract is declared for one lens: the app reaches each of these through the data it needs, not through the lens, though some are reached through findings or stages their own lens raises. Each is offered here whenever this lens's data hold what it needs, and is reviewed in full in the packet named.
 
 | Method | Key | Reviewed in full in | Slot | What it needs |
 |---|---|---|---|---|
+| Stacking NHANES cycles into one sample | `stack_cycles` | the dietary assessment, clinical and survey instruments packets | ingest | two or more NHANES files, each one cycle, with the same weight kind; each file's masked variance strata and PSUs (SDMVSTRA, SDMVPSU); the four-year weight, when 1999–2000 is stacked with another cycle; optional: renames and conversions declared from the release documentation, and measurements declared incompatible across cycles |
 | Rows read as imputed copies are not repeats | `copies_not_repeats` | the dietary assessment and clinical packets | reshape | rows read as imputed copies (a copy number such as NHANES's _MULT_) |
 | The data's own imputed copies, pooled by Rubin's rules | `imputed_copies_pooled` | the dietary assessment and clinical packets | reshape | the column numbering the copies; the unit the copies belong to |
+| Who a randomized trial analyzes (the analysis set) | `trial_analysis_set` | the clinical and dietary assessment packets | eligibility | the arm each person was randomized to, and the control arm; for the per-protocol set: whether each person followed the protocol (yes/no); optional: the arm each person received (for the CONSORT flow) |
 | Dietary patterns: how the food groups are made comparable | `pattern_inputs` | the dietary assessment packet | in_fold | the food-group intake columns; total energy, for the energy-adjusted forms |
 | Dietary patterns: foods eaten together | `dietary_patterns` | the dietary assessment packet | in_fold | two or more food-group intake columns; intermediate responses on the pathway, for reduced rank regression; the survey weights, when the rows are a weighted sample |
 | Dietary patterns: how many groups of people | `pattern_clusters` | the dietary assessment packet | in_fold | the standardized food groups; a range of group numbers, or the declared one |
@@ -636,9 +642,12 @@ No method contract is declared for one lens: the app reaches each of these throu
 | Survey-weighted Cox regression (Binder's pseudo-likelihood) | `survey_cox` | the dietary assessment, clinical and survey instruments packets | model | the survey answer: the surveyed population (a weight, and strata and PSUs); a time-to-event outcome with its follow-up; the Cox family chosen |
 | Survey-weighted linear, logistic and multinomial models | `survey_linear` | the dietary assessment, clinical and survey instruments packets | model | the survey answer: the surveyed population (a weight, and strata and PSUs); a continuous, yes/no or multiclass outcome; the linear family chosen |
 | Survey-weighted proportional-odds model | `survey_ordinal` | the dietary assessment, clinical and survey instruments packets | model | the survey answer: the surveyed population (a weight, and strata and PSUs); an ordered outcome with its declared order; the proportional-odds family chosen |
+| The effect of the assigned treatment in a randomized trial | `trial_effect` | the clinical and dietary assessment packets | model | a declared randomized trial (parallel or cluster-randomized); the arm, the control arm and the outcome (a number, or yes/no); the randomization factors and the baseline covariates named before the data were seen (the baseline measure of the outcome among them); a cluster-randomized trial: the randomized cluster of each person |
 | The substitution curve over the surveyed population | `survey_substitution` | the dietary assessment packet | evaluation | the survey answer: the surveyed population (a weight, and strata and PSUs); a substitution answer; the linear family chosen |
 | Substitution curves for a multiclass outcome, one per class | `multiclass_substitution` | the dietary assessment packet | evaluation | a multiclass outcome (three or more unordered classes); two energy-bearing exposures whose kcal per unit is settled; a fitted family that predicts each class's probability; the substitution answer (donor, recipient and step) |
 | Design-based cross-validation | `design_based_cv` | the dietary assessment, clinical and survey instruments packets | evaluation | the surveyed-population answer; the weight, and the strata and PSUs if named |
+| Trends across stacked survey cycles | `cycle_trends` | the dietary assessment, clinical and survey instruments packets | evaluation | a stack of two or more cycles (three or more to look for a bend), with each cycle's time; a numeric measure (a mean) or a yes-or-no one (a prevalence); the survey design over the stacked rows, or the answer that the estimates describe these participants; optional: covariates (regression and joinpoint only), and joinpoints named in advance |
+| How sensitive a trial's result is to its missing outcomes (the tipping point) | `trial_missing_outcomes` | the clinical and dietary assessment packets | evaluation | a parallel trial analyzed by intention to treat; at least one randomized person with a missing outcome |
 
 ### 1.5 · Methods with no contract yet (17)
 
@@ -906,6 +915,8 @@ The option each method offers first for each purpose, its rung, and the reason i
 | Post-double-selection lasso (`pds_lasso`) | refused under prediction (`pds_lasso`): Refused: under prediction no coefficient is read as an effect. | ranked by the data: §3.4 (the causal lane's estimator, `causal`) |
 | A time-varying exposure by g-methods (`time_varying`) | refused under prediction (`msm_iptw`): not offered: under prediction no coefficient is read as an effect | `msm_iptw` (recommended): sound with a confounder affected by prior exposure: the weights adjust for it without blocking the earlier exposure's effect; it needs a correct exposure model and positivity |
 | Targeted maximum likelihood (`tmle`) | refused under prediction (`tmle`): Refused: under prediction no coefficient is read as an effect. | ranked by the data: §3.4 (the causal lane's estimator, `causal`) |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | ranked by the data: §3.4 | ranked by the data: §3.4 |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | ranked by the data: §3.4 | not offered under inference: Not offered under Estimate an effect: a case-control sample gives no absolute risk there; its odds ratios are its effects |
 | Diagnostics of the primary model (`diagnostics`) | not offered under prediction: Not offered: a prediction reports no effect measure. | ranked by the data: §3.4 |
 | The E-value of a difference, standardized by the estimand's SD (`evalue_sd`) | not offered under prediction: Not offered: a prediction reports no effect | ranked by the data: §3.4 |
 | An exposure family and its multiplicity (`exposure_family`) | not offered under prediction: Not offered: a prediction reports no effect measure. | `family` (available): Sound with its multiplicity method stated; this is not selection |
@@ -921,8 +932,10 @@ The option each method offers first for each purpose, its rung, and the reason i
 | Bootstrap optimism correction (`bootstrap_optimism`) | `bootstrap` (recommended): Asked (the split question), ranked first below 20,000 units; at least 500 resamples (Collins et al. 2024) | `bootstrap` (available): Offered after one cross-validation run |
 | Calibration by a horizon, and by level (`horizon_calibration`) | `by_horizon_and_level` (recommended): Stated: the prediction horizon is declared with the follow-up, else the median follow-up time | `by_horizon_and_level` (available): Stated beside the fit scores |
 | The nested cross-validation interval (`nested_cv_interval`) | `nested_cv` (available): Offered with its compute estimate where p/n > 1; else the interval is labeled likely too narrow | not offered under inference: Not applicable |
+| Leave-one-site-out validation, pooled across sites (`site_validation`) | `reml_hksj` (recommended): Sound with few sites: the interval allows for τ² being estimated; the prediction interval says where a new site would land | not offered under inference: Not offered under Estimate an effect: it validates a prediction model at a site it never saw |
 | Intended use, the decision curve and the threshold (`intended_use`) | `decision_support` (recommended): Sound: net benefit over the declared threshold range (Vickers & Elkin 2006; STRATOS TG6 lists it as essential) | not offered under inference: Not asked: no score is reported under inference |
 | Agreement between two measurements (Bland–Altman) (`bland_altman`) | `differences` (available): Sound for two models' out-of-fold predictions of a number; describes how far apart they are, not which is right | not offered under inference: Not offered under Estimate an effect: agreement describes two measurements and is not an effect (offered under Describe; see DESCRIBE_LABELS) |
+| Which of my decisions mattered? (specification curve) (`specification_curve`) | not offered under prediction: Not offered under Predict: the choices are made inside each training fold and compared by their scores | `all` (recommended): Sound as sensitivity after the lock: every declared fork crossed; above 1,000 combinations a stated rule draws them |
 | The manuscript bundle and its replay (`manuscript_export`) | `bundle` (recommended): every sentence is the record's own and the result is the declared one (selection-corrected without a holdout), so a reviewer can reconstruct the analysis and replay it | `bundle` (recommended): every sentence is the record's own, the plan's hash is the lock's, and Table 2 shows the exposure only, so a reviewer can reconstruct the analysis and replay it |
 
 ### 3.4 · Where the app ranks by the data
@@ -955,6 +968,17 @@ Each condition the app ranks by, and what it offers first under it, computed by 
 | The effect measure (difference or ratio; conditional or marginal) (`effect_measure`) | inference | a multiclass outcome | `relative_risk_ratio`: conditional and non-collapsible: adding a covariate that predicts the outcome changes it even without confounding |
 | The effect measure (difference or ratio; conditional or marginal) (`effect_measure`) | inference | an exposure family (each exposure in turn), a numeric outcome | `mean_difference`: collapsible: the conditional and the marginal difference agree in a linear model |
 | The effect measure (difference or ratio; conditional or marginal) (`effect_measure`) | inference | an exposure family (each exposure in turn), a yes/no outcome | `exposure_mean_difference`: the feature-wise family's: each exposure modeled on the outcome and the covariates |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | prediction | an unmatched case-control sample | `unconditional`: The logistic model, trained in each fold; its probabilities are not risks until recalibrated. |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | prediction | a frequency-matched case-control sample | `unconditional`: The logistic model, trained in each fold; its probabilities are not risks until recalibrated. |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | prediction | individually matched sets | `conditional`: Each case ranked against its own matched controls, by the conditional model fitted in each training fold. |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | inference | an unmatched case-control sample | `unconditional`: Odds ratios, by logistic regression. |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | inference | a frequency-matched case-control sample | `unconditional`: Odds ratios, by logistic regression adjusted for the matching factors. |
+| Odds ratios from a case-control sample (unmatched, frequency-matched or matched sets) (`case_control_effects`) | inference | individually matched sets | `conditional`: Odds ratios, by conditional logistic regression within the matched sets. |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | prediction | an unmatched case-control sample, with the population prevalence stated | `prior_correction`: Risks recalibrated to the population prevalence (prior correction), the correction learned in each training fold. |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | prediction | an unmatched case-control sample, with no population prevalence | `ranking_only`: How well the model separates cases from controls; it gives no risks. |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | prediction | a frequency-matched case-control sample, with the prevalence stated within each matching stratum | `prior_correction`: Risks recalibrated to the population prevalence within each matching stratum (prior correction), the correction learned in each training fold. |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | prediction | a frequency-matched case-control sample, with one prevalence for every stratum | `ranking_only`: How well the model separates cases from controls; it gives no risks. The controls were matched to the cases on some factors, so how well those factors separate cases from controls here understates it in the population (Janes & Pepe 2008). |
+| Risks from a model trained on a case-control sample (`case_control_risks`) | prediction | individually matched sets, with or without a prevalence | `within_set_ranking`: Each case ranked against its own matched controls, by the conditional model fitted in each training fold. |
 | Diagnostics of the primary model (`diagnostics`) | inference | a failed proportional-hazards check (a Cox fit) | `period_hazard_ratios`: the exposure's hazard ratio before and after the median event time, beside the average over follow-up |
 | Diagnostics of the primary model (`diagnostics`) | inference | a failed influence check (Cook's distance) | `without_influential`: the primary model refit without the influential rows, beside it |
 | Diagnostics of the primary model (`diagnostics`) | inference | no check failed | nothing is asked: the checks are reported beside the estimate |

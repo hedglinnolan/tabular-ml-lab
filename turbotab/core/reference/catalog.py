@@ -127,6 +127,22 @@ CONTRACT_LENSES: dict[str, tuple[str, ...]] = {
     "manuscript_export": (SHARED,),
     # D5: agreement between two measurement methods (Describe) or two models (Predict), any lens
     "bland_altman": (SHARED,),
+    # C1b and D6: stacking NHANES cycles and the trends across them, a complex survey design's
+    # methods, reviewed in full by the dietary, clinical and survey lenses as the design is
+    "stack_cycles": ("dietary", "clinical", "survey"),
+    "cycle_trends": ("dietary", "clinical", "survey"),
+    # E2: randomized-trial analyses (engine only until E1 routes a declared trial to them); the
+    # clinical and dietary lenses review trials (CONSORT; E5's trial methodologist joins them)
+    "trial_analysis_set": ("clinical", "dietary"),
+    "trial_effect": ("clinical", "dietary"),
+    "trial_missing_outcomes": ("clinical", "dietary"),
+    # E4: case-control samples and matched sets, any lens (metabolomics nested case-control
+    # studies, clinical matched designs, dietary case-control studies)
+    "case_control_effects": (SHARED,),
+    "case_control_risks": (SHARED,),
+    # T3: the specification curve (Estimate) and leave-one-site-out validation (Predict), any lens
+    "specification_curve": (SHARED,),
+    "site_validation": (SHARED,),
 }
 
 # Every registered model family: the lenses whose packet reviews it in full, or (SHARED,). No

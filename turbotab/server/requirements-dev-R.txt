@@ -35,5 +35,11 @@ BlandAltmanLeh
 SimplyAgree
 mclust
 fpc
+pbkrtest
+emmeans
+gee
+geesmv
+beeca
+metafor
 sva
 limma
