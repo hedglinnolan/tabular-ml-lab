@@ -428,46 +428,115 @@ class ImbalanceCorrected(ClassifierMixin, BaseEstimator):
     its log-odds on inner cross-validated predictions within the fitting rows (module docstring).
 
     ``cv`` is set by the fit (``models.inner_cv``) to whole-unit or time-ordered inner splits when the
-    outer folds are drawn so. Attributes the wrapped model has (``coef_``) are read through it."""
+    outer folds are drawn so. Attributes the wrapped model has (``coef_``) are read through it.
+
+    **Early stopping** (RECIPES F12, §4.3). ``early_stopping`` and ``validation_fraction`` are the
+    wrapped model's (``wrap_model`` copies them; None reads the wrapped model's own at fit), so
+    ``inner_cv.fit_pipeline`` passes a fit that stops early its stopping rows, ``X_val``:
+    whole units drawn before any step was fit. Fit without them, above 10,000 received rows under
+    ``"auto"``, the stopping units are drawn here first (``inner_cv.validation_rows``, by the
+    ``groups`` or ``order`` handed to ``fit``; handed inner splits without either, it refuses,
+    rather than draw rows that split a unit). Either way:
+    only the other rows are resampled; the stopping rows reach every model this fit makes (the
+    deployed one and each recalibration fit) as they are, and no recalibration fold holds them; the
+    recalibration splits cover the rows this fit trains on. The threshold reads the rows the fit
+    receives, never the resampled count: the wrapped model's own ``"auto"`` is overridden, so it
+    never draws a stopping split by position from resampled copies."""
 
     def __init__(self, estimator: Any = None, method: str = "weights", recalibrate: bool = True,
-                 cv: Any = RECAL_FOLDS, seed: int = 0):
+                 cv: Any = RECAL_FOLDS, seed: int = 0, early_stopping: Any = None,
+                 validation_fraction: float | None = None):
         self.estimator = estimator
         self.method = method
         self.recalibrate = recalibrate
         self.cv = cv
         self.seed = seed
+        self.early_stopping = early_stopping
+        self.validation_fraction = validation_fraction
 
-    def _fit_one(self, X: Any, y: np.ndarray, rng: np.random.Generator) -> Any:
+    def stopping_setting(self) -> tuple[Any, float | None]:
+        """(flag, share): this wrapper's, else the wrapped model's; (False, None) for a wrapped
+        model that does not stop early. ``inner_cv`` reads the setting through this, so a wrapper
+        built with the defaults takes the stopping-rows path as one built by ``wrap_model`` does."""
+        params = getattr(self.estimator, "get_params", lambda deep=False: {})(deep=False)
+        if "early_stopping" not in params or "validation_fraction" not in params:
+            return False, None
+        flag = params["early_stopping"] if self.early_stopping is None else self.early_stopping
+        share = (params["validation_fraction"] if self.validation_fraction is None
+                 else self.validation_fraction)
+        return flag, share
+
+    def _fit_one(self, X: Any, y: np.ndarray, rng: np.random.Generator,
+                 val: tuple[Any, np.ndarray] | None = None) -> Any:
         from sklearn.base import clone
 
         model = clone(self.estimator)
+        stop: dict[str, Any] = {}
+        if "early_stopping" in model.get_params(deep=False):
+            model.set_params(early_stopping=val is not None)
+            if val is not None:
+                stop = {"X_val": val[0], "y_val": val[1]}
         if self.method == "weights":
+            weighted = dict(stop)
+            if stop:  # the stopping loss weighs each class as the training loss does
+                weighted["sample_weight_val"] = _class_weights(y, val[1])
             try:
-                return model.fit(X, y, sample_weight=balanced_weights(y))
+                return model.fit(X, y, sample_weight=balanced_weights(y), **weighted)
             except TypeError:  # a model that takes no weights is drawn up instead
                 rows = resampled_rows(y, "oversample", rng)
-                return model.fit(_take(X, rows), y[rows])
+                return model.fit(_take(X, rows), y[rows], **stop)
         rows = resampled_rows(y, self.method, rng)
-        return model.fit(_take(X, rows), y[rows])
+        return model.fit(_take(X, rows), y[rows], **stop)
 
-    def fit(self, X: Any, y: Any) -> "ImbalanceCorrected":
+    def fit(self, X: Any, y: Any, X_val: Any = None, y_val: Any = None, *, groups: Any = None,
+            order: Any = None) -> "ImbalanceCorrected":
+        """``X_val``, ``y_val``: the stopping rows (``inner_cv.fit_pipeline``). Without them, a fit
+        that stops early draws its stopping units here, by ``groups`` (the unit per row) or
+        ``order`` (each row's unit rank in time) when given, as ``inner_cv.validation_rows`` does;
+        handed inner splits (``cv``) without either, it refuses, since those splits may hold whole
+        units that a draw by rows would split."""
+        from turbotab.core.models.inner_cv import EARLY_STOPPING_ROWS, row_keys, validation_rows
+
         y = np.asarray(y)
         self.classes_ = np.unique(y)
         if len(self.classes_) != 2:
             raise ValueError("An imbalance correction here is for a yes/no outcome.")
+        flag, share = self.stopping_setting()
+        val: tuple[Any, np.ndarray] | None = None
+        kept: np.ndarray | None = None  # the rows trained on, if stopping units are drawn here
+        n_received = len(y)
+        if X_val is not None or y_val is not None:
+            if X_val is None or y_val is None:
+                raise ValueError("Stopping rows need both X_val and y_val.")
+            if share is None or flag is False:
+                raise ValueError("Stopping rows were passed to a fit that does not stop early.")
+            val = (X_val, np.asarray(y_val))
+        elif share is not None and (flag is True
+                                    or (flag == "auto" and n_received > EARLY_STOPPING_ROWS)):
+            given = isinstance(self.cv, (list, tuple)) and len(self.cv) > 0
+            if given and groups is None and order is None:
+                raise ValueError("This fit draws its own stopping units but was handed inner "
+                                 "splits without the units: pass groups or order, or fit "
+                                 "through inner_cv.fit_pipeline.")
+            keys = row_keys(X, y) if groups is None and order is None else None
+            held = validation_rows(float(share), groups=groups, keys=keys, order=order, y=y,
+                                   seed=int(self.seed))
+            val = (_take(X, np.flatnonzero(held)), y[held])
+            kept = np.flatnonzero(~held)
+            X, y = _take(X, kept), y[kept]
         rng = np.random.default_rng(int(self.seed))
-        self.estimator_ = self._fit_one(X, y, rng)
+        self.estimator_ = self._fit_one(X, y, rng, val)
+        self.stopping_rows_ = 0 if val is None else len(val[1])
         self.calibration_ = (0.0, 1.0)
         self.n_features_in_ = getattr(self.estimator_, "n_features_in_", None)
         self.recalibration_note_: str | None = None
         if not self.recalibrate:
             return self
         lp = np.full(len(y), np.nan)
-        for train, test in inner_folds(len(y), self.cv, int(self.seed)):
+        for train, test in _recalibration_folds(self.cv, int(self.seed), len(y), kept, n_received):
             if len(np.unique(y[train])) < 2:
                 continue
-            inner = self._fit_one(_take(X, train), y[train], rng)
+            inner = self._fit_one(_take(X, train), y[train], rng, val)
             lp[test] = _logit(_positive(inner, _take(X, test), self.classes_[1]))
         ok = np.isfinite(lp)
         event = (y == self.classes_[1]).astype(float)
@@ -511,6 +580,32 @@ class ImbalanceCorrected(ClassifierMixin, BaseEstimator):
 
 def _take(X: Any, rows: np.ndarray) -> Any:
     return X.iloc[rows] if hasattr(X, "iloc") else np.asarray(X)[rows]
+
+
+def _class_weights(y: np.ndarray, y_val: np.ndarray) -> np.ndarray:
+    """The stopping rows' weights: each row its class's balanced weight in the training rows."""
+    levels, counts = np.unique(y, return_counts=True)
+    weight = dict(zip(levels.tolist(), (len(y) / (len(levels) * counts)).tolist()))
+    return np.asarray([weight.get(v, 1.0) for v in np.asarray(y_val).tolist()], dtype=float)
+
+
+def _recalibration_folds(cv: Any, seed: int, n: int, kept: np.ndarray | None,
+                         n_received: int) -> list[tuple[np.ndarray, np.ndarray]]:
+    """The recalibration's inner splits over the ``n`` rows the fit trains on. When the fit drew
+    its own stopping units (``kept``: the positions it trains on among the ``n_received`` rows it
+    was handed), splits handed over for the received rows are cut down to the kept rows."""
+    given = isinstance(cv, (list, tuple)) and cv and isinstance(cv[0], (list, tuple))
+    if kept is None or not given:
+        return inner_folds(n, cv, seed)
+    position = np.full(n_received, -1)
+    position[kept] = np.arange(len(kept))
+    out = []
+    for train, test in cv:
+        a, b = position[np.asarray(train)], position[np.asarray(test)]
+        a, b = a[a >= 0], b[b >= 0]
+        if len(a) and len(b):
+            out.append((a, b))
+    return out
 
 
 def _positive(model: Any, X: Any, level: Any) -> np.ndarray:
@@ -565,11 +660,17 @@ def describe_step(name: str, spec: Any) -> tuple[str, str]:
 
 
 def wrap_model(model: Any, levers: Mapping[str, Any] | None, task: str, seed: int = 0) -> Any:
-    """The model step with the answer's imbalance correction around it (a yes/no outcome)."""
+    """The model step with the answer's imbalance correction around it (a yes/no outcome). A
+    wrapped model that stops early lends the wrapper its ``early_stopping`` and
+    ``validation_fraction``, so the fit hands the wrapper its stopping rows (RECIPES F12)."""
     method = (levers or {}).get("imbalance") or "none"
     if method == "none" or task != "binary":
         return model
-    return ImbalanceCorrected(model, method, True, RECAL_FOLDS, seed)
+    params = model.get_params(deep=False)
+    stopping = ({"early_stopping": params["early_stopping"],
+                 "validation_fraction": params["validation_fraction"]}
+                if "early_stopping" in params and "validation_fraction" in params else {})
+    return ImbalanceCorrected(model, method, True, RECAL_FOLDS, seed, **stopping)
 
 
 # ── the contracts (BLUEPRINT §13), the leash and the sentence ─────────────────
