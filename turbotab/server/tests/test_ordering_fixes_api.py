@@ -35,6 +35,7 @@ from turbotab.core.tests.acceptance.server_drive import Drive, open_project, set
 from turbotab.core.tests.stage_harness import NHANES
 from turbotab.core.tests.truths import Truth, fixture_truth
 from turbotab.server.tests.conftest import SAMPLES
+from turbotab.server.tests.test_quest_api import settle
 
 needs_nhanes = pytest.mark.skipif(not NHANES.is_file(),
                                   reason="the NHANES export is not on this machine")
@@ -329,8 +330,15 @@ def test_reading_the_project_records_nothing(client):
     items = [{"reading": "role", "column": p["column"],
               "value": CLINICAL_ROLES.get(p["column"], p["proposed"])} for p in proposals]
     # Every role confirmed, written to the log the way another process would: no answer was posted
-    # here and no stage was recomputed, so nothing has asked for the completion.
+    # here and no stage was recomputed, so nothing has asked for the completion. A stage still
+    # computing for the earlier answers would ask for it when it lands (as an answer does), so the
+    # project is let settle first, with no completion still scheduled.
     service = client.app.state.service
+    settle(drive)
+    end = time.monotonic() + 60
+    while drive.pid in service._scheduled:
+        assert time.monotonic() < end, "a completion stayed scheduled"
+        time.sleep(0.05)
     service.log(drive.pid).append(parse_decision({"kind": "confirm_readings", "items": items}))
     for _ in range(3):
         view = drive.view()
