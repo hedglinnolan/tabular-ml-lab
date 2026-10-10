@@ -561,8 +561,16 @@ def test_3b_the_optimism_of_choosing_the_best_family_is_estimated_on_null_data()
 
     n, p = 150, 10
     cols = [f"x{i}" for i in range(p)]
+    from turbotab.core.models.pipeline import with_plans
+
     spec = DesignSpec(predictors=cols, inputs=cols, categorical=[], numeric=cols, energy=None,
                       impute=False)
+    # Boosted trees are tuned (RT-5a), so they are built through the plan the design makes. With
+    # about 60 events in an outer training fold (n_plan below 300) it holds the standard settings
+    # alone: scikit-learn's defaults, one fit per fold, whatever each replicate's outcome.
+    spec = with_plans(spec, [get_family(k) for k in FAMILIES], "binary", np.arange(n) % 2)
+    trees = spec.plans["boosted_trees"]
+    assert trees["n_plan"] < 300 and len(trees["candidates"]) == 1
     pipes = {k: build_pipeline(spec, get_family(k), "binary", "prediction", n, p) for k in FAMILIES}
     rng = np.random.default_rng(0)
     best_cv, corrected, estimated = [], [], []
