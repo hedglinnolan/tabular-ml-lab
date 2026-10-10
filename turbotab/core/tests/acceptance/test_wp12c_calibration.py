@@ -75,7 +75,8 @@ from scipy import stats
 from turbotab.core.methods.calibration import (CalibrationRefused, Replicates, logistic_fit,
                                                regression_calibration)
 from turbotab.core.tests.acceptance.references import hc3_by_definition
-from turbotab.core.tests.acceptance.server_drive import Truth, local_server, open_project
+from turbotab.core.tests.acceptance.server_drive import (
+    Truth, local_server, open_project, settle_forms)
 
 
 def _people(rng: np.random.Generator, n: int, k: np.ndarray, *, beta: float = 0.5,
@@ -304,6 +305,7 @@ def runs(recalls, tmp_path_factory) -> dict:
         out["fit"] = d.artifact("fit")
         d.decide({"kind": "set_energy_adjustment", "method": "standard", "energy_column": "energy_kcal",
                   "nutrients": ["protein_g"]})
+        settle_forms(d)  # energy now in the model: its form is asked before any estimate
         out["standard"] = d.artifact("calibration")
         d.decide({"kind": "set_measurement_error", "method": "none"})
         out["none"] = d.artifact("calibration")

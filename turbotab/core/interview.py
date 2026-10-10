@@ -92,7 +92,8 @@ from pydantic import BaseModel, ConfigDict
 from turbotab.core.ask import AskCard, AskContext
 
 QuestionKey = Literal[
-    "lens", "orientation", "target", "event", "task", "follow_up", "purpose", "grain",
+    "lens", "orientation", "target", "event", "task", "follow_up", "design", "purpose",
+    "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "exclusions",
     "missing", "split", "estimand", "adjustment", "time_varying", "energy_adjustment", "form",
     "modification", "causal",
@@ -100,7 +101,8 @@ QuestionKey = Literal[
     "substitution", "open_seal",
 ]
 QUESTION_KEYS: tuple[str, ...] = (
-    "lens", "orientation", "target", "event", "task", "follow_up", "purpose", "grain",
+    "lens", "orientation", "target", "event", "task", "follow_up", "design", "purpose",
+    "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "exclusions",
     "missing", "split", "estimand", "adjustment", "time_varying", "energy_adjustment", "form",
     "modification", "causal",
@@ -130,6 +132,7 @@ NEEDS: dict[str, tuple[str, ...]] = {
     "aggregation": ("structure",),
     "temporal": ("structure",),
     "purpose": (),
+    "design": (),
     "roles": ("roles",),
     # Its options (one per recognized weight, the pooled cycle) are read with the proposals.
     "survey": ("proposals",),
@@ -242,6 +245,8 @@ def _live_writer(records: Sequence[Any], state: Any) -> dict[str, str]:
     for record in ordered:
         decision = record.decision
         if record.id in cancelled or isinstance(decision, Revert) or decision.kind not in SLOTS:
+            continue
+        if decision.kind == "set_validation":  # the scheme, written onto the draw's record
             continue
         slot = SLOTS[decision.kind]
         if decision.kind == "set_task" and (
@@ -432,6 +437,16 @@ def _temporal_gate(state: Any, structure: Any) -> Gate:
     return None
 
 
+def _design_gate(state: Any) -> Gate:
+    """Crosswalk disagreement 10: until the design is answered, the study is read as observational,
+    stated for the person (Your question's Confirm sweep, ``default:design_observational``)."""
+    if getattr(state, "design", None) is not None:
+        return None
+    from turbotab.core.designs import OBSERVATIONAL_STATED
+
+    return ("skipped", OBSERVATIONAL_STATED)
+
+
 def _survey_gate(state: Any) -> Gate:
     """Asked under inference when a column reads as a survey weight (audit ME-06, WP10)."""
     from turbotab.core.survey import not_applicable_reason
@@ -499,6 +514,7 @@ def route(
         "unit": lambda: _unit_gate(state, structure),
         "aggregation": lambda: _aggregation_gate(state, structure),
         "temporal": lambda: _temporal_gate(state, structure),
+        "design": lambda: _design_gate(state),
         "survey": lambda: _survey_gate(state),
         "open_seal": lambda: _open_seal_gate(state),
         # WP17 (turbotab/core/estimand.py)

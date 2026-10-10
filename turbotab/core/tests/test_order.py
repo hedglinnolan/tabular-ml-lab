@@ -48,6 +48,8 @@ ANSWER = {
     "time_varying": d.SetTimeVarying(exposure="protein_g", method="msm_iptw",
                                      ordering="exposure_precedes_outcome", truncation="none"),
     "purpose": d.SetPurpose(purpose="prediction"),
+    # P0.6: the study design, observational stated until answered
+    "design": d.SetDesign(design="observational"),
     "grain": d.SetGrain(grain="repeated", id_column="participant_id"),
     "repeat_kind": d.SetRepeatKind(repeat_kind="repeats"),
     "unit": d.SetUnit(unit="row"),

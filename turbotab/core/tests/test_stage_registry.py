@@ -112,10 +112,16 @@ def test_every_router_question_sits_in_one_of_the_seven_stages():
 
 def test_every_decision_kind_sits_in_one_stage_and_a_revert_where_its_record_does():
     kinds = decision_kinds()
-    assert set(quest.kind_stages()) == kinds - {"revert"}
+    # "Confirm all" (P0.5) sits in the stage whose sweep it confirms, as a record of its own says.
+    assert set(quest.kind_stages()) == kinds - {"revert", "confirm_sweep"}
     assert set(quest.kind_stages().values()) <= set(SEVEN)
     with pytest.raises(KeyError):
         quest.kind_place("revert")
+    swept = record(1, {"kind": "confirm_sweep", "stage": "whos_in"})
+    assert quest.record_stage(swept, [swept]) == "whos_in"
+    assert set(quest.SWEEP_ITEMS) == set(SEVEN) - {"first_look"}
+    for home, item in quest.SWEEP_ITEMS.items():
+        assert (items()[item]["stage"], items()[item]["objective"]) == (home, "Confirm")
     # A kind that answers a Router question and is placed on its own card is placed in that
     # question's stage, so it has one stage either way.
     from turbotab.core.sequence import question_of
@@ -148,10 +154,11 @@ def test_the_estimate_stages_are_the_ones_that_declare_they_serve_one():
 
     declared = [s.name for s in build_graph().stages() if s.serves == ESTIMATE]
     assert list(ESTIMATE_STAGES) == declared and LOCKED == ESTIMATE_STAGES
-    # CROSSWALK "Engine stages and quest stages": the twelve shown in Results, after Fit.
+    # CROSSWALK "Engine stages and quest stages": the thirteen shown in Results, after Fit, with
+    # Describe's usual-intake distribution ("Describe has a gate and a lock"; P0.8).
     assert set(declared) == {"fit", "substitution", "sensitivity", "calibration", "secondary",
                              "scales", "effects", "causal", "time_varying", "modification",
-                             "explain", "evaluation"}
+                             "explain", "evaluation", "usual_intake"}
 
 
 def test_every_noticing_in_the_catalogs_sits_in_one_stage_with_an_objective():
@@ -291,11 +298,15 @@ def test_progress_counts_each_decide_once_and_the_confirm_sweep_once():
                                         "survey"))
     log = quest.quest_log(state, [], steps)
     whos_in = stage(log, "whos_in")
-    # Decide: exclusions, missing, split (answered); Confirm: the grain and the repeat kind as
-    # stated (one sweep, open); For the record: no grouping to offer.
-    assert whos_in.sweep == quest.Sweep(lines=2, answered=False)
-    assert whos_in.progress == quest.Progress(answered=3, required=4, complete=False)
+    # Decide: exclusions, missing (answered); Confirm: the grain and the repeat kind as stated (one
+    # sweep, open); For the record: no grouping to offer, and under Estimate the split, which
+    # TurboTab records with no rows held out (P0.6, crosswalk disagreement 5).
+    assert (whos_in.sweep.lines, whos_in.sweep.answered) == (2, False)
+    assert whos_in.progress == quest.Progress(answered=2, required=3, complete=False)
     assert line(log, "clusters").label == "For the record"
+    split = line(log, "split")
+    assert (split.id, split.label, split.counted) == (
+        "default:split_under_inference", "For the record", False)
     assert stage(log, "models").progress.answered == 0
 
 
@@ -462,6 +473,42 @@ def test_results_stays_reached_after_the_fit_and_says_why_it_dropped_back():
             sentence="Your change to Who's in made 1 result in Results out of date.")]
 
 
+def test_results_opens_when_fit_is_pressed_not_when_an_estimate_is_computed():
+    # P0.8 (FOUNDATION §7): under Estimate, Results opens with the lock Fit records; a fit computed
+    # live before the press opens nothing. The log carries the lock as Fit reports it.
+    from turbotab.core.fit_press import fit_lock
+
+    state, records, steps = _after_the_fit(EXCLUSION)
+    fresh = {"fit": {"status": "fresh"}, "usual_intake": {"status": "fresh"}}
+    unlocked = fit_lock(state, records, pressed=False, held=False, estimate=None)
+    log = quest.quest_log(state, records, steps, fresh, fit=unlocked)
+    assert [stage(log, k).reached for k in SEVEN] == [True] * 5 + [False] * 2
+    assert log.fit == unlocked and not log.fit.locked
+    lock = record(9, {"kind": "lock_plan", "plan": {"purpose": "inference"}, "digest": "a" * 64})
+    locked_records = [*records, lock]
+    locked = decisions.fold(locked_records)
+    report = fit_lock(locked, locked_records, pressed=True, held=False, estimate=None)
+    log = quest.quest_log(locked, locked_records, steps, {"fit": {"status": "running"}},
+                          fit=report)
+    assert stage(log, "results").reached and stage(log, "writeup").reached
+    assert log.fit.locked and log.fit.sha256 == "a" * 64 and log.fit.at == lock.at
+    # Under Predict, the press for this outcome opens it; with no purpose nothing does.
+    predict = state.model_copy(update={"purpose": "prediction"})
+    for pressed, reached in ((False, False), (True, True)):
+        log = quest.quest_log(predict, records, steps, fresh,
+                              fit=fit_lock(predict, records, pressed=pressed, held=False,
+                                           estimate=None))
+        assert stage(log, "results").reached is reached, pressed
+    none = state.model_copy(update={"purpose": None})
+    log = quest.quest_log(none, records, steps, fresh,
+                          fit=fit_lock(none, records, pressed=True, held=False, estimate=None))
+    assert not stage(log, "results").reached
+    # Without what Fit says, the usual-intake offer (computed on the lens and goal alone) opens
+    # nothing, though it is declared an estimate stage.
+    log = quest.quest_log(state, records, steps, {"usual_intake": {"status": "fresh"}})
+    assert not stage(log, "results").reached
+
+
 def test_a_withdrawn_analysis_is_not_out_of_date():
     # The causal lane's estimate, computed at minute 7.5; its answer is then withdrawn, so its
     # stage is blocked and is never computed again: no reason, but Results was reached.
@@ -490,12 +537,12 @@ def test_a_reached_stage_that_asks_nothing_is_complete_and_one_not_reached_is_em
 
 
 def test_progress_holds_while_the_outcome_is_read_again():
-    # Your question settled: the outcome and the goal answered, the event not asked, the task read
-    # at high confidence (stated), the follow-up not asked.
+    # Your question settled: the outcome, the design (P0.6) and the goal answered, the event not
+    # asked, the task read at high confidence (stated), the follow-up not asked.
     state = ProjectState(lens=["dietary"], target="glucose", purpose="inference")
     settled = steps_until(None, stated=("task",), not_applicable=("event", "follow_up"))
     before = stage(quest.quest_log(state, [], settled), "question").progress
-    assert (before.answered, before.required) == (2, 2)
+    assert (before.answered, before.required) == (3, 3)
     # The outcome's reading recomputes (``interview.route``): the event, the task and the
     # follow-up wait on it, since whether each is asked at all is that reading's.
     reading = [InterviewStep(key=s.key, status="waiting",

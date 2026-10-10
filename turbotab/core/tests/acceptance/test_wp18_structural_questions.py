@@ -50,6 +50,7 @@ import pytest
 from scipy import stats
 
 from turbotab.core.interview import NEEDS
+from turbotab.core.tests.acceptance.server_drive import release, served
 from turbotab.server.tests.conftest import (
     answer_adjustment_card,
     answer_settled,
@@ -126,8 +127,9 @@ def artifact(client, pid: str, stage: str, timeout: float = 240.0) -> dict:
     end = time.monotonic() + timeout
     while True:
         status = view(client, pid)["stages"][stage]
+        release(client, pid, status)
         if status["status"] == "fresh":
-            return client.get(f"/api/projects/{pid}/stages/{stage}").json()["artifact"]
+            return served(client, pid, stage)
         assert status["status"] != "error", status
         assert time.monotonic() < end, f"{stage} never fresh: {status}"
         time.sleep(0.05)

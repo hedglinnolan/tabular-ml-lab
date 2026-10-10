@@ -153,6 +153,8 @@ UNDECLARED_DECISIONS: dict[str, str] = {
     "set_batch": "batch",
     "set_multiplicity": "multiplicity",
     "set_forms": "functional_form",  # the form question's one tap: a set_exposure_form per column
+    # P0.6 (crosswalk disagreement 5): a changed validation scheme, split from the draw
+    "set_validation": "proper_primary",
 }
 
 # The contracts whose method no Router question, proposals card, finding or control asks or states:
@@ -183,6 +185,9 @@ NOT_METHODS: dict[str, str] = {
     "set_task": "states what kind of outcome it is (a number, yes/no, ordered levels, classes, a "
                 "time to event): what is modeled, read from the data and confirmed",
     "set_purpose": "declares inference or prediction: the research question",
+    "set_design": "declares how people were assigned or sampled: the study design, which only "
+                  "observational studies take in this version (the designed-experiments milestone "
+                  "routes the others)",
     "set_roles": "gives each column its role in the research question",
     "confirm_role": "confirms a role the app proposed below high confidence: a reading",
     "confirm_reading": "confirms what a column holds (BLUEPRINT §14): a reading",
@@ -190,6 +195,8 @@ NOT_METHODS: dict[str, str] = {
     "set_column_unit": "states a column's unit and, for energy, its days: a reading",
     "dismiss_finding": "sets a finding aside, recorded with its reason; nothing is transformed",
     "defer_finding": "defers a finding, recorded; nothing is transformed",
+    "confirm_sweep": "confirms the choices set for the person as stated, or triages the open "
+                     "noticings: each default is the method of its own question",
     "revert": "undoes an earlier decision; the record keeps both",
 }
 

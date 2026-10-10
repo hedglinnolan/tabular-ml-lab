@@ -275,8 +275,8 @@ def fit_pipeline(pipeline: Any, X: Any, y: Any, *, groups: Any = None, order: An
     ``groups`` (the unit per row) and ``order`` (each row's unit rank in time, from the split) align
     with ``X``. The model step's inner cross-validation gets :func:`inner_splits`; a model that
     stops early on part of its rows (boosted trees above 10,000 rows) is handed
-    :func:`validation_rows` as ``X_val`` instead of drawing its own by position. Returns the fitted
-    pipeline.
+    :func:`validation_rows` as ``X_val`` instead of drawing its own by position, and the steps before
+    it are fit on the other rows only (RECIPES F11). Returns the fitted pipeline.
     """
     from sklearn.base import is_classifier
 
@@ -287,19 +287,34 @@ def fit_pipeline(pipeline: Any, X: Any, y: Any, *, groups: Any = None, order: An
     splits = ("cv" in model.get_params(deep=False) or _stops_early(model, len(y_arr))
               or bool(_steps_with_cv(pipeline)))
     keys = row_keys(X, y_arr) if splits and groups is None and order is None else None
-    with_inner_cv(pipeline, groups=groups, keys=keys, order=order, y=y_arr, seed=seed)
-    with_step_cv(pipeline, groups=groups, keys=keys, order=order, y=y_arr, seed=seed)
     if not _stops_early(model, len(y_arr)):
+        with_inner_cv(pipeline, groups=groups, keys=keys, order=order, y=y_arr, seed=seed)
+        with_step_cv(pipeline, groups=groups, keys=keys, order=order, y=y_arr, seed=seed)
         # A time to event keeps the baseline hazard of the rows it was fit on (MS6), so it predicts
         # a risk by the horizon wherever it is scored.
         return survival_baseline(pipeline.fit(X, y), X, y_arr)
+    # RECIPES F11 (§4.3): the stopping units are drawn first, and the steps before the model, their
+    # inner splits included, are fit on the remaining rows only; the stopping rows are transformed
+    # by those fitted steps, so a step that reads the outcome never sees them.
     share = float(model.get_params(deep=False)["validation_fraction"])
     held = validation_rows(share, groups=groups, keys=keys, order=order,
                            y=y_arr if is_classifier(model) else None, seed=seed)
+    rest = ~held
+
+    def kept(a: Any) -> Any:
+        return None if a is None else np.asarray(a)[rest]
+
+    with_inner_cv(pipeline, groups=kept(groups), keys=kept(keys), order=kept(order),
+                  y=y_arr[rest], seed=seed)
+    with_step_cv(pipeline, groups=kept(groups), keys=kept(keys), order=kept(order),
+                 y=y_arr[rest], seed=seed)
     head = pipeline[:-1] if len(pipeline.steps) > 1 else None
-    Xt = head.fit_transform(X, y) if head is not None else X
+    X_fit, X_val = _take(X, rest), _take(X, held)
+    if head is not None:
+        X_fit = head.fit_transform(X_fit, _take(y, rest))
+        X_val = head.transform(X_val)
     model.set_params(early_stopping=True)
-    model.fit(_take(Xt, ~held), y_arr[~held], X_val=_take(Xt, held), y_val=y_arr[held])
+    model.fit(X_fit, y_arr[rest], X_val=X_val, y_val=y_arr[held])
     return survival_baseline(pipeline, X, y_arr)
 
 

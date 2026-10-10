@@ -47,6 +47,7 @@ from turbotab.core.tests.acceptance.test_discriminate import (
 )
 from turbotab.core.tests.truths import ASKING, asked
 from turbotab.core.tests.truths import answers as truth_answers
+from turbotab.core.tests.acceptance.server_drive import release, served
 
 ROOT = Path(__file__).resolve().parents[4]
 
@@ -1630,6 +1631,7 @@ def _stage_done(drive: Any, stage: str, timeout: float = 600.0) -> dict[str, Any
     end = time.monotonic() + timeout
     while True:
         status = drive.view()["stages"][stage]
+        release(drive.c, drive.pid, status)
         if status["status"] in ("fresh", "error"):
             return status
         assert time.monotonic() < end, status
@@ -1664,7 +1666,7 @@ def _each_exit(drive: Any, body: dict[str, Any], stage: str,
                 got = drive.view()["stages"][upstream]
                 assert got["status"] != "error", (item["label"], upstream, got)
         if check is not None:
-            check(item, drive.c.get(f"/api/projects/{drive.pid}/stages/{stage}").json()["artifact"])
+            check(item, served(drive.c, drive.pid, stage))
         _revert_since(drive, n)
     return exits
 

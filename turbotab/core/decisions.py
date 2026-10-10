@@ -48,6 +48,8 @@ from typing import (Annotated, Any, Callable, Iterable, Literal, Mapping, Sequen
 from pydantic import (AwareDatetime, BaseModel, ConfigDict, Discriminator, Field, Tag, TypeAdapter,
                       field_validator, model_validator)
 
+from turbotab.core.designs import DesignKey
+
 try:  # POSIX only; on Windows the in-process lock is the whole of it.
     import fcntl
 except ImportError:  # pragma: no cover - exercised on Windows only
@@ -119,6 +121,16 @@ class SetTask(_DecisionModel):
 class SetPurpose(_DecisionModel):
     kind: Literal["set_purpose"] = "set_purpose"
     purpose: Purpose
+
+
+class SetDesign(_DecisionModel):
+    """How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked
+    in Your question before the goal, observational stated until answered. Every design is a named
+    value (``turbotab.core.designs``); one this version does not analyze is refused with its code,
+    its reason and the observational exit (V2X_SEAMS seam guard 6)."""
+
+    kind: Literal["set_design"] = "set_design"
+    design: DesignKey = "observational"
 
 
 class Revert(_DecisionModel):
@@ -749,6 +761,33 @@ class SetSplit(_DecisionModel):
         return self
 
 
+class SetValidation(_DecisionModel):
+    """A changed validation scheme (crosswalk disagreement 5): how the training rows compare the
+    models (the folds and the kind of validation), recorded on its own so that the draw's record,
+    its time and with it the holdout's status stay where the draw put them. ``set_split`` keeps the
+    draw (the holdout and the seed) and carries the scheme set for you, which Models' Confirm sweep
+    shows (``default:validation-scheme``). Changed after the held-out rows were opened it is block
+    and record: ``acknowledged`` keeps it, and the scores at the opening stay the reported result."""
+
+    kind: Literal["set_validation"] = "set_validation"
+    folds: int = Field(default=5, ge=2, le=10)
+    validation: Validation = "kfold"
+    repeats: int = Field(default=REPEATS, ge=2, le=MAX_REPEATS)
+    n_boot: int = Field(default=OPTIMISM_BOOT, ge=20, le=2000)
+    cluster: str | None = None
+    nested_cv: bool = False
+    acknowledged: bool = False
+
+    @model_validator(mode="after")
+    def _scheme(self) -> "SetValidation":
+        _validation_fields(self.validation, self.cluster)
+        return self
+
+    def scheme(self) -> dict[str, Any]:
+        """The scheme's fields as the split holds them."""
+        return self.model_dump(exclude={"kind", "acknowledged"})
+
+
 class SelectModels(_DecisionModel):
     kind: Literal["select_models"] = "select_models"
     models: list[str] = Field(min_length=1)
@@ -1164,7 +1203,11 @@ class SurveySpec(_Value):
 
 
 class SetSurvey(_DecisionModel):
-    """Whose estimate it is under a survey design (``SurveySpec``)."""
+    """Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was
+    answered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer
+    says whose performance the scores estimate, which is not the estimand inference asks for, so
+    an answer given under one stands only under that one; a record from before the stamp
+    (``None``) stands under either, as it did."""
 
     kind: Literal["set_survey"] = "set_survey"
     estimand: SurveyEstimand
@@ -1174,6 +1217,7 @@ class SetSurvey(_DecisionModel):
     cycle: str | None = None
     four_year_weight: str | None = None
     acknowledged: bool = False
+    goal: Purpose | None = None
 
 
 # ── WP17 (AUDIT_REPORT §5): the declared purpose routes the questions ──────────
@@ -1223,7 +1267,11 @@ class SetClusters(_DecisionModel):
     none_of: list[str] = Field(default_factory=list)
 
 
-EffectKind = Literal["total", "direct"]
+# "direct" (a mediation estimand), "complier" and "per_protocol" are named so that a request for
+# one is refused with its reason and the whole effect as its exit, never read as another effect
+# (V2X_SEAMS seam guard 6; ``turbotab.core.designs.EFFECTS``). A log that recorded the direct effect
+# before it was deferred still loads, and its machinery is kept for the mediation milestone.
+EffectKind = Literal["total", "direct", "complier", "per_protocol"]
 EnergyContrast = Literal["substitution", "addition"]
 # The effect measure (MODELING_SEQUENCE §0 ruling 9): a difference or a ratio, conditional or
 # marginal. Each family fits its conditional measure; a yes/no outcome's marginal risk difference
@@ -1736,6 +1784,46 @@ class SetUpdating(_DecisionModel):
     method: Literal["none", "shrinkage"] = "none"
 
 
+# P0.5 (calm/FOUNDATION §3, §7): "Confirm all", one record for a quest stage's sweep. ``defaults``:
+# the choices set for the person whose alternative would change a number here, each line the
+# default as stated (``value``), so a default stated otherwise later is no longer covered.
+# ``noticings``: the triage of open noticings at the gate (before the lock; under prediction,
+# before the held-out rows open), each line a finding and its disposition. ``lines`` are the
+# server's, read from the quest log as it stands (``turbotab/core/sweep.py``); a client sends only
+# the dispositions it changed.
+QuestStageKey = Literal["data", "question", "first_look", "whos_in", "models", "results",
+                        "writeup"]
+SweepKind = Literal["defaults", "noticings"]
+Disposition = Literal["no_change", "could_bias", "act_on_it"]
+
+
+class SweptLine(_Value):
+    id: str  # the line's crosswalk card (a finding's line: ``finding:<id>``)
+    key: str
+    value: str  # the default as stated, or the noticing's disposition
+    # A noticing's only: the engine's recommendation and its reason when it was triaged. The
+    # disposition answers the noticing while the triage still states them so (P0.5).
+    basis: str | None = None
+
+
+class SweepConfirmation(_Value):
+    stage: QuestStageKey
+    sweep: SweepKind = "defaults"
+    lines: list[SweptLine] = Field(default_factory=list)
+
+
+class ConfirmSweep(_DecisionModel):
+    kind: Literal["confirm_sweep"] = "confirm_sweep"
+    stage: QuestStageKey
+    sweep: SweepKind = "defaults"
+    lines: list[SweptLine] = Field(default_factory=list)
+
+
+def sweep_key(stage: str, sweep: str = "defaults") -> str:
+    """Where a stage's confirmation is kept (``ProjectState.sweeps``): one entry per sweep."""
+    return stage if sweep == "defaults" else f"{stage}:{sweep}"
+
+
 class OpenSeal(_DecisionModel):
     """Open the held-out rows: once, at the end. Held-out scores are withheld until then.
 
@@ -1781,14 +1869,22 @@ class Reseal(_DecisionModel):
         return value.strip() if value is not None else None
 
 
+# Decision kinds the server records itself and a client never posts: the analysis-plan lock. What
+# they record is an answer the engine filled in, shown For the record (FOUNDATION §10).
+SYSTEM_KINDS: tuple[str, ...] = ("lock_plan",)
+
+
 class LockPlan(_DecisionModel):
     """The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).
 
-    Recorded by the server when inference estimates are first displayed (or by the user, before
-    that): the plan in force then is what was declared in the software before any estimate was
-    displayed, and every later decision is marked as made after the estimates were seen. ``plan``
+    Recorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference
+    estimates were first displayed), never posted by a client: the plan in force then is what was
+    declared in the software before any estimate was displayed, and every later decision is marked
+    as made after the estimates were seen. ``plan``
     (every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the
-    server. The lock is never undone.
+    server. A client never undoes it; the server withdraws it (a revert it records itself) only
+    while no estimate has been served under it, on Cancel or a change to the plan
+    (calm/FOUNDATION §7), and the next press of Fit records a new one.
     """
 
     kind: Literal["lock_plan"] = "lock_plan"
@@ -2003,6 +2099,8 @@ Decision = Annotated[
         SetExplain,
         SetForms, SetModification,
         ViewOutcome, SetLevers, SetSelection, SetIntendedUse, SetUpdating,
+        ConfirmSweep,
+        SetDesign, SetValidation,
     ],
     Field(discriminator="kind"),
 ]
@@ -2033,6 +2131,14 @@ class DecisionRecord(BaseModel):
     # Recorded after the inference estimates were first displayed (``lock_plan``; audit WP16,
     # RO-12), set the same way: the decision was made with the estimates in view.
     after_estimates: bool = False
+    # Who recorded it: the person, or TurboTab itself (P0.6's completions and stated defaults: the
+    # roles once every reading settled, the split under Estimate; the plan's lock). A record of
+    # TurboTab's is shown For the record, with a way to change it (the display-order rule's second
+    # condition). Every line from before the field reads "you".
+    recorded_by: Literal["you", "turbotab"] = "you"
+    # "Decide now" (crosswalk disagreement 20): the Router question this answer was decided ahead
+    # of, so what its card counted was taken before that question was answered. None otherwise.
+    early: str | None = None
     decision: Decision
 
     @field_validator("at")
@@ -2068,7 +2174,8 @@ class ProjectState(BaseModel):
     # Whether the current outcome's seal is open: its latest opening stands and no re-seal came
     # after it (audit WP16, RO-05). None for a new outcome's seal, or after a re-seal.
     seal_opened: bool | None = None
-    # The inference analysis plan was locked when its estimates were first displayed (RO-12).
+    # The inference analysis plan was locked, when Fit was pressed, before its estimates were
+    # displayed (RO-12; P0.8).
     plan_locked: bool | None = None
     findings: dict[str, FindingDisposition] | None = None  # finding id -> its disposition
     # WP1 (audit §5): what values mean
@@ -2162,6 +2269,10 @@ class ProjectState(BaseModel):
     selection: SelectionSpec | None = None
     intended_use: IntendedUseSpec | None = None
     updating: UpdatingSpec | None = None
+    # P0.5: each quest stage's "Confirm all" (``sweep_key``: the stage, or "<stage>:noticings")
+    sweeps: dict[str, SweepConfirmation] | None = None
+    # P0.6 (crosswalk disagreement 10): the study design; None is observational, stated.
+    design: DesignKey | None = None
 
     @field_validator("form_domains", mode="after")
     @classmethod
@@ -2250,6 +2361,9 @@ _ENTRIES: dict[str, Callable[[Any], list[tuple[str, str, Any]]]] = {}
 # answer gave it (BLUEPRINT §14.3: every confirmation is honored); or a fact a narrower consumer
 # reads (an applied read-numbers repair in ``numbers_read``).
 _CONFIRMS: dict[str, Callable[[Any], list[tuple[str, str, Any]]]] = {}
+# kind -> its slot's new value from the decision and the value it replaces (``register_kind``'s
+# ``onto``): ``set_validation`` writes the scheme onto the split and keeps the draw.
+_ONTO: dict[str, Callable[[Any, Any], Any]] = {}
 _VALIDATORS: dict[str, list[Callable[[Any, Any], None]]] = {}
 _COMPLETIONS: dict[str, list[Callable[[Any, Any], Any]]] = {}
 
@@ -2272,6 +2386,7 @@ def register_kind(
     slot_for: Callable[[Any], str] | None = None,
     entries: Callable[[Any], list[tuple[str, str, Any]]] | None = None,
     confirms: Callable[[Any], list[tuple[str, str, Any]]] | None = None,
+    onto: Callable[[Any, Any], Any] | None = None,
 ) -> type[BaseModel]:
     """Declare that decisions of ``model_cls`` write ``slot``.
 
@@ -2292,6 +2407,9 @@ def register_kind(
     ``confirms(decision)``, for an unconditional kind, keyed or not, names keyed entries it writes
     beside its slot, ``[(slot, key, value), …]``: the readings its answer confirms, written where
     their own confirmations are, so the latest word about a reading wins.
+    ``onto(decision, current)``, for an unconditional, unkeyed kind, writes the slot onto its value
+    as it stands rather than replacing it: ``set_validation`` changes the split's scheme and keeps
+    its draw (crosswalk disagreement 5).
     Returns the class, so it also works as a decorator via ``functools.partial``.
     """
     kind = kind_of(model_cls)
@@ -2329,6 +2447,10 @@ def register_kind(
         _SLOT_FOR[kind] = slot_for
     else:
         _SLOT_FOR.pop(kind, None)
+    if onto is not None:
+        _ONTO[kind] = onto
+    else:
+        _ONTO.pop(kind, None)
     if entries is not None:
         _ENTRIES[kind] = entries
     else:
@@ -2564,7 +2686,10 @@ register_kind(DismissFinding, "findings", key=lambda d: d.finding_id,
 register_kind(SetFeatureTable, "feature_table",
               value=lambda d: FeatureTableSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetCategorical, "categorical")
-register_kind(SetSurvey, "survey", value=lambda d: SurveySpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetSurvey, "survey",
+              value=lambda d: SurveySpec(**d.model_dump(exclude={"kind", "goal"})),
+              holds=lambda d, slots: d.goal is None
+              or (d.goal == "prediction") == (slots.get("purpose") == "prediction"))
 register_kind(SetExposureForm, "exposure_forms", key=lambda d: d.column, value=lambda d: d.spec(),
               confirms=lambda d: [("form_domains", d.column, d.domain)])
 # FORM: the form question's one-tap answer writes each column's entry where ``set_exposure_form``
@@ -2643,9 +2768,40 @@ register_kind(SetSelection, "selection",
 register_kind(SetIntendedUse, "intended_use",
               value=lambda d: IntendedUseSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetUpdating, "updating", value=lambda d: UpdatingSpec(**d.model_dump(exclude={"kind"})))
+register_kind(ConfirmSweep, "sweeps", key=lambda d: sweep_key(d.stage, d.sweep),
+              value=lambda d: SweepConfirmation(**d.model_dump(exclude={"kind"})))
+register_kind(SetDesign, "design")
+
+
+def _scheme_onto_the_draw(decision: Any, split: Any) -> Any:
+    """The split with ``set_validation``'s scheme written onto it, its draw (holdout, seed) kept;
+    nothing while no draw stands (the answer is refused then, and a revert of the draw leaves
+    none)."""
+    if split is None:
+        return None
+    drawn = split.model_dump() if isinstance(split, BaseModel) else dict(split)
+    return SplitSpec(**{**drawn, **decision.scheme()})
+
+
+register_kind(SetValidation, "split", value=lambda d: None, onto=_scheme_onto_the_draw)
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
+register_validator("set_validation", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
+
+
+def _design_is_analyzed_here(decision: SetDesign, ctx: Any) -> None:
+    """A design this version does not analyze is refused with its code, its reason and the exit
+    that keeps the work (V2X_SEAMS seam guard 6): never read as another design."""
+    from turbotab.core.designs import design_refusal
+
+    found = design_refusal(decision)
+    if found is not None:
+        code, reason, exits = found
+        raise Refusal(code, reason, exits=exits)
+
+
+register_validator("set_design", _design_is_analyzed_here)
 
 
 # ── M1 validators (M1_CONTRACT.md §2) ────────────────────────────────────────
@@ -5164,7 +5320,10 @@ def fold(records: Sequence[DecisionRecord]) -> ProjectState:
                 others[entry] = value
                 slots[extra] = others
         else:
-            slots[SLOTS[decision.kind]] = _SLOT_VALUE[decision.kind](decision)
+            slot = SLOTS[decision.kind]
+            onto = _ONTO.get(decision.kind)
+            slots[slot] = (onto(decision, slots.get(slot)) if onto is not None
+                           else _SLOT_VALUE[decision.kind](decision))
             for extra, fn in _ALSO.get(decision.kind, {}).items():
                 slots[extra] = fn(decision)
             confirmed = _CONFIRMS.get(decision.kind)
@@ -5215,7 +5374,9 @@ def fold_onto(state: ProjectState, decision: Any) -> ProjectState:
             else SLOTS[decision.kind]
         entry(slot, keyed(decision), _SLOT_VALUE[decision.kind](decision))
     else:
-        slots[SLOTS[decision.kind]] = _SLOT_VALUE[decision.kind](decision)
+        onto = _ONTO.get(decision.kind)
+        slots[SLOTS[decision.kind]] = (onto(decision, slots.get(SLOTS[decision.kind]))
+                                       if onto is not None else _SLOT_VALUE[decision.kind](decision))
         for extra, fn in _ALSO.get(decision.kind, {}).items():
             slots[extra] = fn(decision)
     confirmed = _CONFIRMS.get(decision.kind)
@@ -5265,6 +5426,18 @@ def disclose(text: str | None, *, post_seal: bool, after_estimates: bool) -> str
         return text
     body = text[0].lower() + text[1:] if text[:1].isupper() and not text[1:2].isupper() else text
     return f"{lead}, {body}"
+
+
+def decided_early(text: str, ahead_of: str) -> str:
+    """A "Decide now" record's sentence, led by the question it was decided ahead of, so a reader
+    knows its counts were taken before that answer (crosswalk disagreement 20)."""
+    from turbotab.core.voice import question_name
+
+    lead = f"Decided early, ahead of {question_name(ahead_of)}"
+    if not text or text.startswith(lead):
+        return text
+    body = text[0].lower() + text[1:] if text[:1].isupper() and not text[1:2].isupper() else text
+    return f"{lead}: {body}"
 
 
 # ── the log's format and its migrations (V2X_SEAMS, seam guard 1) ────────────
@@ -5321,8 +5494,15 @@ def read_record(raw: Any, where: str = "a decision record") -> DecisionRecord:
 
 def record_line(record: DecisionRecord) -> bytes:
     """``record`` as the log stores it: one JSON line led by the format it is written in."""
-    body = record.model_dump_json()
+    # A field added with a default is written only when it differs from it (V2X_SEAMS rule 4), so
+    # a line says no more than it must and reads the same in every format that knows the field.
+    unsaid = {name for name, default in RECORD_DEFAULTS.items() if getattr(record, name) == default}
+    body = record.model_dump_json(exclude=unsaid)
     return f'{{"{LOG_FORMAT_KEY}":{LOG_FORMAT},{body[1:]}\n'.encode("utf-8")
+
+
+# The record fields P0.6 added, with the default an older line reads as.
+RECORD_DEFAULTS: dict[str, Any] = {"recorded_by": "you", "early": None}
 
 
 # ── the log ──────────────────────────────────────────────────────────────────
@@ -5354,6 +5534,11 @@ class DecisionLog:
         decision: Any,
         note: str | None = None,
         sentence: Callable[[Any, ProjectState], str | None] | None = None,
+        after_estimates: bool | None = None,
+        *,
+        recorded_by: Literal["you", "turbotab"] = "you",
+        early: str | None = None,
+        unless_set: str | None = None,
     ) -> DecisionRecord:
         """Append ``decision``; ``sentence(decision, state_before)`` authors the record's sentence.
 
@@ -5361,6 +5546,14 @@ class DecisionLog:
         record. A sentence that fails is logged and left unset: the answer is still recorded.
         The record is marked, and its sentence led, by what had been seen when it was made: held-out
         scores (``post_seal``) and the inference estimates (``after_estimates``; :func:`disclose`).
+        ``after_estimates``: whether the estimates had been seen, as the server knows it (False
+        under a lock no estimate has been shown under; SIZING P0.8); None, whether the plan was
+        locked before this record.
+        ``recorded_by`` says whether the person or TurboTab recorded it; ``early`` names the Router
+        question a "Decide now" answer was decided ahead of, and its sentence says so.
+        ``unless_set`` names a slot: when the log already holds a value there, nothing is recorded
+        and ``already_answered`` is raised (a completion never lands over the person's answer,
+        however close the two arrive).
         """
         decision = parse_decision(decision)
         with self._lock:
@@ -5373,6 +5566,9 @@ class DecisionLog:
                 if isinstance(decision, Revert):
                     _check_revert(existing, decision)
                 before = fold(existing)
+                if unless_set is not None and getattr(before, unless_set, None):
+                    raise Refusal("already_answered",
+                                  "That question was answered meanwhile; nothing was recorded.")
                 text: str | None = None
                 if sentence is not None:
                     try:
@@ -5380,7 +5576,11 @@ class DecisionLog:
                     except Exception:  # noqa: BLE001 - a missing sentence never loses an answer
                         log.exception("no sentence for a %s decision", decision.kind)
                         text = None
-                post_seal, after_estimates = opened_ever(existing), bool(before.plan_locked)
+                post_seal = opened_ever(existing)
+                if after_estimates is None:
+                    after_estimates = bool(before.plan_locked)
+                if isinstance(text, str) and early:
+                    text = decided_early(text, early)
                 if isinstance(text, str):
                     text = disclose(text, post_seal=post_seal, after_estimates=after_estimates)
                 record = DecisionRecord(
@@ -5391,6 +5591,8 @@ class DecisionLog:
                     sentence=text if isinstance(text, str) and text.strip() else None,
                     post_seal=post_seal,
                     after_estimates=after_estimates,
+                    recorded_by=recorded_by,
+                    early=early,
                     decision=decision,
                 )
                 data = record_line(record)
@@ -5458,6 +5660,9 @@ from turbotab.core import time_varying as _time_varying  # noqa: E402,F401
 # refusals, completions, sentences and contracts.
 from turbotab.core.methods import exposure_form as _exposure_form  # noqa: E402,F401
 from turbotab.core.methods import interaction as _interaction  # noqa: E402,F401
+# P0.5: "Confirm all" on a quest stage's sweep, and on the triage of open noticings (its lines read
+# from the quest log as it stands, its refusals and its sentence).
+from turbotab.core import sweep as _sweep  # noqa: E402,F401
 # Rows enough to analyze: an answer that would leave fewer rows than the design needs is refused
 # with what removes them (registered for every kind, so last: every kind is known by then).
 from turbotab.core import row_floor as _row_floor  # noqa: E402,F401

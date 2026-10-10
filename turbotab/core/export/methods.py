@@ -70,6 +70,7 @@ SECTION_OF: dict[str, tuple[str, str]] = {
     "set_scales": ("measurement", "predictors"),
     # the design: what a row is, and what the analysis is for
     "set_purpose": ("design", "analysis"),
+    "set_design": ("design", "analysis"),
     "set_grain": ("design", "data"),
     "set_repeat_kind": ("design", "data"),
     "set_unit": ("design", "data"),
@@ -103,6 +104,7 @@ SECTION_OF: dict[str, tuple[str, str]] = {
     "set_survey": ("statistical", "analysis"),
     "set_missing": ("statistical", "missing"),
     "set_split": ("statistical", "analysis"),
+    "set_validation": ("statistical", "analysis"),
     "set_adjustment": ("statistical", "analysis"),
     "set_model_sequence": ("statistical", "analysis"),
     "set_energy_adjustment": ("statistical", "analysis"),
@@ -124,6 +126,8 @@ SECTION_OF: dict[str, tuple[str, str]] = {
     "set_intended_use": ("statistical", "analysis"),
     "set_updating": ("statistical", "analysis"),
     "revert": ("other", "other"),
+    # P0.5: "Confirm all" quotes the defaults it confirms; each default's method is its own line
+    "confirm_sweep": ("other", "other"),
 }
 
 

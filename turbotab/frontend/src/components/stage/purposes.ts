@@ -92,6 +92,7 @@ export const STAGE_PURPOSES: Record<string, Purpose> = {
   coefficients: { question: "matters", answer: "what the fitted linear models say each exposure does to the outcome" },
   substitution: { question: "matters", answer: "what moving energy between two nutrients does to the outcome, by model" },
   open_seal: { question: "what", answer: "what opening the held-out rows does, and that it happens once" },
+  fit_press: { question: "what", answer: "what pressing Fit does: it shows the estimates and, under Estimate, locks the plan" },
   seal_opened: { question: "provenance", answer: "when the held-out scores were fixed in the record" },
   post_seal: { question: "provenance", answer: "which numbers changed after the held-out scores were seen" },
 };

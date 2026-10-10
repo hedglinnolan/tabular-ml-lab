@@ -18,6 +18,39 @@ from turbotab.core.graph import artifact_dir
 from turbotab.core.tests.truths import Truth, answer_refusal, asked  # noqa: F401 - re-exported
 
 
+def press_fit(client: Any, pid: str) -> bool:
+    """Fit, pressed as the user does on the analysis flowchart (SIZING P0.8): no estimate stage is
+    served before it (under Estimate and Describe it locks the plan). True when it was taken; False
+    when it was refused because there is nothing to fit yet or a question the estimates rest on is
+    open, so the estimates stay withheld, as WP17 withholds them."""
+    r = client.post(f"/api/projects/{pid}/fit")
+    if r.status_code == 409 and r.json()["error"]["code"] == "fit_not_yet":
+        return False
+    assert r.status_code == 200, r.text[:600]
+    return True
+
+
+def estimate_stage(stage: str) -> bool:
+    from turbotab.core.estimand import ESTIMATE_STAGES
+
+    return stage in ESTIMATE_STAGES
+
+
+def release(client: Any, pid: str, status: dict[str, Any]) -> None:
+    """A stage the scheduler holds for Fit (its estimate exceeds about 2 minutes) is released as
+    the user releases it: by pressing Fit (RECIPES_AND_TUNING §4.4)."""
+    if status.get("held") == "fit":
+        press_fit(client, pid)
+
+
+def served(client: Any, pid: str, stage: str) -> Any:
+    """A stage's artifact as the user reads it: an estimate stage's after Fit is pressed, as the
+    user opens Results (P0.8)."""
+    if estimate_stage(stage):
+        press_fit(client, pid)
+    return client.get(f"/api/projects/{pid}/stages/{stage}").json()["artifact"]
+
+
 @contextmanager
 def local_server(home: Path) -> Iterator[Any]:
     from fastapi.testclient import TestClient
@@ -168,6 +201,15 @@ def answer_estimand(drive: Any, exposure: str, *, effect: str = "total",
 WP17_QUESTIONS = ("follow_up", "clusters", "estimand", "adjustment", "time_varying", "form")
 
 
+def on_the_way(drive: Any, key: str) -> bool:
+    """Whether a drive answers ``key`` on the way to a later question: WP17's questions, and
+    (P0.6, crosswalk disagreement 9) the survey question under prediction, which drives written
+    before it was asked there answer as the scores were then, these participants' unweighted."""
+    if key in WP17_QUESTIONS:
+        return True
+    return key == "survey" and drive.view()["state"].get("purpose") == "prediction"
+
+
 def answer_forms(drive: Any) -> None:
     """FORM (MODELING_SEQUENCE §1 row 5): the form question, as a drive written before it would
     have to answer it: each column the card asks about takes the fixture's declared form
@@ -185,6 +227,7 @@ def answer_forms(drive: Any) -> None:
         if step["status"] != "open" or not asked(ask.get("exits") or []):
             break
         if hasattr(drive, "form_asks"):
+            # Whether a fit had been computed by then (not served: Fit waits for the form).
             fit = drive.c.get(f"/api/projects/{drive.pid}/stages/fit").json()
             drive.form_asks.append({"ask": ask, "fit_artifact": bool(fit.get("artifact"))})
         for decision in answers({"exits": ask["exits"]}, drive.truth):
@@ -217,6 +260,13 @@ def answer_wp17(drive: Any, key: str, *, exposure: str | None = None,
     * the time-varying exposure (V2 causal row): standard regression, the analysis every drive
       written before the question runs, with the exposure declared to precede the outcome; where
       a confounder affected by prior exposure holds it (block and record), its attestation exit."""
+    if key == "survey" and on_the_way(drive, key):
+        step = drive.reach(key, timeout=300)
+        if step["status"] in ("open", "waiting"):
+            r = drive.c.post(f"/api/projects/{drive.pid}/decisions",
+                             json={"kind": "set_survey", "estimand": "sample"})
+            assert r.status_code == 200, r.text[:600]
+        return True
     if key not in WP17_QUESTIONS:
         return False
     step = drive.reach(key, timeout=300)
@@ -307,7 +357,8 @@ class Drive:
 
         question = question_of(str(body.get("kind")))
         # (FORM: one column's form is declared whenever the user sees it, holding nothing back)
-        if question is None or question in WP17_QUESTIONS or body.get("kind") in ANSWERED_ANY_TIME:
+        if (question is None or question in WP17_QUESTIONS or question == "survey"
+                or body.get("kind") in ANSWERED_ANY_TIME):
             return False
         answered = False
         for _ in range(len(WP17_QUESTIONS) + 1):
@@ -315,7 +366,7 @@ class Drive:
             first = next((s for s in steps if s["status"] in ("open", "waiting")), None)
             # A WP17 question waiting on its stage (the proposals' cards) is waited for and
             # answered (``answer_wp17`` reaches it first).
-            if first is None or first["key"] == question or first["key"] not in WP17_QUESTIONS:
+            if first is None or first["key"] == question or not on_the_way(self, first["key"]):
                 return answered
             # The event, the task and the follow-up describe one outcome and do not hold each
             # other back (``sequence.OUTCOME_QUESTIONS``): the time-to-event exit is its own answer.
@@ -354,18 +405,29 @@ class Drive:
                 # WP18: a driver passing the task question answers what it still asks, as usual.
                 self.task_followups()
                 continue
-            if (first is not None and first["key"] in WP17_QUESTIONS and first["key"] != key
-                    and first["status"] == "open"):
+            if (first is not None and first["key"] != key and first["status"] == "open"
+                    and on_the_way(self, first["key"])):
                 answer_wp17(self, first["key"], exposure=self.exposure)
                 continue
             assert time.monotonic() < end, f"{key} held behind {first}"
             time.sleep(0.05)
 
     def answer(self, key: str, body: dict[str, Any]) -> None:
-        if self.reach(key)["status"] in ("open", "waiting"):
+        if self.reach(key)["status"] in ("open", "waiting") or self._differs(key, body):
             self.decide(body)
         if key == "task":
             self.task_followups()
+
+    def _differs(self, key: str, body: dict[str, Any]) -> bool:
+        """P0.6: under Estimate TurboTab records the split itself (no rows held out, the scheme set
+        for you), with a way to change it; a drive whose split is another records its own."""
+        if key != "split":
+            return False
+        from turbotab.core.decisions import SplitSpec
+
+        held = self.view()["state"].get("split")
+        wanted = SplitSpec(**{k: v for k, v in body.items() if k != "kind"})
+        return held is not None and SplitSpec(**held) != wanted
 
     def task_followups(self) -> None:
         """WP18 (audit RO-10): what the task question still asks after its task, answered as the
@@ -385,10 +447,18 @@ class Drive:
                 self.decide({"kind": "set_outcome_order", "column": target,
                              "levels": question.get("proposed_order") or question.get("levels")})
 
+    def press_fit(self) -> bool:
+        return press_fit(self.c, self.pid)
+
     def artifact(self, stage: str, timeout: float = 240.0) -> dict[str, Any]:
+        """The stage's artifact once fresh. An estimate stage's is served only after Fit (P0.8),
+        so Fit is pressed first, as the user opens Results."""
+        if estimate_stage(stage):
+            self.press_fit()
         end = time.monotonic() + timeout
         while True:
             status = self.view()["stages"][stage]
+            release(self.c, self.pid, status)
             if status["status"] == "fresh":
                 return self.c.get(f"/api/projects/{self.pid}/stages/{stage}").json()["artifact"]
             assert status["status"] != "error", status

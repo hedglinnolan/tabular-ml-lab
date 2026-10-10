@@ -49,6 +49,7 @@ from turbotab.core.tests.acceptance.test_discriminate import (
 )
 from turbotab.core.tests.truths import ASKING, asked
 from turbotab.core.tests.truths import answers as truth_answers
+from turbotab.core.tests.acceptance.server_drive import release, served
 
 ROOT = Path(__file__).resolve().parents[4]
 
@@ -105,8 +106,9 @@ def _fresh_after(drive: Any, stage: str, old: str | None, timeout: float = 600.0
     while True:
         status = drive.view()["stages"][stage]
         assert status["status"] != "error", status
+        release(drive.c, drive.pid, status)
         if status["status"] == "fresh" and status["key"] != old:
-            return drive.c.get(f"/api/projects/{drive.pid}/stages/{stage}").json()["artifact"]
+            return served(drive.c, drive.pid, stage)
         assert time.monotonic() < end, status
         time.sleep(0.05)
 

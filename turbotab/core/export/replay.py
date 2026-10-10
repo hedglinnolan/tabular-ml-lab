@@ -316,7 +316,7 @@ def run(bundle: str | Path, *, data: str | None = None, files: Mapping[str, str]
     settings = dataclasses.replace(Settings.from_env(), home=path, mode="local",
                                    **({"workers": workers} if workers else {}))
     try:
-        service = ProjectService(settings)
+        service = ProjectService(settings, replay=True)
     except Exception as exc:  # noqa: BLE001 - said, never a trace
         report.messages.append(f"The replay could not start TurboTab in {path}: {exc}")
         return report

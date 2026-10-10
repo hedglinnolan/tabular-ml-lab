@@ -202,6 +202,19 @@ export function useRunStage(pid: string) {
   });
 }
 
+/** Fit, pressed: every stage result is fetched again (the estimates are served now), and the
+ * view, which carries the lock under Estimate. */
+export function usePressFit(pid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.pressFit(pid),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [pid, "stage"] });
+      void qc.invalidateQueries({ queryKey: keys.view(pid) });
+    },
+  });
+}
+
 export function useCancelJob(pid: string) {
   const qc = useQueryClient();
   return useMutation({

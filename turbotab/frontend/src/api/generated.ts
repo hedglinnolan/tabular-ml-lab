@@ -117,7 +117,10 @@ export interface paths {
         put?: never;
         /**
          * Decide
-         * @description Record a decision. Stages downstream of the slot it writes recompute.
+         * @description Record a decision. Stages downstream of the slot it writes recompute. ``decide_now``
+         *     answers a later question ahead of the Router, only where its card is computed and the earlier
+         *     answers it reads are in (crosswalk disagreement 20); otherwise it is refused with what it is
+         *     waiting for, and the record names the question it was decided ahead of.
          */
         post: operations["decide_api_projects__pid__decisions_post"];
         delete?: never;
@@ -166,6 +169,104 @@ export interface paths {
          *     log does.
          */
         get: operations["quest_api_projects__pid__quest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/fit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Press Fit
+         * @description Fit, pressed on the analysis flowchart (SIZING P0.8; RECIPES_AND_TUNING §4.4): a job
+         *     command, not a decision. It releases a fit the scheduler holds (one expected to take over
+         *     about 2 minutes) and opens Results. Under Estimate and Describe it locks the analysis plan, the
+         *     system's ``lock_plan`` record, once; no estimate is served before it. Under Predict nothing
+         *     locks, and no score or estimate is served before it. Refused while nothing is chosen to fit or
+         *     a question the estimates rest on is open. Returns the lock as the quest log shows it.
+         */
+        post: operations["press_fit_api_projects__pid__fit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/fit/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Fit
+         * @description Cancel, where Fit was on the analysis flowchart (calm/FOUNDATION §7): the estimates' work
+         *     still running stops. Before any estimate is served the press is withdrawn, and under Estimate
+         *     and Describe the plan's lock with it (kept in the record as withdrawn), so Fit is asked for
+         *     again; once an estimate has been served the lock stands. Returns the lock as the quest log
+         *     shows it.
+         */
+        post: operations["cancel_fit_api_projects__pid__fit_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * For The Record
+         * @description Each stage's For the record lines (SIZING P0.5), collapsed in the quest log and never
+         *     counted: what was read (the ingest's facts and warnings, the profile's basis), why a question
+         *     was not asked, the defaults no other choice changes a number on here (with why), and the
+         *     answers TurboTab recorded itself. A stage not reached yet has none.
+         */
+        get: operations["for_the_record_api_projects__pid__record_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/triage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Triage
+         * @description The triage of the open noticings at the gate (SIZING P0.5; calm/FOUNDATION §7): before the
+         *     plan is fixed under Estimate and Describe (and while the goal is unanswered), before the
+         *     held-out rows open under Predict. Each open noticing carries the recommended disposition
+         *     ("doesn't change your numbers here", "could bias the estimate", "act on it") and its reason;
+         *     blockers come first and must be resolved. ``POST …/decisions`` with ``{"kind":
+         *     "confirm_sweep", "stage": <the gate's stage>, "sweep": "noticings"}`` records every
+         *     disposition, with any the person changed in ``lines``.
+         */
+        get: operations["triage_api_projects__pid__triage_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -928,6 +1029,26 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * ChangedSince
+         * @description An answer that returns with the reason (crosswalk disagreements 20 and 1): one decided early
+         *     ("Decide now") once an answer it was decided ahead of is recorded, so what its card counted
+         *     may have moved (``decided``); the roles TurboTab recorded from the person's confirmations once
+         *     a proposal moves after them (``confirmed``). ``decision_id`` is the later answer.
+         */
+        ChangedSince: {
+            /**
+             * Since
+             * @enum {string}
+             */
+            since: "decided" | "confirmed";
+            /** Decision Id */
+            decision_id: string;
+            /** Kind */
+            kind: string;
+            /** Reason */
+            reason: string;
+        };
         /** ChecklistCounts */
         ChecklistCounts: {
             /** Items */
@@ -1339,6 +1460,48 @@ export interface components {
              */
             role: "identifier" | "exposure" | "energy" | "covariate" | "design" | "flag" | "time" | "excluded" | "cluster";
         };
+        /** ConfirmSweep */
+        "ConfirmSweep-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "confirm_sweep";
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "data" | "question" | "first_look" | "whos_in" | "models" | "results" | "writeup";
+            /**
+             * Sweep
+             * @default defaults
+             * @enum {string}
+             */
+            sweep: "defaults" | "noticings";
+            /** Lines */
+            lines?: components["schemas"]["SweptLine-Input"][];
+        };
+        /** ConfirmSweep */
+        "ConfirmSweep-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "confirm_sweep";
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "data" | "question" | "first_look" | "whos_in" | "models" | "results" | "writeup";
+            /**
+             * Sweep
+             * @default defaults
+             * @enum {string}
+             */
+            sweep: "defaults" | "noticings";
+            /** Lines */
+            lines: components["schemas"]["SweptLine-Output"][];
+        };
         /**
          * CovariateAnswers
          * @description The modified disjunctive cause criterion, asked as questions (VanderWeele 2019; MODELING_
@@ -1484,8 +1647,16 @@ export interface components {
              * @default false
              */
             after_estimates: boolean;
+            /**
+             * Recorded By
+             * @default you
+             * @enum {string}
+             */
+            recorded_by: "you" | "turbotab";
+            /** Early */
+            early: string | null;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"] | components["schemas"]["SetModelSequence-Output"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Output"] | components["schemas"]["SetTimeVarying-Output"] | components["schemas"]["SetExplain-Output"] | components["schemas"]["SetForms-Output"] | components["schemas"]["SetModification-Output"] | components["schemas"]["ViewOutcome-Output"] | components["schemas"]["SetLevers-Output"] | components["schemas"]["SetSelection-Output"] | components["schemas"]["SetIntendedUse-Output"] | components["schemas"]["SetUpdating-Output"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"] | components["schemas"]["SetModelSequence-Output"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Output"] | components["schemas"]["SetTimeVarying-Output"] | components["schemas"]["SetExplain-Output"] | components["schemas"]["SetForms-Output"] | components["schemas"]["SetModification-Output"] | components["schemas"]["ViewOutcome-Output"] | components["schemas"]["SetLevers-Output"] | components["schemas"]["SetSelection-Output"] | components["schemas"]["SetIntendedUse-Output"] | components["schemas"]["SetUpdating-Output"] | components["schemas"]["ConfirmSweep-Output"] | components["schemas"]["SetDesign-Output"] | components["schemas"]["SetValidation-Output"];
         };
         /**
          * DeferFinding
@@ -1623,7 +1794,7 @@ export interface components {
              * @default total
              * @enum {string}
              */
-            effect: "total" | "direct";
+            effect: "total" | "direct" | "complier" | "per_protocol";
             /** Contrast */
             contrast: ("substitution" | "addition") | null;
             /**
@@ -1705,7 +1876,7 @@ export interface components {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"] | components["schemas"]["SetModelSequence-Output"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Output"] | components["schemas"]["SetTimeVarying-Output"] | components["schemas"]["SetExplain-Output"] | components["schemas"]["SetForms-Output"] | components["schemas"]["SetModification-Output"] | components["schemas"]["ViewOutcome-Output"] | components["schemas"]["SetLevers-Output"] | components["schemas"]["SetSelection-Output"] | components["schemas"]["SetIntendedUse-Output"] | components["schemas"]["SetUpdating-Output"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"] | components["schemas"]["SetModelSequence-Output"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Output"] | components["schemas"]["SetTimeVarying-Output"] | components["schemas"]["SetExplain-Output"] | components["schemas"]["SetForms-Output"] | components["schemas"]["SetModification-Output"] | components["schemas"]["ViewOutcome-Output"] | components["schemas"]["SetLevers-Output"] | components["schemas"]["SetSelection-Output"] | components["schemas"]["SetIntendedUse-Output"] | components["schemas"]["SetUpdating-Output"] | components["schemas"]["ConfirmSweep-Output"] | components["schemas"]["SetDesign-Output"] | components["schemas"]["SetValidation-Output"]) | null;
         };
         /** ExplainSpec */
         ExplainSpec: {
@@ -1912,6 +2083,33 @@ export interface components {
             intercept: number;
         };
         /**
+         * FitLock
+         * @description Fit and the plan's lock, as the quest log shows them (FOUNDATION §7: "Plan fixed at 14:02",
+         *     with the plan's SHA-256 as its quiet label).
+         */
+        FitLock: {
+            /** Purpose */
+            purpose: string | null;
+            /** Locks */
+            locks: boolean;
+            /** Locked */
+            locked: boolean;
+            /** At */
+            at: string | null;
+            /** Sha256 */
+            sha256: string | null;
+            /** Pressed */
+            pressed: boolean;
+            /** Opened */
+            opened: boolean;
+            /** Held */
+            held: boolean;
+            /** Estimate Seconds */
+            estimate_seconds: number | null;
+            /** Reason */
+            reason: string;
+        };
+        /**
          * FollowUpSpec
          * @description How long each row of a time-to-event outcome was observed (WP12,
          *     ``turbotab/core/models/survival.py``): at risk from ``entry`` (0 when not named) to ``time``,
@@ -1928,6 +2126,20 @@ export interface components {
             horizon: number | null;
             /** Prediction Horizon */
             prediction_horizon: number | null;
+        };
+        /**
+         * ForTheRecord
+         * @description Each stage's For the record lines (FOUNDATION §3: collapsed, never counted). A stage not
+         *     reached yet has none: what it would say may still change.
+         */
+        ForTheRecord: {
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+            /** Stages */
+            stages: components["schemas"]["RecordStage"][];
         };
         /** FrameRow */
         FrameRow: {
@@ -2327,7 +2539,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "lens" | "orientation" | "target" | "event" | "task" | "follow_up" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "exclusions" | "missing" | "split" | "estimand" | "adjustment" | "time_varying" | "energy_adjustment" | "form" | "modification" | "causal" | "models" | "substitution" | "open_seal";
+            key: "lens" | "orientation" | "target" | "event" | "task" | "follow_up" | "design" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "exclusions" | "missing" | "split" | "estimand" | "adjustment" | "time_varying" | "energy_adjustment" | "form" | "modification" | "causal" | "models" | "substitution" | "open_seal";
             /**
              * Status
              * @enum {string}
@@ -2715,11 +2927,14 @@ export interface components {
          * LockPlan
          * @description The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).
          *
-         *     Recorded by the server when inference estimates are first displayed (or by the user, before
-         *     that): the plan in force then is what was declared in the software before any estimate was
-         *     displayed, and every later decision is marked as made after the estimates were seen. ``plan``
+         *     Recorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference
+         *     estimates were first displayed), never posted by a client: the plan in force then is what was
+         *     declared in the software before any estimate was displayed, and every later decision is marked
+         *     as made after the estimates were seen. ``plan``
          *     (every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the
-         *     server. The lock is never undone.
+         *     server. A client never undoes it; the server withdraws it (a revert it records itself) only
+         *     while no estimate has been served under it, on Cancel or a change to the plan
+         *     (calm/FOUNDATION §7), and the next press of Fit records a new one.
          */
         "LockPlan-Input": {
             /**
@@ -2748,11 +2963,14 @@ export interface components {
          * LockPlan
          * @description The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).
          *
-         *     Recorded by the server when inference estimates are first displayed (or by the user, before
-         *     that): the plan in force then is what was declared in the software before any estimate was
-         *     displayed, and every later decision is marked as made after the estimates were seen. ``plan``
+         *     Recorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference
+         *     estimates were first displayed), never posted by a client: the plan in force then is what was
+         *     declared in the software before any estimate was displayed, and every later decision is marked
+         *     as made after the estimates were seen. ``plan``
          *     (every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the
-         *     server. The lock is never undone.
+         *     server. A client never undoes it; the server withdraws it (a revert it records itself) only
+         *     while no estimate has been served under it, on Cancel or a change to the plan
+         *     (calm/FOUNDATION §7), and the next press of Fit records a new one.
          */
         "LockPlan-Output": {
             /**
@@ -3266,6 +3484,12 @@ export interface components {
             selection: components["schemas"]["SelectionSpec"] | null;
             intended_use: components["schemas"]["IntendedUseSpec"] | null;
             updating: components["schemas"]["UpdatingSpec"] | null;
+            /** Sweeps */
+            sweeps: {
+                [key: string]: components["schemas"]["SweepConfirmation"];
+            } | null;
+            /** Design */
+            design: ("observational" | "parallel_trial" | "cluster_randomized_trial" | "case_control" | "matched_sets" | "crossover" | "repeated_measures_trial") | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -3306,11 +3530,15 @@ export interface components {
         };
         /**
          * QuestLine
-         * @description One line of a stage: a Router question, a declaration or a finding.
+         * @description One line of a stage: a Router question, a declaration, a finding or what the values settled
+         *     (``reading``).
          *
          *     ``status``: ``answered``; ``open`` (answerable now); ``waiting`` (``waiting_for`` names the
          *     earlier answers it needs, ``computing`` the results its card waits for); ``set_for_you`` (a
-         *     default the engine stated, in the Confirm sweep or For the record).
+         *     default the engine stated, in the Confirm sweep or For the record). A default's ``reason`` is
+         *     why it was set; on a Confirm line ``would_change`` says what another choice would change here,
+         *     and a default For the record says in ``changes_nothing`` why no other choice changes a number
+         *     (P0.5). ``id`` is the card that opens its options; a reading's ``items`` carry their own.
          */
         QuestLine: {
             /** Id */
@@ -3321,7 +3549,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "question" | "declaration" | "finding";
+            source: "question" | "declaration" | "finding" | "reading";
             /**
              * Label
              * @enum {string}
@@ -3353,6 +3581,16 @@ export interface components {
              */
             computing: string[];
             reopened_by: components["schemas"]["ReopenedBy"] | null;
+            /** Would Change */
+            would_change: string | null;
+            /** Changes Nothing */
+            changes_nothing: string | null;
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["ReadItem"][];
+            changed_since: components["schemas"]["ChangedSince"] | null;
         };
         /**
          * QuestLog
@@ -3363,7 +3601,7 @@ export interface components {
         QuestLog: {
             /**
              * Version
-             * @default 1
+             * @default 3
              */
             version: number;
             /** Stages */
@@ -3372,6 +3610,7 @@ export interface components {
             kinds: {
                 [key: string]: string;
             };
+            fit: components["schemas"]["FitLock"] | null;
         };
         /** QuestStage */
         QuestStage: {
@@ -3429,6 +3668,39 @@ export interface components {
             change: components["schemas"]["Exit"][];
         };
         /**
+         * ReadItem
+         * @description One reading the values settled with no question asked (``readings.read_from_data``).
+         */
+        ReadItem: {
+            /** Kind */
+            kind: string;
+            /** Column */
+            column: string;
+            /** Value */
+            value: string;
+            /** Words */
+            words: string;
+            /** Evidence */
+            evidence: string;
+            /**
+             * Options
+             * @default []
+             */
+            options: components["schemas"]["ReadOption"][];
+        };
+        /**
+         * ReadOption
+         * @description Another reading of a column, and the decision that records it.
+         */
+        ReadOption: {
+            /** Label */
+            label: string;
+            /** Decision */
+            decision: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
          * ReadingItem
          * @description One reading a block confirmation lists, with the value it shows.
          */
@@ -3453,6 +3725,40 @@ export interface components {
             read_from_data: components["schemas"]["ReadFromData"][];
             /** Sentence */
             sentence: string;
+        };
+        /**
+         * RecordLine
+         * @description One collapsed line: ``ingest`` (what was read and its warnings), ``profile`` (what the
+         *     column summaries read), ``not_applicable`` (why a question was not asked), ``set_for_you`` (a
+         *     default no other choice changes a number on here, with why), ``filled`` (an answer the engine
+         *     recorded itself), ``noted`` (what was looked at or noticed with nothing to decide).
+         */
+        RecordLine: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "ingest" | "profile" | "not_applicable" | "set_for_you" | "filled" | "noted";
+            /** Key */
+            key: string;
+            /** Id */
+            id: string | null;
+            /** Text */
+            text: string;
+            /** Decision Id */
+            decision_id: string | null;
+        };
+        /** RecordStage */
+        RecordStage: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Lines
+             * @default []
+             */
+            lines: components["schemas"]["RecordLine"][];
         };
         /**
          * Refusal
@@ -4368,6 +4674,46 @@ export interface components {
              */
             days: number;
         };
+        /**
+         * SetDesign
+         * @description How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked
+         *     in Your question before the goal, observational stated until answered. Every design is a named
+         *     value (``turbotab.core.designs``); one this version does not analyze is refused with its code,
+         *     its reason and the observational exit (V2X_SEAMS seam guard 6).
+         */
+        "SetDesign-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_design";
+            /**
+             * Design
+             * @default observational
+             * @enum {string}
+             */
+            design: "observational" | "parallel_trial" | "cluster_randomized_trial" | "case_control" | "matched_sets" | "crossover" | "repeated_measures_trial";
+        };
+        /**
+         * SetDesign
+         * @description How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked
+         *     in Your question before the goal, observational stated until answered. Every design is a named
+         *     value (``turbotab.core.designs``); one this version does not analyze is refused with its code,
+         *     its reason and the observational exit (V2X_SEAMS seam guard 6).
+         */
+        "SetDesign-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_design";
+            /**
+             * Design
+             * @default observational
+             * @enum {string}
+             */
+            design: "observational" | "parallel_trial" | "cluster_randomized_trial" | "case_control" | "matched_sets" | "crossover" | "repeated_measures_trial";
+        };
         /** SetEnergyAdjustment */
         "SetEnergyAdjustment-Input": {
             /**
@@ -4435,7 +4781,7 @@ export interface components {
              * @default total
              * @enum {string}
              */
-            effect: "total" | "direct";
+            effect: "total" | "direct" | "complier" | "per_protocol";
             /** Contrast */
             contrast?: ("substitution" | "addition") | null;
             /**
@@ -4470,7 +4816,7 @@ export interface components {
              * @default total
              * @enum {string}
              */
-            effect: "total" | "direct";
+            effect: "total" | "direct" | "complier" | "per_protocol";
             /** Contrast */
             contrast: ("substitution" | "addition") | null;
             /**
@@ -5767,7 +6113,11 @@ export interface components {
         };
         /**
          * SetSurvey
-         * @description Whose estimate it is under a survey design (``SurveySpec``).
+         * @description Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was
+         *     answered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer
+         *     says whose performance the scores estimate, which is not the estimand inference asks for, so
+         *     an answer given under one stands only under that one; a record from before the stamp
+         *     (``None``) stands under either, as it did.
          */
         "SetSurvey-Input": {
             /**
@@ -5795,10 +6145,16 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+            /** Goal */
+            goal?: ("prediction" | "inference") | null;
         };
         /**
          * SetSurvey
-         * @description Whose estimate it is under a survey design (``SurveySpec``).
+         * @description Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was
+         *     answered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer
+         *     says whose performance the scores estimate, which is not the estimand inference asks for, so
+         *     an answer given under one stands only under that one; a record from before the stamp
+         *     (``None``) stands under either, as it did.
          */
         "SetSurvey-Output": {
             /**
@@ -5826,6 +6182,8 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+            /** Goal */
+            goal: ("prediction" | "inference") | null;
         };
         /** SetTarget */
         SetTarget: {
@@ -6156,6 +6514,104 @@ export interface components {
             ear_symmetric: boolean;
         };
         /**
+         * SetValidation
+         * @description A changed validation scheme (crosswalk disagreement 5): how the training rows compare the
+         *     models (the folds and the kind of validation), recorded on its own so that the draw's record,
+         *     its time and with it the holdout's status stay where the draw put them. ``set_split`` keeps the
+         *     draw (the holdout and the seed) and carries the scheme set for you, which Models' Confirm sweep
+         *     shows (``default:validation-scheme``). Changed after the held-out rows were opened it is block
+         *     and record: ``acknowledged`` keeps it, and the scores at the opening stay the reported result.
+         */
+        "SetValidation-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_validation";
+            /**
+             * Folds
+             * @default 5
+             */
+            folds: number;
+            /**
+             * Validation
+             * @default kfold
+             * @enum {string}
+             */
+            validation: "kfold" | "repeated_kfold" | "bootstrap" | "internal_external";
+            /**
+             * Repeats
+             * @default 10
+             */
+            repeats: number;
+            /**
+             * N Boot
+             * @default 500
+             */
+            n_boot: number;
+            /** Cluster */
+            cluster?: string | null;
+            /**
+             * Nested Cv
+             * @default false
+             */
+            nested_cv: boolean;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /**
+         * SetValidation
+         * @description A changed validation scheme (crosswalk disagreement 5): how the training rows compare the
+         *     models (the folds and the kind of validation), recorded on its own so that the draw's record,
+         *     its time and with it the holdout's status stay where the draw put them. ``set_split`` keeps the
+         *     draw (the holdout and the seed) and carries the scheme set for you, which Models' Confirm sweep
+         *     shows (``default:validation-scheme``). Changed after the held-out rows were opened it is block
+         *     and record: ``acknowledged`` keeps it, and the scores at the opening stay the reported result.
+         */
+        "SetValidation-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_validation";
+            /**
+             * Folds
+             * @default 5
+             */
+            folds: number;
+            /**
+             * Validation
+             * @default kfold
+             * @enum {string}
+             */
+            validation: "kfold" | "repeated_kfold" | "bootstrap" | "internal_external";
+            /**
+             * Repeats
+             * @default 10
+             */
+            repeats: number;
+            /**
+             * N Boot
+             * @default 500
+             */
+            n_boot: number;
+            /** Cluster */
+            cluster: string | null;
+            /**
+             * Nested Cv
+             * @default false
+             */
+            nested_cv: boolean;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /**
          * Source
          * @description A source a declaration cites: a key into ``models.sources.SOURCES`` (MODEL_FAMILY_CONTRACT
          *     §7's verified list, until SIZING X4's citation registry), and where in it.
@@ -6259,6 +6715,8 @@ export interface components {
              * @default false
              */
             cancelled: boolean;
+            /** Held */
+            held: string | null;
         };
         /** SubstitutionSpec */
         SubstitutionSpec: {
@@ -6322,13 +6780,77 @@ export interface components {
         };
         /**
          * Sweep
-         * @description The stage's one Confirm sweep: how many defaults it holds, and whether each is answered.
+         * @description The stage's one Confirm sweep (P0.5): how many defaults it holds, and whether each is
+         *     answered, by the person's own answer or by "Confirm all" (``confirmed_by``, the
+         *     ``confirm_sweep`` record). ``changed``: the lines set for the person anew, or stated otherwise,
+         *     since that confirmation. ``id`` is the crosswalk's card; ``heading`` and ``action`` are its
+         *     words ("Here are the 6 other choices set for you", "Confirm all 6").
          */
         Sweep: {
             /** Lines */
             lines: number;
             /** Answered */
             answered: boolean;
+            /**
+             * Id
+             * @default
+             */
+            id: string;
+            /**
+             * Heading
+             * @default
+             */
+            heading: string;
+            /**
+             * Action
+             * @default
+             */
+            action: string;
+            /** Confirmed By */
+            confirmed_by: string | null;
+            /**
+             * Changed
+             * @default []
+             */
+            changed: string[];
+        };
+        /** SweepConfirmation */
+        SweepConfirmation: {
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "data" | "question" | "first_look" | "whos_in" | "models" | "results" | "writeup";
+            /**
+             * Sweep
+             * @default defaults
+             * @enum {string}
+             */
+            sweep: "defaults" | "noticings";
+            /** Lines */
+            lines: components["schemas"]["SweptLine-Output"][];
+        };
+        /** SweptLine */
+        "SweptLine-Input": {
+            /** Id */
+            id: string;
+            /** Key */
+            key: string;
+            /** Value */
+            value: string;
+            /** Basis */
+            basis?: string | null;
+        };
+        /** SweptLine */
+        "SweptLine-Output": {
+            /** Id */
+            id: string;
+            /** Key */
+            key: string;
+            /** Value */
+            value: string;
+            /** Basis */
+            basis: string | null;
         };
         /**
          * TableFocusView
@@ -6403,7 +6925,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "lens" | "orientation" | "repairs" | "target" | "event" | "task" | "follow_up" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "exclusions" | "missing" | "split" | "estimand" | "adjustment" | "time_varying" | "energy_adjustment" | "form" | "modification" | "causal" | "models" | "substitution" | "open_seal";
+            key: "lens" | "orientation" | "repairs" | "target" | "event" | "task" | "follow_up" | "design" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "exclusions" | "missing" | "split" | "estimand" | "adjustment" | "time_varying" | "energy_adjustment" | "form" | "modification" | "causal" | "models" | "substitution" | "open_seal";
             /** Title */
             title: string;
             /** Question */
@@ -6494,6 +7016,98 @@ export interface components {
             ordering_acknowledged: boolean;
             /** Diagnostics Seen */
             diagnostics_seen: string | null;
+        };
+        /**
+         * Triage
+         * @description The triage at the gate: its stage and crosswalk card, each noticing (blockers first), how
+         *     many block, whether it can be confirmed now (the gate not passed, no blocker, something to
+         *     triage), whether every noticing has a recorded disposition, and the record that holds them.
+         *     ``changed``: the noticings whose recorded disposition no longer stands, the recommendation or
+         *     its reason having changed since. ``passed``: the gate has passed (the plan is fixed, or under
+         *     Predict the held-out rows are open), so the triage is read, no longer confirmed.
+         */
+        Triage: {
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+            /** Stage */
+            stage: string;
+            /** Gate */
+            gate: string;
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["TriageItem"][];
+            /**
+             * Blockers
+             * @default 0
+             */
+            blockers: number;
+            /**
+             * Confirmable
+             * @default false
+             */
+            confirmable: boolean;
+            /**
+             * Answered
+             * @default false
+             */
+            answered: boolean;
+            /** Confirmed By */
+            confirmed_by: string | null;
+            /**
+             * Changed
+             * @default []
+             */
+            changed: string[];
+            /**
+             * Passed
+             * @default false
+             */
+            passed: boolean;
+        };
+        /**
+         * TriageItem
+         * @description One open noticing at the gate, or one the last confirmation disposed of: where it is
+         *     decided (``line``, ``stage``, the ``question`` it routes to), the engine's recommended
+         *     disposition with its plain label and reason, whether it blocks (it must be resolved before the
+         *     triage is confirmed), and the disposition the last confirmation recorded while it still
+         *     stands (the recommendation and reason it was recorded on are the triage's now).
+         */
+        TriageItem: {
+            /** Id */
+            id: string;
+            /** Line */
+            line: string;
+            /** Stage */
+            stage: string;
+            /** Summary */
+            summary: string;
+            /** Severity */
+            severity: string;
+            /**
+             * Columns
+             * @default []
+             */
+            columns: string[];
+            /** Question */
+            question: string | null;
+            /**
+             * Recommended
+             * @enum {string}
+             */
+            recommended: "no_change" | "could_bias" | "act_on_it";
+            /** Label */
+            label: string;
+            /** Reason */
+            reason: string;
+            /** Blocker */
+            blocker: boolean;
+            /** Recorded */
+            recorded: ("no_change" | "could_bias" | "act_on_it") | null;
         };
         /** UpdatingSpec */
         UpdatingSpec: {
@@ -7990,6 +8604,28 @@ export interface components {
             /** Columns */
             columns: components["schemas"]["RowComparison"][];
         };
+        /** ConfirmSweep */
+        ConfirmSweep: {
+            /**
+             * Kind
+             * @default confirm_sweep
+             * @constant
+             */
+            kind: "confirm_sweep";
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "data" | "question" | "first_look" | "whos_in" | "models" | "results" | "writeup";
+            /**
+             * Sweep
+             * @default defaults
+             * @enum {string}
+             */
+            sweep: "defaults" | "noticings";
+            /** Lines */
+            lines: components["schemas"]["SweptLine"][];
+        };
         /**
          * CovariateAnswers
          * @description The modified disjunctive cause criterion, asked as questions (VanderWeele 2019; MODELING_
@@ -9484,7 +10120,7 @@ export interface components {
             /** Summary */
             summary: string;
             /** Routes To */
-            routes_to: ("lens" | "orientation" | "target" | "event" | "task" | "follow_up" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "exclusions" | "missing" | "split" | "estimand" | "adjustment" | "time_varying" | "energy_adjustment" | "form" | "modification" | "causal" | "models" | "substitution" | "open_seal") | null;
+            routes_to: ("lens" | "orientation" | "target" | "event" | "task" | "follow_up" | "design" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "exclusions" | "missing" | "split" | "estimand" | "adjustment" | "time_varying" | "energy_adjustment" | "form" | "modification" | "causal" | "models" | "substitution" | "open_seal") | null;
             /** Lever Label */
             lever_label: string | null;
             /** Group */
@@ -9629,6 +10265,11 @@ export interface components {
              * @default null
              */
             withheld: string | null;
+            /**
+             * Withheld For
+             * @default null
+             */
+            withheld_for: string | null;
             /** @default null */
             estimand: components["schemas"]["EstimandAnnotation"] | null;
             /**
@@ -10638,11 +11279,14 @@ export interface components {
          * LockPlan
          * @description The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).
          *
-         *     Recorded by the server when inference estimates are first displayed (or by the user, before
-         *     that): the plan in force then is what was declared in the software before any estimate was
-         *     displayed, and every later decision is marked as made after the estimates were seen. ``plan``
+         *     Recorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference
+         *     estimates were first displayed), never posted by a client: the plan in force then is what was
+         *     declared in the software before any estimate was displayed, and every later decision is marked
+         *     as made after the estimates were seen. ``plan``
          *     (every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the
-         *     server. The lock is never undone.
+         *     server. A client never undoes it; the server withdraws it (a revert it records itself) only
+         *     while no estimate has been served under it, on Cancel or a change to the plan
+         *     (calm/FOUNDATION §7), and the next press of Fit records a new one.
          */
         LockPlan: {
             /**
@@ -13111,6 +13755,27 @@ export interface components {
              */
             days: number;
         };
+        /**
+         * SetDesign
+         * @description How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked
+         *     in Your question before the goal, observational stated until answered. Every design is a named
+         *     value (``turbotab.core.designs``); one this version does not analyze is refused with its code,
+         *     its reason and the observational exit (V2X_SEAMS seam guard 6).
+         */
+        SetDesign: {
+            /**
+             * Kind
+             * @default set_design
+             * @constant
+             */
+            kind: "set_design";
+            /**
+             * Design
+             * @default observational
+             * @enum {string}
+             */
+            design: "observational" | "parallel_trial" | "cluster_randomized_trial" | "case_control" | "matched_sets" | "crossover" | "repeated_measures_trial";
+        };
         /** SetEnergyAdjustment */
         SetEnergyAdjustment: {
             /**
@@ -13165,7 +13830,7 @@ export interface components {
              * @default total
              * @enum {string}
              */
-            effect: "total" | "direct";
+            effect: "total" | "direct" | "complier" | "per_protocol";
             /**
              * Contrast
              * @default null
@@ -13889,7 +14554,11 @@ export interface components {
         };
         /**
          * SetSurvey
-         * @description Whose estimate it is under a survey design (``SurveySpec``).
+         * @description Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was
+         *     answered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer
+         *     says whose performance the scores estimate, which is not the estimand inference asks for, so
+         *     an answer given under one stands only under that one; a record from before the stamp
+         *     (``None``) stands under either, as it did.
          */
         SetSurvey: {
             /**
@@ -13933,6 +14602,11 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+            /**
+             * Goal
+             * @default null
+             */
+            goal: ("prediction" | "inference") | null;
         };
         /** SetTemporal */
         SetTemporal: {
@@ -14108,6 +14782,59 @@ export interface components {
              * @default false
              */
             ear_symmetric: boolean;
+        };
+        /**
+         * SetValidation
+         * @description A changed validation scheme (crosswalk disagreement 5): how the training rows compare the
+         *     models (the folds and the kind of validation), recorded on its own so that the draw's record,
+         *     its time and with it the holdout's status stay where the draw put them. ``set_split`` keeps the
+         *     draw (the holdout and the seed) and carries the scheme set for you, which Models' Confirm sweep
+         *     shows (``default:validation-scheme``). Changed after the held-out rows were opened it is block
+         *     and record: ``acknowledged`` keeps it, and the scores at the opening stay the reported result.
+         */
+        SetValidation: {
+            /**
+             * Kind
+             * @default set_validation
+             * @constant
+             */
+            kind: "set_validation";
+            /**
+             * Folds
+             * @default 5
+             */
+            folds: number;
+            /**
+             * Validation
+             * @default kfold
+             * @enum {string}
+             */
+            validation: "kfold" | "repeated_kfold" | "bootstrap" | "internal_external";
+            /**
+             * Repeats
+             * @default 10
+             */
+            repeats: number;
+            /**
+             * N Boot
+             * @default 500
+             */
+            n_boot: number;
+            /**
+             * Cluster
+             * @default null
+             */
+            cluster: string | null;
+            /**
+             * Nested Cv
+             * @default false
+             */
+            nested_cv: boolean;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /** Setting */
         Setting: {
@@ -14710,6 +15437,20 @@ export interface components {
              * @default null
              */
             weight: string | null;
+        };
+        /** SweptLine */
+        SweptLine: {
+            /** Id */
+            id: string;
+            /** Key */
+            key: string;
+            /** Value */
+            value: string;
+            /**
+             * Basis
+             * @default null
+             */
+            basis: string | null;
         };
         /**
          * TargetInfo
@@ -15761,7 +16502,9 @@ export interface operations {
     };
     decide_api_projects__pid__decisions_post: {
         parameters: {
-            query?: never;
+            query?: {
+                decide_now?: boolean;
+            };
             header?: never;
             path: {
                 pid: string;
@@ -15770,7 +16513,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"] | components["schemas"]["SetBatch-Input"] | components["schemas"]["SetMultiplicity-Input"] | components["schemas"]["SetScales-Input"] | components["schemas"]["SetUsualIntake-Input"] | components["schemas"]["SetModelSequence-Input"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Input"] | components["schemas"]["SetTimeVarying-Input"] | components["schemas"]["SetExplain-Input"] | components["schemas"]["SetForms-Input"] | components["schemas"]["SetModification-Input"] | components["schemas"]["ViewOutcome-Input"] | components["schemas"]["SetLevers-Input"] | components["schemas"]["SetSelection-Input"] | components["schemas"]["SetIntendedUse-Input"] | components["schemas"]["SetUpdating-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"] | components["schemas"]["SetBatch-Input"] | components["schemas"]["SetMultiplicity-Input"] | components["schemas"]["SetScales-Input"] | components["schemas"]["SetUsualIntake-Input"] | components["schemas"]["SetModelSequence-Input"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Input"] | components["schemas"]["SetTimeVarying-Input"] | components["schemas"]["SetExplain-Input"] | components["schemas"]["SetForms-Input"] | components["schemas"]["SetModification-Input"] | components["schemas"]["ViewOutcome-Input"] | components["schemas"]["SetLevers-Input"] | components["schemas"]["SetSelection-Input"] | components["schemas"]["SetIntendedUse-Input"] | components["schemas"]["SetUpdating-Input"] | components["schemas"]["ConfirmSweep-Input"] | components["schemas"]["SetDesign-Input"] | components["schemas"]["SetValidation-Input"];
             };
         };
         responses: {
@@ -15870,6 +16613,175 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QuestLog"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    press_fit_api_projects__pid__fit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitLock"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Nothing to fit yet, or a question the estimates rest on is open */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_fit_api_projects__pid__fit_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitLock"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    for_the_record_api_projects__pid__record_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForTheRecord"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    triage_api_projects__pid__triage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Triage"];
                 };
             };
             /** @description No such project */
@@ -16065,7 +16977,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"] | components["schemas"]["SetBatch-Input"] | components["schemas"]["SetMultiplicity-Input"] | components["schemas"]["SetScales-Input"] | components["schemas"]["SetUsualIntake-Input"] | components["schemas"]["SetModelSequence-Input"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Input"] | components["schemas"]["SetTimeVarying-Input"] | components["schemas"]["SetExplain-Input"] | components["schemas"]["SetForms-Input"] | components["schemas"]["SetModification-Input"] | components["schemas"]["ViewOutcome-Input"] | components["schemas"]["SetLevers-Input"] | components["schemas"]["SetSelection-Input"] | components["schemas"]["SetIntendedUse-Input"] | components["schemas"]["SetUpdating-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"] | components["schemas"]["SetBatch-Input"] | components["schemas"]["SetMultiplicity-Input"] | components["schemas"]["SetScales-Input"] | components["schemas"]["SetUsualIntake-Input"] | components["schemas"]["SetModelSequence-Input"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Input"] | components["schemas"]["SetTimeVarying-Input"] | components["schemas"]["SetExplain-Input"] | components["schemas"]["SetForms-Input"] | components["schemas"]["SetModification-Input"] | components["schemas"]["ViewOutcome-Input"] | components["schemas"]["SetLevers-Input"] | components["schemas"]["SetSelection-Input"] | components["schemas"]["SetIntendedUse-Input"] | components["schemas"]["SetUpdating-Input"] | components["schemas"]["ConfirmSweep-Input"] | components["schemas"]["SetDesign-Input"] | components["schemas"]["SetValidation-Input"];
             };
         };
         responses: {

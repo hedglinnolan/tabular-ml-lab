@@ -32,6 +32,7 @@ from turbotab.core.stages.modeling import design_stage, fit_stage
 from turbotab.core.stages.rows import split_stage
 from turbotab.core.tests import modeling_fixtures as mf
 from turbotab.core.tests.acceptance import references as ref
+from turbotab.core.tests.acceptance.server_drive import release, served
 
 T975 = stats.t.ppf(0.975, 9)  # 2.2622
 
@@ -206,8 +207,9 @@ class _Drive:
         end = time.monotonic() + timeout
         while True:
             status = self.view()["stages"][stage]
+            release(self.c, self.pid, status)
             if status["status"] == "fresh":
-                return self.c.get(f"/api/projects/{self.pid}/stages/{stage}").json()["artifact"]
+                return served(self.c, self.pid, stage)
             assert status["status"] != "error", status
             assert time.monotonic() < end, f"{stage} never fresh: {status}"
             time.sleep(0.05)

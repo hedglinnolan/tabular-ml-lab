@@ -84,6 +84,7 @@ export const SUBJECT: Record<QuestionKey, string> = {
   event: "the event level",
   task: "the task",
   follow_up: "the follow-up",
+  design: "the study design",
   purpose: "the purpose",
   grain: "the grain",
   repeat_kind: "repeats or time points",

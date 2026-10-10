@@ -42,6 +42,7 @@ from turbotab.core.stages.target import target_info_stage
 from turbotab.core.tests import modeling_fixtures as mf
 from turbotab.core.tests.acceptance.references import hc3_by_definition
 from turbotab.core.tests.stage_harness import NHANES, Ingested
+from turbotab.core.tests.acceptance.server_drive import press_fit, served
 
 Z = stats.norm.ppf(0.975)
 
@@ -437,7 +438,7 @@ def _fitted_project(client, models: list[str]) -> str:
 
 
 def _fit(client, pid: str) -> dict:
-    return client.get(f"/api/projects/{pid}/stages/fit").json()["artifact"]
+    return served(client, pid, "fit")
 
 
 def test_3a_opening_the_seal_needs_a_declared_final_family_whose_holdout_is_the_result(client):
@@ -510,6 +511,9 @@ def test_3a_opening_the_seal_needs_a_declared_final_family_whose_holdout_is_the_
         f"families' held-out scores are secondary.")
 
     single = _fitted_project(client, ["linear"])
+    before = _post(client, single, {"kind": "open_seal"})  # the held-out rows open after Fit
+    assert before.status_code == 409 and before.json()["error"]["code"] == "fit_not_yet"
+    assert press_fit(client, single)
     assert _post(client, single, {"kind": "open_seal"}).status_code == 200
     record = client.get(f"/api/projects/{single}").json()["decisions"][-1]
     assert (record["decision"]["kind"], record["decision"]["family"]) == ("open_seal", "linear")

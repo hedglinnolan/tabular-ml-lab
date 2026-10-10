@@ -217,6 +217,46 @@ def test_after_a_change_the_old_artifact_is_served_stale_then_fresh(make_engine)
     }
 
 
+def test_the_hold_keeps_a_ready_stage_from_starting_until_it_is_released(runner, tmp_path):
+    # RECIPES_AND_TUNING §4.4 (P0.8): the hold is the scheduler's. A held stage is not started, its
+    # status says why, and what waits on it waits; released, it starts at the next refresh. The
+    # hold reads the project as the scheduler sees it, and a hold that fails holds nothing.
+    projects, bus = Projects(tmp_path), RecordingBus()
+    released = threading.Event()
+    seen: list[tuple[bool, object]] = []
+
+    def hold(stage, view):
+        if stage == "C":
+            raise RuntimeError("cannot decide")
+        if stage != "B":
+            return None
+        seen.append((view.pending("C"), view.artifact("A")))
+        return None if released.is_set() else "fit"
+
+    engine = Engine(graph_factory=TOY, runner=runner, bus=bus, project_ctx=projects, hold=hold)
+    try:
+        pid = _pid()
+        projects.states[pid] = ToyState(x="1", y="1")
+        engine.on_decision(pid)
+        wait_for(engine, pid, lambda s: s["A"].status == s["C"].status == "fresh")
+        time.sleep(0.2)  # held, not merely slow to start
+        status = engine.status(pid)
+        assert status["B"].status == "idle" and status["B"].held == "fit"
+        assert status["D"].status == "idle" and status["D"].held is None  # waits on B
+        assert status["C"].held is None  # its hold failed: it computed live
+        assert seen and seen[-1][1] == read_artifact(projects.cache(pid), "A", status["A"].key,
+                                                     public=True)
+        assert ("B" in {e["stage"] for e in bus.take(pid, "stage") if e["status"] == "running"}
+                ) is False
+        released.set()
+        engine.on_decision(pid)
+        status = wait_for(engine, pid, all_fresh)
+        assert status["B"].held is None
+        assert engine.get(pid, "D").artifact == {"value": "D(B(A(1),1),C(A(1)))"}
+    finally:
+        engine.shutdown()
+
+
 def test_blocked_stages_say_which_slots_are_missing_transitively(make_engine):
     engine, projects, _ = make_engine(TOY)
     pid = _pid()
@@ -358,7 +398,7 @@ def test_status_serializes_to_the_contract_shape():
     fields = set(StageStatus(stage="s", status="idle").model_dump(mode="json"))
     assert fields == {
         "stage", "status", "key", "fresh", "missing", "error", "job_id", "progress", "updated_at",
-        "cancelled",
+        "cancelled", "held",
     }
 
 

@@ -18,6 +18,7 @@ function status(stage: string, patch: Partial<StageStatus> = {}): StageStatus {
     progress: null,
     updated_at: "2026-09-27T10:00:00.000Z",
     cancelled: false,
+    held: null,
     ...patch,
   };
 }
@@ -31,6 +32,8 @@ function record(seq: number): DecisionRecord {
     sentence: null,
     post_seal: false,
     after_estimates: false,
+    recorded_by: "you",
+    early: null,
     decision: { kind: "set_target", column: `c${seq}` },
   };
 }
@@ -108,6 +111,8 @@ function view(): ProjectView {
       selection: null,
       intended_use: null,
       updating: null,
+      sweeps: null,
+      design: null,
     },
     decisions: [record(1)],
     stages: {

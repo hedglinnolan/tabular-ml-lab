@@ -533,8 +533,16 @@ def test_5_a_direct_effect_asks_its_mediator_confounders_and_the_interaction(tmp
         drive.answer("missing", {"kind": "set_missing", "strategy": "complete_case"})
         drive.answer("split", {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
         drive.reach("estimand")
-        drive.decide({"kind": "set_estimand", "exposure": "sugar", "effect": "direct",
-                      "measure": "mean_difference"})
+        # V2X_SEAMS seam guard 6: a new direct effect is "Not available yet", refused with the
+        # whole effect as its exit. A project that recorded one before keeps loading and computing
+        # (its machinery is kept for the mediation milestone): its line is written as it was.
+        direct = {"kind": "set_estimand", "exposure": "sugar", "effect": "direct",
+                  "measure": "mean_difference"}
+        error = _error(drive.post(direct), "direct_effect_v2x")
+        assert [e["decision"]["effect"] for e in error["exits"] if e["decision"]] == ["total"]
+        service = client.app.state.service
+        service.log(drive.pid).append(d.parse_decision(direct))
+        service.engine.on_decision(drive.pid)
         drive.reach("adjustment")
         plain = {"age": {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "no"},
                  "bmi": {"causes_exposure": "no", "causes_outcome": "yes", "after_exposure": "yes"},

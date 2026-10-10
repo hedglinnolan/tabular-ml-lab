@@ -11,6 +11,7 @@ import os
 import shutil
 import tempfile
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from collections import OrderedDict
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -18,8 +19,8 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any, Callable
 
-from turbotab.core import consequences, decisions, estimand, seal, voice  # seal: its validators and preview
-from turbotab.core import plan_lock  # noqa: F401 - the analysis-plan lock's validators (WP16)
+from turbotab.core import consequences, decisions, estimand, fit_press, seal, voice  # seal: its validators and preview
+from turbotab.core import plan_lock  # the analysis-plan lock, and its validators (WP16)
 from turbotab.core.config import Settings
 from turbotab.core.datastore import DataStore, fingerprint_file
 from turbotab.core.datastore import _source_kind as source_kind  # the one list of readable types
@@ -37,6 +38,7 @@ from turbotab.core.graph import (
 from turbotab.core.interview import InterviewStep, route
 from turbotab.core.jobs import PRELOAD, JobRunner, JobView
 from turbotab.core.quest import QuestLog, quest_log
+from turbotab.core.sweep import ForTheRecord, Triage, for_the_record, triage
 from turbotab.core.stages import GRAPH_FACTORY
 from turbotab.core.workspace import ProjectMeta, Workspace
 from turbotab.server.errors import ApiError
@@ -55,8 +57,15 @@ SOURCE_FILE = "source.json"
 # Audit WP16 (the routing gate): where an estimate was first displayed under prediction, kept beside
 # the project until the purpose becomes inference, when the plan lock records it.
 SHOWN_UNDER_PREDICTION = "estimates_shown.json"
+# The lock an estimate has been served under (its record's id), kept beside the project: until one
+# is, Cancel or a change to the plan withdraws the lock (calm/FOUNDATION §7; SIZING P0.8).
+LOCK_SHOWN = "lock_shown.json"
 # Decision kinds the server records itself and a client never posts: the analysis-plan lock.
-SYSTEM_KINDS = ("lock_plan",)
+SYSTEM_KINDS = decisions.SYSTEM_KINDS
+# P0.6: the Router questions TurboTab answers itself once reached, and the slot each writes.
+SLOTS_OF_COMPLETIONS = {"roles": "roles", "split": "split"}
+# What a Router step waits on while TurboTab records its answer itself (P0.6).
+RECORDING = "recording"
 MAX_REMEMBERED_JOBS = 10_000
 
 
@@ -111,6 +120,17 @@ class DecisionContext:
     # The project's folder: a join reads its added files, a codebook import its staged codebook
     # (DATAIN, V2 definition of done §1).
     project_dir: str | None = None
+    # Why no estimate may be served now, as ``fit_press.serving_gate`` says it (before Fit, before
+    # the plan's lock, with no purpose); None when one may. The held-out rows open, and a refusal
+    # quotes a cross-validated score, only once the scores may be shown (SIZING P0.8).
+    fit_gate: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
+    # The quest log and the triage at the gate as the project stands: what "Confirm all" records
+    # (P0.5, ``turbotab/core/sweep.py``).
+    quest: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
+    triage: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
+    # "Decide now" (crosswalk disagreement 20): the answer asks to be taken ahead of the Router,
+    # which ``sequence.decide_now_refusal`` allows only where its needs are met.
+    early: bool = False
 
 
 def _target_needs_columns(decision: Any, ctx: Any) -> None:
@@ -329,8 +349,15 @@ class ServerBus(EventBus):
         super().__init__()
         self._owners: OrderedDict[str, str] = OrderedDict()
         self._owners_lock = threading.Lock()
+        # P0.6: told of each stage event, so the service records what is due once a stage the
+        # Router waits on is computed. It only schedules work: the engine publishes holding its
+        # own locks.
+        self.on_stage: Callable[[str, dict[str, Any]], None] | None = None
 
     def publish(self, pid: str, event_type: str, data: dict[str, Any]) -> None:
+        hook = self.on_stage
+        if event_type == "stage" and hook is not None:
+            hook(pid, data)
         if event_type == "job" and data.get("job_id"):
             with self._owners_lock:
                 self._owners[str(data["job_id"])] = pid
@@ -353,6 +380,17 @@ class IngestFacts:
     n_cols: int
     columns: list[str]
     column_info: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class _QuestInputs:
+    """The quest log and what it was read from: the triage and For the record read the same."""
+
+    log: QuestLog
+    state: ProjectState
+    records: list[Any]
+    steps: list[Any]
+    findings: Any
 
 
 PREVIEW_CELLS = 20_000_000  # the before-frame's budget: rows x columns
@@ -419,11 +457,16 @@ def preview_basis(ctx: consequences.PreviewContext, result: consequences.Preview
 
 
 class ProjectService:
-    def __init__(self, settings: Settings, runner: JobRunner | None = None):
+    def __init__(self, settings: Settings, runner: JobRunner | None = None, *,
+                 replay: bool = False):
         """One workspace (``settings.home``) and its engine. ``runner``: job workers shared with
         other services (server mode's per-user workspaces, ``turbotab.server.tenancy``), which the
-        caller shuts down; by default the service starts and stops its own."""
+        caller shuts down; by default the service starts and stops its own. ``replay``: a replay of
+        an exported bundle (``core.export.replay``), which bypasses the scheduler's hold and serves
+        what the bundle reported, since Fit, a job command, is not in the log it replays (RECIPES
+        §4.4)."""
         self.settings = settings
+        self.replay = replay
         self.workspace = Workspace(settings)
         self.bus = ServerBus()
         self._owns_runner = runner is None
@@ -434,6 +477,7 @@ class ProjectService:
                 runner=self.runner,
                 bus=self.bus,
                 project_ctx=self._project_ctx,
+                hold=None if replay else self._hold,
             )
         except BaseException:
             if self._owns_runner:
@@ -447,8 +491,22 @@ class ProjectService:
         self._artifacts: OrderedDict[tuple[str, str, str], Any] = OrderedDict()
         self._frames: OrderedDict[tuple[Any, ...], Any] = OrderedDict()
         self._locking = threading.Lock()  # one analysis-plan lock per project, however many reads
+        # P0.6: one completion at a time, recorded with the answers and when a stage the Router
+        # waits on is computed (the bus's stage events), on the completer's own thread; never by
+        # a read.
+        self._completing = threading.RLock()
+        self._completer = ThreadPoolExecutor(1, thread_name_prefix="turbotab-complete")
+        self._scheduled: set[str] = set()
+        self._scheduled_lock = threading.Lock()
+        self._completion_refused: dict[str, tuple[str, int]] = {}
+        self._closed = False
+        self.bus.on_stage = self._stage_event
 
     def close(self) -> None:
+        with self._scheduled_lock:
+            self._closed = True
+        self.bus.on_stage = None
+        self._completer.shutdown(wait=True, cancel_futures=True)
         self.engine.shutdown()
         if self._owns_runner:
             self.runner.shutdown()
@@ -817,27 +875,122 @@ class ProjectService:
         stages = self.engine.status(pid)
         records = self.log(pid).records()
         state = decisions.fold(records)
+        steps = self.interview(pid, state, stages, records)
         return {
             "summary": self.summary(meta, stages["ingest"]),
             "state": state,
             "decisions": records,
             "stages": stages,
-            "interview": self.interview(pid, state, stages, records),
+            "interview": steps,
         }
+
+    def _completion_due(self, pid: str, state: ProjectState, stages: dict[str, StageStatus],
+                        steps: list[InterviewStep], records: list[Any],
+                        roles: Any = None) -> tuple[str, dict[str, Any]] | None:
+        """P0.6: the answer TurboTab records itself now that the Router reached its question (the
+        display-order rule's second condition: recorded and shown, For the record, with a way to
+        change it), as ``(question, decision)``; None when nothing is due. Pure: it reads the
+        Router's answer, never records.
+
+        * **The roles** (crosswalk disagreement 1): once every predictor's role is settled through
+          the person's own confirmations in Your data (``readings.roles_completion``). While one
+          waits nothing is recorded, and the Router holds at the roles.
+        * **The split under Estimate** (disagreement 5): no rows held out, the scheme set for you
+          (``seal.INFERENCE_SPLIT_REASON``), recorded at the end of Who's in.
+
+        A completion the log refused for this log is not due again until the log changes."""
+        from turbotab.core.interview import first_unanswered
+        from turbotab.core.readings import roles_completion
+
+        first = first_unanswered(steps)
+        if first is None or first.status != "open":
+            return None
+        body: dict[str, Any] | None = None
+        if first.key == "split" and state.purpose == "inference" and state.split is None:
+            body = {"kind": "set_split", "holdout": 0.0, "seed": 0}
+        elif first.key == "roles" and not state.roles:
+            status = stages.get("roles")
+            if roles is None and status is not None and status.status == "fresh" and status.key:
+                roles = self._artifact(pid, "roles", status.key, public=True)
+            body = roles_completion(state, roles) if roles is not None else None
+        if body is None or self._completion_refused.get(pid) == (first.key, len(records)):
+            return None
+        return first.key, body
+
+    def _complete(self, pid: str) -> bool:
+        """Record what is due (``_completion_due``) for ``pid``; True when a record was made. Run
+        with each answer the person records and when a stage the Router waits on is computed,
+        never by a read."""
+        with self._completing:
+            try:
+                self.workspace.get(pid)
+            except ApiError:
+                return False
+            records = self.log(pid).records()
+            state = decisions.fold(records)
+            if state.roles and not (state.purpose == "inference" and state.split is None):
+                return False  # nothing left that TurboTab records itself
+            stages = self.engine.status(pid)
+            steps = self.interview(pid, state, stages, records, recording=False)
+            due = self._completion_due(pid, state, stages, steps, records)
+            if due is None:
+                return False
+            key, body = due
+            try:
+                self.decide(pid, body, system=True, unless_set=SLOTS_OF_COMPLETIONS[key])
+            except Refusal as refused:
+                log.info("%s of %s not completed: %s", key, pid, refused.code)
+                self._completion_refused[pid] = (key, len(records))
+                return False
+            return True
+
+    def _schedule_completion(self, pid: str) -> None:
+        """Check ``pid``'s completions on the completer's thread (a stage the Router waits on was
+        computed). While one is scheduled the Router shows its step as being recorded."""
+        with self._scheduled_lock:
+            if self._closed or pid in self._scheduled:
+                return
+            self._scheduled.add(pid)
+        try:
+            self._completer.submit(self._complete_scheduled, pid)
+        except RuntimeError:  # shut down
+            with self._scheduled_lock:
+                self._scheduled.discard(pid)
+
+    def _complete_scheduled(self, pid: str) -> None:
+        try:
+            while self._complete(pid):  # one completion can bring the next one's question
+                pass
+        except Exception:  # noqa: BLE001 - a completion that fails leaves the question open
+            log.exception("completions of %s", pid)
+        finally:
+            with self._scheduled_lock:
+                self._scheduled.discard(pid)
+
+    def _stage_event(self, pid: str, data: dict[str, Any]) -> None:
+        """A stage was computed: the Router may have reached a question TurboTab answers itself.
+        Only schedules (the engine publishes holding its own locks); the check is the
+        completer's."""
+        if data.get("status") == "fresh":
+            self._schedule_completion(pid)
 
     def readings(self, pid: str) -> dict[str, Any]:
         """The readings the values settled with no question asked ("read from your data",
         BLUEPRINT §14.3): read from the roles, outcome and proposals stages (fresh, else the
         newest computed) and the working table's values."""
-        from turbotab.core.readings import read_from_data, read_from_values_sentence
+        from turbotab.core.readings import read_from_values_sentence
 
         self.workspace.get(pid)
-        state = self.log(pid).state()
-        items = read_from_data(state, store=self._store_or_none(pid),
-                               **{name: self._shown(pid, stage) for name, stage in
-                                  (("roles", "roles"), ("target_info", "target_info"),
-                                   ("proposals", "proposals"))})
+        items = self._read_from_data(pid, self.log(pid).state())
         return {"read_from_data": items, "sentence": read_from_values_sentence(items)}
+
+    def _read_from_data(self, pid: str, state: ProjectState) -> list[dict[str, Any]]:
+        from turbotab.core.readings import read_from_data
+
+        return read_from_data(state, store=self._store_or_none(pid),
+                              **{name: self._shown(pid, stage) for name, stage in
+                                 (("roles", "roles"), ("target_info", "target_info"),
+                                  ("proposals", "proposals"))})
 
     def quest(self, pid: str) -> QuestLog:
         """The quest log's seven stages (SIZING P0.4; ``turbotab/core/quest.py``): each stage's
@@ -845,7 +998,26 @@ class ProjectService:
         stage is not fresh and an older artifact exists (a blocked stage's too: the registry gives
         it no reason, since it is never computed again, but an estimate among them keeps Results
         reached); the reason reads when that artifact was computed. The usual-intake line applies
-        where the stage's newest artifact offers the distribution."""
+        where the stage's newest artifact offers the distribution. Results opens when Fit is
+        pressed, and the log carries the plan's lock (``fit``; SIZING P0.8). Your data's sweep
+        holds what the values settled (P0.5), as ``GET /readings`` lists it."""
+        return self._quest(pid).log
+
+    def triage(self, pid: str) -> Triage:
+        """The triage of the open noticings at the gate (P0.5; ``turbotab/core/sweep.py``): each
+        open finding with the engine's recommended disposition, blockers first."""
+        q = self._quest(pid)
+        return triage(q.state, q.log, q.findings, q.records)
+
+    def record(self, pid: str) -> ForTheRecord:
+        """Each reached stage's For the record lines (P0.5): the ingest's facts and warnings, the
+        profile's basis, why a question was not asked, the defaults that change nothing here, and
+        what the engine recorded itself."""
+        q = self._quest(pid)
+        return for_the_record(q.log, q.steps, q.records, ingest=self._shown(pid, "ingest"),
+                              profile=self._shown(pid, "profile"))
+
+    def _quest(self, pid: str) -> _QuestInputs:
         self.workspace.get(pid)
         stages = self.engine.status(pid)
         records = self.log(pid).records()
@@ -857,6 +1029,11 @@ class ProjectService:
                    if ingest.status == "fresh" and ingest.key else None)
         artifacts = ({"usual_intake": self._shown(pid, "usual_intake")}
                      if "dietary" in (state.lens or ()) else {})
+        roles = stages.get("roles")
+        if roles is not None and roles.status == "fresh" and roles.key:
+            # P0.6: the roles TurboTab recorded return when a proposal moves after the person
+            # confirmed it (``quest.ChangedSince``).
+            artifacts["roles"] = self._artifact(pid, "roles", roles.key, public=True)
         cache = self.workspace.cache_dir(pid)
         shown_at: dict[str, datetime | None] = {}
         for name, status in stages.items():
@@ -866,8 +1043,11 @@ class ProjectService:
             if older is not None:
                 made = read_meta(cache, name, older).get("created_at")
                 shown_at[name] = datetime.fromisoformat(made) if made else None
-        return quest_log(state, records, steps, stages, findings=findings, columns=columns,
-                         artifacts=artifacts, shown_at=shown_at)
+        log = quest_log(state, records, steps, stages, findings=findings, columns=columns,
+                        artifacts=artifacts, shown_at=shown_at,
+                        readings=self._read_from_data(pid, state),
+                        fit=self.fit_lock(pid, stages, records))
+        return _QuestInputs(log=log, state=state, records=records, steps=steps, findings=findings)
 
     def _store_or_none(self, pid: str) -> Any:
         try:
@@ -876,8 +1056,10 @@ class ProjectService:
             return None
 
     def interview(self, pid: str, state: ProjectState, stages: dict[str, StageStatus],
-                  records: list[Any]) -> list[InterviewStep]:
-        """The Router's answer (turbotab/core/interview.py) for this project now."""
+                  records: list[Any], *, recording: bool = True) -> list[InterviewStep]:
+        """The Router's answer (turbotab/core/interview.py) for this project now. ``recording``:
+        a question TurboTab is recording itself on the completer's thread (P0.6) waits on that
+        record (``waiting_on`` ``RECORDING``), so no client answers it in the meantime."""
         artifacts: dict[str, Any] = {}
         # What the Router reads, when fresh (WP17: the roles stage's proposals name the groupings
         # the cluster question asks about; WP18: the proposals for the ask card, whose "read from
@@ -915,7 +1097,17 @@ class ProjectService:
         from turbotab.core.ask import AskContext
 
         ask = AskContext(state, artifacts, column_info=column_info, store=store)
-        return route(state, stages, artifacts, records, ask=ask)
+        steps = route(state, stages, artifacts, records, ask=ask)
+        if not recording:
+            return steps
+        with self._scheduled_lock:
+            scheduled = pid in self._scheduled
+        due = (self._completion_due(pid, state, stages, steps, records, artifacts.get("roles"))
+               if scheduled else None)
+        if due is None:
+            return steps
+        return [s.model_copy(update={"status": "waiting", "waiting_on": [RECORDING]})
+                if s.key == due[0] else s for s in steps]
 
     # ── deciding ──
 
@@ -958,38 +1150,92 @@ class ProjectService:
             stage=stages.get,
             bundle=lambda stage: self._fresh(pid, stage),
             project_dir=str(self.workspace.project_dir(pid)),
+            fit_gate=lambda: fit_press.serving_gate(state, self._pressed(pid, state)),
+            quest=lambda: self.quest(pid),
+            triage=lambda: self.triage(pid),
         )
 
-    def decide(self, pid: str, decision: Any, *, system: bool = False) -> dict[str, Any]:
+    def decide(self, pid: str, decision: Any, *, system: bool = False,
+               early: bool = False, unless_set: str | None = None) -> dict[str, Any]:
         """Validate and record ``decision``. ``system``: recorded by the server itself (the
-        analysis-plan lock, when an estimate is first displayed), never by a client."""
+        analysis-plan lock, when an estimate is first displayed; P0.6's completions), never by a
+        client. ``early``: "Decide now" (crosswalk disagreement 20), answered ahead of the Router
+        where its card is computed and the answers it reads are in; the record names the question
+        it was decided ahead of."""
         self.workspace.get(pid)
-        ctx = replace(self.decision_context(pid), sealed_scores=lambda: self._fresh_sealed_scores(pid))
-        parsed = decisions.validate(decision, ctx)  # raises Refusal
+        ctx = replace(self.decision_context(pid), early=early,
+                      sealed_scores=lambda: self._fresh_sealed_scores(pid))
+        parsed = self._validate(pid, decision, ctx)  # raises Refusal
+        ahead_of = None
+        if early:
+            from turbotab.core.sequence import decided_ahead_of, question_of
+
+            question = question_of(parsed.kind)
+            ahead_of = decided_ahead_of(question, ctx.interview()) if question else None
         if parsed.kind in SYSTEM_KINDS and not system:
-            # Audit WP16 (the routing gate's p14): a lock posted by hand before any estimate was
-            # displayed marked every later answer as made after the estimates were seen, which was
-            # false. The plan locks itself when an estimate is first displayed.
+            # Audit WP16 (the routing gate's p14): a lock posted as a decision is refused. P0.8:
+            # the plan locks when Fit is pressed (``press_fit``), a job command, not a decision.
             raise Refusal(
                 "plan_locks_itself",
-                "The analysis plan is locked by TurboTab itself, the first time an estimate is "
-                "displayed: the plan in force then is recorded with its SHA-256, and every later "
-                "change is marked as made after the estimates were seen. Locked by hand before "
-                "that, answers made before any estimate would be marked as made after one.",
-                exits=[{"label": "Answer the remaining questions; the first estimate shown locks "
-                                 "the plan", "decision": None}])
-        log = self.log(pid)
-        facts = SentenceFacts(ctx, parsed, log.records())
-        # The log leads the sentence with what had been seen: held-out scores, or the inference
-        # estimates (``decisions.disclose``; audit WP16).
-        record = log.append(  # raises Refusal for a revert it cannot make
-            parsed, sentence=lambda d, before: voice.sentence_for(d, before, facts))
+                "The analysis plan is locked by pressing Fit on the analysis flowchart, once the "
+                "questions the estimates rest on are answered: the plan in force then is recorded "
+                "with its SHA-256, the first estimates are shown, and every later change is marked "
+                "as made after the estimates were seen.",
+                exits=[{"label": "Answer the remaining questions, then press Fit",
+                        "decision": None}])
+        by = {"recorded_by": "turbotab" if system else "you", "early": ahead_of,
+              "unless_set": unless_set}
+        if system or self._unseen_lock(pid, self.log(pid).records()) is None:
+            record = self._append(pid, ctx, parsed, **by)
+        else:
+            with self._locking:  # Cancel and the first estimate served wait for it
+                record = self._append(pid, ctx, parsed, client=True, **by)
         self.bus.publish(pid, "decision", record.model_dump(mode="json"))
         self.engine.on_decision(pid)
         self._restart_stopped(pid, parsed.kind)
         if parsed.kind == "set_purpose" and parsed.purpose == "inference":
             self._lock_after_prediction(pid)
+        if not system:
+            # P0.6: what this answer makes due is recorded with it, before the answer returns.
+            while self._complete(pid):
+                pass
         return self.view(pid)
+
+    def _append(self, pid: str, ctx: DecisionContext, parsed: Any, client: bool = False,
+                **by: Any) -> Any:
+        """Record ``parsed``. The log leads the sentence with what had been seen: held-out scores,
+        or the inference estimates (``decisions.disclose``; audit WP16). A client's decision made
+        under a lock no estimate has been served under was not made after the estimates were seen
+        (calm/FOUNDATION §7): a change to the plan withdraws that lock first, so Fit is asked for
+        again; any other decision is recorded unmarked, and the lock stands. ``by``: who recorded
+        it, the question a "Decide now" answer was decided ahead of, and the slot that must still
+        be empty (``DecisionLog.append``)."""
+        log = self.log(pid)
+        records = log.records()
+        seen: bool | None = None
+        lock = self._unseen_lock(pid, records) if client else None
+        if lock is not None:
+            after = decisions.state_after(parsed, ctx)
+            if after is not None and plan_lock.digest(plan_lock.plan_of(after)) != \
+                    getattr(lock.decision, "digest", None):
+                self._withdraw_lock(pid, lock, "the plan was changed before then.")
+                records = log.records()
+            seen = False
+        facts = SentenceFacts(ctx, parsed, records)
+        return log.append(  # raises Refusal for a revert it cannot make
+            parsed, sentence=lambda d, before: voice.sentence_for(d, before, facts),
+            after_estimates=seen, **by)
+
+    def _validate(self, pid: str, decision: Any, ctx: DecisionContext) -> Any:
+        """``decisions.validate``; a refusal that quotes cross-validated scores (naming the final
+        model) counts as those scores seen, as serving the fit does (MS6)."""
+        try:
+            return decisions.validate(decision, ctx)
+        except Refusal as refusal:
+            from turbotab.core.models.selection import note_seen, quoted_in
+
+            note_seen(self.workspace.project_dir(pid), ctx.target, quoted_in(refusal))
+            raise
 
     def _restart_stopped(self, pid: str, kind: str) -> None:
         """Recording an answer again is asking for its work again.
@@ -1026,14 +1272,19 @@ class ProjectService:
         self.workspace.get(pid)
         stages = self.engine.status(pid)
         ctx = self.decision_context(pid, stages)
-        parsed = decisions.validate(decision, ctx)
+        parsed = self._validate(pid, decision, ctx)
         store = self.store(pid)
         state = ctx.state if ctx.state is not None else self.log(pid).state()
+
+        pressed = self._pressed(pid, state)
+        waits = fit_press.serving_gate(state, pressed) is not None
 
         def artifact(stage: str) -> Any:
             status = stages.get(stage)
             if status is None or status.status != "fresh" or not status.key:
                 return None
+            if waits and stage in estimand.ESTIMATE_STAGES:
+                return None  # not served yet, so not read by a preview either (SIZING P0.8)
             return self._artifact(pid, stage, status.key)
 
         sealed = self.sealed_rows(pid, stages)
@@ -1060,6 +1311,7 @@ class ProjectService:
             # answer it restores), the project's folder (an added file, a staged codebook), and
             # the record's own context, so an exit a preview offers is one the record accepts.
             settings={"records": ctx.records, "project_dir": ctx.project_dir, "validation": ctx},
+            fit_pressed=pressed,
         )
         pctx.before = lambda: self._before_frame(pid, pctx, stages, used)
         result = consequences.plan(parsed, pctx, basis="")
@@ -1267,16 +1519,18 @@ class ProjectService:
             return None
         return seal.read_sealed_scores(self.workspace.cache_dir(pid), status.key)
 
-    def _lock_when_shown(self, pid: str, stage: str, artifact: Any) -> None:
-        """Under inference, the first estimate served to a client locks the analysis plan: the
-        plan in force is recorded as declared before any estimate was displayed, and every later
-        decision is marked as made after the estimates were seen (audit WP16, RO-12).
+    def _note_shown(self, pid: str, stage: str, artifact: Any) -> None:
+        """Under prediction, an estimate served (after Fit was pressed) locks nothing (no
+        coefficient is read as an effect), but that it was shown is kept beside the project
+        (:data:`SHOWN_UNDER_PREDICTION`): should the purpose become inference, the plan is locked
+        at once, as declared after estimates were seen (the routing gate's p02: coefficients seen
+        under prediction, the adjustment set then chosen under inference).
 
-        Under prediction an estimate shown locks nothing (no coefficient is read as an effect),
-        but that it was shown is kept beside the project (:data:`SHOWN_UNDER_PREDICTION`): should
-        the purpose become inference, the plan is locked at once, as declared after estimates
-        were seen (the routing gate's p02: coefficients seen under prediction, the adjustment set
-        then chosen under inference, and a lock that said nothing had been displayed)."""
+        Under inference the plan was locked when Fit was pressed (:meth:`press_fit`), before any
+        estimate could be served (:meth:`_serve`); the first estimate served under the lock is
+        kept beside the project (:data:`LOCK_SHOWN`), and from then on the lock stands. With no
+        purpose answered nothing estimated is served (guarantee test 2), so an estimate shown then
+        is a broken guarantee, said loudly."""
         from turbotab.core import plan_lock
 
         if stage not in plan_lock.ESTIMATE_STAGES or not plan_lock.shows_estimates(stage, artifact):
@@ -1284,21 +1538,169 @@ class ProjectService:
         with self._locking:
             records = self.log(pid).records()
             state = decisions.fold(records)
+            if state.purpose is None:
+                raise RuntimeError(
+                    f"an estimate of the {stage} stage was served with no purpose answered; "
+                    f"nothing estimated is served before the goal is chosen")
             if state.plan_locked:
+                self._mark_lock_shown(pid, records)
                 return
-            if state.purpose == "prediction":
-                path = self.workspace.project_dir(pid) / SHOWN_UNDER_PREDICTION
-                if not path.exists():
-                    _write_json_atomic(path, {
-                        "stage": stage, "target": state.target,
-                        "seq": max((r.seq for r in records), default=0)})
+            if state.purpose != "prediction":
                 return
-            if state.purpose != "inference":
-                return
-            try:
+            path = self.workspace.project_dir(pid) / SHOWN_UNDER_PREDICTION
+            if not path.exists():
+                _write_json_atomic(path, {
+                    "stage": stage, "target": state.target,
+                    "seq": max((r.seq for r in records), default=0)})
+
+    # ── Fit, the hold and the lock (SIZING P0.8; RECIPES_AND_TUNING §4.4; core/fit_press.py) ──
+
+    def _mark_lock_shown(self, pid: str, records: list[Any]) -> None:
+        """An estimate was served under the lock in force: from now on it stands."""
+        lock = plan_lock.current_lock(records)
+        path = self.workspace.project_dir(pid) / LOCK_SHOWN
+        if lock is not None and self._shown_lock(pid) != lock.id:
+            _write_json_atomic(path, {"lock": lock.id})
+
+    def _shown_lock(self, pid: str) -> str | None:
+        try:
+            found = json.loads((self.workspace.project_dir(pid) / LOCK_SHOWN).read_text("utf-8"))
+        except (OSError, ValueError):
+            return None
+        return found.get("lock") if isinstance(found, dict) else None
+
+    def _unseen_lock(self, pid: str, records: list[Any]) -> Any:
+        """The lock in force when no estimate has been served under it, else None. A lock recorded
+        after estimates were shown under prediction was never unseen."""
+        lock = plan_lock.current_lock(records)
+        if lock is None or getattr(lock.decision, "seen", None) == "prediction":
+            return None
+        return lock if self._shown_lock(pid) != lock.id else None
+
+    def _withdraw_lock(self, pid: str, lock: Any, why: str) -> None:
+        """Withdraw a lock no estimate was served under (calm/FOUNDATION §7): a revert of it,
+        recorded by the server and not marked as made after the estimates were seen, so the record
+        keeps the withdrawn lock with its time and fingerprint. The press goes with it, so Fit is
+        asked for again. Called under ``_locking``."""
+        record = self.log(pid).append(
+            decisions.Revert(decision_id=lock.id), after_estimates=False,
+            sentence=lambda d, before: (f"The analysis-plan lock of {fit_press._when(lock.at)} "
+                                        f"was withdrawn before any estimate was shown: {why}"))
+        fit_press.withdraw_press(self.workspace.project_dir(pid))
+        self.bus.publish(pid, "decision", record.model_dump(mode="json"))
+
+    def _press(self, pid: str) -> dict[str, Any] | None:
+        from turbotab.core.fit_press import read_press
+
+        return read_press(self.workspace.project_dir(pid))
+
+    def _pressed(self, pid: str, state: Any) -> bool:
+        """Whether Fit was pressed for the outcome now (a replay serves what its bundle did)."""
+        from turbotab.core.fit_press import pressed_for
+
+        return self.replay or pressed_for(self._press(pid), state.target)
+
+    def _hold(self, stage: str, view: Any) -> str | None:
+        """The scheduler's hold (RECIPES §4.4): a fit expected to take over about 2 minutes waits
+        for Fit; while the shelf is still measuring that estimate, the fit waits for it. Every
+        estimate stage that fits the chosen families (it reads ``models``: the sensitivity
+        analyses, the effects, the scales' corrections) costs at least as much, and waits with
+        it."""
+        from turbotab.core.fit_press import fit_estimate, holds
+
+        if stage not in estimand.ESTIMATE_STAGES or "models" not in self.engine.graph[stage].reads:
+            return None
+        if view.pending("shelf"):
+            return "estimate"
+        estimate = fit_estimate(view.artifact("shelf"), view.state.models)
+        return "fit" if holds(estimate, self._press(view.pid), view.state.target) else None
+
+    def _shelf(self, pid: str, stages: dict[str, StageStatus]) -> Any:
+        status = stages.get("shelf")
+        if status is None or status.status != "fresh" or not status.key:
+            return None
+        return self._artifact(pid, "shelf", status.key, public=True)
+
+    def fit_lock(self, pid: str, stages: dict[str, StageStatus] | None = None,
+                 records: list[Any] | None = None) -> Any:
+        """Fit and the plan's lock as the quest log shows them (``fit_press.fit_lock``)."""
+        from turbotab.core.fit_press import fit_estimate, fit_lock
+
+        stages = self.engine.status(pid) if stages is None else stages
+        records = self.log(pid).records() if records is None else records
+        state = decisions.fold(records)
+        fit = stages.get("fit")
+        return fit_lock(state, records, pressed=self._pressed(pid, state),
+                        held=bool(fit is not None and fit.held == "fit"),
+                        estimate=fit_estimate(self._shelf(pid, stages), state.models),
+                        opened=self.replay or fit_press.opened_by(self._press(pid)))
+
+    def press_fit(self, pid: str) -> Any:
+        """Fit, pressed on the analysis flowchart: a job command, not a decision (RECIPES §4.4).
+
+        Refused while there is nothing to fit (no estimate stage can compute) or a question the
+        estimates rest on is open. Otherwise the press is kept beside the project with the estimate
+        it confirms, which releases the scheduler's hold; under Estimate and Describe it records
+        the plan's lock, the existing system record ``lock_plan``, once. Returns the lock as the
+        quest log shows it."""
+        from turbotab.core.fit_press import fit_estimate, record_press
+
+        self.workspace.get(pid)
+        stages = self.engine.status(pid)
+        records = self.log(pid).records()
+        state = decisions.fold(records)
+        if state.purpose is None:
+            raise Refusal("fit_not_yet", "There is nothing to fit yet: the goal is not chosen.",
+                          exits=[{"label": "Choose the goal", "decision": None}])
+        # Something is chosen to fit: an estimate stage that can compute. The usual-intake stage
+        # computes its offer on the lens and goal alone, so it counts once a distribution is
+        # declared.
+        if not any(stages[name].status != "blocked"
+                   and (name != "usual_intake" or state.usual_intake)
+                   for name in estimand.ESTIMATE_STAGES if name in stages):
+            raise Refusal("fit_not_yet", "There is nothing to fit yet: choose the models first.",
+                          exits=[{"label": "Choose the models", "decision": None}])
+        gate = estimand.served_gate(state, self.interview(pid, state, stages, records))
+        if gate is not None:
+            raise Refusal("fit_not_yet", f"Fit waits: {gate['reason']}", exits=gate["exits"])
+        with self._locking:
+            record_press(self.workspace.project_dir(pid), target=state.target,
+                         seconds=fit_estimate(self._shelf(pid, stages), state.models),
+                         seq=max((r.seq for r in records), default=0))
+            if state.purpose != "prediction" and not state.plan_locked:
                 self.decide(pid, {"kind": "lock_plan"}, system=True)
-            except Refusal:
-                log.exception("the analysis plan of %s could not be locked", pid)
+        for name in estimand.ESTIMATE_STAGES:
+            status = stages.get(name)
+            if status is not None and status.cancelled:
+                self.engine.ensure(pid, name)  # stopped by Cancel: Fit asks for it again
+        self.engine.on_decision(pid)  # the hold released: the fit starts
+        return self.fit_lock(pid)
+
+    def cancel_fit(self, pid: str) -> Any:
+        """Cancel, where Fit was on the analysis flowchart (calm/FOUNDATION §7): the estimate
+        stages' work still running stops. Before any estimate is served the press is withdrawn,
+        and under Estimate and Describe the lock with it (the server's revert of ``lock_plan``,
+        kept in the record), so the next press of Fit records a new lock; once an estimate has been
+        served the lock stands and Cancel stops only the remaining work. Returns the lock as the
+        quest log shows it."""
+        from turbotab.core.models.selection import read_seen
+
+        self.workspace.get(pid)
+        with self._locking:
+            records = self.log(pid).records()
+            state = decisions.fold(records)
+            lock = self._unseen_lock(pid, records)
+            if lock is not None:
+                self._withdraw_lock(pid, lock, "Fit was canceled.")
+            elif not state.plan_locked and not read_seen(
+                    self.workspace.project_dir(pid)).get(state.target or ""):
+                fit_press.withdraw_press(self.workspace.project_dir(pid))  # nothing was shown
+        for name, status in self.engine.status(pid).items():
+            if name in estimand.ESTIMATE_STAGES and status.job_id and status.status in (
+                    "queued", "running"):
+                self.runner.cancel(status.job_id)
+        self.engine.on_decision(pid)
+        return self.fit_lock(pid)
 
     def _lock_after_prediction(self, pid: str) -> None:
         """The purpose just became inference: if estimates were displayed under prediction, the
@@ -1373,7 +1775,7 @@ class ProjectService:
             raise ApiError(404, "unknown_stage", f"There is no stage named {stage!r}.")
         result = self.engine.get(pid, stage)
         artifact = self._serve(pid, stage, result.artifact, result.key)
-        self._lock_when_shown(pid, stage, artifact)
+        self._note_shown(pid, stage, artifact)
         if stage in ("fit", "explain") and result.fresh and isinstance(artifact, dict):
             # MS6: the families whose cross-validated scores this client now sees, for its outcome,
             # kept beside the project; a revert or a new seed cannot unsee them. The explanations'
@@ -1391,9 +1793,10 @@ class ProjectService:
         }
 
     def _serve(self, pid: str, stage: str, artifact: Any, key: str | None) -> Any:
-        """A stage's artifact as a client is served it (no side effect: the plan lock and the
-        scores seen are the caller's): the fit's held-out scores withheld until opened, estimates withheld until the
-        questions they rest on are answered, each finding's disposition."""
+        """A stage's artifact as a client is served it (no side effect: the scores seen are the
+        caller's): the fit's held-out scores withheld until opened, estimates withheld until the
+        questions they rest on are answered and until Fit is pressed (under Estimate and Describe,
+        the plan locked), each finding's disposition."""
         if artifact is not None and not isinstance(artifact, dict):
             artifact = {"value": artifact}
         if stage == "fit" and artifact is not None:
@@ -1409,6 +1812,10 @@ class ProjectService:
             state = decisions.fold(records)
             gate = estimand.served_gate(state, self.interview(pid, state, self.engine.status(pid),
                                                               records))
+            # P0.8: none before the plan's lock under Estimate and Describe, none before Fit under
+            # Predict, and none at all with no purpose; a question's gate before Fit withholds the
+            # scores too (``fit_press.gate``).
+            gate = fit_press.gate(gate, state, self._pressed(pid, state))
             if gate is not None:
                 artifact = estimand.withhold(stage, artifact, gate)
             elif stage == "fit":
@@ -1419,6 +1826,11 @@ class ProjectService:
                 from turbotab.core.stages.evaluation import withhold_scores
 
                 artifact = withhold_scores(artifact, state)
+        if stage == "explore" and artifact is not None:
+            # Under Estimate and Describe the outcome beside a column waits for the plan's lock
+            # (SIZING P0.8, disagreement 4), as the estimates do.
+            state = self.log(pid).state()
+            artifact = fit_press.relationships_served(artifact, state, self._pressed(pid, state))
         if stage == "findings" and artifact is not None:  # M2 §4: each finding's disposition
             from turbotab.core import repairs
 
@@ -1494,6 +1906,9 @@ class ProjectService:
 
         source = self.export_source(pid)
         out = contents(source).zip()
+        if source.state.plan_locked:
+            with self._locking:  # the bundle shows the estimates: the lock now stands
+                self._mark_lock_shown(pid, self.log(pid).records())
         if source.purpose != "inference":
             # MS6, as stage_result: the bundle's performance table shows every fitted family's
             # cross-validated score, so a bundle handed over counts as those scores seen, even by

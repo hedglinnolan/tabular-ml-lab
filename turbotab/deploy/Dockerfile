@@ -31,8 +31,10 @@ RUN apt-get update \
     && useradd --system --uid 10001 --gid turbotab --home-dir /data --no-create-home \
        --shell /usr/sbin/nologin turbotab
 WORKDIR /app
-COPY turbotab/server/requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt
+# constraints.txt holds the versions the tests ran on (how to update it: its header).
+COPY turbotab/server/requirements.txt turbotab/server/constraints.txt /tmp/
+RUN pip install -c /tmp/constraints.txt -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt /tmp/constraints.txt
 
 # The engine and the domain code it reuses (Classic's ml/, utils/, models/ by import, read-only).
 COPY data_processor.py ./

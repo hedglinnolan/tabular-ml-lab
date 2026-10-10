@@ -38,8 +38,11 @@ def test_the_quest_log_is_served_versioned_with_the_seven_stages_in_order(client
     r = client.get(f"/api/projects/{pid}/quest")
     assert r.status_code == 200, r.text
     log = r.json()
-    assert log["version"] == QUEST_VERSION == 1
+    assert log["version"] == QUEST_VERSION == 3
     assert [(s["key"], s["name"]) for s in log["stages"]] == SEVEN
+    # Nothing is locked, and the log says why (P0.8): no goal is chosen yet.
+    assert log["fit"]["purpose"] is None and log["fit"]["locked"] is False
+    assert "goal" in log["fit"]["reason"]
     lens = next(l for l in log["stages"][0]["lines"] if l["key"] == "lens")
     assert lens["status"] == "open" and lens["id"] == "q:lens"
     # Your data counts the Router's questions there that apply (the lens, which way round the
@@ -70,11 +73,13 @@ ROLES = {"SEQN": "identifier", "sugar": "exposure", "kcal": "energy",
 
 
 def settle(drive: Drive, timeout: float = 300.0) -> None:
-    """Wait until no stage is computing or about to."""
+    """Wait until no stage is computing or about to (a fit the scheduler holds for Fit is not
+    about to: it waits for the press)."""
     end = time.monotonic() + timeout
     while True:
         stages = drive.view()["stages"].values()
-        if not any(s["status"] in ("queued", "running", "stale") for s in stages):
+        if not any(s["status"] in ("queued", "running", "stale") and s.get("held") != "fit"
+                   for s in stages):
             return
         assert not any(s["status"] == "error" for s in stages), [s for s in stages
                                                                  if s["status"] == "error"]
@@ -114,6 +119,7 @@ def rule(low: float, high: float) -> dict[str, Any]:
         {"column": "kcal", "low": low, "high": high, "reason": "implausible intake"}]}
 
 
+@pytest.mark.slow
 @needs_nhanes
 def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkeypatch):
     drive = open_project(client, NHANES, fixture_truth("_tt_tmp_nhanes.csv"))
@@ -180,7 +186,8 @@ def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkey
     assert all(s["reopened"] == [] for s in stages.values())
     assert stages["models"]["progress"] == models_before
 
-    # 3 · The fit: Results and Write-up are reached, and under Estimate ask nothing yet (0 of 0,
+    # 3 · The fit: computed, but Results opens only when Fit is pressed, which locks the plan
+    # (P0.8); then Results and Write-up are reached, and under Estimate ask nothing yet (0 of 0,
     # complete).
     drive.answer("energy_adjustment", {"kind": "set_energy_adjustment", "method": "standard",
                                        "energy_column": "kcal", "nutrients": ["sugar"]})
@@ -188,6 +195,19 @@ def test_reopen_reasons_follow_real_changes_on_the_nhanes_journey(client, monkey
     settle(drive)
     stages = quest(drive)
     assert drive.view()["stages"]["fit"]["status"] == "fresh"
+    assert not stages["results"]["reached"] and not stages["writeup"]["reached"]
+    log = drive.c.get(f"/api/projects/{drive.pid}/quest").json()
+    assert log["fit"]["locks"] is True and log["fit"]["locked"] is False
+    assert "Pressing Fit locks it" in log["fit"]["reason"]
+    assert drive.press_fit()
+    assert drive.view()["state"]["plan_locked"] is True
+    # Results opens on the estimates: once one is served the lock stands (before, a change to the
+    # plan would withdraw it; calm/FOUNDATION §7).
+    from turbotab.core.plan_lock import shows_estimates
+
+    served = drive.c.get(f"/api/projects/{drive.pid}/stages/fit").json()["artifact"]
+    assert shows_estimates("fit", served)
+    stages = quest(drive)
     assert all(s["reopened"] == [] for s in stages.values())
     for key in ("results", "writeup"):
         assert stages[key]["reached"] and stages[key]["progress"] == {

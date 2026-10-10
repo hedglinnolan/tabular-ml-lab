@@ -2197,7 +2197,11 @@ def fit_stage(ctx: StageContext) -> Bundle:
             label=nested_offer_label(fits_each, len(predicting)),
             fits=fits_each, seconds=seconds,
             estimate=duration(seconds) if seconds is not None else "not measured",
-            decision={"kind": "set_split", **state.split.model_dump(mode="json"), "nested_cv": True})
+            # P0.6 (crosswalk disagreement 5): a changed scheme, its own kind, so the draw's
+            # record and time stay where the draw put them.
+            decision={"kind": "set_validation",
+                      **state.split.model_dump(mode="json", exclude={"holdout", "seed"}),
+                      "nested_cv": True})
     chain = fired_chain(task, primary, inference=inference, grouped_by=grouped_by,
                    families=predicting, n_holdout=n_holdout, comparison=comparison,
                    selection=selection, result=result_declared, n_boot=n_boot,

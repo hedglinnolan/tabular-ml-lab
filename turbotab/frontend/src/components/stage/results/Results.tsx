@@ -13,7 +13,7 @@ import {
   type SplitArtifact,
   type SubstitutionArtifact,
 } from "../../../api/m1-stage-types";
-import { useCancelJob, useDecide } from "../../../api/queries";
+import { useCancelJob, useDecide, usePressFit } from "../../../api/queries";
 import type { ProjectView, Refusal } from "../../../api/schema";
 import { RefusalNote } from "../../record/Refusal";
 import { StaleVeil, type VeilState } from "../../../motion/StaleVeil";
@@ -75,6 +75,38 @@ function energyProvenance(view: ProjectView, design: DesignArtifact | null): str
   return design?.estimand ? `${said} ${design.estimand}` : said;
 }
 
+/**
+ * Fit, pressed (SIZING P0.8; FOUNDATION §7): until it is, no estimate is served, and under
+ * Estimate pressing it locks the plan. One obvious click; a refusal says what it waits for.
+ */
+function FitPress({ pid, reason }: { pid: string; reason: string }) {
+  const press = usePressFit(pid);
+  const refused = press.error && isRefusalError(press.error) ? press.error.refusal : null;
+  return (
+    <section className={s.section} data-purpose="fit_press" data-testid="fit-press">
+      <p className={s.caption}>
+        <Rich text={reason} />
+      </p>
+      <div className={s.bandRow}>
+        <button
+          type="button"
+          className={s.bandButton}
+          onClick={() => press.mutate()}
+          disabled={press.isPending}
+          data-testid="press-fit"
+        >
+          {press.isPending ? "Fitting…" : "Fit"}
+        </button>
+      </div>
+      {refused ? (
+        <p className={s.bandNote} role="alert">
+          <Rich text={refused.error.message} />
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 export function Results({ pid, view, data }: Props) {
   const fit = data.fit.artifact;
   const decide = useDecide(pid);
@@ -88,6 +120,14 @@ export function Results({ pid, view, data }: Props) {
   const opened = !!view.state.seal_opened;
   useRefetchOnOpening(pid, opened, fit, view.stages.fit?.key ?? undefined);
   if (!fit) return null;
+  // Nothing is shown before Fit is pressed: the press is the screen's one action (P0.8).
+  if (fit.withheld_for === "fit") {
+    return (
+      <div className={s.results} data-testid="results">
+        <FitPress pid={pid} reason={fit.withheld ?? "Press Fit to see the results."} />
+      </div>
+    );
+  }
   const target = view.state.target ?? "the outcome";
   // The seal (M2_CONTRACT §3): held-out scores reach the comparison only once it is opened.
   const phase = sealPhase(fit, opened);

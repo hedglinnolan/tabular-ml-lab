@@ -158,6 +158,40 @@ function teachingOptions(ctx: ComposeContext): GenericOption[] {
   }));
 }
 
+// ── the study design (P0.6, crosswalk disagreement 10) ────────────────────────
+
+type SetDesign = Extract<Decision, { kind: "set_design" }>;
+const DESIGN_LABELS: Record<NonNullable<SetDesign["design"]>, string> = {
+  observational: "Observed as they were",
+  parallel_trial: "Randomized groups",
+  cluster_randomized_trial: "Randomized by group",
+  case_control: "Sampled by outcome",
+  matched_sets: "Matched sets",
+  crossover: "Crossover trial",
+  repeated_measures_trial: "Trial, repeated outcomes",
+};
+
+/** Observational is stated until answered; every other design is a named value the server
+ *  refuses as "Not available yet", with its reason and the observational exit (seam guard 6). */
+function design(ctx: ComposeContext): GenericQuestion {
+  const keys = Object.keys(DESIGN_LABELS) as NonNullable<SetDesign["design"]>[];
+  return {
+    grammar: "choice",
+    data: ctx.step.reason ? [ctx.step.reason] : [],
+    fields: [],
+    options: keys.map((key) => ({
+      key,
+      label: taught(ctx.entry, key)?.label ?? DESIGN_LABELS[key],
+      line:
+        taught(ctx.entry, key)?.consequence ??
+        (key === "observational"
+          ? "Confounders are adjusted; the results are worded as associations."
+          : "Not available yet: the reason and the way forward are shown when chosen."),
+      build: (): SetDesign => ({ kind: "set_design", design: key }),
+    })),
+  };
+}
+
 // ── the follow-up (WP17, RO-03) ──────────────────────────────────────────────
 
 function effectiveTask(ctx: ComposeContext): string | null {
@@ -851,6 +885,7 @@ export function taskFollowup(ctx: ComposeContext): GenericQuestion | null {
 // ── the registry ─────────────────────────────────────────────────────────────
 
 export const COMPOSERS: Partial<Record<QuestionKey, (ctx: ComposeContext) => GenericQuestion>> = {
+  design,
   follow_up: followUp,
   clusters,
   estimand,

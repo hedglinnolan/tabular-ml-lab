@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 
-from turbotab.core.tests.acceptance.server_drive import local_server
+from turbotab.core.tests.acceptance.server_drive import local_server, press_fit
 from turbotab.core.tests.acceptance.test_export import (PERFORMANCE_TITLE, UNSEEN_RESULT, _csv,
                                                          _decimals, _diet, _export, _files,
                                                          _open_diet, _performance_quotes,
@@ -55,6 +55,11 @@ def test_an_exported_bundle_counts_as_the_scores_it_prints_seen(tmp_path):
                                               "23a": [f"{PERFORMANCE_TITLE}. {UNSEEN_RESULT}"]}
         assert _seen_on_disk(folder) == {}  # the checklist shows no score, and records none
 
+        # Under Predict nothing is served before Fit (SIZING P0.8): the bundle is refused until
+        # it is pressed, and pressing it marks no score seen.
+        assert _export(drive).json()["error"]["code"] == "estimates_withheld"
+        assert press_fit(client, drive.pid)
+        assert _seen_on_disk(folder) == {}
         r = _export(drive)
         assert r.status_code == 200, r.text[:900]
         files = _files(r.content)

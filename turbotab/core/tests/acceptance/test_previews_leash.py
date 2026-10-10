@@ -482,7 +482,7 @@ def spanning(tmp_path_factory):
 
     planned = R.project(tmp_path_factory.mktemp("previews_leash_spanning"), "spanning",
                         clusters=d.ClusterSpec(column="site", adjust="cluster_only"),
-                        survey=d.SurveySpec(**R.POPULATION.model_dump(exclude={"kind"})))
+                        survey=d.SurveySpec(**R.POPULATION.model_dump(exclude={"kind", "goal"})))
     yield planned
     planned.project.close()
 
@@ -567,7 +567,7 @@ def binary_svy(tmp_path_factory):
         roles=roles, role_confirmations=dict(roles),
         grain=d.GrainSpec(grain="one_row_per_unit", id_column="SEQN"),
         shape_confirmations=dict(T.NHANES_TRUTH), exclusions=[],
-        survey=d.SurveySpec(**POPULATION.model_dump(exclude={"kind"})),
+        survey=d.SurveySpec(**POPULATION.model_dump(exclude={"kind", "goal"})),
         estimand=d.EstimandSpec(exposure="DR1TPROT", measure="odds_ratio"),
         adjustment={"RIDAGEYR": A(exposure="DR1TPROT", **CONFOUNDER)},
         missing=d.MissingSpec(strategy="complete_case"),

@@ -1189,6 +1189,31 @@ def split_writer(records: Sequence[Any] | None) -> str | None:
     return live[-1].id if live else None
 
 
+def draw_record(records: Sequence[Any] | None) -> Any:
+    """The record that drew the current held-out rows: the first of the latest run of live
+    ``set_split`` records that keep its holdout and seed (crosswalk disagreement 5). A split
+    recorded again with the same draw keeps the draw's time, which RECIPES §3.3's holdout status
+    reads; ``split_writer`` is the latest one, the record a re-seal withdraws. None with no
+    split."""
+    if not records:
+        return None
+    ordered = sorted(records, key=lambda r: r.seq)
+    try:
+        cancelled = decisions.reverted(ordered)
+    except Refusal:
+        return None
+    live = [r for r in ordered if r.decision.kind == "set_split" and r.id not in cancelled]
+    if not live:
+        return None
+    drawn = (live[-1].decision.holdout, live[-1].decision.seed)
+    first = live[-1]
+    for r in reversed(live):
+        if (r.decision.holdout, r.decision.seed) != drawn:
+            break
+        first = r
+    return first
+
+
 # Decision A (OPENING_SEQUENCE §01): each changes what a row is, so a seal drawn before it names
 # rows that no longer exist.
 DECISION_A: dict[str, tuple[str, str]] = {
@@ -1662,6 +1687,16 @@ def _open_seal_once_on_a_fresh_fit(decision: Any, ctx: Any) -> None:
     if not int(fit.get("n_holdout") or 0):
         raise Refusal("nothing_sealed", "This fit holds no rows out, so there is nothing to open.",
                       exits=hold)
+    gate = _ctx(ctx, "fit_gate")
+    waits = gate() if callable(gate) else None
+    if waits is not None:
+        # SIZING P0.8: the final model is named on the cross-validated scores Fit shows, so the
+        # held-out rows open only after it, and no score is quoted before.
+        raise Refusal(
+            "fit_not_yet",
+            f"The held-out rows open after Fit is pressed: the final model is named on the "
+            f"cross-validated scores it shows. {waits['reason']}",
+            exits=waits.get("exits") or [])
 
 
 # ── after the opening: the scores kept, and the rows held still (audit WP16, RO-05) ──
@@ -1773,6 +1808,66 @@ def _an_opened_seal_holds_still(decision: Any, ctx: Any) -> None:
     )
 
 
+def _the_scheme_needs_a_draw(decision: Any, ctx: Any) -> None:
+    """A validation scheme compares models on the training rows the draw leaves: with no split
+    recorded there are none yet (crosswalk disagreement 5: the scheme rides in the draw's record
+    until it is changed)."""
+    state = _ctx(ctx, "state")
+    if state is None or getattr(state, "split", None) is not None:
+        return
+    raise Refusal(
+        "no_draw_yet",
+        "The validation scheme compares the models on the training rows, and which rows are held "
+        "out is not decided yet: the scheme set for you comes with that answer, and can be "
+        "changed after it.",
+        exits=[{"label": "Answer the held-out rows question first", "decision": None}])
+
+
+def _a_scheme_after_the_opening_is_recorded(decision: Any, ctx: Any) -> None:
+    """After the held-out rows are opened a changed scheme is block and record (crosswalk
+    disagreement 5; MODELING_SEQUENCE §4): it is kept only when acknowledged, its record is marked
+    as made after the opening, and the scores at the opening stay the reported result."""
+    state = _ctx(ctx, "state")
+    if state is None or not getattr(state, "seal_opened", None) or decision.acknowledged:
+        return
+    raise Refusal(
+        "scheme_after_opening",
+        "The held-out rows were opened, so their scores have been seen. A scheme changed now "
+        "compares the models after that: it is recorded as made after the opening, and the scores "
+        "at the opening stay the reported result.",
+        exits=[{"label": "Change it, recorded as made after the opening",
+                "decision": {**decision.model_dump(mode="json"), "acknowledged": True}},
+               {"label": "Keep the scheme as it was", "decision": None}])
+
+
+def _a_changed_scheme_is_its_own_kind(decision: Any, ctx: Any) -> None:
+    """A split that keeps the current draw (the holdout and the seed) and changes only how the
+    training rows compare the models is a changed scheme, which is its own kind
+    (``set_validation``; crosswalk disagreement 5): recorded as a split it would move the draw's
+    record without moving the draw. The same split again is still the split's (it restarts its
+    work)."""
+    state = _ctx(ctx, "state")
+    split = getattr(state, "split", None) if state is not None else None
+    if split is None or (split.holdout, split.seed) != (decision.holdout, decision.seed):
+        return
+    scheme = {k: v for k, v in decision.model_dump(mode="json").items()
+              if k not in ("kind", "holdout", "seed")}
+    now = {k: v for k, v in split.model_dump(mode="json").items() if k in scheme}
+    if scheme == now:
+        return
+    raise Refusal(
+        "scheme_is_its_own",
+        "These are the same held-out rows, drawn with the same seed; only how the training rows "
+        "compare the models changes. That is the validation scheme, a Models answer of its own, so "
+        "the draw and its record stay as they are.",
+        exits=[{"label": "Change the validation scheme",
+                "decision": {"kind": "set_validation", **scheme}},
+               {"label": "Keep the scheme as it is", "decision": None}])
+
+
+decisions.register_validator("set_split", _a_changed_scheme_is_its_own_kind)
+decisions.register_validator("set_validation", _the_scheme_needs_a_draw)
+decisions.register_validator("set_validation", _a_scheme_after_the_opening_is_recorded)
 decisions.register_validator("open_seal", _open_seal_once_on_a_fresh_fit)
 decisions.register_completion("open_seal", _the_opening_keeps_its_scores)
 decisions.register_validator("reseal", _reseal_needs_an_opened_seal)
@@ -1826,7 +1921,8 @@ __all__ = [
     "SEALED_SCORES", "details_by_family", "read_sealed_detail", "sealed_detail_frame",
     "SealBasis",
     "SealDraw", "SealFloor", "SealPlan", "changed_after_seal", "chronological_holdout",
-    "decide_basis", "draw_columns", "floor_for", "holdout_options", "holds_rows_out", "keys_for",
+    "decide_basis", "draw_columns", "draw_record", "floor_for", "holdout_options", "holds_rows_out",
+    "keys_for",
     "measure", "open_seal_views", "r2_se", "time_order",
     "first_opening", "opening", "plan", "post_seal_changes", "post_seal_sentence",
     "read_sealed_scores", "reported_result",

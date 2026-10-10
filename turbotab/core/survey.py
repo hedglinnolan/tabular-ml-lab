@@ -15,8 +15,9 @@ inference, whenever a column reads as a survey weight, the Router asks (``set_su
   estimand is the sample's and the intervals are not the design's.
 
 Until it is answered, an inference table on such a table is blocked (the fit says why). Under
-prediction the question is not asked: scores describe the rows they were computed on, and the fit
-says they are unweighted.
+prediction the question is asked too (crosswalk disagreement 9; MODELING_SEQUENCE ruling 13): it
+says whose performance the scores estimate, the surveyed population's by design-based
+cross-validation or these participants' unweighted.
 
 This module is light (the name reading, the Router's gate and the refusals) so that importing the
 decisions registers ``set_survey``'s refusals; the weights and the design are built in
@@ -188,9 +189,8 @@ def not_applicable_reason(state: Any) -> str | None:
     """The Router's reason when the question does not apply; None when it does, or while it
     cannot be told (no purpose or no roles yet)."""
     purpose = getattr(state, "purpose", None)
-    if purpose == "prediction":
-        return ("Under prediction the scores describe the rows they were computed on; they are not "
-                "weighted to a population.")
+    # Asked under every goal (crosswalk disagreement 9): under prediction it says whose performance
+    # the scores estimate (MODELING_SEQUENCE ruling 13).
     if purpose is None or getattr(state, "roles", None) is None:
         return None
     if not reading_of(state).present:
@@ -269,6 +269,7 @@ def offered(state: Any, pooled_cycle: str | None = None, frame: Any = None,
     if lcd is not None:
         weights = rank_weights(weights, lcd)
     waiting = set(unsettled(state)) if roles else set()
+    scores = getattr(state, "purpose", None) == "prediction"
     out: list[dict[str, Any]] = []
     for w in weights[:4]:
         # Never pre-acknowledged: with no strata or PSU the server asks for the attestation.
@@ -286,12 +287,16 @@ def offered(state: Any, pooled_cycle: str | None = None, frame: Any = None,
         # divides each weight by the cycles pooled, so the answer records it seen.
         pooled = (f"; pooled over the survey cycles `{pooled_cycle}` names, each weight divided by "
                   f"their number" if pooled_cycle else "")
+        # Under prediction the answer says whose performance the scores estimate (ruling 13).
+        effect = ("scores by design-based cross-validation, whole PSUs held out within strata"
+                  if scores else "intervals by Taylor linearization")
         out.append({"key": f"population:{w}", "label": label,
-                    "consequence": f"Weighted by `{w}`{within}{pooled}; intervals by Taylor "
-                                   f"linearization.",
+                    "consequence": f"Weighted by `{w}`{within}{pooled}; {effect}.",
                     "decision": decision, "needs_confirmation": needs})
     out.append({"key": "sample", "label": "These participants",
-                "consequence": "Unweighted; the methods state the estimand is this sample's.",
+                "consequence": ("Unweighted; the scores are the procedure's performance on these "
+                                "rows." if scores else
+                                "Unweighted; the methods state the estimand is this sample's."),
                 "decision": {"kind": "set_survey", "estimand": "sample"}})
     return out
 
@@ -473,12 +478,27 @@ def _design_is_settled(decision: Any, ctx: Any) -> None:
                           "decision": {"kind": "set_survey", "estimand": "sample"}}])
 
 
+def _answered_under_its_goal(decision: Any, ctx: Any) -> Any:
+    """The record names the goal it was answered under (crosswalk disagreement 9): under
+    prediction it says whose performance the scores estimate, which is not whose estimate
+    inference reports, so a changed goal asks the question again rather than carrying the answer
+    over (``decisions.SetSurvey``)."""
+    from turbotab.core.decisions import _state
+
+    state = _state(ctx)
+    purpose = getattr(state, "purpose", None) if state is not None else None
+    if purpose is None or decision.goal == purpose:
+        return decision
+    return decision.model_copy(update={"goal": purpose})
+
+
 def _register() -> None:
-    from turbotab.core.decisions import register_validator
+    from turbotab.core.decisions import register_completion, register_validator
 
     for check in (_asked_under_inference, _names_real_columns, _weight_is_a_number,
                   _names_its_units, _pools_cycles_by_the_rule, _design_is_settled):
         register_validator("set_survey", check)
+    register_completion("set_survey", _answered_under_its_goal)
 
 
 _register()

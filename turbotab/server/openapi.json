@@ -305,7 +305,7 @@
           "projects"
         ],
         "summary": "Decide",
-        "description": "Record a decision. Stages downstream of the slot it writes recompute.",
+        "description": "Record a decision. Stages downstream of the slot it writes recompute. ``decide_now``\nanswers a later question ahead of the Router, only where its card is computed and the earlier\nanswers it reads are in (crosswalk disagreement 20); otherwise it is refused with what it is\nwaiting for, and the record names the question it was decided ahead of.",
         "operationId": "decide_api_projects__pid__decisions_post",
         "parameters": [
           {
@@ -315,6 +315,16 @@
             "schema": {
               "type": "string",
               "title": "Pid"
+            }
+          },
+          {
+            "name": "decide_now",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Decide Now"
             }
           }
         ],
@@ -506,6 +516,15 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetUpdating-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmSweep-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetDesign-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetValidation-Input"
                   }
                 ],
                 "discriminator": {
@@ -571,7 +590,10 @@
                     "set_levers": "#/components/schemas/SetLevers-Input",
                     "set_selection": "#/components/schemas/SetSelection-Input",
                     "set_intended_use": "#/components/schemas/SetIntendedUse-Input",
-                    "set_updating": "#/components/schemas/SetUpdating-Input"
+                    "set_updating": "#/components/schemas/SetUpdating-Input",
+                    "confirm_sweep": "#/components/schemas/ConfirmSweep-Input",
+                    "set_design": "#/components/schemas/SetDesign-Input",
+                    "set_validation": "#/components/schemas/SetValidation-Input"
                   }
                 },
                 "title": "Decision"
@@ -702,6 +724,228 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/QuestLog"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/fit": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Press Fit",
+        "description": "Fit, pressed on the analysis flowchart (SIZING P0.8; RECIPES_AND_TUNING §4.4): a job\ncommand, not a decision. It releases a fit the scheduler holds (one expected to take over\nabout 2 minutes) and opens Results. Under Estimate and Describe it locks the analysis plan, the\nsystem's ``lock_plan`` record, once; no estimate is served before it. Under Predict nothing\nlocks, and no score or estimate is served before it. Refused while nothing is chosen to fit or\na question the estimates rest on is open. Returns the lock as the quest log shows it.",
+        "operationId": "press_fit_api_projects__pid__fit_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitLock"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Nothing to fit yet, or a question the estimates rest on is open",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/fit/cancel": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Cancel Fit",
+        "description": "Cancel, where Fit was on the analysis flowchart (calm/FOUNDATION §7): the estimates' work\nstill running stops. Before any estimate is served the press is withdrawn, and under Estimate\nand Describe the plan's lock with it (kept in the record as withdrawn), so Fit is asked for\nagain; once an estimate has been served the lock stands. Returns the lock as the quest log\nshows it.",
+        "operationId": "cancel_fit_api_projects__pid__fit_cancel_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitLock"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/record": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "For The Record",
+        "description": "Each stage's For the record lines (SIZING P0.5), collapsed in the quest log and never\ncounted: what was read (the ingest's facts and warnings, the profile's basis), why a question\nwas not asked, the defaults no other choice changes a number on here (with why), and the\nanswers TurboTab recorded itself. A stage not reached yet has none.",
+        "operationId": "for_the_record_api_projects__pid__record_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForTheRecord"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/triage": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Triage",
+        "description": "The triage of the open noticings at the gate (SIZING P0.5; calm/FOUNDATION §7): before the\nplan is fixed under Estimate and Describe (and while the goal is unanswered), before the\nheld-out rows open under Predict. Each open noticing carries the recommended disposition\n(\"doesn't change your numbers here\", \"could bias the estimate\", \"act on it\") and its reason;\nblockers come first and must be resolved. ``POST …/decisions`` with ``{\"kind\":\n\"confirm_sweep\", \"stage\": <the gate's stage>, \"sweep\": \"noticings\"}`` records every\ndisposition, with any the person changed in ``lines``.",
+        "operationId": "triage_api_projects__pid__triage_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Triage"
                 }
               }
             }
@@ -1166,6 +1410,15 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetUpdating-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmSweep-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetDesign-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetValidation-Input"
                   }
                 ],
                 "discriminator": {
@@ -1231,7 +1484,10 @@
                     "set_levers": "#/components/schemas/SetLevers-Input",
                     "set_selection": "#/components/schemas/SetSelection-Input",
                     "set_intended_use": "#/components/schemas/SetIntendedUse-Input",
-                    "set_updating": "#/components/schemas/SetUpdating-Input"
+                    "set_updating": "#/components/schemas/SetUpdating-Input",
+                    "confirm_sweep": "#/components/schemas/ConfirmSweep-Input",
+                    "set_design": "#/components/schemas/SetDesign-Input",
+                    "set_validation": "#/components/schemas/SetValidation-Input"
                   }
                 },
                 "title": "Decision"
@@ -3160,6 +3416,39 @@
         ],
         "title": "CautionExit"
       },
+      "ChangedSince": {
+        "properties": {
+          "since": {
+            "type": "string",
+            "enum": [
+              "decided",
+              "confirmed"
+            ],
+            "title": "Since"
+          },
+          "decision_id": {
+            "type": "string",
+            "title": "Decision Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "since",
+          "decision_id",
+          "kind",
+          "reason"
+        ],
+        "title": "ChangedSince",
+        "description": "An answer that returns with the reason (crosswalk disagreements 20 and 1): one decided early\n(\"Decide now\") once an answer it was decided ahead of is recorded, so what its card counted\nmay have moved (``decided``); the roles TurboTab recorded from the person's confirmations once\na proposal moves after them (``confirmed``). ``decision_id`` is the later answer."
+      },
       "ChecklistCounts": {
         "properties": {
           "items": {
@@ -4175,6 +4464,100 @@
         "title": "ConfirmRole",
         "description": "One column's role, confirmed on its own after its evidence was read (BLUEPRINT §14 rule 2:\na proposal below high \"needs its own confirmation; it never rides along in a bulk 'confirm\nall'\"). One column per record, so an individual confirmation is individual by construction."
       },
+      "ConfirmSweep-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "confirm_sweep",
+            "title": "Kind",
+            "default": "confirm_sweep"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "data",
+              "question",
+              "first_look",
+              "whos_in",
+              "models",
+              "results",
+              "writeup"
+            ],
+            "title": "Stage"
+          },
+          "sweep": {
+            "type": "string",
+            "enum": [
+              "defaults",
+              "noticings"
+            ],
+            "title": "Sweep",
+            "default": "defaults"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/SweptLine-Input"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "stage"
+        ],
+        "title": "ConfirmSweep"
+      },
+      "ConfirmSweep-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "confirm_sweep",
+            "title": "Kind",
+            "default": "confirm_sweep"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "data",
+              "question",
+              "first_look",
+              "whos_in",
+              "models",
+              "results",
+              "writeup"
+            ],
+            "title": "Stage"
+          },
+          "sweep": {
+            "type": "string",
+            "enum": [
+              "defaults",
+              "noticings"
+            ],
+            "title": "Sweep",
+            "default": "defaults"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/SweptLine-Output"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "stage",
+          "sweep",
+          "lines"
+        ],
+        "title": "ConfirmSweep"
+      },
       "CovariateAnswers-Input": {
         "properties": {
           "causes_exposure": {
@@ -4450,6 +4833,26 @@
             "title": "After Estimates",
             "default": false
           },
+          "recorded_by": {
+            "type": "string",
+            "enum": [
+              "you",
+              "turbotab"
+            ],
+            "title": "Recorded By",
+            "default": "you"
+          },
+          "early": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Early"
+          },
           "decision": {
             "oneOf": [
               {
@@ -4634,6 +5037,15 @@
               },
               {
                 "$ref": "#/components/schemas/SetUpdating-Output"
+              },
+              {
+                "$ref": "#/components/schemas/ConfirmSweep-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetDesign-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetValidation-Output"
               }
             ],
             "title": "Decision",
@@ -4644,6 +5056,7 @@
                 "confirm_reading": "#/components/schemas/ConfirmReading",
                 "confirm_readings": "#/components/schemas/ConfirmReadings",
                 "confirm_role": "#/components/schemas/ConfirmRole",
+                "confirm_sweep": "#/components/schemas/ConfirmSweep-Output",
                 "defer_finding": "#/components/schemas/DeferFinding",
                 "dismiss_finding": "#/components/schemas/DismissFinding-Output",
                 "import_codebook": "#/components/schemas/ImportCodebook-Output",
@@ -4662,6 +5075,7 @@
                 "set_censoring": "#/components/schemas/SetCensoring-Output",
                 "set_clusters": "#/components/schemas/SetClusters-Output",
                 "set_column_unit": "#/components/schemas/SetColumnUnit-Output",
+                "set_design": "#/components/schemas/SetDesign-Output",
                 "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
                 "set_estimand": "#/components/schemas/SetEstimand-Output",
                 "set_event": "#/components/schemas/SetEvent",
@@ -4700,6 +5114,7 @@
                 "set_unit": "#/components/schemas/SetUnit",
                 "set_updating": "#/components/schemas/SetUpdating-Output",
                 "set_usual_intake": "#/components/schemas/SetUsualIntake-Output",
+                "set_validation": "#/components/schemas/SetValidation-Output",
                 "view_outcome": "#/components/schemas/ViewOutcome-Output"
               }
             }
@@ -4715,6 +5130,8 @@
           "sentence",
           "post_seal",
           "after_estimates",
+          "recorded_by",
+          "early",
           "decision"
         ],
         "title": "DecisionRecord"
@@ -5082,7 +5499,9 @@
             "type": "string",
             "enum": [
               "total",
-              "direct"
+              "direct",
+              "complier",
+              "per_protocol"
             ],
             "title": "Effect",
             "default": "total"
@@ -5509,6 +5928,15 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetUpdating-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmSweep-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetDesign-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetValidation-Output"
                   }
                 ],
                 "discriminator": {
@@ -5518,6 +5946,7 @@
                     "confirm_reading": "#/components/schemas/ConfirmReading",
                     "confirm_readings": "#/components/schemas/ConfirmReadings",
                     "confirm_role": "#/components/schemas/ConfirmRole",
+                    "confirm_sweep": "#/components/schemas/ConfirmSweep-Output",
                     "defer_finding": "#/components/schemas/DeferFinding",
                     "dismiss_finding": "#/components/schemas/DismissFinding-Output",
                     "import_codebook": "#/components/schemas/ImportCodebook-Output",
@@ -5536,6 +5965,7 @@
                     "set_censoring": "#/components/schemas/SetCensoring-Output",
                     "set_clusters": "#/components/schemas/SetClusters-Output",
                     "set_column_unit": "#/components/schemas/SetColumnUnit-Output",
+                    "set_design": "#/components/schemas/SetDesign-Output",
                     "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
                     "set_estimand": "#/components/schemas/SetEstimand-Output",
                     "set_event": "#/components/schemas/SetEvent",
@@ -5574,6 +6004,7 @@
                     "set_unit": "#/components/schemas/SetUnit",
                     "set_updating": "#/components/schemas/SetUpdating-Output",
                     "set_usual_intake": "#/components/schemas/SetUsualIntake-Output",
+                    "set_validation": "#/components/schemas/SetValidation-Output",
                     "view_outcome": "#/components/schemas/ViewOutcome-Output"
                   }
                 }
@@ -6119,6 +6550,94 @@
         ],
         "title": "FitLine"
       },
+      "FitLock": {
+        "properties": {
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "locks": {
+            "type": "boolean",
+            "title": "Locks"
+          },
+          "locked": {
+            "type": "boolean",
+            "title": "Locked"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "pressed": {
+            "type": "boolean",
+            "title": "Pressed"
+          },
+          "opened": {
+            "type": "boolean",
+            "title": "Opened"
+          },
+          "held": {
+            "type": "boolean",
+            "title": "Held"
+          },
+          "estimate_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate Seconds"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "purpose",
+          "locks",
+          "locked",
+          "at",
+          "sha256",
+          "pressed",
+          "opened",
+          "held",
+          "estimate_seconds",
+          "reason"
+        ],
+        "title": "FitLock",
+        "description": "Fit and the plan's lock, as the quest log shows them (FOUNDATION §7: \"Plan fixed at 14:02\",\nwith the plan's SHA-256 as its quiet label)."
+      },
       "FollowUpSpec": {
         "properties": {
           "time_column": {
@@ -6181,6 +6700,29 @@
         ],
         "title": "FollowUpSpec",
         "description": "How long each row of a time-to-event outcome was observed (WP12,\n``turbotab/core/models/survival.py``): at risk from ``entry`` (0 when not named) to ``time``,\nwhen the event happened or follow-up ended without it, both on one time scale."
+      },
+      "ForTheRecord": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/RecordStage"
+            },
+            "type": "array",
+            "title": "Stages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "stages"
+        ],
+        "title": "ForTheRecord",
+        "description": "Each stage's For the record lines (FOUNDATION §3: collapsed, never counted). A stage not\nreached yet has none: what it would say may still change."
       },
       "FrameRow": {
         "properties": {
@@ -7153,6 +7695,7 @@
               "event",
               "task",
               "follow_up",
+              "design",
               "purpose",
               "grain",
               "repeat_kind",
@@ -8282,7 +8825,7 @@
           "kind"
         ],
         "title": "LockPlan",
-        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when inference estimates are first displayed (or by the user, before\nthat): the plan in force then is what was declared in the software before any estimate was\ndisplayed, and every later decision is marked as made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone."
+        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference\nestimates were first displayed), never posted by a client: the plan in force then is what was\ndeclared in the software before any estimate was displayed, and every later decision is marked\nas made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. A client never undoes it; the server withdraws it (a revert it records itself) only\nwhile no estimate has been served under it, on Cancel or a change to the plan\n(calm/FOUNDATION §7), and the next press of Fit records a new one."
       },
       "LockPlan-Output": {
         "properties": {
@@ -8358,7 +8901,7 @@
           "seen_at"
         ],
         "title": "LockPlan",
-        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when inference estimates are first displayed (or by the user, before\nthat): the plan in force then is what was declared in the software before any estimate was\ndisplayed, and every later decision is marked as made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone."
+        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference\nestimates were first displayed), never posted by a client: the plan in force then is what was\ndeclared in the software before any estimate was displayed, and every later decision is marked\nas made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. A client never undoes it; the server withdraws it (a revert it records itself) only\nwhile no estimate has been served under it, on Cancel or a change to the plan\n(calm/FOUNDATION §7), and the next press of Fit records a new one."
       },
       "Mark": {
         "properties": {
@@ -10044,6 +10587,40 @@
                 "type": "null"
               }
             ]
+          },
+          "sweeps": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/SweepConfirmation"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sweeps"
+          },
+          "design": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "observational",
+                  "parallel_trial",
+                  "cluster_randomized_trial",
+                  "case_control",
+                  "matched_sets",
+                  "crossover",
+                  "repeated_measures_trial"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Design"
           }
         },
         "type": "object",
@@ -10107,7 +10684,9 @@
           "levers",
           "selection",
           "intended_use",
-          "updating"
+          "updating",
+          "sweeps",
+          "design"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -10240,7 +10819,8 @@
             "enum": [
               "question",
               "declaration",
-              "finding"
+              "finding",
+              "reading"
             ],
             "title": "Source"
           },
@@ -10322,6 +10902,46 @@
                 "type": "null"
               }
             ]
+          },
+          "would_change": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Would Change"
+          },
+          "changes_nothing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changes Nothing"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReadItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "default": []
+          },
+          "changed_since": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChangedSince"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -10338,17 +10958,21 @@
           "reason",
           "waiting_for",
           "computing",
-          "reopened_by"
+          "reopened_by",
+          "would_change",
+          "changes_nothing",
+          "items",
+          "changed_since"
         ],
         "title": "QuestLine",
-        "description": "One line of a stage: a Router question, a declaration or a finding.\n\n``status``: ``answered``; ``open`` (answerable now); ``waiting`` (``waiting_for`` names the\nearlier answers it needs, ``computing`` the results its card waits for); ``set_for_you`` (a\ndefault the engine stated, in the Confirm sweep or For the record)."
+        "description": "One line of a stage: a Router question, a declaration, a finding or what the values settled\n(``reading``).\n\n``status``: ``answered``; ``open`` (answerable now); ``waiting`` (``waiting_for`` names the\nearlier answers it needs, ``computing`` the results its card waits for); ``set_for_you`` (a\ndefault the engine stated, in the Confirm sweep or For the record). A default's ``reason`` is\nwhy it was set; on a Confirm line ``would_change`` says what another choice would change here,\nand a default For the record says in ``changes_nothing`` why no other choice changes a number\n(P0.5). ``id`` is the card that opens its options; a reading's ``items`` carry their own."
       },
       "QuestLog": {
         "properties": {
           "version": {
             "type": "integer",
             "title": "Version",
-            "default": 1
+            "default": 3
           },
           "stages": {
             "items": {
@@ -10363,13 +10987,24 @@
             },
             "type": "object",
             "title": "Kinds"
+          },
+          "fit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FitLock"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
         "required": [
           "version",
           "stages",
-          "kinds"
+          "kinds",
+          "fit"
         ],
         "title": "QuestLog",
         "description": "The seven stages, each with its lines, progress and reopen reasons; ``kinds`` places every\ndecision kind (a methods sentence's \"change\" link opens its stage, disagreement 19; a revert\nsits with the record it undoes)."
@@ -10526,6 +11161,76 @@
         "title": "ReadFromData",
         "description": "One reading the values settled with no question asked (BLUEPRINT §14.3, amendment:\nsettlement is visible), with its evidence and the answers that change it."
       },
+      "ReadItem": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "words": {
+            "type": "string",
+            "title": "Words"
+          },
+          "evidence": {
+            "type": "string",
+            "title": "Evidence"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/ReadOption"
+            },
+            "type": "array",
+            "title": "Options",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "value",
+          "words",
+          "evidence",
+          "options"
+        ],
+        "title": "ReadItem",
+        "description": "One reading the values settled with no question asked (``readings.read_from_data``)."
+      },
+      "ReadOption": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "decision"
+        ],
+        "title": "ReadOption",
+        "description": "Another reading of a column, and the decision that records it."
+      },
       "ReadingItem": {
         "properties": {
           "reading": {
@@ -10587,6 +11292,89 @@
         ],
         "title": "ReadingsCard",
         "description": "The readings card's \"read from your data\": every reading the values settled, never a\nrequired tap, and the methods record's line for them."
+      },
+      "RecordLine": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ingest",
+              "profile",
+              "not_applicable",
+              "set_for_you",
+              "filled",
+              "noted"
+            ],
+            "title": "Kind"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "decision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "key",
+          "id",
+          "text",
+          "decision_id"
+        ],
+        "title": "RecordLine",
+        "description": "One collapsed line: ``ingest`` (what was read and its warnings), ``profile`` (what the\ncolumn summaries read), ``not_applicable`` (why a question was not asked), ``set_for_you`` (a\ndefault no other choice changes a number on here, with why), ``filled`` (an answer the engine\nrecorded itself), ``noted`` (what was looked at or noticed with nothing to decide)."
+      },
+      "RecordStage": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/RecordLine"
+            },
+            "type": "array",
+            "title": "Lines",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "lines"
+        ],
+        "title": "RecordStage"
       },
       "Refusal": {
         "properties": {
@@ -12753,6 +13541,69 @@
         "title": "SetColumnUnit",
         "description": "A column's unit, as the user reads it from the source's data dictionary, where TurboTab\ncould only propose one: total energy in kcal or kJ (a day's, or a total over ``days`` days),\nor an age in years, months, weeks or days. Leash (BLUEPRINT §11.3): a unit not read from a\nstated suffix, a codebook or the values' own agreement is a proposal, and no screen, band or\ncount is applied in it until it is recorded here."
       },
+      "SetDesign-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_design",
+            "title": "Kind",
+            "default": "set_design"
+          },
+          "design": {
+            "type": "string",
+            "enum": [
+              "observational",
+              "parallel_trial",
+              "cluster_randomized_trial",
+              "case_control",
+              "matched_sets",
+              "crossover",
+              "repeated_measures_trial"
+            ],
+            "title": "Design",
+            "default": "observational"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "SetDesign",
+        "description": "How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked\nin Your question before the goal, observational stated until answered. Every design is a named\nvalue (``turbotab.core.designs``); one this version does not analyze is refused with its code,\nits reason and the observational exit (V2X_SEAMS seam guard 6)."
+      },
+      "SetDesign-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_design",
+            "title": "Kind",
+            "default": "set_design"
+          },
+          "design": {
+            "type": "string",
+            "enum": [
+              "observational",
+              "parallel_trial",
+              "cluster_randomized_trial",
+              "case_control",
+              "matched_sets",
+              "crossover",
+              "repeated_measures_trial"
+            ],
+            "title": "Design",
+            "default": "observational"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "design"
+        ],
+        "title": "SetDesign",
+        "description": "How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked\nin Your question before the goal, observational stated until answered. Every design is a named\nvalue (``turbotab.core.designs``); one this version does not analyze is refused with its code,\nits reason and the observational exit (V2X_SEAMS seam guard 6)."
+      },
       "SetEnergyAdjustment-Input": {
         "properties": {
           "kind": {
@@ -12915,7 +13766,9 @@
             "type": "string",
             "enum": [
               "total",
-              "direct"
+              "direct",
+              "complier",
+              "per_protocol"
             ],
             "title": "Effect",
             "default": "total"
@@ -13006,7 +13859,9 @@
             "type": "string",
             "enum": [
               "total",
-              "direct"
+              "direct",
+              "complier",
+              "per_protocol"
             ],
             "title": "Effect",
             "default": "total"
@@ -15933,6 +16788,21 @@
             "type": "boolean",
             "title": "Acknowledged",
             "default": false
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "prediction",
+                  "inference"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal"
           }
         },
         "additionalProperties": false,
@@ -15942,7 +16812,7 @@
           "estimand"
         ],
         "title": "SetSurvey",
-        "description": "Whose estimate it is under a survey design (``SurveySpec``)."
+        "description": "Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was\nanswered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer\nsays whose performance the scores estimate, which is not the estimand inference asks for, so\nan answer given under one stands only under that one; a record from before the stamp\n(``None``) stands under either, as it did."
       },
       "SetSurvey-Output": {
         "properties": {
@@ -16019,6 +16889,21 @@
             "type": "boolean",
             "title": "Acknowledged",
             "default": false
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "prediction",
+                  "inference"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal"
           }
         },
         "additionalProperties": false,
@@ -16031,10 +16916,11 @@
           "psu",
           "cycle",
           "four_year_weight",
-          "acknowledged"
+          "acknowledged",
+          "goal"
         ],
         "title": "SetSurvey",
-        "description": "Whose estimate it is under a survey design (``SurveySpec``)."
+        "description": "Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was\nanswered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer\nsays whose performance the scores estimate, which is not the estimand inference asks for, so\nan answer given under one stands only under that one; a record from before the stamp\n(``None``) stands under either, as it did."
       },
       "SetTarget": {
         "properties": {
@@ -16819,6 +17705,153 @@
         "title": "SetUsualIntake",
         "description": "One dietary component's usual-intake distribution by the NCI method, or ``model=\"none\"``\n(turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of\na wide table's ``days``."
       },
+      "SetValidation-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_validation",
+            "title": "Kind",
+            "default": "set_validation"
+          },
+          "folds": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Folds",
+            "default": 5
+          },
+          "validation": {
+            "type": "string",
+            "enum": [
+              "kfold",
+              "repeated_kfold",
+              "bootstrap",
+              "internal_external"
+            ],
+            "title": "Validation",
+            "default": "kfold"
+          },
+          "repeats": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 2.0,
+            "title": "Repeats",
+            "default": 10
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 20.0,
+            "title": "N Boot",
+            "default": 500
+          },
+          "cluster": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cluster"
+          },
+          "nested_cv": {
+            "type": "boolean",
+            "title": "Nested Cv",
+            "default": false
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "SetValidation",
+        "description": "A changed validation scheme (crosswalk disagreement 5): how the training rows compare the\nmodels (the folds and the kind of validation), recorded on its own so that the draw's record,\nits time and with it the holdout's status stay where the draw put them. ``set_split`` keeps the\ndraw (the holdout and the seed) and carries the scheme set for you, which Models' Confirm sweep\nshows (``default:validation-scheme``). Changed after the held-out rows were opened it is block\nand record: ``acknowledged`` keeps it, and the scores at the opening stay the reported result."
+      },
+      "SetValidation-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_validation",
+            "title": "Kind",
+            "default": "set_validation"
+          },
+          "folds": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Folds",
+            "default": 5
+          },
+          "validation": {
+            "type": "string",
+            "enum": [
+              "kfold",
+              "repeated_kfold",
+              "bootstrap",
+              "internal_external"
+            ],
+            "title": "Validation",
+            "default": "kfold"
+          },
+          "repeats": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 2.0,
+            "title": "Repeats",
+            "default": 10
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 20.0,
+            "title": "N Boot",
+            "default": 500
+          },
+          "cluster": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cluster"
+          },
+          "nested_cv": {
+            "type": "boolean",
+            "title": "Nested Cv",
+            "default": false
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "folds",
+          "validation",
+          "repeats",
+          "n_boot",
+          "cluster",
+          "nested_cv",
+          "acknowledged"
+        ],
+        "title": "SetValidation",
+        "description": "A changed validation scheme (crosswalk disagreement 5): how the training rows compare the\nmodels (the folds and the kind of validation), recorded on its own so that the draw's record,\nits time and with it the holdout's status stay where the draw put them. ``set_split`` keeps the\ndraw (the holdout and the seed) and carries the scheme set for you, which Models' Confirm sweep\nshows (``default:validation-scheme``). Changed after the held-out rows were opened it is block\nand record: ``acknowledged`` keeps it, and the scores at the opening stay the reported result."
+      },
       "Source": {
         "properties": {
           "key": {
@@ -17064,6 +18097,17 @@
             "type": "boolean",
             "title": "Cancelled",
             "default": false
+          },
+          "held": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held"
           }
         },
         "type": "object",
@@ -17077,7 +18121,8 @@
           "job_id",
           "progress",
           "updated_at",
-          "cancelled"
+          "cancelled",
+          "held"
         ],
         "title": "StageStatus"
       },
@@ -17236,15 +18281,166 @@
           "answered": {
             "type": "boolean",
             "title": "Answered"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "default": ""
+          },
+          "heading": {
+            "type": "string",
+            "title": "Heading",
+            "default": ""
+          },
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "default": ""
+          },
+          "confirmed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed By"
+          },
+          "changed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Changed",
+            "default": []
           }
         },
         "type": "object",
         "required": [
           "lines",
-          "answered"
+          "answered",
+          "id",
+          "heading",
+          "action",
+          "confirmed_by",
+          "changed"
         ],
         "title": "Sweep",
-        "description": "The stage's one Confirm sweep: how many defaults it holds, and whether each is answered."
+        "description": "The stage's one Confirm sweep (P0.5): how many defaults it holds, and whether each is\nanswered, by the person's own answer or by \"Confirm all\" (``confirmed_by``, the\n``confirm_sweep`` record). ``changed``: the lines set for the person anew, or stated otherwise,\nsince that confirmation. ``id`` is the crosswalk's card; ``heading`` and ``action`` are its\nwords (\"Here are the 6 other choices set for you\", \"Confirm all 6\")."
+      },
+      "SweepConfirmation": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "enum": [
+              "data",
+              "question",
+              "first_look",
+              "whos_in",
+              "models",
+              "results",
+              "writeup"
+            ],
+            "title": "Stage"
+          },
+          "sweep": {
+            "type": "string",
+            "enum": [
+              "defaults",
+              "noticings"
+            ],
+            "title": "Sweep",
+            "default": "defaults"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/SweptLine-Output"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "stage",
+          "sweep",
+          "lines"
+        ],
+        "title": "SweepConfirmation"
+      },
+      "SweptLine-Input": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "key",
+          "value"
+        ],
+        "title": "SweptLine"
+      },
+      "SweptLine-Output": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "key",
+          "value",
+          "basis"
+        ],
+        "title": "SweptLine"
       },
       "TableFocusView": {
         "properties": {
@@ -17448,6 +18644,7 @@
               "event",
               "task",
               "follow_up",
+              "design",
               "purpose",
               "grain",
               "repeat_kind",
@@ -17763,6 +18960,182 @@
           "diagnostics_seen"
         ],
         "title": "TimeVaryingSpec"
+      },
+      "Triage": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "gate": {
+            "type": "string",
+            "title": "Gate"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TriageItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "default": []
+          },
+          "blockers": {
+            "type": "integer",
+            "title": "Blockers",
+            "default": 0
+          },
+          "confirmable": {
+            "type": "boolean",
+            "title": "Confirmable",
+            "default": false
+          },
+          "answered": {
+            "type": "boolean",
+            "title": "Answered",
+            "default": false
+          },
+          "confirmed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed By"
+          },
+          "changed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Changed",
+            "default": []
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "stage",
+          "gate",
+          "items",
+          "blockers",
+          "confirmable",
+          "answered",
+          "confirmed_by",
+          "changed",
+          "passed"
+        ],
+        "title": "Triage",
+        "description": "The triage at the gate: its stage and crosswalk card, each noticing (blockers first), how\nmany block, whether it can be confirmed now (the gate not passed, no blocker, something to\ntriage), whether every noticing has a recorded disposition, and the record that holds them.\n``changed``: the noticings whose recorded disposition no longer stands, the recommendation or\nits reason having changed since. ``passed``: the gate has passed (the plan is fixed, or under\nPredict the held-out rows are open), so the triage is read, no longer confirmed."
+      },
+      "TriageItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "line": {
+            "type": "string",
+            "title": "Line"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns",
+            "default": []
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
+          "recommended": {
+            "type": "string",
+            "enum": [
+              "no_change",
+              "could_bias",
+              "act_on_it"
+            ],
+            "title": "Recommended"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "blocker": {
+            "type": "boolean",
+            "title": "Blocker"
+          },
+          "recorded": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "no_change",
+                  "could_bias",
+                  "act_on_it"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "line",
+          "stage",
+          "summary",
+          "severity",
+          "columns",
+          "question",
+          "recommended",
+          "label",
+          "reason",
+          "blocker",
+          "recorded"
+        ],
+        "title": "TriageItem",
+        "description": "One open noticing at the gate, or one the last confirmation disposed of: where it is\ndecided (``line``, ``stage``, the ``question`` it routes to), the engine's recommended\ndisposition with its plain label and reason, whether it blocks (it must be resolved before the\ntriage is confirmed), and the disposition the last confirmation recorded while it still\nstands (the recommendation and reason it was recorded on are the triage's now)."
       },
       "UpdatingSpec": {
         "properties": {
@@ -21546,6 +22919,54 @@
           "columns"
         ],
         "title": "CompleteCaseLoss",
+        "type": "object"
+      },
+      "ConfirmSweep": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "confirm_sweep",
+            "default": "confirm_sweep",
+            "title": "Kind",
+            "type": "string"
+          },
+          "stage": {
+            "enum": [
+              "data",
+              "question",
+              "first_look",
+              "whos_in",
+              "models",
+              "results",
+              "writeup"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "sweep": {
+            "default": "defaults",
+            "enum": [
+              "defaults",
+              "noticings"
+            ],
+            "title": "Sweep",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/SweptLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "stage",
+          "sweep",
+          "lines"
+        ],
+        "title": "ConfirmSweep",
         "type": "object"
       },
       "CovariateAnswers": {
@@ -25424,6 +26845,7 @@
                   "event",
                   "task",
                   "follow_up",
+                  "design",
                   "purpose",
                   "grain",
                   "repeat_kind",
@@ -25806,6 +27228,18 @@
             "default": null,
             "title": "Withheld"
           },
+          "withheld_for": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Withheld For"
+          },
           "estimand": {
             "anyOf": [
               {
@@ -25969,6 +27403,7 @@
           "levels",
           "batch_figure",
           "withheld",
+          "withheld_for",
           "estimand",
           "headline_metric",
           "headline_label",
@@ -28506,7 +29941,7 @@
       },
       "LockPlan": {
         "additionalProperties": false,
-        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when inference estimates are first displayed (or by the user, before\nthat): the plan in force then is what was declared in the software before any estimate was\ndisplayed, and every later decision is marked as made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone.",
+        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference\nestimates were first displayed), never posted by a client: the plan in force then is what was\ndeclared in the software before any estimate was displayed, and every later decision is marked\nas made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. A client never undoes it; the server withdraws it (a revert it records itself) only\nwhile no estimate has been served under it, on Cancel or a change to the plan\n(calm/FOUNDATION §7), and the next press of Fit records a new one.",
         "properties": {
           "kind": {
             "const": "lock_plan",
@@ -34613,6 +36048,38 @@
         "title": "SetColumnUnit",
         "type": "object"
       },
+      "SetDesign": {
+        "additionalProperties": false,
+        "description": "How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked\nin Your question before the goal, observational stated until answered. Every design is a named\nvalue (``turbotab.core.designs``); one this version does not analyze is refused with its code,\nits reason and the observational exit (V2X_SEAMS seam guard 6).",
+        "properties": {
+          "kind": {
+            "const": "set_design",
+            "default": "set_design",
+            "title": "Kind",
+            "type": "string"
+          },
+          "design": {
+            "default": "observational",
+            "enum": [
+              "observational",
+              "parallel_trial",
+              "cluster_randomized_trial",
+              "case_control",
+              "matched_sets",
+              "crossover",
+              "repeated_measures_trial"
+            ],
+            "title": "Design",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "design"
+        ],
+        "title": "SetDesign",
+        "type": "object"
+      },
       "SetEnergyAdjustment": {
         "additionalProperties": false,
         "properties": {
@@ -34714,7 +36181,9 @@
             "default": "total",
             "enum": [
               "total",
-              "direct"
+              "direct",
+              "complier",
+              "per_protocol"
             ],
             "title": "Effect",
             "type": "string"
@@ -36143,7 +37612,7 @@
       },
       "SetSurvey": {
         "additionalProperties": false,
-        "description": "Whose estimate it is under a survey design (``SurveySpec``).",
+        "description": "Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was\nanswered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer\nsays whose performance the scores estimate, which is not the estimand inference asks for, so\nan answer given under one stands only under that one; a record from before the stamp\n(``None``) stands under either, as it did.",
         "properties": {
           "kind": {
             "const": "set_survey",
@@ -36223,6 +37692,22 @@
             "default": false,
             "title": "Acknowledged",
             "type": "boolean"
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prediction",
+                  "inference"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Goal"
           }
         },
         "required": [
@@ -36233,7 +37718,8 @@
           "psu",
           "cycle",
           "four_year_weight",
-          "acknowledged"
+          "acknowledged",
+          "goal"
         ],
         "title": "SetSurvey",
         "type": "object"
@@ -36608,6 +38094,84 @@
           "ear_symmetric"
         ],
         "title": "SetUsualIntake",
+        "type": "object"
+      },
+      "SetValidation": {
+        "additionalProperties": false,
+        "description": "A changed validation scheme (crosswalk disagreement 5): how the training rows compare the\nmodels (the folds and the kind of validation), recorded on its own so that the draw's record,\nits time and with it the holdout's status stay where the draw put them. ``set_split`` keeps the\ndraw (the holdout and the seed) and carries the scheme set for you, which Models' Confirm sweep\nshows (``default:validation-scheme``). Changed after the held-out rows were opened it is block\nand record: ``acknowledged`` keeps it, and the scores at the opening stay the reported result.",
+        "properties": {
+          "kind": {
+            "const": "set_validation",
+            "default": "set_validation",
+            "title": "Kind",
+            "type": "string"
+          },
+          "folds": {
+            "default": 5,
+            "maximum": 10,
+            "minimum": 2,
+            "title": "Folds",
+            "type": "integer"
+          },
+          "validation": {
+            "default": "kfold",
+            "enum": [
+              "kfold",
+              "repeated_kfold",
+              "bootstrap",
+              "internal_external"
+            ],
+            "title": "Validation",
+            "type": "string"
+          },
+          "repeats": {
+            "default": 10,
+            "maximum": 50,
+            "minimum": 2,
+            "title": "Repeats",
+            "type": "integer"
+          },
+          "n_boot": {
+            "default": 500,
+            "maximum": 2000,
+            "minimum": 20,
+            "title": "N Boot",
+            "type": "integer"
+          },
+          "cluster": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cluster"
+          },
+          "nested_cv": {
+            "default": false,
+            "title": "Nested Cv",
+            "type": "boolean"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "folds",
+          "validation",
+          "repeats",
+          "n_boot",
+          "cluster",
+          "nested_cv",
+          "acknowledged"
+        ],
+        "title": "SetValidation",
         "type": "object"
       },
       "Setting": {
@@ -38365,6 +39929,43 @@
           "weight"
         ],
         "title": "SurveyView",
+        "type": "object"
+      },
+      "SweptLine": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Basis"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "value",
+          "basis"
+        ],
+        "title": "SweptLine",
         "type": "object"
       },
       "TargetInfo": {

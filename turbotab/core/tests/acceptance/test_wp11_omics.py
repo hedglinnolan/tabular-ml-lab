@@ -50,6 +50,7 @@ from turbotab.core.stages.modeling import design_stage, fit_stage
 from turbotab.core.tests import modeling_fixtures as mf
 from turbotab.core.tests.acceptance.references import cr2_by_definition
 from turbotab.server.tests.conftest import make_client, prepare, wait_for
+from turbotab.core.tests.acceptance.server_drive import served
 
 FDR = 0.05
 
@@ -207,7 +208,7 @@ def findings(client, pid: str) -> list[dict]:
 
 
 def artifact(client, pid: str, stage: str) -> dict:
-    return client.get(f"/api/projects/{pid}/stages/{stage}").json()["artifact"]
+    return served(client, pid, stage)
 
 
 def training_rows(client, pid: str, *, held_out_too: bool = False) -> np.ndarray:
@@ -729,6 +730,9 @@ def test_3f_feature_wise_tests_run_end_to_end_under_inference(client, depth_csv)
     assert "Penalized coefficients are shrunk and carry no confidence intervals." in \
         families["elastic_net"]["concerns"]
     accepted(client, pid, {"kind": "select_models", "models": ["featurewise"]})
+    # Under Estimate TurboTab records the split with no rows held out (P0.6); a holdout is drawn
+    # here so that the table is seen to read the held-out rows too.
+    accepted(client, pid, {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5})
     wait_for(client, pid, {"fit": "fresh"}, timeout=300)
     model = artifact(client, pid, "fit")["models"][0]
     assert model["family"] == "featurewise" and model["cv"] == {} and model["holdout"] is None

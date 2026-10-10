@@ -70,7 +70,10 @@ def _answer_until(drive: Any, stop: str, answers: dict[str, dict[str, Any]]) -> 
              "energy_adjustment", "models"]
     for key in order:
         step = drive.reach(key)
-        if step["status"] in ("open", "waiting"):
+        # P0.6: under Estimate TurboTab records the split itself (no rows held out); a drive whose
+        # split is another records its own (``Drive._differs``).
+        if step["status"] in ("open", "waiting") or (key in answers
+                                                      and drive._differs(key, answers[key])):
             assert key in answers, f"no answer for the open step {key}"
             if answers[key]["kind"] == "set_roles":
                 # The author's roles, each confirmed on its own (BLUEPRINT §14, the leash).
@@ -321,8 +324,8 @@ def test_b_previews_under_inference_read_every_analyzed_row(tmp_path):
     out. Under inference the card samples every analyzed row, its basis says so and no row is
     sealed from it; before the plan's lock it quotes no coefficient of the outcome model (the
     previews leash), only that energy leaves it. Under prediction the same card reads the training
-    rows, keeps the held-out rows sealed, and its gap is the training rows' gap computed with numpy
-    and statsmodels."""
+    rows, keeps the held-out rows sealed, quotes no coefficient before Fit (SIZING P0.8), and after
+    it its gap is the training rows' gap computed with numpy and statsmodels."""
     frame = _residual_fixture()
     path = tmp_path / "resid.csv"
     frame.to_csv(path, index=False)
@@ -367,6 +370,21 @@ def test_b_previews_under_inference_read_every_analyzed_row(tmp_path):
                 assert "coefficient" not in json.dumps(result), caption
                 assert "`energy_kcal` leaves the outcome model" in caption, caption
             else:
+                # Under prediction no estimate of the outcome model is previewed before Fit
+                # (SIZING P0.8): the card says energy leaves, and quotes no coefficient yet.
+                assert "coefficient" not in json.dumps(result), caption
+                assert "`energy_kcal` leaves the outcome model" in caption, caption
+                drive.answer("energy_adjustment", {"kind": "set_energy_adjustment",
+                                                   "method": "standard",
+                                                   "energy_column": "energy_kcal",
+                                                   "nutrients": ["fat_g"]})
+                drive.reach("models")
+                drive.decide({"kind": "select_models", "models": ["linear"]})
+                assert drive.press_fit()
+                r = client.post(f"/api/projects/{drive.pid}/preview", json=preview)
+                assert r.status_code == 200, r.text
+                result = r.json()
+                caption = " ".join(v.get("caption") or "" for v in result["views"])
                 kept = frame.drop(index=sorted(sealed))
                 t_dropped, t_standard = _gap(kept)
                 assert result["basis"].startswith("Values on all 2,400 training rows"), result["basis"]

@@ -152,6 +152,7 @@ export class MockServer {
       progress: null,
       updated_at: null,
       cancelled: false,
+      held: null,
     });
     const p: MockProject = {
       summary: {
@@ -231,6 +232,8 @@ export class MockServer {
       // As the server marks it: recorded after the seal was opened (it is never reverted).
       post_seal: p.records.some((r) => r.decision.kind === "open_seal"),
       after_estimates: p.records.some((r) => r.decision.kind === "lock_plan"),
+      recorded_by: "you",
+      early: null,
       decision,
     };
     p.records.push(record);
@@ -354,6 +357,7 @@ export class MockServer {
         job_id: null,
         progress: null,
         cancelled: false,
+        held: null,
       };
       if (missing.length) {
         next = { ...base, status: "blocked", fresh: false, missing };
@@ -705,6 +709,12 @@ function slotOf(d: Decision): Slot | null {
       return "intended_use";
     case "set_updating":
       return "updating";
+    case "confirm_sweep":
+      return "sweeps";
+    case "set_design":
+      return "design";
+    case "set_validation":
+      return "split";
     case "revert":
       return null;
   }
@@ -876,6 +886,10 @@ function valueOf(d: Decision): ProjectState[Slot] {
       const { kind: _k, ...value } = d;
       return value as ProjectState[Slot];
     }
+    case "set_design":
+      return d.design ?? "observational";
+    case "set_validation": // written onto the split in fold (the draw kept)
+      return null;
     case "set_survey": {
       const { kind: _kind, ...value } = d;
       return value;
@@ -894,6 +908,7 @@ function valueOf(d: Decision): ProjectState[Slot] {
     case "confirm_readings": // each listed reading where its own confirmation goes
     case "join_files": // keyed by file; the mock serves no added files
     case "import_codebook": // keyed by codebook; the mock serves no codebooks
+    case "confirm_sweep": // keyed by stage; the mock serves no quest log
     case "apply_repair":
     case "defer_finding":
     case "dismiss_finding":
@@ -994,6 +1009,8 @@ export function fold(records: DecisionRecord[]): ProjectState {
     selection: null,
     intended_use: null,
     updating: null,
+    sweeps: null,
+    design: null,
   };
   // Each record's slots as they stood before it (a block confirmation writes several).
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }[]>();
@@ -1104,6 +1121,12 @@ export function fold(records: DecisionRecord[]): ProjectState {
         ...(state.usual_intake ?? {}),
         [nutrient]: spec as NonNullable<ProjectState["usual_intake"]>[string],
       };
+      continue;
+    }
+    if (d.kind === "set_validation") {
+      // P0.6 (crosswalk disagreement 5): the scheme is written onto the draw, which stays.
+      const { kind: _k, acknowledged: _a, ...scheme } = d;
+      if (state.split) state.split = { ...state.split, ...scheme } as ProjectState["split"];
       continue;
     }
     (state as Record<Slot, unknown>)[slot] =

@@ -31,6 +31,7 @@ export const GRAMMAR: Record<QuestionKey, Grammar> = {
   event: "choice",
   task: "fact",
   follow_up: "fact",
+  design: "fact",
   purpose: "fact",
   grain: "fact",
   repeat_kind: "fact",

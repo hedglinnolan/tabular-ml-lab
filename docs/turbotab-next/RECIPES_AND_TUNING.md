@@ -138,6 +138,8 @@ There is no "Advanced mode" (BLUEPRINT §11.4).
 
 F10 is why the design below stays small. F11–F16 must be fixed before the search and the versions are built on them.
 
+F11 is fixed in `inner_cv.fit_pipeline` (2026-10-09, `turbotab/core/tests/test_stopping_rows.py`): the stopping units are drawn first, and the steps and their inner splits are fit on the other rows. RT-1's `fit_parts` keeps that order.
+
 **How Classic did it, for contrast.**
 - One preprocessing tab per model, with a Smart Defaults / Advanced radio. Smart Defaults filled the options in from the data profile.
 - Optuna's TPE ran 30 unseeded trials, each scored by accuracy or RMSE on one validation split outside the cross-validation.

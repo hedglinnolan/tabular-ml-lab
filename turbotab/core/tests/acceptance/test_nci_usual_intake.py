@@ -817,7 +817,8 @@ def test_3c_the_log_and_logit_intervals_cover_in_the_episodic_tail(small_episodi
 # ── 4 · routing, through the real server ─────────────────────────────────────
 
 from turbotab.core.survey import ATTESTATION  # noqa: E402
-from turbotab.core.tests.acceptance.server_drive import Truth, local_server, open_project  # noqa: E402
+from turbotab.core.tests.acceptance.server_drive import (  # noqa: E402
+    Truth, local_server, open_project, settle_forms)
 
 
 def recall_table(seed: int = 61, n: int = 500) -> pd.DataFrame:
@@ -861,7 +862,13 @@ def recall_truth() -> Truth:
     are amounts, the weekend flag a code; energy is one day's kcal."""
     return Truth({"code_or_count:age": "amount", "code_or_count:recall": "amount",
                   "code_or_count:weekend": "code", "unit:energy_kcal": "kcal",
-                  "day_count:energy_kcal": "1"}, fixture="recall_table")
+                  "day_count:energy_kcal": "1",
+                  # Age and sex shape both the intake and the cholesterol, and neither follows
+                  # from the intake: confounders (the plan answered before Fit, SIZING P0.8). Fish
+                  # carries protein and bears on cholesterol itself: a confounder of protein too.
+                  "adjust:age": "yes,yes,no", "adjust:sex": "yes,yes,no",
+                  "adjust:fish_g": "yes,yes,no"},
+                 fixture="recall_table")
 
 
 RECALL_ROLES = {"participant_id": "identifier", "age": "covariate", "sex": "covariate",
@@ -932,7 +939,8 @@ NHANES_PROTEIN = {"kind": "set_usual_intake", "nutrient": "DRxTPROT", "model": "
                   "weekend_coding": "nhanes_day", "cutoff": 46, "cutoff_kind": "EAR",
                   "ear_for_all": True}
 NHANES_TRUTH = {"code_or_count:RIDAGEYR": "amount", "code_or_count:RIAGENDR": "code",
-                "code_or_count:DR1DAY": "code", "code_or_count:DR2DAY": "code"}
+                "code_or_count:DR1DAY": "code", "code_or_count:DR2DAY": "code",
+                "adjust:RIDAGEYR": "yes,yes,no", "adjust:RIAGENDR": "yes,yes,no"}
 NHANES_ROLES = {"SEQN": "identifier", "RIAGENDR": "covariate", "RIDAGEYR": "covariate",
                 "SDMVSTRA": "design", "SDMVPSU": "design", "WTDRD1": "design",
                 "DR1TPROT": "exposure"}
@@ -949,6 +957,22 @@ def nhanes_opening(d) -> None:
     d.decide({"kind": "set_purpose", "purpose": "inference"})
     d.reach("roles")
     d.decide_roles(NHANES_ROLES)
+
+
+def answer_the_plan(d, exposure: str) -> None:
+    """Under inference no estimate stage, the usual intake among them, is served before the plan is
+    locked, and Fit locks it once the questions the estimates rest on are answered (SIZING P0.8):
+    no row is left out and none held out (the distributions read every row either way), then the
+    exposure, its effect, the adjustment set, the energy adjustment where an energy column is
+    declared, and the forms. The first distribution read presses Fit."""
+    d.answer("exclusions", {"kind": "set_exclusions", "rules": []})
+    d.answer("missing", {"kind": "set_missing", "strategy": "complete_case"})
+    d.answer("split", {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
+    d.answer_plan(exposure)
+    if d.reach("energy_adjustment")["status"] in ("open", "waiting"):
+        d.decide({"kind": "set_energy_adjustment", "method": "standard",
+                  "energy_column": "energy_kcal", "nutrients": [exposure]})
+    settle_forms(d)
 
 
 def by_name(artifact: dict, nutrient: str) -> dict:
@@ -981,11 +1005,14 @@ def journeys(tmp_path_factory):
                 ("iron", IRON)):
             r = d.post(body)
             a["refused"][name] = (r.status_code, r.json().get("error"))
+        answer_the_plan(d, "protein_g")
         d.decide(PROTEIN)
         d.decide(FISH)
         art = d.artifact("usual_intake")
         a["protein"], a["fish_whole"] = by_name(art, "protein_g"), by_name(art, "fish_g")
-        a["sentences"] = [r["sentence"] for r in d.view()["decisions"][-2:]]
+        # The two declarations' own records (the press that read them locked the plan after them).
+        a["sentences"] = [r["sentence"] for r in d.view()["decisions"]
+                          if r["decision"]["kind"] == "set_usual_intake"][-2:]
         d.decide({**FISH, "model": "amount_only"})
         a["fish_amount"] = by_name(d.artifact("usual_intake"), "fish_g")
         d.decide({**FISH, "population": "consumers", "consumer_column": "fish_ever"})
@@ -1008,9 +1035,12 @@ def journeys(tmp_path_factory):
         r = d.post({"kind": "set_repeat_kind", "repeat_kind": "time_points"})
         a["time_points_status"] = r.status_code
         if r.status_code == 200:
+            # The repeats read again, the forms are asked on the new rows before any estimate.
+            settle_forms(d)
             after = d.artifact("usual_intake")
             a["after_time_points"] = after
             d.decide(by_name(after, "protein_g")["exits"][0]["decision"])
+            settle_forms(d)
             a["back_to_repeats"] = d.artifact("usual_intake")
         out["A"] = a
 
@@ -1037,8 +1067,10 @@ def journeys(tmp_path_factory):
         nhanes_opening(d)
         d.decide(NHANES_PROTEIN)
         c["sentence"] = d.view()["decisions"][-1]["sentence"]
+        # Before the lock the refusal is shown, with no number in it.
         c["unanswered"] = d.artifact("usual_intake")["analyses"][0]
         d.answer("survey", POPULATION)
+        answer_the_plan(d, "DR1TPROT")
         art = d.artifact("usual_intake")
         c["offer"], c["population"] = art["offer"], art["analyses"][0]
         d.decide({"kind": "set_survey", "estimand": "sample"})
@@ -1050,6 +1082,7 @@ def journeys(tmp_path_factory):
         nhanes_opening(d)
         d.decide(NHANES_PROTEIN)
         d.answer("survey", POPULATION)
+        answer_the_plan(d, "DR1TPROT")
         e["population"] = d.artifact("usual_intake")["analyses"][0]
         d.decide(e["population"]["exits"][0]["decision"])
         e["sample"] = d.artifact("usual_intake")["analyses"][0]
