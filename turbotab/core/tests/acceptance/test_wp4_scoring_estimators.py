@@ -349,29 +349,26 @@ def test_3a_with_temporal_yes_the_folds_forward_chain_by_whole_unit(clinical, la
     assert len(fit.data["models"][0]["cv"]["auc"]["folds"]) == split.data["folds"]
 
 
-def test_3b_elastic_nets_inner_cv_receives_the_same_splitter(clinical, last_visit, monkeypatch):
+def test_3b_elastic_nets_inner_cv_receives_the_same_splitter(clinical, last_visit):
     """Every elastic-net fit (each outer fold and the refit) tunes its penalty on inner splits that
     forward-chain by whole subject: no subject on both sides, and every subject it learns from has
-    its last visit no later than any subject it is scored on."""
-    from turbotab.core.models.elastic_net import PooledLogisticRegressionCV
+    its last visit no later than any subject it is scored on. The path search draws them from each
+    fit's own rows (RT-5f), as ``tuning.observing`` sees them."""
+    from turbotab.core.models import tuning as T
 
-    seen = []
-    original = PooledLogisticRegressionCV.fit
-
-    def spy(self, X, y, *a, **k):
-        seen.append((np.asarray(X.index), self.cv))
-        return original(self, X, y, *a, **k)
-
-    monkeypatch.setattr(PooledLogisticRegressionCV, "fit", spy)
-    _, _, split, _ = _stages(clinical, _clinical_state(models=["elastic_net"]), fit=True)
+    drawn: list = []
+    with T.observing(drawn.append):
+        _, _, split, _ = _stages(clinical, _clinical_state(models=["elastic_net"]), fit=True)
     subjects = clinical.frame(["subject_id"])["subject_id"]
-    assert len(seen) == split.data["folds"] + 1
-    for row_ids, cv in seen:
-        assert isinstance(cv, list) and len(cv) >= 2
-        who = subjects.loc[row_ids].to_numpy()
-        for train, test in cv:
-            assert not set(who[train]) & set(who[test])
-            assert max(last_visit[s] for s in who[train]) <= min(last_visit[s] for s in who[test])
+    refits = [d for d in drawn if d.kind == "refit"]
+    assert len(refits) == split.data["folds"] + 1
+    inner = [d for d in drawn if d.kind == "inner"]
+    assert len(inner) >= 2 * len(refits)
+    for d in inner:
+        who_train = subjects.loc[d.train].to_numpy()
+        who_test = subjects.loc[d.validation].to_numpy()
+        assert not set(who_train) & set(who_test)
+        assert max(last_visit[s] for s in who_train) <= min(last_visit[s] for s in who_test)
 
 
 def test_3c_the_methods_sentence_says_time_ordered_folds(clinical):
@@ -484,7 +481,7 @@ def test_4_the_same_rows_in_any_order_choose_the_same_elastic_net_penalty(tmp_pa
         design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
         fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
         model = fit.objects["fitted"]["elastic_net"][-1]
-        chosen[name] = (float(model.alpha_), float(model.l1_ratio_))
+        chosen[name] = (float(model.alpha), float(model.l1_ratio))  # the refit's own (RT-5f)
         plain = make_pipeline(StandardScaler(), ElasticNetCV(l1_ratio=list(L1_RATIOS), cv=5, max_iter=5000))
         today[name] = float(plain.fit(frame[cols], frame["y"])[-1].alpha_)
     assert chosen["random"][0] == pytest.approx(chosen["sorted"][0], rel=1e-9), chosen
@@ -529,7 +526,8 @@ def test_5_the_plans_holdout_r2_precision_is_within_20_percent_of_the_simulated_
 
 
 def test_a16_boosted_trees_stop_early_on_whole_units_the_latest_when_time_ordered(monkeypatch):
-    """Above 10,000 rows boosted trees hold rows aside to stop early. Those rows are whole units
+    """Above 10,000 rows boosted trees at their standard settings hold rows aside to stop early,
+    and searched settings do from an effective size of 1,500 (RT-5a). Those rows are whole units
     (never a person on both sides), the latest units when the folds follow time, and the same
     units whatever order the rows arrive in. Reference: scikit-learn's own draw (a 10% split of
     positions, as HistGradientBoosting makes it) puts most held-aside people on both sides."""
@@ -550,22 +548,42 @@ def test_a16_boosted_trees_stop_early_on_whole_units_the_latest_when_time_ordere
     X = pd.DataFrame(rng.normal(size=(people * per, 3)), columns=["a", "b", "c"])
     X.index = pd.Index(np.arange(len(X)) + 10_000, name="row_id")
     y = X["a"].to_numpy() + rng.normal(size=len(X))
-    pipe = _pipeline("boosted_trees", "regression", ["a", "b", "c"], len(X))
-    fitted = fit_pipeline(clone(pipe), X, y, groups=person)
-    train_rows, val_rows = seen[-1]
+    # Boosted trees are tuned (RT-5a), so they are built through a plan, for a plan whose outer
+    # training fold holds these 3,000 people on 12,000 rows. Each of its two kinds of candidate
+    # is fit alone (a plan of one candidate refits it without a search): the standard one stops
+    # early by scikit-learn's own rule (above 10,000 of the plan's rows), a Sobol one because the
+    # plan's effective size is at least 1,500.
+    from dataclasses import replace
+
+    from turbotab.core.models.tuning import make_plan
+
+    trees = get_family("boosted_trees")
+    plan = make_plan(trees, task="regression", loss="mse", n_plan=people, plan_rows=len(X),
+                     unit="units", split_seed=0)
+    assert plan.standard_stops and plan.early_stopping and plan.candidates[0].standard
+    sobol = next(c for c in plan.candidates if not c.standard)
     who = dict(zip(X.index, person))
-    assert val_rows is not None and fitted[-1].do_early_stopping_
-    assert not {who[r] for r in train_rows} & {who[r] for r in val_rows}
-    assert len({who[r] for r in val_rows}) == pytest.approx(0.1 * people, abs=1)
-    # the same rows shuffled: the same people held aside
-    shuffle = rng.permutation(len(X))
-    fit_pipeline(clone(pipe), X.iloc[shuffle], y[shuffle], groups=person[shuffle])
-    assert {who[r] for r in seen[-1][1]} == {who[r] for r in val_rows}
-    # time-ordered: the latest tenth of the people
     rank = rng.permutation(people).astype(float)
-    fit_pipeline(clone(pipe), X, y, groups=person, order=rank[person])
-    latest = {who[r] for r in seen[-1][1]}
-    assert latest == set(np.flatnonzero(rank >= people - len(latest)).tolist())
+    shuffle = rng.permutation(len(X))
+    for candidate in (plan.candidates[0], sobol):
+        alone = replace(plan, candidates=(candidate,))
+        spec = DesignSpec(predictors=["a", "b", "c"], inputs=["a", "b", "c"], categorical=[],
+                          numeric=["a", "b", "c"], energy=None, impute=False,
+                          plans={trees.key: alone.to_dict()})
+        pipe = build_pipeline(spec, trees, "regression", "prediction", len(X), 3)
+        fitted = fit_pipeline(clone(pipe), X, y, groups=person)
+        assert fitted.tuning_.n_fits == 1 and fitted.tuning_.chosen_params["early_stopping"]
+        train_rows, val_rows = seen[-1]
+        assert val_rows is not None and fitted[-1].do_early_stopping_
+        assert not {who[r] for r in train_rows} & {who[r] for r in val_rows}
+        assert len({who[r] for r in val_rows}) == pytest.approx(0.1 * people, abs=1)
+        # the same rows shuffled: the same people held aside
+        fit_pipeline(clone(pipe), X.iloc[shuffle], y[shuffle], groups=person[shuffle])
+        assert {who[r] for r in seen[-1][1]} == {who[r] for r in val_rows}
+        # time-ordered: the latest tenth of the people
+        fit_pipeline(clone(pipe), X, y, groups=person, order=rank[person])
+        latest = {who[r] for r in seen[-1][1]}
+        assert latest == set(np.flatnonzero(rank >= people - len(latest)).tolist())
     # reference: a split of positions, as scikit-learn draws it, splits people
     _, sk_val = train_test_split(np.arange(len(X)), test_size=0.1, random_state=0)
     split_people = set(person[sk_val]) & set(np.delete(person, sk_val))

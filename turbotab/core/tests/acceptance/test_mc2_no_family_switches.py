@@ -741,8 +741,8 @@ def test_a_family_may_switch_on_its_own_key_or_class_in_its_own_modules():
     assert scan_source(own, "turbotab.core.models.boosted_trees") == {}
     assert set(scan_source(own, "turbotab.core.models.linear")) == {"f"}
     # models/wide.py declares the elastic net's wide model step, so the elastic net is its own
-    step = ("from turbotab.core.models.elastic_net import PooledElasticNetCV\n"
-            "def g(model):\n    return type(model) is not PooledElasticNetCV\n")
+    step = ("from turbotab.core.models.elastic_net import ExactElasticNet\n"
+            "def g(model):\n    return type(model) is not ExactElasticNet\n")
     assert scan_source(step, "turbotab.core.models.wide") == {}
     assert set(scan_source(step, "turbotab.core.models.cost")) == {"g"}
 

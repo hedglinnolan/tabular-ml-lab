@@ -191,23 +191,44 @@ def test_b24_under_inference_with_a_holdout_the_curve_reads_every_analyzed_row(t
     assert model["delta"][out["ks"].index(5.0)] == pytest.approx(expected, rel=1e-8)
 
 
-def test_b24_a_family_without_a_table_is_refit_on_every_analyzed_row_for_its_curve(tmp_path):
+def test_b24_a_family_without_a_table_is_refit_on_every_analyzed_row_for_its_curve(tmp_path,
+                                                                                  monkeypatch):
     """Under inference with a holdout, boosted trees (no coefficient table, so no every-row refit
-    in the fit stage) are refit on every analyzed row when a curve is asked. Reference:
-    scikit-learn's ``HistGradientBoostingRegressor(random_state=0)`` fit here on all 1,500 rows
-    (the family's model; nothing in its pipeline transforms these columns), and its mean change in
-    prediction over the rows on support when 5% of each row's energy moves from fat to
-    carbohydrate, the support counted by hand."""
+    in the fit stage) are refit on every analyzed row when a curve is asked. Boosted trees are
+    tuned (RT-5a): that refit searches on all 1,500 rows (the plan's effective size is 960, so
+    three inner folds and nine candidates) and refits the one it chose. Reference: scikit-learn's
+    ``HistGradientBoostingRegressor`` at the refit's recorded settings (a pinned replay, RECIPES
+    §8 T2(c)), fit here on all 1,500 rows at the recorded thread count (the family's model;
+    nothing in its pipeline transforms these columns), and its mean change in prediction over the
+    rows on support when 5% of each row's energy moves from fat to carbohydrate, the support
+    counted by hand."""
     from sklearn.ensemble import HistGradientBoostingRegressor
+    from threadpoolctl import threadpool_limits
 
+    from turbotab.core.stages import modeling
+
+    refits = []
+    fit_with = modeling.fit_with
+
+    def spy(model, X, *a, **k):
+        fitted = fit_with(model, X, *a, **k)
+        refits.append((len(X), fitted))
+        return fitted
+
+    monkeypatch.setattr(modeling, "fit_with", spy)
     frame = _grams(1_500, seed=99)
     roles = {"fat_g": "exposure", "carb_g": "exposure", "protein_g": "exposure",
              "energy_kcal": "energy"}
     out = _stage(frame, tmp_path, roles, "fat_g", "carb_g", holdout=0.2,
                  models=("linear", "boosted_trees"))
     trees = next(m for m in out["models"] if m["family"] == "boosted_trees")
+    [record] = [f.tuning_ for n, f in refits if n == 1_500 and getattr(f, "tuning_", None)]
+    assert record.plan.family == "boosted_trees" and record.plan.n_plan == 1_200 * 4 // 5
+    assert record.inner_k_used == 3 and len(record.losses) == 9  # the refit searched
+    params = dict(record.chosen_params)
+    assert params["early_stopping"] is False  # n_plan under 1,500, rows under 10,000
+    threads = params.pop("n_threads")
     columns = ["fat_g", "carb_g", "protein_g", "energy_kcal"]
-    model = HistGradientBoostingRegressor(random_state=0).fit(frame[columns], frame["y"])
     energy = frame["energy_kcal"].to_numpy()
     fat, carb = frame["fat_g"].to_numpy(), frame["carb_g"].to_numpy()
     new_fat, new_carb = fat - 0.05 * energy / 9, carb + 0.05 * energy / 4
@@ -219,7 +240,9 @@ def test_b24_a_family_without_a_table_is_refit_on_every_analyzed_row_for_its_cur
     on = amount & share
     moved = frame[columns].copy()
     moved["fat_g"], moved["carb_g"] = new_fat, new_carb
-    expected = float(np.mean(model.predict(moved[on]) - model.predict(frame.loc[on, columns])))
+    with threadpool_limits(limits=threads, user_api="openmp"):
+        model = HistGradientBoostingRegressor(**params).fit(frame[columns], frame["y"])
+        expected = float(np.mean(model.predict(moved[on]) - model.predict(frame.loc[on, columns])))
     assert trees["delta"][out["ks"].index(5.0)] == pytest.approx(expected, rel=1e-6, abs=1e-9)
     assert out["basis"] == "Averaged over 1,500 analyzed rows."
 

@@ -1,5 +1,5 @@
 {
- "provenance": "Prediction results of the WP7 acceptance-2 fixture (test_wp7_missing_data.prediction_fixture), captured by running the fit stage at commit 514336c (turbotab-next before WP7) with OMP_NUM_THREADS=2: every family's cross-validated scores, its training-fit coefficients, and the sealed held-out scores. The elastic net's entries were captured again on 2026-10-08 in the same way, at 514336c with three changes from fix/elastic-net-determinism: its elastic_net.py and wide.py (a coordinate-descent tolerance of 1e-12, and the penalty chosen on the pooled inner loss, rounded to 1e-9), and its row_keys in inner_cv.py (numbers hashed in single precision), on macOS arm64 with Accelerate. That run reproduced the linear and boosted-trees entries to 4.4e-16. The elastic net's entries were captured again on 2026-10-10 on feat/wave-c6a2-int (C6a phase 2): RT-1b threads the split's seed (707 here) into every fit (RECIPES F15), where fits had used seed 0, so the elastic net's seeded inner folds are drawn anew. turbotab-next 05325dca with only fit_pipeline's seed set to 707 gives the same numbers; linear and boosted trees still match the stored entries to 4.7e-11.",
+ "provenance": "Prediction results of the WP7 acceptance-2 fixture (test_wp7_missing_data.prediction_fixture), captured by running the fit stage at commit 514336c (turbotab-next before WP7) with OMP_NUM_THREADS=2: every family's cross-validated scores, its training-fit coefficients, and the sealed held-out scores. The elastic net's entries were captured again on 2026-10-08 in the same way, at 514336c with three changes from fix/elastic-net-determinism: its elastic_net.py and wide.py (a coordinate-descent tolerance of 1e-12, and the penalty chosen on the pooled inner loss, rounded to 1e-9), and its row_keys in inner_cv.py (numbers hashed in single precision), on macOS arm64 with Accelerate. That run reproduced the linear and boosted-trees entries to 4.4e-16. The elastic net's entries were captured again on 2026-10-10 on feat/wave-c6a2-int (C6a phase 2): RT-1b threads the split's seed (707 here) into every fit (RECIPES F15), where fits had used seed 0, so the elastic net's seeded inner folds are drawn anew. turbotab-next 05325dca with only fit_pipeline's seed set to 707 gives the same numbers; linear and boosted trees still match the stored entries to 4.7e-11. The elastic net's entries were captured again on 2026-10-10 on feat/wave-c6a3-int (C6a phase 3): RT-5f puts the elastic net on the path search with each split's own lambda_max and codes every level of a category (full coding, so gender_female joins its coefficients); linear and boosted trees still match the stored entries to 4.7e-11.",
  "commit": "514336c69d21fc879bc32ef368da3c8791aa45e7",
  "configs": {
   "impute": {
@@ -150,56 +150,56 @@
    "elastic_net": {
     "cv": {
      "r2": {
-      "mean": 0.34733452002820525,
-      "sd": 0.07352804639060263,
+      "mean": 0.3468113643554533,
+      "sd": 0.06718042026299753,
       "folds": [
-       0.43708654593950536,
-       0.28783648907727,
-       0.2617124637477506,
-       0.3991650302762497,
-       0.3508720711002504
+       0.4289117904372848,
+       0.29452656573583025,
+       0.2674805044810813,
+       0.39458409394944316,
+       0.3485538671736269
       ],
-      "estimate": 0.35222388569680607,
+      "estimate": 0.3511925112952695,
       "estimator": "pooled",
-      "se": 0.03533323057893663,
-      "ci_low": 0.28297202630464097,
-      "ci_high": 0.4214757450889712,
+      "se": 0.03498986248087742,
+      "ci_low": 0.2826136410087405,
+      "ci_high": 0.41977138158179855,
       "repeats": 1,
       "repeat_sd": null
      },
      "rmse": {
-      "mean": 8.658151234516335,
-      "sd": 0.6381832853471651,
+      "mean": 8.66525976858731,
+      "sd": 0.6349727812042514,
       "folds": [
-       8.892956093028353,
-       8.017876502589766,
-       9.653228571055298,
-       8.359527628476988,
-       8.367167377431278
+       8.957296097010618,
+       7.980127602875497,
+       9.615445598027904,
+       8.391334822370554,
+       8.382094722651974
       ],
-      "estimate": 8.676946762791273,
+      "estimate": 8.68385163411916,
       "estimator": "pooled",
-      "se": 0.3158317569076126,
-      "ci_low": 8.057927894078343,
-      "ci_high": 9.295965631504203,
+      "se": 0.31917085330113815,
+      "ci_low": 8.058288256734013,
+      "ci_high": 9.309415011504306,
       "repeats": 1,
       "repeat_sd": null
      },
      "mae": {
-      "mean": 6.990414618529833,
-      "sd": 0.5837613119974033,
+      "mean": 6.970196478682095,
+      "sd": 0.585322768291019,
       "folds": [
-       7.072867523531494,
-       6.533843830629747,
-       7.971628402965623,
-       6.666985721678725,
-       6.706747613843578
+       7.1207353059070755,
+       6.4382519528861595,
+       7.9199461615413185,
+       6.661002966166634,
+       6.711046006909289
       ],
-      "estimate": 6.990414618529833,
+      "estimate": 6.970196478682095,
       "estimator": "pooled",
-      "se": 0.28780603766183055,
-      "ci_low": 6.426325150179467,
-      "ci_high": 7.554504086880199,
+      "se": 0.28998778620891985,
+      "ci_low": 6.401830861756112,
+      "ci_high": 7.5385620956080786,
       "repeats": 1,
       "repeat_sd": null
      }
@@ -207,15 +207,19 @@
     "coefficients": [
      [
       "(intercept)",
-      89.86522059706235
+      91.65699458611962
+     ],
+     [
+      "gender_female",
+      -0.6307141119569084
      ],
      [
       "gender_male",
-      1.2677038378894592
+      0.6307141119569071
      ],
      [
       "age",
-      0.23874674289921757
+      0.23362848716796245
      ],
      [
       "bp_sys",
@@ -227,15 +231,15 @@
      ],
      [
       "weight",
-      0.07059078412629287
+      0.07497903223463578
      ],
      [
       "height",
-      -0.10407288322619093
+      -0.1076518689190453
      ],
      [
       "bmi",
-      0.43685962994288857
+      0.41604157081651666
      ],
      [
       "waist",
@@ -243,19 +247,19 @@
      ],
      [
       "kcal",
-      0.0005409927629392059
+      0.0009116853393201164
      ],
      [
       "protein",
-      0.006368514687428575
+      0.006063614379164461
      ],
      [
       "sugar",
-      0.0019798634386370027
+      0.0033755654449311384
      ],
      [
       "carb",
-      0.03338412921751122
+      0.029596595037482847
      ],
      [
       "fat_total",
@@ -384,17 +388,17 @@
     {
      "family": "elastic_net",
      "metric": "r2",
-     "value": 0.3406523072
+     "value": 0.3385989295
     },
     {
      "family": "elastic_net",
      "metric": "rmse",
-     "value": 8.5204017858
+     "value": 8.5336588293
     },
     {
      "family": "elastic_net",
      "metric": "mae",
-     "value": 6.9505965813
+     "value": 6.958286842
     }
    ]
   },
@@ -570,56 +574,56 @@
    "elastic_net": {
     "cv": {
      "r2": {
-      "mean": 0.3448617593547076,
-      "sd": 0.07102226881684005,
+      "mean": 0.3422654083375506,
+      "sd": 0.06567527719218755,
       "folds": [
-       0.43162207996568724,
-       0.28718471462686757,
-       0.2650652529559674,
-       0.39910831786617595,
-       0.34132843135883995
+       0.41981435866934,
+       0.28832258425470136,
+       0.2679780885928498,
+       0.39523210332204706,
+       0.33997990684881463
       ],
-      "estimate": 0.34974726133794676,
+      "estimate": 0.3466760513832069,
       "estimator": "pooled",
-      "se": 0.03427752242008224,
-      "ci_low": 0.28256455191532137,
-      "ci_high": 0.41692997076057214,
+      "se": 0.034174160989389156,
+      "ci_low": 0.2796959266421305,
+      "ci_high": 0.4136561761242833,
       "repeats": 1,
       "repeat_sd": null
      },
      "rmse": {
-      "mean": 8.675443646824228,
-      "sd": 0.626432896202176,
+      "mean": 8.695919068138164,
+      "sd": 0.6277018157729093,
       "folds": [
-       8.936015901193496,
-       8.021544657331868,
-       9.63128449928772,
-       8.359922144272565,
-       8.428451032035488
+       9.028359043789004,
+       8.015139689813871,
+       9.612179264665947,
+       8.386842770382193,
+       8.437074572039796
       ],
-      "estimate": 8.69351810304541,
+      "estimate": 8.714024104581567,
       "estimator": "pooled",
-      "se": 0.3161019556343383,
-      "ci_low": 8.073969654559429,
-      "ci_high": 9.31306655153139,
+      "se": 0.3191912423776678,
+      "ci_low": 8.088420765340743,
+      "ci_high": 9.33962744382239,
       "repeats": 1,
       "repeat_sd": null
      },
      "mae": {
-      "mean": 7.006471282452253,
-      "sd": 0.5481850278032884,
+      "mean": 7.0078051039913545,
+      "sd": 0.5674055425936745,
       "folds": [
-       7.114242464305037,
-       6.543691547246939,
-       7.913172398284851,
-       6.699333367536979,
-       6.761916634887456
+       7.178065260368613,
+       6.512609180835536,
+       7.921629059188225,
+       6.662765527852562,
+       6.763956491711836
       ],
-      "estimate": 7.006471282452253,
+      "estimate": 7.0078051039913545,
       "estimator": "pooled",
-      "se": 0.2881495234901804,
-      "ci_low": 6.441708594249121,
-      "ci_high": 7.571233970655385,
+      "se": 0.2899836970863468,
+      "ci_low": 6.439447501598343,
+      "ci_high": 7.576162706384366,
       "repeats": 1,
       "repeat_sd": null
      }
@@ -627,11 +631,11 @@
     "coefficients": [
      [
       "(intercept)",
-      88.68341881426487
+      91.42624340580502
      ],
      [
       "age",
-      0.2342961861678785
+      0.23112838647901837
      ],
      [
       "bp_sys",
@@ -643,15 +647,15 @@
      ],
      [
       "weight",
-      0.06130802947231031
+      0.07151927037584335
      ],
      [
       "height",
-      -0.0904120535253948
+      -0.10227818920089449
      ],
      [
       "bmi",
-      0.4491827339558898
+      0.41878953247511946
      ],
      [
       "waist",
@@ -659,19 +663,19 @@
      ],
      [
       "kcal",
-      0.0006797924818387406
+      0.0009569228649110831
      ],
      [
       "protein",
-      0.0032514900571330822
+      0.004894184568019688
      ],
      [
       "sugar",
-      0.00211655158819428
+      0.0034088170414805397
      ],
      [
       "carb",
-      0.03169303847883529
+      0.028866279452266056
      ],
      [
       "fat_total",
@@ -718,11 +722,19 @@
       0.0
      ],
      [
+      "gender_female",
+      -0.7667277631797486
+     ],
+     [
       "gender_male",
-      1.0895239985174732
+      0.45424094256148545
      ],
      [
       "gender_Missing",
+      0.0
+     ],
+     [
+      "meds_hbp_0",
       0.0
      ],
      [
@@ -754,17 +766,17 @@
     {
      "family": "elastic_net",
      "metric": "r2",
-     "value": 0.3435880137
+     "value": 0.3396092361
     },
     {
      "family": "elastic_net",
      "metric": "rmse",
-     "value": 8.5014123326
+     "value": 8.5271386507
     },
     {
      "family": "elastic_net",
      "metric": "mae",
-     "value": 6.9431310123
+     "value": 6.9551454767
     }
    ]
   },
@@ -936,56 +948,56 @@
    "elastic_net": {
     "cv": {
      "r2": {
-      "mean": 0.3398450924664965,
-      "sd": 0.07245837771107021,
+      "mean": 0.33404279791303837,
+      "sd": 0.06661476276047738,
       "folds": [
-       0.42926828792759864,
+       0.4132951349147097,
        0.2718573743049588,
-       0.2655407275812277,
-       0.3933288432422939,
-       0.3392302292764038
+       0.26264861312594046,
+       0.38389223105058945,
+       0.3385206361689933
       ],
-      "estimate": 0.345354581063933,
+      "estimate": 0.3388445700629559,
       "estimator": "pooled",
-      "se": 0.03514214752147149,
-      "ci_low": 0.2764772375824554,
-      "ci_high": 0.41423192454541063,
+      "se": 0.03400293972324733,
+      "ci_low": 0.27220003283690475,
+      "ci_high": 0.405489107289007,
       "repeats": 1,
       "repeat_sd": null
      },
      "rmse": {
-      "mean": 8.706378082206255,
-      "sd": 0.5987361588283276,
+      "mean": 8.748975770244275,
+      "sd": 0.6122424399868563,
       "folds": [
-       8.954499898435861,
+       9.078940678903944,
        8.107327770027258,
-       9.628168459173033,
-       8.400029485575702,
-       8.441864797819429
+       9.647106477706602,
+       8.465107531966108,
+       8.446396392617467
       ],
-      "estimate": 8.722832527375056,
+      "estimate": 8.766096604109395,
       "estimator": "pooled",
-      "se": 0.31982891060065227,
-      "ci_low": 8.095979381383097,
-      "ci_high": 9.349685673367015,
+      "se": 0.32281649072951474,
+      "ci_low": 8.133387908663938,
+      "ci_high": 9.398805299554851,
       "repeats": 1,
       "repeat_sd": null
      },
      "mae": {
-      "mean": 7.023491790278278,
-      "sd": 0.5292080407298633,
+      "mean": 7.049456477066409,
+      "sd": 0.5419755542147768,
       "folds": [
-       7.116371598455068,
+       7.2095331800221665,
        6.623602872880504,
-       7.908815723802276,
-       6.715836929744313,
-       6.752831826509227
+       7.931209291718148,
+       6.721809256199787,
+       6.761127784511434
       ],
-      "estimate": 7.0234917902782765,
+      "estimate": 7.049456477066409,
       "estimator": "pooled",
-      "se": 0.2896239610000315,
-      "ci_low": 6.455839257658382,
-      "ci_high": 7.591144322898171,
+      "se": 0.29173361969539796,
+      "ci_low": 6.477669089383924,
+      "ci_high": 7.621243864748894,
       "repeats": 1,
       "repeat_sd": null
      }
@@ -993,15 +1005,19 @@
     "coefficients": [
      [
       "(intercept)",
-      90.9031150609716
+      92.62499912131882
+     ],
+     [
+      "gender_female",
+      -0.5978390590598792
      ],
      [
       "gender_male",
-      1.2809207286791664
+      0.597839059059884
      ],
      [
       "age",
-      0.24456597386582857
+      0.23694448792617273
      ],
      [
       "bp_sys",
@@ -1013,15 +1029,15 @@
      ],
      [
       "weight",
-      0.05761336672075641
+      0.06212281236751131
      ],
      [
       "height",
-      -0.08843386837938312
+      -0.09112596521856946
      ],
      [
       "bmi",
-      0.4854613132695867
+      0.4565468928994986
      ],
      [
       "waist",
@@ -1029,7 +1045,7 @@
      ],
      [
       "kcal",
-      0.004586253096291383
+      0.004337004499526956
      ],
      [
       "protein_adj",
@@ -1037,15 +1053,15 @@
      ],
      [
       "sugar",
-      0.0054694634097234825
+      0.007261326107193036
      ],
      [
       "carb_adj",
-      0.0011868001053565872
+      0.0014824563293315033
      ],
      [
       "fat_total_adj",
-      -0.05867181160868425
+      -0.052289633527405864
      ],
      [
       "fat_sat",
@@ -1116,17 +1132,17 @@
     {
      "family": "elastic_net",
      "metric": "r2",
-     "value": 0.3487192017
+     "value": 0.3458959561
     },
     {
      "family": "elastic_net",
      "metric": "rmse",
-     "value": 8.4681192716
+     "value": 8.4864537035
     },
     {
      "family": "elastic_net",
      "metric": "mae",
-     "value": 6.9065775109
+     "value": 6.9228231553
     }
    ]
   }

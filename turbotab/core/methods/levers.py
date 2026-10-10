@@ -406,7 +406,9 @@ def resampled_rows(y: np.ndarray, method: str, rng: np.random.Generator) -> np.n
     drawn down to its count without replacement, or every majority row with the minority drawn up
     to its count with replacement."""
     levels, counts = np.unique(y, return_counts=True)
-    minority, majority = levels[np.argmin(counts)], levels[np.argmax(counts)]
+    # two distinct levels even when their counts tie (argmin and argmax would both name the first)
+    by_count = np.argsort(counts, kind="stable")
+    minority, majority = levels[by_count[0]], levels[by_count[-1]]
     mino, majo = np.flatnonzero(y == minority), np.flatnonzero(y == majority)
     if method == "undersample":
         return np.sort(np.concatenate([mino, rng.choice(majo, size=len(mino), replace=False)]))

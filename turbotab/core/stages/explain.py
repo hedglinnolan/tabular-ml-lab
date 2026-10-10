@@ -34,12 +34,11 @@ def explain_stage(ctx: StageContext) -> Bundle:
 
     from turbotab.core.models import get_family
     from turbotab.core.models import explain as E
-    from turbotab.core.models.inner_cv import fit_pipeline
     from turbotab.core.models.metrics import LABELS, PRIMARY, higher_is_better
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
     from turbotab.core.readings import settled_roles
-    from turbotab.core.stages.modeling import (BASELINE_LABEL, _task, coded_outcome,
-                                               pinned_to_full_fit, row_ids_of)
+    from turbotab.core.stages.modeling import (BASELINE_LABEL, _task, coded_outcome, fit_designs,
+                                               fit_with, pinned_to_full_fit, row_ids_of)
 
     state = ctx.state
     spec_answer = state.explain
@@ -70,6 +69,10 @@ def explain_stage(ctx: StageContext) -> Bundle:
                         and grouped_by != target else [])
     with open_store(ctx) as store:
         frame = modeling_frame(store, [*spec.inputs, *extra], ids, outcome=target)
+        # F15 (RECIPES §4.3): each row's stratum, PSU and weight under the population answer,
+        # handed with the split's seed to every refit, as the fit stage's are.
+        designs = fit_designs(state, store, frame.index.to_numpy())
+    split_seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
     X = frame[spec.inputs]
     y = np.asarray(coded_outcome(task, frame[target].to_numpy(), state.event,
                                  order=state.outcome_order))
@@ -87,10 +90,12 @@ def explain_stage(ctx: StageContext) -> Bundle:
     def refit(model: Any, X_b: pd.DataFrame, y_b: Any, units_b: Any) -> Any:
         # Every copy of a resampled row (every row of a resampled unit) keeps to one side of the
         # refit's inner splits (the row-id index travels with the resample).
+        # F15: at the split's seed, with the resampled rows' design, inside the stage's cancel.
         inner = units_b if units_b is not None else X_b.index.to_numpy()
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            return fit_pipeline(model, X_b, y_b, groups=inner)
+            return fit_with(model, X_b, y_b, groups=inner, designs=designs, seed=split_seed,
+                            cancelled=ctx.cancelled)
 
     families = []
     for key in [k for k in (state.models or []) if k in by_key]:
@@ -125,7 +130,7 @@ def explain_stage(ctx: StageContext) -> Bundle:
         task=task, purpose=state.purpose, target=target, event=state.event, X=X, y=y, state=state,
         units=units, unit_name=grouped_by, exposures=list(spec_answer.exposures),
         declared=declared, candidates=exposures, curve_method=spec_answer.curves,
-        reseeds=int(spec_answer.reseeds), seed=int(getattr(state.split, "seed", 0) or 0),
+        reseeds=int(spec_answer.reseeds), seed=split_seed,
         metric_label=LABELS[primary], baseline_label=BASELINE_LABEL[task],
         higher_is_better=higher_is_better(primary),
         multiple_imputation=inference and spec.multiple_imputation())

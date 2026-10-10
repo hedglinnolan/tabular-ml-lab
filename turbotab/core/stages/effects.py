@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import math
 import re
+from dataclasses import replace
 from typing import Any, Literal, Mapping, Sequence
 
 import numpy as np
@@ -408,8 +409,8 @@ def effects_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.models.pipeline import DesignSpec, build_pipeline, design_spec, modeling_frame
     from turbotab.core.stages.data import open_store
     from turbotab.core.stages.modeling import (_missing_for_table, _survey, _task, coded_outcome,
-                                               imputed_copies_column, outcome_levels,
-                                               read_assignment)
+                                               fit_designs, imputed_copies_column,
+                                               outcome_levels, read_assignment)
 
     state = ctx.state
     spec_e = est.current_estimand(state)
@@ -451,6 +452,10 @@ def effects_stage(ctx: StageContext) -> Bundle:
             follow = follow_up_columns(state)
         columns = list(dict.fromkeys([*spec.inputs, *extra, target, *unit_columns, *follow]))
         frame = modeling_frame(store, columns, assignment.index.to_numpy(), outcome=target)
+        # F15 (RECIPES §4.3): under the population answer each row's stratum, PSU and weight,
+        # which every refit here is handed with the split's seed, as the fit stage's are.
+        designs = fit_designs(state, store, frame.index.to_numpy())
+    split_seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
     strategy = state.missing.strategy if state.missing is not None else None
     # Every model but Model 3 is fit on every analyzed row, as the fit is (ruling 3). Model 3's
     # added columns may be missing where the primary's are not: under complete cases it alone is
@@ -461,9 +466,11 @@ def effects_stage(ctx: StageContext) -> Bundle:
         if not recorded.all():
             rows3 = recorded
     frame3 = frame.loc[rows3] if rows3 is not None else frame
-    spec3 = (design_spec(state, frame3[[*spec.inputs, *extra]],
-                         [*spec.predictors, *[c for c in extra if c not in spec.predictors]],
-                         column_info=info) if further else None)
+    # Model 3's spec holds the design stage's plans, so a tuned family follows the plan every fit
+    # of it follows (``build_pipeline`` raises ``MissingPlan`` on a spec without one).
+    predictors3 = [*spec.predictors, *[c for c in extra if c not in spec.predictors]]
+    spec3 = (replace(design_spec(state, frame3[[*spec.inputs, *extra]], predictors3,
+                                 column_info=info), plans=spec.plans) if further else None)
     outcome = Outcome(name=target, labels=outcome_levels(task, frame[target].to_numpy(), state.event))
     levels = None
     if task == "ordinal":
@@ -506,7 +513,8 @@ def effects_stage(ctx: StageContext) -> Bundle:
                frame=frame, y=y, spec=spec, spec3=spec3, pipelines=pipelines, outcome=outcome,
                levels=levels, clusters=clusters, survey=survey, missing=missing,
                model_one=model_one, further=further, extra=extra, unit_columns=list(unit_columns),
-               rows3=rows3, frame3=frame3, y3=y3, clusters3=clusters3, missing3=missing3)
+               rows3=rows3, frame3=frame3, y3=y3, clusters3=clusters3, missing3=missing3,
+               designs=designs, split_seed=split_seed)
     out = []
     for i, family in enumerate(families):
         ctx.progress(0.05 + 0.9 * i / len(families), f"{family.label}: the declared models")
@@ -572,7 +580,6 @@ class _Run:
         from turbotab.core import estimand as est
         from turbotab.core.methods.missing import copy_pipeline
         from turbotab.core.models.effects import split_rows
-        from turbotab.core.models.inner_cv import fit_pipeline
         from turbotab.core.models.linear import model_matrix
         from turbotab.core.models.survey import blocked, has_design_estimator, no_design_estimator
         from turbotab.core.stages.modeling import _inference_table, with_units
@@ -610,7 +617,7 @@ class _Run:
             # Under multiple imputation each copy is fit as the fit stage fits it (MI repair):
             # the knots placed once on the observed values, and an impute step that refuses a
             # blank made inside the copy instead of median-filling it (``copy_pipeline``).
-            fitted = fit_pipeline(with_units(copy_pipeline(pipeline, imputed), units), X, self.y)
+            fitted = self._fit(with_units(copy_pipeline(pipeline, imputed), units), X, self.y)
             if self.levels is not None:
                 fitted[-1].level_names_ = list(self.levels)
             classes = list(getattr(fitted[-1], "classes_", [])) or None
@@ -752,7 +759,6 @@ class _Run:
         (``copy_pipeline``), on the knots its own imputation placed."""
         from turbotab.core import estimand as est
         from turbotab.core.methods.missing import copy_pipeline
-        from turbotab.core.models.inner_cv import fit_pipeline
         from turbotab.core.models.linear import model_matrix
         from turbotab.core.stages.modeling import with_units
 
@@ -771,8 +777,8 @@ class _Run:
         for k, X_k in enumerate(self.copies(self.missing3, self.frame3)):
             self._unless_cancelled()
             X3 = X_k[list(self.spec3.inputs)]
-            fitted3 = fit_pipeline(with_units(copy_pipeline(pipeline3, imputed3), units3), X3,
-                                   self.y3)
+            fitted3 = self._fit(with_units(copy_pipeline(pipeline3, imputed3), units3), X3,
+                                self.y3)
             if self.levels is not None:
                 fitted3[-1].level_names_ = list(self.levels)
             classes3 = list(getattr(fitted3[-1], "classes_", [])) or None
@@ -812,6 +818,14 @@ class _Run:
         from turbotab.core.voice import listing
 
         return listing(list(columns))
+
+    def _fit(self, model: Any, X: pd.DataFrame, y: Any) -> Any:
+        """F15: ``model`` fit on ``X``'s rows at the split's seed, with their survey design under
+        the population answer, inside the stage's cancel scope (``stages.modeling.fit_with``)."""
+        from turbotab.core.stages.modeling import fit_with
+
+        return fit_with(model, X, y, designs=self.designs, seed=self.split_seed,
+                        cancelled=self.ctx.cancelled)
 
     def _unless_cancelled(self) -> None:
         if self.ctx.cancelled():

@@ -69,6 +69,7 @@ import hashlib
 import itertools
 import json
 import math
+import numbers
 import threading
 import time
 from contextlib import contextmanager
@@ -790,7 +791,7 @@ class SobolStrategy:
             return c + 1
         if plan.inner_k < 2:
             return w
-        if plan.kind == "path":
+        if plan.kind == "path" and not plan.imbalance:  # imbalance: each point fit, as below
             r = math.prod(len(opts) for _, opts in plan.options) if plan.options else 1
             return w * ((plan.inner_k - 1) * r + 1)
         return w * ((plan.inner_k - 1) * c + 1)
@@ -815,6 +816,89 @@ class NoInnerFolds(ValueError):
 _NOUNS = {"units": "units", "events": "events", "rarest_class": "units of the rarest class"}
 
 
+class OutsideRange(ValueError):
+    """A value set by hand outside its dimension's declared range (RECIPES §4.1, §4.9): refused
+    before any fit, naming the range, rather than left for the estimator to refuse when it fits."""
+
+
+def _number(value: Any) -> bool:
+    return (isinstance(value, numbers.Real) and not isinstance(value, bool)
+            and math.isfinite(float(value)))
+
+
+def _shown(value: Any) -> str:
+    return f"{float(value):g}" if _number(value) else str(value)
+
+
+def _one_unit(n_plan: int) -> float:
+    """A share of units' lowest value: one unit of the plan, ``1/n_plan`` (:func:`map_unit`)."""
+    return 1.0 / max(int(n_plan), 1)
+
+
+def range_words(d: Dimension, n_plan: int | None = None) -> str:
+    """Where ``d`` runs, plainly: "it runs from 1 to 3", "it is one of a, b". A share of units runs
+    from one unit of the plan when ``n_plan`` is known ("from 0.0025 (one in 400)"), else from
+    just above 0."""
+    if d.scale == "choice":
+        return "it is one of " + ", ".join(_shown(c) for c in d.choices)
+    if d.scale == "share_of_units":
+        if n_plan is None:
+            return f"it runs from just above 0 to {_shown(d.high)}"
+        return (f"it runs from {_shown(_one_unit(n_plan))} (one in {int(n_plan):,}) "
+                f"to {_shown(d.high)}")
+    whole = " in whole numbers" if d.scale in ("int", "log_int") else ""
+    return f"it runs from {_shown(d.low)} to {_shown(d.high)}{whole}"
+
+
+def _within(d: Dimension, value: Any, n_plan: int | None = None) -> bool:
+    if d.scale == "choice":
+        return any(_tupled(value) == _tupled(c) for c in d.choices)
+    if not _number(value):
+        return False
+    v = float(value)
+    if d.scale == "share_of_units":
+        # one unit of the plan, with a hair of slack so 1/n_plan written another way is inside
+        low = 0.0 if n_plan is None else _one_unit(n_plan) * (1 - 1e-12)
+        return 0 < v <= float(d.high) and v >= low
+    if d.scale in ("int", "log_int") and not v.is_integer():
+        return False
+    return float(d.low) <= v <= float(d.high)
+
+
+def _standard(decl: TuningDecl, name: str, value: Any) -> bool:
+    return (name in decl.standard and not isinstance(value, bool)
+            and _tupled(value) == _tupled(decl.standard[name]))
+
+
+def by_hand_problems(decl: TuningDecl, values: Mapping[str, Any], *,
+                     n_plan: int | None = None) -> list[str]:
+    """One plain sentence for each value set by hand (``values``, by dimension name) that lies
+    outside its dimension's declared range (RECIPES §4.1): below ``low`` or above ``high``, not a
+    whole number on an integer scale, not among a choice's choices, for a share of units below one
+    unit of the plan (``1/n_plan``, when ``n_plan`` is known: :func:`make_plan`) or not above 0. A dimension's standard value is always allowed, even where it sits outside the searched
+    range (scikit-learn's ``l2_regularization = 0``, a symbolic ``"default"``). A name the
+    declaration does not hold is not checked here (:func:`make_plan` refuses it on its own)."""
+    dims = {d.name: d for d in (*decl.dimensions, *decl.by_hand)}
+    out: list[str] = []
+    for name, value in values.items():
+        d = dims.get(name)
+        if d is None or _within(d, value, n_plan) or _standard(decl, name, value):
+            continue
+        label = d.label[:1].upper() + d.label[1:]
+        out.append(f"{label} ({d.term}) was set by hand to {_shown(value)}; "
+                   f"{range_words(d, n_plan)}.")
+    return out
+
+
+def _whole(decl: TuningDecl, values: Mapping[str, Any]) -> dict[str, Any]:
+    """``values`` with each whole number on an int or log_int scale as an int (4.0 → 4): the
+    estimators want integers there (XGBoost refuses ``max_depth = 4.0`` when it fits)."""
+    scales = {d.name: d.scale for d in (*decl.dimensions, *decl.by_hand)}
+    return {name: int(float(v)) if (scales.get(name) in ("int", "log_int") and _number(v)
+                                    and float(v).is_integer()) else v
+            for name, v in values.items()}
+
+
 def make_plan(family: Any, *, task: str, loss: str, n_plan: int, plan_rows: int, unit: str,
               split_seed: int, rarest: int | None = None, psus: int | None = None,
               mode: str = "automatic", manual: Mapping[str, Any] | None = None,
@@ -827,8 +911,9 @@ def make_plan(family: Any, *, task: str, loss: str, n_plan: int, plan_rows: int,
     ``n_plan``, ``plan_rows`` and ``unit`` come from :func:`plan_size`; ``rarest`` defaults to
     ``n_plan`` for a yes/no or class outcome; ``psus`` is the fewest PSUs in any outer training
     fold under the population answer. ``manual`` holds values set by hand (dimension or by-hand
-    names only); ``options`` the "Try both" slots (RT-3). ``out_of_bag`` must be allowed by the
-    declaration, and never comes with the imbalance correction.
+    names only), each inside its dimension's range or its standard value (:func:`by_hand_problems`;
+    otherwise :class:`OutsideRange`), a whole number on an integer scale kept as an int; ``options`` the "Try both" slots (RT-3). ``out_of_bag``
+    must be allowed by the declaration, and never comes with the imbalance correction.
 
     With no inner folds (K = 0, out of bag aside) the plan keeps only the first candidate: the
     first standard one, the first option of each slot. A path family there raises
@@ -844,6 +929,10 @@ def make_plan(family: Any, *, task: str, loss: str, n_plan: int, plan_rows: int,
     if unknown:
         raise ValueError(f"a value set by hand for {', '.join(map(repr, unknown))}, which "
                          f"{family.key} does not tune")
+    outside = by_hand_problems(decl, manual, n_plan=n_plan)
+    if outside:
+        raise OutsideRange(" ".join(outside))
+    manual = _whole(decl, manual)
     if out_of_bag and not decl.out_of_bag:
         raise ValueError(f"{family.key} declares no out-of-bag scoring")
     if out_of_bag and imbalance:
@@ -1613,8 +1702,15 @@ def _path_searched(run: _Run, splits: list[tuple[np.ndarray, np.ndarray]]
         pooled_y.append(y_all[validation])
         if weights is not None:
             pooled_w.append(weights[validation])
+        # the path models these training rows' own classes, in sorted order (``PathFit``); a
+        # class the split lacks gets probability 0 in every candidate, as a searched family's
+        # does (:func:`_aligned`), so it moves no choice
+        have = None if run.classes is None else np.unique(np.asarray(head.y))
         for c in order:
-            predictions[c].append(_from_scores(plan.task, eta[:, c, :], run.classes))
+            predicted = _from_scores(plan.task, eta[:, c, :], run.classes)
+            if have is not None:
+                predicted = _aligned(predicted, list(have), run.classes)
+            predictions[c].append(predicted)
     return _pooled(run, order, pooled_y, pooled_w, predictions), shape
 
 
@@ -1722,10 +1818,14 @@ def _tuned_fit(pipe: "TunedPipeline", X: Any, y: Any, *, groups: Any, order: Any
                 below = True
             else:
                 k_used = len(splits)
-                if plan.kind == "path":
+                if plan.kind == "path" and not plan.imbalance:
                     losses, shape = _path_searched(run, splits)
                 else:
+                    # under the imbalance correction a candidate is the wrapped, recalibrated
+                    # model (RECIPES §4.3): a path's grid points are fit through it one by one,
+                    # each at its split's own settings, so the search scores what is deployed
                     losses = _searched(run, splits, order_eval)
+                    shape = tuple(len(v) for v in _path_grid(plan, decl).values())
         if any(v is not None for v in losses):
             chosen = choose(losses)
         if plan.kind == "path" and k_used:
@@ -1844,12 +1944,13 @@ def center(plan: TuningPlan) -> Candidate:
 __all__ = [
     "Activity", "Candidate", "Dimension", "Drawn", "EARLY_STOPPING_KEYS", "FitDesign", "Head",
     "IMBALANCE_FITS", "INNER_SPLITS", "LOSS_PRECISION", "Loss", "MID_N", "MissingPlan", "Mode",
-    "NoInnerFolds", "PER_FOLD_FLOOR", "PathCurve", "PathFit", "SEARCHED_K", "SMALL_N",
-    "STANDARD_ROWS_KEY", "STANDARD_STOP_ROWS", "STOPPING_SETS", "STOP_FLAG", "STOP_FROM_N",
-    "STOP_SHARE", "STOP_SHARE_PARAM", "STRATEGIES", "Scale", "SizeUnit", "SobolStrategy",
-    "Strategy", "StrategyName", "TunedPipeline", "TuningDecl", "TuningKind", "TuningPlan",
-    "TuningRecord", "cancel_scope", "center", "choose", "derive_seed", "effective_size",
-    "estimator_params", "fit_head", "fit_model", "fit_parts", "fit_seed", "inner_k",
-    "inner_splits_for", "make_plan", "map_unit", "observing", "path_folds", "path_grid",
-    "plan_size", "pooled_loss", "searched_size", "sobol_sample", "tuning_for", "tuning_problems",
+    "NoInnerFolds", "OutsideRange", "PER_FOLD_FLOOR", "PathCurve", "PathFit", "SEARCHED_K",
+    "SMALL_N", "STANDARD_ROWS_KEY", "STANDARD_STOP_ROWS", "STOPPING_SETS", "STOP_FLAG",
+    "STOP_FROM_N", "STOP_SHARE", "STOP_SHARE_PARAM", "STRATEGIES", "Scale", "SizeUnit",
+    "SobolStrategy", "Strategy", "StrategyName", "TunedPipeline", "TuningDecl", "TuningKind",
+    "TuningPlan", "TuningRecord", "by_hand_problems", "cancel_scope", "center", "choose",
+    "derive_seed", "effective_size", "estimator_params", "fit_head", "fit_model", "fit_parts",
+    "fit_seed", "inner_k", "inner_splits_for", "make_plan", "map_unit", "observing", "path_folds",
+    "path_grid", "plan_size", "pooled_loss", "range_words", "searched_size", "sobol_sample",
+    "tuning_for", "tuning_problems",
 ]

@@ -544,7 +544,12 @@ def test_2_prediction_results_reproduce_todays_to_1e_9(prediction_run):
     seed began to reach every fit (RECIPES F15). Before that, fits drew their inner folds at seed 0
     whatever the split's seed; now they draw them at 707, the fixture's. turbotab-next at 05325dca
     with only that seed changed gives the same numbers, and linear and boosted trees still match
-    their stored entries to 5e-11."""
+    their stored entries to 5e-11.
+
+    They were captured once more the same day (C6a phase 3), when the elastic net moved onto the
+    path search with each split's own λ_max and full coding: every level of a category now has its
+    own coefficient (gender_female, and meds_hbp_0 under indicators), and its cross-validated R²
+    moved by 0.001 to 0.007. Linear and boosted trees again match to 5e-11."""
     reference = json.loads(REFERENCE.read_text())["configs"]
     _, _, _, now = prediction_run
     assert set(now) == set(reference)

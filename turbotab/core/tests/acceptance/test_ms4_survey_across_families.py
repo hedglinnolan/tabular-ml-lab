@@ -996,11 +996,21 @@ WEIGHTED_AND_BLOCKED = (
     "have no design-based estimator, so their estimates were blocked and not reported.")
 SWAP_SAID = ("The substitution studied is `fat_g` replaced by `carb_g`, in steps of `100` kcal "
              "{held}; ")
+# TRUST: beside a declared estimand the swap is a second comparison, reported beside the primary.
+SWAP_SECOND = ("Beside the primary estimate, a second comparison is reported: `fat_g` replaced by "
+               "`carb_g`, in steps of `100` kcal {held}; ")
 SWAP_POPULATION = ("over the surveyed population its curve is the weighted mean of each "
                    "participant's change in the survey-weighted fit, and its band comes from Taylor "
                    "linearization over the survey design (the `50` bootstrap refits asked for are "
                    "not drawn: a row bootstrap ignores the strata and PSUs).")
 SWAP_SAMPLE = "its band comes from `50` refits of each model on bootstrap resamples of every analyzed row."
+# TRUST: with no row count at hand the band's rows are said in both cases, each with its condition
+# (``voice._band_rows``): every analyzed row, or about 10,000 of them above that, rescaled.
+SWAP_SAMPLE_UNSIZED = ("its band comes from `50` refits of each model on bootstrap resamples of "
+                       "every analyzed row, or, above `10,000` analyzed rows, of about `10,000` of "
+                       "them each, drawn as whole units where a unit has several rows, the band's "
+                       "spread then rescaled by √(m/n) to the full sample (an m-out-of-n "
+                       "bootstrap).")
 # MS5 (MODELING_SEQUENCE §0 ruling 7): regression calibration is design-based under the surveyed
 # population (weighted fits, a bootstrap resampling PSUs within strata over the whole chain); the
 # record says so on the answer as it stands.
@@ -1090,7 +1100,7 @@ def test_4_the_methods_text_restates_what_the_survey_answer_does_on_the_answer_a
     head = ("Three model families were chosen: linear regression, elastic net and feature-wise "
             "least-squares tests with Benjamini–Hochberg false-discovery control. Read from the "
             "values, no question asked: `age` is a covariate.")
-    swap_said = SWAP_SAID.format(held="at the same total energy") + SWAP_SAMPLE
+    swap_said = SWAP_SAID.format(held="at the same total energy") + SWAP_SAMPLE_UNSIZED
     assert (chosen.sentence, swap.sentence) == (head, swap_said)
     assert calibration.sentence == CALIBRATION_APPLIED.format(n=200)
     post({"kind": "lock_plan"})
@@ -1247,7 +1257,7 @@ def test_4_taking_the_sample_only_exit_restates_the_record_and_each_exit_changes
         first_models = recorded("select_models")
         assert first_models.endswith(f" {WEIGHTED_AND_BLOCKED}")
         assert force("select_models") == first_models
-        assert force("set_substitution") == SWAP_SAID.format(held=held) + SWAP_POPULATION
+        assert force("set_substitution") == SWAP_SECOND.format(held=held) + SWAP_POPULATION
 
         # 2 · the sample-only exit, as feature-wise's block offers it
         tests = next(m for m in fit["models"] if m["family"] == "featurewise")
@@ -1273,7 +1283,7 @@ def test_4_taking_the_sample_only_exit_restates_the_record_and_each_exit_changes
         text = methods()
         in_force = {k: [x["sentence"] for x in v if x["in_force"]] for k, v in text.items()}
         assert in_force["select_models"] == [first_models[: -len(f" {WEIGHTED_AND_BLOCKED}")]]
-        assert in_force["set_substitution"] == [SWAP_SAID.format(held=held) + SWAP_SAMPLE]
+        assert in_force["set_substitution"] == [SWAP_SECOND.format(held=held) + SWAP_SAMPLE]
         assert in_force["set_survey"] == [
             f"{SEEN}the estimates describe these participants, not the surveyed population: "
             f"{ATTESTATION}; `WTDRD1`, `SDMVSTRA` and `SDMVPSU` were recorded and not used."]
@@ -1293,7 +1303,7 @@ def test_4_taking_the_sample_only_exit_restates_the_record_and_each_exit_changes
         assert assert_design_based_or_blocked(fit, sub, chosen=three)["featurewise"] == "blocked"
         assert force("select_models") == f"{under_sample} {WEIGHTED_AND_BLOCKED}"
         assert force("set_substitution") == (
-            SEEN + lowered(SWAP_SAID.format(held=held)) + SWAP_POPULATION)
+            SEEN + lowered(SWAP_SECOND.format(held=held)) + SWAP_POPULATION)
 
         # 4 · the elastic net's curve exit: "Use survey-weighted least squares", and no more
         curve = next(c for c in sub["models"] if c["family"] == "elastic_net")

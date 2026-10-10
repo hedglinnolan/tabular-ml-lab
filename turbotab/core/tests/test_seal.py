@@ -258,33 +258,30 @@ def test_grouped_inner_splits_never_split_a_unit():
         assert not set(groups[train]) & set(groups[test])
 
 
-def test_elastic_net_inner_cv_never_splits_a_unit_in_any_fit(tmp_path, monkeypatch):
+def test_elastic_net_inner_cv_never_splits_a_unit_in_any_fit(tmp_path):
     """Every elastic-net fit (each outer fold of every repeat of the comparison substrate, and the
-    refit) tunes its penalty on grouped folds (the family's estimator, which solves its own path)."""
-    from turbotab.core.models.elastic_net import PooledElasticNetCV as ElasticNetCV
+    refit) tunes its penalty on inner splits that keep each person whole: its path search draws
+    them from each fit's own rows by unit (RT-5f), as ``tuning.observing`` sees them."""
+    from turbotab.core.models import tuning as T
 
     frame = mf.nhanes_like(360, seed=11)
     frame["SEQN"] = np.repeat(np.arange(120), 3)  # each person three times
     paths = mf.ingest_frame(frame, tmp_path)
     split = mf.split_bundle(np.arange(len(frame)), groups=frame["SEQN"].to_numpy(), grouped_by="SEQN")
-    seen = []
-    original = ElasticNetCV.fit
-
-    def spy(self, X, y, **kw):
-        seen.append((np.asarray(X.index), self.cv))
-        return original(self, X, y, **kw)
-
-    monkeypatch.setattr(ElasticNetCV, "fit", spy)
     st = mf.state(energy_adjustment=mf.energy("none"), models=["elastic_net"])
     ti = mf.target_info("regression")
     design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
-    fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
+    drawn: list = []
+    with T.observing(drawn.append):
+        fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
     person = frame["SEQN"].to_numpy()
-    assert len(seen) == 51  # 10 × 5 folds (MS6's comparison substrate) and the refit
-    for row_ids, cv in seen:
-        assert isinstance(cv, list) and len(cv) >= 2
-        for train, test in cv:
-            assert not set(person[row_ids[train]]) & set(person[row_ids[test]])
+    refits = [d for d in drawn if d.kind == "refit"]
+    assert len(refits) == 51  # 10 × 5 folds (MS6's comparison substrate) and the refit
+    inner = [d for d in drawn if d.kind == "inner"]
+    assert len(inner) >= 2 * len(refits)
+    for d in inner:
+        train, test = np.asarray(d.train, dtype=int), np.asarray(d.validation, dtype=int)
+        assert not set(person[train]) & set(person[test])
 
 
 def test_an_ungrouped_split_leaves_the_inner_cv_as_it_was():

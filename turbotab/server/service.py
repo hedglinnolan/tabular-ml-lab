@@ -39,7 +39,7 @@ from turbotab.core.graph import (
 )
 from turbotab.core.interview import InterviewStep, route
 from turbotab.core.jobs import PRELOAD, JobRunner, JobView
-from turbotab.core.quest import QuestLog, quest_log
+from turbotab.core.quest import QuestLog, explore_label, quest_log, record_steps
 from turbotab.core.consequences import estimates_unseen as materiality_unseen
 from turbotab.core.sweep import ForTheRecord, Triage, for_the_record, triage
 from turbotab.core.stages import GRAPH_FACTORY
@@ -408,6 +408,9 @@ class _QuestInputs:
     records: list[Any]
     steps: list[Any]
     findings: Any
+    # TRUST: the consumers' refusals measured on the table (``quest.fit_waits``), which the quest
+    # log lists as Decides and For the record leaves out.
+    asked: tuple[Any, ...] = ()
 
 
 PREVIEW_CELLS = 20_000_000  # the before-frame's budget: rows x columns
@@ -434,6 +437,23 @@ POOL_WORDS = {
     "all": "rows",
     "given": "rows",
 }
+
+
+def explore_labeled(artifact: Any, state: Any, noticed: Callable[[], Any]) -> Any:
+    """The explore artifact with each finding's ``label`` (Decide, Confirm, For the record) as the
+    person sees it (``quest.explore_label``). ``noticed`` returns the K5 collinear noticing measured
+    on the table (None when there is none); it is read only when a collinear finding is served
+    outside Predict, where the pair scan's lever is a Decide whatever the table. ``artifact`` is
+    never changed in place."""
+    if not isinstance(artifact, dict):
+        return artifact
+    findings = artifact.get("findings") or []
+    measure = (getattr(state, "purpose", None) != "prediction"
+               and any(isinstance(f, dict) and f.get("kind") == "collinear" for f in findings))
+    found = noticed() if measure else None
+    return {**artifact, "findings": [
+        {**f, "label": explore_label(f, state, noticed=found)} if isinstance(f, dict) else f
+        for f in findings]}
 
 
 def preview_basis(ctx: consequences.PreviewContext, result: consequences.PreviewResult,
@@ -1055,6 +1075,13 @@ class ProjectService:
         except Exception:  # noqa: BLE001 - nothing measured: the findings are triaged alone
             return []
 
+    def _collinear_noticed(self, pid: str, state: ProjectState) -> Any:
+        """The K5 collinear noticing on the table the analysis reads, as the triage measures it
+        (``materiality.noticings_for``), or None (none measured, or no table yet)."""
+        from turbotab.core.materiality import COLLINEAR_THREAD
+
+        return next((n for n in self._noticed(pid, state) if n.thread == COLLINEAR_THREAD), None)
+
     def materiality(self, pid: str) -> Any:
         """The materiality ledger (SURFACING_POLICY §2.2): each noticing's predicted movement, the
         triage's recommendation and recorded disposition, and once the plan is fixed (under
@@ -1090,7 +1117,9 @@ class ProjectService:
         profile's basis, why a question was not asked, the defaults that change nothing here, and
         what the engine recorded itself."""
         q = self._quest(pid)
-        return for_the_record(q.log, q.steps, q.records, ingest=self._shown(pid, "ingest"),
+        # TRUST: a step that waits on an answer is a Decide in the quest log, never For the record.
+        return for_the_record(q.log, record_steps(q.steps, q.asked), q.records,
+                              ingest=self._shown(pid, "ingest"),
                               profile=self._shown(pid, "profile"))
 
     def _quest(self, pid: str) -> _QuestInputs:
@@ -1119,11 +1148,33 @@ class ProjectService:
             if older is not None:
                 made = read_meta(cache, name, older).get("created_at")
                 shown_at[name] = datetime.fromisoformat(made) if made else None
+        asked = self._asked(pid, state, stages)
         log = quest_log(state, records, steps, stages, findings=findings, columns=columns,
                         artifacts=artifacts, shown_at=shown_at,
                         readings=self._read_from_data(pid, state),
-                        fit=self.fit_lock(pid, stages, records))
-        return _QuestInputs(log=log, state=state, records=records, steps=steps, findings=findings)
+                        fit=self.fit_lock(pid, stages, records), asked=asked)
+        return _QuestInputs(log=log, state=state, records=records, steps=steps, findings=findings,
+                            asked=asked)
+
+    def _asked(self, pid: str, state: ProjectState, stages: dict[str, StageStatus]
+               ) -> tuple[Any, ...]:
+        """TRUST: what waits on an answer, measured on the table as the fit and the causal lane
+        read it (``quest.fit_waits``: the store's own column summaries). Empty before ingest."""
+        from turbotab.core.quest import fit_waits
+
+        ingest = stages.get("ingest")
+        if not getattr(state, "roles", None) or ingest is None or ingest.status != "fresh":
+            return ()
+        store = self._store_or_none(pid)
+        if store is None:
+            return ()
+        try:
+            info = {c.name: {"dtype": c.dtype, "n_unique": c.n_unique}
+                    for c in store.info().columns}
+        except Exception:  # noqa: BLE001 - a table that cannot be read refuses nothing here
+            return ()
+        found = fit_waits(state, info, store)
+        return (found,) if found is not None else ()
 
     def _store_or_none(self, pid: str) -> Any:
         try:
@@ -1862,7 +1913,10 @@ class ProjectService:
                   **record_facts(self._fresh(pid, "calibration", public=True)),
                   # P1-FU: the estimand's swap read on the values (the parts inside their totals),
                   # as the caption and Table 2 read it.
-                  "set_estimand": {"nested": self._values_nesting(pid, decisions.fold(records))}}
+                  "set_estimand": {"nested": self._values_nesting(pid, decisions.fold(records))},
+                  # TRUST: the band's refits say which rows they resample: the analyzed rows,
+                  # as the participant flow counts them now (the table's rows bound them).
+                  "set_substitution": {"n_analyzed": facts.n_cohort, "n_rows": facts.n_rows}}
         return methods_text(records, {"detected_task": facts.detected_task, "counts": stages})
 
     def _flow_counts(self, pid: str) -> dict[str, Any]:
@@ -1879,8 +1933,17 @@ class ProjectService:
         out: dict[str, Any] = {}
         cc = next((s for s in steps if s.get("key") == "complete_cases"), None)
         if cc is not None:
+            # TRUST: the table, the rows that remain and the columns the models read now, so
+            # "no row is missing" names the values the data's provider imputed before the file
+            # arrived (``voice._imputed_upstream``).
+            from turbotab.core.voice import analyzed_columns
+
+            state = self.log(pid).state()
             out["set_missing"] = {"n_complete": int(cc["n"]),
-                                  "n_before": int(cc["n"]) + int(cc["dropped"])}
+                                  "n_before": int(cc["n"]) + int(cc["dropped"]),
+                                  "datastore": self._store_or_none(pid),
+                                  "row_ids": self._cohort_ids(pid, self.engine.status(pid)),
+                                  "analyzed_columns": analyzed_columns(state)}
         if any(str(s.get("key")).startswith("exclusion:") for s in steps):
             out["set_exclusions"] = {"exclusion_counts": rule_drops(steps)}
         return out
@@ -1952,6 +2015,10 @@ class ProjectService:
             # (SIZING P0.8, disagreement 4), as the estimates do.
             state = self.log(pid).state()
             artifact = fit_press.relationships_served(artifact, state, self._pressed(pid, state))
+            # TRUST (phase 2 P1-FU item 1): each finding carries the label the person sees, the
+            # collinear one Decide only when what you study is inside the dependency.
+            artifact = explore_labeled(artifact, state,
+                                       lambda: self._collinear_noticed(pid, state))
         if artifact is not None:
             artifact = self._outcome_served(pid, stage, artifact)
         if stage == "findings" and artifact is not None:  # M2 §4: each finding's disposition

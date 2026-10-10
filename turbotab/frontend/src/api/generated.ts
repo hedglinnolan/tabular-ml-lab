@@ -3759,7 +3759,7 @@ export interface components {
         QuestLog: {
             /**
              * Version
-             * @default 4
+             * @default 5
              */
             version: number;
             /** Stages */
@@ -10046,6 +10046,11 @@ export interface components {
             record: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Label
+             * @default null
+             */
+            label: string | null;
         };
         /**
          * ExposureFormOption

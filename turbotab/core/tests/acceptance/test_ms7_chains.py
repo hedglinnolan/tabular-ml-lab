@@ -186,7 +186,8 @@ def test_chain_3_in_each_fold_pqn_then_the_detection_fill_then_the_log_then_auto
     model = next(m for m in data(out["design"])["models"] if m["family"] == "elastic_net")
     assert "inner cross-validation within the training rows it is given" in model["steps"][-1]["detail"]
     pipeline = out["design"].objects["pipelines"]["elastic_net"]
-    assert int(pipeline[-1].cv) >= 3
+    # the path search's inner splits (RT-5f): drawn inside each outer fold's own rows
+    assert pipeline.search.kind == "path" and pipeline.search.inner_k >= 3
     fit = data(out["fit"])["models"][0]
     assert len(fit["cv"]["auc"]["folds"]) == 5 and 0.5 < fit["cv"]["auc"]["estimate"] <= 1.0
 
