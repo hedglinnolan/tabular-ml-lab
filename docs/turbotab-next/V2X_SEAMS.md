@@ -31,8 +31,8 @@ It adds nothing to v2. The recommendations at the end are for the orchestrator t
 
 ## Summary
 
-**The counts.** Of the 49 deferred items:
-- **23 plug into a seam that exists today.** These are mostly the method items in INBOX, plus mediation, the survival versions, assembly, collaboration and the assistant.
+**The counts.** Of the 50 deferred items:
+- **24 plug into a seam that exists today** (row 50, the reading proposer, was added on 2026-10-10). These are mostly the method items in INBOX, plus mediation, the survival versions, assembly, collaboration and the assistant.
 - **23 plug into a seam a named v2 package creates.** These are the tuning and preprocessing groups (RT-1 to RT-7), the families (MC-1, MC-2, MC-11, MC-12), the trial designs (P0.6, E1, E2), tracks (D2), the research record and the headless driver.
 - **3 have no seam.** They are successive halving with Hyperband, TPE with BOHB, and shared-step changes kept as versions.
 
@@ -144,6 +144,12 @@ It adds nothing to v2. The recommendations at the end are for the orchestrator t
 | 49 | Flat BBC-CV over every configuration (RECIPES §4.5, §10) | `selection_optimism` resamples any set of out-of-fold prediction columns (`core/models/selection.py:245-251`) | exists today | none | The nested search gives no outer out-of-fold predictions per configuration. They cost one fit per configuration per outer fold. | M |
 
 **No longer deferred.** INBOX.md:250's tables (the causal, time-varying, substitution and other results) are in v2: C8 tabulates every stage (`crosswalk/SIZING.md:82`).
+
+### 8 · Readings (added 2026-10-10, on Nolan's approval)
+
+| # | Item | Seam (file:symbol) | Status | Missing hook and size | Closure risk and guard | Later effort |
+|---|---|---|---|---|---|---|
+| 50 | **A local, calibrated reading proposer with conformal sets.** Each reading (what a blank means, amount or code, before or after the outcome, units, weight, role, codebook match) becomes a typed classification. A calibrated classifier proposes the set of readings it cannot rule out, with a coverage guarantee.<br>**Its routing:**<br>• one reading left: Confirm, listed in the sweep with its evidence;<br>• several left: a Decide with exactly those options;<br>• none trusted: an open question.<br>With conformal risk control, the routing carries a stated guarantee, such as "at most 2% of readings set for you are wrong". Features are each column's statistics, its name and its codebook text, the text embedded by a small open model on the machine. The labels are the reference journeys, then each person's confirmations and corrections, which never leave their machine. **Open and local only: no proprietary or cloud classifier** (Nolan, 2026-10-10). | The rule-based recognizers: `core/readings.py`, `core/covariate_guesses.py`, `core/ask.py`, and the `likely_not_asked` flags read in `core/coach.py` (292, 631) and `core/row_previews.py` (438). The readings ledger (BLUEPRINT §14.1) and BLUEPRINT §14's rule that "recognizers are measured on a growing corpus of real-world exports, and their accuracy is reported, not assumed". The surfacing tiers and materiality (`SURFACING_POLICY.md` §2, §4). | exists in part: the rules exist and the ledger records confirmations, but there is no single proposer interface and no calibrated score. | **None required in v2.** A recommended guard, not scheduled (the DoD is frozen): every rule-made reading records its source (rule id and version) and the alternatives it considered, so the log already holds labeled examples when v2.x trains on them. **S (1).** | **(a) The leash.** A proposer may only choose *how* a reading is asked, never whether it is asked. A number-changing reading is still listed with its evidence and confirmed (§14.1), and materiality still sets the tier. *Guard:* the proposer returns a candidate set and a score into the existing tier function; it never writes a reading. **(b) Reproducibility.** A learned model makes routing depend on a model version. *Guard:* the proposer's identity, version and output are recorded with each reading, and replay reads the recorded routing, never a re-run. **(c) Calibration is measured, not assumed.** *Guard:* the reference journeys' readings are the held-out benchmark, and coverage is reported per reading kind before any kind switches from rules to the proposer. | L: the proposer interface (S), the features and the classifier (M), conformal calibration with risk control (M), the benchmark on the reference journeys (M) |
 
 ---
 
