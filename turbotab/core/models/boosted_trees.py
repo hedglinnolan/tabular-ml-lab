@@ -6,17 +6,28 @@ one place that reads scikit-learn's private ``_predictors`` and ``_baseline_pred
 
 **Tuned (RT-5a; RECIPES §4.1).** Its settings are searched inside every training fold
 (:data:`TUNING`): learning rate, leaves per tree, the smallest leaf (capped at a twentieth of the
-plan's units, :func:`leaf_cap`), the L2 pull, the share of columns per split, and the number of
-trees when the plan does not stop early. scikit-learn's defaults are the standard candidate, so
-below an effective size of 300, where the plan keeps the standard candidate alone, a fit is a
-direct ``HistGradientBoosting*()`` fit at those defaults. "Try both" for blanks waits for RT-3
-(C6b).
+plan's count, :func:`leaf_cap`), the L2 pull, the share of columns per split, and the number of
+trees when the plan does not stop early. scikit-learn's defaults are the standard candidate, and
+below an effective size of 300 (units, events or the rarest class's count) the plan keeps it
+alone: one fit at scikit-learn's defaults. That fit equals a direct ``HistGradientBoosting*()``
+fit at the same thread count while the plan's rows are at most 10,000 (above them the stopping
+rows are whole units the plan draws, not scikit-learn's 10% of positions) and the fit's rows at
+most 200,000 (above them the plan's seed, not scikit-learn's, picks the binning subsample).
+"Try both" for blanks waits for RT-3 (C6b).
+
+**Pinned threads (RECIPES §4.7).** The family builds :class:`PinnedHistGradientBoostingRegressor`
+/ :class:`PinnedHistGradientBoostingClassifier`: scikit-learn's estimators with one more
+parameter, ``n_threads`` (the plan's ``threads``, 1 without a plan), the OpenMP thread count of
+every fit and prediction. Histogram boosting otherwise takes every thread the process allows on
+each of a search's small fits, which oversubscribes the machine when fits run side by side.
 """
 from __future__ import annotations
 
+import inspect
 from typing import Any, Mapping
 
 import numpy as np
+from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
 
 from turbotab.core.decisions import Purpose, Task
 from turbotab.core.models.base import (
@@ -61,7 +72,8 @@ TUNING = TuningDecl(
               "l2_regularization": 0.0, "max_features": 1.0, "max_iter": 100},
     standard_source="scikit-learn's defaults",
     # Sobol candidates stop early from an effective size of 1,500 (the plan's); the standard ones
-    # by scikit-learn's own rule, above 10,000 of the plan's rows, at its own 100 trees and patience.
+    # by scikit-learn's own rule, above 10,000 of the plan's rows, at its own 100 trees and
+    # patience.
     early_stopping={"param": "max_iter", "rounds": 1000, "patience_param": "n_iter_no_change",
                     "patience": 20, "share": 0.1},
     space_version="boosted_trees/1",
@@ -73,13 +85,94 @@ TUNING = TuningDecl(
 
 def leaf_cap(*, plan: Any = None, n_units: int) -> int:
     """The most rows a searched smallest leaf may hold (RECIPES §4.1): a twentieth of the plan's
-    units, at least 1. The plan's: its ``n_plan`` when it counts units, else its rows (a count of
-    events or of the rarest class is not what a leaf holds); without a plan, the fit's own units."""
+    count, at least 1, the same in every fit the plan makes. For a measured outcome that count is
+    the plan's units (``n_plan``); for a yes/no or class outcome the plan counts events or the
+    rarest class, which is not what a leaf holds, and stores no count of units, so it is the plan's
+    rows (``plan_rows``: rows, not units, when rows repeat; open for a ruling). Without a plan, the
+    fit's own units."""
     if plan is not None:
         n = int(plan.n_plan) if plan.unit == "units" else int(plan.plan_rows)
     else:
         n = int(n_units)
     return max(1, n // LEAF_SHARE)
+
+
+_CONTROLLER: Any = None
+
+
+def _openmp(threads: int) -> Any:
+    """A context holding OpenMP to ``threads`` in the calling thread (threadpoolctl's limit; one
+    controller, built once, so a prediction pays microseconds for it)."""
+    global _CONTROLLER
+    if _CONTROLLER is None:
+        from threadpoolctl import ThreadpoolController
+
+        _CONTROLLER = ThreadpoolController()
+    return _CONTROLLER.limit(limits=int(threads), user_api="openmp")
+
+
+def _with_threads(base: type) -> Any:
+    """``base.__init__`` with one more keyword, ``n_threads`` (default 1), its signature
+    scikit-learn's parameter list: ``get_params``, ``set_params`` and ``clone`` see every one of
+    ``base``'s parameters, whatever the installed version declares, and ``n_threads``."""
+    signature = inspect.signature(base.__init__)
+
+    def __init__(self: Any, *, n_threads: int = 1, **params: Any) -> None:
+        base.__init__(self, **params)
+        self.n_threads = n_threads
+
+    threads = inspect.Parameter("n_threads", inspect.Parameter.KEYWORD_ONLY, default=1)
+    __init__.__signature__ = signature.replace(  # type: ignore[attr-defined]
+        parameters=[*signature.parameters.values(), threads])
+    return __init__
+
+
+def _with_thread_constraint(base: type) -> dict[str, Any]:
+    """``base``'s parameter constraints and ``n_threads``': a whole number, at least 1."""
+    from numbers import Integral
+
+    from sklearn.utils._param_validation import Interval
+
+    return {**base._parameter_constraints,  # type: ignore[attr-defined]
+            "n_threads": [Interval(Integral, 1, None, closed="left")]}
+
+
+class _Pinned:
+    """Every fit and prediction at ``n_threads`` OpenMP threads (RECIPES §4.7)."""
+
+    n_threads: int
+
+    def fit(self, X: Any, y: Any, sample_weight: Any = None, *, X_val: Any = None,
+            y_val: Any = None, sample_weight_val: Any = None) -> Any:
+        with _openmp(self.n_threads):
+            return super().fit(X, y, sample_weight, X_val=X_val,  # type: ignore[misc]
+                               y_val=y_val, sample_weight_val=sample_weight_val)
+
+    def predict(self, X: Any) -> Any:
+        with _openmp(self.n_threads):
+            return super().predict(X)  # type: ignore[misc]
+
+
+class PinnedHistGradientBoostingRegressor(_Pinned, HistGradientBoostingRegressor):
+    """scikit-learn's ``HistGradientBoostingRegressor`` on ``n_threads`` OpenMP threads."""
+
+    __init__ = _with_threads(HistGradientBoostingRegressor)
+    _parameter_constraints = _with_thread_constraint(HistGradientBoostingRegressor)
+
+
+class PinnedHistGradientBoostingClassifier(_Pinned, HistGradientBoostingClassifier):
+    """scikit-learn's ``HistGradientBoostingClassifier`` on ``n_threads`` OpenMP threads."""
+
+    __init__ = _with_threads(HistGradientBoostingClassifier)
+    _parameter_constraints = _with_thread_constraint(HistGradientBoostingClassifier)
+
+    def predict_proba(self, X: Any) -> Any:
+        with _openmp(self.n_threads):
+            return super().predict_proba(X)
+
+    def decision_function(self, X: Any) -> Any:
+        with _openmp(self.n_threads):
+            return super().decision_function(X)
 
 
 def hgb_ensemble(model: Any) -> Any:
@@ -118,10 +211,13 @@ class BoostedTrees(FamilyBase):
     bootstrap_optimism = False
     # MODEL_FAMILY_CONTRACT §1 (§3.1's row for it).
     identity = Identity(kind="estimator", library="scikit-learn",
-                        estimator="HistGradientBoostingRegressor; HistGradientBoostingClassifier",
+                        estimator="PinnedHistGradientBoostingRegressor; "
+                                  "PinnedHistGradientBoostingClassifier (scikit-learn's "
+                                  "histogram gradient boosting on the plan's threads)",
                         seed_policy="random_state from the tuning plan's seed (derive_seed of the "
                                     "split's seed, family and space version), 0 without a plan; "
-                                    "it seeds the column subsampling")
+                                    "it seeds the column subsampling, and the binning subsample "
+                                    "above 200,000 rows")
     purposes = ("prediction", "inference")
     predicts = True
     flexible = True
@@ -159,9 +255,11 @@ class BoostedTrees(FamilyBase):
     def settings(self, values: Mapping[str, Any], *, task: str, n_units: int, n_rows: int,
                  y: Any = None, Z: Any = None, plan: Any = None) -> dict[str, Any]:
         """A candidate's values as the estimator's parameters on one fit: the standard leaf
-        (``"default"``) as scikit-learn's own 20; any other leaf capped at :func:`leaf_cap`; the
-        plan's seed as ``random_state`` (0 without a plan). Its output fed back in gives itself
-        (a leaf already at or under the cap stays)."""
+        (``"default"``) as scikit-learn's own 20, never capped; any other leaf capped at
+        :func:`leaf_cap`; the plan's seed as ``random_state`` (0 without a plan); the plan's
+        threads as ``n_threads`` (1 without a plan). It resolves a candidate's values once, and
+        its output is held as it is (``TunedPipeline.at``): fed back in, a resolved standard leaf
+        of 20 is a number and would be capped like a searched one."""
         out = dict(values)
         leaf = out.get("min_samples_leaf")
         if isinstance(leaf, str):
@@ -172,23 +270,22 @@ class BoostedTrees(FamilyBase):
         elif leaf is not None:
             out["min_samples_leaf"] = min(int(leaf), leaf_cap(plan=plan, n_units=n_units))
         out["random_state"] = int(plan.seed) if plan is not None else 0
+        out["n_threads"] = int(plan.threads) if plan is not None else 1
         return out
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         if task == "regression":
-            from sklearn.ensemble import HistGradientBoostingRegressor
-
-            return HistGradientBoostingRegressor(random_state=0)
-        from sklearn.ensemble import HistGradientBoostingClassifier
-
-        return HistGradientBoostingClassifier(random_state=0)
+            return PinnedHistGradientBoostingRegressor(random_state=0)
+        return PinnedHistGradientBoostingClassifier(random_state=0)
 
     def describe(self, task: Task, purpose: Purpose | None) -> tuple[str, str]:
         return ("Histogram gradient boosting",
                 "Its settings are searched inside every training fold, scikit-learn's defaults "
-                "(100 trees of at most 31 leaves) always among them and used alone with fewer "
-                "than 300 units or events; trees that stop early hold back a tenth of the fold's units, the latest "
-                "when the folds follow time.")
+                "(100 trees of at most 31 leaves) always among them and used alone below an "
+                "effective size of 300 (units, events or the rarest class's count). Searched "
+                "settings stop early from an effective size of 1,500, the defaults above 10,000 "
+                "training rows, holding back a tenth of the fold's units, the latest when the "
+                "folds follow time.")
 
     def assess(self, s: Situation) -> Assessment:
         concerns: list[str] = []

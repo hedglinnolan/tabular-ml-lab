@@ -14,7 +14,10 @@ Each check stands on a reference the family's code does not compute:
   sets"), recomputed here), reproduces the deployed predictions exactly at the recorded thread
   count, and equals a direct ``HistGradientBoostingRegressor`` at those parameters;
 * **the estimate** (T6's arithmetic): one timed fit × the outer folds × F = (K − 1)·C + 1, with
-  C, K and the center candidate worked by hand from §4.1's scales.
+  C, K and the center candidate worked by hand from §4.1's scales;
+* **the thread count** (RECIPES §4.7): inside every fit and prediction, scikit-learn's own count of
+  its OpenMP threads (``_openmp_effective_n_threads``, read by a spy on the library's class) is
+  the plan's, however many threads the process allows.
 
 Fixtures stay small (n ≤ 400), so the file runs in seconds.
 """
@@ -38,15 +41,24 @@ from turbotab.core.models.pipeline import make_plans
 from turbotab.core.models.tuning import TunedPipeline, estimator_params, make_plan
 
 THREADS = 1
+PROCESS_THREADS = 3  # more than the plan's: the family must pin its own fits
 
 
 @pytest.fixture(autouse=True)
-def one_thread():
-    """Every fit at a stated thread count (RECIPES §4.7; CI runs two workers)."""
+def a_wider_process():
+    """The process allows more threads than any plan here states, as an unpinned machine does
+    (CI's ``OMP_NUM_THREADS=2``, a laptop's ten): the family's fits must not follow it."""
     from threadpoolctl import threadpool_limits
 
-    with threadpool_limits(limits=THREADS):
+    with threadpool_limits(limits=PROCESS_THREADS, user_api="openmp"):
         yield
+
+
+def _at(threads: int):
+    """A direct scikit-learn fit at a stated thread count (the reference's)."""
+    from threadpoolctl import threadpool_limits
+
+    return threadpool_limits(limits=threads, user_api="openmp")
 
 
 def _seed(*parts) -> int:
@@ -157,12 +169,16 @@ def test_below_300_the_tuned_fit_is_a_direct_default_fit(task):
     fitted = fit_pipeline(_tuned(task, plan), X, y, seed=plan.split_seed)
     assert fitted.tuning_.n_fits == 1 and fitted.tuning_.inner_k_used == 0
     if task == "regression":
-        direct = HistGradientBoostingRegressor().fit(X, y)
-        assert np.array_equal(fitted.predict(X), direct.predict(X))
+        with _at(THREADS):
+            direct = HistGradientBoostingRegressor().fit(X, y)
+            expected = direct.predict(X)
+        assert np.array_equal(fitted.predict(X), expected)
         return
-    direct = HistGradientBoostingClassifier().fit(X, y)
-    assert np.array_equal(fitted.predict_proba(X), direct.predict_proba(X))
-    assert np.array_equal(fitted.predict(X), direct.predict(X))
+    with _at(THREADS):
+        direct = HistGradientBoostingClassifier().fit(X, y)
+        proba, labels = direct.predict_proba(X), direct.predict(X)
+    assert np.array_equal(fitted.predict_proba(X), proba)
+    assert np.array_equal(fitted.predict(X), labels)
 
 
 # ── T2(c) · pinned replay ─────────────────────────────────────────────────────
@@ -176,7 +192,7 @@ def test_t2c_pinned_replay_reproduces_the_deployed_predictions_at_the_recorded_t
     assert len(plan.candidates) == 9 and plan.inner_k == 3 and not plan.early_stopping
     deployed = fit_pipeline(_tuned("regression", plan), X, y, seed=plan.split_seed)
     record = deployed.tuning_
-    assert record.threads["plan"] == THREADS and record.threads.get("openmp") == THREADS
+    assert record.threads["plan"] == THREADS and record.chosen_params["n_threads"] == THREADS
     assert all(v is not None for v in record.losses)
     pinned = fit_pipeline(_tuned("regression", plan).at(record.chosen_params), X, y,
                           seed=_seed(plan.split_seed, "stopping sets"))
@@ -185,8 +201,11 @@ def test_t2c_pinned_replay_reproduces_the_deployed_predictions_at_the_recorded_t
     # the refit is a direct scikit-learn fit at the recorded parameters (no early stopping here)
     params = dict(record.chosen_params)
     assert params["early_stopping"] is False
-    direct = HistGradientBoostingRegressor(**params).fit(X, y)
-    assert np.array_equal(direct.predict(X), deployed.predict(X))
+    threads = params.pop("n_threads")
+    with _at(threads):
+        direct = HistGradientBoostingRegressor(**params).fit(X, y)
+        expected = direct.predict(X)
+    assert np.array_equal(expected, deployed.predict(X))
     # the candidates are seeded from the split: the plan's seed is SHA-256 of (seed, family, space)
     assert plan.seed == _seed(7, "boosted_trees", "boosted_trees/1")
 
@@ -231,3 +250,72 @@ def test_the_estimate_is_the_center_timed_once_times_the_folds_and_the_plans_fit
     }
     assert type(pipeline) is Pipeline and params["early_stopping"] is False
     assert {k: params[k] for k in center} == pytest.approx(center)
+
+
+# ── the plan's threads (RECIPES §4.7) ────────────────────────────────────────
+
+
+@pytest.mark.parametrize("threads", [1, 2])
+def test_every_fit_and_prediction_runs_on_the_plans_threads(monkeypatch, threads):
+    """A searched fit (n_plan 400: 19 fits) and its predictions, in a process allowing three
+    OpenMP threads: scikit-learn's own count inside each fit and prediction is the plan's. Without
+    the pin, histogram boosting takes every thread the process allows on each of the search's
+    small fits (one tuned fit at n = 480 took 1.5 s on one thread and 152 s on ten)."""
+    from sklearn.utils._openmp_helpers import _openmp_effective_n_threads
+
+    seen: dict[str, list[int]] = {"fit": [], "predict": []}
+    fit, predict = HistGradientBoostingRegressor.fit, HistGradientBoostingRegressor.predict
+
+    def spy_fit(self, *a, **k):
+        seen["fit"].append(_openmp_effective_n_threads())
+        return fit(self, *a, **k)
+
+    def spy_predict(self, *a, **k):
+        seen["predict"].append(_openmp_effective_n_threads())
+        return predict(self, *a, **k)
+
+    monkeypatch.setattr(HistGradientBoostingRegressor, "fit", spy_fit)
+    monkeypatch.setattr(HistGradientBoostingRegressor, "predict", spy_predict)
+    assert _openmp_effective_n_threads() == PROCESS_THREADS
+    X, y = _data("regression", 400, seed=9)
+    family = get_family("boosted_trees")
+    plan = make_plan(family, task="regression", loss="mse", n_plan=400, plan_rows=400,
+                     unit="units", split_seed=7, threads=threads)
+    deployed = fit_pipeline(_tuned("regression", plan), X, y, seed=plan.split_seed)
+    deployed.predict(X)
+    assert len(seen["fit"]) == deployed.tuning_.n_fits == 3 * 9 + 1  # K·C inner fits, one refit
+    assert set(seen["fit"]) == {threads} and set(seen["predict"]) == {threads}
+    assert deployed.tuning_.chosen_params["n_threads"] == threads
+    # the process's own count is left as it was
+    assert _openmp_effective_n_threads() == PROCESS_THREADS
+
+
+@pytest.mark.parametrize("task", ["regression", "binary"])
+def test_without_a_plan_the_family_fits_and_predicts_on_one_thread(monkeypatch, task):
+    """The plain path (no plan: a family built alone) runs on one thread, as XGBoost's does."""
+    from sklearn.utils._openmp_helpers import _openmp_effective_n_threads
+
+    cls = HistGradientBoostingRegressor if task == "regression" else HistGradientBoostingClassifier
+    seen: list[int] = []
+    methods = ("fit", "predict") + (() if task == "regression" else
+                                    ("predict_proba", "decision_function"))
+    for name in methods:
+        original = getattr(cls, name)
+
+        def spy(self, *a, _original=original, **k):
+            seen.append(_openmp_effective_n_threads())
+            return _original(self, *a, **k)
+
+        monkeypatch.setattr(cls, name, spy)
+    X, y = _data(task, 200)
+    model = get_family("boosted_trees").build(task, "prediction", 200, 4)
+    assert isinstance(model, cls) and model.get_params()["n_threads"] == 1
+    model.fit(X, y)
+    for name in methods[1:]:
+        getattr(model, name)(X)
+    assert len(seen) >= len(methods) and set(seen) == {1}
+    # a thread count is a whole number of at least one (scikit-learn's own parameter check)
+    from sklearn.utils._param_validation import InvalidParameterError
+
+    with pytest.raises(InvalidParameterError, match="n_threads"):
+        model.set_params(n_threads=0).fit(X, y)

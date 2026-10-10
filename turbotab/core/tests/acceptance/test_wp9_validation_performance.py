@@ -38,9 +38,10 @@ from turbotab.core.tests.stage_harness import Ingested
 
 
 def _pipeline(family: str, task: str, columns: list[str], n: int, y=None):
-    """The family's pipeline as the design builds it. A tuned family (boosted trees, RT-5a) is
-    built through a plan in ``mode="standard"``: scikit-learn's defaults alone, the shelf's
-    standard settings these tests measure, one fit per outer fold."""
+    """The family's pipeline as the design builds it, except a tuned family (boosted trees,
+    RT-5a): built through a plan in ``mode="standard"``, scikit-learn's defaults alone, one fit
+    per outer fold. These tests measure the shelf's standard settings; at their sizes the app's
+    own plan would search around them."""
     from dataclasses import replace
 
     from turbotab.core.models.tuning import make_plan, plan_size, tuning_for
@@ -172,7 +173,9 @@ def test_1b_the_smoothed_curve_is_lowess_with_no_robustness_iterations():
 
 def test_1c_a_well_calibrated_logistic_model_has_slope_1_and_boosted_trees_are_flagged():
     """20 datasets of 2,000 rows from a known logistic model (true risks perfectly calibrated),
-    5-fold cross-validation with the app's own folds and pipelines.
+    5-fold cross-validation with the app's own folds and pipelines, boosted trees held at their
+    standard settings (``_pipeline``: the plan's standard mode; at 2,000 rows the app's own plan
+    would search, so this checks the flag on scikit-learn's defaults, not on what the app fits).
 
     Logistic regression (correctly specified): the out-of-fold calibration slope averages within
     1 ± 0.1 (it estimates 1 minus the small overfitting of 6 parameters on 1,600 rows: about 0.98),
@@ -213,14 +216,19 @@ def test_1c_a_well_calibrated_logistic_model_has_slope_1_and_boosted_trees_are_f
 
 
 def test_1d_the_fit_reports_out_of_fold_and_held_out_calibration(tmp_path):
-    """The real stages on a 2,000-row table drawn from a known logistic model, with a 20% holdout:
+    """The real stages on a 1,500-row table drawn from a known logistic model, with a 20% holdout:
     every family carries its out-of-fold calibration (intercept, slope, curve) in the public
     artifact; the held-out intervals and calibration stay sealed with the held-out scores and are
     served once the seal is opened; each equals ``performance.calibration`` on the refit model's
     held-out predictions, recomputed here from the parquet with the refit pipeline. The boosted
-    trees' flagged calibration is one of its concerns, worded with its slope."""
-    X, y, _ = _logistic_table(2000, seed=7)
-    frame = X.assign(id=np.arange(2000), event=np.where(y == 1, "yes", "no"))
+    trees' flagged calibration is one of its concerns, worded with its slope.
+
+    At this size an outer training fold holds fewer than 300 events, so the plan keeps
+    scikit-learn's defaults alone (RT-5a), the settings test 1c finds miscalibrated in every one
+    of its datasets. (At 2,000 rows the plan searches, and the tuned trees on this table are not
+    flagged.) A family's concern names its calibration slope exactly when it is flagged."""
+    X, y, _ = _logistic_table(1500, seed=7)
+    frame = X.assign(id=np.arange(1500), event=np.where(y == 1, "yes", "no"))
     source = tmp_path / "logistic.csv"
     frame.to_csv(source, index=False)
     table = Ingested(source, tmp_path / "ingested")
@@ -237,9 +245,13 @@ def test_1d_the_fit_reports_out_of_fold_and_held_out_calibration(tmp_path):
         assert cal["n"] == fit.data["n_train"]
     assert abs(models["linear"]["calibration"]["slope"]["estimate"] - 1) < 0.1
     assert not models["linear"]["calibration"]["flagged"]
+    plan = design.objects["spec"]["plans"]["boosted_trees"]
+    assert plan["n_plan"] < 300 and len(plan["candidates"]) == 1 and plan["candidates"][0]["standard"]
     trees = models["boosted_trees"]
     assert trees["calibration"]["flagged"]
     assert any("calibration slope" in c and "too extreme" in c for c in trees["concerns"]), trees["concerns"]
+    for m in models.values():
+        assert m["calibration"]["flagged"] == any("calibration slope" in c for c in m["concerns"])
 
     served = {m["family"]: m for m in _opened(fit)["models"]}
     a = split.frames["assignment"]

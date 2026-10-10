@@ -85,6 +85,15 @@ def _forced_plan(y: np.ndarray, seed: int):
 
 
 def _one(kind: str, r: int) -> dict[str, float]:
+    """One dataset, every fit on one OpenMP thread (the plan's; plain scikit-learn's by the
+    limit), so parallel datasets never oversubscribe the machine."""
+    from threadpoolctl import threadpool_limits
+
+    with threadpool_limits(limits=1, user_api="openmp"):
+        return _one_dataset(kind, r)
+
+
+def _one_dataset(kind: str, r: int) -> dict[str, float]:
     rng = np.random.default_rng([1, r, 0 if kind == "null" else 1])
     X, y = _draw(kind, N, rng)
     X_new, y_new = _draw(kind, FRESH, rng)
@@ -105,6 +114,7 @@ def _one(kind: str, r: int) -> dict[str, float]:
     flat = []
     for c in plan.candidates:
         params = T.estimator_params(trees, "binary", c.values, n_units=N, n_rows=N, plan=plan)
+        params.pop("n_threads")  # the family's pin; plain scikit-learn runs inside _one's limit
         losses = [_fresh_loss(HistGradientBoostingClassifier(early_stopping=False, **params)
                               .fit(X.iloc[tr], y[tr]), X.iloc[te], y[te]) for tr, te in skf]
         flat.append((float(np.mean(losses)), params))

@@ -529,7 +529,8 @@ def test_5_the_plans_holdout_r2_precision_is_within_20_percent_of_the_simulated_
 
 
 def test_a16_boosted_trees_stop_early_on_whole_units_the_latest_when_time_ordered(monkeypatch):
-    """Above 10,000 rows boosted trees hold rows aside to stop early. Those rows are whole units
+    """Above 10,000 rows boosted trees at their standard settings hold rows aside to stop early,
+    and searched settings do from an effective size of 1,500 (RT-5a). Those rows are whole units
     (never a person on both sides), the latest units when the folds follow time, and the same
     units whatever order the rows arrive in. Reference: scikit-learn's own draw (a 10% split of
     positions, as HistGradientBoosting makes it) puts most held-aside people on both sides."""
@@ -550,36 +551,42 @@ def test_a16_boosted_trees_stop_early_on_whole_units_the_latest_when_time_ordere
     X = pd.DataFrame(rng.normal(size=(people * per, 3)), columns=["a", "b", "c"])
     X.index = pd.Index(np.arange(len(X)) + 10_000, name="row_id")
     y = X["a"].to_numpy() + rng.normal(size=len(X))
-    # Boosted trees are tuned (RT-5a), so they are built through a plan: its standard settings
-    # alone (mode "standard"), for a plan whose outer training fold holds these 12,000 rows, so
-    # scikit-learn's own rule (above 10,000 of the plan's rows) has them stop early.
+    # Boosted trees are tuned (RT-5a), so they are built through a plan, for a plan whose outer
+    # training fold holds these 3,000 people on 12,000 rows. Each of its two kinds of candidate
+    # is fit alone (a plan of one candidate refits it without a search): the standard one stops
+    # early by scikit-learn's own rule (above 10,000 of the plan's rows), a Sobol one because the
+    # plan's effective size is at least 1,500.
     from dataclasses import replace
 
     from turbotab.core.models.tuning import make_plan
 
     trees = get_family("boosted_trees")
     plan = make_plan(trees, task="regression", loss="mse", n_plan=people, plan_rows=len(X),
-                     unit="units", split_seed=0, mode="standard")
-    assert plan.standard_stops and len(plan.candidates) == 1
-    spec = DesignSpec(predictors=["a", "b", "c"], inputs=["a", "b", "c"], categorical=[],
-                      numeric=["a", "b", "c"], energy=None, impute=False,
-                      plans={trees.key: plan.to_dict()})
-    pipe = build_pipeline(spec, trees, "regression", "prediction", len(X), 3)
-    fitted = fit_pipeline(clone(pipe), X, y, groups=person)
-    train_rows, val_rows = seen[-1]
+                     unit="units", split_seed=0)
+    assert plan.standard_stops and plan.early_stopping and plan.candidates[0].standard
+    sobol = next(c for c in plan.candidates if not c.standard)
     who = dict(zip(X.index, person))
-    assert val_rows is not None and fitted[-1].do_early_stopping_
-    assert not {who[r] for r in train_rows} & {who[r] for r in val_rows}
-    assert len({who[r] for r in val_rows}) == pytest.approx(0.1 * people, abs=1)
-    # the same rows shuffled: the same people held aside
-    shuffle = rng.permutation(len(X))
-    fit_pipeline(clone(pipe), X.iloc[shuffle], y[shuffle], groups=person[shuffle])
-    assert {who[r] for r in seen[-1][1]} == {who[r] for r in val_rows}
-    # time-ordered: the latest tenth of the people
     rank = rng.permutation(people).astype(float)
-    fit_pipeline(clone(pipe), X, y, groups=person, order=rank[person])
-    latest = {who[r] for r in seen[-1][1]}
-    assert latest == set(np.flatnonzero(rank >= people - len(latest)).tolist())
+    shuffle = rng.permutation(len(X))
+    for candidate in (plan.candidates[0], sobol):
+        alone = replace(plan, candidates=(candidate,))
+        spec = DesignSpec(predictors=["a", "b", "c"], inputs=["a", "b", "c"], categorical=[],
+                          numeric=["a", "b", "c"], energy=None, impute=False,
+                          plans={trees.key: alone.to_dict()})
+        pipe = build_pipeline(spec, trees, "regression", "prediction", len(X), 3)
+        fitted = fit_pipeline(clone(pipe), X, y, groups=person)
+        assert fitted.tuning_.n_fits == 1 and fitted.tuning_.chosen_params["early_stopping"]
+        train_rows, val_rows = seen[-1]
+        assert val_rows is not None and fitted[-1].do_early_stopping_
+        assert not {who[r] for r in train_rows} & {who[r] for r in val_rows}
+        assert len({who[r] for r in val_rows}) == pytest.approx(0.1 * people, abs=1)
+        # the same rows shuffled: the same people held aside
+        fit_pipeline(clone(pipe), X.iloc[shuffle], y[shuffle], groups=person[shuffle])
+        assert {who[r] for r in seen[-1][1]} == {who[r] for r in val_rows}
+        # time-ordered: the latest tenth of the people
+        fit_pipeline(clone(pipe), X, y, groups=person, order=rank[person])
+        latest = {who[r] for r in seen[-1][1]}
+        assert latest == set(np.flatnonzero(rank >= people - len(latest)).tolist())
     # reference: a split of positions, as scikit-learn draws it, splits people
     _, sk_val = train_test_split(np.arange(len(X)), test_size=0.1, random_state=0)
     split_people = set(person[sk_val]) & set(np.delete(person, sk_val))
