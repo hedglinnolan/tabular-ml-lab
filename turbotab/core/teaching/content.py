@@ -1138,6 +1138,29 @@ ENERGY_ADJUSTMENT = {
     "evidence": ev("CONVENTION", NUT04),
 }
 
+def family_options() -> list[dict[str, str]]:
+    """The models question's options, one per registered family: its card name (``card_label``,
+    else ``label``) and its ``consequence``. A new family appears here by registering; nothing in
+    this module names one. They follow registration order, except that the families a domain lens
+    reviews in full sit together at the first one's place (the feature-wise tests and the screened
+    elastic net, both omics families, side by side, although the omics chain registers the second
+    last)."""
+    import turbotab.core.models  # noqa: F401 - registers the families
+    from turbotab.core.contracts import contracts
+    from turbotab.core.models.base import families
+
+    contracts()  # the omics chain registers a family of its own
+    first: dict[tuple[str, ...], int] = {}
+
+    def place(i: int, f: Any) -> int:
+        domain = tuple(lens for lens in f.review_lenses if lens != "shared")
+        return first.setdefault(domain, i) if domain else i
+
+    ranked = sorted(enumerate(families()), key=lambda pair: (place(*pair), pair[0]))
+    return [option(f.key, getattr(f, "card_label", "") or f.label, f.consequence)
+            for _, f in ranked]
+
+
 MODELS = {
     "key": "models",
     "title": "Model families",
@@ -1150,37 +1173,9 @@ MODELS = {
            "coefficients. In one comparison of 30,000 models, the algorithm mattered less than the "
            "endpoint and the analyst.",
     "consumer": "The fit, the Results and the substitution curves read it.",
-    "options": [
-        option("linear", "Linear model",
-               "OLS or logistic regression: one reportable coefficient per predictor, with "
-               "intervals for inference."),
-        option("elastic_net", "Elastic net",
-               "A penalized linear model: shrinks correlated nutrients together, tuned inside "
-               "training folds."),
-        # Audit G16 (ledger #54): the shared missing-values step runs before every family, so the
-        # trees never see a blank (models/pipeline.py shared_steps).
-        option("boosted_trees", "Boosted trees",
-               "Many shallow trees: finds curves and interactions; gives no coefficients."),
-        option("featurewise", "Feature-wise tests",
-               "Tests each factor on its own, adjusted for the covariates, with "
-               "Benjamini–Hochberg false-discovery control; no predictions."),
-        # MS7: in-fold screening at p ≫ n before the penalty (methods/omics.py).
-        option("screened_elastic_net", "Screened elastic net",
-               "Keeps the features most tied to the outcome in each training fold, then an "
-               "elastic net."),
-        option("proportional_odds", "Proportional-odds model",
-               "Cumulative odds ratios for an ordered outcome, the same at every cut-point; "
-               "Brant's test checks it."),
-        option("mixed", "Mixed model",
-               "A random intercept per unit: model-based intervals when rows repeat, even within "
-               "few units."),
-        option("gee", "GEE",
-               "Population-average effects, with intervals robust to how a unit's repeated rows "
-               "correlate."),
-        option("cox", "Cox model",
-               "Hazard ratios for a time-to-event outcome, using every row's follow-up, censored "
-               "or not."),
-    ],
+    # Read from the registry each time the card is built (``entries_now``), so a family registered
+    # after this module loads is on it too.
+    "options": [],
     "terms": [
         term("inductive bias", "What a model assumes before it sees data, such as straight lines "
                                "or interactions; it decides what the model can find."),
@@ -1644,3 +1639,8 @@ ENTRIES = [LENS, ORIENTATION, REPAIRS, TARGET, EVENT, TASK, FOLLOW_UP, DESIGN, P
            REPEAT_KIND, UNIT, AGGREGATION, TEMPORAL, ROLES, CLUSTERS, SURVEY, EXCLUSIONS, MISSING,
            SPLIT, ESTIMAND_QUESTION, ADJUSTMENT, TIME_VARYING, ENERGY_ADJUSTMENT, FORM,
            MODIFICATION, CAUSAL, MODELS, SUBSTITUTION, OPEN_SEAL]
+
+
+def entries_now() -> list[dict[str, Any]]:
+    """:data:`ENTRIES`, with the models card's options read from the registry as it stands now."""
+    return [dict(e, options=family_options()) if e is MODELS else e for e in ENTRIES]

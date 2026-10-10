@@ -131,11 +131,18 @@ class TeachingEntry(_Model):
     evidence: Evidence | None
 
 
-@lru_cache(maxsize=1)
 def _entries() -> tuple[TeachingEntry, ...]:
-    from turbotab.core.teaching.content import ENTRIES
+    """The entries, rebuilt when the registered families change (the models card lists them)."""
+    from turbotab.core.teaching.content import family_options
 
-    built = tuple(TeachingEntry.model_validate(e) for e in ENTRIES)
+    return _built(tuple(tuple(o.items()) for o in family_options()))
+
+
+@lru_cache(maxsize=4)
+def _built(families: tuple[tuple[tuple[str, str], ...], ...]) -> tuple[TeachingEntry, ...]:
+    from turbotab.core.teaching.content import entries_now
+
+    built = tuple(TeachingEntry.model_validate(e) for e in entries_now())
     keys = [e.key for e in built]
     if tuple(keys) != TEACHING_KEYS:
         raise RuntimeError(f"teaching entries are {keys}, expected {list(TEACHING_KEYS)}")

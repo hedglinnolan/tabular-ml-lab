@@ -145,24 +145,6 @@ CONTRACT_LENSES: dict[str, tuple[str, ...]] = {
     "site_validation": (SHARED,),
 }
 
-# Every registered model family: the lenses whose packet reviews it in full, or (SHARED,). No
-# family is gated on a lens: the shelf ranks every family that can model the outcome by its own
-# assessment (the feature-wise family scores an omics lens higher; the screened elastic net scores
-# fewer features than rows lower), so every packet lists every family.
-FAMILY_LENSES: dict[str, tuple[str, ...]] = {
-    "linear": (SHARED,),
-    "elastic_net": (SHARED,),
-    "boosted_trees": (SHARED,),
-    "featurewise": ("metabolomics", "genomics"),
-    "proportional_odds": (SHARED,),
-    "mixed": (SHARED,),
-    "gee": (SHARED,),
-    "cox": (SHARED,),
-    # registered by the omics chain (``turbotab.core.methods.omics``): p ≫ n prediction
-    "screened_elastic_net": ("metabolomics", "genomics"),
-}
-
-
 # Decision kinds that record a contract's method although the contract names another kind (or none)
 # as its ``decision``: kind → contract.
 UNDECLARED_DECISIONS: dict[str, str] = {
@@ -355,7 +337,15 @@ def lenses_of_contract(key: str) -> tuple[str, ...]:
 
 
 def lenses_of_family(key: str) -> tuple[str, ...]:
-    return FAMILY_LENSES[key]
+    """The lenses whose packet reviews family ``key`` in full, or (SHARED,): the family's own
+    ``review_lenses``. No family is gated on a lens: the shelf ranks every family that can model
+    the outcome by its own assessment, so every packet lists every family."""
+    import turbotab.core.models  # noqa: F401 - registers the families
+    from turbotab.core.contracts import contracts
+    from turbotab.core.models.base import get_family
+
+    contracts()  # the omics chain registers a family of its own (``screened_elastic_net``)
+    return tuple(get_family(key).review_lenses)
 
 
 def serves(lenses: tuple[str, ...], lens: str) -> bool:
@@ -380,6 +370,6 @@ def recorded_by(c: Any) -> str | None:
     return next((k for k, v in UNDECLARED_DECISIONS.items() if v == c.key), None)
 
 
-__all__ = ["CONTRACT_LENSES", "FAMILY_LENSES", "GAPS", "Gap", "LENSES", "LENS_TITLES", "NOT_ASKED",
+__all__ = ["CONTRACT_LENSES", "GAPS", "Gap", "LENSES", "LENS_TITLES", "NOT_ASKED",
            "NOT_METHODS", "SHARED", "UNDECLARED_DECISIONS", "gaps_for", "lenses_of_contract",
            "lenses_of_family", "own", "recorded_by", "serves"]

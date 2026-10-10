@@ -538,6 +538,8 @@ class ProportionalOdds(FamilyBase):
     output = "margin"
     raw_scale = {"ordinal": "latent"}
     review_lenses = ("shared",)
+    consequence = ("Cumulative odds ratios for an ordered outcome, the same at every cut-point; "
+                   "Brant's test checks it.")
 
     def methods_label(self, task: Task | None) -> str:
         return "a proportional-odds (cumulative logit) model"
