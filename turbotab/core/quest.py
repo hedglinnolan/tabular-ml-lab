@@ -1494,9 +1494,11 @@ def _finding_withdrawal(log: _Log, finding_id: str) -> ReopenedBy | None:
 
 def _reopened_only_if_complete(placed: Sequence[tuple[str, QuestLine]], log: _Log) -> None:
     """A first answer named as the cause of a declaration that never had an answer of its own
-    (:func:`_reaches_back`) reopened its stage only where that stage was complete before it: every
-    other counted Decide there is answered, or was asked again by that answer or a later one. Where
-    another line was already open, the declaration is the journey going forward: no cause."""
+    (:func:`_reaches_back`) reopened its stage only where that stage was complete when the answer
+    was given: judged from the log as it stood just before it (every other counted Decide there
+    had its answer recorded before it), never from how the stage stands now. Where another line
+    was still open then, or was answered only later, the declaration is the journey going forward:
+    no cause."""
     for stage, line in placed:
         by = line.reopened_by
         if line.source != "declaration" or by is None or log.last_answer((line.key,)) is not None:
@@ -1504,14 +1506,24 @@ def _reopened_only_if_complete(placed: Sequence[tuple[str, QuestLine]], log: _Lo
         cause = log.by_id.get(by.decision_id)
         if cause is None or log.supersedes(cause):
             continue
-        for s, other in placed:
-            if (s != stage or other is line or other.label != DECIDE or not other.counted
-                    or other.status == "answered"):
-                continue
-            since = log.by_id.get(other.reopened_by.decision_id) if other.reopened_by else None
-            if since is None or since.seq < cause.seq:
-                line.reopened_by = None
-                break
+        if not all(_answered_before(other, cause, log) for s, other in placed
+                   if s == stage and other is not line and other.label == DECIDE
+                   and other.counted):
+            line.reopened_by = None
+
+
+def _answered_before(line: QuestLine, cause: Any, log: _Log) -> bool:
+    """Whether ``line`` stood answered just before ``cause``: answered now by a decision of a kind
+    a live record answered before it, or asked again by that answer or a later one (so answered
+    when it came). A line answered with no record to date it is taken as answered then."""
+    if line.status == "answered":
+        writer = log.by_id.get(line.decision_id) if line.decision_id else None
+        if writer is None:
+            return True
+        kind = writer.decision.kind
+        return any(r.seq < cause.seq and r.decision.kind == kind for r in log.live)
+    since = log.by_id.get(line.reopened_by.decision_id) if line.reopened_by else None
+    return since is not None and since.seq >= cause.seq
 
 
 def _hold_the_families(placed: Sequence[tuple[str, QuestLine]]) -> None:

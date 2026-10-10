@@ -120,6 +120,17 @@ def _methods(tmp_path: Path, method: str) -> tuple[str, ProjectState]:
     return line, log.state()
 
 
+# The preview names the measured quantity as what the effect is of, and keeps the substitution
+# (verifier, P1-FU: the line with the measure and the contrast is too long for the caption's 20
+# words, and the substitution must not be what gives way).
+PREVIEW = {
+    "density": ("Total effect of `sugar_g` per unit of `kcal` (a density) in place of other "
+                "calories on `y`: mean difference."),
+    "residual_energy_dropped": ("Total effect of `sugar_g`'s energy-adjusted residual on `kcal`, "
+                                "at mean energy, in place of other calories on `y`: mean "
+                                "difference.")}
+
+
 @pytest.mark.parametrize("method,unit", [("density", DENSITY),
                                          ("residual_energy_dropped", RESIDUAL)])
 def test_the_methods_line_the_caption_and_the_preview_state_one_measure(tmp_path, method, unit):
@@ -128,7 +139,17 @@ def test_the_methods_line_the_caption_and_the_preview_state_one_measure(tmp_path
     assert unit in line, line
     assert "per unit of `sugar_g`." not in line and "per unit of `sugar_g`," not in line, line
     preview = estimand_line(st)
-    assert unit in preview, preview
+    assert preview == PREVIEW[method]
+    assert len(preview.split()) <= 20
+    assert unit.removeprefix("per unit of ") in preview
+
+
+@pytest.mark.parametrize("method", ["standard", "residual", "none"])
+def test_the_other_energy_answers_keep_the_methods_line_they_had(tmp_path, method):
+    """Only the density and the energy-dropped residual change the methods line's unit (P1-FU's
+    remit): under the other answers it still reads per unit of the column, as it did."""
+    line, _st = _methods(tmp_path, method)
+    assert line.endswith("as a difference in the mean outcome per unit of `sugar_g`."), line
 
 
 @pytest.mark.parametrize("method", ["density", "residual_energy_dropped"])

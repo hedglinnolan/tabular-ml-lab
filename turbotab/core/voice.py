@@ -1720,8 +1720,7 @@ def _set_estimand(d: Any, state: Any, ctx: Any) -> str:
         # it (``estimand.substitution_words``), the technical name kept as its label.
         # The values' reading of which parts sit inside their totals, where a table is at hand,
         # as the design reads it for Table 2 (P1-FU).
-        from turbotab.core.estimand import substitution_words, values_nesting
-        from turbotab.core.methods.exposure_form import estimand_unit
+        from turbotab.core.estimand import energy_measure, substitution_words, values_nesting
 
         swapped = None
         if d.contrast == "substitution" and state is not None:
@@ -1735,11 +1734,11 @@ def _set_estimand(d: Any, state: Any, ctx: Any) -> str:
             swapped = substitution_words(state, d.exposure, nested=nested)
         subject = (f"{swapped}{on} (a substitution)" if swapped else
                    f"{tick(d.exposure)}{on}{contrast}")
-        # The unit on the exposure's final scale, as the caption states it (P1-FU: a density, the
-        # energy-adjusted residual, a form's own unit).
+        # Under a density or the energy-dropped residual, the unit the caption states (P1-FU);
+        # any other exposure keeps the column's own unit, as before.
+        unit = energy_measure(state, d.exposure) or f"unit of {tick(d.exposure)}"
         text = (f"The analysis estimates the {d.effect} effect of {subject}, "
-                f"as a {MEASURE_WORDS.get(d.measure, d.measure)} per "
-                f"{estimand_unit(state, str(d.exposure))}")
+                f"as a {MEASURE_WORDS.get(d.measure, d.measure)} per {unit}")
     if d.measure in NON_COLLAPSIBLE:
         text += ", given the adjustment set"
     from turbotab.core.estimand import G_COMPUTATION, MARGINAL

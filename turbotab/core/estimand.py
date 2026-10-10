@@ -550,6 +550,25 @@ def family_contrast_applies(state: Any) -> bool:
     return any(energy_contrast_applies(state, c) for c in family_exposures(state))
 
 
+# The energy answers whose estimate is per a unit other than the nutrient's own (P1-FU).
+ENERGY_MEASURED = ("density", "density_multivariate", "residual_energy_dropped")
+
+
+def energy_measure(state: Any, exposure: Any) -> str | None:
+    """The unit ``exposure``'s estimate is per, as the caption states it
+    (``exposure_form.estimand_unit``), where the energy answer makes it other than the nutrient's
+    own: a density (per unit of energy), or the energy-adjusted residual with total energy left out
+    of the outcome model. The methods sentence and the preview say it too (P1-FU); None for any
+    other exposure or answer, whose sentence keeps the column's unit."""
+    adj = _get(state, "energy_adjustment")
+    if (not exposure or _get(adj, "method") not in ENERGY_MEASURED
+            or str(exposure) not in (_get(adj, "nutrients") or [])):
+        return None
+    from turbotab.core.methods.exposure_form import estimand_unit
+
+    return estimand_unit(state, str(exposure))
+
+
 def values_nesting(state: Any, *, store: Any = None, frame: Any = None) -> dict[str, str] | None:
     """Child -> the total the values keep it inside, among the settled predictors whose names make
     them a part and a total (``methods.nesting.nested_components``, the design's own test: a part

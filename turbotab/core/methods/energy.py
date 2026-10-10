@@ -1795,8 +1795,10 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
                 meanings[m] = (f"{f'{unit},' if unit else t.column} in place of the rest of "
                                f"{parent} ({parent} fixed)")
             continue
+        # A measured row names its own nutrient (sugar per unit of energy, not carbohydrate's);
+        # the other rows keep their source's name, as before.
         what = (f"remaining {t.source} (holding {', '.join(groups[t.column])} fixed)"
-                if t.column in groups else _noun(t))
+                if t.column in groups else _noun(t) if measured("") else t.source)
         if swapping:
             if t.column in groups:
                 # The remainder (WP6.7: "remaining fat (holding SFA, MUFA, PUFA fixed)"), its

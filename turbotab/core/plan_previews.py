@@ -377,7 +377,6 @@ def estimand_line(state: Any, *, nested: Any = None) -> str | None:
     reading of the parts inside their totals (``estimand.values_nesting``), as the design reads it
     for Table 2; None where no table is at hand."""
     from turbotab.core import estimand as est
-    from turbotab.core.methods.exposure_form import estimand_unit
 
     spec = est.current_estimand(state)
     if spec is None:
@@ -390,11 +389,9 @@ def estimand_line(state: Any, *, nested: Any = None) -> str | None:
         return (f"{effect} effect of each of {fmt_count(len(family))} study factors on {target}: "
                 f"{measure}.")
     short = MEASURE_SHORT.get(str(spec.measure), measure)
-    # P1-FU: a unit other than the column's own (a density, the energy-adjusted residual, a form's
-    # unit) is the measure the caption and the methods sentence state: said here too, by the
-    # measure's short label, wherever it fits the caption's words.
-    unit = estimand_unit(state, str(spec.exposure))
-    per = "" if unit == f"unit of {tick(spec.exposure)}" else f" per {unit}"
+    # P1-FU: under a density or the energy-dropped residual, the unit the caption and the methods
+    # sentence state (``estimand.energy_measure``) is said here too.
+    measured = est.energy_measure(state, spec.exposure)
     # Q-b: a substitution says what it swaps, as the caption and the methods sentence say it
     # (``estimand.substitution_words``), and what is measured. The swap is kept whole; to fit the
     # caption's words, the measure is named by its short label, ahead of the swap; then the swap's
@@ -402,6 +399,7 @@ def estimand_line(state: Any, *, nested: Any = None) -> str | None:
     swapped = (est.substitution_words(state, spec.exposure, nested=nested)
                if spec.contrast == "substitution" else None)
     if swapped:
+        per = f" per {measured}" if measured else ""
         bare = est.substitution_words(state, spec.exposure, amount=False, nested=nested) or swapped
         lines = [*((f"{effect} effect on {target} ({short}{per}): {swap}."
                     for swap in dict.fromkeys((swapped, bare))) if per else ()),
@@ -412,11 +410,16 @@ def estimand_line(state: Any, *, nested: Any = None) -> str | None:
         return fits[0] if fits else f"{effect} effect of {swapped} on {target}."
     contrast = {"substitution": " in place of other calories",
                 "addition": " added to the diet"}.get(str(spec.contrast), "")
-    lines = [*((f"{effect} effect of {tick(spec.exposure)}{contrast} on {target}: {measure}{per}.",
-                f"{effect} effect of {tick(spec.exposure)} on {target}: {short}{per}.") if per
-               else ()),
-             f"{effect} effect of {tick(spec.exposure)}{contrast} on {target}: {measure}."]
-    return next(line for line in lines if len(line.split()) <= CAPTION_WORDS or line == lines[-1])
+    if not measured:
+        return f"{effect} effect of {tick(spec.exposure)}{contrast} on {target}: {measure}."
+    # The measured quantity is what the effect is of (`sugar_g` per unit of `kcal`), the contrast
+    # kept whole; to fit the caption's words the measure gives way to its short label, then goes.
+    what = measured.removeprefix("unit of ")
+    what += "," if contrast and "," in what else ""
+    lines = [f"{effect} effect of {what}{contrast} on {target}: {measure}.",
+             f"{effect} effect of {what}{contrast} on {target}: {short}."]
+    fits = [line for line in lines if len(line.split()) <= CAPTION_WORDS]
+    return fits[0] if fits else f"{effect} effect of {what}{contrast} on {target}."
 
 
 def inference_first(what: str) -> str:
