@@ -145,7 +145,8 @@ def test_recorded_sentences_count_rows_as_the_participant_flow_does(client):
     rule = {"column": "energy_kcal", "low": 500, "high": 5000, "reason": "implausible intake"}
     decide(client, pid, {"kind": "set_exclusions", "rules": [rule]})
     decide(client, pid, {"kind": "set_missing", "strategy": "complete_case"})
-    wait_for(client, pid, {"cohort": "fresh"})
+    # the split's sentence reads the seal's basis only while it is fresh (it says less otherwise)
+    wait_for(client, pid, {"cohort": "fresh", "roles": "fresh", "seal_plan": "fresh"})
     steps = {s["key"]: s for s in client.get(f"/api/projects/{pid}/stages/cohort").json()["artifact"]["steps"]}
     view = decide(client, pid, {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5})
     said = {r["decision"]["kind"]: r["sentence"] for r in view["decisions"]}
