@@ -39,6 +39,10 @@ from sklearn.linear_model import ElasticNetCV, LogisticRegressionCV
 from turbotab.core.decisions import Purpose, Task
 from turbotab.core.models.base import Assessment, FamilyBase, Situation, coefficient_rows, register_family
 from turbotab.core.models.base import CLASS_SCALES, Identity, InferenceDecl, Knob, Source
+# The choice moved to the tuning plan (RT-1a), the one rule every tuned family chooses by; the names
+# stay here for the readers that import them from the elastic net.
+from turbotab.core.models.tuning import LOSS_PRECISION  # noqa: F401 - re-exported
+from turbotab.core.models.tuning import choose as lowest_rounded
 
 L1_RATIOS = (0.1, 0.5, 0.7, 0.9, 0.95, 1.0)
 # saga was slow on the full default grid (≈ 150 s per multiclass fit on 17,000 NHANES rows); this
@@ -51,7 +55,6 @@ LOGISTIC_CS = tuple(float(c) for c in np.logspace(-3, 1, 8))
 # choice rounds to; collinear columns need up to 100,000 sweeps to get there.
 SOLVER_TOL = 1e-12
 SOLVER_MAX_ITER = 100_000
-LOSS_PRECISION = 1e-9  # pooled losses are rounded to this share of the smallest before the argmin
 # The exact path's reach, timed at one thread for a whole inner cross-validation: least squares on
 # 2,000 rows × 500 columns, 12 s for six mixes × 100 penalties × five folds (coordinate descent at
 # 10⁻⁴: 18 s); logistic on 1,000 × 200, 0.4 s (saga at 10⁻³: 4.3 s to 28 s by table), on four
@@ -63,22 +66,6 @@ EXACT_MAX_COEFFICIENTS = 600
 
 def inner_folds(n_rows: int) -> int:
     return 5 if 100 <= n_rows <= 5000 else 3
-
-
-def lowest_rounded(losses: Any, precision: float = LOSS_PRECISION) -> int:
-    """The flat index of the lowest loss, each rounded first to a multiple of ``precision`` times
-    the smallest; equal rounded losses go to the lowest index (RECIPES_AND_TUNING §4.2, "Choice").
-
-    Rounding makes a near-tie a tie, and a tie the earlier candidate's: on a penalty path, the
-    larger penalty. Without it, two losses closer than floating-point noise trade places with the
-    order of a sum."""
-    values = np.asarray(losses, dtype=float).ravel()
-    finite = np.isfinite(values)
-    if not finite.any():
-        return 0
-    scale = float(np.min(np.abs(values[finite]))) or 1.0
-    rounded = np.where(finite, np.round(values / (precision * scale)), np.inf)
-    return int(np.argmin(rounded))  # the first of equal minima
 
 
 def _fold_weights(folds: list[tuple[Any, Any]], sample_weight: Any, n: int) -> np.ndarray:

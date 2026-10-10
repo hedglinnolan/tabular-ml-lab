@@ -1,10 +1,16 @@
 """MC-1 and MC-2a · every model family declares the contract, and the switches the new families hit
 read those declarations (MODEL_FAMILY_CONTRACT §1, §3.1, §3.3, §5).
 
-Expected values: §3.1's table of today's nine families, written out here; the tables and labels the
-retired switches held, copied from the code before MC-2a; ridge's hat matrix by explicit inverse
-(ESL §3.4.1) against scikit-learn's own elastic net; and §7's verified references, read from the
-contract itself.
+Expected values: §3.1's table of today's nine families and §3.2's of the four v2 adds, written out
+here; the tables and labels the retired switches held, copied from the code before MC-2a; ridge's
+hat matrix by explicit inverse (ESL §3.4.1) against scikit-learn's own elastic net; and the citation
+registry's verified records.
+
+**Rules, not a roster** (WAVE_C6A_PLAN §3, RT-1a): a family that registers later in this wave (ridge,
+Huber, the random forest, XGBoost) meets these tests as it stands, with no edit here. What each
+family declares is checked against its row below, and what it adds is checked by the rules that tie
+a member to a declaration: ``trees`` is set exactly when the attribution is "trees", ``path``
+exactly when a task's tuning is a path, ``inference`` exactly when the table has intervals.
 """
 from __future__ import annotations
 
@@ -21,6 +27,7 @@ import pytest
 
 from turbotab.core.models import get_family
 from turbotab.core.models.base import (
+    CONSEQUENCE_WORDS,
     TASKS,
     FamilyBase,
     Identity,
@@ -52,7 +59,16 @@ EXPECTED = {
     "gee": (("linear_maps",), "intervals", True, False, "none"),
     "cox": (("linear_maps",), "intervals", True, False, "none"),
     "screened_elastic_net": (("column_scale",), None, True, False, "linear"),
+    # §3.2: the four v2 families, by the keys RECIPES §2.2 registers them under. Ridge gives a
+    # shrunk table under inference; Huber is for prediction only; the forest and XGBoost describe.
+    "ridge": (("rotation_after_scaling",), "shrunk_no_intervals", True, False, "linear"),
+    "huber": (("linear_maps",), None, True, False, "linear"),
+    "random_forest": (("monotone_per_column",), "description_only", False, True, "trees"),
+    "xgboost": (("monotone_per_column",), "description_only", False, True, "trees"),
 }
+# Today's nine (§3.1), every one registered; §3.2's four join as their packages land.
+NINE = ("linear", "elastic_net", "boosted_trees", "featurewise", "proportional_odds", "mixed",
+        "gee", "cox", "screened_elastic_net")
 
 
 def _families() -> dict[str, Any]:
@@ -62,11 +78,11 @@ def _families() -> dict[str, Any]:
     return {f.key: f for f in families()}
 
 
-def test_the_nine_families_declare_what_section_3_1_says():
+def test_each_family_declares_what_sections_3_1_and_3_2_say():
     found = _families()
-    assert sorted(found) == sorted(EXPECTED)
-    for key, (invariances, table, sound, flexible, attribution) in EXPECTED.items():
-        f = found[key]
+    assert set(NINE) <= set(found) <= set(EXPECTED), sorted(set(found) - set(EXPECTED))
+    for key, f in found.items():
+        invariances, table, sound, flexible, attribution = EXPECTED[key]
         assert contract_problems(f) == [], key
         decl = f.inference_decl
         declared = (tuple(f.invariances), decl.table if decl else None, f.bootstrap_optimism,
@@ -127,7 +143,8 @@ def test_flexible_is_declared_not_derived():
     ``not bootstrap_optimism``."""
     from turbotab.core.models.selection import is_flexible
 
-    assert [k for k, f in _families().items() if is_flexible(f)] == ["boosted_trees"]
+    assert {k: is_flexible(f) for k, f in _families().items()} == {
+        k: EXPECTED[k][3] for k in _families()}
     assert not is_flexible(SimpleNamespace(flexible=False, bootstrap_optimism=False))
     assert is_flexible(SimpleNamespace(flexible=True, bootstrap_optimism=True))
 
@@ -168,18 +185,27 @@ def test_the_family_info_carries_the_user_facing_declarations():
     assert info(get_family("linear")).inference_table == "intervals"
 
 
-def test_every_cited_source_is_one_of_section_7s_verified_references():
-    """Until SIZING X4's registry: each source key's reference is a line of the contract's §7."""
+def test_every_cited_source_is_a_verified_record():
+    """Every source key a declaration cites is one of ``models.sources``, and each of those is a
+    record of SIZING X4's citation registry (every DOI checked against Crossref), so a source can
+    join before the family that cites it lands. Each dimension's source string resolves in the
+    same registry (C6)."""
+    from turbotab.core.export.citations import is_internal, registry, resolve, segments
+    from turbotab.core.models.base import _declared_tunings
     from turbotab.core.models.sources import SOURCES
 
-    text = CONTRACT.read_text(encoding="utf-8")
-    section = text[text.index("## 7 · Sources"):text.index("## What changed after review")]
-    lines = {line[2:] for line in section.splitlines() if line.startswith("- ")}
-    assert sorted(k for k, ref in SOURCES.items() if ref not in lines) == []
-    cited = {s.key for f in _families().values()
+    records = registry()
+    assert sorted(k for k in SOURCES if k not in records) == []
+    families = _families().values()
+    cited = {s.key for f in families
              for s in [*f.sources, *(t.source for t in f.bias_terms),
                        *(k.source for k in f.complexity if k.source)]}
-    assert cited == set(SOURCES)  # each listed because a declaration cites it
+    assert sorted(cited - set(SOURCES)) == []
+    unresolved = [(f.key, d.name, part) for f in families
+                  for decl in _declared_tunings(f)[0].values()
+                  for d in (*decl.dimensions, *decl.by_hand) for part in segments(d.source)
+                  if not is_internal(part) and not resolve(part)]
+    assert unresolved == []
 
 
 def test_the_elastic_net_ridge_part_is_its_hat_matrix():
@@ -192,7 +218,7 @@ def test_the_elastic_net_ridge_part_is_its_hat_matrix():
     from turbotab.core.models.formulas import FORMULAS
 
     (knob,) = [k for k in get_family("elastic_net").complexity if k.formula]
-    assert (knob.setting, knob.more_means) == ("alphas", "simpler")  # the grid alpha_ comes from
+    assert knob.more_means == "simpler"
     formula = FORMULAS[knob.formula]
     rng = np.random.default_rng(11)
     n, p = 60, 6
@@ -244,6 +270,16 @@ def test_a_family_missing_a_declaration_is_refused_by_name():
     assert "bare_probe" not in {f.key for f in families()}
 
 
+def _decl(name: str, low: float, high: float, scale: str, *, kind: str = "search",
+          points: int = 0, source: str = "Friedman 2001") -> Any:
+    from turbotab.core.models.tuning import Dimension, TuningDecl
+
+    dim = Dimension(name, f"plain words for {name}", f"term for {name}", low, high, scale,
+                    source=source, points=points)
+    return TuningDecl(kind, dimensions=(dim,), space_version=f"probe/{name}",
+                      standard={} if kind == "path" else {name: low})
+
+
 def _probe(key: str = "probe", **declared: Any) -> Any:
     """The linear family's declarations with ``declared`` changed, under a key of its own and
     default for no task (each task has one default inference family, and linear is it)."""
@@ -289,6 +325,30 @@ def _probe(key: str = "probe", **declared: Any) -> Any:
     ({"preprocess": "spline"}, "preprocess must be a method of the family, or None"),
     ({"build": lambda self, *a: __import__("sklearn.linear_model").linear_model.LinearRegression()},
      "has no decision_function"),
+    # RT-1a: the tuning members and the tree hook
+    ({"tuning": _decl("depth", 2, 10, "int")},
+     "its tuning names ['depth'], which are not parameters of the estimator it builds for "
+     "['regression', 'binary', 'multiclass', 'ordinal'], and it has no settings to resolve them"),
+    ({"tuning": {"binary": _decl("lambda", 1e-3, 1e2, "log")},
+      "settings": lambda self, values, **fit: {"C": 1.0 / values["lambda"], "depth": 3}},
+     "its tuning names ['depth'], which are not parameters of the estimator it builds for "
+     "['binary'], and its settings do not resolve them"),
+    ({"tuning": {"binary": _decl("lambda", 1e-3, 1e2, "log")},
+      "settings": lambda self, values, **fit: {"C": 1.0 / values["lambda"] / fit["Z"].missing}},
+     "its settings failed on a probe of its binary tuning (AttributeError"),
+    ({"tuning": {"binary": _decl("C", 1e-3, 1e2, "log", kind="path", points=10)}},
+     "its tuning for ['binary'] is a path, so it declares path"),
+    ({"path": lambda self, Z, y, grid, **kw: None}, "path is declared, but no task's tuning is a "
+                                                    "path"),
+    ({"tuning": {"binary": _decl("C", 1e-3, 1e2, "log", source="Nobody 2099")}},
+     "the dimension 'C' cites 'Nobody 2099', which names no record of the citation registry"),
+    ({"tuning": {"time_to_event": _decl("C", 1e-3, 1e2, "log")}},
+     "tuning is declared for ['time_to_event'], which it does not model"),
+    ({"attribution": "trees"}, "its attribution or architecture reads trees, so it declares trees"),
+    ({"trees": lambda self, step: None}, "trees is declared, but neither its attribution nor"),
+    ({"consequence": " ".join(["word"] * (CONSEQUENCE_WORDS + 1))},
+     f"consequence must say what choosing it means in at most {CONSEQUENCE_WORDS} words"),
+    ({"defaults_version": ""}, "defaults_version must name the version of its defaults"),
 ])
 def test_a_declaration_outside_the_contract_is_refused_by_name(declared, says):
     with pytest.raises(ValueError, match=re.escape(says)):
@@ -355,21 +415,29 @@ def test_each_task_has_at_most_one_default_inference_family_with_intervals():
 
 
 def test_what_a_family_adds_is_declared_on_every_family():
-    """§1: ``preprocess``, ``build_for``, ``describe_step``, ``inference`` and ``inference_matrix``
-    are members of the protocol, None where a family adds nothing. The families with a table of
-    intervals are the ones with an ``inference`` method (§3.1's C2 row); the screened elastic net
-    adds its screen; the feature-wise tests build from the design."""
-    from turbotab.core.models.base import MEMBERS, OPTIONAL_MEMBERS
+    """§1: what a family adds of its own are members of the protocol, None where it adds nothing,
+    each tied to a declaration by a rule: ``inference`` exactly when its table has intervals
+    (§3.1's C2 row), ``trees`` exactly when its attribution is "trees" (C10), ``path`` exactly
+    when a task's tuning is a path (C6), ``tree_shap`` only beside ``trees``. Among today's nine,
+    the screened elastic net adds its screen, the feature-wise tests build from the design, and
+    three families refit a model matrix."""
+    from turbotab.core.models.base import MEMBERS, OPTIONAL_MEMBERS, _declared_tunings
 
     found = _families()
     assert set(OPTIONAL_MEMBERS) <= set(MEMBERS)
-    adds = {m: sorted(k for k, f in found.items() if getattr(f, m) is not None)
-            for m in OPTIONAL_MEMBERS}
+    for key, f in found.items():
+        decl = f.inference_decl
+        assert (f.inference is not None) == (decl is not None and decl.table == "intervals"), key
+        assert (f.trees is not None) == (f.attribution == "trees"), key
+        assert (f.path is not None) == any(d.kind == "path"
+                                           for d in _declared_tunings(f)[0].values()), key
+        assert f.tree_shap is None or f.trees is not None, key
+    adds = {m: sorted(k for k in NINE if getattr(found[k], m) is not None)
+            for m in ("preprocess", "build_for", "describe_step", "inference_matrix")}
     assert adds == {
         "preprocess": ["screened_elastic_net"],
         "build_for": ["featurewise"],
         "describe_step": ["screened_elastic_net"],
-        "inference": sorted(k for k, (_, table, *_) in EXPECTED.items() if table == "intervals"),
         "inference_matrix": ["cox", "linear", "proportional_odds"],
     }
 
@@ -383,15 +451,17 @@ def test_each_identity_names_the_classes_its_family_builds():
                  for rows, columns in ((100, 2), (10, 20), (10, 600))}
         named = f.identity.estimator
         assert {n for n in built if not re.search(rf"\b{n}\b", named)} == set(), f.key
-    assert re.findall(r"\w+CV", get_family("elastic_net").identity.estimator) == [
-        "PooledElasticNetCV", "Float32ElasticNetCV", "PooledLogisticRegressionCV"]
 
 
 def test_each_knob_is_a_parameter_of_the_estimator_its_family_builds():
-    """C7: ``Knob.setting`` is the estimator's own parameter, for some task the family models."""
+    """C7: ``Knob.setting`` is the estimator's own parameter for some task the family models, a
+    setting its tuning declares (which ``settings`` resolves), or "time" for early stopping."""
+    from turbotab.core.models.base import _declared_tunings
+
     for f in _families().values():
         params = set().union(*(f.build(t, "prediction" if "prediction" in f.purposes else
                                        "inference", 100, 2).get_params() for t in f.tasks))
+        params |= {n for d in _declared_tunings(f)[0].values() for n in d.names()} | {"time"}
         assert [k.setting for k in f.complexity if k.setting not in params] == [], f.key
 
 
@@ -411,10 +481,11 @@ def test_featurewise_declares_what_does_not_apply_to_it_as_not_applicable():
 
 
 def test_the_family_info_lists_the_profile_fields_read():
-    """C4: ``reads`` is declared per family, empty for all nine until MC-4's profile exists."""
+    """C4: ``reads`` is declared per family, empty for today's nine until MC-4's profile exists."""
     probe = _probe(reads=("rows", "columns"))
     assert info(probe).reads == ["rows", "columns"]
-    assert {k: info(f).reads for k, f in _families().items()} == {k: [] for k in EXPECTED}
+    found = _families()
+    assert {k: info(found[k]).reads for k in NINE} == {k: [] for k in NINE}
 
 
 def test_explanations_read_the_declared_raw_scale():
@@ -479,8 +550,8 @@ def test_a_tuning_declaration_keeps_structural_settings_out_of_the_search():
 
     rate = Dimension("learning_rate", "how big each correction step is", "learning rate", 0.01,
                      0.3, "log", source="Probst et al. 2019")
-    assert TuningDecl("search", dimensions=(rate,), structural=("booster",)).structural == (
-        "booster",)
+    assert TuningDecl("search", dimensions=(rate,), structural=("booster",),
+                      standard={"learning_rate": 0.1}).structural == ("booster",)
     with pytest.raises(ValueError, match=re.escape("['learning_rate'] are structural")):
         TuningDecl("search", dimensions=(rate,), structural=("learning_rate",))
     with pytest.raises(ValueError, match=re.escape(
@@ -510,3 +581,42 @@ def test_no_code_probes_what_a_family_adds_by_its_presence():
                     and node.args[1].value in OPTIONAL_MEMBERS):
                 probes.append(f"{path.relative_to(root)}:{node.lineno}: {ast.unparse(node)}")
     assert probes == []
+
+
+def test_every_family_states_its_tuning_and_its_consequence_within_the_contract():
+    """RT-1a: every family has ``tuning`` (None, or a declaration per task it models),
+    ``defaults_version`` and a ``consequence`` of at most 20 words (optional until MC-2b-1);
+    boosted trees' line is today's teaching option's, word for word, and its trees reach the
+    explanations through its ``trees`` member."""
+    from turbotab.core.models.base import _declared_tunings
+    from turbotab.core.teaching.content import MODELS
+
+    for key, f in _families().items():
+        decls, problems = _declared_tunings(f)
+        assert problems == [] and set(decls) <= set(f.tasks), key
+        assert isinstance(f.defaults_version, str) and f.defaults_version, key
+        assert len(f.consequence.split()) <= CONSEQUENCE_WORDS, key
+    taught = {o["value"]: o["consequence"] for o in MODELS["options"]}
+    trees = get_family("boosted_trees")
+    assert trees.consequence == taught["boosted_trees"]
+    assert trees.trees is not None and trees.tree_shap is None
+
+
+def test_a_tuned_family_whose_settings_resolve_its_names_registers():
+    """C6: a name that is not the estimator's own parameter is allowed when ``settings`` turns it
+    into one: a logistic penalty λ given as C = 1/λ, probed at the standard and center values."""
+    from turbotab.core.models.base import unregister_family
+
+    seen: list[dict[str, Any]] = []
+
+    def settings(self: Any, values: Any, **fit: Any) -> dict[str, Any]:
+        seen.append({**values, "rows": fit["n_rows"], "plan": fit["plan"].family})
+        return {"C": 1.0 / values["lambda"]}
+
+    probe = _probe(key="settings_probe", tuning={"binary": _decl("lambda", 1e-3, 1e2, "log")},
+                   settings=settings)
+    assert contract_problems(probe) == []
+    register_family(probe)
+    unregister_family("settings_probe")
+    assert seen[0] == {"lambda": 1e-3, "rows": 200, "plan": "settings_probe"}
+    assert seen[1]["lambda"] == pytest.approx(10 ** ((-3 + 2) / 2))
