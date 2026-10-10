@@ -35,14 +35,17 @@ unless the crosswalk rules otherwise, :data:`TIER_RULINGS`), with "Waiting for" 
 earlier answers are missing;
 progress as answered over required, each counted Decide one and the stage's Confirm sweep one,
 empty (``None``) for a stage not reached, and ``complete`` once every objective is answered (a
-reached stage that asks nothing, 0 of 0, is complete: its segment is full); and why it reopened.
+reached stage that asks nothing, 0 of 0, is complete: its segment is full; except Results under
+Estimate and Describe, which counts the exhibits the engine serves on this state,
+:func:`served_exhibits`); and why it reopened.
 
 **Reached.** A stage is reached once the Router has asked a question in it or a later one.
 Results is reached once Fit is pressed (SIZING P0.8; FOUNDATION §7): under Estimate and Describe
 once the plan is locked, under Predict once Fit is pressed for the outcome; it stays reached when
-its results go out of date, so it can say why it dropped back. Write-up opens with Results.
-Without what Fit says (``fit``), Results is reached once an estimate has been computed, for the
-answers now or for earlier ones.
+its results go out of date, so it can say why it dropped back. Under Predict Write-up opens
+with Results; under Estimate and Describe it is not reached until Results is placed (C7a adds
+placement). Without what Fit says (``fit``), Results is reached once an estimate has been
+computed, for the answers now or for earlier ones.
 
 **The lock is visible** (``fit``, :class:`fit_press.FitLock`): whether the plan is locked, when,
 its SHA-256 and why, in plain words; whether Fit was pressed, and whether the fit waits for it.
@@ -94,7 +97,11 @@ from turbotab.core.fit_press import FitLock
 # 2 (P0.8): Results opens when Fit is pressed, and the log carries the lock (``fit``).
 # 3 (P0.5): a Confirm line is a default whose alternative would change a number here, else For the
 # record; Your data's readings line; the sweep's words and its "Confirm all".
-QUEST_VERSION = 3
+# 4 (Q-c): after Fit under Estimate and Describe, Results reads 0 of N (N = the exhibit-bearing
+# stages the engine serves on the state, ``served_exhibits``), not complete; Write-up is not
+# reached until Results is placed; a goal changed to Estimate says why Results counts them, and a
+# goal changed to Predict says why Who's in asks the split (§7.2 I11, ruling 3).
+QUEST_VERSION = 4
 
 STAGES: tuple[tuple[str, str], ...] = (
     ("data", "Your data"),
@@ -600,6 +607,25 @@ COMPUTE: dict[str, tuple[str, str | None]] = {
 }
 
 
+# The compute stages whose result is an exhibit of Results (the card that shows it is an
+# ``exhibit:``). After Fit under Estimate and Describe, each one the engine serves on the state is
+# one of Results' objectives (:func:`served_exhibits`).
+EXHIBIT_STAGES: tuple[str, ...] = tuple(
+    name for name, (stage, card) in COMPUTE.items()
+    if stage == "results" and card is not None and card.startswith("exhibit:"))
+
+
+def served_exhibits(state: Any) -> tuple[str, ...]:
+    """The exhibit-bearing stages the engine serves on ``state``: those whose ``requires`` (and
+    their upstream stages') are all answered, the scheduler's own rule (``surfacing.computable``,
+    ``graph.unmet_requires``). A stage it never computes here (no causal answer, no explain
+    answer) is no exhibit to word and place, so it is not counted."""
+    from turbotab.core.surfacing import computable
+
+    can = computable(state)
+    return tuple(name for name in EXHIBIT_STAGES if name in can)
+
+
 @lru_cache(maxsize=1)
 def _graph() -> Any:
     from turbotab.core.graph import load_graph
@@ -783,8 +809,14 @@ class QuestLine(BaseModel):
 class Progress(BaseModel):
     """A reached stage's objectives: each counted Decide one, its Confirm sweep one. ``complete``
     once every one is answered. A reached stage that asks nothing (0 of 0: First look until its
-    noticings are wired, Results under Estimate, Write-up) is complete, its segment full; a stage
-    not reached has no progress at all (empty, never "0 of N")."""
+    noticings are wired, Write-up under Predict) is complete, its segment full; a stage not
+    reached has no progress at all (empty, never "0 of N").
+
+    Results under Estimate and Describe is the exception (FOUNDATION §3, §8): once Fit is pressed
+    each exhibit's wording and placement is an objective of Results, so it reads 0 of N, N the
+    exhibit-bearing stages the engine serves (:func:`served_exhibits`), and is not complete, not
+    "0 of 0" full; and Write-up is not reached (no progress) until Results is placed (C7a adds
+    placement)."""
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
@@ -1087,6 +1119,41 @@ def _goal_made_predict(log: _Log) -> ReopenedBy | None:
     return None
 
 
+def _goal_made_estimate(log: _Log) -> Any:
+    """The change (or revert) that made the goal Estimate and Describe after another goal, while
+    the plan is not yet locked for it: Results, complete under Predict perhaps, now counts its
+    exhibits, and says why it dropped back (SURFACING_POLICY §7.2 I11, ruling 3). None after a
+    first answer, or once a lock follows the change."""
+    for record in reversed(log.live):
+        if record.decision.kind == "lock_plan":
+            return None
+        if record.decision.kind not in ("set_purpose", FOLLOWS_WHAT_IT_UNDOES):
+            continue
+        before, after = log.state_at(record.seq - 1), log.state_at(record.seq)
+        purposes = (getattr(before, "purpose", None), getattr(after, "purpose", None))
+        if purposes[0] == purposes[1]:
+            continue
+        return record if purposes[0] is not None and purposes[1] == "inference" else None
+    return None
+
+
+def _goal_changed_to_predict(log: _Log) -> ReopenedBy | None:
+    """The latest goal change (not a first answer) that made the goal Predict, if the goal is
+    still the one it set."""
+    for record in reversed(log.live):
+        if record.decision.kind not in ("set_purpose", FOLLOWS_WHAT_IT_UNDOES):
+            continue
+        before, after = log.state_at(record.seq - 1), log.state_at(record.seq)
+        purposes = (getattr(before, "purpose", None), getattr(after, "purpose", None))
+        if purposes[0] == purposes[1]:
+            continue
+        stage = log.stage_of(record)
+        if purposes[0] is None or purposes[1] != "prediction" or stage is None:
+            return None
+        return ReopenedBy(decision_id=record.id, kind=record.decision.kind, stage=stage)
+    return None
+
+
 def _stated_reason(key: str) -> str | None:
     """Why a default TurboTab recorded itself holds (the split under Estimate)."""
     if key == "split":
@@ -1248,6 +1315,11 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
             # outcome's views wait for it (``outcome_gate.drawn``).
             status, decision_id, writer = "open", None, None
             reopened = reopened or _goal_made_predict(log)
+        elif key == "split" and purpose == "prediction" and status in ("open", "waiting") \
+                and reopened is None and label == DECIDE:
+            # Under Estimate the split is For the record, not asked; a goal changed to Predict
+            # asks it, so the stage it sits in, complete before, says why (§7.2 I11, ruling 3).
+            reopened = _goal_changed_to_predict(log)
         by_turbotab = getattr(writer, "recorded_by", "you") == "turbotab"
         changed = (_changed_since_decided(key, writer, log)
                    if status == "answered" and writer is not None else None)
@@ -1418,7 +1490,8 @@ def _frontier(steps: Sequence[Any], stages: Mapping[str, Any],
     the goal withdrawn: ``fit.opened``), so it drops back with its reason rather than emptying. Without ``fit``, Results opens once an estimate stage has a
     result, for the answers now (fresh) or for earlier ones (``shown_at``: out of date, or
     withdrawn since) (``usual_intake``'s offer computes on the lens and goal alone, so it opens
-    nothing). Write-up opens with Results."""
+    nothing). Write-up opens with Results here; under Estimate and Describe :func:`quest_log` holds
+    it back until Results is placed."""
     from turbotab.core.estimand import ESTIMATE_STAGES
 
     # A question whose own reading recomputes while its answer holds is answered meanwhile (the
@@ -1517,6 +1590,23 @@ def _reasons(stage: str, lines: Sequence[QuestLine], log: _Log, stages: Mapping[
     return sorted(out, key=lambda r: log.by_id[r.decision_id].seq, reverse=True)
 
 
+def _exhibits_reopened(reasons: list[Reopened], log: _Log,
+                       exhibits: Sequence[str]) -> list[Reopened]:
+    """Results' reasons, with the goal's change to Estimate and Describe among them: its exhibits
+    are objectives again, out of date for the goal they were computed under."""
+    cause = _goal_made_estimate(log)
+    if cause is None or not exhibits or any(r.decision_id == cause.id for r in reasons):
+        return reasons
+    changed_in = log.stage_of(cause)
+    if changed_in is None:
+        return reasons
+    reopened = Reopened(
+        changed_in=changed_in, decision_id=cause.id, kind=cause.decision.kind,
+        results=list(exhibits),
+        sentence=_sentence(STAGE_NAMES[changed_in], STAGE_NAMES["results"], 0, len(exhibits)))
+    return [reopened, *reasons]
+
+
 def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
               stages: Mapping[str, Any] | None = None, *, findings: Any = None,
               columns: Sequence[str] | None = None,
@@ -1565,6 +1655,11 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     sweeps.weigh(placed, state, facts)
     sweeps.cover_noticings(placed, state, log, findings)
     frontier = _frontier(steps, stages, shown_at, fit, state)
+    # Under Estimate and Describe the exhibits are Results' objectives, none placed yet (C7a adds
+    # placement): Results reads 0 of N, and Write-up is not reached until Results is placed.
+    estimates = fit.locks if fit is not None else getattr(state, "purpose", None) == "inference"
+    if estimates and frontier >= STAGE_INDEX["writeup"]:
+        frontier = STAGE_INDEX["results"]
     out = []
     for key, name in STAGES:
         mine = sorted((l for stage, l in placed if stage == key),
@@ -1577,21 +1672,26 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
             swept = int(sweep is not None and sweep.answered)
             answered = sum(l.status == "answered" for l in decide) + swept
             required = len(decide) + int(sweep is not None)
+            if estimates and key == "results":
+                required += len(served_exhibits(state))
             progress = Progress(answered=answered, required=required, complete=answered >= required)
         # A stage not reached yet has nothing to drop back from.
         reasons = _reasons(key, mine, log, stages, shown_at) if reached else []
+        if reached and estimates and key == "results":
+            reasons = _exhibits_reopened(reasons, log, served_exhibits(state))
         out.append(QuestStage(key=key, name=name, reached=reached, progress=progress, sweep=sweep,
                               lines=mine, reopened=reasons))
     return QuestLog(stages=out, kinds=kind_stages(), fit=fit)
 
 
 __all__ = [
-    "COMPLETED", "COMPUTE", "ChangedSince", "DECLARATIONS", "Declaration", "EXPLORE_FINDINGS",
-    "FINDING_ROUTES", "FOLLOWS_ITS_STAGE", "FOLLOWS_WHAT_IT_UNDOES", "Facts", "GOAL_PLACES",
-    "LABELS", "NORMALIZATION", "OTHER_KINDS", "Place", "Progress", "QUESTIONS", "QUEST_VERSION",
-    "QuestLine", "QuestLog", "QuestStage", "READ_BY_GATE", "ReadItem", "ReadOption", "Reopened",
-    "ReopenedBy", "STAGES", "STAGE_NAMES", "STATED", "SWEEP_ITEMS", "Sweep", "TIER_RULINGS",
-    "Waiting", "answer_holds", "answering_kinds", "contract_tier", "finding_place", "kind_place",
-    "kind_stages", "noticing_place", "noticing_places", "noticing_stage", "noticing_stages",
-    "quest_log", "question_reads", "record_stage", "stage_reads", "written_slots",
+    "COMPLETED", "COMPUTE", "ChangedSince", "DECLARATIONS", "Declaration", "EXHIBIT_STAGES",
+    "EXPLORE_FINDINGS", "FINDING_ROUTES", "FOLLOWS_ITS_STAGE", "FOLLOWS_WHAT_IT_UNDOES", "Facts",
+    "GOAL_PLACES", "LABELS", "NORMALIZATION", "OTHER_KINDS", "Place", "Progress", "QUESTIONS",
+    "QUEST_VERSION", "QuestLine", "QuestLog", "QuestStage", "READ_BY_GATE", "ReadItem",
+    "ReadOption", "Reopened", "ReopenedBy", "STAGES", "STAGE_NAMES", "STATED", "SWEEP_ITEMS",
+    "Sweep", "TIER_RULINGS", "Waiting", "answer_holds", "answering_kinds", "contract_tier",
+    "finding_place", "kind_place", "kind_stages", "noticing_place", "noticing_places",
+    "noticing_stage", "noticing_stages", "quest_log", "question_reads", "record_stage",
+    "served_exhibits", "stage_reads", "written_slots",
 ]
