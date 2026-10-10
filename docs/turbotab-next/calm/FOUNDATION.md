@@ -38,6 +38,47 @@ and 2026-10-08) and the crosswalk (`crosswalk/CROSSWALK.md`), and revised the sa
 review. At the end: what the rewrite replaced ("Superseded"), the one question still open for
 Nolan, and the review's notes not taken.
 
+## 0 · Meaning first (2026-10-10)
+
+Nolan looked at the first quest-log screens (Models and Results of the NHANES sugar journey) and said:
+*"I don't think we are quite there yet."* An art critique of the whole situation followed
+(`QUEST_LOG_CRITIQUE_2026-10-10.md` in this folder). It found that the screens obeyed every rule
+in this file yet rendered the engine's decision log in the engine's order: they asked what earlier
+answers had already settled, the tapestry drew data mechanics rather than what a choice means, and
+Results filed paperwork instead of interpreting. Nolan ruled, the same day:
+
+1. **The tapestry may draw what a choice means, even when no column changes.** A new view kind,
+   **comparison**, joins the vocabulary of §5 rule 9. It draws the comparison a choice makes on the
+   person's own data: for the energy model, an average day as recorded beside the day the analysis
+   imagines (25 g more sugar, 25 g less other carbohydrate, the same total).
+   - It is drawn from the columns' own summaries and reads no outcome.
+   - It says in one line that it is an illustration, not an estimate.
+2. **A question that earlier answers already settle is asked as a "because you said"
+   confirmation:**
+   - the card quotes the answer that settles it and states what follows;
+   - it has one button ("Yes, that's my question"), and the alternatives sit behind "I meant a
+     different comparison";
+   - the line's record names the answer it follows from.
+
+Design rulings that follow (the orchestrator's, to be confirmed on the screens):
+
+3. **The direction is "the question, drawn":**
+   - Models speaks in returns.
+   - Results interprets before it asks for anything. The finding comes first, as a headline in the
+     person's own comparison and in human units. Then come the things a reviewer will ask about
+     (against expectation, fragile, diluted), each with its quiet technical name. Then which of
+     the person's choices mattered, from materiality. Only then the wording.
+   - The analysis flowchart stays the end of Models. The manuscript rail is live and grows with
+     each confirmed sentence.
+4. **"Recommended" is computed from the interpretation's evidence,** not set by policy. Under an
+   observational design the floor is an association.
+5. **A card is budgeted in decisions, not words: one real decision per card.** The 120-word
+   starting budget of SURFACING_POLICY §4.3 stays a check, not a target to compress toward.
+6. **Beats before builds.** Before any screen is built, one design owner writes the beats: what the
+   person understands, and feels, at each step, and what the tapestry draws for it. The engine
+   serves the beats. Reviews ask "does this hand the person's own question back?" as well as the
+   five-second test.
+
 ## 1 · The test
 
 **Within five seconds, a first-time user knows what to click.** Every screen and every review is
