@@ -127,6 +127,39 @@ def population_exits() -> list[dict[str, Any]]:
              "decision": {"kind": "set_measurement_error", "method": "none"}}]
 
 
+# The outcomes whose coefficient regression calibration corrects here: least squares and logistic.
+CALIBRATED_TASKS = ("regression", "binary")
+
+
+def corrects_by_calibration(family: Any) -> bool:
+    """Whether regression calibration corrects ``family``'s coefficient: the one predicate the
+    stage, its preview (``method_previews.calibration_numbers``) and the quest log
+    (``quest._linear_family``) read. The family is the default inference model for a number or a
+    yes/no outcome (its ``inference_decl.default_for`` names one of :data:`CALIBRATED_TASKS`), whose
+    coefficients each carry an interval (``table == "intervals"``) on a weighted sum of the values
+    as given (``linear_in_values``): the least-squares or logistic coefficient the calibration
+    refits on the model matrix. A cumulative-logit, Cox or penalized fit is not corrected."""
+    decl = family.inference_decl
+    return (decl is not None and decl.table == "intervals" and family.linear_in_values
+            and any(task in decl.default_for for task in CALIBRATED_TASKS))
+
+
+def calibrated_family(models: Sequence[str] | None) -> str | None:
+    """The first of the chosen ``models`` whose coefficient regression calibration corrects
+    (:func:`corrects_by_calibration`), or None; a key no family is registered under is passed
+    over."""
+    from turbotab.core.models import get_family
+
+    for key in models or ():
+        try:
+            family = get_family(key)
+        except KeyError:
+            continue
+        if corrects_by_calibration(family):
+            return key
+    return None
+
+
 # At most 30 words: the consequence preview says it as its one line (the preview_note budget).
 NOT_COMBINED = ("Each analysis row is one record, not the mean of a person's repeated recalls, so "
                 "day-to-day variance cannot be estimated: record the rows as repeats and combine "
@@ -744,7 +777,8 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     if method == "none":
         return done(applies=False, reason="Not corrected, as answered.", recalls=recalls,
                     n_persons=n_persons)
-    if "linear" not in (state.models or []) or "linear" not in pipelines:
+    key = calibrated_family(state.models)
+    if key is None or key not in pipelines:
         return done(applies=False, reason=NO_LINEAR, recalls=recalls, n_persons=n_persons,
                     blocked=BLOCKED_NO_LINEAR)
     if task not in ("regression", "binary"):
@@ -768,7 +802,7 @@ def calibration_stage(ctx: StageContext) -> Bundle:
 
     nested = nesting(state, dict((design.objects or {}).get("nested") or {}), columns=spec.inputs)
     clustered = clusters is not None and clusters.clustered
-    missing = _missing_for_table(ctx, spec, X_all, y_all, task, ["linear"], survey=survey,
+    missing = _missing_for_table(ctx, spec, X_all, y_all, task, [key], survey=survey,
                                  clusters=clusters if clustered else None, nested=nested)
     if missing is not None and missing.refusal:
         return done(applies=False, reason=missing.refusal, exits=list(missing.exits),
@@ -776,7 +810,7 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     imputations = getattr(missing, "imputations", None) if missing is not None else None
     imputed = imputations is not None and getattr(imputations, "method", "") != "supplied"
     plan = dict(getattr(imputations, "plan", None) or {}) if imputed else {}
-    template = copy_template(pipelines["linear"], plan) if imputed else clone(pipelines["linear"])
+    template = copy_template(pipelines[key], plan) if imputed else clone(pipelines[key])
     copies = list(imputations.frames) if imputed else [X_all]
     factors = _settled_factors(ctx, spec) if imputed else {}
     concerns: list[str] = []
@@ -790,14 +824,14 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     columns = [str(c) for c in matrix0.columns]
     items = error_prone(first, columns, spec.roles, energy)
     if not items:
-        return done(applies=False, reason=NONE_ERROR_PRONE, family="linear", recalls=recalls,
+        return done(applies=False, reason=NONE_ERROR_PRONE, family=key, recalls=recalls,
                     n_persons=n_persons, blocked=BLOCKED_NONE)
     shaped = [i["feature"] for i in items if _nonlinear(columns, i["feature"])]
     if shaped:
         from turbotab.core.voice import listing
 
         has = "has" if len(shaped) == 1 else "have"
-        return done(applies=False, family="linear", recalls=recalls, n_persons=n_persons, reason=(
+        return done(applies=False, family=key, recalls=recalls, n_persons=n_persons, reason=(
             f"{listing(shaped)} {has} a "
             f"declared spline or quintiles; regression calibration here corrects a linear term, so "
             f"E[X | W̄, Z] would be put through a curve it was not fit for."),
@@ -815,7 +849,7 @@ def calibration_stage(ctx: StageContext) -> Bundle:
         combined = (f"{listing(other)} {'was' if len(other) == 1 else 'were'} combined "
                     f"by {'its' if len(other) == 1 else 'their'} {by_mean[c]} record, not the mean "
                     f"of the recalls")
-        return done(applies=False, family="linear", recalls=recalls, n_persons=n_persons, reason=(
+        return done(applies=False, family=key, recalls=recalls, n_persons=n_persons, reason=(
             f"{combined}, so the error is a single day's; combine by the mean to calibrate."),
             exits=[{"label": "Combine the recalls by the mean", "decision": None},
                    dict(NO_CALIBRATION)], blocked=combined)
@@ -829,7 +863,7 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     if wanted and not named:
         names = ", ".join(f"`{c}`" for c in sorted(wanted))
         are = "is" if len(wanted) == 1 else "are"
-        return done(applies=False, family="linear", recalls=recalls, n_persons=n_persons, reason=(
+        return done(applies=False, family=key, recalls=recalls, n_persons=n_persons, reason=(
             f"{names} {are} not among the model's intakes the recalls measure."),
             exits=[dict(NO_CALIBRATION)],
             blocked=f"{names} {are} not among the model's intakes the recalls measure")
@@ -847,7 +881,7 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     persons = np.flatnonzero(keep)
     floor = cluster_floor(clusters, persons) if resampling.kind == "clusters" else None
     if floor is not None:
-        return done(applies=False, family="linear", recalls=recalls, n_persons=n_persons,
+        return done(applies=False, family=key, recalls=recalls, n_persons=n_persons,
                     reason=floor[0], exits=[dict(NO_CALIBRATION)], blocked=floor[1])
     remap = np.full(n_persons, -1)
     remap[persons] = np.arange(len(persons))
@@ -896,7 +930,7 @@ def calibration_stage(ctx: StageContext) -> Bundle:
         results = chain(X_rows, yv, day_frame, day_of, w)
     except CalibrationRefused as refused:
         said = str(refused).rstrip(".")
-        return done(applies=False, family="linear", recalls=recalls, n_persons=n_persons,
+        return done(applies=False, family=key, recalls=recalls, n_persons=n_persons,
                     reason=str(refused), exits=refused.exits or [dict(NO_CALIBRATION)],
                     blocked=f"{said[:1].lower()}{said[1:]}")
     point = quantities(results)
@@ -1081,7 +1115,7 @@ def calibration_stage(ctx: StageContext) -> Bundle:
              "the outcome model" + (" in each copy" if imputed else ""),
              "the whole-chain bootstrap" + (" (Boot MI)" if imputed else "")]
     return done(
-        applies=True, family="linear", recalls=rec_counts, n_persons=n_cal, n_primary=n_ok,
+        applies=True, family=key, recalls=rec_counts, n_persons=n_cal, n_primary=n_ok,
         exposures=out,
         contrasts=contrasts, calibration=run["calibration"], calibrated=features,
         covariates=covariates, order=order, resampling=resampling.kind, weighted=population,
@@ -1117,11 +1151,11 @@ CALIBRATION_READS = ("measurement_error", "purpose", "models", "task", "event", 
                      "energy_adjustment", "aggregation", "repeat_kind", "grain", "split", "findings")
 
 __all__ = [
-    "ASSUMPTIONS", "CALIBRATION_READS", "CalibratedContrast", "CalibratedExposure",
-    "CalibrationArtifact", "POPULATION", "POPULATION_BLOCKED", "REASKED", "TEST",
-    "UNCORRECTED_EXIT", "adjusted_exposures", "analysis_design", "calibration_stage",
-    "cluster_floor", "combine_rule", "current_calibration", "day_rows", "declared_adjustment",
-    "error_prone", "invalidated", "main_clause", "methods_sentence", "not_run_sentence",
+    "ASSUMPTIONS", "CALIBRATED_TASKS", "CALIBRATION_READS", "CalibratedContrast",
+    "CalibratedExposure", "CalibrationArtifact", "POPULATION", "POPULATION_BLOCKED", "REASKED", "TEST",
+    "UNCORRECTED_EXIT", "adjusted_exposures", "analysis_design", "calibrated_family",
+    "calibration_stage", "cluster_floor", "combine_rule", "current_calibration", "day_rows", "declared_adjustment",
+    "corrects_by_calibration", "error_prone", "invalidated", "main_clause", "methods_sentence", "not_run_sentence",
     "population_exits", "recall_matrix", "record_facts", "reasked_clause", "replicate_values",
     "resampling_of",
 ]

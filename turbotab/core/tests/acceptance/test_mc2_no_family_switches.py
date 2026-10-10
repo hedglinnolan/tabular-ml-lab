@@ -13,7 +13,8 @@ substantive model, so a scan for the words could never reach zero. It flags:
   ``model_key``, ``chosen_family``), a value drawn from ``x.models``, or ``x.get("family")``. A
   family's key looked up in ``x.models``, ``models``, ``pipelines`` or ``fitted`` counts too, and so
   does a ``match`` on such a value with a family's key as a case, or its ``startswith``;
-* **a table keyed by family:** a dictionary whose keys each are, or hold, a family key, or whose
+* **a table keyed by family:** a dictionary whose keys each are, or hold, a family key or what the
+  methods text calls a family (its ``methods_label``, a key by another name), or whose
   values are all family keys (``{"regression": "linear", ...}``); a list of two or more family keys,
   or of entries each named by one (``option("linear", ...)``); and a lookup in a dictionary keyed by
   family with a value that holds a family's key;
@@ -85,46 +86,19 @@ EXITS: dict[Place, Pin] = {
 # MODEL_FAMILY_CONTRACT §3.3's census, V2X_SEAMS row 21, the MC-1 verifier's census, or this test,
 # which found the rest.
 NOT_YET: dict[Place, Pin] = {
-    ("core/estimand.py", "_models_fit_the_family"):
-        pin("MC-2b (§3.3: family_needs_featurewise)", 1, "featurewise"),
-    ("core/method_previews.py", "calibration_numbers"): pin("MC-2b (§3.3)", 2, "linear"),
-    ("core/methods/interaction.py", "SUPPORTED"):
-        pin("MC-2b (§3.3: inference_decl.product_terms)", 1, "linear", "cox", "proportional_odds"),
-    ("core/methods/interaction.py", "_family"): pin("MC-2b (found here)", 1, "linear"),
-    ("core/methods/interaction.py", "_measure"):
-        pin("MC-2b (V2X_SEAMS row 21)", 2, "cox", "proportional_odds"),
-    ("core/methods/interaction.py", "_one"):
-        pin("MC-2b (§3.3: SUPPORTED)", 1, "linear", "cox", "proportional_odds"),
+    # The design's words for each estimator, keyed by what the methods text calls the family:
+    # they retire when the declaration carries the words (``InferenceDecl``, models/base.py).
+    ("core/models/survey.py", "_DESIGN_WORDS"):
+        pin("MC-2b (found here: the words on InferenceDecl)", 1, "linear", "proportional_odds",
+            "cox"),
+    ("core/models/survey.py", "_NO_DESIGN_WORDS"):
+        pin("MC-2b (found here: the words on InferenceDecl)", 1, "mixed", "gee", "featurewise",
+            "elastic_net", "boosted_trees"),
     ("core/methods/omics.py", "chain_choices"): pin("MC-2b (found here)", 1, "featurewise"),
     ("core/methods/omics.py", "fit_methods"): pin("MC-2b (found here)", 1, "featurewise"),
     ("core/methods/omics.py", "methods_paragraph"): pin("MC-2b (found here)", 1, "featurewise"),
     ("core/methods/omics.py", "model_clause"):
         pin("MC-2b (§3.3)", 2, "elastic_net", "screened_elastic_net"),
-    ("core/models/survey.py", "_BLOCKED_WORDS"):
-        pin("MC-2b (the MC-1 verifier: inference_decl.design_based, methods_label)", 1,
-            "mixed", "gee", "featurewise", "elastic_net", "boosted_trees"),
-    ("core/models/survey.py", "_DESIGN_FAMILY"):
-        pin("MC-2b (§3.3: inference_decl.design_based)", 1, "linear", "proportional_odds", "cox"),
-    ("core/models/survey.py", "_DESIGN_LABEL"):
-        pin("MC-2b (the MC-1 verifier: inference_decl.design_based)", 1,
-            "linear", "proportional_odds", "cox"),
-    ("core/models/survey.py", "_ESTIMATOR_WORDS"):
-        pin("MC-2b (the MC-1 verifier: inference_decl.design_based)", 1,
-            "linear", "proportional_odds", "cox"),
-    ("core/models/survey.py", "models_sentence"):
-        pin("MC-2b (the MC-1 verifier: the tables above, read by key)", 2,
-            "linear", "proportional_odds", "cox", "mixed", "gee", "featurewise", "elastic_net",
-            "boosted_trees"),
-    ("core/plan_previews.py", "population_block"): pin("MC-2b (found here)", 1, "linear"),
-    ("core/quest.py", "_linear_family"):
-        pin("MC-2b (wave E1a: the quest log's mirror of calibration_stage's NO_LINEAR)", 1,
-            "linear"),
-    ("core/scales.py", "methods_sentence"):
-        pin("MC-2b (the MC-1 verifier: the correction's model, by key)", 1,
-            "proportional_odds", "linear"),
-    ("core/stages/calibration.py", "calibration_stage"): pin("MC-2b (found here)", 2, "linear"),
-    ("core/stages/class_substitution.py", "_plain_multinomial"):
-        pin("MC-2b (§3.3)", 1, "LogisticRegression"),
     ("core/stages/effects.py", "SEQUENCE_FAMILIES"):
         pin("MC-2b (§3.3: inference_decl.matrix_table)", 1, "linear", "proportional_odds", "cox",
             "featurewise", "mixed", "gee"),
@@ -168,6 +142,21 @@ def _registry() -> tuple[dict[str, str], dict[str, set[type]]]:
 
 
 KEYS, STEPS = _registry()
+
+
+def _labels() -> dict[str, set[str]]:
+    """{what the methods text calls a family for a task of its own: the families it names}. A
+    table keyed by these words is keyed by family under another name."""
+    from turbotab.core.models.base import families
+
+    out: dict[str, set[str]] = {}
+    for family in families():
+        for task in family.tasks:
+            out.setdefault(family.methods_label(task), set()).add(family.key)
+    return out
+
+
+LABELS = _labels()
 FAMILY_ESTIMATORS: set[type] = set().union(*STEPS.values())
 
 
@@ -256,10 +245,16 @@ def _module(source: str, name: str) -> _Module:
     return m
 
 
+def _named(strings: set[str]) -> set[str]:
+    """The family keys ``strings`` hold: a family's key, or what the methods text calls it."""
+    return (strings & KEYS.keys()).union(*(LABELS[s] for s in strings if s in LABELS))
+
+
 def _keyed(node: ast.Dict) -> set[str]:
-    """The family keys a dictionary is keyed by: each of its keys is one, or holds one (a tuple
-    key); empty when any key is neither, as in a table of selection methods or forms."""
-    keys = [_strings(k) & KEYS.keys() for k in node.keys if k is not None]
+    """The family keys a dictionary is keyed by: each of its keys is one, holds one (a tuple
+    key), or is what the methods text calls one (its ``methods_label``); empty when any key is
+    none of these, as in a table of selection methods or forms."""
+    keys = [_named(_strings(k)) for k in node.keys if k is not None]
     return set().union(*keys) if keys and all(keys) else set()
 
 
@@ -593,10 +588,12 @@ def switches() -> dict[Place, list[Hit]]:
 FOUND = switches()
 
 
-def pin_problems(found: dict[Place, list[Hit]]) -> list[str]:
-    """Each listed place whose switches are not its pin, one line each, saying which way."""
+def pin_problems(found: dict[Place, list[Hit]],
+                 listed: Mapping[Place, Pin] | None = None) -> list[str]:
+    """Each listed place whose switches are not its pin, one line each, saying which way.
+    ``listed``: the places and their pins (:data:`NOT_YET` and :data:`EXITS` by default)."""
     out = []
-    for place, held in sorted({**NOT_YET, **EXITS}.items()):
+    for place, held in sorted((listed if listed is not None else {**NOT_YET, **EXITS}).items()):
         hits = found.get(place)
         if hits is None:
             continue  # retired: its expected failure says so
@@ -643,7 +640,6 @@ def test_each_listed_switch_is_retired(place):
     assert place not in FOUND, [f"{h.line}: {h.text}" for h in FOUND[place]]
 
 
-@pytest.mark.xfail(strict=True, reason="retired by MC-2b (§3.3: inference_decl.design_based)")
 def test_the_design_based_estimator_is_read_from_the_declaration():
     """``models/survey.py:has_design_estimator`` reads ``inference``'s signature for a ``survey``
     parameter, which no syntax tree shows as a switch. A family whose ``inference`` takes a survey
@@ -663,6 +659,7 @@ from sklearn.linear_model import LinearRegression as OLS, LogisticRegression
 SUPPORTED = ("linear", "cox")
 WORDS = {"mixed": "the mixed model", "gee": "the GEE model"}
 FOR_TASK = {"regression": "linear", "ordinal": "proportional_odds"}
+LABELED = {"linear regression": "least squares", "Cox proportional hazards": "Cox regression"}
 OPTIONS = [option("linear", "Linear model"), option("boosted_trees", "Boosted trees")]
 
 def measure(task, family):
@@ -708,6 +705,7 @@ LEARNERS = ("linear", "lasso", "random_forest", "boosted_trees")
 SUBSTANTIVE = {"regression": "linear", "binary": "logistic", "time_to_event": "cox"}
 FORMS = [option("linear", "Straight line"), option("spline", "A smooth curve")]
 METHODS = {"none": "No selection", "elastic_net": "Elastic net, in each training fold"}
+PHRASES = {"linear regression": "a straight line", "a smooth curve": "a spline"}
 
 def form(spec, decision, learner, model, fn, kind):
     if spec.form == "linear" or decision.learner in (None, "linear") or learner == "linear":
@@ -726,12 +724,14 @@ def form(spec, decision, learner, model, fn, kind):
 def test_the_scan_catches_each_kind_of_switch_and_nothing_else():
     """Reference: the switches written into CAUGHT by hand, counted per place, and PASSED's other
     vocabularies ("linear" as a form, a learner and a substantive model; "cox" as a substantive
-    model), wrappers, transformers and names."""
+    model; "linear regression" beside a phrase no family is called), wrappers, transformers and
+    names."""
     caught = scan_source(CAUGHT, "turbotab.core.not_a_family")
     assert {where: len(hits) for where, hits in caught.items()} == {
-        "SUPPORTED": 1, "WORDS": 1, "FOR_TASK": 1, "OPTIONS": 1, "measure": 1, "table": 3,
-        "cost": 1, "kind": 2, "identity": 3, "named": 2, "words": 2, "matched": 2, "prefix": 1}
+        "SUPPORTED": 1, "WORDS": 1, "FOR_TASK": 1, "LABELED": 1, "OPTIONS": 1, "measure": 1,
+        "table": 3, "cost": 1, "kind": 2, "identity": 3, "named": 2, "words": 2, "matched": 2, "prefix": 1}
     assert [h.names for h in caught["words"]] == [{"mixed", "gee"}, {"proportional_odds", "linear"}]
+    assert [h.names for h in caught["LABELED"]] == [{"linear", "cox"}]
     assert [h.names for h in caught["matched"]] == [{"cox", "gee"}, {"LinearRegression"}]
     assert scan_source(PASSED, "turbotab.core.not_a_family") == {}
 
@@ -759,8 +759,8 @@ def _rescanned(path: str, before: str, after: str) -> dict[Place, list[Hit]]:
 
 
 def test_a_switch_added_inside_a_listed_place_is_caught():
-    """The MC-1 verifier's probes: a new switch inside a listed function, and a listed switch
-    widened to more families, each fail as the same switch in a new function would."""
+    """The MC-1 verifier's probe: a new switch inside a listed function fails as the same switch
+    in a new function would."""
     added = _rescanned(
         "core/stages/evaluation.py",
         '    entry = next((m for m in data.get("models") or [] if m.get("family") == "linear"), '
@@ -771,14 +771,41 @@ def test_a_switch_added_inside_a_listed_place_is_caught():
         '"cox")]\n')
     assert [p.split(" gained")[0] for p in pin_problems(added)] == [
         "core/stages/evaluation.py (_shrinkage)"]
-    widened = _rescanned("core/methods/interaction.py",
-                         '    if family == "cox" or task == "time_to_event":\n',
-                         '    if family in ("cox", "elastic_net", "boosted_trees") or task == '
-                         '"time_to_event":\n')
-    assert [p.split(" gained")[0] for p in pin_problems(widened)] == [
-        "core/methods/interaction.py (_measure)"]
-    retired = _rescanned("core/methods/interaction.py",
-                         '    if family == "cox" or task == "time_to_event":\n',
-                         '    if task == "time_to_event":\n')
-    assert [p.split(" lost")[0] for p in pin_problems(retired)] == [
-        "core/methods/interaction.py (_measure)"]
+
+
+# A listed place written for the probe below: two switches, on the Cox and proportional-odds
+# families, as ``methods/interaction.py:_measure`` held them until MC-2b-2 retired it.
+PROBE_PATH, PROBE_MODULE = "core/methods/probe.py", "turbotab.core.methods.probe"
+PROBE_SOURCE = (
+    "def _measure(task, family, target):\n"
+    "    if family == \"cox\" or task == \"time_to_event\":\n"
+    "        return \"hazard ratio\", True\n"
+    "    if family == \"proportional_odds\" or task == \"ordinal\":\n"
+    "        return \"cumulative odds ratio\", True\n"
+    "    return \"difference\", False\n")
+PROBE_PIN = {(PROBE_PATH, "_measure"): pin("the probe", 2, "cox", "proportional_odds")}
+
+
+def _probe_scanned(before: str = "", after: str = "") -> dict[Place, list[Hit]]:
+    """The probe module's switches, after replacing ``before`` with ``after`` in its source."""
+    source = PROBE_SOURCE
+    if before:
+        assert source.count(before) == 1, before
+        source = source.replace(before, after)
+    return {(PROBE_PATH, where): hits for where, hits in scan_source(source, PROBE_MODULE).items()}
+
+
+def test_a_listed_switch_widened_or_narrowed_is_caught():
+    """The MC-1 verifier's probes on a listed place, written here so no retirement removes them:
+    a listed switch widened to more families fails as a new switch would, and one that loses a
+    family fails until its pin is lowered."""
+    assert pin_problems(_probe_scanned(), PROBE_PIN) == []
+    widened = _probe_scanned('    if family == "cox" or task == "time_to_event":\n',
+                             '    if family in ("cox", "elastic_net", "boosted_trees") or task == '
+                             '"time_to_event":\n')
+    assert [p.split(" gained")[0] for p in pin_problems(widened, PROBE_PIN)] == [
+        "core/methods/probe.py (_measure)"]
+    retired = _probe_scanned('    if family == "cox" or task == "time_to_event":\n',
+                             '    if task == "time_to_event":\n')
+    assert [p.split(" lost")[0] for p in pin_problems(retired, PROBE_PIN)] == [
+        "core/methods/probe.py (_measure)"]

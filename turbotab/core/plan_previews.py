@@ -1142,7 +1142,8 @@ def population_block(ctx: PreviewContext, state: Any, decision: Any, *, what: st
     of families and of the population (the record's sentence says each one's estimates are
     blocked, ``models.survey.models_sentence``)."""
     from turbotab.core import estimand as est
-    from turbotab.core.models import get_family
+    from turbotab.core.models import families, get_family
+    from turbotab.core.models.survey import standardizes_margin
     from turbotab.core.stages.effects import marginal_population_block
 
     if getattr(state, "purpose", None) != "inference" or ctx.caution is not None:
@@ -1171,8 +1172,10 @@ def population_block(ctx: PreviewContext, state: Any, decision: Any, *, what: st
             reason, exits = found_block
             break
     spec = est.current_estimand(state)
+    registered = {f.key for f in families()}
     if (marginal and reason is None and spec is not None and str(spec.measure) in est.MARGINAL
-            and task in est.MARGINAL_TASKS and "linear" in models):
+            and task in est.MARGINAL_TASKS and any(standardizes_margin(get_family(k), task)
+                                                   for k in models if k in registered)):
         reason, exits = marginal_population_block(state, spec)
     if reason is None:
         return False
