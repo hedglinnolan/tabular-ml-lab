@@ -69,10 +69,19 @@ def plan_slots() -> tuple[str, ...]:
     return tuple(sorted({slot for name in names for slot in graph[name].reads}))
 
 
+TRIAGE = "triage"  # the plan's key for the dispositions of the open noticings
+
+
 def plan_of(state: Any) -> dict[str, Any]:
-    """The plan as ``state`` holds it: each answered slot the estimates read, as JSON."""
+    """The plan as ``state`` holds it: each answered slot the estimates read, as JSON, and the
+    triage of the open noticings before the lock once it is confirmed (SURFACING_POLICY §3.3: the
+    lock's digest covers the dispositions, each with the recommendation it was recorded on)."""
     values = state.model_dump(mode="json")
-    return {slot: values[slot] for slot in plan_slots() if values.get(slot) is not None}
+    plan = {slot: values[slot] for slot in plan_slots() if values.get(slot) is not None}
+    held = (values.get("sweeps") or {}).get(decisions.sweep_key("models", "noticings"))
+    if held is not None:
+        plan[TRIAGE] = held["lines"]
+    return plan
 
 
 def digest(plan: Mapping[str, Any]) -> str:

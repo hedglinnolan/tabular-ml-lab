@@ -249,6 +249,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/materiality": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Materiality Ledger
+         * @description The materiality ledger (SURFACING_POLICY §2.2): for each noticing measured on the table,
+         *     how far its alternative is predicted to move the numbers before the plan is fixed (outcome-
+         *     blind), the triage's recommendation and the disposition recorded, what was done about it,
+         *     and once the plan is fixed its realized movement and whether it matched. Derived from the
+         *     record each time, so a replay gives the same rows.
+         */
+        get: operations["materiality_ledger_api_projects__pid__materiality_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/triage": {
         parameters: {
             query?: never;
@@ -2817,6 +2841,73 @@ export interface components {
             counts: components["schemas"]["JoinCounts-Output"] | null;
         };
         /**
+         * Ledger
+         * @description The materiality ledger: derived from the record, the data and the artifacts, never kept.
+         */
+        Ledger: {
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+            /** Locked */
+            locked: boolean;
+            /** Gate */
+            gate: string;
+            /**
+             * Rows
+             * @default []
+             */
+            rows: components["schemas"]["LedgerRow"][];
+            /**
+             * Limitations
+             * @default 0
+             */
+            limitations: number;
+            /** Budget */
+            budget: number;
+        };
+        /**
+         * LedgerRow
+         * @description One row of the materiality ledger (§2.2).
+         */
+        LedgerRow: {
+            /** Thread */
+            thread: string;
+            /** Family */
+            family: string;
+            /** Subject */
+            subject: string[];
+            /** Alternative */
+            alternative: string;
+            predicted: components["schemas"]["Movement"];
+            /** Recommended */
+            recommended: ("no_change" | "could_bias" | "act_on_it") | null;
+            /** Reason */
+            reason: string | null;
+            /** Recorded */
+            recorded: ("no_change" | "could_bias" | "act_on_it") | null;
+            /** Done */
+            done: string | null;
+            /**
+             * Limitation
+             * @default false
+             */
+            limitation: boolean;
+            realized: components["schemas"]["Movement"] | null;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "pending" | "confirmed" | "upgraded" | "downgraded" | "not_verifiable" | "not_graded";
+            /** Exhibit */
+            exhibit: string | null;
+            /** Label */
+            label: string | null;
+            /** Sentence */
+            sentence: string;
+        };
+        /**
          * LevelValues
          * @description A number per level of another column (a PAL per activity category).
          */
@@ -3174,6 +3265,46 @@ export interface components {
              * @default false
              */
             withdrawn: boolean;
+        };
+        /**
+         * Movement
+         * @description One measurement of ``M``: its instrument and regime, the value (None where it is not graded
+         *     by a number), its band, whether the instrument is calibrated, and in plain words what was
+         *     measured (``words``) with the technical name as a quiet label (``label``).
+         */
+        Movement: {
+            /** Instrument */
+            instrument: string;
+            /**
+             * Regime
+             * @enum {string}
+             */
+            regime: "predicted" | "realized";
+            /** Value */
+            value: number | null;
+            /** Band */
+            band: number;
+            /** Calibrated */
+            calibrated: boolean;
+            /**
+             * Changes Question
+             * @default false
+             */
+            changes_question: boolean;
+            /**
+             * Not Measurable
+             * @default false
+             */
+            not_measurable: boolean;
+            /**
+             * Crosses
+             * @default false
+             */
+            crosses: boolean;
+            /** Words */
+            words: string;
+            /** Label */
+            label: string;
         };
         /** MultiplicitySpec */
         MultiplicitySpec: {
@@ -7068,6 +7199,11 @@ export interface components {
              * @default false
              */
             passed: boolean;
+            /**
+             * Rows
+             * @default []
+             */
+            rows: components["schemas"]["TriageRow"][];
         };
         /**
          * TriageItem
@@ -7108,6 +7244,38 @@ export interface components {
             blocker: boolean;
             /** Recorded */
             recorded: ("no_change" | "could_bias" | "act_on_it") | null;
+            /**
+             * Family
+             * @default finding
+             */
+            family: string;
+            /** Band */
+            band: number | null;
+            /** Measure */
+            measure: string | null;
+            /** Calibrated */
+            calibrated: boolean | null;
+            /**
+             * Limitation
+             * @default false
+             */
+            limitation: boolean;
+            /** Done */
+            done: string | null;
+        };
+        /**
+         * TriageRow
+         * @description One row of the triage sweep: a noticing on its own, or a family of them with a count.
+         */
+        TriageRow: {
+            /** Family */
+            family: string;
+            /** Name */
+            name: string;
+            /** Items */
+            items: string[];
+            /** Count */
+            count: number;
         };
         /** UpdatingSpec */
         UpdatingSpec: {
@@ -16742,6 +16910,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ForTheRecord"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    materiality_ledger_api_projects__pid__materiality_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ledger"];
                 };
             };
             /** @description No such project */
