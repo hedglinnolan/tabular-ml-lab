@@ -8120,6 +8120,147 @@
    "verified_by": "crossref",
    "verified_on": "2026-10-09",
    "disagreements": []
+  },
+  {
+   "key": "simonsohn2020spec",
+   "kind": "article",
+   "cited_as": [
+    "Simonsohn, Simmons & Nelson,? \\(?2020\\b"
+   ],
+   "doi": "10.1038/s41562-020-0912-z",
+   "disagreements": [],
+   "authors": [
+    "Simonsohn, Uri",
+    "Simmons, Joseph P.",
+    "Nelson, Leif D."
+   ],
+   "title": "Specification curve analysis",
+   "year": 2020,
+   "venue": "Nature Human Behaviour",
+   "volume": "4",
+   "issue": "11",
+   "pages": "1208-1214",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2020
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "riley2016bigdata",
+   "kind": "article",
+   "cited_as": [
+    "Riley et al\\.,? \\(?2016\\b"
+   ],
+   "doi": "10.1136/bmj.i3140",
+   "disagreements": [],
+   "authors": [
+    "Riley, Richard D",
+    "Ensor, Joie",
+    "Snell, Kym I E",
+    "Debray, Thomas P A",
+    "Altman, Doug G",
+    "Moons, Karel G M",
+    "Collins, Gary S"
+   ],
+   "title": "External validation of clinical prediction models using big datasets from e-health records or IPD meta-analysis: opportunities and challenges",
+   "year": 2016,
+   "venue": "BMJ",
+   "volume": "",
+   "issue": "",
+   "pages": "i3140",
+   "publisher": "BMJ",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "snell2018scales",
+   "kind": "article",
+   "cited_as": [
+    "Snell et al\\.,? \\(?2018\\b"
+   ],
+   "doi": "10.1177/0962280217705678",
+   "disagreements": [],
+   "authors": [
+    "Snell, Kym IE",
+    "Ensor, Joie",
+    "Debray, Thomas PA",
+    "Moons, Karel GM",
+    "Riley, Richard D"
+   ],
+   "title": "Meta-analysis of prediction model performance across multiple studies: Which scale helps ensure between-study normality for the C -statistic and calibration measures?",
+   "year": 2018,
+   "venue": "Statistical Methods in Medical Research",
+   "volume": "27",
+   "issue": "11",
+   "pages": "3505-3522",
+   "publisher": "SAGE Publications",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2017,
+    2018
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "higgins2009reeval",
+   "kind": "article",
+   "cited_as": [
+    "Higgins, Thompson & Spiegelhalter,? \\(?2009\\b"
+   ],
+   "doi": "10.1111/j.1467-985X.2008.00552.x",
+   "disagreements": [],
+   "authors": [
+    "Higgins, Julian P. T.",
+    "Thompson, Simon G.",
+    "Spiegelhalter, David J."
+   ],
+   "title": "A Re-Evaluation of Random-Effects Meta-Analysis",
+   "year": 2009,
+   "venue": "Journal of the Royal Statistical Society Series A: Statistics in Society",
+   "volume": "172",
+   "issue": "1",
+   "pages": "137-159",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2008,
+    2009
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
+  },
+  {
+   "key": "viechtbauer2010metafor",
+   "kind": "article",
+   "cited_as": [
+    "Viechtbauer,? \\(?2010\\b"
+   ],
+   "doi": "10.18637/jss.v036.i03",
+   "disagreements": [],
+   "authors": [
+    "Viechtbauer, Wolfgang"
+   ],
+   "title": "Conducting Meta-Analyses in R with the metafor Package",
+   "year": 2010,
+   "venue": "Journal of Statistical Software",
+   "volume": "36",
+   "issue": "3",
+   "pages": "",
+   "publisher": "Foundation for Open Access Statistic",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2010
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09"
   }
  ]
 }

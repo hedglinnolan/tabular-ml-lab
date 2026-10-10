@@ -1041,7 +1041,7 @@ Every other family on the shelf, each in full in the methods reference:
 | Cox proportional hazards (`cox`) | time_to_event | prediction, inference | Each predictor multiplies the hazard by a constant ratio over all of follow-up; effects add on the log scale. | every lens (shared): the methods reference |
 | Screened elastic net (`screened_elastic_net`) | regression, binary | prediction | Only features with a strong marginal association survive; among them, straight-line effects shrunk toward zero. | the metabolomics and genomics packets |
 
-### 1.3 · Shared methods (45)
+### 1.3 · Shared methods (47)
 
 Every lens offers these; their full contracts are in the methods reference.
 
@@ -1089,8 +1089,10 @@ Every lens offers these; their full contracts are in the methods reference.
 | Bootstrap optimism correction | `bootstrap_optimism` | evaluation | training_fold | `set_split` |
 | Calibration by a horizon, and by level | `horizon_calibration` | evaluation | training_fold | `set_split` |
 | The nested cross-validation interval | `nested_cv_interval` | evaluation | training_fold | `set_split` |
+| Leave-one-site-out validation, pooled across sites | `site_validation` | evaluation | training_fold | `set_validation` |
 | Intended use, the decision curve and the threshold | `intended_use` | evaluation | training_fold | `set_intended_use` |
 | Agreement between two measurements (Bland–Altman) | `bland_altman` | evaluation | descriptive | not declared |
+| Which of my decisions mattered? (specification curve) | `specification_curve` | evaluation | model | not declared |
 | The manuscript bundle and its replay | `manuscript_export` | evaluation | descriptive | not declared |
 
 ### 1.4 · Methods another lens reviews in full (14)
@@ -1435,6 +1437,7 @@ flowchart LR
   n_joinpoint_not_searched(["joinpoint_not_searched"]):::named
   n_no_design_df(["no_design_df"]):::named
   n_not_an_effect(["not_an_effect"]):::named
+  n_specification_curve["Which of my decisions mattered? (specification curve)"]:::other
   n_every_randomized_person(["every_randomized_person"]):::named
   n_imputations_by_rule(["imputations_by_rule"]):::named
   n_rubin_pooling(["rubin_pooling"]):::named
@@ -1562,6 +1565,7 @@ flowchart LR
   n_cycle_trends -.->|conflicts| n_joinpoint_not_searched
   n_cycle_trends -.->|conflicts| n_no_design_df
   n_cycle_trends -.->|conflicts| n_not_an_effect
+  n_specification_curve -->|implies| n_survey_population
   n_trial_missing_outcomes -->|implies| n_every_randomized_person
   n_trial_missing_outcomes -->|implies| n_imputations_by_rule
   n_trial_missing_outcomes -->|implies| n_rubin_pooling
@@ -1610,6 +1614,7 @@ The relations, with the sentence the app states when each fires:
 | `regression_calibration` | implies | `multivariate calibration` | any option; when two or more error-prone intakes in the outcome model (total energy beside an adjusted nutrient; every source of the all-components model) | inference | Every error-prone intake is calibrated jointly, never one nutrient at a time (Rosner, Spiegelman & Willett 1990, Am J Epidemiol 132:734). |
 | `regression_calibration` | implies | `survey_population` | any option; when the surveyed-population answer | inference | The calibration and the outcome model are survey-weighted, and PSUs are resampled within strata (Rao & Wu 1988, J Am Stat Assoc 83:231); with no stratum of two PSUs it is blocked and recorded, the sample-only attestation its exit. |
 | `regression_calibration` | implies | `the calibration in the manuscript bundle` | any option; when regression calibration declared | inference | The calibrated estimates, their label and the methods paragraph reach the export; a declared calibration that was not run is said to be blocked, there and in the record. |
+| `specification_curve` | implies | `survey_population` | any option; when a survey design answered as the surveyed population | inference | under the surveyed-population answer every specification is design-based, and an exclusion rule is a domain of the full design |
 | `stack_cycles` | implies | `differences_flagged` | `stack`; when always | prediction, inference | codes that differ between cycles and a typical value that moves by a factor of five or more are flagged, never changed |
 | `stack_cycles` | implies | `pooled_weights` | `stack`; when two or more cycles | prediction, inference | each cycle's weight is multiplied by its years over the stacked years: 1 ÷ k for k two-year cycles, and 3.2 over the stacked years for the 3.2-year prepandemic file |
 | `stack_cycles` | implies | `strata_by_cycle` | `stack`; when always | prediction, inference | strata and PSUs are coded by cycle, so no two cycles share one |
@@ -1794,8 +1799,10 @@ The option each method offers first for each purpose, its rung, and the reason i
 | Bootstrap optimism correction (`bootstrap_optimism`) | `bootstrap` (recommended): Asked (the split question), ranked first below 20,000 units; at least 500 resamples (Collins et al. 2024) | `bootstrap` (available): Offered after one cross-validation run |
 | Calibration by a horizon, and by level (`horizon_calibration`) | `by_horizon_and_level` (recommended): Stated: the prediction horizon is declared with the follow-up, else the median follow-up time | `by_horizon_and_level` (available): Stated beside the fit scores |
 | The nested cross-validation interval (`nested_cv_interval`) | `nested_cv` (available): Offered with its compute estimate where p/n > 1; else the interval is labeled likely too narrow | not offered under inference: Not applicable |
+| Leave-one-site-out validation, pooled across sites (`site_validation`) | `reml_hksj` (recommended): Sound with few sites: the interval allows for τ² being estimated; the prediction interval says where a new site would land | not offered under inference: Not offered under Estimate an effect: it validates a prediction model at a site it never saw |
 | Intended use, the decision curve and the threshold (`intended_use`) | `decision_support` (recommended): Sound: net benefit over the declared threshold range (Vickers & Elkin 2006; STRATOS TG6 lists it as essential) | not offered under inference: Not asked: no score is reported under inference |
 | Agreement between two measurements (Bland–Altman) (`bland_altman`) | `differences` (available): Sound for two models' out-of-fold predictions of a number; describes how far apart they are, not which is right | not offered under inference: Not offered under Estimate an effect: agreement describes two measurements and is not an effect (offered under Describe; see DESCRIBE_LABELS) |
+| Which of my decisions mattered? (specification curve) (`specification_curve`) | not offered under prediction: Not offered under Predict: the choices are made inside each training fold and compared by their scores | `all` (recommended): Sound as sensitivity after the lock: every declared fork crossed; above 1,000 combinations a stated rule draws them |
 | The manuscript bundle and its replay (`manuscript_export`) | `bundle` (recommended): every sentence is the record's own and the result is the declared one (selection-corrected without a holdout), so a reviewer can reconstruct the analysis and replay it | `bundle` (recommended): every sentence is the record's own, the plan's hash is the lock's, and Table 2 shows the exposure only, so a reviewer can reconstruct the analysis and replay it |
 
 ### 3.4 · Where the app ranks by the data

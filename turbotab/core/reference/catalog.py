@@ -140,6 +140,9 @@ CONTRACT_LENSES: dict[str, tuple[str, ...]] = {
     # studies, clinical matched designs, dietary case-control studies)
     "case_control_effects": (SHARED,),
     "case_control_risks": (SHARED,),
+    # T3: the specification curve (Estimate) and leave-one-site-out validation (Predict), any lens
+    "specification_curve": (SHARED,),
+    "site_validation": (SHARED,),
 }
 
 # Every registered model family: the lenses whose packet reviews it in full, or (SHARED,). No

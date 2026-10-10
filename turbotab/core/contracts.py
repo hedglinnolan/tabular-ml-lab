@@ -270,6 +270,8 @@ DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.methods.trials",
     # E4: case-control samples and matched sets (engine only until E1/D1/C1 route them)
     "turbotab.core.methods.case_control",
+    # T3: the specification curve and leave-one-site-out validation (engine only until routed)
+    "turbotab.core.methods.spec_curve", "turbotab.core.methods.site_validation",
 )
 
 

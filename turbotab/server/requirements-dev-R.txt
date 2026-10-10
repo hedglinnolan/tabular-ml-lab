@@ -40,5 +40,6 @@ emmeans
 gee
 geesmv
 beeca
+metafor
 sva
 limma
