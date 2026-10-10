@@ -316,6 +316,11 @@ class DesignSpec:
     # (``models.variable_selection``), under prediction only; None otherwise.
     levers: dict[str, Any] | None = None
     selection: dict[str, Any] | None = None
+    # RT-1b (RECIPES §4.2): each tuned family's one plan, by family key, as
+    # ``tuning.TuningPlan.to_dict`` gives it; made once in the design stage. ``build_pipeline``
+    # wraps a tuned family's pipeline in a ``TunedPipeline`` from it, and refuses without one, so
+    # a stage that builds a fresh spec copies these.
+    plans: dict[str, dict[str, Any]] | None = None
 
     def multiple_imputation(self) -> bool:
         return bool(self.missing) and self.missing.get("strategy") == "multiple_imputation"
@@ -463,6 +468,26 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
         levers=_explore_answer(state, "levers"),
         selection=_explore_answer(state, "selection"),
     )
+
+
+def explore_answers(state: Any) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """The ``levers`` and ``selection`` answers the pipeline runs in each training fold, as the
+    design spec holds them (None under inference or unanswered)."""
+    return _explore_answer(state, "levers"), _explore_answer(state, "selection")
+
+
+def reads_outcome_before_model(levers: Mapping[str, Any] | None,
+                               selection: Mapping[str, Any] | None, family: ModelFamily) -> bool:
+    """Whether a step before the model may read the outcome: a selection step, an Explore lever
+    (the form rule, the variance filter, the imbalance correction) or a step the family adds
+    (``preprocess``). The interim rule for out-of-bag scoring (WAVE_C6A_PLAN §5) until each step
+    declares whether it reads the outcome (MC-4)."""
+    if selection:
+        return True
+    if levers and any((levers.get(k) or "none") != "none"
+                      for k in ("forms", "variance_filter", "imbalance")):
+        return True
+    return family.preprocess is not None
 
 
 def _explore_answer(state: Any, slot: str) -> dict[str, Any] | None:
@@ -686,8 +711,18 @@ def family_steps(spec: DesignSpec, family: ModelFamily,
 
 
 def build_pipeline(spec: DesignSpec, family: ModelFamily, task: Task, purpose: Purpose | None,
-                   n_rows: int, n_features: int) -> Any:
+                   n_rows: int, n_features: int, *, for_timing: bool = False) -> Any:
+    """The family's pipeline for ``task``: the shared steps, its own, then its model (wrapped in
+    an imbalance correction when the levers ask for one).
+
+    A family that declares tuning for ``task`` (``tuning.tuning_for``) is wrapped in a
+    ``tuning.TunedPipeline`` carrying its plan from ``spec.plans``, so every fit of it searches
+    (RECIPES §4.3). Without a plan it raises ``tuning.MissingPlan``, so no call site can skip the
+    search; only the time estimate (``for_timing``) takes the plain pipeline, which it fits at
+    the settings it times."""
     from sklearn.pipeline import Pipeline
+
+    from turbotab.core.models.tuning import MissingPlan, TunedPipeline, TuningPlan, tuning_for
 
     steps = family_steps(spec, family, task)
     # A family whose model step depends on the design (which columns it tests) builds from the spec.
@@ -699,7 +734,19 @@ def build_pipeline(spec: DesignSpec, family: ModelFamily, task: Task, purpose: P
 
         model = wrap_model(model, spec.levers, task)
     steps.append(("model", model))
-    return Pipeline(steps).set_output(transform="pandas")
+    if tuning_for(family, task) is None:
+        return Pipeline(steps).set_output(transform="pandas")
+    held = (getattr(spec, "plans", None) or {}).get(family.key)
+    if held is None:
+        if for_timing:
+            return Pipeline(steps).set_output(transform="pandas")
+        raise MissingPlan(f"{family.label} is tuned, and this design holds no plan for it: every "
+                          f"fit of a tuned family follows the plan the design stage made.")
+    plan = TuningPlan.from_dict(held)
+    if plan.family != family.key or plan.task != task:
+        raise MissingPlan(f"The plan held for {family.label} is {plan.family}'s for "
+                          f"{plan.task}, not for {task}.")
+    return TunedPipeline(steps, search=plan).set_output(transform="pandas")
 
 
 def transformer(steps: list[tuple[str, Any]]) -> Any:
@@ -963,9 +1010,10 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
 __all__ = [
     "ADJUST_STEPS", "DesignSpec", "MISSING_LEVEL", "MissingLevelEncoder", "PREDICTOR_ROLES",
     "PresentColumns", "build_pipeline", "describe_steps", "design_spec", "detect_detail",
-    "detect_step", "energy_detail",
+    "detect_step", "energy_detail", "explore_answers",
     "explore_candidates", "explore_steps", "family_steps", "impute_detail",
     "frame_level_columns", "input_columns", "is_categorical", "level_columns", "missing_as_level",
     "model_predictors", "modeling_frame", "normalize_frame", "predictors_from_roles",
+    "reads_outcome_before_model",
     "shared_steps", "takes_level", "transformer", "warnings_for",
 ]

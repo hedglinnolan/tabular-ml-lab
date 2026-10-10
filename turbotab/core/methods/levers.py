@@ -441,7 +441,14 @@ class ImbalanceCorrected(ClassifierMixin, BaseEstimator):
     deployed one and each recalibration fit) as they are, and no recalibration fold holds them; the
     recalibration splits cover the rows this fit trains on. The threshold reads the rows the fit
     receives, never the resampled count: the wrapped model's own ``"auto"`` is overridden, so it
-    never draws a stopping split by position from resampled copies."""
+    never draws a stopping split by position from resampled copies.
+
+    **Tuning** (RECIPES §4.3): ``inner_param`` names the parameter holding the wrapped model, so a
+    search's candidate settings reach it (``estimator__learning_rate``) while the early-stopping
+    switch and share stay the wrapper's own. A candidate is the wrapped, recalibrated model, so
+    the search scores exactly what is deployed."""
+
+    inner_param = "estimator"
 
     def __init__(self, estimator: Any = None, method: str = "weights", recalibrate: bool = True,
                  cv: Any = RECAL_FOLDS, seed: int = 0, early_stopping: Any = None,

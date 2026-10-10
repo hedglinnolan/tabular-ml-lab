@@ -199,7 +199,10 @@ COVERED = {"impute", "indicators", "two_valued", "energy_fill", "levels", "energ
 NOT_A_STEP = {"predictors", "inputs", "numeric", "roles", "lenses",
               # the missing-values answer as recorded: its single fill is ``impute`` (above); its
               # multiple imputation pools completed copies of the table, each fit by this pipeline
-              "missing"}
+              "missing",
+              # a tuned family's plan (RT-1b): no step, but the search nested in each fit, whose
+              # inner splits are drawn from the fit's own rows (tests/test_tuning_engine.py)
+              "plans"}
 
 
 def _applies(option: str, task: str) -> bool:

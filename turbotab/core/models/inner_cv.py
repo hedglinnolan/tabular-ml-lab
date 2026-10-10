@@ -270,64 +270,36 @@ def validation_rows(share: float, *, groups: Any = None, keys: Any = None, order
     return np.isin(labels, chosen)
 
 
-def _take(data: Any, mask: np.ndarray) -> Any:
-    import pandas as pd
-
-    if isinstance(data, (pd.DataFrame, pd.Series)):
-        return data.iloc[np.flatnonzero(mask)]
-    return np.asarray(data)[mask]
-
-
 def fit_pipeline(pipeline: Any, X: Any, y: Any, *, groups: Any = None, order: Any = None,
-                 seed: int = 0) -> Any:
+                 design: Any = None, seed: int = 0) -> Any:
     """Fit ``pipeline`` on ``X``, ``y`` with every inner split drawn as the outer folds are.
 
-    ``groups`` (the unit per row) and ``order`` (each row's unit rank in time, from the split) align
-    with ``X``. The model step's inner cross-validation gets :func:`inner_splits`; a model that
-    stops early on part of its rows (boosted trees above 10,000 rows) is handed
-    :func:`validation_rows` as ``X_val`` instead of drawing its own by position, and the steps before
-    it are fit on the other rows only (RECIPES F11). An imbalance correction around such a model
+    ``groups`` (the unit per row), ``order`` (each row's unit rank in time, from the split) and
+    ``design`` (a ``tuning.FitDesign``: each row's stratum, PSU and weight under the population
+    answer) align with ``X``; ``seed`` is the split's (F15: design and seed reach every fit).
+
+    A tuned family's pipeline (``tuning.TunedPipeline`` carrying its plan) is dispatched first: it
+    searches, nested in this fit, at the plan's seeds (the split's, carried in the plan), with its
+    inner splits drawn from these rows by unit, time or PSU, and refits the chosen candidate on
+    all of them (RECIPES §4.3). Any other pipeline is fit by ``tuning.fit_parts`` on every row:
+    the model step's inner cross-validation gets :func:`inner_splits`; a model that stops early on
+    part of its rows (boosted trees above 10,000 rows) is handed :func:`validation_rows` as
+    ``X_val`` instead of drawing its own by position, and the steps before it are fit on the other
+    rows only (RECIPES F11). An imbalance correction around such a model
     (``methods.levers.ImbalanceCorrected``) declares the same two parameters, so it takes this path
-    too and resamples only the rows that are not stopping rows (RECIPES F12). Returns the fitted
-    pipeline.
+    too and resamples only the rows that are not stopping rows (RECIPES F12). A plain pipeline is
+    fit unweighted whatever the design. Returns the fitted pipeline.
     """
-    from sklearn.base import is_classifier
-
     from turbotab.core.models.metrics import survival_baseline
+    from turbotab.core.models.tuning import TunedPipeline, fit_parts
 
+    if isinstance(pipeline, TunedPipeline) and pipeline.search is not None:
+        return pipeline.fit(X, y, groups=groups, order=order, design=design)
     y_arr = np.asarray(y)
-    model = pipeline.steps[-1][1]
-    splits = ("cv" in model.get_params(deep=False) or _stops_early(model, len(y_arr))
-              or bool(_steps_with_cv(pipeline)))
-    keys = row_keys(X, y_arr) if splits and groups is None and order is None else None
-    if not _stops_early(model, len(y_arr)):
-        with_inner_cv(pipeline, groups=groups, keys=keys, order=order, y=y_arr, seed=seed)
-        with_step_cv(pipeline, groups=groups, keys=keys, order=order, y=y_arr, seed=seed)
-        # A time to event keeps the baseline hazard of the rows it was fit on (MS6), so it predicts
-        # a risk by the horizon wherever it is scored.
-        return survival_baseline(pipeline.fit(X, y), X, y_arr)
-    # RECIPES F11 (§4.3): the stopping units are drawn first, and the steps before the model, their
-    # inner splits included, are fit on the remaining rows only; the stopping rows are transformed
-    # by those fitted steps, so a step that reads the outcome never sees them.
-    share = float(stopping_setting(model)[1])
-    held = validation_rows(share, groups=groups, keys=keys, order=order,
-                           y=y_arr if is_classifier(model) else None, seed=seed)
-    rest = ~held
-
-    def kept(a: Any) -> Any:
-        return None if a is None else np.asarray(a)[rest]
-
-    with_inner_cv(pipeline, groups=kept(groups), keys=kept(keys), order=kept(order),
-                  y=y_arr[rest], seed=seed)
-    with_step_cv(pipeline, groups=kept(groups), keys=kept(keys), order=kept(order),
-                 y=y_arr[rest], seed=seed)
-    head = pipeline[:-1] if len(pipeline.steps) > 1 else None
-    X_fit, X_val = _take(X, rest), _take(X, held)
-    if head is not None:
-        X_fit = head.fit_transform(X_fit, _take(y, rest))
-        X_val = head.transform(X_val)
-    model.set_params(early_stopping=True)
-    model.fit(X_fit, y_arr[rest], X_val=X_val, y_val=y_arr[held])
+    fit_parts(pipeline, X, y, np.arange(len(y_arr)), groups=groups, order=order, design=design,
+              seed=seed)
+    # A time to event keeps the baseline hazard of the rows it was fit on (MS6), so it predicts a
+    # risk by the horizon wherever it is scored.
     return survival_baseline(pipeline, X, y_arr)
 
 

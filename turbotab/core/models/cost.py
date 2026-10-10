@@ -13,6 +13,12 @@ refit on all of them, which comes to k fits of the whole table (time-ordered fol
 
 A table that fits inside the timing sample is timed whole, so the scaling is exact there. Above
 it the number is an estimate and is worded as one ("about 5 minutes").
+
+**A tuned family** (RECIPES §4.4, RT-8's core): its search is nested in every outer fit, so one
+outer fit is ``plan.fits()`` fits on its rows, as the plan's strategy counts them (F =
+w·[(K − 1)·C + 1] for a search). The pipeline is timed once at the plan's center candidate
+(``tuning.center``: every dimension at the midpoint of its scale) and multiplied by F, so the hold
+(``fit_press.holds``) and the estimate count the tuning: "about 30 minutes, most of it tuning".
 """
 from __future__ import annotations
 
@@ -20,7 +26,7 @@ import logging
 import time
 import warnings
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
@@ -111,10 +117,27 @@ def full_fits(folds: int, scheme: str = "random") -> float:
     return k / 2 + 1 if scheme == "time_ordered" else float(k)
 
 
+def tuned_fits(plan: Any) -> int:
+    """F, the fits one outer fit of a tuned family makes, as its plan's strategy counts them
+    (``TuningPlan.fits``); 1 for a family with no plan."""
+    return 1 if plan is None else int(plan.fits())
+
+
+TUNING_CLAUSE = ", most of it tuning"
+
+
 def estimate_fits(store: Any, state: Any, task: str, train_ids: Any, families: Sequence[Any],
-                  folds: int, *, cancelled: Any = None, scheme: str = "random") -> dict[str, Estimate | None]:
-    """``{family key: Estimate | None}`` for fitting each family on these training rows."""
+                  folds: int, *, cancelled: Any = None, scheme: str = "random",
+                  plans: Mapping[str, Any] | None = None) -> dict[str, Estimate | None]:
+    """``{family key: Estimate | None}`` for fitting each family on these training rows.
+
+    ``plans``: each tuned family's ``TuningPlan`` (``stages.modeling.tuning_plans``); its pipeline
+    is timed at the plan's center and multiplied by the fits its plan makes in each outer fit
+    (module docstring). A tuned family without one is timed at its built settings, once."""
+    from dataclasses import replace
+
     from turbotab.core.models.pipeline import build_pipeline, design_spec, model_predictors, modeling_frame
+    from turbotab.core.models.tuning import center
     from turbotab.core.stages.modeling import coded_outcome
 
     out: dict[str, Estimate | None] = {f.key: None for f in families}
@@ -149,10 +172,22 @@ def estimate_fits(store: Any, state: Any, task: str, train_ids: Any, families: S
             return out  # no follow-up yet: nothing to time a fit on
     units = _units(store, state, X.index)
     spec = design_spec(state, X, sampled, energy=None)  # adjusting energy costs next to nothing
+    purpose = getattr(state, "purpose", None)
     for family in families:
         if callable(cancelled) and cancelled():
             break
-        pipeline = build_pipeline(spec, family, task, getattr(state, "purpose", None), n_rows, n_columns)
+        plan = (plans or {}).get(family.key)
+        pipeline = None
+        if plan is not None:
+            try:
+                tuned = build_pipeline(replace(spec, plans={family.key: plan.to_dict()}), family,
+                                       task, purpose, n_rows, n_columns)
+                pipeline = tuned.at(center(plan), units=len(y))
+            except Exception:  # noqa: BLE001 - timed at its built settings instead
+                log.debug("the center candidate could not be built", exc_info=True)
+        if pipeline is None:
+            pipeline = build_pipeline(spec, family, task, purpose, n_rows, n_columns,
+                                      for_timing=True)
         name, step = pipeline.steps[-1]
         if units is not None and "units" in step.get_params(deep=False):
             pipeline.set_params(**{f"{name}__units": units})  # a family that models the unit
@@ -161,8 +196,10 @@ def estimate_fits(store: Any, state: Any, task: str, train_ids: Any, families: S
         seconds = time_one_fit(pipeline, X[spec.inputs], y)
         if seconds is None:
             continue
-        total = seconds * scale * full_fits(folds, scheme)
-        out[family.key] = Estimate(seconds=round(total, 1), text=say(total, n_rows, n_columns))
+        fits = tuned_fits(plan)
+        total = seconds * scale * full_fits(folds, scheme) * fits
+        text = say(total, n_rows, n_columns) + (TUNING_CLAUSE if fits > 2 else "")
+        out[family.key] = Estimate(seconds=round(total, 1), text=text)
     return out
 
 
@@ -182,5 +219,5 @@ def _units(store: Any, state: Any, index: Any) -> Any:
     return pd.Series(clusters.codes, index=index) if clusters.clustered else None
 
 
-__all__ = ["NOTEWORTHY_SECONDS", "Estimate", "duration", "estimate_fits", "fit_cost", "full_fits",
-           "sample_shape", "say", "time_one_fit"]
+__all__ = ["NOTEWORTHY_SECONDS", "TUNING_CLAUSE", "Estimate", "duration", "estimate_fits",
+           "fit_cost", "full_fits", "sample_shape", "say", "time_one_fit", "tuned_fits"]

@@ -497,7 +497,9 @@ def build_graph() -> Graph:
             # spline columns among the candidate predictor parameters Riley's minimum reads.
             # shelf 16 (MC-1): each family carries ``terms`` beside its concerns, its concerns'
             # quiet names (MODEL_FAMILY_CONTRACT C4), None until MC-5 writes them.
-            Stage("shelf", 16, ("working", "cohort", "target_info", "split"),
+            # shelf 17 (RT-1b, RT-8's core): a tuned family's estimate is timed at its plan's center
+            # and counts the fits its plan makes in every outer fit (RECIPES §4.4).
+            Stage("shelf", 17, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
                    "outcome_order", "exposure_forms", "levers",
@@ -562,10 +564,13 @@ def build_graph() -> Graph:
             # design 27 (previews leash 2): the energy-dropped residual's gap is withheld with the
             # purpose unanswered too, and kept beside the design (its objects) under inference, so
             # the server serves it in the warning's place once the plan is locked (audit ME-03).
-            Stage("design", 27, ("working", "split", "target_info"),
+            # design 28 (RT-1b): each tuned family's one plan is made here and held by the design
+            # (``DesignSpec.plans``), its inner folds floored by the PSUs under the population
+            # answer (so it reads the survey answer); its pipeline searches in every fit.
+            Stage("design", 28, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
-                   "column_units", *WP17_READS, "levers", "selection"),
+                   "column_units", *WP17_READS, "levers", "selection", "survey"),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
@@ -633,7 +638,10 @@ def build_graph() -> Graph:
             # sparse to impute, or the blank columns of imputed copies; a pure lasso with more than
             # two classes reports each feature at the middle of its tied set
             # (``exact_path.middle_of_ties``).
-            Stage("fit", 26, ("working", "design", "split", "target_info", "cohort"),
+            # fit 27 (RT-1b, F15): the split's seed and, under the population answer, the design
+            # reach every fit; a tuned family searches nested in each, Cancel checked before every
+            # candidate fit.
+            Stage("fit", 27, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models", "purpose"),
@@ -746,7 +754,8 @@ def build_graph() -> Graph:
                   label="Correcting intakes for day-to-day error in the recalls", serves=ESTIMATE),
             # ── WP17 (AUDIT_REPORT §5): the declared "further adjusted for" model ──
             # secondary 2 (MS1–MS2): as fit 18; the design and the clustering in its imputation model.
-            Stage("secondary", 5, ("working", "design", "split", "target_info"),
+            # secondary 6 (RT-1b): the further-adjusted model's fresh spec carries the design's plans.
+            Stage("secondary", 6, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment", "purpose"),
                   label="Fitting the model further adjusted for the declared covariates",
@@ -861,7 +870,9 @@ def build_graph() -> Graph:
             # evaluation 3 (EXPLORE repair): subgroups by the settled code-or-amount reading; the
             # shrunk intercept by Newton with step halving, the recalibrated model's coefficients
             # shrunk, and a failure said in the record, never the whole stage.
-            Stage("evaluation", 3, ("working", "fit", "design", "split", "target_info"),
+            # evaluation 4 (RT-1b, F15): the split's seed and the design reach every fit, as in the
+            # fit stage.
+            Stage("evaluation", 4, ("working", "fit", "design", "split", "target_info"),
                   (*EVALUATION_READS, *ROLE_READS, *WP17_READS), evaluation_stage, heavy=True,
                   requires=("models", "purpose"),
                   label="Fitting the benchmark and weighing the models", serves=ESTIMATE),

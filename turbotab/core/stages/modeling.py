@@ -312,6 +312,156 @@ def _units_in(ctx: StageContext, store: Any, rows: Any) -> int | None:
     return clusters.n_clusters if clusters.clustered else None
 
 
+def fit_designs(state: Any, store: Any, row_ids: Any) -> pd.DataFrame | None:
+    """Under the population answer, each row's stratum, PSU and analysis weight (``stratum``,
+    ``psu`` when the design names them, and ``weight``: the analysis weight, 0 where a row has
+    none), indexed by row id, as evaluation's design-based folds read them; None otherwise. A
+    tuned fit draws its inner splits by whole PSU and weights its inner loss by them (RECIPES
+    §4.3); the models are fit unweighted."""
+    survey = getattr(state, "survey", None)
+    if survey is None or getattr(survey, "estimand", None) != "population":
+        return None
+    from turbotab.core.methods.survey import analysis_weights
+    from turbotab.core.models.pipeline import modeling_frame
+
+    present = set(store.columns)
+    wanted = [c for c in (survey.weight, survey.strata, survey.psu, survey.cycle,
+                          survey.four_year_weight) if c and c in present]
+    if not wanted or (survey.weight and survey.weight not in present):
+        return None
+    frame = modeling_frame(store, wanted, np.asarray(row_ids))
+    try:
+        weights = np.asarray(analysis_weights(frame, survey.weight, survey.cycle,
+                                              survey.four_year_weight).weights, dtype=float)
+    except Exception:  # noqa: BLE001 - a weight that cannot be built weighs nothing here
+        return None
+    out = pd.DataFrame({"weight": np.where(np.isfinite(weights) & (weights > 0), weights, 0.0)},
+                       index=frame.index)
+    if survey.strata and survey.strata in frame.columns:
+        out["stratum"] = frame[survey.strata].to_numpy(dtype=object)
+    if survey.psu and survey.psu in frame.columns:
+        out["psu"] = frame[survey.psu].to_numpy(dtype=object)
+    return out
+
+
+def design_for(designs: pd.DataFrame | None, index: Any) -> Any:
+    """The ``tuning.FitDesign`` of the rows ``index`` names (row ids, a resample's repeats
+    included), read from :func:`fit_designs`; None without a population design."""
+    if designs is None or index is None:
+        return None
+    from turbotab.core.models.tuning import FitDesign
+
+    rows = designs.reindex(pd.Index(index))
+    return FitDesign(
+        strata=rows["stratum"].to_numpy(dtype=object) if "stratum" in rows else None,
+        psu=rows["psu"].to_numpy(dtype=object) if "psu" in rows else None,
+        weights=np.nan_to_num(rows["weight"].to_numpy(dtype=float), nan=0.0))
+
+
+def _fewest_psus(designs: pd.DataFrame, assignment: pd.DataFrame, ids: Any, folds: int,
+                 seed: int, *, evaluated: bool) -> int | None:
+    """The fewest PSUs in any outer training fold the stages draw (RECIPES §4.2): each of the
+    split's folds (every repeat), and, when ``evaluated``, evaluation's design-based folds
+    (``design_cv.design_folds``, drawn on the rows with a positive weight as that stage draws
+    them). None without PSUs."""
+    if "psu" not in designs:
+        return None
+    from turbotab.core.models import design_cv as D
+
+    rows = designs.reindex(pd.Index(ids))
+    strata = rows["stratum"].to_numpy(dtype=object) if "stratum" in rows else None
+    psu = rows["psu"].to_numpy(dtype=object)
+    labels = np.asarray([f"{s}|{p}" for s, p in zip(
+        strata if strata is not None else [None] * len(psu), psu)], dtype=object)
+    counts: list[int] = []
+    for column in ["fold", *repeat_columns(assignment)]:
+        if column not in assignment.columns:
+            continue
+        fold = assignment.loc[pd.Index(ids), column].to_numpy()
+        counts += [len(set(labels[fold != f].tolist())) for f in np.unique(fold)]
+    if evaluated:
+        ok = rows["weight"].to_numpy(dtype=float) > 0
+        if ok.sum() >= 2:
+            for r in range(D.REPEATS):
+                fold, _, _ = D.design_folds(None if strata is None else strata[ok], psu[ok],
+                                            int(ok.sum()), folds, seed + r)
+                counts += [len(set(labels[ok][fold != f].tolist())) for f in np.unique(fold)]
+    return min(counts) if counts else None
+
+
+def tuning_plans(ctx: StageContext, task: str, families: Sequence[Any], *, store: Any,
+                 train_ids: Any, levers: Any = None, selection: Any = None,
+                 strict: bool = True) -> dict[str, Any]:
+    """Each tuned family's one plan (``models.tuning.make_plan``; RECIPES §4.2), by family key;
+    {} when no family is tuned for ``task``.
+
+    Made in the design stage and held by the design (``DesignSpec.plans``), so every fit of the
+    family follows it unchanged; the shelf makes the same plans from the same inputs to count the
+    fits its estimate times (RECIPES §4.4). The plan's size is one outer training fold of the
+    headline split's training rows (``train_ids``), in units, events or units of the rarest class,
+    the median training fold when the folds follow time; its seeds derive from the split's;
+    under the population answer its inner folds are floored by the fewest PSUs in any outer
+    training fold, and its inner loss is weighted. A forest scores out of bag only where every row
+    is its own unit, the folds do not follow time, the sample answer applies and no step before
+    the model may read the outcome (``pipeline.reads_outcome_before_model``). ``strict=False``
+    leaves out a family whose plan is refused (the shelf's estimate) instead of raising."""
+    from typing import get_args
+
+    from turbotab.core.models.metrics import PRIMARY
+    from turbotab.core.models.pipeline import modeling_frame, reads_outcome_before_model
+    from turbotab.core.models.tuning import Loss, make_plan, plan_size, tuning_for
+
+    tuned = [f for f in families if tuning_for(f, task) is not None]
+    if not tuned or train_ids is None or not len(train_ids):
+        return {}
+    state = ctx.state
+    loss = PRIMARY.get(task)
+    if loss not in get_args(Loss):
+        if not strict:
+            return {}
+        raise ValueError(f"{tuned[0].label} is tuned on a strictly proper per-row loss, which "
+                         f"this outcome has none of, so it cannot be fit here.")
+    split = ctx.inputs.get("split")
+    data = (split.data or {}) if isinstance(split, Bundle) else {}
+    assignment = read_assignment(split)
+    folds = int(getattr(state.split, "folds", None) or data.get("folds") or 5)
+    seed = int(data.get("seed") or 0)
+    grouped_by = data.get("grouped_by")
+    columns = [state.target] + ([grouped_by] if grouped_by and grouped_by in store.columns
+                                and grouped_by != state.target else [])
+    frame = modeling_frame(store, columns, np.asarray(train_ids), outcome=state.target)
+    ids = frame.index.to_numpy()
+    y = frame[state.target].to_numpy()
+    units = frame[grouped_by].to_numpy(dtype=object) if grouped_by in frame.columns else None
+    if units is not None and len(pd.unique(units)) == len(units):
+        units = None  # one row per unit: the fit stage reads no units either
+    time_ordered = data.get("fold_scheme") == "time_ordered" and "order" in assignment.columns
+    order = assignment.loc[pd.Index(ids), "order"].to_numpy(dtype=float) if time_ordered else None
+    n_plan, plan_rows, unit = plan_size(task, y, units, folds=folds, order=order)
+    designs = fit_designs(state, store, ids)
+    psus = (None if designs is None else
+            _fewest_psus(designs, assignment, ids, folds,
+                         int(getattr(state.split, "seed", 0) or 0),
+                         evaluated=state.purpose != "inference"))
+    imbalance = task == "binary" and ((levers or {}).get("imbalance") or "none") != "none"
+    plans: dict[str, Any] = {}
+    for family in tuned:
+        decl = tuning_for(family, task)
+        out_of_bag = bool(decl.out_of_bag and units is None and order is None and designs is None
+                          and not reads_outcome_before_model(levers, selection, family))
+        try:
+            plan = make_plan(family, task=task, loss=loss, n_plan=n_plan, plan_rows=plan_rows,
+                             unit=unit, split_seed=seed, psus=psus, out_of_bag=out_of_bag,
+                             weighted=designs is not None, imbalance=imbalance)
+        except ValueError:
+            if strict:
+                raise
+            continue
+        if plan is not None:
+            plans[family.key] = plan
+    return plans
+
+
 def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[Any]) -> dict[str, Any]:
     """Each family's measured fit time on these training rows (``models.cost``); {} without them.
 
@@ -352,8 +502,15 @@ def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[
                 levels = store.materialize([site], np.asarray(train_ids))[site].astype(object)
                 n_levels = int(levels.fillna("(not recorded)").astype(str).nunique())
                 folds += n_levels if 2 <= n_levels <= SITE_LIMIT else 0
+            # RT-8's core (RECIPES §4.4): a tuned family's estimate counts the fits its plan
+            # makes in every outer fit, as the plan's strategy counts them.
+            from turbotab.core.models.pipeline import explore_answers
+
+            levers, selection = explore_answers(ctx.state)
+            plans = tuning_plans(ctx, task, families, store=store, train_ids=train_ids,
+                                 levers=levers, selection=selection, strict=False)
             return estimate_fits(store, ctx.state, task, train_ids, families, folds,
-                                 cancelled=ctx.cancelled, scheme=scheme)
+                                 cancelled=ctx.cancelled, scheme=scheme, plans=plans)
     except Cancelled:
         raise
     except Exception:  # noqa: BLE001 - the shelf stands without its estimates
@@ -584,6 +741,18 @@ def design_stage(ctx: StageContext) -> Bundle:
     # A family sizes its own choices (elastic net's inner folds) for the rows cross-validation
     # trains on, under either purpose.
     n_train = int(len(train_ids))
+    # RT-1b (RECIPES §4.2): each tuned family's one plan, made here once and held by the design,
+    # so every fit of it (every outer fold of every repeat, bootstrap resamples, the nested
+    # cross-validation's folds, evaluation's folds and the final refit) follows it unchanged.
+    from dataclasses import replace
+
+    from turbotab.core.models.tuning import tuning_for
+
+    if any(tuning_for(f, task) is not None for f in families):
+        with open_store(ctx) as store:
+            plans = tuning_plans(ctx, task, families, store=store, train_ids=train_ids,
+                                 levers=spec.levers, selection=spec.selection)
+        spec = replace(spec, plans={k: p.to_dict() for k, p in plans.items()} or None)
     pipelines = {f.key: build_pipeline(spec, f, task, state.purpose, n_train, n_cols) for f in families}
     models = [{"family": f.key, "label": f.label,
                "steps": describe_steps(spec, f, task, state.purpose, n_cols)} for f in families]
@@ -1711,25 +1880,44 @@ def fit_stage(ctx: StageContext) -> Bundle:
     # error and not corrected here (methods/dietary_caveats.py; Freedman et al. 2011).
     error_line = _measurement_error_line(ctx, spec) if inference else None
 
+    # F15 (RECIPES §4.3): the split's seed and, under the population answer, each row's stratum,
+    # PSU and weight reach every fit; a tuned family's search reads them (its inner splits keep
+    # whole PSUs, its inner loss is weighted), and Cancel is checked before each candidate fit.
+    from turbotab.core.models.tuning import TunedPipeline, cancel_scope
+
+    split_seed = int(split_data.get("seed") or 0)
+    designs = None
+    if any(isinstance(p, TunedPipeline) for p in pipelines.values()):
+        with open_store(ctx) as store:
+            designs = fit_designs(state, store, frame.index.to_numpy())
+
     def fit(model: Any, X_fit: Any, y_fit: Any, rows: Any = None) -> Any:
         """Fit a pipeline on these training rows, its inner splits drawn as the folds are."""
         take = slice(None) if rows is None else rows
-        return fit_pipeline(model, X_fit, y_fit, groups=None if groups is None else groups[take],
-                            order=None if order is None else order[take])
+        with cancel_scope(ctx.cancelled):
+            return fit_pipeline(model, X_fit, y_fit,
+                                groups=None if groups is None else groups[take],
+                                order=None if order is None else order[take],
+                                design=design_for(designs, X_fit.index), seed=split_seed)
 
     def fit_table(model: Any, X_fit: Any = None) -> Any:
         """Fit a pipeline on the coefficient table's rows (``X_fit``: a completed copy of them,
         under multiple imputation), its inner splits drawn as the folds are."""
-        return fit_pipeline(model, X_tab if X_fit is None else X_fit, y_tab,
-                            groups=None if unit_all is None else unit_all[table_rows],
-                            order=None if order_all is None else order_all[table_rows])
+        X_fit = X_tab if X_fit is None else X_fit
+        with cancel_scope(ctx.cancelled):
+            return fit_pipeline(model, X_fit, y_tab,
+                                groups=None if unit_all is None else unit_all[table_rows],
+                                order=None if order_all is None else order_all[table_rows],
+                                design=design_for(designs, X_fit.index), seed=split_seed)
 
     def refit_resample(model: Any, X_b: Any, y_b: Any, units_b: Any) -> Any:
         """A bootstrap resample's fit: every copy of a unit keeps to one side of an inner split,
         and a family that models the unit counts each copy as a unit of its own (WP12b)."""
         if unit_of is not None:
             with_units(model, resampled_units(unit_of, X_b.index))
-        return fit_pipeline(model, X_b, y_b, groups=units_b)
+        with cancel_scope(ctx.cancelled):
+            return fit_pipeline(model, X_b, y_b, groups=units_b,
+                                design=design_for(designs, X_b.index), seed=split_seed)
 
     # MS6 (MODELING_SEQUENCE ruling 4): the primary is a strictly proper score; AUC and C are the
     # customary headline beside it. A time to event is scored and calibrated by a horizon.
@@ -1873,7 +2061,10 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 def nested_fit(model: Any, X_fit: Any, y_fit: Any) -> Any:
                     units_fit = (None if unit_series is None
                                  else unit_series.reindex(X_fit.index).to_numpy())
-                    return fit_pipeline(model, X_fit, y_fit, groups=units_fit)
+                    with cancel_scope(ctx.cancelled):
+                        return fit_pipeline(model, X_fit, y_fit, groups=units_fit,
+                                            design=design_for(designs, X_fit.index),
+                                            seed=split_seed)
 
                 nested = nested_cv_interval(
                     task, primary, lambda _k=key: with_units(clone(pipelines[_k]), unit_of),
@@ -3276,12 +3467,25 @@ def _pooled_note(m: int, entries: Sequence[Mapping[str, Any]], n_boot: int, supp
 def pinned_to_full_fit(pipeline: Any, full: Any) -> Any:
     """``pipeline`` (unfitted) with its model step's size-dependent choices pinned to the full fit's.
 
+    A tuned family's pipeline (``TunedPipeline``) comes back as the plain pipeline at the full
+    fit's chosen settings (``at(full.tuning_.chosen_params)``), so a band refit or an explanation
+    reseed describes the deployed model without searching again; a path family's re-tunes.
+
     A band's refit must be the estimator the curve came from. scikit-learn's histogram gradient
     boosting stops early by itself only above 10,000 rows (``early_stopping="auto"``), so a refit
     on a resample of 10,000 rows of a model fit on more would boost to the end while the model it
     stands for stopped early (on noise, 10,001 rows stopped at 23 trees; 10,000 rows ran all 100).
     The full fit's resolved choice (``do_early_stopping_``) is pinned. Returns ``pipeline``.
     """
+    from turbotab.core.models.tuning import TunedPipeline
+
+    if isinstance(pipeline, TunedPipeline) and pipeline.search is not None:
+        # RECIPES §4.3: a searched family's refit holds the final fit's chosen settings (its
+        # early stopping included), conditional on them; a path family re-tunes, as before.
+        record = vars(full).get("tuning_") if full is not None else None
+        if pipeline.search.kind == "path" or record is None:
+            return pipeline
+        return pipeline.at(record.chosen_params)
     steps = getattr(full, "steps", None)
     if not steps:
         return pipeline
