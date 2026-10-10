@@ -96,12 +96,10 @@ def test_the_declarations_say_what_the_tables_they_will_replace_say():
     or the check it replaces, so the move changes nothing."""
     from turbotab.core.methods.interaction import SUPPORTED
     from turbotab.core.models.survey import has_design_estimator
-    from turbotab.core.reference.catalog import FAMILY_LENSES
     from turbotab.core.stages.effects import SEQUENCE_FAMILIES
 
     for f in _families().values():
         decl = f.inference_decl or InferenceDecl(table="description_only")
-        assert tuple(f.review_lenses) == FAMILY_LENSES[f.key], f.key
         assert decl.product_terms == (f.key in SUPPORTED), f.key
         assert decl.matrix_table == (f.key in SEQUENCE_FAMILIES), f.key
         assert decl.design_based == any(has_design_estimator(f, t) for t in f.tasks), f.key
@@ -627,7 +625,7 @@ def test_no_code_probes_what_a_family_adds_by_its_presence():
 
 def test_every_family_states_its_tuning_and_its_consequence_within_the_contract():
     """RT-1a: every family has ``tuning`` (None, or a declaration per task it models),
-    ``defaults_version`` and a ``consequence`` of at most 20 words (optional until MC-2b-1);
+    ``defaults_version`` and a ``consequence`` of at most 20 words (required since MC-2b-1);
     boosted trees' line is today's teaching option's, word for word, and its trees reach the
     explanations through its ``trees`` member."""
     from turbotab.core.models.base import _declared_tunings

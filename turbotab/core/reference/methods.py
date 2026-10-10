@@ -132,10 +132,9 @@ def families() -> list[Any]:
     from turbotab.core.models.base import families as registered
 
     contracts()
-    # The catalog's order (the shelf's registration order), so the text never depends on which
-    # module a process happened to import first.
-    order = {key: i for i, key in enumerate(catalog.FAMILY_LENSES)}
-    return sorted(registered(), key=lambda f: (order.get(f.key, len(order)), f.key))
+    # The shelf's registration order: ``models/__init__`` imports the families in a fixed order, so
+    # the text never depends on which module a process happened to import first.
+    return list(registered())
 
 
 def question_words(c: Any) -> str:
@@ -326,7 +325,7 @@ def family_section(f: Any, level: int = 3) -> list[str]:
              f"**uses rows with blanks as they are:** {'yes' if f.handles_missing else 'no'}; "
              f"**Harrell's bootstrap optimism is sound for it:** "
              f"{sound}.",
-             f"- **Lenses:** {lens_words(catalog.lenses_of_family(f.key))}.",
+             f"- **Lenses:** {lens_words(f.review_lenses)}.",
              "- **Question:** asked within the models question (`select_models`); the shelf ranks "
              "every family by its own assessment of the data and never shortens the list.",
              "", "**What the app says it fits**, by outcome and purpose (`describe`):", "",

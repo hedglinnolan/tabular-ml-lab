@@ -632,6 +632,9 @@ class Cox(FamilyBase):
     diagnostics = ("collinearity", "proportional_hazards")
     raw_scale = {"time_to_event": "log_hazard"}
     review_lenses = ("shared",)
+    consequence = ("Hazard ratios for a time-to-event outcome, using every row's follow-up, "
+                   "censored or not.")
+    card_label = "Cox model"
 
     def methods_label(self, task: Task | None) -> str:
         return "Cox proportional hazards"

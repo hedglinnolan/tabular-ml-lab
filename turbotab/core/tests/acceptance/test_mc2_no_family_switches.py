@@ -85,8 +85,6 @@ EXITS: dict[Place, Pin] = {
 # MODEL_FAMILY_CONTRACT §3.3's census, V2X_SEAMS row 21, the MC-1 verifier's census, or this test,
 # which found the rest.
 NOT_YET: dict[Place, Pin] = {
-    ("core/decisions.py", "model_families"):
-        pin("MC-2b (§3.3: the fallback keys)", 1, "linear", "elastic_net", "boosted_trees"),
     ("core/estimand.py", "_models_fit_the_family"):
         pin("MC-2b (§3.3: family_needs_featurewise)", 1, "featurewise"),
     ("core/method_previews.py", "calibration_numbers"): pin("MC-2b (§3.3)", 2, "linear"),
@@ -121,13 +119,6 @@ NOT_YET: dict[Place, Pin] = {
     ("core/quest.py", "_linear_family"):
         pin("MC-2b (wave E1a: the quest log's mirror of calibration_stage's NO_LINEAR)", 1,
             "linear"),
-    ("core/reference/catalog.py", "FAMILY_LENSES"):
-        pin("MC-2b (§3.3: review_lenses)", 1, "linear", "elastic_net", "boosted_trees",
-            "featurewise", "proportional_odds", "mixed", "gee", "cox", "screened_elastic_net"),
-    ("core/reference/catalog.py", "lenses_of_family"):
-        pin("MC-2b (§3.3: FAMILY_LENSES, read by key)", 1, "linear", "elastic_net",
-            "boosted_trees", "featurewise", "proportional_odds", "mixed", "gee", "cox",
-            "screened_elastic_net"),
     ("core/scales.py", "methods_sentence"):
         pin("MC-2b (the MC-1 verifier: the correction's model, by key)", 1,
             "proportional_odds", "linear"),
@@ -154,10 +145,6 @@ NOT_YET: dict[Place, Pin] = {
     ("core/stages/modeling.py", "_tests_only"): pin("MC-2b (found here)", 1, "featurewise"),
     ("core/stages/modeling.py", "fit_stage"):
         pin("MC-2b (§3.3: the collinearity concern)", 1, "linear"),
-    ("core/teaching/content.py", "MODELS"):
-        pin("MC-2b (§3.3: each family's describe() and bias_terms)", 1, "linear", "elastic_net",
-            "boosted_trees", "featurewise", "screened_elastic_net", "proportional_odds", "mixed",
-            "gee", "cox"),
 }
 
 

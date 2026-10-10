@@ -344,6 +344,9 @@ class FeatureWise(FamilyBase):
     inference_decl = InferenceDecl(table="intervals", intervals=("model", "CR2"),
                                    matrix_table=True)
     review_lenses = ("metabolomics", "genomics")
+    consequence = ("Tests each factor on its own, adjusted for the covariates, with "
+                   "Benjamini–Hochberg false-discovery control; no predictions.")
+    card_label = "Feature-wise tests"
 
     def methods_label(self, task: Task | None) -> str:
         # WP11: one least-squares test per exposure, q-values by Benjamini–Hochberg

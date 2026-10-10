@@ -241,7 +241,7 @@ class ModelFamily(Protocol):
     # C6 (RECIPES §4.1): how it is tuned, per task when the grids differ by task; None: not tuned.
     tuning: TuningDecl | Mapping[Task, TuningDecl] | None
     defaults_version: str  # bumped whenever a default changes; part of a version's identity
-    consequence: str  # ≤ 20 words: the families card's line (optional until MC-2b-1)
+    consequence: str  # ≤ 20 words: the families card's line (required)
     # What a family may add, each None when it adds nothing (MODEL_FAMILY_CONTRACT §1):
     # ``preprocess(spec)``: steps of its own after the shared ones (``models.pipeline``);
     # ``build_for(spec, task, purpose, n_rows, n_features)``: a model step built from the design;
@@ -522,7 +522,8 @@ def contract_problems(family: ModelFamily) -> list[str]:
     if not isinstance(family.defaults_version, str) or not family.defaults_version.strip():
         out.append("defaults_version must name the version of its defaults, as \"1\" (C6)")
     consequence = family.consequence
-    if not isinstance(consequence, str) or len(consequence.split()) > CONSEQUENCE_WORDS:
+    if (not isinstance(consequence, str) or not consequence.strip()
+            or len(consequence.split()) > CONSEQUENCE_WORDS):
         out.append(f"consequence must say what choosing it means in at most {CONSEQUENCE_WORDS} "
                    f"words (§1)")
     reads_trees = family.attribution == "trees" or "trees" in family.architecture
@@ -833,8 +834,12 @@ class FamilyBase:
     tuning: TuningDecl | Mapping[Task, TuningDecl] | None = None
     defaults_version: str = "1"  # bumped whenever a default changes; part of a version's identity
     # The families card's line, ≤ 20 words: what choosing it means ("Many shallow trees: finds
-    # curves and interactions; gives no coefficients."). Optional until MC-2b-1 requires it.
+    # curves and interactions; gives no coefficients."). Required: ``register_family`` refuses a
+    # family without one, and the teaching card for the models question reads it.
     consequence: str = ""
+    # The family's name on that card when it is shorter than ``label`` ("Mixed model" for the
+    # "Random-intercept mixed model"); the card says ``label`` when this is empty.
+    card_label: str = ""
     # What it adds of its own, as methods where it adds something (:class:`ModelFamily`).
     preprocess: Callable[..., list[tuple[str, Any]]] | None = None
     build_for: Callable[..., Any] | None = None

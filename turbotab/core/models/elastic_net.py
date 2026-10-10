@@ -336,6 +336,8 @@ class ElasticNet(FamilyBase):
     attribution = "linear"
     architecture = ("equation", "shrinkage")
     review_lenses = ("shared",)
+    consequence = ("A penalized linear model: shrinks correlated nutrients together, tuned inside "
+                   "training folds.")
 
     def methods_label(self, task: Task | None) -> str:
         return "elastic net"

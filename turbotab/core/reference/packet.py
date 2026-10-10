@@ -109,7 +109,7 @@ def lens_families(lens: str) -> tuple[list[Any], list[Any]]:
     """(the families this lens reviews in full, every other family on the shelf)."""
     own, others = [], []
     for f in ref.families():
-        (own if catalog.own(catalog.lenses_of_family(f.key), lens) else others).append(f)
+        (own if catalog.own(f.review_lenses, lens) else others).append(f)
     return own, others
 
 
@@ -514,7 +514,7 @@ def render(lens: str, captures: dict[str, dict[str, Any] | None]) -> str:
         lines.append(f"| {f.label} (`{f.key}`) | {', '.join(f.tasks)} | "
                      f"{', '.join(getattr(f, 'purposes', PURPOSES))} | "
                      f"{ref.cell(f.inductive_bias)} | "
-                     f"{reviewed_in(catalog.lenses_of_family(f.key))} |")
+                     f"{reviewed_in(f.review_lenses)} |")
     lines += ["", f"### 1.3 · Shared methods ({len(shared)})", "",
               "Every lens offers these; their full contracts are in the methods reference.", "",
               "| Method | Key | Slot | Scope | Recorded by |", "|---|---|---|---|---|"]

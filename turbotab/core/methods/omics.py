@@ -1596,6 +1596,8 @@ def _register_screened_family() -> None:
         inference_decl = None
         raw_scale = {"regression": "value", "binary": "margin"}
         review_lenses = ("metabolomics", "genomics")
+        consequence = ("Keeps the features most tied to the outcome in each training fold, then an "
+                       "elastic net.")
 
         def methods_label(self, task: Any) -> str:
             return "screened elastic net"
