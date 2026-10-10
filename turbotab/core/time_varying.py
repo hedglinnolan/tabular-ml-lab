@@ -636,7 +636,7 @@ def _lane_follows_the_estimand(decision: Any, ctx: Any) -> None:
     if decision.exposure != exposure:
         raise _refusal("other_exposure",
                        f"What you study is {_tick(exposure)}, not {_tick(decision.exposure)}; the lane "
-                       f"is declared for what you study as the comparison you want names it.",
+                       f"is declared for the study factor the declared comparison names.",
                        [{"label": f"Declare the lane for {_tick(exposure)}",
                          "decision": decision.model_copy(update={"exposure": exposure})}])
 

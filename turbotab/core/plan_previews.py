@@ -445,7 +445,7 @@ def estimand_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 
 ROLE_SHORT = {
     "mediator_confounder": "mediator–outcome common cause",
-    "confounder": "could explain the link",
+    "confounder": "cause of both",
     "exposure_cause": "cause of what you study",
     "precision": "precision",
     "proxy": "proxy",

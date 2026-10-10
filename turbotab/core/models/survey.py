@@ -1091,7 +1091,7 @@ def _register_contracts() -> None:
 
     for c in (
         MethodContract(
-            key="survey_population", label="The whole-population comparison under a survey design",
+            key="survey_population", label="The population estimand under a survey design",
             slot="model", scope="model", run_order=0.0, package="SURVEY",
             scope_note=("The answer chooses the outcome model's estimator. Each row's weight is its "
                         "own, but every design-based estimate and its variance read the outcome and "

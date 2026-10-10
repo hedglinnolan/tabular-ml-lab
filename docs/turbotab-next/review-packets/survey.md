@@ -74,7 +74,7 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
 
 None declared.
 
-#### The whole-population comparison under a survey design (`survey_population`)
+#### The population estimand under a survey design (`survey_population`)
 
 - **Slot:** the model.
 - **Data scope:** model: the outcome model itself. The answer chooses the outcome model's estimator. Each row's weight is its own, but every design-based estimate and its variance read the outcome and every PSU's rows.
@@ -347,15 +347,15 @@ Every lens offers these; their full contracts are in the methods reference.
 | Double ML, interactive | `dml_irm` | model | model | `set_causal` |
 | Double ML, partially linear | `dml_plr` | model | model | `set_causal` |
 | The effect measure (difference or ratio; conditional or marginal) | `effect_measure` | model | descriptive | `set_estimand` |
-| Effect modification (the effect of what you study across strata of a modifier) | `effect_modification` | model | model | `set_modification` |
+| Effect modification (the exposure's effect across strata of a modifier) | `effect_modification` | model | model | `set_modification` |
 | Marginal standardization (g-computation) | `g_computation` | model | model | `set_estimand` |
 | The grouping question, asked by structure | `grouping_by_structure` | model | descriptive | `set_clusters` |
-| Interaction (the joint effect of two study factors) | `interaction` | model | model | `set_modification` |
+| Interaction (the joint effect of two exposures) | `interaction` | model | model | `set_modification` |
 | Post-double-selection lasso | `pds_lasso` | model | model | `set_causal` |
 | A time-varying exposure by g-methods | `time_varying` | model | model | `set_time_varying` |
 | Targeted maximum likelihood | `tmle` | model | model | `set_causal` |
 | Diagnostics of the primary model | `diagnostics` | evaluation | descriptive | `respond_diagnostic` |
-| The E-value of a difference, standardized by the SD the comparison you want uses | `evalue_sd` | evaluation | descriptive | not declared |
+| The E-value of a difference, standardized by the estimand's SD | `evalue_sd` | evaluation | descriptive | not declared |
 | An exposure family and its multiplicity | `exposure_family` | evaluation | descriptive | `set_estimand` |
 | Outcome-model fit statistics wait with the estimates | `fit_statistics_withheld` | evaluation | model | not declared |
 | The declared model sequence (Table 2) | `model_sequence` | evaluation | model | `set_model_sequence` |
@@ -540,7 +540,7 @@ Every relation this lens's own methods take part in: declared by them, or declar
 ```mermaid
 flowchart LR
   n_scales["Scale scores, their reliability and the correction for measurement error"]:::own
-  n_survey_population["The whole-population comparison under a survey design"]:::own
+  n_survey_population["The population estimand under a survey design"]:::own
   n_survey_cox["Survey-weighted Cox regression (Binder's pseudo-likelihood)"]:::own
   n_survey_linear["Survey-weighted linear, logistic and multinomial models"]:::own
   n_survey_ordinal["Survey-weighted proportional-odds model"]:::own
@@ -687,7 +687,7 @@ The option each method offers first for each purpose, its rung, and the reason i
 | Method | Prediction | Inference |
 |---|---|---|
 | Scale scores, their reliability and the correction for measurement error (`scales`) | never asked, so never applied from the app (§1); posted to the API, the registry ranks `omega` first (recommended): Sound, and descriptive: under prediction the reliability changes no modeling choice. | never asked, so never applied from the app (§1); posted to the API, the registry ranks `omega` first (recommended): Sound: ω does not assume equal loadings (McNeish 2018). |
-| The whole-population comparison under a survey design (`survey_population`) | not offered under prediction: Not asked: under prediction the scores describe the rows they were computed on, and the weights are noted, not used. | `population` (recommended): Sound for a whole-population comparison: every family and display is design-based, or blocked and recorded where none exists (MODELING_SEQUENCE §0 ruling 6). |
+| The population estimand under a survey design (`survey_population`) | not offered under prediction: Not asked: under prediction the scores describe the rows they were computed on, and the weights are noted, not used. | `population` (recommended): Sound for a whole-population comparison: every family and display is design-based, or blocked and recorded where none exists (MODELING_SEQUENCE §0 ruling 6). |
 | Survey-weighted Cox regression (Binder's pseudo-likelihood) (`survey_cox`) | `unweighted` (recommended): The fit prediction uses: its scores describe these rows. | `design_based` (recommended): Sound for the surveyed population: weighted estimating equations with a linearized variance (Binder 1983; Lumley 2010). |
 | Survey-weighted linear, logistic and multinomial models (`survey_linear`) | `unweighted` (recommended): The fit prediction uses: its scores describe these rows. | `design_based` (recommended): Sound for the surveyed population: weighted estimating equations with a linearized variance (Binder 1983; Lumley 2010). |
 | Survey-weighted proportional-odds model (`survey_ordinal`) | `unweighted` (recommended): The fit prediction uses: its scores describe these rows. | `design_based` (recommended): Sound for the surveyed population: weighted estimating equations with a linearized variance (Binder 1983; Lumley 2010). |
@@ -723,18 +723,18 @@ The option each method offers first for each purpose, its rung, and the reason i
 | Double ML, interactive (`dml_irm`) | refused under prediction (`dml_irm`): Refused: under prediction no coefficient is read as an effect. | ranked by the data: §3.4 (the causal lane's estimator, `causal`) |
 | Double ML, partially linear (`dml_plr`) | refused under prediction (`dml_plr`): Refused: under prediction no coefficient is read as an effect. | ranked by the data: §3.4 (the causal lane's estimator, `causal`) |
 | The effect measure (difference or ratio; conditional or marginal) (`effect_measure`) | not offered under prediction: Not offered: a prediction reports no effect measure. | ranked by the data: §3.4 |
-| Effect modification (the effect of what you study across strata of a modifier) (`effect_modification`) | not offered under prediction: Not offered: a prediction estimates no effect. | `declared` (recommended): Sound: both scales with intervals (Knol & VanderWeele 2012) |
+| Effect modification (the exposure's effect across strata of a modifier) (`effect_modification`) | not offered under prediction: Not offered: a prediction estimates no effect. | `declared` (recommended): Sound: both scales with intervals (Knol & VanderWeele 2012) |
 | Marginal standardization (g-computation) (`g_computation`) | not offered under prediction: Not offered: a prediction reports no effect measure. | `standardized` (recommended): Sound: the marginal risks of the declared contrast, the intervals from a bootstrap of the whole chain |
 | The grouping question, asked by structure (`grouping_by_structure`) | `group` (recommended): Sound: no group trains and scores at once, so the score is a new group's; internal–external cross-validation folds by it (Steyerberg & Harrell 2016) | `fixed_effects` (recommended): Sound: between-group confounding removed, intervals CR2 with Bell–McCaffrey df |
-| Interaction (the joint effect of two study factors) (`interaction`) | not offered under prediction: Not offered: a prediction estimates no effect. | `declared` (recommended): Sound: what could explain the link is adjusted for each study factor, both scales reported |
+| Interaction (the joint effect of two exposures) (`interaction`) | not offered under prediction: Not offered: a prediction estimates no effect. | `declared` (recommended): Sound: what could explain the link is adjusted for each study factor, both scales reported |
 | Post-double-selection lasso (`pds_lasso`) | refused under prediction (`pds_lasso`): Refused: under prediction no coefficient is read as an effect. | ranked by the data: §3.4 (the causal lane's estimator, `causal`) |
 | A time-varying exposure by g-methods (`time_varying`) | refused under prediction (`msm_iptw`): not offered: under prediction no coefficient is read as an effect | `msm_iptw` (recommended): sound when earlier values of what you study changed something that could explain the link: the weights adjust for it without blocking their effect; it needs a correct model of what you study and positivity |
 | Targeted maximum likelihood (`tmle`) | refused under prediction (`tmle`): Refused: under prediction no coefficient is read as an effect. | ranked by the data: §3.4 (the causal lane's estimator, `causal`) |
 | Diagnostics of the primary model (`diagnostics`) | not offered under prediction: Not offered: a prediction reports no effect measure. | ranked by the data: §3.4 |
-| The E-value of a difference, standardized by the SD the comparison you want uses (`evalue_sd`) | not offered under prediction: Not offered: a prediction reports no effect | ranked by the data: §3.4 |
+| The E-value of a difference, standardized by the estimand's SD (`evalue_sd`) | not offered under prediction: Not offered: a prediction reports no effect | ranked by the data: §3.4 |
 | An exposure family and its multiplicity (`exposure_family`) | not offered under prediction: Not offered: a prediction reports no effect measure. | `family` (available): Sound with its multiplicity method stated; this is not selection |
 | Outcome-model fit statistics wait with the estimates (`fit_statistics_withheld`) | not offered under prediction: Not offered: under prediction the scores are the result | `withheld` (recommended): Sound: under inference an R² describes the outcome model, not the estimate, and reading it before the plan is a fork |
-| The declared model sequence (Table 2) (`model_sequence`) | not offered under prediction: Not offered: a prediction reports no effect measure. | `declared_sequence` (recommended): Sound when only the exposure's rows are read as effects |
+| The declared model sequence (Table 2) (`model_sequence`) | not offered under prediction: Not offered: a prediction reports no effect measure. | `declared_sequence` (recommended): Sound when only the rows of what you study are read as effects |
 | The analysis-plan export (`plan_export`) | not offered under prediction: Not offered: a prediction reports no effect measure. | `export` (available): Sound: it says what was declared in the software and when |
 | Sensitivity to unmeasured confounding (`unmeasured_confounding`) | not offered under prediction: Not offered: a prediction reports no effect measure. | ranked by the data: §3.4 |
 | Model explanations (`explain`) | `ale` (recommended): Sound with correlated intakes: it averages local changes among rows that hold such values (Apley & Zhu 2020, J R Stat Soc B 82:1059–1086). | `ale` (recommended): Describes the fitted model beside the declared estimate; it is not an effect estimate. |
@@ -776,8 +776,8 @@ Each condition the app ranks by, and what it offers first under it, computed by 
 | Diagnostics of the primary model (`diagnostics`) | inference | a failed proportional-hazards check (a Cox fit) | `period_hazard_ratios`: the exposure's hazard ratio before and after the median event time, beside the average over follow-up |
 | Diagnostics of the primary model (`diagnostics`) | inference | a failed influence check (Cook's distance) | `without_influential`: the primary model refit without the influential rows, beside it |
 | Diagnostics of the primary model (`diagnostics`) | inference | no check failed | nothing is asked: the checks are reported beside the estimate |
-| The E-value of a difference, standardized by the SD the comparison you want uses (`evalue_sd`) | inference | the surveyed-population answer (the analysis weights) | `design_weighted`: the surveyed population's SD |
-| The E-value of a difference, standardized by the SD the comparison you want uses (`evalue_sd`) | inference | the sample answer (no weights) | `sample`: the analyzed rows' SD |
+| The E-value of a difference, standardized by the estimand's SD (`evalue_sd`) | inference | the surveyed-population answer (the analysis weights) | `design_weighted`: the surveyed population's SD |
+| The E-value of a difference, standardized by the estimand's SD (`evalue_sd`) | inference | the sample answer (no weights) | `sample`: the analyzed rows' SD |
 | Sensitivity to unmeasured confounding (`unmeasured_confounding`) | inference | a difference from a least-squares fit (a linear outcome's coefficient) | `robustness_value` then `e_value` |
 | Sensitivity to unmeasured confounding (`unmeasured_confounding`) | inference | a ratio (an odds, hazard or risk ratio), or a difference with no least-squares fit | `e_value` |
 | The split and the validation (`split`) | prediction | no time order, fewer than 20,000 units | `bootstrap` (Bootstrap optimism correction): Uses every row and refits the whole pipeline in each resample (Steyerberg 2018, J Clin Epidemiol 103:131: "more efficient approaches" in small samples). |

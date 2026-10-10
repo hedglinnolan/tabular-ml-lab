@@ -554,7 +554,7 @@ def family_contrast_applies(state: Any) -> bool:
 
 ROLE_WORDS = {
     "mediator_confounder": "common cause of a mediator and the outcome",
-    "confounder": "could explain the link",
+    "confounder": "common cause of what you study and the outcome",
     "exposure_cause": "cause of what you study",
     "precision": "cause of the outcome only (precision)",
     "proxy": "proxy for an unmeasured common cause",
@@ -1925,7 +1925,7 @@ def _estimand_contrast_fits_the_exposure(decision: Any, ctx: Any) -> None:
             f"{named} carries energy and total energy is in the model: say "
             f"whether its effect is a substitution (more of it in place of other calories, total "
             f"energy fixed) or an addition (its calories added on top). The two are different "
-            f"comparisons you want (Tomova et al. 2022).",
+            f"comparisons (Tomova et al. 2022).",
             [{"label": "Substitution", "decision": decision.model_copy(update={"contrast": "substitution"})},
              {"label": "Addition", "decision": decision.model_copy(update={"contrast": "addition"})}])
     if not applies and decision.contrast is not None:

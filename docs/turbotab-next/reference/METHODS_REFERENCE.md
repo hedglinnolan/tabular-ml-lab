@@ -57,20 +57,20 @@ It covers 72 method contracts, 9 model families, 5 questions whose options are l
 | [Double ML, interactive](#double-ml-interactive-dml_irm) | `dml_irm` | model | model | every lens (shared) | `set_causal` |
 | [Double ML, partially linear](#double-ml-partially-linear-dml_plr) | `dml_plr` | model | model | every lens (shared) | `set_causal` |
 | [The effect measure (difference or ratio; conditional or marginal)](#the-effect-measure-difference-or-ratio-conditional-or-marginal-effect_measure) | `effect_measure` | model | descriptive | every lens (shared) | `set_estimand` |
-| [Effect modification (the effect of what you study across strata of a modifier)](#effect-modification-the-effect-of-what-you-study-across-strata-of-a-modifier-effect_modification) | `effect_modification` | model | model | every lens (shared) | `set_modification` |
+| [Effect modification (the exposure's effect across strata of a modifier)](#effect-modification-the-exposures-effect-across-strata-of-a-modifier-effect_modification) | `effect_modification` | model | model | every lens (shared) | `set_modification` |
 | [Marginal standardization (g-computation)](#marginal-standardization-g-computation-g_computation) | `g_computation` | model | model | every lens (shared) | `set_estimand` |
 | [The grouping question, asked by structure](#the-grouping-question-asked-by-structure-grouping_by_structure) | `grouping_by_structure` | model | descriptive | every lens (shared) | `set_clusters` |
-| [Interaction (the joint effect of two study factors)](#interaction-the-joint-effect-of-two-study-factors-interaction) | `interaction` | model | model | every lens (shared) | `set_modification` |
+| [Interaction (the joint effect of two exposures)](#interaction-the-joint-effect-of-two-exposures-interaction) | `interaction` | model | model | every lens (shared) | `set_modification` |
 | [Usual-intake distribution (NCI method)](#usual-intake-distribution-nci-method-nci_usual_intake) | `nci_usual_intake` | model | training_fold | Dietary assessment | `set_usual_intake` |
 | [Post-double-selection lasso](#post-double-selection-lasso-pds_lasso) | `pds_lasso` | model | model | every lens (shared) | `set_causal` |
-| [The whole-population comparison under a survey design](#the-whole-population-comparison-under-a-survey-design-survey_population) | `survey_population` | model | model | Dietary assessment, Clinical, Survey instruments | `set_survey` |
+| [The population estimand under a survey design](#the-population-estimand-under-a-survey-design-survey_population) | `survey_population` | model | model | Dietary assessment, Clinical, Survey instruments | `set_survey` |
 | [A time-varying exposure by g-methods](#a-time-varying-exposure-by-g-methods-time_varying) | `time_varying` | model | model | every lens (shared) | `set_time_varying` |
 | [Targeted maximum likelihood](#targeted-maximum-likelihood-tmle) | `tmle` | model | model | every lens (shared) | `set_causal` |
 | [Survey-weighted Cox regression (Binder's pseudo-likelihood)](#survey-weighted-cox-regression-binders-pseudo-likelihood-survey_cox) | `survey_cox` | model | model | Dietary assessment, Clinical, Survey instruments | `select_models` |
 | [Survey-weighted linear, logistic and multinomial models](#survey-weighted-linear-logistic-and-multinomial-models-survey_linear) | `survey_linear` | model | model | Dietary assessment, Clinical, Survey instruments | `select_models` |
 | [Survey-weighted proportional-odds model](#survey-weighted-proportional-odds-model-survey_ordinal) | `survey_ordinal` | model | model | Dietary assessment, Clinical, Survey instruments | `select_models` |
 | [Diagnostics of the primary model](#diagnostics-of-the-primary-model-diagnostics) | `diagnostics` | evaluation | descriptive | every lens (shared) | `respond_diagnostic` |
-| [The E-value of a difference, standardized by the SD the comparison you want uses](#the-e-value-of-a-difference-standardized-by-the-sd-the-comparison-you-want-uses-evalue_sd) | `evalue_sd` | evaluation | descriptive | every lens (shared) | not declared |
+| [The E-value of a difference, standardized by the estimand's SD](#the-e-value-of-a-difference-standardized-by-the-estimands-sd-evalue_sd) | `evalue_sd` | evaluation | descriptive | every lens (shared) | not declared |
 | [An exposure family and its multiplicity](#an-exposure-family-and-its-multiplicity-exposure_family) | `exposure_family` | evaluation | descriptive | every lens (shared) | `set_estimand` |
 | [Outcome-model fit statistics wait with the estimates](#outcome-model-fit-statistics-wait-with-the-estimates-fit_statistics_withheld) | `fit_statistics_withheld` | evaluation | model | every lens (shared) | not declared |
 | [The declared model sequence (Table 2)](#the-declared-model-sequence-table-2-model_sequence) | `model_sequence` | evaluation | model | every lens (shared) | `set_model_sequence` |
@@ -1907,7 +1907,7 @@ None declared.
 - Zhang & Yu 1998, JAMA 280:1690
 - VanderWeele 2019, Eur J Epidemiol 34:211
 
-### Effect modification (the effect of what you study across strata of a modifier) (`effect_modification`)
+### Effect modification (the exposure's effect across strata of a modifier) (`effect_modification`)
 
 - **Slot:** the model.
 - **Data scope:** model: the outcome model itself. the product terms are terms of the outcome model, fit on every analyzed row
@@ -2046,7 +2046,7 @@ None declared.
 - Bell & McCaffrey 2002, Surv Methodol 28:169
 - Steyerberg & Harrell 2016, J Clin Epidemiol 69:245–247
 
-### Interaction (the joint effect of two study factors) (`interaction`)
+### Interaction (the joint effect of two exposures) (`interaction`)
 
 - **Slot:** the model.
 - **Data scope:** model: the outcome model itself. the product terms are terms of the outcome model, fit on every analyzed row
@@ -2230,7 +2230,7 @@ None declared.
 - Hernán & Robins 2020, Causal Inference: What If, §3
 - Belloni, Chernozhukov & Hansen 2014, Rev Econ Stud 81:608
 
-### The whole-population comparison under a survey design (`survey_population`)
+### The population estimand under a survey design (`survey_population`)
 
 - **Slot:** the model.
 - **Data scope:** model: the outcome model itself. The answer chooses the outcome model's estimator. Each row's weight is its own, but every design-based estimate and its variance read the outcome and every PSU's rows.
@@ -2599,7 +2599,7 @@ None declared.
 - Grambsch & Therneau 1994, Biometrika 81:515
 - Cook 1977, Technometrics 19:15
 
-### The E-value of a difference, standardized by the SD the comparison you want uses (`evalue_sd`)
+### The E-value of a difference, standardized by the estimand's SD (`evalue_sd`)
 
 - **Slot:** evaluation (after the fit).
 - **Data scope:** descriptive: may read every row to say whether the data are corrupted, but informs no modeling choice. reads the analyzed rows' outcome (and their survey weights) to standardize the reported estimate; informs no modeling choice
@@ -2660,7 +2660,7 @@ None declared.
 
 | Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
 |---|---|---|---|---|---|
-| `family`: Each exposure in turn, every member shown | customary for metabolome-wide and nutrient-wide association studies | Not offered: a prediction reports no effect measure. | not offered, 1 | Sound with its multiplicity method stated; this is not selection | available, 1 |
+| `family`: Each study factor in turn, every member shown | customary for metabolome-wide and nutrient-wide association studies | Not offered: a prediction reports no effect measure. | not offered, 1 | Sound with its multiplicity method stated; this is not selection | available, 1 |
 
 **Storyboard** (the transform player's real steps):
 
@@ -2739,7 +2739,7 @@ None declared.
 
 | Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
 |---|---|---|---|---|---|
-| `declared_sequence`: Unadjusted, Model 1, the primary and Model 3 | customary: the nutrition-cohort Table 2 (Westreich & Greenland 2013) | Not offered: a prediction reports no effect measure. | not offered, 1 | Sound when only the exposure's rows are read as effects | recommended, 1 |
+| `declared_sequence`: Unadjusted, Model 1, the primary and Model 3 | customary: the nutrition-cohort Table 2 (Westreich & Greenland 2013) | Not offered: a prediction reports no effect measure. | not offered, 1 | Sound when only the rows of what you study are read as effects | recommended, 1 |
 
 **Storyboard** (the transform player's real steps):
 
@@ -2826,7 +2826,7 @@ None declared.
 | Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
 |---|---|---|---|---|---|
 | `robustness_value`: Robustness value, benchmarked | growing; anchored to the study's own covariates (Cinelli & Hazlett 2020) | Not offered: a prediction reports no effect measure. | not offered, 1 | Sound: bounded by named measured covariates; ranked first for a linear outcome | recommended, 1 |
-| `e_value`: E-value | customary (growing), limited (Blum et al. 2020) | Not offered: a prediction reports no effect measure. | not offered, 2 | Conditional: no threshold exists; read against named confounders | available, 2 |
+| `e_value`: E-value | customary (growing), limited (Blum et al. 2020) | Not offered: a prediction reports no effect measure. | not offered, 2 | Conditional: no threshold exists; read against named common causes | available, 2 |
 
 **Ranked by the data:** the app offers these options in another order than the rank above where the data decide it; what it offers first under each condition:
 

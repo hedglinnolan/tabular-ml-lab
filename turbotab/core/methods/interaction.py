@@ -618,7 +618,7 @@ def modification_stage(ctx: Any) -> Any:
     if state.purpose != "inference" or exposure is None:
         return Bundle(data=ModificationArtifact(
             purpose=state.purpose, exposure=exposure, family_count=count,
-            methods="No effect modification is estimated without a declared study factor under "
+            methods="No effect modification is estimated without a declared exposure under "
                     "inference.").model_dump(mode="json"))
     results = []
     found = declared(state)
@@ -675,7 +675,7 @@ def _one(ctx: Any, state: Any, exposure: str, modifier: str, spec: Any) -> Modif
         return ModificationResult(
             **base, contrast="", low=0.0, high=0.0, strata=[], reference="",
             sentence=(f"The interaction of {_tick(exposure)} with {_tick(modifier)} waits for the "
-                      f"adjustment answers with {_tick(modifier)} as what you study: "
+                      f"adjustment answers with {_tick(modifier)} as the exposure: "
                       f"{_listing(waiting)}."))
     task = _task(ctx)
     target = state.target
@@ -1405,7 +1405,7 @@ def _register_contracts() -> None:
     )
     register_contract(MethodContract(
         key="effect_modification", package=PACKAGE,
-        label="Effect modification (the effect of what you study across strata of a modifier)",
+        label="Effect modification (the exposure's effect across strata of a modifier)",
         slot="model", scope="model",
         scope_note="the product terms are terms of the outcome model, fit on every analyzed row",
         needs=("a declared exposure", "a modifier column"), question="modification",
@@ -1428,7 +1428,7 @@ def _register_contracts() -> None:
         sources=(KNOL, HOSMER, VANDERWEELE_2009)))
     register_contract(MethodContract(
         key="interaction", package=PACKAGE,
-        label="Interaction (the joint effect of two study factors)",
+        label="Interaction (the joint effect of two exposures)",
         slot="model", scope="model",
         scope_note="the product terms are terms of the outcome model, fit on every analyzed row",
         needs=("a declared exposure", "a second exposure", "its adjustment answers"),

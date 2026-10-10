@@ -135,8 +135,8 @@ TIME_POINTS = ("The rows repeat as time points, not as repeated recalls of one u
                "spread is change over time rather than day-to-day error.")
 NONE_ERROR_PRONE = ("No column of the outcome model is measured by the recalls (nothing you study, and no "
                     "energy model's term), so there is nothing to calibrate.")
-TEST = ("The test of no association is the uncorrected model's: the usual statistical test of the "
-        f"null hypothesis of no effect “remains theoretically valid” ({FREEDMAN}); the "
+TEST = ("The test of no association is the uncorrected model's: “the usual statistical test of the "
+        f"null hypothesis (no exposure effect) remains theoretically valid” ({FREEDMAN}); the "
         "calibrated estimate gives the size, with its own interval.")
 ASSUMPTIONS = (
     "Each recall's error is independent of the person's true intake and of their other days' "

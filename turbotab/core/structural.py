@@ -434,7 +434,7 @@ def _outcome_scale_fits(decision: SetOutcomeScale, ctx: Any) -> None:
             "log_of_zero",
             f"{low:,} value{'s' if low != 1 else ''} of `{decision.column}` "
             f"{'are' if low != 1 else 'is'} 0 or below, where a logarithm is undefined; adding a "
-            f"constant first would choose the comparison you want by the constant.",
+            f"constant first would let the constant decide which comparison is estimated.",
             exits=[{"label": "Keep the original scale",
                     "decision": SetOutcomeScale(column=decision.column, scale="original")}])
 

@@ -80,7 +80,8 @@ def test_4_a_confounder_in_three_or_fewer_groups_is_blocked_and_recorded(setting
     assert refused.value.message == (
         "`age` could explain the link and is cut into 3 groups: within each group it still varies "
         "with what you study, so its confounding is only partly removed (Brenner & Blettner "
-        "1997: cutting it into few categories may leave serious residual confounding).")
+        "1997: \"categorization of the confounder may often lead to serious residual confounding "
+        "if the number of categories is small\").")
     exits = refused.value.exits
     assert exits[0]["label"] == "A restricted cubic spline (recommended)"
     assert exits[0]["decision"]["form"] == "spline"

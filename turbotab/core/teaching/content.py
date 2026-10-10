@@ -69,8 +69,8 @@ def term(name: str, definition: str) -> dict[str, str]:
 
 ESTIMAND = term(
     "estimand",
-    "The exact quantity an analysis estimates, stated in words; two methods with different "
-    "comparisons you want answer different questions.")
+    "The exact quantity an analysis estimates, stated in words; two methods estimating different "
+    "quantities answer different questions.")
 
 # The energy card's nested-parts note, folded into a term card (M2_CONTRACT §6): the partition
 # option's reason says which columns are nested, and this says what follows from it.
@@ -774,8 +774,8 @@ SURVEY = {
         option("population", "Surveyed population",
                "Weighted estimates with Taylor-linearized intervals over the strata and PSUs."),
         option("sample", "These participants",
-               "Unweighted; the methods state a sample-only comparison you want whose intervals ignore the "
-               "design."),
+               "Unweighted; the methods state a comparison for these participants only, whose "
+               "intervals ignore the design."),
     ],
     "terms": [
         term("PSU", "Primary sampling unit: the cluster, such as a county, drawn first; people "
@@ -1112,7 +1112,7 @@ ENERGY_ADJUSTMENT = {
         section("The biases they share",
                 "Standard and residual models are biased even without confounding (composite "
                 "variable bias), and all four models only partly account for confounding by "
-                "common dietary causes; each evaluates a different comparison you want (Tomova et al. 2022, "
+                "common dietary causes; each evaluates a different quantity (Tomova et al. 2022, "
                 "AJCN). The density model's coefficient is an obscure quantity, and with energy "
                 "added as a term it is more accurate but still biased; the all-components model "
                 "is the paper's recommended route.",
@@ -1390,7 +1390,8 @@ ESTIMAND_QUESTION = {
                "Everything that what you study changes downstream counts; mediators stay out of the "
                "model."),
         option("direct", "Direct effect",
-               "Mediators are held fixed; what else could explain the link is adjusted for too."),
+               "Mediators held fixed; what could explain their link to the outcome must be adjusted "
+               "too."),
     ],
     "terms": [
         ESTIMAND,
@@ -1429,6 +1430,8 @@ ADJUSTMENT = {
                "Estimated without it and, declared beside, with it."),
     ],
     "terms": [
+        term("confounder", "A common cause of what you study and the outcome: something else that "
+                           "could explain the link."),
         term("mediator", "A variable on the path from what you study to the outcome; adjusting for "
                          "it removes part of the effect."),
         term("collider", "A consequence of two variables; adjusting for it can create an "
@@ -1511,8 +1514,8 @@ TIME_VARYING = {
     "key": "time_varying",
     "title": "A study factor that changes over time",
     "question": "How is a study factor that changes over time estimated?",
-    "one_liner": "What earlier values of what you study changed, and could explain the link, needs g-methods; their diagnostics come "
-                 "before any estimate.",
+    "one_liner": "Something that could explain the link, changed by earlier values of what you "
+                 "study, needs g-methods; their diagnostics come before any estimate.",
     "why": "When something that could explain the link at a later time was itself changed by earlier values of what you study, standard "
            "regression is biased either way: adjusting for it removes part of the effect, and "
            "leaving it out leaves the later values confounded (Robins, Hernán & Brumback 2000). "
@@ -1526,15 +1529,16 @@ TIME_VARYING = {
                "Simulates what could explain the link forward under always and never exposed; compares "
                "risks."),
         option("standard", "Standard regression",
-               "Sound only if nothing that could explain the link was changed earlier; otherwise recorded "
-               "as biased."),
+               "Sound only if earlier study-factor values changed nothing that could explain the "
+               "link; else marked biased."),
     ],
     "terms": [
-        term("time-varying confounder", "A covariate measured at each time point that affects later "
-                                        "what you study and the outcome; earlier values of it may change it."),
-        term("stabilized weight", "The probability of a unit's history of what you study given baseline "
-                                  "covariates, over that also given later covariates; the mean should "
-                                  "be near 1."),
+        term("time-varying confounder", "A covariate, measured at each time point, that affects what "
+                                        "you study later and the outcome; earlier values of what you "
+                                        "study may change it."),
+        term("stabilized weight", "The probability of a unit's study-factor history given baseline "
+                                  "covariates, over that also given what could explain the link; the "
+                                  "mean should be near 1."),
         term("positivity", "At each time point some units are exposed and some are not, so the "
                            "effect comes from the data rather than the model alone."),
     ],
@@ -1608,8 +1612,8 @@ MODIFICATION = {
     "one_liner": "Declared before estimates; reported on the additive and multiplicative scales "
                  "against a single reference.",
     "why": "Effect modification is one study factor's effect varying across strata of another "
-           "variable; interaction is the joint effect of two study factors, so the second study factor's "
-           "covariates must be adjusted for too. Subgroups chosen after seeing the estimates are "
+           "variable; interaction is the joint effect of two study factors, so what could explain the "
+           "second one's link to the outcome must be adjusted for too. Subgroups chosen after seeing the estimates are "
            "labeled suggested by data inspection and counted with the rest.",
     "consumer": "The modification analysis, its RERI and ratio of ratios, and the family of "
                 "tests read it.",

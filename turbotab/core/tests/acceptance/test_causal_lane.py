@@ -1385,7 +1385,7 @@ def test_6_the_shortest_leash_and_every_relation_of_the_lane_fires(tmp_path):
     assert {b["covariate"] for b in found["robustness"]["benchmarks"]} == set(names(union))
     assert all(b["ci_low"] is None and b["ci_high"] is None
                for b in found["robustness"]["benchmarks"])
-    assert found["reading"].startswith("An unmeasured confounder would need a partial R² of "
+    assert found["reading"].startswith("An unmeasured common cause would need a partial R² of "
                                        f"{rv:.1%} with both `fiber` and `sbp`")
     assert none["estimates"] == [] and none["withheld"] is None
     # recorded after the estimates were seen, and its sentence leads with it (decisions.disclose)

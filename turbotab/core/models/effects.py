@@ -547,10 +547,10 @@ def split_rows(rows: Iterable[Mapping[str, Any]], effects: Iterable[str],
         if feature.startswith("(intercept)"):
             why = "the model's baseline, not an effect"
         elif any(feature == m or feature.startswith(f"{m}_") for m in modifying):
-            why = "a modifier's main effect: the exposure's effect is read within its levels"
+            why = "a modifier's main effect: the effect of what you study is read within its levels"
         else:
             why = ("an adjustment term: a direct effect at best, and possibly confounded even "
-                   "where the exposure's estimate is not")
+                   "where the estimate of what you study is not")
         appendix.append({**dict(row), "why": why})
     return shown, appendix
 
@@ -888,10 +888,10 @@ def benchmark_bounds(r2dxj: float, r2yxj: float, *, kd: float = 1.0,
     ky = kd if ky is None else ky
     r2dz = kd * (r2dxj / (1.0 - r2dxj))
     if r2dz >= 1:
-        raise Unestimable("a confounder that strong would explain all of the exposure")
+        raise Unestimable("a common cause that strong would explain all of what you study")
     r2zxj = kd * r2dxj ** 2 / ((1.0 - kd * r2dxj) * (1.0 - r2dxj))
     if r2zxj >= 1:
-        raise Unestimable("a confounder that strong is impossible here")
+        raise Unestimable("a common cause that strong is impossible here")
     r2yz = ((math.sqrt(ky) + math.sqrt(r2zxj)) / math.sqrt(1.0 - r2zxj)) ** 2 * (r2yxj / (1.0 - r2yxj))
     return float(r2dz), float(min(r2yz, 1.0))
 

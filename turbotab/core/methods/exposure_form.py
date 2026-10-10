@@ -2254,8 +2254,8 @@ def _cuts_are_declared_or_recorded(decision: Any, ctx: Any) -> None:
             "coarse_confounder",
             f"`{column}` could explain the link and is cut into {groups} groups: within each group it still "
             f"varies with what you study, so its confounding is only partly removed (Brenner & "
-            f"Blettner 1997: cutting it into few categories may leave serious residual "
-            f"confounding).",
+            f"Blettner 1997: \"categorization of the confounder may often lead to serious "
+            f"residual confounding if the number of categories is small\").",
             exits=[spline, {"label": "A straight line",
                             "decision": SetExposureForm(column=column, form="linear")}, keep])
 

@@ -229,7 +229,7 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
         ),
         sources=("CDC, NHANES 1999–2006 DXA, Multiple Imputation Details",)),
     _contract(
-        key="evalue_sd", label="The E-value of a difference, standardized by the SD the comparison you want uses",
+        key="evalue_sd", label="The E-value of a difference, standardized by the estimand's SD",
         slot="evaluation", scope="descriptive",
         scope_note="reads the analyzed rows' outcome (and their survey weights) to standardize "
                    "the reported estimate; informs no modeling choice",
