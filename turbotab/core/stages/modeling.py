@@ -3285,9 +3285,11 @@ def pinned_to_full_fit(pipeline: Any, full: Any) -> Any:
     steps = getattr(full, "steps", None)
     if not steps:
         return pipeline
+    from turbotab.core.models.inner_cv import stopping_setting
+
     name, model = pipeline.steps[-1]
     resolved = getattr(steps[-1][1], "do_early_stopping_", None)
-    if resolved is not None and model.get_params(deep=False).get("early_stopping") == "auto":
+    if resolved is not None and stopping_setting(model)[0] == "auto":
         pipeline.set_params(**{f"{name}__early_stopping": bool(resolved)})
     return pipeline
 

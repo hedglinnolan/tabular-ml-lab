@@ -434,7 +434,9 @@ class ImbalanceCorrected(ClassifierMixin, BaseEstimator):
     wrapped model's (``wrap_model`` copies them; None reads the wrapped model's own at fit), so
     ``inner_cv.fit_pipeline`` passes a fit that stops early its stopping rows, ``X_val``:
     whole units drawn before any step was fit. Fit without them, above 10,000 received rows under
-    ``"auto"``, the stopping units are drawn here first (``inner_cv.validation_rows``). Either way:
+    ``"auto"``, the stopping units are drawn here first (``inner_cv.validation_rows``, by the
+    ``groups`` or ``order`` handed to ``fit``; handed inner splits without either, it refuses,
+    rather than draw rows that split a unit). Either way:
     only the other rows are resampled; the stopping rows reach every model this fit makes (the
     deployed one and each recalibration fit) as they are, and no recalibration fold holds them; the
     recalibration splits cover the rows this fit trains on. The threshold reads the rows the fit
@@ -452,9 +454,10 @@ class ImbalanceCorrected(ClassifierMixin, BaseEstimator):
         self.early_stopping = early_stopping
         self.validation_fraction = validation_fraction
 
-    def _stopping(self) -> tuple[Any, float | None]:
+    def stopping_setting(self) -> tuple[Any, float | None]:
         """(flag, share): this wrapper's, else the wrapped model's; (False, None) for a wrapped
-        model that does not stop early."""
+        model that does not stop early. ``inner_cv`` reads the setting through this, so a wrapper
+        built with the defaults takes the stopping-rows path as one built by ``wrap_model`` does."""
         params = getattr(self.estimator, "get_params", lambda deep=False: {})(deep=False)
         if "early_stopping" not in params or "validation_fraction" not in params:
             return False, None
@@ -485,14 +488,20 @@ class ImbalanceCorrected(ClassifierMixin, BaseEstimator):
         rows = resampled_rows(y, self.method, rng)
         return model.fit(_take(X, rows), y[rows], **stop)
 
-    def fit(self, X: Any, y: Any, X_val: Any = None, y_val: Any = None) -> "ImbalanceCorrected":
+    def fit(self, X: Any, y: Any, X_val: Any = None, y_val: Any = None, *, groups: Any = None,
+            order: Any = None) -> "ImbalanceCorrected":
+        """``X_val``, ``y_val``: the stopping rows (``inner_cv.fit_pipeline``). Without them, a fit
+        that stops early draws its stopping units here, by ``groups`` (the unit per row) or
+        ``order`` (each row's unit rank in time) when given, as ``inner_cv.validation_rows`` does;
+        handed inner splits (``cv``) without either, it refuses, since those splits may hold whole
+        units that a draw by rows would split."""
         from turbotab.core.models.inner_cv import EARLY_STOPPING_ROWS, row_keys, validation_rows
 
         y = np.asarray(y)
         self.classes_ = np.unique(y)
         if len(self.classes_) != 2:
             raise ValueError("An imbalance correction here is for a yes/no outcome.")
-        flag, share = self._stopping()
+        flag, share = self.stopping_setting()
         val: tuple[Any, np.ndarray] | None = None
         kept: np.ndarray | None = None  # the rows trained on, if stopping units are drawn here
         n_received = len(y)
@@ -504,7 +513,14 @@ class ImbalanceCorrected(ClassifierMixin, BaseEstimator):
             val = (X_val, np.asarray(y_val))
         elif share is not None and (flag is True
                                     or (flag == "auto" and n_received > EARLY_STOPPING_ROWS)):
-            held = validation_rows(float(share), keys=row_keys(X, y), y=y, seed=int(self.seed))
+            given = isinstance(self.cv, (list, tuple)) and len(self.cv) > 0
+            if given and groups is None and order is None:
+                raise ValueError("This fit draws its own stopping units but was handed inner "
+                                 "splits without the units: pass groups or order, or fit "
+                                 "through inner_cv.fit_pipeline.")
+            keys = row_keys(X, y) if groups is None and order is None else None
+            held = validation_rows(float(share), groups=groups, keys=keys, order=order, y=y,
+                                   seed=int(self.seed))
             val = (_take(X, np.flatnonzero(held)), y[held])
             kept = np.flatnonzero(~held)
             X, y = _take(X, kept), y[kept]

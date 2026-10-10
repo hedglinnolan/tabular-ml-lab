@@ -116,3 +116,68 @@ def test_the_threshold_reads_the_rows_received_not_the_resampled_rows(monkeypatc
     fit_pipeline(Pipeline([("model", model)]), X, y)
     assert len(seen[0]["train"]) > 10_000
     assert all(fit["stops"] is False and fit["val"] is None for fit in seen)
+
+
+def test_a_wrapper_built_directly_takes_the_stopping_rows_path(monkeypatch):
+    """Built with the defaults (``early_stopping=None``: the wrapped model's own ``"auto"``), the
+    wrapper still takes ``fit_pipeline``'s stopping-rows path: the outcome-reading step is fit on
+    the other rows only, and a band's refit is pinned to the full fit's stopping."""
+    from sklearn.base import clone
+
+    from turbotab.core.stages.modeling import pinned_to_full_fit
+
+    seen = _spied(monkeypatch)
+    X, y = _table(N_ROWS, seed=21)
+    pipeline = Pipeline([("select", TopByCorrelation(k=4)),
+                         ("model", ImbalanceCorrected(_booster(), "oversample"))]
+                        ).set_output(transform="pandas")
+    fitted = fit_pipeline(clone(pipeline), X, y)
+    held = validation_rows(0.1, keys=row_keys(X, y), y=y, seed=0)
+    stopping = set(X.index[held])
+    assert not set(fitted.named_steps["select"].fit_rows_) & stopping, (
+        "the outcome-reading step saw the stopping rows")
+    assert seen and all(set(fit["val"]) == stopping for fit in seen)
+
+    pinned = pinned_to_full_fit(clone(pipeline), fitted)
+    assert pinned.named_steps["model"].early_stopping is True
+
+
+def _people(n: int) -> np.ndarray:
+    return np.arange(n) // 3
+
+
+def test_the_wrapper_alone_draws_whole_people_and_the_latest_units(monkeypatch):
+    """Fit outside ``fit_pipeline`` with the units (``groups``) or their order in time
+    (``order``), the wrapper's own stopping units are whole people, or the latest units, exactly
+    as ``validation_rows`` draws them for those units."""
+    from turbotab.core.models.inner_cv import inner_splits
+
+    X, y = _table(N_ROWS, seed=5)
+    people = _people(N_ROWS)
+    when = people.astype(float)  # a person's rows share a time; later people are later
+    for kind, kwargs, held in [
+            ("groups", {"groups": people}, validation_rows(0.1, groups=people, y=y, seed=2)),
+            ("order", {"order": when}, validation_rows(0.1, order=when, y=y, seed=2))]:
+        seen = _spied(monkeypatch)
+        cv = inner_splits(people, 5, 2, y=y) if kind == "groups" else inner_splits(
+            None, 5, 2, order=when, y=y)
+        ImbalanceCorrected(_booster(), "oversample", cv=cv, seed=2).fit(X, y, **kwargs)
+        stopping = set(X.index[held])
+        split_people = set(people[held]) & set(people[~held])
+        assert not split_people  # whole units
+        if kind == "order":
+            assert people[held].min() > people[~held].max()  # the latest units
+        assert seen and all(set(fit["val"]) == stopping for fit in seen), kind
+        assert all(not set(fit["train"]) & stopping for fit in seen), kind
+        monkeypatch.undo()
+
+
+def test_handed_unit_splits_without_the_units_are_refused():
+    """Handed whole-unit inner splits but neither ``groups`` nor ``order``, a wrapper that would
+    draw its own stopping units refuses rather than draw rows that split a person."""
+    from turbotab.core.models.inner_cv import inner_splits
+
+    X, y = _table(N_ROWS, seed=6)
+    cv = inner_splits(_people(N_ROWS), 5, 0, y=y)
+    with pytest.raises(ValueError, match="groups"):
+        ImbalanceCorrected(_booster(), "oversample", cv=cv).fit(X, y)

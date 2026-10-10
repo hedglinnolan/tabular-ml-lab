@@ -212,13 +212,23 @@ def with_grouped_inner_cv(pipeline: Any, groups: Any | None, seed: int = 0) -> A
     return with_inner_cv(pipeline, groups=groups, seed=seed)
 
 
-def _stops_early(model: Any, n_rows: int) -> bool:
+def stopping_setting(model: Any) -> tuple[Any, float | None]:
+    """A model's effective ``(early_stopping, validation_fraction)``: read through its own
+    ``stopping_setting`` when it has one (an imbalance correction defers to the model it wraps,
+    RECIPES F12), else its parameters; ``(False, None)`` for a model that does not stop early."""
+    resolve = getattr(model, "stopping_setting", None)
+    if callable(resolve):
+        return resolve()
     params = model.get_params(deep=False)
     if "early_stopping" not in params or "validation_fraction" not in params:
+        return False, None
+    return params["early_stopping"], params["validation_fraction"]
+
+
+def _stops_early(model: Any, n_rows: int) -> bool:
+    flag, share = stopping_setting(model)
+    if share is None:
         return False
-    if params.get("validation_fraction") is None:
-        return False
-    flag = params["early_stopping"]
     return bool(flag is True or (flag == "auto" and n_rows > EARLY_STOPPING_ROWS))
 
 
@@ -299,7 +309,7 @@ def fit_pipeline(pipeline: Any, X: Any, y: Any, *, groups: Any = None, order: An
     # RECIPES F11 (§4.3): the stopping units are drawn first, and the steps before the model, their
     # inner splits included, are fit on the remaining rows only; the stopping rows are transformed
     # by those fitted steps, so a step that reads the outcome never sees them.
-    share = float(model.get_params(deep=False)["validation_fraction"])
+    share = float(stopping_setting(model)[1])
     held = validation_rows(share, groups=groups, keys=keys, order=order,
                            y=y_arr if is_classifier(model) else None, seed=seed)
     rest = ~held
@@ -322,4 +332,4 @@ def fit_pipeline(pipeline: Any, X: Any, y: Any, *, groups: Any = None, order: An
 
 
 __all__ = ["EARLY_STOPPING_ROWS", "HASH_COLUMNS", "fit_pipeline", "inner_splits", "row_keys",
-           "unit_labels", "validation_rows", "with_grouped_inner_cv", "with_inner_cv"]
+           "stopping_setting", "unit_labels", "validation_rows", "with_grouped_inner_cv", "with_inner_cv"]
