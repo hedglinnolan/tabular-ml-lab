@@ -1,5 +1,31 @@
 # Handoff
 
+**State on 2026-10-10 (~06:20 UTC), sprint active.**
+
+**Landed tonight:**
+- **E1q (e7bd40ef):** stacked NHANES cycles with design-based trends, trials, case-control samples and matched sets, the specification curve and leave-one-site-out validation. These are engine-only; routing them falls to E1, D1 and C1.
+- **E1c (this merge):**
+  - the outcome gate on every data route (Predict's seal included);
+  - F12;
+  - Surfaceable and the path fuzzer;
+  - materiality, its ledger and the triage;
+  - plain words on the cards.
+  - Combined with E1q, the full suite passed 4,431 of 4,432 tests. The one failure was the participant-flow test's known flake, fixed in 6fa7c23c.
+
+**The quest-log design** is on `design/quest-models-stage` @ 4ea11554, NOT merged. It was shown to Nolan as https://claude.ai/artifact/U7FKBERAxsf2NkKGwDiWgB. Two rulings are pending:
+- the card's word budget, against a question's own options;
+- the Recommended wording for observational designs, where "an association" is recommended.
+
+**The next wave** follows `plans/WAVE_C6A_PLAN.md`, which ends with my rulings in §7.
+- **Phase 1:** RT-1a, then MC-2b-1; SRC; Q-ad (triage dispositions and the invariance instrument); Q-b (the substitution sentence and the split sentence); Q-c (progress after Fit and the §7.2 wording).
+- **Phases 2–4:** RT-1b, then the families, then RT-5a, RT-5f and MC-2b.
+
+**Open for Nolan, from E1c:** I11's forward steps, which I ruled in plan §7.3.
+
+**Heavy runs to schedule with Nolan:**
+- the reference-journey recapture: the materiality calibration has 9 proof cases, and rows × SMD under-warns band 2;
+- T1 and T12.
+
 **State on 2026-10-10 (~03:15 UTC), sprint active.** `turbotab-next` = `0b807a5e`, GREEN on both CI tiers (fast and full, 10 jobs). Landed since 2026-10-08:
 - **E1a (5bcafd14):**
   - the model-family contract declarations, MC-1/MC-2a, with the syntax-tree no-switch test;
