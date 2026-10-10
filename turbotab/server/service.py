@@ -1246,6 +1246,17 @@ class ProjectService:
                 return None
             time.sleep(0.05)
 
+    def _settle_for_sentence(self, pid: str, ctx: DecisionContext, parsed: Any) -> DecisionContext:
+        """``ctx`` with the stages ``parsed``'s sentence states settled (WAVE_C6A ruling 5). A split
+        whose sentence states the seal plan (``voice.split_states_plan``) waits here for the plan,
+        before any lock is taken, so a plan still computing holds neither the plan lock nor a reader
+        of the log; every other sentence reads what is fresh now and never waits (a split under
+        inference that holds no rows out says only that none were)."""
+        if parsed.kind == "set_split" and voice.split_states_plan(parsed, ctx.state):
+            plan = self._settled(pid, "seal_plan")
+            return replace(ctx, settled=lambda stage: plan if stage == "seal_plan" else None)
+        return replace(ctx, settled=None)
+
     def decide(self, pid: str, decision: Any, *, system: bool = False,
                early: bool = False, unless_set: str | None = None) -> dict[str, Any]:
         """Validate and record ``decision``. ``system``: recorded by the server itself (the
@@ -1276,6 +1287,7 @@ class ProjectService:
                         "decision": None}])
         by = {"recorded_by": "turbotab" if system else "you", "early": ahead_of,
               "unless_set": unless_set}
+        ctx = self._settle_for_sentence(pid, ctx, parsed)
         if system or self._unseen_lock(pid, self.log(pid).records()) is None:
             record = self._append(pid, ctx, parsed, **by)
         else:
@@ -1312,10 +1324,6 @@ class ProjectService:
                 records = log.records()
             seen = False
         facts = SentenceFacts(ctx, parsed, records)
-        if parsed.kind == "set_split":
-            # The seal plan its sentence states is waited for here, before the log's lock, so a
-            # plan still computing holds no reader of the log (WAVE_C6A ruling 5).
-            facts.seal_plan  # noqa: B018 - cached for the sentence
         return log.append(  # raises Refusal for a revert it cannot make
             parsed, sentence=lambda d, before: voice.sentence_for(d, before, facts),
             after_estimates=seen, **by)

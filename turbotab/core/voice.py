@@ -1026,6 +1026,14 @@ def _below_detection_clause(d: Any, state: Any) -> str:
 
 # set_split
 
+def split_states_plan(d: Any, state: Any) -> bool:
+    """Whether the split's sentence states the seal plan (its grouping, its draw, time-ordered
+    folds): every split but one under inference that holds no rows out, whose sentence says only
+    that none were (WAVE_C6A ruling 5: only such a sentence waits for the plan to settle)."""
+    return not (getattr(state, "purpose", None) == "inference"
+                and float(getattr(d, "holdout", 0) or 0) == 0)
+
+
 @register_sentence("set_split")
 def _set_split(d: Any, state: Any, ctx: Any) -> str:
     task = getattr(state, "task", None) or _get(ctx, "detected_task")  # answered, else detected
@@ -1725,6 +1733,12 @@ def _set_estimand(d: Any, state: Any, ctx: Any) -> str:
     if d.effect == "direct":
         text += "; a direct effect holds the mediators fixed and needs their confounders adjusted too"
     return text
+
+
+# Q-b repair: the swap a substitution names is read from answers given after the estimand (the
+# adjustment set, the energy method), so the methods text restates the sentence on the answers as
+# they stand, as the caption and Table 2 read them; the Record keeps it as said.
+restated_whole("set_estimand")
 
 
 @register_sentence("set_adjustment")

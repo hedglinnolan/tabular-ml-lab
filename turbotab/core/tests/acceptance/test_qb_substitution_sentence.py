@@ -110,12 +110,14 @@ def test_without_carbohydrate_the_swap_names_the_sources_left_out(tmp_path):
         method="standard", energy_column="kcal", nutrients=nutrients))
     row = run["rows"]["sugar_g"]
     assert row["estimate"] == pytest.approx(swap, rel=1e-8)
-    assert row["meaning"] == ("sugar in place of other carbohydrate, alcohol and other energy, "
-                              "total energy fixed")
+    assert row["meaning"] == WITHOUT_CARB.removeprefix("1 g more ")
 
     said = _surfaces(_state(roles, nutrients))
     for where, text in said.items():
-        assert WITHOUT_CARB in text, (where, text)
+        # The preview's line keeps the measure within its caption words; the "1 g" gives way
+        # there, as on the card (the swap itself is whole).
+        assert (WITHOUT_CARB.removeprefix("1 g ") if where == "preview" else WITHOUT_CARB) in text, \
+            (where, text)
         assert "other carbohydrate (total carbohydrate" not in text, (where, text)
 
 

@@ -365,6 +365,13 @@ def exposure_features(state: Any, design: Design) -> list[str]:
                    for f in est.primary_features(design.columns, e, predictors)})
 
 
+# A measure by its short label, where the line has no room for its words (the preview's line).
+MEASURE_SHORT = {"mean_difference": "mean difference", "odds_ratio": "odds ratio",
+                 "hazard_ratio": "hazard ratio", "cumulative_odds_ratio": "cumulative odds ratio",
+                 "relative_risk_ratio": "relative-risk ratio", "risk_difference": "risk difference",
+                 "risk_ratio": "risk ratio"}
+
+
 def estimand_line(state: Any) -> str | None:
     """The estimand in one line: whose effect, on what, on which scale."""
     from turbotab.core import estimand as est
@@ -380,13 +387,19 @@ def estimand_line(state: Any) -> str | None:
         return (f"{effect} effect of each of {fmt_count(len(family))} study factors on {target}: "
                 f"{measure}.")
     # Q-b: a substitution says what it swaps, as the caption and the methods sentence say it
-    # (``estimand.substitution_words``). The swap is kept whole: where it and the measure do not
-    # fit the caption's words together, the measure (the card's own choice) gives way.
+    # (``estimand.substitution_words``), and what is measured. The swap is kept whole; to fit the
+    # caption's words, the measure is named by its short label, ahead of the swap; then the swap's
+    # "1 g" gives way (as on the card); only a swap too long even then goes without the measure.
     swapped = (est.substitution_words(state, spec.exposure)
                if spec.contrast == "substitution" else None)
     if swapped:
-        line = f"{effect} effect of {swapped} on {target}: {measure}."
-        return line if len(line.split()) <= CAPTION_WORDS else f"{effect} effect of {swapped} on {target}."
+        short = MEASURE_SHORT.get(str(spec.measure), measure)
+        bare = est.substitution_words(state, spec.exposure, amount=False) or swapped
+        lines = [f"{effect} effect of {swapped} on {target}: {measure}.",
+                 *(f"{effect} effect on {target} ({short}): {swap}."
+                   for swap in dict.fromkeys((swapped, bare)))]
+        fits = [line for line in lines if len(line.split()) <= CAPTION_WORDS]
+        return fits[0] if fits else f"{effect} effect of {swapped} on {target}."
     contrast = {"substitution": " in place of other calories",
                 "addition": " added to the diet"}.get(str(spec.contrast), "")
     return f"{effect} effect of {tick(spec.exposure)}{contrast} on {target}: {measure}."

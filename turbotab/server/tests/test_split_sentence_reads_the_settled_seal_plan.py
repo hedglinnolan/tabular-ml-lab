@@ -49,3 +49,43 @@ def test_a_split_recorded_while_the_seal_plan_recomputes_names_the_grouping(clie
     view = decide(client, pid, {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5})
     said = [r["sentence"] for r in view["decisions"] if r["decision"]["kind"] == "set_split"][-1]
     assert "keeping each `participant_id`'s rows together" in said, said
+
+
+def test_a_split_whose_sentence_states_no_plan_never_waits_for_it(client, monkeypatch):
+    """The Q-b repair: only a sentence that states the seal plan waits for it. Under inference
+    TurboTab records its own split, holding no rows out, inside the answer that makes it due; its
+    sentence ("No rows were held out ...") names no grouping, so that answer never waits on the
+    seal plan's recompute, nor holds a lock while it would.
+
+    Reference, by hand: under inference a split with holdout 0 says only that no rows were held out
+    (``voice._set_split``), so nothing it says reads the seal plan."""
+    from turbotab.server import service
+
+    calls: list[str] = []
+    real = service.ProjectService._settled
+
+    def watched(self, pid, stage, timeout=service.SETTLE_SECONDS):
+        calls.append(stage)
+        return real(self, pid, stage, timeout)
+
+    monkeypatch.setattr(service.ProjectService, "_settled", watched)
+    pid = open_by_path(client)
+    wait_for(client, pid, {"ingest": "fresh", "profile": "fresh"})
+    decide(client, pid, {"kind": "set_lens", "lenses": ["dietary"]})
+    decide(client, pid, {"kind": "set_target", "column": "hba1c"})
+    decide(client, pid, {"kind": "set_purpose", "purpose": "inference"})
+    wait_for(client, pid, {"roles": "fresh", "target_info": "fresh", "cohort": "fresh"})
+    roles = client.get(f"/api/projects/{pid}/stages/roles").json()["artifact"]
+    decide(client, pid, {"kind": "set_roles", "roles": {c["column"]: c["proposed"] for c in roles["columns"]}})
+    decide(client, pid, {"kind": "set_missing", "strategy": "complete_case"})
+    end = time.monotonic() + 60
+    while True:
+        splits = [r for r in client.get(f"/api/projects/{pid}").json()["decisions"]
+                  if r["decision"]["kind"] == "set_split"]
+        if splits or time.monotonic() > end:
+            break
+        time.sleep(0.05)
+    assert splits, "TurboTab recorded no split under inference"
+    assert splits[-1]["decision"]["holdout"] == 0
+    assert splits[-1]["sentence"].startswith("No rows were held out"), splits[-1]["sentence"]
+    assert calls == [], calls

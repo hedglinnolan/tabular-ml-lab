@@ -1781,18 +1781,21 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
                 if t.column in groups else t.source)
         if swapping:
             if t.column in groups:
+                # The remainder (WP6.7: "remaining fat (holding SFA, MUFA, PUFA fixed)"), its
+                # parts named as nouns, never as columns.
                 kids = [_noun(k) for k, _ in present if k.column in groups[t.column]]
-                swaps[m] = Swap(f"{t.source} other than {_and(kids)}", swap, ("total energy",))
+                swaps[m] = Swap(f"remaining {t.source} (holding {_and(kids)} fixed)", swap,
+                                ("total energy",))
             elif _part_of(t.column) and t.source not in whole:
                 # A part alone (sugar with no total carbohydrate): the rest of its source is among
                 # what it displaces, named (ME-04).
                 swaps[m] = Swap(_noun(t), _in_place_of(named, [f"other {t.source}", *omitted]),
                                 ("total energy",))
-                meanings[m] = f"{swaps[m].noun} {swaps[m].in_place_of}, total energy fixed"
-                continue
             else:
                 swaps[m] = Swap(_noun(t), swap, ("total energy",))
-            meanings[m] = f"{what} {swap}, total energy fixed"
+            # Table 2's row says the swap as the caption, the methods sentence, the preview and
+            # the card say it (Q-b repair): one wording for one coefficient.
+            meanings[m] = swaps[m].phrase
         elif form == "residual_energy_dropped":
             meanings[m] = f"energy-adjusted {what}; total energy not in the outcome model"
         elif form == "none":
@@ -1851,12 +1854,17 @@ def substitution_swap(adjustment: Any, predictors: Sequence[str], roles: Mapping
     return described.swaps.get(_matrix_name(str(exposure), described.form, adjusted, E))
 
 
-def amount_of(column: str) -> str:
-    """One unit of ``column`` as a sentence says it: ``1 g`` for an amount in grams (or unmarked,
-    which the Atwater factors read as grams), ``1 kcal``, ``1 kJ``, ``1 mg``, else ``1 unit``."""
-    unit = unit_of(column)
-    return "1 " + {"grams": "g", "unmarked": "g", "kcal": "kcal", "kj": "kJ",
-                   "milligrams": "mg", "micrograms": "µg"}.get(unit, "unit")
+# The units a name or its codebook declares that a sentence may say one of (``unit_of``).
+_AMOUNTS = {"grams": "g", "kcal": "kcal", "kj": "kJ", "milligrams": "mg", "micrograms": "µg"}
+
+
+def amount_of(column: str) -> Optional[str]:
+    """One unit of ``column`` as a sentence says it (``1 g``, ``1 kcal``, ``1 kJ``, ``1 mg``),
+    read from its name's suffix or its codebook (``unit_of``). None when the name declares no such
+    unit (unmarked, teaspoons, a percentage): a unit not read is never stated (the leash), and the
+    sentence says "more sugar", per unit of the column."""
+    unit = _AMOUNTS.get(unit_of(column))
+    return f"1 {unit}" if unit else None
 
 
 def omitted_energy(frame: pd.DataFrame, energy_column: Optional[str], columns: Sequence[str], *,
