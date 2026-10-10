@@ -245,30 +245,24 @@ def target_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         after=after,
     )]
     numeric = pd.to_numeric(values, errors="coerce") if values.dtype.kind in "biuf" else None
-    # The outcome's own distribution, here and not at the eligibility question: choosing what to
-    # predict may look at it; choosing who is in the study may not (lockbox constitution §04).
+    # The outcome card shows only what its own questions need: for a number, its observed range and
+    # recorded unit (the unit and impossible-value questions read them). Its distribution, a
+    # histogram or a median and middle half, waits for the outcome alone's gate (CROSSWALK, "The
+    # outcome card"; lockbox constitution §04: "is this data corrupted?", not "where to cut?").
     if numeric is not None and values.dtype.kind != "b" and numeric.notna().sum() > 1 \
             and numeric.nunique() > 2:
         from turbotab.core.units import outcome_unit, recorded_unit, with_unit
 
         x = numeric.to_numpy(dtype=float, na_value=np.nan)
-        hist, _ = _histogram_pair(x, x)
         finite = x[np.isfinite(x)]
         # Only a recorded unit is stated (BLUEPRINT §14.3: a header's letters are a name).
         unit, _ = outcome_unit(column, finite, recorded=recorded_unit(ctx.state, column))
-        median = with_unit(f"{np.median(finite):,.4g}", unit)
-        views.append(DistributionView(
-            title=clip_words(f"Values of `{column}`", TITLE_WORDS),
-            caption=clip_words(f"`{column}`: median {median}, middle half "
-                               f"{np.percentile(finite, 25):,.4g}–{np.percentile(finite, 75):,.4g}, "
-                               f"over {fmt_count(len(finite))} rows.", CAPTION_WORDS),
-            emphasis=[column],
-            column=column,
-            before=hist,
-            after=hist,
-            before_label="Every recorded value" + (f" ({unit})" if unit else ""),
-            after_label="Every recorded value" + (f" ({unit})" if unit else ""),
-        ))
+        low = with_unit(f"{finite.min():,.4g}", unit)
+        high = with_unit(f"{finite.max():,.4g}", unit)
+        when = ("once you decide which rows to hold out"
+                if getattr(ctx.state, "purpose", None) == "prediction" else "after Who's in")
+        ctx.read["note"] = (f"`{column}` runs from {low} to {high} over {fmt_count(len(finite))} "
+                            f"rows; its distribution is shown {when}.")
     else:
         ctx.read["note"] = _levels_note(column, values)
     return views

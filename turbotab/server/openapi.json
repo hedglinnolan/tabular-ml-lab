@@ -1617,7 +1617,7 @@
           "data"
         ],
         "summary": "Table",
-        "description": "Rows ``[offset, offset + limit)`` in file order, of the ``columns`` asked for (the ones a\ngrid shows): only those are read, so a window of a 20,000-column table costs what its\nvisible columns cost.",
+        "description": "Rows ``[offset, offset + limit)`` in file order, of the ``columns`` asked for (the ones a\ngrid shows): only those are read, so a window of a 20,000-column table costs what its\nvisible columns cost. Once the outcome is chosen, a window leaves it out until the outcome\nbeside a column opens, and says so in ``withheld`` (CROSSWALK disagreement 2).",
         "operationId": "table_api_projects__pid__table_get",
         "parameters": [
           {
@@ -1854,6 +1854,7 @@
           "data"
         ],
         "summary": "Histogram",
+        "description": "The column's histogram. The outcome's is the outcome alone: refused with its line until\nits gate opens, then drawn on the rows its view reads (``turbotab.core.outcome_gate``).",
         "operationId": "histogram_api_projects__pid__columns__name__histogram_get",
         "parameters": [
           {
@@ -1919,7 +1920,7 @@
             }
           },
           "409": {
-            "description": "The table has not been read yet (the ingest stage is not fresh)",
+            "description": "The table is not read yet, or the outcome's distribution is not open or not recorded yet",
             "content": {
               "application/json": {
                 "schema": {
@@ -4267,6 +4268,44 @@
           "n_infinite": {
             "type": "integer",
             "title": "N Infinite"
+          },
+          "withheld": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withheld"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "training",
+                  "analyzed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          },
+          "record": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record"
           }
         },
         "type": "object",
@@ -4284,7 +4323,10 @@
           "q75",
           "max",
           "top",
-          "n_infinite"
+          "n_infinite",
+          "withheld",
+          "rows",
+          "record"
         ],
         "title": "ColumnSummary"
       },
@@ -7365,6 +7407,21 @@
           "n_missing": {
             "type": "integer",
             "title": "N Missing"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "training",
+                  "analyzed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
           }
         },
         "type": "object",
@@ -7372,7 +7429,8 @@
           "column",
           "edges",
           "counts",
-          "n_missing"
+          "n_missing",
+          "rows"
         ],
         "title": "Histogram"
       },
@@ -9556,7 +9614,8 @@
             "type": "string",
             "enum": [
               "relationship",
-              "distribution"
+              "distribution",
+              "table"
             ],
             "title": "View"
           },
@@ -9607,6 +9666,17 @@
             },
             "type": "object",
             "title": "Levers"
+          },
+          "rows_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows Key"
           }
         },
         "additionalProperties": false,
@@ -9617,7 +9687,8 @@
           "target",
           "rows",
           "n_rows",
-          "levers"
+          "levers",
+          "rows_key"
         ],
         "title": "OutcomeViewSpec"
       },
@@ -18621,6 +18692,32 @@
           "offset": {
             "type": "integer",
             "title": "Offset"
+          },
+          "withheld": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Withheld"
+          },
+          "record": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Labels"
           }
         },
         "type": "object",
@@ -18628,7 +18725,10 @@
           "columns",
           "rows",
           "total_rows",
-          "offset"
+          "offset",
+          "withheld",
+          "record",
+          "labels"
         ],
         "title": "TableWindow"
       },
@@ -19354,7 +19454,8 @@
             "type": "string",
             "enum": [
               "relationship",
-              "distribution"
+              "distribution",
+              "table"
             ],
             "title": "View"
           },
@@ -19418,6 +19519,17 @@
               }
             ],
             "title": "Levers"
+          },
+          "rows_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows Key"
           }
         },
         "additionalProperties": false,
@@ -19440,7 +19552,8 @@
             "type": "string",
             "enum": [
               "relationship",
-              "distribution"
+              "distribution",
+              "table"
             ],
             "title": "View"
           },
@@ -19504,6 +19617,17 @@
               }
             ],
             "title": "Levers"
+          },
+          "rows_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows Key"
           }
         },
         "additionalProperties": false,
@@ -19515,7 +19639,8 @@
           "target",
           "rows",
           "n_rows",
-          "levers"
+          "levers",
+          "rows_key"
         ],
         "title": "ViewOutcome"
       },
@@ -41687,7 +41812,8 @@
           "view": {
             "enum": [
               "relationship",
-              "distribution"
+              "distribution",
+              "table"
             ],
             "title": "View",
             "type": "string"
@@ -41756,6 +41882,18 @@
             ],
             "default": null,
             "title": "Levers"
+          },
+          "rows_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rows Key"
           }
         },
         "required": [
@@ -41765,7 +41903,8 @@
           "target",
           "rows",
           "n_rows",
-          "levers"
+          "levers",
+          "rows_key"
         ],
         "title": "ViewOutcome",
         "type": "object"

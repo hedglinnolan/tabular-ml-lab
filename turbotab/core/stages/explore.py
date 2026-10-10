@@ -167,7 +167,7 @@ def lever_answers(state: Any, column: str, view: str) -> dict[str, str]:
     the outcome's distribution, its scale and the imbalance correction."""
     from turbotab.core.decisions import left_out
 
-    if view == "distribution":
+    if view in ("distribution", "table"):  # the outcome's own levers
         scale = getattr(state, "outcome_scale", None)
         levers = getattr(state, "levers", None)
         return {"scale": str(getattr(scale, "scale", None) or "as recorded"),
@@ -206,11 +206,13 @@ def hand_levers(state: Any) -> list[HandLever]:
             current = now.get(lever)
             if current is None or current == then:
                 continue
-            subject = ("the outcome's" if spec.view == "distribution" else f"`{spec.column}`'s")
+            subject = ("`{}`'s".format(spec.column) if spec.view == "relationship"
+                       else "the outcome's")
             what = f"{subject} {_LEVER_WORDS.get(lever, lever)}"
             change = f"{_value_words(lever, then)} to {_value_words(lever, current)}"
-            seen = ("the outcome's distribution was viewed" if spec.view == "distribution"
-                    else f"its relationship with the outcome was viewed")
+            seen = {"distribution": "the outcome's distribution was viewed",
+                    "table": "the outcome's values were viewed beside the other columns"}.get(
+                        spec.view, "its relationship with the outcome was viewed")
             if inference:
                 said = f"{what} was changed from {change} after {seen} (forking paths)"
             else:
@@ -827,8 +829,9 @@ def view_sentence(d: Any, state: Any) -> str:
 
     rows = f" on the {count(d.n_rows)} {d.rows} rows" if d.n_rows else (
         f" on the {d.rows} rows" if d.rows else "")
-    what = (f"The outcome's relationship with {listing(d.columns)}" if d.view == "relationship"
-            else "The outcome's distribution")
+    what = {"relationship": f"The outcome's relationship with {listing(d.columns)}",
+            "table": "The outcome's values beside the other columns"}.get(
+                d.view, "The outcome's distribution")
     return (f"{what} was viewed in Explore{rows} and recorded as looked at ({FORKING}: a choice made "
             f"after it is disclosed)")
 

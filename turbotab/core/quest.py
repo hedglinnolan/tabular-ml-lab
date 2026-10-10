@@ -1052,8 +1052,11 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
                     facts: Facts | None = None) -> list[tuple[str, QuestLine]]:
     from turbotab.core.voice import question_name
 
+    from turbotab.core.outcome_gate import drawn
+
     first = next((s for s in steps if _get(s, "status") in ("open", "waiting")), None)
     purpose = getattr(state, "purpose", None)
+    drew_under_predict = purpose == "prediction" and drawn(log.records)
     lines = []
     for step in steps:
         key, status = _get(step, "key"), _get(step, "status")
@@ -1085,6 +1088,12 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
             reopened = _reopened_by(log, answering_kinds(key), question_reads(key),
                                     answer_holds(key))
         writer = log.by_id.get(decision_id) if decision_id else None
+        if key == "split" and purpose == "prediction" and status == "answered" \
+                and not drew_under_predict:
+            # A split TurboTab recorded under Estimate, or one recorded before the goal was
+            # Predict, holds no draw the person made: the question is open again, and the
+            # outcome's views wait for it (``outcome_gate.drawn``).
+            status, decision_id, writer = "open", None, None
         by_turbotab = getattr(writer, "recorded_by", "you") == "turbotab"
         changed = (_changed_since_decided(key, writer, log)
                    if status == "answered" and writer is not None else None)

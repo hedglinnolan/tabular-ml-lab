@@ -133,6 +133,14 @@ def relationships_served(artifact: Any, state: Any, pressed: bool) -> Any:
     if gate is None:
         return artifact
     reason = RELATIONSHIPS_AFTER_LOCK if _get(state, "purpose") is not None else PURPOSE_FIRST
+    return withhold_relationships(artifact, reason)
+
+
+def withhold_relationships(artifact: Any, reason: str) -> Any:
+    """The explore artifact with each outcome relationship's points withheld, ``reason`` in their
+    place, and nothing offered to record as viewed. ``artifact`` is never changed in place."""
+    if not isinstance(artifact, Mapping):
+        return artifact
     findings = []
     for f in artifact.get("findings") or []:
         if isinstance(f, Mapping) and f.get("kind") == "outcome_relationship":
@@ -289,4 +297,5 @@ def opened_by(press: Mapping[str, Any] | None) -> bool:
 __all__ = ["FIT_FIRST", "FitLock", "HOLD_SECONDS", "LOCK_FIRST", "PRESS_FILE", "PRESS_FIT",
            "PURPOSE_FIRST", "RELATIONSHIPS_AFTER_LOCK", "REARM", "fit_estimate", "fit_lock", "gate",
            "holds", "opened_by", "pressed_for", "read_press", "record_press", "relationships_served",
+           "withhold_relationships",
            "served", "serving_gate", "withdraw_press"]

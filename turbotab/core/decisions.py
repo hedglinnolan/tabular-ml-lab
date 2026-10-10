@@ -1674,8 +1674,9 @@ class SetExplain(_DecisionModel):
 # ``methods/levers.py``, ``models/variable_selection.py``, ``models/decision_curve.py``).
 # ``view_outcome``: an outcome view the user opened in Explore, recorded as looked at under both
 # purposes (forking paths; Gelman & Loken 2013). ``target``, ``rows``, ``n_rows`` and ``levers``
-# (each viewed column's lever answers at its first look) are filled by the server.
-OutcomeView = Literal["relationship", "distribution"]
+# (each viewed column's lever answers at its first look) are filled by the server. ``table``: the
+# outcome's values by row beside the other columns, as a data route's row window shows them.
+OutcomeView = Literal["relationship", "distribution", "table"]
 
 
 class OutcomeViewSpec(_Value):
@@ -1685,6 +1686,9 @@ class OutcomeViewSpec(_Value):
     rows: Literal["training", "analyzed"] | None = None
     n_rows: int | None = None
     levers: dict[str, str] = Field(default_factory=dict)
+    # The rows the view was drawn on, as the server digests them (``outcome_gate.rows_key``): a data
+    # route serves an outcome view only once it is recorded for the rows it reads now.
+    rows_key: str | None = None
 
 
 class ViewOutcome(_DecisionModel):
@@ -1695,6 +1699,7 @@ class ViewOutcome(_DecisionModel):
     rows: Literal["training", "analyzed"] | None = None
     n_rows: int | None = None
     levers: dict[str, dict[str, str]] | None = None
+    rows_key: str | None = None  # handed back by the data route that serves the view
 
 
 # ``set_levers`` (prediction): Explore's levers as in-fold rules the resampling repeats. ``forms``:
@@ -2760,7 +2765,7 @@ register_kind(SetExplain, "explain", value=lambda d: ExplainSpec(**d.model_dump(
 register_kind(ViewOutcome, "outcome_views", value=lambda d: None,
               entries=lambda d: [("outcome_views", f"{d.view}:{c}", OutcomeViewSpec(
                   view=d.view, column=c, target=d.target, rows=d.rows, n_rows=d.n_rows,
-                  levers=dict((d.levers or {}).get(c) or {})))
+                  levers=dict((d.levers or {}).get(c) or {}), rows_key=d.rows_key))
                   for c in (d.columns or ([d.target] if d.target else []))])
 register_kind(SetLevers, "levers", value=lambda d: LeverSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetSelection, "selection",

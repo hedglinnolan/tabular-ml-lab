@@ -69,10 +69,18 @@ def plan_slots() -> tuple[str, ...]:
     return tuple(sorted({slot for name in names for slot in graph[name].reads}))
 
 
+# Slots the estimates read that record looks, not choices: an outcome view opened (``view_outcome``,
+# forking paths) is disclosed beside the plan and never changes it, so a look after the lock, such
+# as the outcome beside a column that opens with it (CROSSWALK disagreement 2), keeps the lock.
+LOOKS = ("outcome_views",)
+
+
 def plan_of(state: Any) -> dict[str, Any]:
-    """The plan as ``state`` holds it: each answered slot the estimates read, as JSON."""
+    """The plan as ``state`` holds it: each answered slot the estimates read, as JSON (the looks
+    recorded left out)."""
     values = state.model_dump(mode="json")
-    return {slot: values[slot] for slot in plan_slots() if values.get(slot) is not None}
+    return {slot: values[slot] for slot in plan_slots()
+            if slot not in LOOKS and values.get(slot) is not None}
 
 
 def digest(plan: Mapping[str, Any]) -> str:
