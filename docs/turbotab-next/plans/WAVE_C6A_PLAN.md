@@ -454,3 +454,13 @@ Times are rough estimates for the dev machine.
 6. **The trials' `MIXED_MODEL` and `GEE_MODEL` constants** pass the MC-2 check only by naming. MC-2b-4 lists the trial core explicitly as not a model family in the check's rules.
 7. **Recommended readings.** Every ambiguity in §5 is ruled as the reading this plan recommends.
 8. **Phase 1:** RT-1a, then MC-2b-1 on its branch; SRC; Q-ad; Q-b; Q-c. Opus builds everything except SRC, MC-2b-1 and Q-c, which Sonnet builds. Every package gets an Opus verifier.
+
+9. **Seeds on the plain path (2026-10-10, after phase 2).** The plain path keeps the raw split seed for stopping sets and nested splits; only a search's own draws use `derive_seed`. Both are threaded from the split, which is what F15 requires.
+10. **The wp7 re-pin is accepted.** Its elastic-net entries moved only because the split's seed now reaches the inner folds. turbotab-next 05325dca with only that seed set to 707 gives the same numbers, and linear and boosted trees match to 5e-11. RT-5f re-pins them again when it changes the penalty path.
+11. **Ridge's knob factors with more than two classes stay refused, with a reason,** in v2. Contract C7 gives none for coupled coefficient vectors; INBOX.
+12. **RECIPES §4.1** takes the 2p(1−p) softmax hessian for XGBoost with more than two classes.
+13. **Phase 3** is RT-5a and RT-5f, plus four packages from phase 2's open items and the quest-log critique:
+    - **F15-rest:** the split's seed, design and cancel scope reach every remaining refit, and fresh specs copy the plans;
+    - **VAL:** selection validators;
+    - **TRUST:** the critique's engine trust leaks, and the collinear tier wired;
+    - **MC2-CLEAN:** the mc2b2 leftovers. Phase 4's MC-2b-3 and MC-2b-4 follow.
