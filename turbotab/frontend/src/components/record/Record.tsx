@@ -17,8 +17,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { LayoutGroup, motion } from "motion/react";
 import { isRefusalError } from "../../api/client";
-import { useColumnSummaries, useDecide, useRunStage, useTeaching } from "../../api/queries";
-import type { InterviewStep, QuestionKey, Role, TeachingEntry } from "../../api/m1-types";
+import { useDecide, useRunStage, useTeaching } from "../../api/queries";
+import type { InterviewStep, QuestionKey, TeachingEntry } from "../../api/m1-types";
 import { NOT_YET } from "../../api/m2-types";
 import type {
   Decision,
@@ -40,32 +40,11 @@ import { REOPEN_EVENT, StageFailure, rootFailure } from "../Failure";
 import { DesignWarnings, warningsAbout } from "../stage/DesignWarnings";
 import { StageRetry, needsRetry } from "../StageRetry";
 import { DecisionSentence, History, Pending } from "./blocks";
-import {
-  EnergyAsk,
-  ExclusionsAsk,
-  MissingAsk,
-  ModelsAsk,
-  SubstitutionAsk,
-  SurveyAsk,
-} from "./ask/ChoiceQuestions";
 import type { AskProps } from "./ask/common";
-import { LensAsk, PurposeAsk, TargetAsk, TaskAsk } from "./ask/FactQuestions";
-import { RolesAsk } from "./ask/RolesAsk";
-import { OpenSealStep, SealAsk } from "./ask/SealQuestions";
-import {
-  AggregationAsk,
-  EventAsk,
-  GrainAsk,
-  OrientationAsk,
-  RepeatKindAsk,
-  TemporalAsk,
-  UnitAsk,
-} from "./ask/SequenceQuestions";
-import { AskCard } from "./ask/AskCard";
+import { OpenSealStep } from "./ask/SealQuestions";
+import { AskFor, SUBJECT } from "./AskFor";
 import { FindingsCards } from "./Findings";
 import { layoutFlow } from "./flow";
-import { compose, taskFollowup } from "./generic/compose";
-import { GenericAsk } from "./generic/GenericAsk";
 import { findingState, followUps, heldFor, type DeferredChoice } from "./findingState";
 import { FailureNote, RefusalNote } from "./Refusal";
 import { RepairsSection, Resurfaced, type RepairAnswer } from "./Repairs";
@@ -75,39 +54,6 @@ import { StatedSkip } from "./StatedSkip";
 import { ConceptDrawer } from "./teach";
 import s from "./Record.module.css";
 import k from "./ask/seal.module.css";
-
-/** Each question's name in running text ("Change the column roles"). */
-export const SUBJECT: Record<QuestionKey, string> = {
-  lens: "the lens",
-  orientation: "the table's orientation",
-  target: "the outcome",
-  event: "the event level",
-  task: "the task",
-  follow_up: "the follow-up",
-  design: "the study design",
-  purpose: "the purpose",
-  grain: "the grain",
-  repeat_kind: "repeats or time points",
-  unit: "the unit of analysis",
-  aggregation: "how rows are combined",
-  temporal: "temporal prediction",
-  roles: "the column roles",
-  clusters: "the grouping",
-  survey: "the survey answer",
-  estimand: "the exposure and its effect",
-  adjustment: "the adjustment set",
-  time_varying: "the time-varying exposure",
-  exclusions: "the eligibility",
-  missing: "the missing values",
-  split: "the seal",
-  energy_adjustment: "the energy adjustment",
-  form: "the functional form",
-  modification: "the effect modifiers",
-  causal: "the causal estimate",
-  models: "the models",
-  substitution: "the substitution",
-  open_seal: "opening the seal",
-};
 
 /** What each stage is doing while a question waits on it: the job chip's own words. */
 const STAGE_WORK = STAGE_LABEL;
@@ -163,22 +109,11 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
 
   const ingest = useStage(pid, view, "ingest");
   const oriented = useStage(pid, view, "oriented");
-  const structure = useStage(pid, view, "structure");
-  const profile = useStage(pid, view, "profile");
   const targetInfo = useStage(pid, view, "target_info");
   const findings = useStage(pid, view, "findings");
-  const roles = useStage(pid, view, "roles");
-  const proposals = useStage(pid, view, "proposals");
   const sealPlan = useStage(pid, view, "seal_plan");
   const split = useStage(pid, view, "split");
-  const shelf = useStage(pid, view, "shelf");
   const design = useStage(pid, view, "design");
-  // The generic question's cards (compose.ts): the causal lane's and the time-varying lane's.
-  const causalDesign = useStage(pid, view, "causal_design");
-  const timeVarying = useStage(pid, view, "time_varying");
-  // FORM: the form question's card.
-  const forms = useStage(pid, view, "forms");
-  const summaries = useColumnSummaries(pid, stages.ingest?.status === "fresh").data;
 
   const [reopened, setReopened] = useState<Partial<Record<QuestionKey, boolean>>>({});
   const [answer, setAnswer] = useState<Answer | null>(null);
@@ -204,10 +139,6 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
     }
     return out;
   }, [decisions]);
-  const summaryMap = useMemo(
-    () => (summaries ? new Map(summaries.map((x) => [x.name, x])) : undefined),
-    [summaries],
-  );
 
   const stepOf = (key: QuestionKey) => interview.find((st) => st.key === key);
   const openStep = interview.find((st) => st.status === "open");
@@ -391,55 +322,6 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
     })();
   }, [interview, decisions, allFindings, findingsReady, byId, held, decideAsync, since]);
 
-  const coachFor = (key: QuestionKey): ReactNode => {
-    if (key === "missing") return null; // its blanks and their reason are already on the card
-    const note = proposals?.artifact?.coach?.[key];
-    if (!note) return null;
-    // Eligibility withholds the outcome's distribution (constitution §04): no note about it.
-    if (note.anchor.kind === "column" && note.anchor.ref === state.target) return null;
-    return <Prose text={note.text} />;
-  };
-
-  /** The ledger's one ask card on the open step that asks (BLUEPRINT §14.2), inside its question. */
-  const askFor = (key: QuestionKey): ReactNode => {
-    const st = stepOf(key);
-    if (!st?.ask || st.status !== "open") return null;
-    return (
-      <AskCard
-        card={st.ask}
-        pending={decide.isPending}
-        record={(d, at) => record(key, d, at)}
-        answerAt={answerFor(key)}
-        // §11.4 rule 4: the block that confirms every line unlocks once a guess was confirmed.
-        mastered={decisions.some(
-          (r) => r.decision.kind === "confirm_reading" || r.decision.kind === "confirm_readings",
-        )}
-      />
-    );
-  };
-
-  const props = (key: QuestionKey): AskProps => ({
-    entry: entries.get(key),
-    pending: decide.isPending,
-    record: (d, at) => record(key, d, at),
-    keep:
-      keepFor(key) && (currentRecord(key) || stepOf(key)?.status === "skipped")
-        ? keepFor(key)
-        : undefined,
-    answerAt: answerFor(key),
-    shell: {
-      qkey: key,
-      now: nowKey === key,
-      arriving: arrivingKey === key,
-      onArrived,
-      onOpenDrawer: () => setDrawer(key),
-      reopened: !!reopened[key],
-      coach: coachFor(key),
-      resurfaced: resurfacedFor(key),
-      ask: askFor(key),
-    },
-  });
-
   /** The live record behind a question's answer: the Router names it. */
   const currentRecord = (key: QuestionKey): DecisionRecord | undefined => {
     const id = stepOf(key)?.decision_id;
@@ -470,204 +352,31 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
   const columns = (oriented?.artifact?.columns ?? ingest?.artifact?.columns)?.filter(
     (col) => col.name !== "__row_id",
   );
-  const columnInfo = useMemo(
-    () => new Map((columns ?? []).map((col) => [col.name, col])),
-    [columns],
-  );
   const ti = targetInfo?.artifact ?? null;
-  const waitingFor = (stage: string, then: string): ReactNode => (
-    <Pending>
-      {STAGE_WORK[stage] ?? "Computing"}… {then}
-    </Pending>
-  );
-  const structureArtifact = structure?.artifact ?? null;
 
-  const ask = (key: QuestionKey): ReactNode => {
-    const p = props(key);
-    switch (key) {
-      case "lens":
-        return (
-          <LensAsk
-            {...p}
-            current={state.lens}
-            hints={profile?.artifact?.lens_hints ?? []}
-            hintsNote={
-              needsRetry(stages.profile) ? (
-                <p className={s.hintsMissing}>
-                  No lens hints: summarizing the columns did not finish.{" "}
-                  <StageRetry pid={pid} status={stages.profile} />
-                </p>
-              ) : undefined
-            }
-          />
-        );
-      case "orientation":
-        return (
-          <OrientationAsk
-            {...p}
-            oriented={oriented?.artifact ?? null}
-            current={state.orientation}
-          />
-        );
-      case "target":
-        return <TargetAsk {...p} columns={columns} summaries={summaryMap} current={state.target} />;
-      case "event":
-        return ti && ti.column === state.target ? (
-          <EventAsk {...p} info={ti} current={state.event} />
-        ) : (
-          waitingFor("target_info", "Then the outcome's levels are read.")
-        );
-      case "task": {
-        // WP18: what the task still asks (the outcome's scale, an ordinal outcome's order).
-        const st = stepOf("task");
-        const asks = st ? taskFollowup({ key, step: st, state, targetInfo: ti }) : null;
-        if (asks) return <GenericAsk key={`task:${st?.followup}`} {...p} q={asks} />;
-        return ti ? (
-          <TaskAsk {...p} info={ti} current={state.task} />
-        ) : (
-          waitingFor("target_info", "Then the task is read from it.")
-        );
-      }
-      case "purpose":
-        return <PurposeAsk {...p} current={state.purpose} />;
-      case "grain":
-        return (
-          <GrainAsk
-            {...p}
-            structure={structureArtifact}
-            target={state.target}
-            columns={(columns ?? []).map((col) => col.name)}
-            current={state.grain}
-          />
-        );
-      case "repeat_kind":
-        return <RepeatKindAsk {...p} structure={structureArtifact} current={state.repeat_kind} />;
-      case "unit":
-        return (
-          <UnitAsk
-            {...p}
-            structure={structureArtifact}
-            nRows={oriented?.artifact?.n_rows ?? ingest?.artifact?.n_rows ?? null}
-            current={state.unit}
-          />
-        );
-      case "aggregation":
-        return (
-          <AggregationAsk
-            {...p}
-            structure={structureArtifact}
-            task={state.task ?? ti?.task ?? null}
-            current={state.aggregation}
-          />
-        );
-      case "temporal":
-        return <TemporalAsk {...p} structure={structureArtifact} current={state.temporal} />;
-      case "roles":
-        return roles?.artifact ? (
-          <RolesAsk
-            key={roles.key ?? "roles"}
-            {...p}
-            artifact={roles.artifact}
-            current={(state.roles as Record<string, Role> | null) ?? null}
-          />
-        ) : (
-          waitingFor("roles", "Then each column's role is asked.")
-        );
-      case "exclusions":
-        return (
-          <ExclusionsAsk
-            {...p}
-            proposals={proposals?.artifact ?? undefined}
-            current={state.exclusions}
-            // Eligibility is asked in scientific terms, with the outcome withheld (§04).
-            numericColumns={(columns ?? [])
-              .filter(
-                (col) =>
-                  (col.dtype === "numeric" || col.dtype === "integer") && col.name !== state.target,
-              )
-              .map((col) => col.name)}
-          />
-        );
-      case "missing":
-        return (
-          <MissingAsk
-            {...p}
-            proposals={proposals?.artifact ?? undefined}
-            columns={columnInfo}
-            purpose={state.purpose}
-            current={state.missing}
-          />
-        );
-      case "split":
-        return (
-          <SealAsk
-            {...p}
-            plan={sealPlan?.artifact ?? null}
-            roles={roles?.artifact ?? undefined}
-            current={state.split}
-          />
-        );
-      case "energy_adjustment":
-        return (
-          <EnergyAsk
-            {...p}
-            reading={proposals?.artifact?.energy}
-            current={state.energy_adjustment}
-            leftOut={state.missing?.drop_columns ?? []}
-          />
-        );
-      case "models":
-        return shelf?.artifact ? (
-          <ModelsAsk
-            {...p}
-            shelf={shelf.artifact}
-            current={state.models}
-          />
-        ) : (
-          waitingFor("shelf", "Then the model families are offered.")
-        );
-      case "substitution":
-        return (
-          <SubstitutionAsk {...p} pairs={design?.artifact?.substitution_pairs.length ?? null} />
-        );
-      case "survey":
-        return (
-          <SurveyAsk
-            {...p}
-            proposal={proposals?.artifact?.survey ?? undefined}
-            current={state.survey}
-          />
-        );
-      default: {
-        // No step is ever blank: every other key is the generic question, composed from the
-        // server's words and the cards its stage serves (generic/compose.ts).
-        const st = stepOf(key);
-        if (!st) return null;
-        const q = compose({
-          key,
-          step: st,
-          state,
-          entry: entries.get(key),
-          targetInfo: ti,
-          roles: roles?.artifact,
-          proposals: proposals?.artifact,
-          causalDesign: causalDesign?.artifact,
-          timeVarying: timeVarying?.artifact,
-          forms: forms?.artifact,
-          columns,
-        });
-        const subject = SUBJECT[key];
-        return (
-          <GenericAsk
-            key={`${key}:${st.status}`}
-            {...p}
-            q={q}
-            fallbackTitle={`${subject.charAt(0).toUpperCase()}${subject.slice(1)}`}
-          />
-        );
-      }
-    }
-  };
+  /** The open (or reopened) question's card: AskFor, wired to this Record's state. */
+  const ask = (key: QuestionKey): ReactNode => (
+    <AskFor
+      pid={pid}
+      view={view}
+      stepKey={key}
+      wiring={{
+        pending: decide.isPending,
+        record: (d, at) => record(key, d, at),
+        keep:
+          keepFor(key) && (currentRecord(key) || stepOf(key)?.status === "skipped")
+            ? keepFor(key)
+            : undefined,
+        answerAt: answerFor(key),
+        now: nowKey === key,
+        arriving: arrivingKey === key,
+        onArrived,
+        onOpenDrawer: () => setDrawer(key),
+        reopened: !!reopened[key],
+        resurfaced: resurfacedFor(key),
+      }}
+    />
+  );
 
   const openSeal = (): ReactNode => (
     <OpenSealStep
