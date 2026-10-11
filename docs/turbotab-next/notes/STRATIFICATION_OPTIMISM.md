@@ -125,8 +125,8 @@ spread is √(p(1 − p))·|logit p|, 0.39 nats at p = 0.3 and 0.66 at p = 0.1):
 | 21,849 (NHANES) | 0.00005 | 0.007% | 0.014% | 0.017 | 0.010 |
 
 So it is negligible at NHANES's size and about 1% of the entropy at n = 200, where it is still under
-a fifth of a standard error. It is also an order smaller than the app's smallest meaningful gain
-(`baseline.MIN_GAIN`, 0.01 nats) at every n above 100.
+a fifth of a standard error. It is below the app's smallest meaningful gain (`baseline.MIN_GAIN`,
+0.01 nats) at every n above 100, and an order smaller from n = 1,000.
 
 ## 6 · What it did to T1, and the redesign
 
@@ -223,11 +223,11 @@ at sizes where 1/n is a material share of the gap.
 
 ## Sources
 
-- **Miller, G. A. (1955).** "Note on the bias of information estimates." In H. Quastler (Ed.),
-  *Information Theory in Psychology: Problems and Methods*, pp. 95–100. The bibliographic details
-  were checked against Wikipedia's "Entropy estimation" reference list; I could not open the chapter
-  itself, so its statement of the (k − 1)/(2n) bias is cited from secondary knowledge, and §2
-  derives the two-class case independently.
+- **Miller, G. (1955).** "Note on the bias of information estimates." In *Information Theory in
+  Psychology: Problems and Methods*, pp. 95–100. Title, book and pages were checked against
+  Wikipedia's "Entropy estimation" reference list; the book's editor (H. Quastler, from memory) was
+  not. I could not open the chapter itself, so its statement of the (k − 1)/(2n) bias is cited from
+  secondary knowledge, and §2 derives the two-class case independently.
 - **Tsamardinos, Greasidou & Borboudakis (2018),** *Machine Learning* 107:1895–1922 (BBC-CV), and
   **Bates, Hastie & Tibshirani (2024),** *JASA* 119:1434 (what cross-validation estimates): as in
   `export/data/refs.bib`, already verified for the repo.
