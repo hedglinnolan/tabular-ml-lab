@@ -56,3 +56,34 @@ def test_every_real_server_journey_presses_fit():
     for spec in LIGHT_SPECS:
         text = (E2E / f"{spec}.spec.ts").read_text("utf-8")
         assert re.search(r"\b(pressFit|fitOnceComputed)\(page", text), spec
+
+
+SRC = REPO / "turbotab" / "frontend" / "src"
+# The frontend reads the scheduler's hold on the fit (StageStatus.held, W1-B or the shell).
+HELD_READ = re.compile(r"""\.held\s*===\s*["']fit["']|data-testid=["']fit-held["']""")
+
+
+def _renders_a_held_fit() -> list[str]:
+    return sorted(str(path.relative_to(SRC)) for path in SRC.rglob("*.ts*")
+                  if ".test." not in path.name and "mocks" not in path.parts
+                  and HELD_READ.search(path.read_text("utf-8")))
+
+
+def test_the_held_fit_skip_expires_when_the_app_renders_a_held_fit():
+    """A journey whose fit the scheduler holds skips only while the app renders nothing for it
+    (plan §1, B2): the skip checks the page for any held Fit first and fails when one is rendered
+    but not pressable as e2e/fit.ts presses it; and once the frontend reads ``StageStatus.held``
+    this test fails until the skip is retired, so it never stays on in silence."""
+    helper = (E2E / "fit.ts").read_text("utf-8")
+    skip = helper.index("test.skip(true, HELD_WITHOUT_FIT)")
+    # Before skipping, what renders a held fit is looked for, and finding any fails the journey.
+    assert "async function heldRendered" in helper
+    assert 'getByTestId("fit-held")' in helper
+    guard = helper.rindex("expect(rendered, HELD_RENDERED).toEqual([])", 0, skip)
+    assert helper.rindex("await heldRendered(page)", 0, guard) < guard
+    # The expiry: no skip for a held fit once the frontend renders one.
+    rendering = _renders_a_held_fit()
+    assert not rendering, (
+        f"{rendering} render a held fit: retire HELD_WITHOUT_FIT and its skip in e2e/fit.ts, so a "
+        "held journey presses that Fit")
+

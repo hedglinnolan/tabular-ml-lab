@@ -7,9 +7,33 @@ import { expect, test, type Page } from "@playwright/test";
  * there are no Results to carry the button yet: today's app offers Fit nowhere else, so a journey
  * whose fit is held stops there, skipped with that reason (the blocker the W1 shell removes),
  * instead of waiting out its timeout or pressing what the person cannot.
+ *
+ * **The skip expires** once the app renders a held fit (W1-B reads `StageStatus.held`): then a held
+ * journey presses that Fit, or fails with HELD_RENDERED when it is not the Fit this helper presses;
+ * and the fast tier fails (test_w1_real_server_e2e_job.py) until this skip is retired.
  */
 export const HELD_WITHOUT_FIT =
   "the fit is held for Fit (its estimate exceeds about 2 minutes), and the app offers Fit only on a computed fit's Results: nothing to press yet (W1 blocker, the shell's Fit)";
+
+/** Why a held fit fails instead of skipping: the app renders the held state, but not as the Fit
+ *  this helper presses. */
+export const HELD_RENDERED =
+  "the app now renders a held fit (W1-B's held Fit, or the shell's), so HELD_WITHOUT_FIT has expired: press that Fit here (e2e/fit.ts pressFit) and retire the skip";
+
+/**
+ * What on the page shows a held fit, other than the Fit this helper presses: W1-B's held Fit
+ * (`fit-held`), or any visible button named Fit, alone or with its estimate ("Fit (about 4 min)";
+ * never the models question's "Fit these 3 families"). Empty while the app renders nothing for a
+ * held fit (today's B2).
+ */
+export async function heldRendered(page: Page): Promise<string[]> {
+  const found: string[] = [];
+  if ((await page.getByTestId("fit-held").count()) > 0) found.push('data-testid="fit-held"');
+  for (const button of await page.getByRole("button", { name: /^Fit(\s*\(.*\))?$/ }).all()) {
+    if (await button.isVisible()) found.push(`the button "${(await button.textContent())?.trim()}"`);
+  }
+  return found;
+}
 
 type FitState = "pending" | "held" | "withheld" | "served";
 
@@ -39,7 +63,14 @@ export async function pressFit(page: Page, timeout = 300_000): Promise<void> {
     .waitFor({ state: "visible", timeout: held ? 15_000 : timeout })
     .then(() => true)
     .catch(() => false);
-  test.skip(held && !offered, HELD_WITHOUT_FIT);
+  if (held && !offered) {
+    // The skip expires once the app renders a held fit (W1-B's Fit, or the shell's): from then on
+    // a held journey presses that Fit, and one the helper cannot find fails here instead of
+    // skipping in silence.
+    const rendered = await heldRendered(page);
+    expect(rendered, HELD_RENDERED).toEqual([]);
+    test.skip(true, HELD_WITHOUT_FIT);
+  }
   expect(offered, "the Results offer Fit").toBe(true);
   await press.click();
   await expect(page.getByTestId("fit-press"), "Fit was taken").toHaveCount(0, { timeout });
