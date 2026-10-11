@@ -6,14 +6,14 @@ one place that reads scikit-learn's private ``_predictors`` and ``_baseline_pred
 
 **Tuned (RT-5a; RECIPES §4.1).** Its settings are searched inside every training fold
 (:data:`TUNING`): learning rate, leaves per tree, the smallest leaf (capped at a twentieth of the
-plan's count, :func:`leaf_cap`), the L2 pull, the share of columns per split, and the number of
-trees when the plan does not stop early. scikit-learn's defaults are the standard candidate, and
-below an effective size of 300 (units, events or the rarest class's count) the plan keeps it
-alone: one fit at scikit-learn's defaults. That fit equals a direct ``HistGradientBoosting*()``
-fit at the same thread count while the plan's rows are at most 10,000 (above them the stopping
-rows are whole units the plan draws, not scikit-learn's 10% of positions) and the fit's rows at
-most 200,000 (above them the plan's seed, not scikit-learn's, picks the binning subsample).
-"Try both" for blanks waits for RT-3 (C6b).
+plan's units, or of its rows when it does not count units, :func:`leaf_cap`), the L2 pull, the
+share of columns per split, and the number of trees when the plan does not stop early.
+scikit-learn's defaults are the standard candidate, and below an effective size of 300 (units,
+events or the rarest class's count) the plan keeps it alone: one fit at scikit-learn's defaults.
+That fit equals a direct ``HistGradientBoosting*()`` fit at the same thread count while the plan's
+rows are at most 10,000 (above them the stopping rows are whole units the plan draws, not
+scikit-learn's 10% of positions) and the fit's rows at most 200,000 (above them the plan's seed,
+not scikit-learn's, picks the binning subsample). "Try both" for blanks waits for RT-3 (C6b).
 
 **Pinned threads (RECIPES §4.7).** The family builds :class:`PinnedHistGradientBoostingRegressor`
 / :class:`PinnedHistGradientBoostingClassifier`: scikit-learn's estimators with one more
@@ -84,12 +84,16 @@ TUNING = TuningDecl(
 
 
 def leaf_cap(*, plan: Any = None, n_units: int) -> int:
-    """The most rows a searched smallest leaf may hold (RECIPES §4.1): a twentieth of the plan's
-    count, at least 1, the same in every fit the plan makes. For a measured outcome that count is
-    the plan's units (``n_plan``); for a yes/no or class outcome the plan counts events or the
-    rarest class, which is not what a leaf holds, and stores no count of units, so it is the plan's
-    rows (``plan_rows``: rows, not units, when rows repeat; open for a ruling). Without a plan, the
-    fit's own units."""
+    """The most rows a searched smallest leaf may hold (RECIPES §4.1; WAVE_C6A_PLAN §7 ruling 14):
+    a twentieth of the plan's units when the plan knows them, of its rows otherwise, at least 1,
+    and the same in every fit the plan makes, so the refit runs a leaf the inner folds scored.
+
+    For a measured outcome the plan counts units (``n_plan``, ``unit == "units"``): people, not
+    rows, when rows repeat per person. For a yes/no or class outcome it counts events or the
+    rarest class, which is not what a leaf holds, and it records no count of units, so the cap is
+    a twentieth of its rows (``plan_rows``), which are its units only when each row is one. No
+    fit's own units stand in for the plan's: people with unequal rows would give each fit its own
+    cap. Without a plan, the fit's own units."""
     if plan is not None:
         n = int(plan.n_plan) if plan.unit == "units" else int(plan.plan_rows)
     else:
