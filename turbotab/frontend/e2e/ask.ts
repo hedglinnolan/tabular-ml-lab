@@ -128,7 +128,9 @@ export async function confirmAsk(slot: Locator): Promise<void> {
     if (press === null) continue; // gone meanwhile: settled once it stays away
     before = await words();
     await (press as Locator).click({ timeout: 15_000 });
-    await expect.poll(words, { message: "the ask card answers the press", timeout: 30_000 }).not.toBe(before);
+    // The record answers once the server has recomputed what the line feeds, which may take
+    // longer than 30 s on a shared CI runner.
+    await expect.poll(words, { message: "the ask card answers the press", timeout: 90_000 }).not.toBe(before);
   }
   await expect(card, "the ask card is answered").toHaveCount(0);
 }

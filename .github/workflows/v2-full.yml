@@ -153,29 +153,32 @@ jobs:
         run: npm run build
 
       - name: Light real-server journeys, each on a fresh server
-        # m1-journey, m2-journeys and m3-no-dead-end, one at a time; each server's log is kept
-        # beside the traces when one fails.
+        # m1-journey, m2-journeys and m3-no-dead-end, one at a time. Each spec writes its traces to
+        # its own folder (Playwright empties its output folder as it starts, so a shared one would
+        # lose the earlier spec's traces), and the servers log outside it, copied in at the end.
         run: |
-          mkdir -p turbotab/frontend/test-results/servers
+          logs="$RUNNER_TEMP/servers"
+          mkdir -p "$logs"
           status=0
           for spec in m1-journey m2-journeys m3-no-dead-end; do
             port=$(python -c "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1])")
-            TURBOTAB_HOME="$(mktemp -d)" python -m turbotab.server --port "$port" \
-              > "turbotab/frontend/test-results/servers/$spec.log" 2>&1 &
+            TURBOTAB_HOME="$(mktemp -d)" python -m turbotab.server --port "$port" > "$logs/$spec.log" 2>&1 &
             server=$!
             for i in $(seq 1 60); do curl -sf "http://127.0.0.1:$port/api/health" > /dev/null && break; sleep 1; done
             if ! (cd turbotab/frontend && E2E_BASE_URL="http://127.0.0.1:$port" \
-              npx playwright test "$spec" --reporter=line,github); then
+              npx playwright test "$spec" --output "test-results/$spec" --reporter=line,github); then
               status=1
-              # The server's last lines as one annotation, which anyone can read (the uploaded
-              # log needs a sign-in): whether it was up, and what it said last.
+              # The server's first and last lines as one annotation, which anyone can read (the
+              # uploaded log needs a sign-in): whether it was still up, and what it said.
               alive=$(kill -0 "$server" 2>/dev/null && echo "running" || echo "exited")
-              tail -n 60 "turbotab/frontend/test-results/servers/$spec.log" | cut -c1-300 \
-                | python -c "import sys; print('::error title=server log, $spec ($alive)::' + sys.stdin.read().replace('%','%25').replace('\r','').replace('\n','%0A'))"
+              { head -n 15 "$logs/$spec.log"; echo "..."; tail -n 45 "$logs/$spec.log"; } | cut -c1-300 \
+                | python -c "import sys; print('::error title=server log of $spec ($alive)::' + sys.stdin.read().replace('%','%25').replace('\r','').replace('\n','%0A'))" || true
             fi
             kill "$server" 2>/dev/null || true
             wait "$server" || true
           done
+          mkdir -p turbotab/frontend/test-results/servers
+          cp "$logs"/*.log turbotab/frontend/test-results/servers/
           exit $status
 
       - name: Keep the failing journeys' traces and the servers' logs
