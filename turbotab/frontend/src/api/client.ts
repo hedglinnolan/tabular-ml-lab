@@ -4,18 +4,27 @@
  * non-2xx becomes `ApiError` carrying the status and whatever body came back.
  */
 import type {
+  ChecklistReport,
   ColumnSummary,
+  ConfirmSweepInput,
   Decision,
+  DecisionInput,
+  ExportFile,
+  FitLock as FitLockView,
+  ForTheRecord,
   FsListing,
   Health,
   Histogram,
   JobView,
+  Ledger,
   ProjectSummary,
   ProjectView,
+  QuestLog,
   Refusal,
   StageResult,
   StageStatus,
   TableWindow,
+  Triage,
 } from "./schema";
 import type { AnyStageArtifacts, AnyStageName, TeachingEntry } from "./m1-types";
 import type { PreviewResult } from "./m1-stage-types";
@@ -132,20 +141,11 @@ interface RequestOptions {
   json?: unknown;
   form?: FormData;
   signal?: AbortSignal;
+  accept?: string;
 }
 
-async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const init: RequestInit = { method: opts.method ?? "GET", signal: opts.signal ?? null };
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (opts.json !== undefined) {
-    headers["Content-Type"] = "application/json";
-    init.body = JSON.stringify(opts.json);
-  } else if (opts.form) {
-    init.body = opts.form;
-  }
-  init.headers = headers;
-  const res = await fetch(withQuery(`${API_BASE}${path}`, opts.query), init);
-  if (res.ok) return (await readBody(res)) as T;
+/** What a non-2xx answer becomes: the sign-in event, a typed refusal, or an ApiError. */
+async function fail(res: Response): Promise<never> {
   const body = await readBody(res);
   if (res.status === 401) window.dispatchEvent(new Event(UNAUTHENTICATED_EVENT));
   if (res.status === 409) {
@@ -153,6 +153,38 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     if (refusal) throw new RefusalError(refusal);
   }
   throw new ApiError(res.status, errorMessage(res.status, body), body);
+}
+
+async function send(path: string, opts: RequestOptions): Promise<Response> {
+  const init: RequestInit = { method: opts.method ?? "GET", signal: opts.signal ?? null };
+  const headers: Record<string, string> = { Accept: opts.accept ?? "application/json" };
+  if (opts.json !== undefined) {
+    headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(opts.json);
+  } else if (opts.form) {
+    init.body = opts.form;
+  }
+  init.headers = headers;
+  return fetch(withQuery(`${API_BASE}${path}`, opts.query), init);
+}
+
+async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  const res = await send(path, opts);
+  if (res.ok) return (await readBody(res)) as T;
+  return fail(res);
+}
+
+/** The file name a `Content-Disposition: attachment; filename="..."` header gives, if any. */
+function attachmentName(res: Response): string | null {
+  const header = res.headers.get("Content-Disposition") ?? "";
+  const found = /filename="?([^";]+)"?/i.exec(header);
+  return found ? found[1]! : null;
+}
+
+async function requestFile(path: string, fallbackName: string, opts: RequestOptions = {}): Promise<ExportFile> {
+  const res = await send(path, { ...opts, accept: "*/*" });
+  if (!res.ok) return fail(res);
+  return { blob: await res.blob(), filename: attachmentName(res) ?? fallbackName };
 }
 
 const enc = encodeURIComponent;
@@ -174,8 +206,25 @@ export const api = {
   project: (pid: string, signal?: AbortSignal) =>
     request<ProjectView>(`/projects/${enc(pid)}`, { signal }),
 
-  decide: (pid: string, decision: Decision) =>
-    request<ProjectView>(`/projects/${enc(pid)}/decisions`, { method: "POST", json: decision }),
+  /**
+   * Record a decision. `decideNow` answers a later question ahead of the Router, where the server
+   * allows it (its card is computed and the earlier answers it reads are in); otherwise it is
+   * refused (409) with what the question is waiting for.
+   */
+  decide: (pid: string, decision: Decision | DecisionInput, opts?: { decideNow?: boolean }) =>
+    request<ProjectView>(`/projects/${enc(pid)}/decisions`, {
+      method: "POST",
+      json: decision,
+      query: { decide_now: opts?.decideNow ? "true" : undefined },
+    }),
+
+  /** Confirm a gate's sweep: every default ("defaults") or noticing disposition ("noticings") as
+   * listed, with any line the person changed in `lines` (POST /decisions, kind confirm_sweep). */
+  confirmSweep: (pid: string, sweep: Omit<ConfirmSweepInput, "kind">) =>
+    request<ProjectView>(`/projects/${enc(pid)}/decisions`, {
+      method: "POST",
+      json: { kind: "confirm_sweep", ...sweep } satisfies ConfirmSweepInput,
+    }),
 
   stage: <S extends AnyStageName>(pid: string, stage: S, signal?: AbortSignal) =>
     request<StageResult<AnyStageArtifacts[S]>>(`/projects/${enc(pid)}/stages/${enc(stage)}`, {
@@ -253,6 +302,37 @@ export const api = {
    * pressed no estimate (and, under Predict, no score) is served. */
   pressFit: (pid: string) => request<FitLock>(`/projects/${enc(pid)}/fit`, { method: "POST" }),
 
+  // ── the quest log, the record's outputs, Fit, the export (W1-A) ──────────
+
+  /** The quest log: seven stages, their lines, progress, and the plan's lock (SIZING P0.4). */
+  quest: (pid: string, signal?: AbortSignal) =>
+    request<QuestLog>(`/projects/${enc(pid)}/quest`, { signal }),
+
+  /** Each stage's For the record lines: collapsed in the quest log, never counted. */
+  record: (pid: string, signal?: AbortSignal) =>
+    request<ForTheRecord>(`/projects/${enc(pid)}/record`, { signal }),
+
+  /** The triage of the open noticings at the gate, with each one's recommended disposition. */
+  triage: (pid: string, signal?: AbortSignal) =>
+    request<Triage>(`/projects/${enc(pid)}/triage`, { signal }),
+
+  /** The materiality ledger: how far each noticing's alternative moves the numbers. */
+  materiality: (pid: string, signal?: AbortSignal) =>
+    request<Ledger>(`/projects/${enc(pid)}/materiality`, { signal }),
+
+  /** The reporting checklist of the declared purpose, and what the export still waits for. */
+  checklist: (pid: string, signal?: AbortSignal) =>
+    request<ChecklistReport>(`/projects/${enc(pid)}/checklist`, { signal }),
+
+  /** Cancel, where Fit was: the estimates' work still running stops; before any estimate is
+   * served the press (and, under Estimate, the plan's lock) is withdrawn. Returns the lock. */
+  cancelFit: (pid: string) =>
+    request<FitLockView>(`/projects/${enc(pid)}/fit/cancel`, { method: "POST" }),
+
+  /** The manuscript bundle (a zip). Refused (409) with everything missing while it is not ready. */
+  exportBundle: (pid: string, signal?: AbortSignal) =>
+    requestFile(`/projects/${enc(pid)}/export`, "turbotab-export.zip", { signal }),
+
   /** Every model family the engine can fit, with what it needs and assumes. */
   models: (signal?: AbortSignal) => request<FamilyInfo[]>("/models", { signal }),
 
@@ -289,6 +369,11 @@ export const api = {
     });
   },
 };
+
+/** The export's address, for a plain link; `api.exportBundle` reads refusals, which a link cannot. */
+export function exportUrl(pid: string): string {
+  return `${API_BASE}/projects/${enc(pid)}/export`;
+}
 
 /** The SSE endpoint's URL. The EventSource itself is opened in events.ts. */
 export function eventsUrl(pid: string): string {

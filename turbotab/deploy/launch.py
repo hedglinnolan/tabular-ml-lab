@@ -11,8 +11,11 @@ Every step is skipped when it is already done, so the second start takes seconds
 2. A Python 3.12+ environment at ``$TURBOTAB_VENV`` (default ``$TURBOTAB_HOME/env``): created when
    missing or broken; ``turbotab/server/requirements.txt`` installed into it once, and again only
    when that file changes (its SHA-256 is kept in the environment).
-3. The interface: ``turbotab/frontend/dist`` as it is; built with npm only when it is missing and
-   Node.js 20+ is installed; otherwise the launcher says how to get it and starts anyway.
+3. The interface: ``turbotab/frontend/dist`` as it is when it is current; built (or built again)
+   with npm when it is missing or out of date (a source under ``frontend/src``, or the build's own
+   inputs, is newer than the build, or the version stamp the launcher left beside it differs from
+   the version it would build now) and Node.js 20+ is installed. Without Node.js the launcher says
+   so and starts anyway, with what is built if anything is.
 4. ``python -m turbotab.server --mode local --open`` on 127.0.0.1, on port 8787 when it is free
    (else any free port), with the browser opened once it answers.
 5. Ctrl+C, closing the window or a stop signal shuts the server down cleanly (its job workers
@@ -53,6 +56,9 @@ CONSTRAINTS = ROOT / "turbotab" / "server" / "constraints.txt"  # the tested ver
 FRONTEND = ROOT / "turbotab" / "frontend"
 DIST = FRONTEND / "dist"
 STAMP = ".turbotab-requirements.sha256"
+BUILD_STAMP = ".turbotab-build-version"  # in dist: the version the launcher built it for
+SERVER_INIT = ROOT / "turbotab" / "server" / "__init__.py"
+BUILD_INPUTS = ("index.html", "package.json", "package-lock.json", "vite.config.ts", "tsconfig.app.json")
 STATE = "launcher.json"
 DEFAULT_PORT = 8787
 WINDOWS = os.name == "nt"
@@ -195,34 +201,109 @@ def node_version(node: str) -> tuple[int, int] | None:
         return None
 
 
+def current_version() -> str:
+    """The version the interface is built for: the server package's ``__version__``, read from its
+    source (this runs before any environment exists, so it cannot import it)."""
+    try:
+        for line in SERVER_INIT.read_text("utf-8").splitlines():
+            if line.startswith("__version__"):
+                return line.split("=", 1)[1].strip().strip("\"'")
+    except OSError:
+        pass
+    return "unknown"
+
+
+def _is_source(name: str) -> bool:
+    return not (".test." in name or ".spec." in name or name.startswith("."))
+
+
+def stale_reason(frontend: Path, version: str) -> str | None:
+    """Why ``frontend/dist`` is not the interface this checkout would build, or None when it is.
+
+    ``"not built"`` when there is no build. Otherwise the build's time is that of its
+    ``index.html`` (the bundler rewrites it every build), and it is out of date when a source file
+    under ``src`` (tests aside) or one of the build's own inputs is newer, naming the newest; or
+    when the version stamp the launcher left beside it names another version. A build with no stamp
+    (a developer's own ``npm run build``) is judged by file times alone."""
+    dist = frontend / "dist"
+    try:
+        built = (dist / "index.html").stat().st_mtime
+    except OSError:
+        return "not built"
+    newest: tuple[float, Path] | None = None
+    candidates = [frontend / name for name in BUILD_INPUTS]
+    for folder, dirs, files in os.walk(frontend / "src"):
+        dirs[:] = [d for d in dirs if d != "node_modules" and not d.startswith(".")]
+        candidates.extend(Path(folder) / f for f in files if _is_source(f))
+    for path in candidates:
+        try:
+            modified = path.stat().st_mtime
+        except OSError:
+            continue
+        if modified > built and (newest is None or modified > newest[0]):
+            newest = (modified, path)
+    if newest is not None:
+        return f"{newest[1].relative_to(frontend).as_posix()} changed after the interface was built"
+    try:
+        stamped = (dist / BUILD_STAMP).read_text("utf-8").strip()
+    except OSError:
+        return None
+    if stamped != version:
+        return f"it was built for version {stamped}, and this is version {version}"
+    return None
+
+
+def build_interface(node: str, npm: str) -> bool:
+    """Build the interface with npm (installing the locked packages first when needed); True when
+    it is built, and stamped with the version it was built for."""
+    build = [npm, "run", "build"]
+    # A checkout that already has its packages (a developer's) builds with them; otherwise, or
+    # when that fails, the locked packages are installed first.
+    built = (FRONTEND / "node_modules").is_dir() and run(build, cwd=FRONTEND) == 0
+    if not built:
+        lock = FRONTEND / "package-lock.json"
+        install = [npm, "ci" if lock.is_file() else "install", "--no-audit", "--no-fund"]
+        built = all(run(step, cwd=FRONTEND) == 0 for step in (install, build))
+    if not built or not (DIST / "index.html").is_file():
+        return False
+    try:  # after the build: the bundler empties dist first
+        (DIST / BUILD_STAMP).write_text(current_version() + "\n", "utf-8")
+    except OSError:
+        pass
+    return True
+
+
 def ensure_interface() -> str:
-    if (DIST / "index.html").is_file():
+    """``"built"``: current, or built just now. ``"stale"``: out of date and not rebuilt, served as
+    it is. ``"missing"``: none, and none could be built."""
+    reason = stale_reason(FRONTEND, current_version())
+    if reason is None:
         say("interface: built.")
         return "built"
+    have = (DIST / "index.html").is_file()
     node, npm = shutil.which("node"), shutil.which("npm")
     version = node_version(node) if node else None
     if not (node and npm and version and version >= MIN_NODE):
         found = f" (found Node.js {version[0]}.{version[1]})" if version else ""
-        say("the interface is not built, and building it needs Node.js "
-            f"{MIN_NODE[0]}.{MIN_NODE[1]} or newer{found}. Install it from https://nodejs.org "
-            "and start TurboTab again; it builds the interface once. Starting without it for now: "
-            "the page will say how to build it.")
+        need = f"building it needs Node.js {MIN_NODE[0]}.{MIN_NODE[1]} or newer{found}. Install it from https://nodejs.org and start TurboTab again"
+        if have:
+            say(f"the interface is out of date ({reason}), and {need}; it builds the interface "
+                "again. Starting with the interface as it was built: it may not show the latest "
+                "changes.")
+            return "stale"
+        say(f"the interface is not built, and {need}; it builds the interface once. Starting "
+            "without it for now: the page will say how to build it.")
         return "missing"
-    say("building the interface (once; about a minute)...")
-    build = [npm, "run", "build"]
-    # A checkout that already has its packages (a developer's) builds with them; otherwise, or
-    # when that fails, the locked packages are installed first.
-    if (FRONTEND / "node_modules").is_dir() and run(build, cwd=FRONTEND) == 0:
+    if have:
+        say(f"the interface is out of date ({reason}); building it again (about a minute)...")
+    else:
+        say("building the interface (once; about a minute)...")
+    if build_interface(node, npm):
         say("interface: built.")
         return "built"
-    lock = FRONTEND / "package-lock.json"
-    install = [npm, "ci" if lock.is_file() else "install", "--no-audit", "--no-fund"]
-    for step in (install, build):
-        if run(step, cwd=FRONTEND) != 0:
-            say("the interface did not build (see above); starting without it.")
-            return "missing"
-    say("interface: built.")
-    return "built"
+    say("the interface did not build (see above); starting "
+        + ("with the interface as it was built." if (DIST / "index.html").is_file() else "without it."))
+    return "stale" if (DIST / "index.html").is_file() else "missing"
 
 
 # ── 4. start, 5. stop ────────────────────────────────────────────────────────
@@ -430,7 +511,7 @@ def smoke(server: Server, health: dict, interface: str) -> int:
             page = r.read().decode("utf-8", "replace")
         built = '<div id="root">' in page
         say(f"smoke: / serves {'the interface' if built else 'the build hint'}.")
-        if built != (interface == "built"):
+        if built != (interface in ("built", "stale")):
             failures.append("the page served does not match the interface found")
     except (urllib.error.URLError, OSError) as exc:
         failures.append(f"/ did not answer: {exc}")

@@ -10,7 +10,7 @@
  * types `artifact` by stage name, and `ProjectEvent`, the SSE stream, which
  * OpenAPI cannot describe. Times are ISO-8601 strings.
  */
-import type { components } from "./generated";
+import type { components, operations } from "./generated";
 
 type S = components["schemas"];
 
@@ -35,6 +35,38 @@ export const SLOTS: readonly Slot[] = [
   "aggregation", "temporal", "roles", "exclusions", "missing", "split", "energy_adjustment",
   "models", "substitution", "seal_opened", "findings",
 ];
+
+/** Fit and the plan's lock, as POST /fit, POST /fit/cancel and the quest log carry them. */
+export type FitLock = S["FitLock"];
+
+// ── the quest log and the record's outputs (W1-A) ────────────────────────────
+
+export type QuestLog = S["QuestLog"];
+export type QuestStage = S["QuestStage"];
+export type QuestLine = S["QuestLine"];
+export type ForTheRecord = S["ForTheRecord"];
+export type Ledger = S["Ledger"];
+export type LedgerRow = S["LedgerRow"];
+export type Triage = S["Triage"];
+export type TriageItem = S["TriageItem"];
+export type ChecklistReport = S["ChecklistReport"];
+export type ChecklistItem = S["ChecklistItem"];
+
+/** What a request body to POST /decisions may be: the Output variants of `Decision` carry every
+ * default the server filled in, so a client sending a sweep with no lines needs the Input side. */
+export type DecisionInput =
+  operations["decide_api_projects__pid__decisions_post"]["requestBody"]["content"]["application/json"];
+export type ConfirmSweepInput = S["ConfirmSweep-Input"];
+export type SweptLineInput = S["SweptLine-Input"];
+/** The gate a Confirm sweep answers, and what it sweeps. */
+export type SweepStage = ConfirmSweepInput["stage"];
+export type SweepKind = ConfirmSweepInput["sweep"];
+
+/** The export bundle as the browser receives it: the zip and the name the server gave it. */
+export interface ExportFile {
+  blob: Blob;
+  filename: string;
+}
 
 export type StageStatus = S["StageStatus"];
 export type StageState = StageStatus["status"];

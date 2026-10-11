@@ -11,7 +11,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { eventsUrl } from "./client";
-import { keys } from "./queries";
+import { keys, logDerivedKeys } from "./queries";
 import type {
   DecisionRecord,
   JobView,
@@ -31,6 +31,11 @@ function newer(a: StageStatus | undefined, b: StageStatus): boolean {
   return Date.parse(b.updated_at) >= Date.parse(a.updated_at);
 }
 
+/** Whether a stage really changed (its state, a stop, the hold), as against a progress tick. */
+function changedState(a: StageStatus | undefined, b: StageStatus): boolean {
+  return a?.status !== b.status || a?.cancelled !== b.cancelled || a?.held !== b.held;
+}
+
 function applyDecision(qc: QueryClient, pid: string, record: DecisionRecord): void {
   const view = qc.getQueryData<ProjectView>(keys.view(pid));
   if (view && view.decisions.some((d) => d.id === record.id)) return; // already have it
@@ -43,8 +48,10 @@ function applyDecision(qc: QueryClient, pid: string, record: DecisionRecord): vo
   // Each finding is served with what answered it (M2_CONTRACT §4), and a disposition never
   // changes the findings stage's key: any decision may settle one, so it is read again.
   void qc.invalidateQueries({ queryKey: keys.stage(pid, "findings"), exact: true });
-  // The readings card, the methods text, the plan and the joined files are read from the log.
-  for (const key of [keys.readings(pid), keys.methods(pid), keys.plan(pid), keys.files(pid)]) {
+  // The readings card, the methods text, the plan and the joined files are read from the log, as
+  // are the quest log, the record, the triage, the ledger and the checklist.
+  const derived = [keys.readings(pid), keys.methods(pid), keys.plan(pid), keys.files(pid), ...logDerivedKeys(pid)];
+  for (const key of derived) {
     void qc.invalidateQueries({ queryKey: key, exact: true });
   }
 }
@@ -54,13 +61,16 @@ function applyStage(qc: QueryClient, pid: string, status: StageStatus): void {
   if (view) {
     const current = view.stages[status.stage];
     if (!newer(current, status)) return;
+    // The quest log counts what is answered and what is computed, and the fit lock says whether
+    // the fit is held: a stage changing state (not a progress tick) reads it again.
+    if (changedState(current, status)) void qc.invalidateQueries({ queryKey: keys.quest(pid), exact: true });
     qc.setQueryData<ProjectView>(keys.view(pid), {
       ...view,
       stages: { ...view.stages, [status.stage]: status },
     });
     // The Router's interview reads stage statuses (a question waits while a stage it needs
     // computes), and no event carries it: refetch the view when a status really changes.
-    if (current?.status !== status.status || current?.cancelled !== status.cancelled) {
+    if (changedState(current, status)) {
       void qc.invalidateQueries({ queryKey: keys.view(pid), exact: true });
     }
   }
