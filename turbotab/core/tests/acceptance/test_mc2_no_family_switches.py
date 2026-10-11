@@ -26,14 +26,17 @@ substantive model, so a scan for the words could never reach zero. It flags:
 
 A switch in a module that owns every family and class it names is that family's own: a module owns
 a family when it declares the family or the class of one of its model steps. Exits that recommend a
-family by key are allowed (:data:`EXITS`). Every other switch is a place in :data:`NOT_YET` with the
-package that retires it. Each place is pinned: the family keys and classes it names, and how many
-switches it holds. A place that gains a switch, or names one more family, fails like a new place;
-one that loses some fails until its pin is lowered; and each place is an expected failure until its
-package retires it, when it fails as an unexpected pass, so the list only shrinks and must reach
-zero. MC-2a retired the four switches the new families hit (``models/explain.py:model_kind``,
-``models/cost.py:fit_cost``, ``voice.py:_family_label``, ``models/selection.py:is_flexible``), and
-``stages/scales.py``'s family per task reads ``InferenceDecl.default_for``; none may come back.
+family by key are allowed (:data:`EXITS`), and each is pinned: the family keys and classes it names,
+and how many switches it holds. An exit that gains a switch, or names one more family, fails like a
+new place; one that loses some fails until its pin is lowered. Every other switch fails. MC-2a and
+MC-2b retired every switch the census and this test found, so :data:`NOT_YET`, the list of switches
+still allowed while their packages retired them, is empty and must stay so (WAVE_C6A_PLAN §3,
+MC-2b-4; the fold-in gate's item 2).
+
+A module constant that holds one family's key (``LINEAR = "linear"``, written there or imported) is
+read as that key wherever it is used, so a constant's name cannot hide a switch. The constants that
+share a family's key but name no model family are listed in :data:`NOT_FAMILIES`, with what they
+name instead: the trial core's own cluster analyses (WAVE_C6A_PLAN §7, ruling 6).
 """
 from __future__ import annotations
 
@@ -46,7 +49,6 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Iterator
 
-import pytest
 
 ROOT = Path(__file__).resolve().parents[3]  # turbotab/
 SCANNED = ("core", "server")
@@ -82,43 +84,20 @@ EXITS: dict[Place, Pin] = {
             1, "linear"),
 }
 
-# Every switch still in the code, with the package that retires it and where it was counted:
-# MODEL_FAMILY_CONTRACT §3.3's census, V2X_SEAMS row 21, the MC-1 verifier's census, or this test,
-# which found the rest.
-NOT_YET: dict[Place, Pin] = {
-    # The design's words for each estimator, keyed by what the methods text calls the family:
-    # they retire when the declaration carries the words (``InferenceDecl``, models/base.py).
-    ("core/models/survey.py", "_DESIGN_WORDS"):
-        pin("MC-2b (found here: the words on InferenceDecl)", 1, "linear", "proportional_odds",
-            "cox"),
-    ("core/models/survey.py", "_NO_DESIGN_WORDS"):
-        pin("MC-2b (found here: the words on InferenceDecl)", 1, "mixed", "gee", "featurewise",
-            "elastic_net", "boosted_trees"),
-    ("core/methods/omics.py", "chain_choices"): pin("MC-2b (found here)", 1, "featurewise"),
-    ("core/methods/omics.py", "fit_methods"): pin("MC-2b (found here)", 1, "featurewise"),
-    ("core/methods/omics.py", "methods_paragraph"): pin("MC-2b (found here)", 1, "featurewise"),
-    ("core/methods/omics.py", "model_clause"):
-        pin("MC-2b (§3.3)", 2, "elastic_net", "screened_elastic_net"),
-    ("core/stages/effects.py", "SEQUENCE_FAMILIES"):
-        pin("MC-2b (§3.3: inference_decl.matrix_table)", 1, "linear", "proportional_odds", "cox",
-            "featurewise", "mixed", "gee"),
-    ("core/stages/effects.py", "_Run._multiplicity"): pin("MC-2b (found here)", 1, "featurewise"),
-    ("core/stages/effects.py", "_Run._one"):
-        pin("MC-2b (found here)", 3, "linear", "featurewise"),
-    ("core/stages/effects.py", "_Run._with_relative"): pin("MC-2b (found here)", 1, "linear"),
-    ("core/stages/effects.py", "_Run.diagnostics"): pin("MC-2b (§3.3)", 3, "cox", "linear"),
-    ("core/stages/effects.py", "_Run.family_block"):
-        pin("MC-2b (§3.3: SEQUENCE_FAMILIES)", 3, "linear", "proportional_odds", "cox",
-            "featurewise", "mixed", "gee"),
-    ("core/stages/effects.py", "_Run.marginal"): pin("MC-2b (found here)", 1, "linear"),
-    ("core/stages/effects.py", "matrix_table"):
-        pin("MC-2b (§3.3)", 6, "featurewise", "cox", "proportional_odds", "linear", "mixed",
-            "gee"),
-    ("core/stages/evaluation.py", "_shrinkage"): pin("MC-2b (§3.3)", 1, "linear"),
-    ("core/stages/modeling.py", "_pooled_curve"): pin("MC-2b (found here)", 1, "linear"),
-    ("core/stages/modeling.py", "_tests_only"): pin("MC-2b (found here)", 1, "featurewise"),
-    ("core/stages/modeling.py", "fit_stage"):
-        pin("MC-2b (§3.3: the collinearity concern)", 1, "linear"),
+# The switches still allowed while their packages retired them (MODEL_FAMILY_CONTRACT §3.3's census,
+# V2X_SEAMS row 21, the MC-1 verifier's census, and this test's own finds). MC-2b-4 closed it: it is
+# empty, and :func:`test_no_switch_is_still_allowed` keeps it so.
+NOT_YET: dict[Place, Pin] = {}
+
+# Module constants that hold a family's key but name no model family (WAVE_C6A_PLAN §7, ruling 6).
+# Every other such constant is read as the family's key it holds.
+NOT_FAMILIES: dict[Place, str] = {
+    ("core/methods/trials.py", "MIXED_MODEL"):
+        "the trial core's own linear mixed model of a cluster trial (methods/trials.py:_mixed), "
+        "not the mixed model family",
+    ("core/methods/trials.py", "GEE_MODEL"):
+        "the trial core's own GEE of a cluster trial (methods/trials.py:_gee), not the GEE model "
+        "family",
 }
 
 
@@ -203,19 +182,23 @@ class _Module:
     imports: dict[str, tuple[str, str | None]] = field(default_factory=dict)
     constants: dict[str, set[str]] = field(default_factory=dict)  # a constant's strings
     tables: dict[str, set[str]] = field(default_factory=dict)  # a dictionary's keys' family keys
+    aliases: dict[str, str] = field(default_factory=dict)  # a constant holding one family's key
 
 
-def _strings(node: ast.AST | None) -> set[str]:
-    """The string constants a constant or a literal collection holds (a dict's keys)."""
+def _strings(node: ast.AST | None, aliases: Mapping[str, str] = {}) -> set[str]:  # noqa: B006
+    """The string constants a constant or a literal collection holds (a dict's keys), reading a
+    name in ``aliases`` (a constant holding one family's key) as the key it holds."""
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return {node.value}
+    if isinstance(node, ast.Name) and node.id in aliases:
+        return {aliases[node.id]}
     if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
-        return set().union(set(), *(_strings(e) for e in node.elts))
+        return set().union(set(), *(_strings(e, aliases) for e in node.elts))
     if isinstance(node, ast.Dict):
-        return set().union(set(), *(_strings(k) for k in node.keys if k is not None))
+        return set().union(set(), *(_strings(k, aliases) for k in node.keys if k is not None))
     if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
             and node.func.id in ("frozenset", "set", "tuple") and node.args):
-        return _strings(node.args[0])
+        return _strings(node.args[0], aliases)
     return set()
 
 
@@ -223,7 +206,12 @@ def _words(name: str) -> set[str]:
     return {w for w in name.lower().split("_") if w}
 
 
-def _module(source: str, name: str) -> _Module:
+def _place(module: str) -> str:
+    """The path under turbotab/ of a dotted module name (a package's ``__init__`` aside)."""
+    return "/".join(module.split(".")[1:]) + ".py"
+
+
+def _module(source: str, name: str, not_families: Mapping[Place, str]) -> _Module:
     tree = ast.parse(source)
     m = _Module(name=name, tree=tree)
     for node in ast.walk(tree):
@@ -234,14 +222,30 @@ def _module(source: str, name: str) -> _Module:
             for alias in node.names:
                 local = alias.asname or alias.name.split(".")[0]
                 m.imports[local] = (alias.name if alias.asname else local, None)
-    for node in tree.body:
-        targets = (node.targets if isinstance(node, ast.Assign)
-                   else [node.target] if isinstance(node, ast.AnnAssign) else [])
-        for target in targets:
-            if isinstance(target, ast.Name):
-                m.constants[target.id] = _strings(node.value)
-                if isinstance(node.value, ast.Dict):
-                    m.tables[target.id] = _keyed(node.value)
+    # A constant holding one family's key, written here or imported, is that key wherever it is
+    # used, unless it is listed as naming no family (NOT_FAMILIES).
+    for local, (module, attr) in m.imports.items():
+        if attr is None or not local.isupper() or (_place(module), attr) in not_families:
+            continue
+        try:
+            value = getattr(importlib.import_module(module), attr, None)
+        except Exception:  # noqa: BLE001 - a module that cannot be imported names nothing here
+            continue
+        if isinstance(value, str) and value in KEYS:
+            m.aliases[local] = value
+    assigned = [(target, node.value) for node in tree.body
+                for target in (node.targets if isinstance(node, ast.Assign)
+                               else [node.target] if isinstance(node, ast.AnnAssign) else [])
+                if isinstance(target, ast.Name) and node.value is not None]
+    for target, value in assigned:
+        if (isinstance(value, ast.Constant) and isinstance(value.value, str)
+                and value.value in KEYS and (_place(name), target.id) not in not_families):
+            m.aliases[target.id] = value.value
+    for target, value in assigned:
+        exempt = (_place(name), target.id) in not_families
+        m.constants[target.id] = set() if exempt else _strings(value, m.aliases)
+        if isinstance(value, ast.Dict):
+            m.tables[target.id] = _keyed(value, m.aliases)
     return m
 
 
@@ -250,11 +254,11 @@ def _named(strings: set[str]) -> set[str]:
     return (strings & KEYS.keys()).union(*(LABELS[s] for s in strings if s in LABELS))
 
 
-def _keyed(node: ast.Dict) -> set[str]:
+def _keyed(node: ast.Dict, aliases: Mapping[str, str] = {}) -> set[str]:  # noqa: B006
     """The family keys a dictionary is keyed by: each of its keys is one, holds one (a tuple
     key), or is what the methods text calls one (its ``methods_label``); empty when any key is
     none of these, as in a table of selection methods or forms."""
-    keys = [_named(_strings(k)) for k in node.keys if k is not None]
+    keys = [_named(_strings(k, aliases)) for k in node.keys if k is not None]
     return set().union(*keys) if keys and all(keys) else set()
 
 
@@ -338,11 +342,14 @@ def _class_name(node: ast.AST, named: set[str]) -> bool:
     return isinstance(node, ast.Name) and node.id in named
 
 
-def _entry(node: ast.AST) -> str | None:
-    """The string that names one entry of a list: the entry itself, a call's first argument
-    (``option("linear", ...)``), or a dictionary's ``key``, ``value`` or ``family`` field."""
+def _entry(node: ast.AST, aliases: Mapping[str, str] = {}) -> str | None:  # noqa: B006
+    """The string that names one entry of a list: the entry itself (or the family's key a constant
+    holds), a call's first argument (``option("linear", ...)``), or a dictionary's ``key``,
+    ``value`` or ``family`` field."""
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
+    if isinstance(node, ast.Name) and node.id in aliases:
+        return aliases[node.id]
     if isinstance(node, ast.Call) and node.args:
         return _entry(node.args[0]) if isinstance(node.args[0], ast.Constant) else None
     if isinstance(node, ast.Dict):
@@ -352,20 +359,20 @@ def _entry(node: ast.AST) -> str | None:
     return None
 
 
-def table_keys(node: ast.AST) -> set[str]:
+def table_keys(node: ast.AST, aliases: Mapping[str, str] = {}) -> set[str]:  # noqa: B006
     """The family keys a literal table keyed by family holds; empty when it is not one: a
     dictionary of two or more entries whose keys each are or hold a family key, or whose values
     are all family keys, or a list of two or more entries each named by a family key."""
     if isinstance(node, ast.Dict):
-        if len(node.keys) >= 2 and _keyed(node):
-            return _keyed(node)
+        if len(node.keys) >= 2 and _keyed(node, aliases):
+            return _keyed(node, aliases)
         values = [v.value for v in node.values
                   if isinstance(v, ast.Constant) and isinstance(v.value, str)]
         if len(node.values) >= 2 and len(values) == len(node.values) and set(values) <= KEYS.keys():
             return set(values)
         return set()
     if isinstance(node, (ast.Tuple, ast.List, ast.Set)) and len(node.elts) >= 2:
-        named = [_entry(e) for e in node.elts]
+        named = [_entry(e, aliases) for e in node.elts]
         if all(n in KEYS for n in named):
             return set(named)  # type: ignore[arg-type]
     return set()
@@ -439,7 +446,7 @@ class _Scan(ast.NodeVisitor):
         """The family keys a literal, a module constant or an imported constant holds."""
         if isinstance(node, ast.Name) and node.id in self.m.constants:
             return self.m.constants[node.id] & KEYS.keys()
-        found = _strings(node) & KEYS.keys()
+        found = _strings(node, self.m.aliases) & KEYS.keys()
         if not found and isinstance(node, (ast.Name, ast.Attribute)):
             name = node.id if isinstance(node, ast.Name) else node.attr
             if name.isupper() or (isinstance(node, ast.Name) and name in self.m.imports):
@@ -458,14 +465,14 @@ class _Scan(ast.NodeVisitor):
         for left, op, right in zip(sides, node.ops, sides[1:]):
             if isinstance(op, (ast.Eq, ast.NotEq, ast.Is, ast.IsNot)):
                 for a, b in ((left, right), (right, left)):
-                    keys = _strings(a) & KEYS.keys()
+                    keys = _strings(a, self.m.aliases) & KEYS.keys()
                     if keys and _holds_key(b, drawn):
                         self._hit(node, keys)
                     classes = self._classes(b) if _class_like(b) else set()
                     if classes:
                         self._hit(node, classes=classes)
             if isinstance(op, (ast.In, ast.NotIn)):
-                keys = _strings(left) & KEYS.keys()
+                keys = _strings(left, self.m.aliases) & KEYS.keys()
                 if keys and _family_collection(right):
                     self._hit(node, keys)
                 if _holds_key(left, drawn):
@@ -492,7 +499,7 @@ class _Scan(ast.NodeVisitor):
             return
         keys: set[str] = set()
         if isinstance(container, ast.Dict):
-            keys = _keyed(container)
+            keys = _keyed(container, self.m.aliases)
         elif isinstance(container, ast.Name) and container.id in self.m.tables:
             keys = self.m.tables[container.id]
         elif isinstance(container, (ast.Name, ast.Attribute)):
@@ -537,7 +544,7 @@ class _Scan(ast.NodeVisitor):
         subject = _holds_key(node.subject, self.drawn[-1])
         for case in node.cases:
             patterns = list(ast.walk(case.pattern))
-            keys = set().union(set(), *(_strings(p.value) for p in patterns
+            keys = set().union(set(), *(_strings(p.value, self.m.aliases) for p in patterns
                                         if isinstance(p, ast.MatchValue))) & KEYS.keys()
             if subject and keys:
                 self._hit(case.pattern, keys)
@@ -549,7 +556,7 @@ class _Scan(ast.NodeVisitor):
 
     def _literal(self, node: ast.AST) -> None:
         if id(node) not in self.seen:
-            keys = table_keys(node)
+            keys = table_keys(node, self.m.aliases)
             if keys:
                 self._hit(node, keys)
         self.generic_visit(node)
@@ -557,9 +564,11 @@ class _Scan(ast.NodeVisitor):
     visit_Dict = visit_Tuple = visit_List = visit_Set = _literal
 
 
-def scan_source(source: str, module: str) -> dict[str, list[Hit]]:
-    """{the enclosing function's or constant's qualified name: its switches} in one module."""
-    m = _module(source, module)
+def scan_source(source: str, module: str,
+                not_families: Mapping[Place, str] | None = None) -> dict[str, list[Hit]]:
+    """{the enclosing function's or constant's qualified name: its switches} in one module.
+    ``not_families``: the constants read as naming no family (:data:`NOT_FAMILIES` by default)."""
+    m = _module(source, module, NOT_FAMILIES if not_families is None else not_families)
     own, own_classes = owned(module)
     scan = _Scan(m, own, own_classes)
     scan.visit(m.tree)
@@ -631,13 +640,48 @@ def test_each_allowed_exit_still_recommends_a_family():
     assert sorted(set(EXITS) - set(FOUND)) == [], "an exit is gone: remove it from EXITS"
 
 
-@pytest.mark.parametrize("place", [
-    pytest.param(place, marks=pytest.mark.xfail(strict=True, reason=f"retired by {held.package}"),
-                 id=f"{place[0]}:{place[1]}")
-    for place, held in sorted(NOT_YET.items())])
-def test_each_listed_switch_is_retired(place):
-    """Expected to fail until its package retires the switch; then remove it from NOT_YET."""
-    assert place not in FOUND, [f"{h.line}: {h.text}" for h in FOUND[place]]
+def test_no_switch_is_still_allowed():
+    """MC-2b-4 closed the allowlist: a switch is never listed again; the family's declaration is
+    read instead (MODEL_FAMILY_CONTRACT §1)."""
+    assert NOT_YET == {}
+
+
+def test_each_constant_that_names_no_family_still_holds_a_family_s_key():
+    """Each listed constant is still written where the list says, and still holds a family's key,
+    so the list cannot outlive what it excuses."""
+    from turbotab.core.methods import trials
+
+    for (path, name), why in NOT_FAMILIES.items():
+        module = importlib.import_module("turbotab." + path.removesuffix(".py").replace("/", "."))
+        assert getattr(module, name, None) in KEYS, (path, name, why)
+    assert trials.CLUSTER_METHODS == (trials.MIXED_MODEL, trials.GEE_MODEL) == ("mixed", "gee")
+
+
+def test_the_trial_core_passes_by_its_listing_not_by_its_names():
+    """Ruling 6: the trial core's cluster analyses pass because NOT_FAMILIES lists them. Read as
+    the families' keys their values are, its list of the two is a table keyed by family."""
+    path = ROOT / "core" / "methods" / "trials.py"
+    source = path.read_text(encoding="utf-8")
+    assert scan_source(source, "turbotab.core.methods.trials") == {}
+    unlisted = scan_source(source, "turbotab.core.methods.trials", not_families={})
+    assert {where: [h.names for h in hits] for where, hits in unlisted.items()} == {
+        "CLUSTER_METHODS": [{"mixed", "gee"}]}
+
+
+def test_a_constant_holding_a_family_s_key_is_read_as_the_key():
+    """A constant's name cannot hide a switch: written in the module or imported, a constant that
+    holds one family's key is that key in a comparison, a list and a table's keys."""
+    source = ('from turbotab.core.methods.trials import MIXED_MODEL\n'
+              'LINEAR = "linear"\nCOX = "cox"\nBOTH = (LINEAR, COX)\n'
+              'WORDS = {LINEAR: "least squares", COX: "Cox regression"}\n'
+              'def f(family):\n    return family == LINEAR or family in BOTH\n'
+              'def g(family):\n    return family == MIXED_MODEL\n')
+    caught = scan_source(source, "turbotab.core.not_a_family")
+    assert {where: [h.names for h in hits] for where, hits in caught.items()} == {
+        "BOTH": [{"linear", "cox"}], "WORDS": [{"linear", "cox"}],
+        "f": [{"linear"}, {"linear", "cox"}]}
+    imported = scan_source(source, "turbotab.core.not_a_family", not_families={})
+    assert [h.names for h in imported["g"]] == [{"mixed"}]
 
 
 def test_the_design_based_estimator_is_read_from_the_declaration():
@@ -759,18 +803,24 @@ def _rescanned(path: str, before: str, after: str) -> dict[Place, list[Hit]]:
 
 
 def test_a_switch_added_inside_a_listed_place_is_caught():
-    """The MC-1 verifier's probe: a new switch inside a listed function fails as the same switch
-    in a new function would."""
+    """The MC-1 verifier's probe: a new switch inside a listed function (the one allowed exit)
+    fails as the same switch in a new function would."""
+    line = '    if "linear" not in models and task in getattr(linear, "tasks", ()):\n'
     added = _rescanned(
-        "core/stages/evaluation.py",
-        '    entry = next((m for m in data.get("models") or [] if m.get("family") == "linear"), '
-        'None)\n',
-        '    entry = next((m for m in data.get("models") or [] if m.get("family") == "linear"), '
-        'None)\n'
-        '    both = [m for m in data.get("models") or [] if m.get("family") in ("boosted_trees", '
-        '"cox")]\n')
+        "core/methods/substitution.py", line,
+        line + '        both = [m for m in models if m in ("boosted_trees", "cox")]\n')
     assert [p.split(" gained")[0] for p in pin_problems(added)] == [
-        "core/stages/evaluation.py (_shrinkage)"]
+        "core/methods/substitution.py (missing_values_block)"]
+
+
+def test_a_retired_switch_put_back_is_caught():
+    """The switch MC-2b-3 retired in ``evaluation._shrinkage`` (the shrinkage offer for the linear
+    family by key), written back, fails as a switch outside the lists."""
+    back = _rescanned("core/stages/evaluation.py", 'updates_by_shrinkage(m.get("family"))',
+                      'm.get("family") == "linear"')
+    place = ("core/stages/evaluation.py", "_shrinkage")
+    assert place in back and place not in NOT_YET and place not in EXITS
+    assert [h.names for h in back[place]] == [{"linear"}]
 
 
 # A listed place written for the probe below: two switches, on the Cox and proportional-odds

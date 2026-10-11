@@ -389,30 +389,6 @@ def test_the_stage_s_refit_reaches_the_maximum_likelihood_estimate():
         class_predictor(pipeline, X, y, ["low", "mid"], linear)
 
 
-# ── models/survey.py: the words tables stay keyed by labels that exist ───────
-
-
-def test_each_word_table_key_is_a_registered_family_s_methods_label():
-    """``_DESIGN_WORDS`` and ``_NO_DESIGN_WORDS`` are keyed by ``methods_label``: a family that
-    renames its estimator would fall back to its label in silence and change the methods
-    sentence. Each key must be the label of a registered family that has (or lacks) a
-    design-based estimator for a task of its own. Reference: the old tables' families, written
-    in the test."""
-    from turbotab.core.models.survey import _DESIGN_WORDS, _NO_DESIGN_WORDS, has_design_estimator
-
-    design, other = {}, {}
-    for f, t in _pairs():
-        if t in f.tasks:
-            (design if has_design_estimator(f, t) else other).setdefault(
-                f.methods_label(t), set()).add(f.key)
-    assert set(_DESIGN_WORDS) <= set(design), sorted(set(_DESIGN_WORDS) - set(design))
-    assert set(_NO_DESIGN_WORDS) <= set(other), sorted(set(_NO_DESIGN_WORDS) - set(other))
-    assert set().union(*(design[k] for k in _DESIGN_WORDS)) == {
-        "linear", "proportional_odds", "cox"}
-    assert set().union(*(other[k] for k in _NO_DESIGN_WORDS)) >= {
-        "mixed", "gee", "featurewise", "elastic_net", "boosted_trees"}
-
-
 # ── estimand.py: the feature-wise family by its declarations ─────────────────
 
 

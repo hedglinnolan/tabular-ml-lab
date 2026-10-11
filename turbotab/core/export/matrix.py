@@ -3,8 +3,10 @@
 
 The design stage keeps the matrix its shared steps made (impute → energy model → forms → levels →
 one-hot; ``models/pipeline.shared_steps``), indexed by row id, as a file of its cache artifact
-(:data:`FILE`, written by :func:`write`), so no stage downstream reads it. The lineage figure ends
-in it. The bundle never carries its rows, which are the participants' data: it carries two hashes
+(:data:`FILE`, written by :func:`write`), so no stage downstream reads it. It is in the coding
+``stages.modeling.shown_coding`` names: every level its own column when every chosen family codes
+every level, and the first level of each category dropped otherwise. The lineage figure ends in
+it. The bundle never carries its rows, which are the participants' data: it carries two hashes
 of it (:func:`record_file`).
 
 * **The parquet hash** (:func:`canonical_parquet`): SHA-256 of the matrix written as Parquet with

@@ -633,11 +633,13 @@ def test_a_wide_table_collapses_into_count_nodes_that_still_add_up(tmp_path):
                                           "target_info": mf.target_info("regression", "y")}, paths))
     lineage = _lineage(design)
     assert lineage.collapsed
-    for lane, total in (("raw", genes + 2), ("matrix", genes + 2)):
+    # The elastic net codes every level (ruling 14d: the lineage follows the chosen families'
+    # coding), so sex has a column per level in the matrix lane.
+    for lane, total in (("raw", genes + 2), ("matrix", genes + 3)):
         assert sum(node.count for node in lineage.nodes if node.lane == lane) == total
     # sex is one-hot encoded, so it stays visible; the genes fold into one count node per lane.
     visible = {node.column for node in lineage.nodes if node.column}
-    assert {"sex", "sex_M"} <= visible
+    assert {"sex", "sex_F", "sex_M"} <= visible
     groups = [node for node in lineage.nodes if node.column is None]
     assert any(g.lane == "raw" and g.role == "exposure" and g.count == genes for g in groups)
     assert len(lineage.nodes) < 12
