@@ -1,47 +1,72 @@
-"""The light Predict capture behind ``BEATS_PREDICT.md``: NHANES fasting glucose under Predict,
-driven through the real server in process, with every number computed by the engine's own
-functions.
+"""The light Predict capture behind ``BEATS_PREDICT.md`` (Round 1): NHANES fasting glucose under
+Predict, driven through the real server in process, with every number computed by the engine's
+own functions.
 
 Run it from the repository root (two workers, two threads, a fresh home)::
 
     venv/bin/python docs/turbotab-next/calm/predict-capture/capture.py --home <empty folder>
 
-It writes ``capture.json`` beside this file (``--out`` to put it elsewhere).
+It writes ``capture.json`` beside this file (``--out`` to put it elsewhere). ``--shelf-only``
+stops at the families question, before Fit, and keeps the shelf (the beats read the tree families'
+costs from a straight-line shelf: ``--forms none --shelf-only``); the shelf itself reads glucose's
+mean and spread on the development rows, for one sample-size criterion (the beats' C17).
 
-**The journey.** The NHANES export (``turbotab/core/tests/fixtures/nhanes.csv.gz``, 21,849 adults,
-nine survey cycles), the dietary lens, the outcome ``glucose``, the goal Predict. Its answers are
-the reference journey's (``reference/journeys.py``, ``dietary-prediction``) except where the beats
-rule otherwise, each said here:
+**The table.** The NHANES export (``turbotab/core/tests/fixtures/nhanes.csv.gz``, 21,849 adults,
+nine survey cycles), prepared by the answers beat D ("What your data raised") gives before the
+draw, which the engine does not serve yet (requirements P22–P24); :func:`prepare_table` applies
+them and says what it changed:
 
-* **Roles** (BEATS_PREDICT M1, requirement P3): every column known at a visit with a fasting draw
-  is a predictor. The nutrients take the covariate role, as P3 compiles them under Predict, so the
-  energy-model and substitution questions do not fire (the beats' ruling 5). The survey cycle is not a
-  predictor (a later visit is in no cycle the model has seen); it is read only by the validation.
-  The six ``imputed_*`` columns are processing flags, made after the visit.
-* **The medicine answers** keep their blanks as a level of their own (``missing_category``):
-  NHANES asks them only after a diagnosis, so a blank means "not asked" (BEATS_PREDICT M2, P1).
-* **The intended use** (Your question): estimating the value, its performance reported by gender,
-  age, and each medicine answer (W1-F's card; ``set_intended_use``).
-* **Validation:** 20% of the rows held out at random (seed 0); internal–external validation by
-  survey cycle on the rest (the beats' ruling 3); the families compared on 10 × 5-fold
-  cross-validation, as the engine always compares them.
+* **Values filled in before the table was made** (the six ``imputed_*`` flags, 2,444 people) are
+  read as missing: their method is unknown, and some are impossible (waists to 323 cm). The
+  in-fold fill then fills them in each training fold, without glucose.
+* **Diastolic pressures stored as a SAS zero** (119, ``5.4e-79``) are read as missing: a resting
+  diastolic pressure of 0 mmHg is not a measurement. The nutrients' 33 SAS zeros stay, and the
+  engine's own repair reads them as 0 g.
+* **Age**: 80 and over is one age in every cycle (NHANES codes 85 for 85 and over in 2001–2006,
+  and 80 for 80 and over from 2007).
+* **Fasting glucose**: NHANES's published equations put each cycle's value on the instrument that
+  followed it, where an equation exists (the laboratory documentation of GLU_D, GLU_E and GLU_I):
+  2001–2004 (Cobas Mira) to the Hitachi 911 and on to the Modular P; 2005–2006 (Hitachi 911) to the
+  Modular P; 2013–2014 (Cobas C501) to the Cobas C311 used from 2015. NHANES published none for the
+  move from the University of Minnesota (2005–2012) to the University of Missouri (2013 on).
+
+**The journey.** The dietary lens, the outcome ``glucose``, the goal Predict. Its answers are the
+reference journey's (``reference/journeys.py``, ``dietary-prediction``) except where the beats rule
+otherwise, each said here:
+
+* **Roles** (beat M1, P3): every column known at a visit with a fasting draw is a predictor; the
+  nutrients take the covariate role, as P3 compiles them under Predict (ruling 5). The survey cycle
+  is not a predictor; it is read only by the draw and the validation. The ``imputed_*`` flags
+  mark the values read as missing and are no predictor.
+* **The medicine answers** keep their blanks as a level of their own (``missing_category``): a
+  blank means "not asked" (beat M2, P1). The numbers' blanks are filled in each training fold.
+* **The intended use** (beat Q): estimating the value, its performance reported by gender, age and
+  each medicine answer (``set_intended_use``).
+* **The held-out rows** (beat W, P21): the model is used after the data's years, so the latest
+  cycle, 2017–2018, is sealed whole. The engine cannot draw that seal yet (it refuses
+  ``set_temporal`` when each person appears once), so the run emulates it: a rule keeps the latest
+  cycle out of the analysis, no rows are drawn at random, and ``extras.py --open`` opens the
+  latest cycle once, after the final model and its level are declared. Internal–external
+  validation by survey cycle on the other eight (the beats' ruling 3); the families compared on
+  10 × 5-fold cross-validation.
 * **Families:** least squares, ridge and the elastic net only. No tuned trees: a tuned shelf on
-  these rows takes hours. The shelf's own ranking and cost for every family are read, outcome-blind.
-* **Each continuous measure may bend** (``set_levers``, forms by Harrell's rule; the beats' ruling
-  6), declared in Models before Fit. ``--forms none`` keeps the engine's straight lines, the
-  engine's default (the beats' first run); ``extras.py`` measures what the curves added on the
-  final family directly.
-* **The final model** is named before the held-out rows open, by the beats' ruling 4:
-  among the families whose paired difference from the best includes zero, the simplest whose fit
+  these rows takes hours. The shelf's own ranking and cost for every family are read.
+* **Each continuous measure may bend** (``set_levers``, forms by Harrell's rule; ruling 6).
+  ``--forms none`` keeps straight lines.
+* **The final model** is named before the latest cycle opens (``declared_before_opening``), by
+  ruling 4: among the families whose paired difference from the best lies within a stated margin
+  (a twentieth of the best family's gain over the no-predictor model), the simplest whose fit
   raised no concern its equation would carry into the paper.
-* **The curves on shared axes** are declared before Fit for one measure of each group that carries
-  the estimate (waist, triglycerides, HDL, age, total calories): a display, not a choice the
-  scores read.
+* **The level for a later visit** (beat M5, ruling 10) is declared in the plan before Fit; the
+  engine does not serve it yet (P25), so ``extras.py`` applies the declared rule and scores the
+  opened cycle with it.
 
-**What reads the outcome.** Everything after Fit reads glucose on the training rows (the
+**What reads the outcome.** Everything after Fit reads glucose on the development rows (the
 cross-validated scores, calibration, explanations), and everything after the opening reads the
 held-out rows. In ``capture.json`` all of it sits under ``after_seal`` and is used only by the
-Results beats; the Models beats use ``before_fit`` alone, which reads no glucose value.
+Results beats; the Models beats use ``before_fit`` alone, whose numbers read no glucose value except
+the shelf's own reading of its mean and spread on the development rows, for one sample-size
+criterion (said in beat M3).
 """
 from __future__ import annotations
 
@@ -71,10 +96,11 @@ import numpy as np  # noqa: E402
 
 FAMILIES = ["linear", "ridge", "elastic_net"]
 COMPLEXITY = {"linear": 0, "ridge": 1, "elastic_net": 2}  # tuned penalties: none, one, two
+MARGIN_SHARE = 0.05  # ruling 4: equivalent within a twentieth of the best family's gain
 SUBGROUPS = ["gender", "age", "meds_hbp", "meds_chol"]
 NUTRIENTS = ["protein", "sugar", "carb", "fat_total", "fat_sat", "fat_mon", "fat_poly"]
-FLAGS = ["imputed_weight", "imputed_height", "imputed_bmi", "imputed_waist", "imputed_bp_sys",
-         "imputed_bp_di"]
+FLAGS = {"imputed_weight": "weight", "imputed_height": "height", "imputed_bmi": "bmi",
+         "imputed_waist": "waist", "imputed_bp_sys": "bp_sys", "imputed_bp_di": "bp_di"}
 ROLES = {
     "SEQN": "identifier", "cycle_begin_year": "excluded", "kcal": "energy",
     **{c: "covariate" for c in ("age", "gender", "bp_sys", "bp_di", "weight", "height", "bmi",
@@ -82,34 +108,55 @@ ROLES = {
                                 *NUTRIENTS)},
     **{c: "flag" for c in FLAGS},
 }
-SPLIT = {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5,
+LATEST = 2017  # the latest survey cycle's first year: held out whole (beat W)
+# P21's seal, emulated: the engine has no holdout of whole levels of a period column, and refuses
+# ``set_temporal`` for a table where each person appears once ("temporal prediction does not
+# arise"). So the latest cycle is kept out of the analysis by a rule (the server reads its rows
+# into the working table but no stage analyzes them), no rows are drawn at random
+# (``holdout: 0``), and ``extras.py --open`` opens the latest cycle once, with the final model and
+# the level the run declared, as P21's opening would.
+SEALED = {"kind": "range", "column": "cycle_begin_year", "low": 2001.0, "high": float(LATEST - 2),
+          "reason": "The latest survey cycle, 2017–2018, is sealed whole until the final model is "
+                    "named (P21, emulated).", "missing": "exclude"}
+EXCLUSIONS = {"kind": "set_exclusions", "rules": [SEALED]}
+SPLIT = {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5,
          "validation": "internal_external", "cluster": "cycle_begin_year"}
 MISSING = {"kind": "set_missing", "strategy": "impute", "categorical": "missing_category"}
 INTENDED_USE = {"kind": "set_intended_use", "use": "risk_estimation", "subgroups": SUBGROUPS,
                 "fairness": "subgroup_performance"}
 # The curves on shared axes (beat R3): one measure from each group that carries the estimate, declared
-# before Fit. They are a display, not a choice the scores read (FOUNDATION §10, disagreement 14);
-# P6 would pick them from the families' pooled importance.
+# before Fit; a display, not a choice the scores read (P6 would pick them from the pooled importance).
 CURVES = ["waist", "triglycerides", "hdl", "age", "kcal"]
 EXPLAIN = {"kind": "set_explain", "curves": "ale", "exposures": CURVES, "reseeds": 5}
-# M4's in-fold form (the beats' ruling 6): each continuous measure may bend, a restricted cubic spline
-# with knots by Harrell's rule (``methods.levers.RuleSplines``); ``--forms none`` keeps straight
-# lines, the engine's default, which is the run that measures what the curves added.
 FORMS = {"kind": "set_levers", "forms": "rule"}
-# Fasting plasma glucose bands (American Diabetes Association, Standards of Care, section 2):
-# below 100 mg/dL; 100 to 125 (impaired fasting glucose); 126 or more (the diabetes range).
-BANDS = ((None, 100.0, "under 100"), (100.0, 126.0, "100 to 125"), (126.0, None, "126 or more"))
-CUT = 126.0
-# The plain groups the cross-family importance table sums SHAP over (P6).
-GROUPS = {
-    "Blood lipids (same draw)": ["hdl", "triglycerides"],
-    "Body size": ["weight", "height", "bmi", "waist"],
-    "Blood pressure": ["bp_sys", "bp_di"],
-    "Age": ["age"],
-    "Gender": ["gender"],
-    "Medicine answers": ["meds_hbp", "meds_chol"],
-    "Yesterday's diet (one recall)": ["kcal", *NUTRIENTS],
+# Beat M5's one decision, declared with the plan before Fit (ruling 10). The engine has no such
+# updating rule yet (``set_updating`` knows "none" and "shrinkage"; requirement P25), so the capture
+# records the declaration here, at the press, and ``extras.py`` applies it before the opening.
+LEVEL_RULE = {
+    "answer": "set its level on the latest cycle, if the cycles shift",
+    "trigger": "the latest development cycle's out-of-cycle mean miss has a 95% interval that "
+               "excludes 0",
+    "update": "the final model's intercept re-estimated on the latest development cycle "
+              "(2015–2016), its coefficients kept (temporal recalibration, Booth et al. 2020)",
 }
+AGE_TOP = 80.0  # NHANES's top code from 2007; 2001–2006 coded 85 for 85 and over
+# NHANES's published equations for fasting plasma glucose, each to the instrument that followed
+# (GLU_D 2005–2006: Hitachi 911 = 0.9815 × Cobas Mira + 3.5707; GLU_E 2007–2008: Modular P =
+# Hitachi 911 + 1.148; GLU_I 2015–2016: C311 = 1.023 × C501 − 0.5108). Each cycle's chain, as
+# (slope, intercept) applied in order.
+LAB_EQUATIONS = {
+    2001: [(0.9815, 3.5707), (1.0, 1.148)],
+    2003: [(0.9815, 3.5707), (1.0, 1.148)],
+    2005: [(1.0, 1.148)],
+    2013: [(1.023, -0.5108)],
+}
+LAB = [  # (cycles, laboratory, instrument, the scale its values end on)
+    ("2001–2004", "University of Missouri", "Roche Cobas Mira", "Modular P (Minnesota)"),
+    ("2005–2006", "University of Minnesota", "Roche/Hitachi 911", "Modular P (Minnesota)"),
+    ("2007–2012", "University of Minnesota", "Roche Modular P", "Modular P (Minnesota)"),
+    ("2013–2014", "University of Missouri", "Roche Cobas C501", "Cobas C311 (Missouri)"),
+    ("2015–2018", "University of Missouri", "Roche Cobas C311", "Cobas C311 (Missouri)"),
+]
 
 
 def log(text: str) -> None:
@@ -143,6 +190,77 @@ def get(client: Any, url: str) -> Any:
     return {"status": r.status_code, "body": body}
 
 
+# ── beat D's answers, applied before the upload ──────────────────────────────
+
+
+def prepare_table(dest: Path) -> dict[str, Any]:
+    """The NHANES export with beat D's answers applied (module docstring), written to ``dest``.
+    Returns what changed, by column and cycle; none of it reads a glucose value (the equations
+    rewrite glucose without looking at it)."""
+    import pandas as pd
+
+    from turbotab.core.repairs import is_sas_zero
+    from turbotab.core.reference.journeys import nhanes_path
+
+    df = pd.read_csv(nhanes_path())
+    out: dict[str, Any] = {"rows": int(len(df))}
+    # 1. Values filled in before the table was made: read as missing.
+    filled: dict[str, Any] = {}
+    any_flag = np.zeros(len(df), dtype=bool)
+    for flag, column in FLAGS.items():
+        mask = df[flag].astype(bool).to_numpy()
+        any_flag |= mask
+        values = df.loc[mask, column]
+        measured = df.loc[~mask, column]
+        filled[column] = {"n": int(mask.sum()), "filled_max": float(values.max()) if len(values) else None,
+                          "filled_min": float(values.min()) if len(values) else None,
+                          "measured_max": float(measured.max()), "measured_min": float(measured.min())}
+        df.loc[mask, column] = np.nan
+    out["filled"] = filled
+    out["filled_people"] = int(any_flag.sum())
+    out["filled_share"] = float(any_flag.mean())
+    raw = pd.read_csv(nhanes_path())
+    bmi_calc = raw["weight"] / (raw["height"] / 100.0) ** 2
+    body_flag = raw[["imputed_weight", "imputed_height", "imputed_bmi"]].astype(bool).any(axis=1)
+    out["bmi_identity_gap"] = {"filled_rows_max": float((raw["bmi"] - bmi_calc).abs()[body_flag].max()),
+                               "measured_rows_max": float((raw["bmi"] - bmi_calc).abs()[~body_flag].max())}
+    out["waist_filled_above_measured_max"] = int(
+        (raw.loc[raw["imputed_waist"].astype(bool), "waist"] > raw.loc[~raw["imputed_waist"].astype(bool), "waist"].max()).sum())
+    out["filled_by_cycle"] = {str(int(k)): int(v) for k, v in
+                              pd.Series(any_flag).groupby(df["cycle_begin_year"]).sum().items()}
+    # 2. Diastolic SAS zeros: read as missing (the nutrients' stay for the engine's repair).
+    zeros = is_sas_zero(df["bp_di"].to_numpy(dtype=float))
+    out["diastolic_zeros"] = int(zeros.sum())
+    df.loc[zeros, "bp_di"] = np.nan
+    numeric = df.select_dtypes("number")
+    others = {c: int(is_sas_zero(numeric[c].to_numpy(dtype=float)).sum()) for c in numeric.columns}
+    out["other_sas_zeros"] = {c: n for c, n in others.items() if n}
+    # 3. Age: 80 and over as one age.
+    out["age_top_by_cycle"] = {str(int(k)): float(v) for k, v in
+                               df.groupby("cycle_begin_year")["age"].max().items()}
+    out["age_at_85"] = int((df["age"] >= 85).sum())
+    out["age_80_to_84_before_2007"] = int(((df["age"] >= 80) & (df["age"] < 85)
+                                           & (df["cycle_begin_year"] < 2007)).sum())
+    out["age_capped"] = int((df["age"] > AGE_TOP).sum())
+    df["age"] = df["age"].clip(upper=AGE_TOP)
+    # 4. Fasting glucose: NHANES's equations, forward, where one exists.
+    adjusted = {}
+    for cycle, chain in LAB_EQUATIONS.items():
+        mask = (df["cycle_begin_year"] == cycle).to_numpy()
+        values = df.loc[mask, "glucose"].to_numpy(dtype=float)
+        for slope, intercept in chain:
+            values = slope * values + intercept
+        df.loc[mask, "glucose"] = values
+        adjusted[str(cycle)] = {"rows": int(mask.sum()), "equations": chain}
+    out["glucose_adjusted"] = adjusted
+    out["laboratory"] = [dict(zip(("cycles", "laboratory", "instrument", "scale"), row)) for row in LAB]
+    out["cycles"] = {str(int(k)): int(v) for k, v in df["cycle_begin_year"].value_counts().sort_index().items()}
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(dest, index=False)
+    out["file"] = dest.name
+    return out
+
+
 # ── outcome-free summaries for the Models beats ──────────────────────────────
 
 
@@ -151,7 +269,7 @@ def predictors_summary(store: Any, ids: Any) -> dict[str, Any]:
     the rows by survey cycle, and the two together."""
     from turbotab.core.models.pipeline import modeling_frame
 
-    frame = modeling_frame(store, ["meds_hbp", "meds_chol", "cycle_begin_year"], ids)
+    frame = modeling_frame(store, ["meds_hbp", "meds_chol", "cycle_begin_year", "gender"], ids)
     out: dict[str, Any] = {"rows": int(len(frame))}
     for c in ("meds_hbp", "meds_chol"):
         s = frame[c]
@@ -160,224 +278,88 @@ def predictors_summary(store: Any, ids: Any) -> dict[str, Any]:
     out["either_asked"] = int(either.sum())
     out["neither_asked"] = int((~either).sum())
     out["both_asked"] = int((frame["meds_hbp"].notna() & frame["meds_chol"].notna()).sum())
-    # The mode of each answer among those asked: what a most-frequent fill would write into every
-    # "not asked" (requirement P1's hazard).
     out["mode_fill_would_say"] = {c: ("yes" if (frame[c] == 1).sum() >= (frame[c] == 0).sum() else "no")
                                   for c in ("meds_hbp", "meds_chol")}
     cycles = frame["cycle_begin_year"].value_counts().sort_index()
     out["cycles"] = {str(int(k)): int(v) for k, v in cycles.items()}
     asked = frame.assign(asked=either).groupby("cycle_begin_year")["asked"].mean()
     out["asked_share_by_cycle"] = {str(int(k)): round(float(v), 4) for k, v in asked.items()}
+    out["gender"] = {str(k): int(v) for k, v in frame["gender"].value_counts().items()}
     return out
 
 
-# ── after the seal: what the Results beats read ──────────────────────────────
+def measures_summary(store: Any, ids: Any) -> dict[str, Any]:
+    """The outcome-free pictures of Models' Set for you (beat M4), on the development rows: waist's
+    spread with Harrell's five knots and two equal steps, and how much of each body measure the
+    other three carry; the missing values by measure after beat D."""
+    import pandas as pd
 
+    from turbotab.core.models.pipeline import modeling_frame
 
-def first_repeat(cv: Any) -> dict[str, np.ndarray]:
-    """The first repeat's out-of-fold predictions, outcome and training-fold mean, by row position."""
-    reps = cv._repeat()
-    rows, y, pred, ref = [], [], [], []
-    for f, r in zip(cv.predictions, reps):
-        if r != 0:
-            continue
-        rows.append(np.asarray(f.rows))
-        y.append(np.asarray(f.y, dtype=float))
-        pred.append(np.asarray(f.prediction, dtype=float))
-        ref.append(np.full(len(f.rows), float(f.reference)))
-    order = np.argsort(np.concatenate(rows))
-    return {"rows": np.concatenate(rows)[order], "y": np.concatenate(y)[order],
-            "pred": np.concatenate(pred)[order], "ref": np.concatenate(ref)[order]}
-
-
-def scores(y: np.ndarray, pred: np.ndarray) -> dict[str, Any]:
-    e = pred - y
-    return {"n": int(len(y)), "rmse": float(np.sqrt(np.mean(e ** 2))), "mae": float(np.mean(np.abs(e))),
-            "bias": float(np.mean(e)), "mean_observed": float(np.mean(y)) if len(y) else None,
-            "mean_predicted": float(np.mean(pred)) if len(y) else None}
-
-
-def by_band(y: np.ndarray, pred: np.ndarray) -> list[dict[str, Any]]:
-    out = []
-    for low, high, name in BANDS:
-        keep = np.ones(len(y), dtype=bool)
-        if low is not None:
-            keep &= y >= low
-        if high is not None:
-            keep &= y < high
-        entry = {"band": name, "share": float(keep.mean())}
-        entry.update(scores(y[keep], pred[keep]))
-        out.append(entry)
+    cols = ["weight", "height", "bmi", "waist", "bp_sys", "bp_di", "age"]
+    frame = modeling_frame(store, cols, ids)
+    out: dict[str, Any] = {"rows": int(len(frame))}
+    waist = frame["waist"].dropna().to_numpy(dtype=float)
+    q = np.quantile(waist, [0.05, 0.275, 0.5, 0.725, 0.95])
+    out["waist"] = {"n": int(len(waist)), "knots": [float(v) for v in q],
+                    "p01": float(np.quantile(waist, 0.01)), "p99": float(np.quantile(waist, 0.99)),
+                    "share_80_90": float(((waist >= 80) & (waist < 90)).mean()),
+                    "share_110_120": float(((waist >= 110) & (waist < 120)).mean())}
+    body = frame[["weight", "height", "bmi", "waist"]].dropna()
+    shared = {}
+    for c in body.columns:
+        others = body.drop(columns=c).to_numpy(dtype=float)
+        X = np.column_stack([np.ones(len(body)), others, others ** 2])
+        y = body[c].to_numpy(dtype=float)
+        beta, *_ = np.linalg.lstsq(X, y, rcond=None)
+        resid = y - X @ beta
+        shared[c] = float(1 - resid.var() / y.var())
+    out["body_shared_r2"] = shared
+    out["body_corr"] = {f"{a}~{b}": float(body[a].corr(body[b]))
+                        for i, a in enumerate(body.columns) for b in body.columns[i + 1:]}
+    log_identity = np.log(body["bmi"]) - (np.log(body["weight"]) - 2 * np.log(body["height"] / 100))
+    out["bmi_identity_max_gap_log"] = float(np.abs(log_identity).max())
+    out["missing_after_d"] = {c: int(frame[c].isna().sum()) for c in cols}
+    out["age_max"] = float(frame["age"].max())
     return out
 
 
-def at_cut(y: np.ndarray, pred: np.ndarray) -> dict[str, Any]:
-    high, flagged = y >= CUT, pred >= CUT
-    return {"cut": CUT, "n_at_or_above": int(high.sum()), "share_at_or_above": float(high.mean()),
-            "predicted_at_or_above": int(flagged.sum()),
-            "sensitivity": float((flagged & high).sum() / max(1, high.sum())),
-            "ppv": float((flagged & high).sum() / max(1, flagged.sum())) if flagged.any() else None,
-            "false_alarms_among_below": float((flagged & ~high).sum() / max(1, (~high).sum())),
-            "max_prediction": float(np.max(pred)),
-            "prediction_p99": float(np.quantile(pred, 0.99)),
-            "observed_p99": float(np.quantile(y, 0.99))}
+def riley(parameters: int) -> dict[str, Any]:
+    """Riley et al.'s outcome-free criteria (C2–C4) at this many parameters (C1, the intercept,
+    needs the outcome's mean and spread and is not computed here)."""
+    from turbotab.core.models.sample_size import continuous_minimum
+
+    m = continuous_minimum(parameters)
+    return {"parameters": parameters, "minimum": m.n, "binding": m.binding.key,
+            "criteria": [{"key": c.key, "what": c.what, "n": c.n} for c in m.criteria]}
 
 
-def by_tenth(y: np.ndarray, pred: np.ndarray) -> list[dict[str, Any]]:
-    """Mean observed against mean predicted in each tenth of the predictions (calibration's own
-    picture, by the predictions, never by the outcome), with the share at or above the cut."""
-    edges = np.quantile(pred, np.linspace(0, 1, 11))
-    which = np.clip(np.searchsorted(edges, pred, side="right") - 1, 0, 9)
-    out = []
-    for k in range(10):
-        keep = which == k
-        out.append({"tenth": k + 1, "n": int(keep.sum()),
-                    "mean_predicted": float(pred[keep].mean()), "mean_observed": float(y[keep].mean()),
-                    "share_at_or_above_cut": float((y[keep] >= CUT).mean())})
-    return out
+# ── the drive ────────────────────────────────────────────────────────────────
 
 
-def outcome_shape(y: np.ndarray) -> dict[str, Any]:
-    from scipy.stats import skew
-
-    q = np.quantile(y, [0.05, 0.25, 0.5, 0.75, 0.95, 0.99])
-    return {"n": int(len(y)), "mean": float(y.mean()), "sd": float(y.std(ddof=1)),
-            "skew": float(skew(y)), "log_skew": float(skew(np.log(y))) if (y > 0).all() else None,
-            "quantiles": {"p05": float(q[0]), "p25": float(q[1]), "median": float(q[2]),
-                          "p75": float(q[3]), "p95": float(q[4]), "p99": float(q[5])},
-            "share_100_to_125": float(((y >= 100) & (y < 126)).mean()),
-            "share_at_or_above_126": float((y >= CUT).mean()),
-            "share_above_200": float((y > 200).mean()),
-            "squared_error_share_from_at_or_above_126_baseline": None}
-
-
-def importance_table(explain: dict[str, Any]) -> dict[str, Any]:
-    """P6's prototype: each family's mean |SHAP| by input and by plain group, on one scale (mg/dL),
-    with each family's rank of the groups."""
-    families = [f for f in explain.get("families") or [] if f.get("explained")]
-    inputs: dict[str, dict[str, float]] = {}
-    for fam in families:
-        for row in fam.get("importance") or []:
-            inputs.setdefault(row["input"], {})[fam["family"]] = float(row["mean_abs"])
-
-    def raw_of(name: str) -> str:
-        # one-hot inputs and missing levels keep their source column first in the name
-        for raw in ROLES:
-            if name == raw or name.startswith(f"{raw}_") or name.startswith(f"{raw}="):
-                return raw
-        return name
-
-    groups: dict[str, dict[str, float]] = {}
-    for name, by in inputs.items():
-        raw = raw_of(name)
-        group = next((g for g, cols in GROUPS.items() if raw in cols), f"other: {raw}")
-        for fam, v in by.items():
-            groups.setdefault(group, {}).setdefault(fam, 0.0)
-            groups[group][fam] += v
-    ranks = {}
-    for fam in families:
-        key = fam["family"]
-        ordered = sorted(groups, key=lambda g: -groups[g].get(key, 0.0))
-        ranks[key] = ordered
-    return {"by_input": inputs, "by_group": groups, "group_rank": ranks,
-            "note": "Sums of mean |SHAP| over each group's inputs: a sum over correlated inputs, "
-                    "read as the group's share, never as one input's."}
-
-
-def after_seal(client: Any, pid: str, final: str) -> dict[str, Any]:
-    """What the Results beats read, computed after the held-out rows were opened."""
-    from turbotab.core.config import default_memory_budget
-    from turbotab.core.datastore import DataStore
-    from turbotab.core.graph import read_artifact
-    from turbotab.core.models.pipeline import DesignSpec, modeling_frame
-    from turbotab.core.stages.working import working_paths
-
-    service = client.app.state.service
-    cache = service.workspace.cache_dir(pid)
-    view = client.get(f"/api/projects/{pid}").json()
-    stages = view["stages"]
-    fit = read_artifact(cache, "fit", stages["fit"]["key"])
-    design = read_artifact(cache, "design", stages["design"]["key"])
-    working = read_artifact(cache, "working", stages["working"]["key"])
-    split = read_artifact(cache, "split", stages["split"]["key"])
-    spec = DesignSpec.from_dict(design.objects["spec"])
-    comparison = fit.objects["comparison"]
-    substrates = comparison["results"]
-    out: dict[str, Any] = {"inputs": list(spec.inputs), "final": final}
-
-    # Out of fold, the first repeat of the 10 × 5-fold comparison (training rows).
-    oof = {k: first_repeat(cv) for k, cv in substrates.items()}
-    any_key = next(iter(oof))
-    y = oof[any_key]["y"]
-    out["training_outcome"] = outcome_shape(y)
-    base = oof[any_key]["ref"]
-    out["oof"] = {"baseline": {"overall": scores(y, base), "by_band": by_band(y, base)}}
-    sq = (base - y) ** 2
-    out["training_outcome"]["squared_error_share_from_at_or_above_126_baseline"] = float(
-        sq[y >= CUT].sum() / sq.sum())
-    for k, o in oof.items():
-        assert np.allclose(o["y"], y), "the families' first repeats score the same rows"
-        e2 = (o["pred"] - y) ** 2
-        out["oof"][k] = {"overall": scores(y, o["pred"]), "by_band": by_band(y, o["pred"]),
-                         "at_cut": at_cut(y, o["pred"]), "by_tenth": by_tenth(y, o["pred"]),
-                         "squared_error_share_from_at_or_above_126": float(e2[y >= CUT].sum() / e2.sum()),
-                         "prediction_sd": float(np.std(o["pred"], ddof=1)),
-                         "outcome_sd": float(np.std(y, ddof=1))}
-
-    # The held-out rows, opened once: the final family's predictions from its fit on every
-    # training row (the fit's own ``fitted``).
-    sealed = split.frames["sealed"]["row_id"].to_numpy(dtype=np.int64)
-    table = working_paths(working)["table"]
-    store = DataStore(table, int(default_memory_budget()))
-    held = modeling_frame(store, [*spec.inputs, "glucose"], sealed, outcome="glucose")
-    # (the store is closed at the end of this function)
-    yh = held["glucose"].to_numpy(dtype=float)
-    keep = np.isfinite(yh)
-    yh = yh[keep]
-    Xh = held[list(spec.inputs)].iloc[np.flatnonzero(keep)]
-    train_mean = float(np.mean(y))  # the training rows' mean, the no-predictor model on new rows
-    out["held_out"] = {"n": int(len(yh)), "baseline": scores(yh, np.full(len(yh), train_mean)),
-                       "baseline_by_band": by_band(yh, np.full(len(yh), train_mean))}
-    for k in FAMILIES:
-        model = fit.objects["fitted"].get(k)
-        if model is None:
-            continue
-        ph = np.asarray(model.predict(Xh), dtype=float)
-        out["held_out"][k] = {"overall": scores(yh, ph), "by_band": by_band(yh, ph),
-                              "at_cut": at_cut(yh, ph), "by_tenth": by_tenth(yh, ph)}
-    out["held_out"]["outcome"] = outcome_shape(yh)
-    # Who is in the held-out rows, outcome-free: the medicine answers and the cycles.
-    out["held_out"]["predictors"] = predictors_summary(store, sealed)
-    out["training_predictors"] = predictors_summary(store, comparison["train_ids"])
-    store.close()
-    return out
-
-
-# ── what is kept ─────────────────────────────────────────────────────────────
+class Stop(Exception):
+    """``--shelf-only``: the shelf is read; nothing is fitted."""
 
 
 def trim(cap: dict[str, Any]) -> dict[str, Any]:
     """The capture as committed: every number the beats cite, without the per-row arrays the
-    explanations and the stage cards carry (the beeswarm, the per-row attributions, each refit's
-    importances, the cards' option lists and samples). ``--full`` keeps everything."""
+    explanations and the stage cards carry. ``--full`` keeps everything."""
     import copy
 
     out = copy.deepcopy(cap)
     before, after = out.get("before_fit") or {}, out.get("after_seal") or {}
-    for name in ("whos_in", "models_entry"):
+    for name in ("whos_in", "models_entry", "at_the_draw"):
         snap = before.get(name) or {}
+        snap.pop("quest", None)
         prop = snap.get("proposals") or {}
-        keep = {k: prop.get(k) for k in ("labels",) if k in prop}
-        if "labels" in keep:
-            keep["labels"] = {q: v for q, v in (keep["labels"] or {}).items() if q in ("missing",)}
-        snap["proposals"] = keep
+        if prop:
+            snap["proposals"] = {"labels": {q: v for q, v in ((prop.get("labels") or {}).items())
+                                            if q in ("missing", "split")}}
         if "cohort" in snap:
             snap["cohort"] = {k: (snap["cohort"] or {}).get(k) for k in ("n_measured", "n_analyzed",
                                                                          "steps", "flow")}
     for key in ("quest_at_plan", "methods_at_plan"):
         before.pop(key, None)
-    for name in ("whos_in", "at_the_draw"):  # the quest log is kept once, entering Models
-        (before.get(name) or {}).pop("quest", None)
     design = before.get("design") or {}
     before["design"] = {k: design.get(k) for k in ("matrix", "warnings", "left_out")}
     explain = after.get("explain_before_opening") or {}
@@ -400,13 +382,9 @@ def trim(cap: dict[str, Any]) -> dict[str, Any]:
         fit = after.get(key) or {}
         for m in fit.get("models") or []:
             m.pop("coefficients", None)
-            for name in ("calibration",):
-                if isinstance(m.get(name), dict):
-                    m[name].pop("curve", None) if key == "fit_opened" else None
+            if isinstance(m.get("calibration"), dict) and key == "fit_opened":
+                m["calibration"].pop("curve", None)
     return out
-
-
-# ── the drive ────────────────────────────────────────────────────────────────
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -415,6 +393,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=HERE / "capture.json")
     parser.add_argument("--forms", choices=("rule", "none"), default="rule",
                         help="each continuous measure bends (rule, the beats' default) or not")
+    parser.add_argument("--shelf-only", action="store_true",
+                        help="stop at the families question: the shelf, nothing fitted")
     parser.add_argument("--full", action="store_true",
                         help="keep the per-row arrays the committed capture leaves out")
     args = parser.parse_args(argv)
@@ -428,12 +408,14 @@ def main(argv: list[str] | None = None) -> int:
     from turbotab.core.reference.journeys import (NHANES_FILE, NHANES_KEY, Journey, Recording, Run,
                                                   _server_guess, _server_ranked, apply_first_repair,
                                                   bundle_parts, declare, export, follow,
-                                                  nhanes_dietary_truth, nhanes_path, post_answer,
-                                                  wait_results)
+                                                  nhanes_dietary_truth, post_answer, wait_results)
     from turbotab.core.tests.acceptance.server_drive import Drive, local_server
 
     cap: dict[str, Any] = {"before_fit": {}, "after_seal": {}, "notes": []}
     snaps = cap["before_fit"]
+    table = home.parent / f"{home.name}-table" / "nhanes_prepared.csv"
+    log("preparing the table with beat D's answers")
+    snaps["prepared"] = prepare_table(table)
 
     def snapshot(name: str, *stage_names: str) -> Any:
         def go(run: Run, view: dict[str, Any]) -> None:
@@ -449,8 +431,10 @@ def main(argv: list[str] | None = None) -> int:
         return go
 
     def choose_models_and_press(run: Run, step: dict[str, Any], view: dict[str, Any]) -> None:
-        # The shelf, outcome-blind, as the families card reads it.
+        # The shelf, as the families card reads it.
         snaps["shelf"] = run.drive.artifact("shelf", timeout=1800)
+        if args.shelf_only:
+            raise Stop()
         run.source = "the beats' families (linear, ridge, elastic net; no tuned trees)"
         post_answer(run, {"kind": "select_models", "models": FAMILIES})
         try:  # what each model is given: the lineage and the model matrix (the flowchart's data)
@@ -462,60 +446,75 @@ def main(argv: list[str] | None = None) -> int:
         snaps["methods_at_plan"] = get(run.client, f"/api/projects/{run.pid}/methods")["body"]
         log("models chosen; pressing Fit")
         cap.setdefault("timing", {})["fit_pressed"] = time.strftime("%H:%M:%S")
+        cap.setdefault("timing", {})["fit_pressed_monotonic"] = time.monotonic()
+        cap["declared_before_fit"] = {"level_rule": LEVEL_RULE, "at": time.strftime("%H:%M:%S")}
         cap["fit_pressed"] = run.drive.press_fit()
         return None
 
-    def read_before_opening(run: Run, view: dict[str, Any]) -> None:
+    def read_results(run: Run) -> None:
         d, c, pid = run.drive, run.client, run.pid
         after = cap["after_seal"]
         for stage in ("fit", "evaluation", "explain"):
             log(f"waiting for {stage}")
             after[f"{stage}_before_opening"] = d.artifact(stage, timeout=5400)
-            cap.setdefault("timing", {})[f"{stage}_fresh"] = time.strftime("%H:%M:%S")
-        after["importance"] = importance_table(after["explain_before_opening"])
+            timing = cap.setdefault("timing", {})
+            timing[f"{stage}_fresh"] = time.strftime("%H:%M:%S")
+            if "fit_pressed_monotonic" in timing:
+                timing[f"{stage}_seconds_after_press"] = round(time.monotonic()
+                                                               - timing["fit_pressed_monotonic"], 1)
         for name in ("quest", "triage", "record", "methods", "checklist", "materiality"):
             after[f"{name}_before_opening"] = get(c, f"/api/projects/{pid}/{name}")["body"]
         log("read everything before the opening")
 
-    def choose_final(run: Run, step: dict[str, Any], view: dict[str, Any]) -> dict[str, Any]:
-        """Ruling 4: among the families whose paired difference from the best includes zero (the
-        families compared on 10 × 5-fold cross-validation, corrected t), the simplest whose fit
-        raised no concern its equation would carry into the paper (TRIPOD+AI 22: the full model);
-        the simplest of them all when every one raised one."""
+    def choose_final() -> str:
+        """Ruling 4: among the families whose paired difference from the best on the comparison
+        folds lies within the margin (a twentieth of the best family's gain over the no-predictor
+        model on the headline's folds), the simplest whose fit raised no concern its equation would
+        carry into the paper (TRIPOD+AI 22); the simplest of them all when every one raised one."""
         fit = cap["after_seal"]["fit_before_opening"]
         metric = fit["primary_metric"]
         scored = {m["family"]: (m.get("compared_on") or {}).get("estimate") for m in fit["models"]}
+        headline = {m["family"]: (m.get("cv") or {}).get(metric, {}).get("estimate") for m in fit["models"]}
+        baseline = next((m.get("baseline") or {}).get("value") for m in fit["models"]
+                        if (m.get("baseline") or {}).get("metric") == metric)
         concerns = {m["family"]: list(m.get("concerns") or []) for m in fit["models"]}
         best = min((k for k, v in scored.items() if v is not None), key=lambda k: scored[k])
-        not_worse = {best}
+        gain = float(baseline) - float(headline[best])
+        margin = MARGIN_SHARE * gain
+        equivalent = {best}
+        pairs = []
         for d in fit.get("comparisons") or []:
             pair = {d.get("a"), d.get("b")}
-            if best in pair and d.get("ci_low") is not None and d["ci_low"] <= 0 <= d["ci_high"]:
-                not_worse |= pair
-        clean = [k for k in not_worse if not concerns.get(k)]
-        chosen = min(clean or not_worse, key=lambda k: COMPLEXITY.get(k, 9))
-        cap["final_rule"] = {"metric": metric, "compared_on": scored, "best": best,
-                             "not_measurably_worse": sorted(not_worse), "concerns": concerns,
+            if best in pair and d.get("ci_low") is not None:
+                inside = -margin <= d["ci_low"] and d["ci_high"] <= margin
+                pairs.append({"a": d["a"], "b": d["b"], "difference": d["difference"],
+                              "ci_low": d["ci_low"], "ci_high": d["ci_high"], "inside": inside})
+                if inside:
+                    equivalent |= pair
+        clean = [k for k in equivalent if not concerns.get(k)]
+        chosen = min(clean or equivalent, key=lambda k: COMPLEXITY.get(k, 9))
+        cap["final_rule"] = {"metric": metric, "compared_on": scored, "headline": headline,
+                             "baseline": baseline, "best": best, "gain": gain, "margin": margin,
+                             "pairs": pairs, "equivalent": sorted(equivalent), "concerns": concerns,
                              "without_concern": sorted(clean), "chosen": chosen}
-        log(f"final model by the rule: {chosen} (best on the comparison: {best})")
-        return {"kind": "open_seal", "family": chosen}
+        log(f"final model by the rule: {chosen} (best on the comparison: {best}; margin ±{margin:.1f})")
+        return chosen
 
     spec = Journey(
         "predict-beats", "dietary", "prediction",
         "How well does what is known at a visit with a fasting draw predict fasting glucose?",
         NHANES_FILE, "BEATS_PREDICT's light capture (docs/turbotab-next/calm/predict-capture).",
-        nhanes_path, nhanes_dietary_truth, target="glucose", lenses=("dietary",), roles=ROLES,
-        answers={"missing": MISSING, "split": SPLIT, "models": choose_models_and_press,
-                 "open_seal": choose_final},
+        lambda: table, nhanes_dietary_truth, target="glucose", lenses=("dietary",), roles=ROLES,
+        answers={"missing": MISSING, "split": SPLIT, "exclusions": EXCLUSIONS,
+                 "models": choose_models_and_press},
         before={"target": apply_first_repair(r"^sas_zeros"),
                 "roles": declare(INTENDED_USE),
                 "exclusions": snapshot("whos_in", "proposals", "cohort"),
                 "split": snapshot("at_the_draw", "seal_plan"),
                 "models": lambda run, view: (snapshot("models_entry", "split", "proposals")(run, view),
                                              declare(EXPLAIN, *([forms] if forms["forms"] != "none"
-                                                                else []))(run, run.drive.view())),
-                "open_seal": read_before_opening},
-        needs=(str(nhanes_path()),), fixture_key=NHANES_KEY, timeout=7200.0)
+                                                                else []))(run, run.drive.view()))},
+        needs=(str(table),), fixture_key=NHANES_KEY, timeout=7200.0)
 
     run = Run(spec)
     started = time.monotonic()
@@ -532,24 +531,25 @@ def main(argv: list[str] | None = None) -> int:
             run.drive = Drive(run.client, run.pid, t)
             run.drive.artifact("ingest", timeout=900)
             log("following the Router")
-            ok = follow(run)
+            try:
+                ok = follow(run)
+            except Stop:
+                ok = False
+                cap["notes"].append("stopped at the families question (--shelf-only): nothing fitted")
             cap["followed"] = ok
             if ok and wait_results(run, timeout=5400):
                 after = cap["after_seal"]
-                after["fit_opened"] = run.drive.artifact("fit", timeout=1800)
-                for name in ("quest", "triage", "record", "methods", "checklist"):
-                    after[f"{name}_opened"] = get(client, f"/api/projects/{run.pid}/{name}")["body"]
+                read_results(run)
+                final = choose_final()
+                cap["declared_before_opening"] = {"final": final, "at": time.strftime("%H:%M:%S")}
                 response = export(run)
                 cap["export_status"] = getattr(response, "status_code", None)
                 if getattr(response, "status_code", None) == 200:
                     after["bundle"] = bundle_parts(response.content, home)
-                final = (cap.get("final_rule") or {}).get("chosen") or FAMILIES[0]
-                log("computing the Results beats' numbers with the engine's functions")
-                after["computed"] = after_seal(client, run.pid, final)
             view = client.get(f"/api/projects/{run.pid}").json()
             snaps["state_at_end"] = {k: view["state"].get(k) for k in (
                 "purpose", "target", "task", "split", "missing", "models", "intended_use",
-                "explain", "energy_adjustment", "substitution", "survey", "exclusions")}
+                "explain", "energy_adjustment", "substitution", "survey", "exclusions", "temporal")}
             snaps["interview_at_end"] = [{"key": s["key"], "status": s["status"],
                                           "reason": s.get("reason")} for s in view["interview"]]
             # Outcome-free counts for the Models beats, from the working table.
@@ -560,14 +560,28 @@ def main(argv: list[str] | None = None) -> int:
 
             cache = client.app.state.service.workspace.cache_dir(run.pid)
             working = read_artifact(cache, "working", view["stages"]["working"]["key"])
+            dev_ids = None
+            if view["stages"].get("split", {}).get("key"):
+                split_art = read_artifact(cache, "split", view["stages"]["split"]["key"])
+                assignment = split_art.frames["assignment"]
+                dev_ids = assignment.loc[assignment["partition"] == "train", "row_id"].to_numpy(dtype=np.int64)
+                snaps["split_facts"] = {k: split_art.data.get(k) for k in (
+                    "n_train", "n_holdout", "holdout", "seed", "folds", "fold_labels", "note",
+                    "fold_scheme", "cluster", "validation")}
             with DataStore(working_paths(working)["table"], int(default_memory_budget())) as store:
                 snaps["predictors_all_rows"] = predictors_summary(store, None)
+                if dev_ids is not None:
+                    snaps["predictors_development"] = predictors_summary(store, dev_ids)
+                    snaps["measures_development"] = measures_summary(store, dev_ids)
+            snaps["riley_73"] = riley(73)
     except Exception as exc:  # noqa: BLE001 - kept with its reason
         cap["notes"].append(f"stopped by {type(exc).__name__}: {str(exc)[:1500]}")
         traceback.print_exc()
     cap["answers"] = run.log
     cap["notes"] += run.notes
     cap["forms"] = args.forms
+    timing = cap.get("timing") or {}
+    timing.pop("fit_pressed_monotonic", None)
     cap["captured"] = {"seconds": round(time.monotonic() - started), "date": time.strftime("%Y-%m-%d"),
                        "commit": subprocess.run(["git", "-C", str(REPO), "rev-parse", "--short=10",
                                                  "HEAD"], capture_output=True, text=True).stdout.strip(),
