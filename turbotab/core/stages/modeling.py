@@ -576,8 +576,6 @@ def design_stage(ctx: StageContext) -> Bundle:
         input_columns,
         model_predictors,
         modeling_frame,
-        shared_steps,
-        transformer,
         warnings_for,
     )
 
@@ -684,15 +682,11 @@ def design_stage(ctx: StageContext) -> Bundle:
                                  nested, rows_word=rows_word)
 
     ctx.progress(0.3, f"Fitting the shared steps on the {rows_word}")
-    shared = transformer(shared_steps(spec))
-    matrix = shared.fit_transform(X[spec.inputs])
     # Ruling 14d (WAVE_C6A_PLAN §7): the lineage and the exported matrix follow the families'
-    # coding (``pipeline.onehot_drop``). The estimand, the residual gap and the widths each family
-    # is built and described with read the first-level-dropped matrix, as before.
-    coded = shown_steps(spec, families)
-    exported = matrix if coded is None else coded.fit_transform(X[spec.inputs])
-    lineage = trace((shared if coded is None else coded).steps, spec.inputs, spec.roles,
-                    missing_counts(X[spec.inputs]))
+    # coding (:func:`fit_shared`). The estimand, the residual gap and the widths each family is
+    # built and described with read the first-level-dropped matrix, as before.
+    shared, matrix, shown, exported = fit_shared(spec, X[spec.inputs], families)
+    lineage = trace(shown.steps, spec.inputs, spec.roles, missing_counts(X[spec.inputs]))
     if "energy" in shared.named_steps:
         warnings_list.extend(_energy_warnings(shared.named_steps["energy"], rows_word))
     # The estimand and each coefficient's meaning, read off the matrix the models will see: the
@@ -775,20 +769,55 @@ def design_stage(ctx: StageContext) -> Bundle:
     )
 
 
-def shown_steps(spec: Any, families: Sequence[Any]) -> Any:
-    """The shared steps the lineage traces and the export writes, unfitted, when the chosen
-    families' coding is not the first-level-dropped one; None when it is (the design's own
-    ``shared`` steps then serve).
+CODING_STEPS = ("levels", "onehot")  # the shared steps that read a family's coding, always last
 
-    Every family that codes every level (``pipeline.onehot_drop`` None: ridge, the elastic net)
-    sees each category's levels as columns of their own, so its matrix is the full coding. When
-    families of both codings are chosen, the full coding is shown and written: each family's
-    matrix is its columns, a first-level-dropped family's without each category's first level."""
-    from turbotab.core.models.pipeline import onehot_drop, shared_steps, transformer
 
-    if all(onehot_drop(f) == "first" for f in families):
-        return None
-    return transformer(shared_steps(spec, onehot_drop=None))
+def shown_coding(families: Sequence[Any]) -> str | None:
+    """The coding the design's lineage, recorded shape and exported matrix follow
+    (``pipeline.onehot_drop``): the chosen families' own when they share one, so ridge or the
+    elastic net alone (every level its own column) is shown in full coding.
+
+    With both codings chosen, no one matrix is every family's. The first-level-dropped one is
+    shown: it is the matrix every family whose declared models are refit on it (Table 2,
+    ``stages.effects.refits_on_matrix``) is fit on, so the figure's width and the exported file are
+    those of the estimates reported. A family that codes every level adds each category's first
+    level as a column, which its own methods step states with its own width
+    (``pipeline.describe_steps``)."""
+    from turbotab.core.models.pipeline import onehot_drop
+
+    return None if families and all(onehot_drop(f) is None for f in families) else "first"
+
+
+def fit_shared(spec: Any, X: pd.DataFrame, families: Sequence[Any]
+               ) -> tuple[Any, pd.DataFrame, Any, pd.DataFrame]:
+    """``(shared, matrix, shown, exported)``: the shared steps fitted with the first level of each
+    category dropped and the matrix they make (what the estimand, the residual gap and each
+    family's widths read), and the fitted steps and matrix of the coding the design shows
+    (:func:`shown_coding`); the same objects when that coding is the first-level-dropped one.
+
+    Only the last steps read the coding (:data:`CODING_STEPS`), so when the full coding is shown,
+    the steps before them are fitted once and both codings are fitted on their output: a
+    20,000-column omics design fills, adjusts and forms its columns once."""
+    from turbotab.core.models.pipeline import shared_steps, transformer
+
+    steps = shared_steps(spec)
+    k = next((i for i, (name, _) in enumerate(steps) if name in CODING_STEPS), len(steps))
+    if shown_coding(families) == "first" or k == len(steps):  # no category: the codings agree
+        shared = transformer(steps)
+        matrix = shared.fit_transform(X)
+        return shared, matrix, shared, matrix
+    full = shared_steps(spec, onehot_drop=None)
+    if [n for n, _ in full] != [n for n, _ in steps] or \
+            any(n not in CODING_STEPS for n, _ in steps[k:]):
+        raise RuntimeError("the shared steps that read a family's coding are not the last ones")
+    head = transformer(steps[:k]) if k else None
+    mid = head.fit_transform(X) if head is not None else X
+    first, coded = transformer(steps[k:]), transformer(full[k:])
+    matrix = first.fit_transform(mid)
+    exported = coded.fit_transform(mid)
+    fitted = list(head.steps) if head is not None else []
+    return (transformer([*fitted, *first.steps]), matrix,
+            transformer([*fitted, *coded.steps]), exported)
 
 
 def _matrix_file(ctx: StageContext, matrix: pd.DataFrame) -> dict[str, Any]:

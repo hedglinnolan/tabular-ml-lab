@@ -13,8 +13,12 @@ Every expected value comes from outside the code under test:
 * **ruling 14a:** a recording splitter (``tuning.inner_splits_for`` wrapped) sees every inner
   split the tuned family's refits in effects draw, and each is read against the table's own
   ``pid`` column: no person is on both sides;
+* **Table 2 end to end:** each fixture's Table 2, diagnostics and marginal contrasts are pinned
+  to the numbers the base itself wrote on the same fixture (``TABLE2_AT_BASE``);
 * **ruling 14d:** the exported matrix and the lineage are read against the table's own levels of
-  ``sex``.
+  ``gender``; the shape, the lineage caption and each family's widths against a design of the
+  linear family alone (the base's code path); the one fit of the steps before the coding by
+  counting the fill's fits, and both matrices against each coding's whole chain fitted alone.
 
 Fixtures are small (at most 300 rows).
 """
@@ -278,14 +282,119 @@ def test_a_repeated_measures_refit_in_effects_keeps_each_person_whole(tmp_path) 
     assert len(seen) >= 2
 
 
+# ── Table 2 and its diagnostics, end to end, against the base ────────────────────────────────
+
+TABLE2_CASES: dict[str, dict[str, Any]] = {
+    "regression, Model 1": dict(target="glucose", task="regression", measure="mean_difference",
+                                model_1=["age", "sex"]),
+    "binary, risk difference": dict(target="dm", task="binary", event="yes",
+                                    measure="risk_difference"),
+    "binary, influence answered": dict(target="dm", task="binary", event="yes",
+                                       measure="odds_ratio",
+                                       responses={"influence": "without_influential"}),
+    "regression, linear and ridge": dict(target="glucose", task="regression",
+                                         measure="mean_difference", models=["linear", "ridge"]),
+}
+
+
+def _sig(v: Any) -> Any:
+    return None if v is None else float(f"{float(v):.10g}")
+
+
+def table2_digest(effects: dict[str, Any]) -> list[Any]:
+    """Each family's Table 2 numbers (every declared model's exposure rows), its diagnostics and
+    its marginal contrasts, to ten significant digits."""
+    out: list[Any] = []
+    for fam in effects["families"]:
+        seq = [[s["key"], s["n_rows"], [[c["feature"], *(_sig(c[k]) for k in
+                                                         ("estimate", "ci_low", "ci_high", "p"))]
+                                        for c in s["effects"] or []]]
+               for s in fam["sequence"]]
+        diag = [[g["check"], g["status"], g.get("flagged"), _sig(g.get("largest")),
+                 _sig(g.get("threshold"))] for g in fam.get("diagnostics") or []]
+        marginal = [[_sig(c[k]) for k in ("rd", "rd_low", "rd_high", "rr", "rr_low", "rr_high")]
+                    for c in ((fam.get("marginal") or {}).get("contrasts") or [])]
+        out.append([fam["family"], seq, diag, marginal])
+    return out
+
+
+def table2_run(case: str, folder: Path) -> list[Any]:
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    run = ef.run(ef.cohort(n=400, seed=11), folder, ef.state(**TABLE2_CASES[case]), fit=False)
+    return table2_digest(run["effects"])
+
+
+# Written by ``table2_run`` on turbotab-next 0b0b10ed, before any switch was retired (that base's
+# own code, this file's digest, run from an extracted copy of the base).
+TABLE2_AT_BASE: dict[str, list[Any]] = {'regression, Model 1': [['linear',
+                          [['crude', 400,
+                            [['fiber', -0.6723983284, -0.8813263549, -0.4634703019,
+                              6.733755163e-10]]],
+                           ['model_1', 400,
+                            [['fiber', -0.7957578859, -1.005154732, -0.5863610401,
+                              5.13214653e-13]]],
+                           ['model_2', 400,
+                            [['fiber', -0.4339636701, -0.6517959996, -0.2161313406,
+                              0.0001058123793]]],
+                           ['model_3', 400,
+                            [['fiber', -0.4106627675, -0.6299202457, -0.1914052893,
+                              0.0002634702769]]]],
+                          [['influence', 'passed', 0, 0.03358087797, 0.8928800797]], []]],
+ 'binary, risk difference': [['linear',
+                              [['crude', 400,
+                                [['fiber', -0.05698415863, -0.1046789092, -0.009289408039,
+                                  0.01919602887]]],
+                               ['model_2', 400,
+                                [['fiber', -0.01854076865, -0.07331320883, 0.03623167154,
+                                  0.5070369758]]],
+                               ['model_3', 400,
+                                [['fiber', -0.01862928697, -0.07365287537, 0.03639430143,
+                                  0.5069570819]]]],
+                              [['influence', 'passed', 0, 0.02254784794, 0.8928800797]],
+                              [[-0.003957277376, -0.01606392812, 0.007346635417, 0.9904066003,
+                                0.9599735785, 1.017787809]]]],
+ 'binary, influence answered': [['linear',
+                                 [['crude', 400,
+                                   [['fiber', -0.05698415863, -0.1046789092, -0.009289408039,
+                                     0.01919602887]]],
+                                  ['model_2', 400,
+                                   [['fiber', -0.01854076865, -0.07331320883, 0.03623167154,
+                                     0.5070369758]]],
+                                  ['model_3', 400,
+                                   [['fiber', -0.01862928697, -0.07365287537, 0.03639430143,
+                                     0.5069570819]]]],
+                                 [['influence', 'passed', 0, 0.02254784794, 0.8928800797]],
+                                 []]],
+ 'regression, linear and ridge': [['linear',
+                                   [['crude', 400,
+                                     [['fiber', -0.6723983284, -0.8813263549, -0.4634703019,
+                                       6.733755163e-10]]],
+                                    ['model_2', 400,
+                                     [['fiber', -0.4339636701, -0.6517959996, -0.2161313406,
+                                       0.0001058123793]]],
+                                    ['model_3', 400,
+                                     [['fiber', -0.4106627675, -0.6299202457, -0.1914052893,
+                                       0.0002634702769]]]],
+                                   [['influence', 'passed', 0, 0.03358087797, 0.8928800797]],
+                                   []]]}
+
+
+@pytest.mark.parametrize("case", list(TABLE2_CASES))
+def test_table2_and_its_diagnostics_are_the_bases_number_for_number(tmp_path, case) -> None:
+    """Reference: the base's own run of the same fixture (``TABLE2_AT_BASE``)."""
+    assert table2_run(case, tmp_path) == TABLE2_AT_BASE[case]
+
+
 # ── ruling 14d: the exported matrix and the lineage follow each family's coding ──────────────
 
 
-def _design(tmp_path: Path, models: list[str]) -> Any:
+def _design(tmp_path: Path, models: list[str], missing: bool = False) -> Any:
     from turbotab.core.stages.modeling import design_stage
 
-    frame = mf.nhanes_like(n=200, seed=2)
-    st = mf.state(models=models, task="regression", purpose="prediction")
+    frame = mf.nhanes_like(n=200, seed=2, missing=missing)
+    st = mf.state(models=models, task="regression", purpose="prediction",
+                  **({"missing": "impute"} if missing else {}))
     paths = mf.ingest_frame(frame, tmp_path)
     split = mf.split_bundle(np.arange(len(frame)), seed=1)
     return design_stage(mf.context(st, {"split": split, "target_info": mf.target_info(
@@ -302,25 +411,102 @@ def _matrix_nodes(design: Any) -> set[str]:
     return {str(n["column"]) for n in design.data["lineage"]["nodes"] if n["lane"] == "matrix"}
 
 
+def _first_level_width(tmp_path: Path) -> int:
+    """The first-level-dropped matrix's width, from a design of the linear family alone (whose
+    coding drops each category's first level, the code path the base held)."""
+    design, _ = _design(tmp_path / "linear_alone", ["linear"])
+    return int(design.data["matrix"]["n_cols"])
+
+
 @pytest.mark.parametrize("models,coded", [
     (["ridge"], {"gender_female", "gender_male"}),
     (["elastic_net"], {"gender_female", "gender_male"}),
+    (["ridge", "elastic_net"], {"gender_female", "gender_male"}),
     (["linear"], {"gender_male"}),
-    (["linear", "ridge"], {"gender_female", "gender_male"}),
+    (["linear", "ridge"], {"gender_male"}),
+    (["linear", "elastic_net", "boosted_trees"], {"gender_male"}),
 ])
 def test_the_exported_matrix_and_the_lineage_follow_the_families_coding(tmp_path, models,
                                                                         coded) -> None:
     """``gender`` holds female and male in the table written. Ridge and the elastic net code every
-    level, so their exported matrix and lineage hold both; the linear family drops the first
-    (female); chosen together, the full coding is shown, of which each family's matrix is its
-    columns. The shape the design reports is the exported matrix's, and the widths each family is
-    built and described with stay the first-level-dropped matrix's."""
+    level, so alone or together their exported matrix and lineage hold both; the linear family
+    drops the first (female). Chosen with a family of the other coding, the first-level-dropped
+    matrix is shown: the one the linear family's estimates are fit on. The shape the design
+    reports and the lineage figure's caption are the exported matrix's; each family is described
+    with its own width (the first-level-dropped matrix's, one more column for gender when it
+    codes every level)."""
+    from turbotab.core.export.figures import lineage as lineage_figure
+    from turbotab.core.models import get_family
+    from turbotab.core.models.pipeline import DesignSpec, describe_steps, onehot_drop
+
     design, frame = _design(tmp_path, models)
     assert set(frame["gender"].dropna()) == {"female", "male"}
     matrix = _exported(design)
     assert {c for c in matrix.columns if c.startswith("gender")} == coded
     assert {c for c in _matrix_nodes(design) if c.startswith("gender")} == coded
     shown = design.data["matrix"]
-    assert (shown["n_rows"], shown["n_cols"]) == (len(matrix), len(matrix.columns) - 1)  # row_id
+    width = len(matrix.columns) - 1  # row_id
+    assert (shown["n_rows"], shown["n_cols"]) == (len(matrix), width)
     if "gender_female" in coded:
         np.testing.assert_array_equal(matrix["gender_female"] + matrix["gender_male"], 1.0)
+    first = _first_level_width(tmp_path)
+    assert width == first + (1 if "gender_female" in coded else 0)
+    _, caption = lineage_figure(design.data)
+    assert f"to the {width:,} columns of the model matrix" in caption
+    spec = DesignSpec.from_dict(design.objects["spec"])
+    for entry in design.data["models"]:
+        family = get_family(entry["family"])
+        assert entry["steps"] == describe_steps(spec, family, "regression", "prediction", first)
+        scaled = [step["detail"] for step in entry["steps"] if step["key"] == "scale"]
+        own = first + (1 if onehot_drop(family) is None else 0)
+        assert all(f"all {own} columns" in detail for detail in scaled), (family.key, scaled)
+        if family.key in ("ridge", "elastic_net"):
+            assert scaled, family.key
+
+
+def test_every_family_whose_declared_models_are_refit_on_the_matrix_drops_the_first_level() -> None:
+    """Why the first-level-dropped matrix is shown when both codings are chosen: it is the matrix
+    of every family whose Table 2 is refit on it."""
+    from turbotab.core.models.pipeline import onehot_drop
+    from turbotab.core.stages.effects import refits_on_matrix
+    from turbotab.core.stages.modeling import shown_coding
+
+    for f in families():
+        if refits_on_matrix(f):
+            assert onehot_drop(f) == "first", f.key
+            assert shown_coding([f, *(g for g in families() if onehot_drop(g) is None)]) == "first"
+
+
+def test_the_full_coding_is_fitted_after_the_shared_steps_are_fitted_once(tmp_path) -> None:
+    """With only full-coding families chosen, the steps before the coding (the fill, here) are
+    fitted once, and both matrices are what fitting each coding's whole chain makes."""
+    from sklearn.impute import SimpleImputer
+
+    from turbotab.core.models import get_family
+    from turbotab.core.models.pipeline import DesignSpec, shared_steps, transformer
+    from turbotab.core.stages.modeling import fit_shared
+
+    design, frame = _design(tmp_path, ["ridge"], missing=True)
+    spec = DesignSpec.from_dict(design.objects["spec"])
+    X = frame[spec.inputs]
+    assert [n for n, _ in shared_steps(spec)][:1] == ["impute"]
+    fits: list[int] = []
+    real = SimpleImputer.fit
+
+    def counted(self: Any, *a: Any, **kw: Any) -> Any:
+        fits.append(1)
+        return real(self, *a, **kw)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(SimpleImputer, "fit", counted)
+        shared, matrix, shown, exported = fit_shared(spec, X, [get_family("ridge")])
+        once = len(fits)
+        fits.clear()
+        transformer(shared_steps(spec)).fit_transform(X)
+        assert once == len(fits) > 0
+    pd.testing.assert_frame_equal(matrix, transformer(shared_steps(spec)).fit_transform(X))
+    pd.testing.assert_frame_equal(exported, transformer(shared_steps(spec, onehot_drop=None))
+                                  .fit_transform(X))
+    assert [n for n, _ in shared.steps] == [n for n, _ in shown.steps]
+    assert shared.named_steps["impute"] is shown.named_steps["impute"]
+    assert set(exported.columns) - set(matrix.columns) == {"gender_female"}
