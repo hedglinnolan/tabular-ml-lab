@@ -931,7 +931,16 @@ Under the population answer, evaluation's design-based folds (10 × 2) add about
 - Tuning stays available, nested as always.
 - **The reason is the variance of the chosen settings, not optimism.** Nesting already removes optimism. Riley et al. 2021 found tuning parameters "estimated with large uncertainty … when development data sets have a small effective sample size", which "can lead to considerable miscalibration". Van Calster et al. 2020 found shrinkage's calibration slope often more variable between samples than without it. Martin et al. 2021 recommend quantifying exactly this variability.
 - 300 is a convention. T1 reports nested tuning against standard settings on fresh data at an effective size of 200. If tuning wins there by more than 2 standard errors, the threshold is revisited.
-- **Open ruling (2026-10-10):** T1's run found nested tuning better than the standard settings by 0.15 to 0.20 nats on fresh data at 200 rows (about 60 events), which triggers the revisit; notes/SMALL_SAMPLE_STANDARD.md analyzes it and proposes a ruling.
+- **Ruled (2026-10-11):** T1 found nested tuning better than the standard settings by 0.15 to 0.20 nats on fresh data at 200 rows. The analysis is notes/SMALL_SAMPLE_STANDARD.md.
+  - **The rule.** Below an effective size of 300 the plan still draws no search, but the standard candidate for boosted trees and XGBoost is no longer the library's defaults. It is a small-sample standard:
+    - boosted trees: 100 trees, at most 8 leaves, learning rate 0.02, smallest leaf 20, L2 1;
+    - XGBoost: 100 rounds, depth 3, learning rate 0.02, child weight 20 rows-equivalent, λ 1.
+  - **The forest keeps its standard.**
+  - **Why:** across 14 small-sample cells the defaults were the worst arm in every one (regret 0.10–0.39 nats, calibration slopes 0.2–0.5). The small-sample standard matches tuning to the K floor on loss, has a third of its calibration spread (the harm this section names), and costs one fit instead of 19.
+  - **Before release:** the constants were chosen with every cell in view, so they are checked on shapes they have not seen (p = 50, categorical predictors, NHANES subsamples, multiclass).
+  - **Still open:**
+    - whether the standard joins the search as one more standard candidate from 300 upward (it matched or beat the search in 5 of 8 cells at 1,000 rows);
+    - whether the searched leaf's cap of a twentieth of the plan's rows keeps the search from regularizing through leaf size at small n.
 
 **"Try both" below 300 (settled in draft 3).**
 

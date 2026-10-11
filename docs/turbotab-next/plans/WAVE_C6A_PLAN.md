@@ -472,3 +472,7 @@ Times are rough estimates for the dev machine.
     - The design stage's lineage and exported matrix follow each family's coding.
     - All four go to phase 4, beside MC-2b-3, MC-2b-4 and the mc2b2 leftovers.
 15. **T1 measures about 7.5 hours serial** (68 s a dataset), not 30–60 minutes. It runs with TURBOTAB_T1_JOBS in parallel, gated by TURBOTAB_SCHEDULED_RUNS=1 so the full CI tier skips it.
+16. **After the T1 redesign (2026-10-11).**
+    - **The small-sample standard is ruled** as RECIPES §4.6 now states. It is implemented in the next session's first engine package, after phase 4 lands (boosted_trees.py and xgboost_family.py's standard, with T1 comparing nesting against the family's own standard), and checked on unseen shapes before release.
+    - **T1's new design is accepted:** paired contrasts that cancel the stratification term, δ = 0.005 nats (half of `MIN_GAIN`), 600 datasets per generator, about 60 minutes at 4 jobs. Its rerun is scheduled after the pause.
+    - **Stratification optimism** (notes/STRATIFICATION_OPTIMISM.md): nothing on screen. It cancels in every paired comparison and is negligible at realistic n. It gets one claims-ledger entry and one line in the methods reference. Its derivation is the agent's own, with no source found, so it goes to the methods reviewer as such. T16's optimism report must remove the term.
