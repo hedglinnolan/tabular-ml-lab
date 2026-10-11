@@ -686,7 +686,13 @@ def design_stage(ctx: StageContext) -> Bundle:
     ctx.progress(0.3, f"Fitting the shared steps on the {rows_word}")
     shared = transformer(shared_steps(spec))
     matrix = shared.fit_transform(X[spec.inputs])
-    lineage = trace(shared.steps, spec.inputs, spec.roles, missing_counts(X[spec.inputs]))
+    # Ruling 14d (WAVE_C6A_PLAN §7): the lineage and the exported matrix follow the families'
+    # coding (``pipeline.onehot_drop``). The estimand, the residual gap and the widths each family
+    # is built and described with read the first-level-dropped matrix, as before.
+    coded = shown_steps(spec, families)
+    exported = matrix if coded is None else coded.fit_transform(X[spec.inputs])
+    lineage = trace((shared if coded is None else coded).steps, spec.inputs, spec.roles,
+                    missing_counts(X[spec.inputs]))
     if "energy" in shared.named_steps:
         warnings_list.extend(_energy_warnings(shared.named_steps["energy"], rows_word))
     # The estimand and each coefficient's meaning, read off the matrix the models will see: the
@@ -727,7 +733,7 @@ def design_stage(ctx: StageContext) -> Bundle:
         warnings_list.append(DROPPED_ENERGY.format(E=adj.energy_column))
 
     ctx.progress(0.8, "Building each model's pipeline")
-    n_rows, n_cols = int(matrix.shape[0]), int(matrix.shape[1])
+    n_cols = int(matrix.shape[1])  # first-level-dropped: each family sizes and describes by it
     # A family sizes its own choices (elastic net's inner folds) for the rows cross-validation
     # trains on, under either purpose.
     n_train = int(len(train_ids))
@@ -750,7 +756,7 @@ def design_stage(ctx: StageContext) -> Bundle:
               *total_energy_columns(spec.predictors, spec.roles)]
     artifact = DesignArtifact(
         lineage=lineage,
-        matrix={"n_rows": n_rows, "n_cols": n_cols},
+        matrix={"n_rows": int(exported.shape[0]), "n_cols": int(exported.shape[1])},
         models=models,
         estimand=described.text,
         substitution_pairs=substitution_pairs(spec.predictors, totals, nested),
@@ -765,8 +771,24 @@ def design_stage(ctx: StageContext) -> Bundle:
         frames={"training": pd.DataFrame({"row_id": train_ids.astype(np.int64)})},
         objects={"pipelines": pipelines, "spec": spec.to_dict(), "nested": nested,
                  **({WITHHELD_GAP: withheld} if withheld else {})},
-        files=_matrix_file(ctx, matrix),
+        files=_matrix_file(ctx, exported),
     )
+
+
+def shown_steps(spec: Any, families: Sequence[Any]) -> Any:
+    """The shared steps the lineage traces and the export writes, unfitted, when the chosen
+    families' coding is not the first-level-dropped one; None when it is (the design's own
+    ``shared`` steps then serve).
+
+    Every family that codes every level (``pipeline.onehot_drop`` None: ridge, the elastic net)
+    sees each category's levels as columns of their own, so its matrix is the full coding. When
+    families of both codings are chosen, the full coding is shown and written: each family's
+    matrix is its columns, a first-level-dropped family's without each category's first level."""
+    from turbotab.core.models.pipeline import onehot_drop, shared_steps, transformer
+
+    if all(onehot_drop(f) == "first" for f in families):
+        return None
+    return transformer(shared_steps(spec, onehot_drop=None))
 
 
 def _matrix_file(ctx: StageContext, matrix: pd.DataFrame) -> dict[str, Any]:
@@ -2177,7 +2199,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                                             survey.design if survey is not None else None)
             done += 1
         concerns = _concerns(caught, len(sub_pairs) + own_pairs + 1) + concerns
-        if family.key == "linear":
+        if states_collinearity(family):
             from turbotab.core.models.linear import collinearity_concern, model_matrix
 
             try:
@@ -2512,6 +2534,7 @@ def _tests_only(family: Any, final: Any, X: Any, y: Any, task: str, state: Any, 
     under the population answer a family with no design-based tests is blocked and recorded (MS4)."""
     from turbotab.core.models.inference import _on_rows
     from turbotab.core.models.linear import as_clusters
+    from turbotab.core.stages.effects import tests_only
 
     concerns = [f"{family.label} tests each study factor and makes no predictions, so it has no "
                 f"cross-validated or held-out score."]
@@ -2542,7 +2565,7 @@ def _tests_only(family: Any, final: Any, X: Any, y: Any, task: str, state: Any, 
                                      event=state.event)
             if table.info.get("n_rows") is None:
                 table = _on_rows(table, len(X), rows)
-            if family.key == "featurewise" and not table.info.get("refused"):
+            if tests_only(family) and not table.info.get("refused"):
                 # MS7: an exposure family's recorded multiplicity method (Benjamini–Hochberg implied).
                 from turbotab.core.methods.omics import apply_multiplicity, multiplicity_policy
 
@@ -3173,6 +3196,25 @@ def contrast_per_kcal(fitted: Any, shift: Any, X: pd.DataFrame, k: float) -> pd.
     return pd.Series(diff[0], index=[str(c) for c in base.columns])
 
 
+def linear_predictor_is_prediction(family: Any, task: str) -> bool:
+    """Whether the family's prediction for ``task`` is its linear predictor itself: one regression
+    on the model matrix (``stages.effects.one_regression_on_matrix``) whose raw scale for the task
+    is the predicted value (``raw_scale``, MODEL_FAMILY_CONTRACT C10), so a contrast of its
+    coefficients is the curve's change (the least-squares model under a number)."""
+    from turbotab.core.stages.effects import one_regression_on_matrix
+
+    return one_regression_on_matrix(family) and family.raw_scale.get(task) == "value"
+
+
+def states_collinearity(family: Any) -> bool:
+    """Whether the fit stage states the model matrix's near-singularity for the family: it declares
+    the collinearity check (``diagnostics``, C8) and is a weighted sum of the values as given
+    (``linear_in_values``). The Cox model declares the check too, but its own table states it
+    (``models.survival.cox_table`` refuses with the same concern), so the stage adds it only for
+    the family whose table does not."""
+    return "collinearity" in family.diagnostics and bool(family.linear_in_values)
+
+
 def _pooled_curve(key: str, family: Any, task: str, imputed: Mapping[str, Any], train_ids: Any,
                   *, state: Any, sub: Any, ks: Sequence[float], kcal_per_unit: Mapping[str, float],
                   nested: Mapping[str, str], total_energy: str | None, scale: str,
@@ -3302,7 +3344,7 @@ def _pooled_curve(key: str, family: Any, task: str, imputed: Mapping[str, Any], 
     band_info: dict[str, Any] = {}
     contrast = None
     # The prediction is the linear predictor itself only for a linear outcome model.
-    if family.key == "linear" and task == "regression" and tables and len(tables) == m \
+    if linear_predictor_is_prediction(family, task) and tables and len(tables) == m \
             and scale == "kcal":
         step = next((float(k) for k in curves[0]["ks"] if float(k) > 0), None)
         found = [contrast_per_kcal(f, s, frames[j].iloc[rows_of[j]], step) if step else None

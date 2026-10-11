@@ -428,14 +428,30 @@ def _decision(state: Any, X: pd.DataFrame, y: np.ndarray, oof: Any, reported: st
             "in_fold": chosen, "sentence": sentence}
 
 
+def updates_by_shrinkage(key: Any) -> bool:
+    """Whether the family ``key`` names declares shrinkage by the calibration slope among its
+    recalibration paths (``updating``, MODEL_FAMILY_CONTRACT C9): the unpenalized regression's
+    uniform shrinkage. False for a key no registered family holds."""
+    from turbotab.core.models.base import get_family
+
+    try:
+        family = get_family(str(key))
+    except KeyError:
+        return False
+    return "shrinkage" in family.updating
+
+
 def _shrinkage(state: Any, task: str, data: Mapping[str, Any], fit: Any, X: pd.DataFrame,
                y: np.ndarray) -> dict[str, Any] | None:
-    """The offer of uniform shrinkage for the unpenalized regression, and, once answered, the
-    shrunk model (``models.decision_curve.shrinkage``)."""
+    """The offer of uniform shrinkage for the family that declares it (:func:`updates_by_shrinkage`,
+    the unpenalized regression), and, once answered, the shrunk model
+    (``models.decision_curve.shrinkage``)."""
     from turbotab.core.models.decision_curve import shrinkage, slope_of
 
-    entry = next((m for m in data.get("models") or [] if m.get("family") == "linear"), None)
-    final = ((fit.objects or {}).get("fitted") or {}).get("linear")
+    entry = next((m for m in data.get("models") or [] if updates_by_shrinkage(m.get("family"))),
+                 None)
+    final = (((fit.objects or {}).get("fitted") or {}).get(entry["family"])
+             if entry is not None else None)
     if entry is None or final is None:
         return None
     slope, how = slope_of(entry)
