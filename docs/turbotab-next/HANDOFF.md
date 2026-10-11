@@ -1,5 +1,66 @@
 # Handoff
 
+**PAUSED on 2026-10-11 to save usage** (91% of the week's limit; it resets Thursday 2026-10-15). turbotab-next = c07e0c3e.
+
+**Landed since 2026-10-10:**
+- **C6a phases 1–4** (05325dca, ea8c7ee0, 55102da1, 37d70847):
+  - the tuning engine, nested in every fit, with an honest fit count;
+  - ridge, Huber, random forest and XGBoost;
+  - boosted trees tuned; the elastic net on its path search with full coding;
+  - the split's seed, design and units reaching every refit;
+  - no family switched on by key anywhere (test_mc2's allowlist is empty).
+- **W1 part 1** (c07e0c3e):
+  - a held Fit can be pressed;
+  - the launcher rebuilds a stale UI;
+  - the drivers and browser journeys press Fit;
+  - AskFor is extracted from the Record;
+  - a skip-pattern blank is read as "not asked";
+  - the held-out rows wait for the triage.
+- **Design and methods docs:**
+  - FOUNDATION §0 (Nolan's rulings: the tapestry draws meaning; "because you said");
+  - calm/QUEST_LOG_CRITIQUE_2026-10-10.md;
+  - calm/BEATS_MODELS_RESULTS.md (Estimate) and calm/BEATS_PREDICT.md (Predict on NHANES glucose, with my rulings in §17);
+  - plans/WALKABLE_PLAN.md;
+  - T1 redesigned (paired contrasts, 600 datasets);
+  - the small-sample standard ruled (RECIPES §4.6);
+  - notes/STRATIFICATION_OPTIMISM.md and notes/SMALL_SAMPLE_STANDARD.md;
+  - V2X_SEAMS row 50 (a local conformal reading proposer).
+
+**Known red:**
+- **Fast core is intermittent** on 3 test_heldout_guarantee cases (elastic_net, ridge and screened_elastic_net with select_stability): the exactly collinear full-coded dummies trip lars_path in variable_selection.lasso_first.
+- **The new e2e-real job is `continue-on-error`** until its waits are tuned to CI's runners.
+
+**Next, in order (Thursday):**
+1. Fix the stability-selection collinearity bug (S): drop exactly collinear columns, rank-revealing, before the lasso path, and map selections back to their variable.
+2. **W1 part 2** (WALKABLE_PLAN §5):
+   - W1-E: the quest-log shell on live /quest;
+   - W1-F: the Predict cards;
+   - W1-G: Predict Results v0;
+   - e2e quest-nhanes-predict and quest-own-csv;
+   - then my own walkthrough of NHANES glucose under Predict, with a friction log, before Nolan sees it.
+3. The small-sample standard in code (RECIPES §4.6), then the T1 rerun (a heavy run, about 60 minutes at 4 jobs; approved).
+4. **Phase-4 leftovers:**
+   - a plan_units field for the leaf cap on yes/no and class outcomes;
+   - the forest and boosted trees reading "units" alike;
+   - omics' TuningDecl.clause;
+   - the preview lineage's coding;
+   - the wide elastic net's threads in the record.
+5. **W1 part 1 leftovers:**
+   - tune the e2e-real waits, then drop continue-on-error;
+   - mock handlers for the new hooks;
+   - the seal card's chain of refusals;
+   - the engine serving the held-out no-predictor baseline;
+   - a ruling on the calibration intercept;
+   - Cancel beside a held Fit;
+   - recapture dietary-prediction.
+6. **W2a/W2b:** Predict built to BEATS_PREDICT, then W3/W4 Estimate built to BEATS_MODELS_RESULTS.
+7. **Heavy:** the reference-journey recapture (the drivers now press Fit), then the materiality calibration on it.
+
+**Nolan's context:**
+- **His real project is NHANES fasting glucose under Predict,** used at a fasting-draw visit; on the medication answers, the app recommends. The light walk gave R² 0.155 (cycle CV) and 0.18 on the sealed 2017–18 cycle; DIQ is not in the fixture.
+- **Direction A is accepted provisionally.** He wants to judge it on a real project.
+- **Strategy homework he may bring back:** whether researchers' pain is doing or defending; his stance on recommendations and the lock; the anchor paper; a classroom pilot.
+
 **State on 2026-10-10 (~06:20 UTC), sprint active.**
 
 **Landed tonight:**
