@@ -1,0 +1,1292 @@
+{
+ "before_fit": {
+  "prepared": {
+   "rows": 21849,
+   "filled": {
+    "weight": {
+     "n": 235,
+     "filled_max": 159.03284047601122,
+     "filled_min": 52.5726367642709,
+     "measured_max": 371.0,
+     "measured_min": 29.1
+    },
+    "height": {
+     "n": 248,
+     "filled_max": 195.0597207781257,
+     "filled_min": 148.65479780730774,
+     "measured_max": 204.1,
+     "measured_min": 134.5
+    },
+    "bmi": {
+     "n": 306,
+     "filled_max": 82.5054750988579,
+     "filled_min": 16.32178903550625,
+     "measured_max": 130.21,
+     "measured_min": 13.4
+    },
+    "waist": {
+     "n": 658,
+     "filled_max": 323.1432175568735,
+     "filled_min": 66.01858205905988,
+     "measured_max": 176.0,
+     "measured_min": 56.2
+    },
+    "bp_sys": {
+     "n": 1876,
+     "filled_max": 148.14723285389306,
+     "filled_min": 102.77212940271988,
+     "measured_max": 240.0,
+     "measured_min": 66.0
+    },
+    "bp_di": {
+     "n": 1876,
+     "filled_max": 87.173907094193,
+     "filled_min": 62.74524206406261,
+     "measured_max": 134.0,
+     "measured_min": 5.397605346934028e-79
+    }
+   },
+   "filled_people": 2444,
+   "filled_share": 0.11185866630051719,
+   "bmi_identity_gap": {
+    "filled_rows_max": 14.30268118906065,
+    "measured_rows_max": 0.04999099806496332
+   },
+   "waist_filled_above_measured_max": 13,
+   "filled_by_cycle": {
+    "2001": 313,
+    "2003": 439,
+    "2005": 309,
+    "2007": 220,
+    "2009": 249,
+    "2011": 236,
+    "2013": 222,
+    "2015": 166,
+    "2017": 290
+   },
+   "diastolic_zeros": 119,
+   "other_sas_zeros": {
+    "kcal": 1,
+    "protein": 2,
+    "sugar": 4,
+    "carb": 1,
+    "fat_total": 7,
+    "fat_sat": 6,
+    "fat_mon": 6,
+    "fat_poly": 6
+   },
+   "age_top_by_cycle": {
+    "2001": 85.0,
+    "2003": 85.0,
+    "2005": 85.0,
+    "2007": 80.0,
+    "2009": 80.0,
+    "2011": 80.0,
+    "2013": 80.0,
+    "2015": 80.0,
+    "2017": 80.0
+   },
+   "age_at_85": 198,
+   "age_80_to_84_before_2007": 298,
+   "age_capped": 435,
+   "glucose_adjusted": {
+    "2001": {
+     "rows": 2501,
+     "equations": [
+      [
+       0.9815,
+       3.5707
+      ],
+      [
+       1.0,
+       1.148
+      ]
+     ]
+    },
+    "2003": {
+     "rows": 2295,
+     "equations": [
+      [
+       0.9815,
+       3.5707
+      ],
+      [
+       1.0,
+       1.148
+      ]
+     ]
+    },
+    "2005": {
+     "rows": 2299,
+     "equations": [
+      [
+       1.0,
+       1.148
+      ]
+     ]
+    },
+    "2013": {
+     "rows": 2463,
+     "equations": [
+      [
+       1.023,
+       -0.5108
+      ]
+     ]
+    }
+   },
+   "laboratory": [
+    {
+     "cycles": "2001–2004",
+     "laboratory": "University of Missouri",
+     "instrument": "Roche Cobas Mira",
+     "scale": "Modular P (Minnesota)"
+    },
+    {
+     "cycles": "2005–2006",
+     "laboratory": "University of Minnesota",
+     "instrument": "Roche/Hitachi 911",
+     "scale": "Modular P (Minnesota)"
+    },
+    {
+     "cycles": "2007–2012",
+     "laboratory": "University of Minnesota",
+     "instrument": "Roche Modular P",
+     "scale": "Modular P (Minnesota)"
+    },
+    {
+     "cycles": "2013–2014",
+     "laboratory": "University of Missouri",
+     "instrument": "Roche Cobas C501",
+     "scale": "Cobas C311 (Missouri)"
+    },
+    {
+     "cycles": "2015–2018",
+     "laboratory": "University of Missouri",
+     "instrument": "Roche Cobas C311",
+     "scale": "Cobas C311 (Missouri)"
+    }
+   ],
+   "cycles": {
+    "2001": 2501,
+    "2003": 2295,
+    "2005": 2299,
+    "2007": 2624,
+    "2009": 2807,
+    "2011": 2363,
+    "2013": 2463,
+    "2015": 2227,
+    "2017": 2270
+   },
+   "file": "nhanes_prepared.csv"
+  },
+  "whos_in": {
+   "proposals": {
+    "labels": {
+     "missing": {
+      "question": "missing",
+      "purpose": "prediction",
+      "options": [
+       {
+        "key": "impute",
+        "label": "Single fill in each training fold",
+        "customary": {
+         "field": "machine learning",
+         "text": "Customary in machine-learning pipelines (scikit-learn's SimpleImputer)",
+         "source": "scikit-learn's SimpleImputer, the pipelines' default fill"
+        },
+        "sound": {
+         "purpose": "prediction",
+         "verdict": "sound",
+         "reason": "Sound: fit in each training fold without the outcome, it imputes a new row as it was developed (Josse et al. 2019; Sisk et al. 2023)."
+        }
+       },
+       {
+        "key": "indicators",
+        "label": "Single fill with missing indicators",
+        "customary": {
+         "field": "prediction from health records",
+         "text": "Customary in prediction from health records (Sperrin et al. 2020)",
+         "source": "Sperrin et al. 2020, J Clin Epidemiol 125:183"
+        },
+        "sound": {
+         "purpose": "prediction",
+         "verdict": "conditional",
+         "reason": "Sound when a blank carries information, but harmful when missingness depends on the outcome (Sisk et al. 2023)."
+        }
+       },
+       {
+        "key": "complete_case",
+        "label": "Complete cases",
+        "customary": {
+         "field": "epidemiology",
+         "text": "Customary in epidemiology; most software's default",
+         "source": "Sterne et al. 2009, BMJ 338:b2393: \"Researchers usually address missing data by including in the analysis only complete cases\""
+        },
+        "sound": {
+         "purpose": "prediction",
+         "verdict": "conditional",
+         "reason": "Valid but wasteful, and a new row with a blank cannot be scored."
+        }
+       },
+       {
+        "key": "missing_category",
+        "label": "Blanks as their own level",
+        "customary": {
+         "field": "survey and health-record analysis",
+         "text": "Customary for questions not asked (a blank medication answer)",
+         "source": "NUTRITION_PACK §06 (a blank that means not asked)"
+        },
+        "sound": {
+         "purpose": "prediction",
+         "verdict": "sound",
+         "reason": "Sound: keeps the signal when a blank means not asked."
+        }
+       },
+       {
+        "key": "multiple_imputation",
+        "label": "Multiple imputation (m at least 20, more when more rows are incomplete)",
+        "customary": {
+         "field": "epidemiology",
+         "text": "Customary in epidemiology (Sterne et al. 2009, BMJ 338:b2393)",
+         "source": "Sterne et al. 2009, BMJ 338:b2393"
+        },
+        "sound": {
+         "purpose": "prediction",
+         "verdict": "unsound",
+         "reason": "Not here: it uses the outcome, which a new row does not have; impute in each fold without it (Sisk et al. 2023)."
+        }
+       }
+      ],
+      "customary_first": "complete_case",
+      "tension": "Complete cases are the field's habit, but a new row with a blank cannot be scored; a fill learned in each training fold without the outcome can (Sisk et al. 2023, Stat Methods Med Res 32:1461)."
+     }
+    }
+   },
+   "cohort": {
+    "n_measured": null,
+    "n_analyzed": null,
+    "steps": [
+     {
+      "key": "loaded",
+      "label": "Rows in the table",
+      "n": 21849,
+      "dropped": 0,
+      "reason": null,
+      "decision_id": null
+     },
+     {
+      "key": "outcome_measured",
+      "label": "`glucose` recorded",
+      "n": 21849,
+      "dropped": 0,
+      "reason": "no value for the outcome `glucose`",
+      "decision_id": null
+     }
+    ],
+    "flow": null
+   }
+  },
+  "at_the_draw": {
+   "seal_plan": {
+    "task": "regression",
+    "n_measured": 21849,
+    "n_analyzed": 19579,
+    "basis": {
+     "state": "one_row_per_unit",
+     "column": null,
+     "label": "one row per unit",
+     "sentence": "Held out by row: every `SEQN` appears once, so each row is a different unit.",
+     "exploratory": false,
+     "source": "stated",
+     "n_units": null
+    },
+    "chronology": null,
+    "exploratory": false,
+    "floor": {
+     "unit": "rows",
+     "n": 100,
+     "text": "A convention: at least 100 held-out rows, by analogy with the 100-event rule for binary outcomes.",
+     "source": null,
+     "convention": true
+    },
+    "options": [
+     {
+      "holdout": 0.0,
+      "label": "Cross-validation only",
+      "n_holdout": 0,
+      "measures": "Every row trains and is scored by cross-validation; no untouched final score.",
+      "below_floor": false
+     },
+     {
+      "holdout": 0.2,
+      "label": "Hold out 20%",
+      "n_holdout": 3916,
+      "measures": "About `3,916` held-out rows: R² known to about ±0.02.",
+      "below_floor": false
+     },
+     {
+      "holdout": 0.1,
+      "label": "Hold out 10%",
+      "n_holdout": 1958,
+      "measures": "About `1,958` held-out rows: R² known to about ±0.03.",
+      "below_floor": false
+     },
+     {
+      "holdout": 0.3,
+      "label": "Hold out 30%",
+      "n_holdout": 5874,
+      "measures": "About `5,874` held-out rows: R² known to about ±0.02.",
+      "below_floor": false
+     }
+    ],
+    "cv_first": true,
+    "reason": "With 19,579 rows, below about 20,000, one split or one partition gives an unstable score (Harrell); resampling the whole pipeline uses every row, so it comes first. A holdout is a lockbox against analyst overfitting; at 19,579 rows it costs precision: its rows neither train the models nor enter the resampled score.",
+    "precision_note": "Widths are approximate 95% intervals of a score on that many held-out rows: R² by its large-sample standard error 2·√R²·(1 − R²)/√n at an R² of 0.2, AUC by Hanley & McNeil (1982) at an AUC of 0.75, macro-F1 by a proportion's interval on the rarest class.",
+    "refusal": null,
+    "time_ordered_folds": false,
+    "validation": {
+     "options": [
+      {
+       "validation": "bootstrap",
+       "label": "Bootstrap optimism correction",
+       "measures": "Every row trains and scores; 500 whole-pipeline refits on resamples estimate the optimism.",
+       "cost": "about 500 refits of each family, besides 50 for the comparisons' 10 × 5-fold repeats",
+       "needs_cluster": false,
+       "caution": "Sound for regression-type families; a near-interpolating one (boosted trees) keeps its cross-validated score, since the bootstrap overstates it (Coley et al. 2023).",
+       "cluster": null
+      },
+      {
+       "validation": "repeated_kfold",
+       "label": "Repeated cross-validation (10 × 5)",
+       "measures": "The folds are drawn 10 times, so the score no longer rests on one partition.",
+       "cost": "50 refits of each family",
+       "needs_cluster": false,
+       "caution": null,
+       "cluster": null
+      },
+      {
+       "validation": "kfold",
+       "label": "Cross-validation, once",
+       "measures": "One partition into folds: cheap, and noisier at small sizes.",
+       "cost": "50 refits of each family: the score's 5-fold run is the first of the comparisons' 10 × 5-fold repeats",
+       "needs_cluster": false,
+       "caution": null,
+       "cluster": null
+      },
+      {
+       "validation": "internal_external",
+       "label": "Internal–external, by cluster",
+       "measures": "Each site, study or period scored by models fit on the others, with the spread.",
+       "cost": "one refit of each family per cluster, besides 50 for the comparisons' 10 × 5-fold repeats",
+       "needs_cluster": true,
+       "caution": null,
+       "cluster": null
+      }
+     ],
+     "resampling_first": true,
+     "reason": "With 19,579 rows, below about 20,000, one split or one partition gives an unstable score (Harrell); resampling the whole pipeline uses every row, so it comes first.",
+     "holdout_note": "A holdout is a lockbox against analyst overfitting; at 19,579 rows it costs precision: its rows neither train the models nor enter the resampled score.",
+     "below": 20000,
+     "source": "Harrell 2017, Split-sample model validation: data splitting is unstable below about 20,000 subjects"
+    },
+    "labels": {
+     "question": "split",
+     "purpose": "prediction",
+     "options": [
+      {
+       "key": "bootstrap",
+       "label": "Bootstrap optimism correction",
+       "customary": {
+        "field": "clinical prediction",
+        "text": "The recommended default (Harrell, Lee & Mark 1996)",
+        "source": "CLINICAL_SURVEY_PACK §A5.5"
+       },
+       "sound": {
+        "purpose": "prediction",
+        "verdict": "sound",
+        "reason": "Uses every row and refits the whole pipeline in each resample (Steyerberg 2018, J Clin Epidemiol 103:131: \"more efficient approaches\" in small samples)."
+       }
+      },
+      {
+       "key": "repeated_kfold",
+       "label": "Repeated cross-validation",
+       "customary": {
+        "field": "clinical prediction",
+        "text": "Acceptable internal validation",
+        "source": "CLINICAL_SURVEY_PACK §A5.5"
+       },
+       "sound": {
+        "purpose": "prediction",
+        "verdict": "sound",
+        "reason": "Draws the folds several times, so the score no longer rests on one partition."
+       }
+      },
+      {
+       "key": "kfold",
+       "label": "Cross-validation, once",
+       "customary": {
+        "field": "machine learning",
+        "text": "The default resampling of scikit-learn and caret",
+        "source": "scikit-learn and caret documentation"
+       },
+       "sound": {
+        "purpose": "prediction",
+        "verdict": "conditional",
+        "reason": "Every row trains and scores, but one partition is noisy at small sizes."
+       }
+      },
+      {
+       "key": "internal_external",
+       "label": "Internal–external, by cluster",
+       "customary": {
+        "field": "clinical prediction",
+        "text": "Increasingly expected across sites or periods",
+        "source": "Collins et al. 2024, BMJ 384:e074819"
+       },
+       "sound": {
+        "purpose": "prediction",
+        "verdict": "sound",
+        "reason": "Each site or period scored by models fit on the others, with the spread: what a new site would see."
+       }
+      },
+      {
+       "key": "holdout",
+       "label": "Hold out a share of rows",
+       "customary": {
+        "field": "clinical prediction and machine learning",
+        "text": "The standard requirement in major medical journals: validity shown outside the development sample",
+        "source": "Steyerberg 2018, J Clin Epidemiol 103:131"
+       },
+       "sound": {
+        "purpose": "prediction",
+        "verdict": "conditional",
+        "reason": "A lockbox against the analyst's own overfitting, sound at large sizes; at small ones its rows neither train nor score the pipeline (Steyerberg 2018, J Clin Epidemiol 103:131)."
+       }
+      }
+     ],
+     "customary_first": "holdout",
+     "tension": "A single holdout is the journals' habit; resampling the whole pipeline uses every row and is more efficient at this size (Steyerberg 2018, J Clin Epidemiol 103:131)."
+    }
+   }
+  },
+  "models_entry": {
+   "split": {
+    "n_train": 19579,
+    "n_holdout": 0,
+    "holdout": 0.0,
+    "seed": 0,
+    "folds": 8,
+    "grouped_by": null,
+    "n_groups": null,
+    "stratified": false,
+    "fold_scheme": "random",
+    "folds_stratified": false,
+    "repeats": 1,
+    "cluster": "cycle_begin_year",
+    "fold_labels": [
+     "2001",
+     "2003",
+     "2005",
+     "2007",
+     "2009",
+     "2011",
+     "2013",
+     "2015"
+    ],
+    "validation": "internal_external",
+    "n_boot": null,
+    "basis": {
+     "state": "one_row_per_unit",
+     "column": null,
+     "label": "one row per unit",
+     "sentence": "Held out by row: every `SEQN` appears once, so each row is a different unit.",
+     "exploratory": false,
+     "source": "stated",
+     "n_units": null
+    },
+    "chronology": null,
+    "exploratory": false,
+    "time_ordered_folds": false,
+    "note": "All `19,579` rows train, checked by cross-validation; `8` folds, one per level of `cycle_begin_year`, each scored by models fit on the others."
+   },
+   "proposals": {
+    "labels": {
+     "missing": {
+      "question": "missing",
+      "purpose": "prediction",
+      "options": [
+       {
+        "key": "impute",
+        "label": "Single fill in each training fold",
+        "customary": {
+         "field": "machine learning",
+         "text": "Customary in machine-learning pipelines (scikit-learn's SimpleImputer)",
+         "source": "scikit-learn's SimpleImputer, the pipelines' default fill"
+        },
+        "sound": {
+         "purpose": "prediction",
+         "verdict": "sound",
+         "reason": "Sound: fit in each training fold without the outcome, it imputes a new row as it was developed (Josse et al. 2019; Sisk et al. 2023)."
+        }
+       },
+       {
+        "key": "indicators",
+        "label": "Single fill with missing indicators",
+        "customary": {
+         "field": "prediction from health records",
+         "text": "Customary in prediction from health records (Sperrin et al. 2020)",
+         "source": "Sperrin et al. 2020, J Clin Epidemiol 125:183"
+        },
+        "sound": {
+         "purpose": "prediction",
+         "verdict": "conditional",
+         "reason": "Sound when a blank carries information, but harmful when missingness depends on the outcome (Sisk et al. 2023)."
+        }
+       },
+       {
+        "key": "complete_case",
+        "label": "Complete cases",
+        "customary": {
+         "field": "epidemiology",
+         "text": "Customary in epidemiology; most software's default",
+         "source": "Sterne et al. 2009, BMJ 338:b2393: \"Researchers usually address missing data by including in the analysis only complete cases\""
+        },
+        "sound": {
+         "purpose": "prediction",
+         "verdict": "conditional",
+         "reason": "Valid but wasteful, and a new row with a blank cannot be scored."
+        }
+       },
+       {
+        "key": "missing_category",
+        "label": "Blanks as their own level",
+        "customary": {
+         "field": "survey and health-record analysis",
+         "text": "Customary for questions not asked (a blank medication answer)",
+         "source": "NUTRITION_PACK §06 (a blank that means not asked)"
+        },
+        "sound": {
+         "purpose": "prediction",
+         "verdict": "sound",
+         "reason": "Sound: keeps the signal when a blank means not asked."
+        }
+       },
+       {
+        "key": "multiple_imputation",
+        "label": "Multiple imputation (m at least 20, more when more rows are incomplete)",
+        "customary": {
+         "field": "epidemiology",
+         "text": "Customary in epidemiology (Sterne et al. 2009, BMJ 338:b2393)",
+         "source": "Sterne et al. 2009, BMJ 338:b2393"
+        },
+        "sound": {
+         "purpose": "prediction",
+         "verdict": "unsound",
+         "reason": "Not here: it uses the outcome, which a new row does not have; impute in each fold without it (Sisk et al. 2023)."
+        }
+       }
+      ],
+      "customary_first": "complete_case",
+      "tension": "Complete cases are the field's habit, but a new row with a blank cannot be scored; a fill learned in each training fold without the outcome can (Sisk et al. 2023, Stat Methods Med Res 32:1461)."
+     }
+    }
+   }
+  },
+  "shelf": {
+   "families": [
+    {
+     "key": "boosted_trees",
+     "label": "Boosted trees",
+     "rank": 1,
+     "fit": "good",
+     "concerns": [],
+     "terms": [],
+     "inductive_bias": "Effects are step functions that can bend and interact; many shallow trees each correct the last.",
+     "estimate_seconds": 66.0,
+     "estimate": "about 1 minute"
+    },
+    {
+     "key": "elastic_net",
+     "label": "Elastic net",
+     "rank": 2,
+     "fit": "good",
+     "concerns": [],
+     "terms": [],
+     "inductive_bias": "Straight-line effects shrunk toward zero; few predictors matter, correlated ones share weight.",
+     "estimate_seconds": 38.4,
+     "estimate": "about 40 seconds"
+    },
+    {
+     "key": "ridge",
+     "label": "Ridge",
+     "rank": 3,
+     "fit": "good",
+     "concerns": [],
+     "terms": [],
+     "inductive_bias": "Straight-line effects all shrunk toward zero together; correlated predictors share weight; none is dropped.",
+     "estimate_seconds": 12.4,
+     "estimate": "about 10 seconds, most of it tuning"
+    },
+    {
+     "key": "random_forest",
+     "label": "Random forest",
+     "rank": 4,
+     "fit": "good",
+     "concerns": [],
+     "terms": [],
+     "inductive_bias": "Many deep trees, each on resampled rows with random columns, averaged; effects are step functions.",
+     "estimate_seconds": 8889.8,
+     "estimate": "about 2 hours, most of it tuning"
+    },
+    {
+     "key": "xgboost",
+     "label": "XGBoost",
+     "rank": 5,
+     "fit": "good",
+     "concerns": [],
+     "terms": [],
+     "inductive_bias": "Effects are step functions that can bend and interact; many shallow trees each correct the last.",
+     "estimate_seconds": 1050.0,
+     "estimate": "about 18 minutes, most of it tuning"
+    },
+    {
+     "key": "linear",
+     "label": "Linear model",
+     "rank": 6,
+     "fit": "good",
+     "concerns": [],
+     "terms": [],
+     "inductive_bias": "Each predictor adds a straight-line effect; effects add up, with no interactions unless you build them.",
+     "estimate_seconds": 4.1,
+     "estimate": "about 4 seconds"
+    },
+    {
+     "key": "huber",
+     "label": "Robust linear regression",
+     "rank": 7,
+     "fit": "good",
+     "concerns": [],
+     "terms": [],
+     "inductive_bias": "Straight-line effects fitted so that far-off rows count less.",
+     "estimate_seconds": 16.6,
+     "estimate": "about 15 seconds"
+    },
+    {
+     "key": "screened_elastic_net",
+     "label": "Screened elastic net",
+     "rank": 8,
+     "fit": "fair",
+     "concerns": [
+      "With fewer features than rows the penalty alone can select; screening adds instability."
+     ],
+     "terms": [
+      null
+     ],
+     "inductive_bias": "Only features with a strong marginal association survive; among them, straight-line effects shrunk toward zero.",
+     "estimate_seconds": 38.4,
+     "estimate": "about 40 seconds"
+    },
+    {
+     "key": "mixed",
+     "label": "Random-intercept mixed model",
+     "rank": 9,
+     "fit": "poor",
+     "concerns": [
+      "No identifier repeats in these rows, so there is no unit for a random intercept; it is the linear model's fit."
+     ],
+     "terms": [
+      null
+     ],
+     "inductive_bias": "Straight-line effects, plus a level of its own for each unit whose rows repeat.",
+     "estimate_seconds": 4.1,
+     "estimate": "about 4 seconds"
+    },
+    {
+     "key": "gee",
+     "label": "GEE (exchangeable)",
+     "rank": 10,
+     "fit": "poor",
+     "concerns": [
+      "No identifier repeats in these rows, so there is no within-unit correlation to model; it is the linear model's fit."
+     ],
+     "terms": [
+      null
+     ],
+     "inductive_bias": "Population-average straight-line or log-odds effects; a unit's rows share one correlation.",
+     "estimate_seconds": 3.6,
+     "estimate": "about 4 seconds"
+    },
+    {
+     "key": "featurewise",
+     "label": "Feature-wise regression",
+     "rank": 11,
+     "fit": "poor",
+     "concerns": [
+      "Tests each study factor on its own and makes no predictions, so it adds nothing to a prediction."
+     ],
+     "terms": [
+      null
+     ],
+     "inductive_bias": "Each study factor tested on its own with the covariates; Benjamini–Hochberg holds the false-discovery rate.",
+     "estimate_seconds": null,
+     "estimate": null
+    }
+   ],
+   "basis": "Ranked for 19,579 training rows and 20 predictors.",
+   "sample_size": {
+    "minimum": 984,
+    "n_rows": 19579,
+    "parameters": 20,
+    "criteria": [
+     {
+      "key": "C1",
+      "what": "the mean outcome within a 10% margin",
+      "n": 984
+     },
+     {
+      "key": "C2",
+      "what": "the residual SD within a 10% margin",
+      "n": 254
+     },
+     {
+      "key": "C3",
+      "what": "an expected shrinkage of at least 0.9",
+      "n": 984
+     },
+     {
+      "key": "C4",
+      "what": "an optimism of at most 0.05 in the apparent R²",
+      "n": 341
+     }
+    ],
+    "binding": "C1",
+    "below": false,
+    "r2_cs": 0.15,
+    "sentence": "Riley et al.'s minimum sample size for 20 candidate predictor parameters is 984 rows (the binding criterion: the mean outcome within a 10% margin); these 19,579 rows meet it."
+   }
+  },
+  "state_at_end": {
+   "purpose": "prediction",
+   "target": "glucose",
+   "task": null,
+   "split": {
+    "holdout": 0.0,
+    "seed": 0,
+    "folds": 5,
+    "validation": "internal_external",
+    "repeats": 10,
+    "n_boot": 500,
+    "cluster": "cycle_begin_year",
+    "nested_cv": false
+   },
+   "missing": {
+    "strategy": "impute",
+    "drop_columns": [],
+    "categorical": "missing_category",
+    "indicators": false,
+    "m": 20,
+    "below_detection": null,
+    "censored_columns": [],
+    "acknowledged": false,
+    "reason": null,
+    "imputation_model": "compatible",
+    "imputation_levels": "clustered"
+   },
+   "models": null,
+   "intended_use": {
+    "use": "risk_estimation",
+    "threshold_low": null,
+    "threshold_high": null,
+    "threshold": null,
+    "subgroups": [
+     "gender",
+     "age",
+     "meds_hbp",
+     "meds_chol"
+    ],
+    "fairness": "subgroup_performance"
+   },
+   "explain": {
+    "curves": "ale",
+    "exposures": [
+     "waist",
+     "triglycerides",
+     "hdl",
+     "age",
+     "kcal"
+    ],
+    "reseeds": 5,
+    "as_effect": false
+   },
+   "energy_adjustment": null,
+   "substitution": null,
+   "survey": null,
+   "exclusions": [
+    {
+     "kind": "range",
+     "column": "cycle_begin_year",
+     "low": 2001.0,
+     "high": 2015.0,
+     "by": null,
+     "reason": "The latest survey cycle, 2017–2018, is sealed whole until the final model is named (P21, emulated).",
+     "missing": "exclude"
+    }
+   ],
+   "temporal": null
+  },
+  "interview_at_end": [
+   {
+    "key": "lens",
+    "status": "answered",
+    "reason": null
+   },
+   {
+    "key": "orientation",
+    "status": "not_applicable",
+    "reason": "No assay lens is on, and other tables are not exported turned around."
+   },
+   {
+    "key": "target",
+    "status": "answered",
+    "reason": null
+   },
+   {
+    "key": "event",
+    "status": "not_applicable",
+    "reason": "The outcome is read as regression, so there is no event level to choose."
+   },
+   {
+    "key": "task",
+    "status": "skipped",
+    "reason": "Continuous, with 1,575 distinct values — read as a regression outcome."
+   },
+   {
+    "key": "follow_up",
+    "status": "not_applicable",
+    "reason": "The outcome is read as regression, so no event is followed over time."
+   },
+   {
+    "key": "design",
+    "status": "skipped",
+    "reason": "Read as an observational study: people were observed as they were, not assigned or sampled by their outcome. Change it if they were randomized, sampled by the outcome or matched."
+   },
+   {
+    "key": "purpose",
+    "status": "answered",
+    "reason": null
+   },
+   {
+    "key": "grain",
+    "status": "skipped",
+    "reason": "every `SEQN` appears once, so each person is one row."
+   },
+   {
+    "key": "repeat_kind",
+    "status": "not_applicable",
+    "reason": "Each unit appears once, so there are no repeats to tell apart."
+   },
+   {
+    "key": "unit",
+    "status": "not_applicable",
+    "reason": "Each unit appears once, so each row already is one."
+   },
+   {
+    "key": "aggregation",
+    "status": "not_applicable",
+    "reason": "Each unit appears once, so there is nothing to combine."
+   },
+   {
+    "key": "temporal",
+    "status": "not_applicable",
+    "reason": "Each unit appears once, so no row comes later than another."
+   },
+   {
+    "key": "roles",
+    "status": "answered",
+    "reason": null
+   },
+   {
+    "key": "clusters",
+    "status": "skipped",
+    "reason": "no column reads as a site, centre, household or batch, or can group the rows by its values."
+   },
+   {
+    "key": "survey",
+    "status": "not_applicable",
+    "reason": "No column reads as a survey weight, stratum or sampling unit, so there is no surveyed population to weight to."
+   },
+   {
+    "key": "exclusions",
+    "status": "answered",
+    "reason": null
+   },
+   {
+    "key": "missing",
+    "status": "answered",
+    "reason": null
+   },
+   {
+    "key": "split",
+    "status": "answered",
+    "reason": null
+   },
+   {
+    "key": "estimand",
+    "status": "not_applicable",
+    "reason": "Under prediction no coefficient is read as an effect, so no study factor, effect or adjustment set is declared."
+   },
+   {
+    "key": "adjustment",
+    "status": "not_applicable",
+    "reason": "Under prediction no coefficient is read as an effect, so no study factor, effect or adjustment set is declared."
+   },
+   {
+    "key": "time_varying",
+    "status": "not_applicable",
+    "reason": "Under prediction no coefficient is read as an effect, so nothing you study is followed through time."
+   },
+   {
+    "key": "energy_adjustment",
+    "status": "not_applicable",
+    "reason": "No column is marked as what you study, so there is nothing to adjust."
+   },
+   {
+    "key": "form",
+    "status": "skipped",
+    "reason": "Under prediction each predictor enters as each family takes it; the spline benchmark is on the shelf, and a spline can be declared for any numeric predictor."
+   },
+   {
+    "key": "modification",
+    "status": "not_applicable",
+    "reason": "Under prediction no effect is estimated, so no effect modifier or second study factor is declared."
+   },
+   {
+    "key": "causal",
+    "status": "not_applicable",
+    "reason": "Under prediction no coefficient is read as an effect, so no causal estimate is offered."
+   },
+   {
+    "key": "models",
+    "status": "open",
+    "reason": null
+   },
+   {
+    "key": "substitution",
+    "status": "not_applicable",
+    "reason": "No study factor carries energy; a substitution swaps kcal between two."
+   },
+   {
+    "key": "open_seal",
+    "status": "not_applicable",
+    "reason": "Every row trains under cross-validation alone, so no held-out rows wait to be opened."
+   }
+  ],
+  "split_facts": {
+   "n_train": 19579,
+   "n_holdout": 0,
+   "holdout": 0.0,
+   "seed": 0,
+   "folds": 8,
+   "fold_labels": [
+    "2001",
+    "2003",
+    "2005",
+    "2007",
+    "2009",
+    "2011",
+    "2013",
+    "2015"
+   ],
+   "note": "All `19,579` rows train, checked by cross-validation; `8` folds, one per level of `cycle_begin_year`, each scored by models fit on the others.",
+   "fold_scheme": "random",
+   "cluster": "cycle_begin_year",
+   "validation": "internal_external"
+  },
+  "predictors_all_rows": {
+   "rows": 21849,
+   "meds_hbp": {
+    "yes": 5527,
+    "no": 770,
+    "not_asked": 15552
+   },
+   "meds_chol": {
+    "yes": 3644,
+    "no": 1001,
+    "not_asked": 17204
+   },
+   "either_asked": 7946,
+   "neither_asked": 13903,
+   "both_asked": 2996,
+   "mode_fill_would_say": {
+    "meds_hbp": "yes",
+    "meds_chol": "yes"
+   },
+   "cycles": {
+    "2001": 2501,
+    "2003": 2295,
+    "2005": 2299,
+    "2007": 2624,
+    "2009": 2807,
+    "2011": 2363,
+    "2013": 2463,
+    "2015": 2227,
+    "2017": 2270
+   },
+   "asked_share_by_cycle": {
+    "2001": 0.2695,
+    "2003": 0.3268,
+    "2005": 0.3014,
+    "2007": 0.3849,
+    "2009": 0.3616,
+    "2011": 0.3902,
+    "2013": 0.3812,
+    "2015": 0.4257,
+    "2017": 0.4383
+   },
+   "gender": {
+    "female": 11195,
+    "male": 10654
+   }
+  },
+  "predictors_development": {
+   "rows": 19579,
+   "meds_hbp": {
+    "yes": 4877,
+    "no": 655,
+    "not_asked": 14047
+   },
+   "meds_chol": {
+    "yes": 3174,
+    "no": 814,
+    "not_asked": 15591
+   },
+   "either_asked": 6951,
+   "neither_asked": 12628,
+   "both_asked": 2569,
+   "mode_fill_would_say": {
+    "meds_hbp": "yes",
+    "meds_chol": "yes"
+   },
+   "cycles": {
+    "2001": 2501,
+    "2003": 2295,
+    "2005": 2299,
+    "2007": 2624,
+    "2009": 2807,
+    "2011": 2363,
+    "2013": 2463,
+    "2015": 2227
+   },
+   "asked_share_by_cycle": {
+    "2001": 0.2695,
+    "2003": 0.3268,
+    "2005": 0.3014,
+    "2007": 0.3849,
+    "2009": 0.3616,
+    "2011": 0.3902,
+    "2013": 0.3812,
+    "2015": 0.4257
+   },
+   "gender": {
+    "female": 10023,
+    "male": 9556
+   }
+  },
+  "measures_development": {
+   "rows": 19579,
+   "waist": {
+    "n": 18995,
+    "knots": [
+     74.0,
+     87.6,
+     96.8,
+     106.4,
+     127.0
+    ],
+    "p01": 67.9,
+    "p99": 143.40600000000015,
+    "share_80_90": 0.1941037115030271,
+    "share_110_120": 0.11634640694919715
+   },
+   "body_shared_r2": {
+    "weight": 0.9916066096094032,
+    "height": 0.9945468994207161,
+    "bmi": 0.9915935829814001,
+    "waist": 0.8597511715688859
+   },
+   "body_corr": {
+    "weight~height": 0.43676986891441194,
+    "weight~bmi": 0.8758267131032011,
+    "weight~waist": 0.8842516864424798,
+    "height~bmi": -0.038273012266653944,
+    "height~waist": 0.1534036940192998,
+    "bmi~waist": 0.8991354292803657
+   },
+   "bmi_identity_max_gap_log": 0.003110640309511137,
+   "missing_after_d": {
+    "weight": 209,
+    "height": 223,
+    "bmi": 278,
+    "waist": 584,
+    "bp_sys": 1643,
+    "bp_di": 1751,
+    "age": 0
+   },
+   "age_max": 80.0
+  },
+  "riley_73": {
+   "parameters": 73,
+   "minimum": 3916,
+   "binding": "C3",
+   "criteria": [
+    {
+     "key": "C2",
+     "what": "the residual SD within a 10% margin",
+     "n": 307
+    },
+    {
+     "key": "C3",
+     "what": "an expected shrinkage of at least 0.9",
+     "n": 3916
+    },
+    {
+     "key": "C4",
+     "what": "an optimism of at most 0.05 in the apparent R²",
+     "n": 1242
+    }
+   ]
+  },
+  "design": {
+   "matrix": null,
+   "warnings": null,
+   "left_out": null
+  }
+ },
+ "after_seal": {},
+ "notes": [
+  "stopped at the families question (--shelf-only): nothing fitted",
+  "findings with repairs: sas_zeros, binary_text__gender"
+ ],
+ "followed": false,
+ "answers": [
+  {
+   "kind": "set_lens",
+   "status": 200,
+   "summary": "{\"lenses\": [\"dietary\"]}",
+   "source": "the journey",
+   "seq": 1,
+   "sentence": "The table was read through the `dietary` lens."
+  },
+  {
+   "kind": "apply_repair",
+   "status": 200,
+   "summary": "{\"finding_id\": \"sas_zeros\", \"option\": \"zero\"}",
+   "source": "the finding's first repair option",
+   "seq": 2,
+   "sentence": "`33` cells holding `5.4e-79`, a misread SAS transport zero, were read as `0`."
+  },
+  {
+   "kind": "set_target",
+   "status": 200,
+   "summary": "{\"column\": \"glucose\"}",
+   "source": "the journey",
+   "seq": 3,
+   "sentence": "`glucose` was chosen as the outcome; it is measured on all `21,849` rows."
+  },
+  {
+   "kind": "set_purpose",
+   "status": 200,
+   "summary": "{\"purpose\": \"prediction\"}",
+   "source": "the journey",
+   "seq": 4,
+   "sentence": "The analysis was declared for `prediction`: models are judged on rows they never saw."
+  },
+  {
+   "kind": "set_intended_use",
+   "status": 409,
+   "summary": "{\"use\": \"risk_estimation\", \"subgroups\": [\"gender\", \"age\", \"meds_hbp\", \"meds_chol\"], \"fairness\": \"subgroup_performance\"}",
+   "source": "the journey (declared, not asked)",
+   "refusal": {
+    "code": "reading_unsettled",
+    "message": "Subgroup performance groups a column by its levels when its numbers are codes and by its thirds when they are an amount, and this one is not settled. Tell me about this column: `age`: an amount? (`63` whole-number values from 18 to 80).",
+    "exits": [
+     "`age` is a count or an amount (a slope; a unit's rows averaged)",
+     "`age` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)"
+    ]
+   }
+  },
+  {
+   "kind": "confirm_readings",
+   "status": 200,
+   "summary": "1 reading (code_or_count 1): code_or_count:age=amount",
+   "source": "a reading the server asked about, answered from the journey's readings (the fixture's declared truth and the journey's own, listed below), else the app's guess (listed below)",
+   "seq": 5,
+   "sentence": "Confirmed together, each as the question showed it: `age` was confirmed to hold amounts or counts."
+  },
+  {
+   "kind": "set_intended_use",
+   "status": 200,
+   "summary": "{\"use\": \"risk_estimation\", \"subgroups\": [\"gender\", \"age\", \"meds_hbp\", \"meds_chol\"], \"fairness\": \"subgroup_performance\"}",
+   "source": "the journey (declared, not asked)",
+   "seq": 6,
+   "sentence": "The model was declared for risk estimation: no classification threshold was set; performance was reported with 95% intervals within the groups of `gender`, `age`, `meds_hbp` and `meds_chol` (TRIPOD+AI 23a); no fairness method beyond that report was applied (TRIPOD+AI 14)."
+  },
+  {
+   "kind": "set_roles",
+   "status": 200,
+   "summary": "identifier: SEQN; excluded: cycle_begin_year; energy: kcal; covariate: age, gender, bp_sys, bp_di, weight, height and 13 more; flag: imputed_weight, imputed_height, imputed_bmi, imputed_waist, imputed_bp_sys, imputed_bp_di",
+   "source": "the journey (the fixture's author)",
+   "seq": 7,
+   "sentence": "Column roles were set for `28` columns: energy `kcal`; covariates `age`, `gender`, `bp_sys` and 16 more; identifier `SEQN`; flags `imputed_weight`, `imputed_height`, `imputed_bmi` and 3 more; excluded `cycle_begin_year`; `bp_sys`, `bp_di` and 13 more were proposed below high confidence and wait for their own confirmation before any default reads them."
+  },
+  {
+   "kind": "confirm_readings",
+   "status": 200,
+   "summary": "15 readings (role 15): role:bp_sys=covariate, role:bp_di=covariate, role:weight=covariate, role:height=covariate and 11 more",
+   "source": "a reading the server asked about, answered from the journey's readings (the fixture's declared truth and the journey's own, listed below), else the app's guess (listed below)",
+   "seq": 8,
+   "sentence": "Confirmed together, each as the question showed it: `9` columns (from `bp_sys`) were confirmed as a covariate; `6` columns (from `imputed_weight`) were confirmed as a flag."
+  },
+  {
+   "kind": "set_exclusions",
+   "status": 200,
+   "summary": "{\"rules\": [{\"kind\": \"range\", \"column\": \"cycle_begin_year\", \"low\": 2001.0, \"high\": 2015.0, \"reason\": \"The latest survey cycle, 2017–2018, is sealed whole until the final model is named (P21, emulated).\", \"missing\": \"exclude\"}]}",
+   "source": "the journey",
+   "seq": 9,
+   "sentence": "`2,270` rows with `cycle_begin_year` outside `2001`–`2015` or not recorded were excluded as the latest survey cycle, 2017–2018, is sealed whole until the final model is named (P21, emulated)."
+  },
+  {
+   "kind": "set_missing",
+   "status": 200,
+   "summary": "{\"strategy\": \"impute\", \"categorical\": \"missing_category\"}",
+   "source": "the journey",
+   "seq": 10,
+   "sentence": "Blanks in categorical and yes/no predictors were kept as a level of their own, `Missing`; then the other predictors' missing values were imputed in each training fold without the outcome: the median for numbers, the most frequent value for categories; no row was dropped for a missing predictor."
+  },
+  {
+   "kind": "set_split",
+   "status": 200,
+   "summary": "{\"holdout\": 0.0, \"seed\": 0, \"folds\": 5, \"validation\": \"internal_external\", \"cluster\": \"cycle_begin_year\"}",
+   "source": "the journey",
+   "seq": 11,
+   "sentence": "No rows were held out; performance was estimated by internal–external validation, each level of `cycle_begin_year` held out in turn and scored by models fit on the others (seed `0`); models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004); R² was measured against the training rows' mean and pooled over every out-of-fold prediction."
+  },
+  {
+   "kind": "set_explain",
+   "status": 200,
+   "summary": "{\"curves\": \"ale\", \"exposures\": [\"waist\", \"triglycerides\", \"hdl\", \"age\", \"kcal\"], \"reseeds\": 5}",
+   "source": "the journey (declared, not asked)",
+   "seq": 12,
+   "sentence": "The fitted models were described by their SHAP values, with their stability over 5 refits on bootstrap resamples, by a ranking of pairwise interactions (Friedman and Popescu's H statistic), and by accumulated local effects curves (Apley and Zhu 2020) of `waist`, `triglycerides`, `hdl`, `age` and `kcal`, drawn only for families whose cross-validated score beats the no-predictor baseline; these describe the models' predictions, not causal effects."
+  }
+ ],
+ "forms": "none",
+ "captured": {
+  "seconds": 12,
+  "date": "2026-10-10",
+  "commit": "80c1e81eea",
+  "workers": 2,
+  "threads": "2"
+ }
+}
