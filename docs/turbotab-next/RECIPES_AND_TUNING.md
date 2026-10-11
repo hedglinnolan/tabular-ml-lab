@@ -931,6 +931,7 @@ Under the population answer, evaluation's design-based folds (10 × 2) add about
 - Tuning stays available, nested as always.
 - **The reason is the variance of the chosen settings, not optimism.** Nesting already removes optimism. Riley et al. 2021 found tuning parameters "estimated with large uncertainty … when development data sets have a small effective sample size", which "can lead to considerable miscalibration". Van Calster et al. 2020 found shrinkage's calibration slope often more variable between samples than without it. Martin et al. 2021 recommend quantifying exactly this variability.
 - 300 is a convention. T1 reports nested tuning against standard settings on fresh data at an effective size of 200. If tuning wins there by more than 2 standard errors, the threshold is revisited.
+- **Open ruling (2026-10-10):** T1's run found nested tuning better than the standard settings by 0.15 to 0.20 nats on fresh data at 200 rows (about 60 events), which triggers the revisit; notes/SMALL_SAMPLE_STANDARD.md analyzes it and proposes a ruling.
 
 **"Try both" below 300 (settled in draft 3).**
 
@@ -1337,12 +1338,16 @@ All are Tier A unless marked.
   - (b) signal: logit = −0.85 + 0.8x₁ − 0.6x₂ + 0.5x₁x₃.
 - **Procedure F (flat: what not to do),** in plain scikit-learn: the plan's candidates evaluated by 5-fold cross-validation on all rows; the best one's log loss reported.
 - **Procedure N (ours):** the fit stage's cross-validated log loss for boosted trees, with the automatic plan forced on.
-- **Truth:** retrain each procedure on 4/5 of the rows, and score it on 20,000 fresh rows. In (a), the floor is the entropy, 0.6109 nats.
-- **Assertions, over 200 datasets:**
-  - F's mean is below its truth by more than 3 Monte Carlo standard errors;
-  - N's mean is within 2 standard errors of its truth;
-  - with ridge added, the selection-corrected estimate is within 2 standard errors or conservative.
-- **Also reported, not asserted:** nested tuning against standard settings on fresh-data loss at an effective size of 200 (§4.6).
+- **Procedure C:** with ridge added, BBC-CV's selection-corrected estimate for the family with the better cross-validated score. F, N and C share the split stage's folds.
+- **Truth:** each procedure's own five outer-fold models (each a refit on 4/5 of the rows), scored by their expected log loss on 20,000 fresh rows with the outcome integrated out, and averaged. In (a), the floor is the entropy, 0.6109 nats.
+- **The stratification term.** Stratified folds make a cross-validated log loss low by about ρ/n ≤ 1/n nats (0.005 here), with or without tuning (notes/STRATIFICATION_OPTIMISM.md). A **control** fits only the base rate on the same folds: the true logit with its intercept refit, which under (a) is the training fold's event rate. Its optimism is that term alone.
+- **Assertions, over 600 datasets per generator,** each one-sided at α = 0.05 on the mean of a paired, per-dataset difference of optimisms (O = truth − estimate):
+  - (a) tuning outside nesting is optimistic: O_F − O_N > 0 (the folds are shared, so the term cancels);
+  - (b) nesting removes the optimism: O_N − O_control lies within ±δ by two one-sided tests, δ = 0.005 nats, half of `MIN_GAIN`;
+  - (c) BBC-CV's corrected estimate is not optimistic: O_C − O_control < δ;
+  - under (a), every truth averages at least the entropy.
+- **Power:** at least 0.93 for each assertion and about 0.93 that all six pass, at the effects a correct implementation shows (a 40-dataset pilot's standard deviations; the note's §6). About 60 minutes at 4 jobs. The flat leak here is about as large as δ, so (a), not (b), is what tells nesting from flat tuning.
+- **Also reported, not asserted:** each optimism, the control's against ρ/n, and nested tuning against standard settings on fresh-data loss at an effective size of 200 (§4.6).
 
 **T2 · Known answers.**
 - (a) **Ridge's path search** on the diabetes data, with explicit inner splits, against numpy's closed form at each λ and the **pooled** squared error's argmin. Index exact; score to 1e-10. The test also asserts that the scorer is the pooled loss.
