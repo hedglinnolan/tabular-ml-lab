@@ -256,13 +256,67 @@ EFFECTS_READS = ("adjustment", "estimand", "multiplicity", "model_sequence", "di
                  "survey", "outcome_order", "follow_up", "categorical", "energy_adjustment",
                  "grain", "exposure_forms", "lens", "findings", "column_units", "split",
                  "repeat_kind", "unit")
-# The families whose declared models are refit on the primary's model matrix: every family with a
-# coefficient table today, the families that model the unit (a random intercept, a working
-# correlation) included, so the unadjusted estimate is shown for each (STROBE 16a).
-SEQUENCE_FAMILIES = ("linear", "proportional_odds", "cox", "featurewise", "mixed", "gee")
 LABELS = {"crude": "Unadjusted", "model_1": "Model 1", "model_2": "Model 2 (primary)",
           "model_3": "Model 3"}
 STRAIGHT_LINE = "the straight-line estimate beside the curve"
+
+
+# ── what a family declares, as this stage reads it (MODEL_FAMILY_CONTRACT §1; MC-2b-3) ────────
+
+
+def refits_on_matrix(family: Any) -> bool:
+    """Whether the declared models are refit on the primary's model matrix: the family's table is
+    made from a model matrix alone (``InferenceDecl.matrix_table``), the families that model the
+    unit (a random intercept, a working correlation) included, so the unadjusted estimate is shown
+    for each (STROBE 16a)."""
+    decl = getattr(family, "inference_decl", None)
+    return bool(decl is not None and decl.matrix_table)
+
+
+def tests_only(family: Any) -> bool:
+    """A family that tests each study factor and makes no predictions (``predicts`` False): one
+    model per member, its multiplicity method applied across them."""
+    return not family.predicts
+
+
+def least_squares_on_matrix(family: Any) -> bool:
+    """Under a number, a fit by least squares on the model matrix: a weighted sum of the values as
+    given (``linear_in_values``) whose table is made from the matrix alone, so the robustness
+    value (Cinelli & Hazlett) is defined for its coefficient."""
+    return bool(family.linear_in_values) and refits_on_matrix(family)
+
+
+def one_regression_on_matrix(family: Any) -> bool:
+    """One regression on the model matrix that predicts: a weighted sum of the values as given,
+    its table from the matrix alone, and one model for every exposure (not a test per member), so
+    its coefficients combine into a contrast (the average relative effect) and its linear
+    predictor is what it predicts on its raw scale."""
+    return least_squares_on_matrix(family) and not tests_only(family)
+
+
+def standardizes_risks(family: Any, task: str) -> bool:
+    """Whether the marginal risks are standardized from the family's own model (g-computation):
+    one regression on the matrix whose yes/no outcome is modeled on the log-odds
+    (``raw_scale["binary"]`` the margin), i.e. the logistic model ``models.effects`` refits."""
+    return (task == "binary" and one_regression_on_matrix(family)
+            and family.raw_scale.get("binary") == "margin")
+
+
+def _diagnostic_check(family: Any) -> str:
+    """The check this stage reports for the family's primary model: proportional hazards when the
+    family declares it, else influence."""
+    return ("proportional_hazards" if "proportional_hazards" in family.diagnostics
+            else "influence")
+
+
+def __getattr__(name: str) -> Any:
+    # The families :func:`refits_on_matrix` selects among those registered, read from their
+    # declarations (MC-2b-3 retired the tuple of keys this name held).
+    if name == "SEQUENCE_FAMILIES":
+        from turbotab.core.models.base import families
+
+        return tuple(f.key for f in families() if refits_on_matrix(f))
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # ── the model matrix's columns, by what they came from ───────────────────────
@@ -329,35 +383,47 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
     """The family's inference table on ``matrix`` (every analyzed row), as the fit stage computes
     it for the primary: design-based under ``survey`` for the families that have a design-based
     estimator (the stage blocks the others before they get here). None for a family whose table
-    is not made from a matrix alone."""
-    from turbotab.core.models.inference import _on_rows, _on_scale
+    is not made from a matrix alone (:func:`refits_on_matrix`).
 
-    if family.key == "featurewise":
-        from turbotab.core.models.featurewise import featurewise_table
+    The table is the family's own ``inference``, handed a pipeline whose one step is the model
+    step as the matrix's fit leaves it (its classes, its ordered levels, its tested columns), so
+    the model matrix it reads is ``matrix`` itself; it is given the outcome, the rows and the
+    design where its ``inference`` takes them, and told the rows when it does not say them."""
+    import inspect
 
-        table = featurewise_table(matrix, y, task, [f for f in features if f in matrix.columns],
-                                  clusters, event)
-        return _on_rows(table, len(matrix), "all")
-    if family.key == "cox":
-        return family.inference_matrix(matrix, y, task="time_to_event", classes=[0, 1],
-                                       clusters=clusters, outcome=outcome, rows="all", survey=survey)
-    if family.key == "proportional_odds":
-        return family.inference_matrix(matrix, y, task=task, classes=levels, clusters=clusters,
-                                       outcome=outcome, rows="all", survey=survey)
-    if family.key == "linear":
-        return family.inference_matrix(matrix, y, task=task, classes=classes, clusters=clusters,
-                                       outcome=outcome, rows="all", survey=survey)
-    if family.key == "mixed":
-        from turbotab.core.models.repeated import mixed_table
+    from sklearn.pipeline import Pipeline
 
-        return _on_rows(_on_scale(mixed_table(matrix, y, clusters), task, None, outcome),
-                        len(matrix), "all")
-    if family.key == "gee":
-        from turbotab.core.models.repeated import gee_table
+    from turbotab.core.models.inference import _on_rows
 
-        return _on_rows(_on_scale(gee_table(matrix, y, clusters, task, classes), task, classes,
-                                  outcome), len(matrix), "all")
-    return None
+    if not refits_on_matrix(family):
+        return None
+    step = _MatrixStep(classes=list(classes) if classes is not None else [],
+                       levels=list(levels) if levels is not None else None,
+                       features=[f for f in features if f in matrix.columns])
+    takes = inspect.signature(family.inference).parameters
+    given = {"outcome": outcome, "rows": "all", "survey": survey, "event": event}
+    kw = {k: v for k, v in given.items() if k in takes}
+    if survey is not None and "survey" not in takes:
+        raise ValueError(f"{family.label} has no design-based estimator, so it has no table over "
+                         f"the surveyed population.")
+    table = family.inference(Pipeline([("model", step)]), matrix, y, task=task,
+                             clusters=clusters, **kw)
+    return table if "rows" in takes else _on_rows(table, len(matrix), "all")
+
+
+class _MatrixStep:
+    """A model step as the fit of a model matrix leaves it, for :func:`matrix_table`: what a
+    family's ``inference`` reads off its fitted step (``classes_``, an ordered outcome's
+    ``level_names_``, the tested columns' ``features``), and nothing to transform."""
+
+    def __init__(self, *, classes: list[Any], levels: list[Any] | None,
+                 features: list[str]) -> None:
+        self.classes_ = classes
+        self.level_names_ = levels
+        self.features = features
+
+    def get_params(self, deep: bool = True) -> dict[str, Any]:
+        return {}
 
 
 # ── the stage ────────────────────────────────────────────────────────────────
@@ -440,7 +506,11 @@ def effects_stage(ctx: StageContext) -> Bundle:
     further = est.secondary_columns(state)
     declared = est.current_model_sequence(state)
     model_one = list(declared.model_1) if declared is not None else None
-    assignment = read_assignment(ctx.inputs["split"])
+    split = ctx.inputs["split"]
+    assignment = read_assignment(split)
+    # Ruling 14a (WAVE_C6A_PLAN §7): the column the split kept units whole by, whose labels every
+    # refit here is handed as its units (``groups=``), as the fit stage hands its own fits.
+    grouped_by = (split.data or {}).get("grouped_by") if isinstance(split, Bundle) else None
     extra = [c for c in further if c not in spec.inputs]
     with open_store(ctx) as store:
         unit_columns = cluster_columns(state, store.columns)
@@ -450,7 +520,9 @@ def effects_stage(ctx: StageContext) -> Bundle:
             from turbotab.core.models.survival import follow_up_columns
 
             follow = follow_up_columns(state)
-        columns = list(dict.fromkeys([*spec.inputs, *extra, target, *unit_columns, *follow]))
+        grouping = [grouped_by] if grouped_by and grouped_by in store.columns else []
+        columns = list(dict.fromkeys([*spec.inputs, *extra, target, *unit_columns, *follow,
+                                      *grouping]))
         frame = modeling_frame(store, columns, assignment.index.to_numpy(), outcome=target)
         # F15 (RECIPES §4.3): under the population answer each row's stratum, PSU and weight,
         # which every refit here is handed with the split's seed, as the fit stage's are.
@@ -514,7 +586,9 @@ def effects_stage(ctx: StageContext) -> Bundle:
                levels=levels, clusters=clusters, survey=survey, missing=missing,
                model_one=model_one, further=further, extra=extra, unit_columns=list(unit_columns),
                rows3=rows3, frame3=frame3, y3=y3, clusters3=clusters3, missing3=missing3,
-               designs=designs, split_seed=split_seed)
+               designs=designs, split_seed=split_seed,
+               split_units=split_units(frame, grouping[0] if grouping else None,
+                                       assignment["train"].to_numpy()))
     out = []
     for i, family in enumerate(families):
         ctx.progress(0.05 + 0.9 * i / len(families), f"{family.label}: the declared models")
@@ -532,6 +606,19 @@ def effects_stage(ctx: StageContext) -> Bundle:
     artifact.methods = methods_sentence(state, artifact)
     ctx.progress(1.0, "Done")
     return Bundle(data=artifact.model_dump(mode="json"))
+
+
+def split_units(frame: pd.DataFrame, grouped_by: str | None, train: Any) -> pd.Series | None:
+    """Each row's unit (``grouped_by``'s label, indexed by row id) as the fit stage hands its fits
+    their ``groups``: None when the split was not grouped, or when no unit repeats among the
+    training rows (the rows were combined per unit, so grouping by it changes nothing)."""
+    if not grouped_by or grouped_by not in frame.columns:
+        return None
+    labels = frame[grouped_by].to_numpy()
+    trained = labels[np.asarray(train, dtype=bool)]
+    if len(pd.unique(trained)) == len(trained):
+        return None
+    return pd.Series(labels, index=frame.index)
 
 
 def _first_sentence(text: str) -> str:
@@ -609,7 +696,7 @@ class _Run:
         features: list[str] = []
         first: dict[str, Any] = {}
         curve: tuple[str, list[str]] | None = None  # a spline's straight-line and nonlinear columns
-        supported = family.key in SEQUENCE_FAMILIES
+        supported = refits_on_matrix(family)
         imputed = getattr(self.missing, "imputations", None) if self.missing else None
         for k, X_k in enumerate(self.copies(self.missing, self.frame)):
             self._unless_cancelled()
@@ -646,7 +733,7 @@ class _Run:
             subsets = {"crude": feats, "model_2": list(M.columns)}
             if self.model_one is not None:
                 subsets["model_1"] = [c for c in M.columns if c in feats or in_model_one(c)]
-            curve = spline_terms(fitted, feats) if family.key != "featurewise" else None
+            curve = spline_terms(fitted, feats) if not tests_only(family) else None
             if curve is not None:
                 # The curve's straight-line estimate, for its sensitivity analysis: the same model
                 # with the spline's nonlinear terms left out (pooled like every other model).
@@ -736,7 +823,7 @@ class _Run:
                                                    units)
             except Exception as exc:  # noqa: BLE001
                 self._unless_cancelled()
-                check = "proportional_hazards" if family.key == "cox" else "influence"
+                check = _diagnostic_check(family)
                 out.diagnostics = [Diagnostic(check=check, status="not_assessed", method="",
                                               reading=f"Not assessed: {exc}")]
             straight = None
@@ -805,7 +892,7 @@ class _Run:
         return comparison
 
     def _multiplicity(self, family: Any, table: Any) -> Any:
-        if family.key == "featurewise" and not table.info.get("refused"):
+        if tests_only(family) and not table.info.get("refused"):
             # The family's one multiplicity method, as the fit's table carries it (MS7): with
             # unadjusted p-values recorded, no q column; every member is shown either way.
             from turbotab.core.methods.omics import apply_multiplicity, multiplicity_policy
@@ -821,10 +908,14 @@ class _Run:
 
     def _fit(self, model: Any, X: pd.DataFrame, y: Any) -> Any:
         """F15: ``model`` fit on ``X``'s rows at the split's seed, with their survey design under
-        the population answer, inside the stage's cancel scope (``stages.modeling.fit_with``)."""
+        the population answer, inside the stage's cancel scope (``stages.modeling.fit_with``),
+        and (ruling 14a) each row's unit as the split grouped it, so a tuned family's inner splits
+        keep a unit's rows on one side, as the fit stage's do (:func:`split_units`)."""
         from turbotab.core.stages.modeling import fit_with
 
-        return fit_with(model, X, y, designs=self.designs, seed=self.split_seed,
+        units = self.split_units
+        groups = None if units is None else units.reindex(X.index).to_numpy()
+        return fit_with(model, X, y, groups=groups, designs=self.designs, seed=self.split_seed,
                         cancelled=self.ctx.cancelled)
 
     def _unless_cancelled(self) -> None:
@@ -851,7 +942,7 @@ class _Run:
         more energy sources; the unadjusted model holds one, so it has none."""
         adj = self.spec.energy_adjustment()
         if (table is None or not table.rows or adj is None or adj.method != "all_components"
-                or family.key != "linear" or self.task == "multiclass"):
+                or not one_regression_on_matrix(family) or self.task == "multiclass"):
             return table
         from turbotab.core.methods.energy import relative_effect_rows
 
@@ -952,7 +1043,7 @@ class _Run:
         from turbotab.core.models.pipeline import transformer
 
         measure = str(self.spec_e.measure)
-        if measure not in est.MARGINAL or family.key != "linear" or self.task != "binary":
+        if measure not in est.MARGINAL or not standardizes_risks(family, self.task):
             return None
         method = (f"Standardization over the analyzed rows (g-computation) from the logistic "
                   f"model: each row's predicted risk with what you study set each way, averaged; "
@@ -1090,11 +1181,11 @@ class _Run:
         if self.survey is not None and self.survey.design is not None:
             reason = ("Not assessed: the model is design-based, and these checks read an "
                       "unweighted fit.")
-            check = "proportional_hazards" if family.key == "cox" else "influence"
+            check = _diagnostic_check(family)
             return [Diagnostic(check=check, status="not_assessed", method="", reading=reason)]
-        if family.key == "cox":
+        if "proportional_hazards" in family.diagnostics:
             return [self._ph(M, features, first["sources"], responses, on)]
-        if family.key == "linear" and self.task in ("regression", "binary"):
+        if "influence" in family.diagnostics and self.task in ("regression", "binary"):
             return [self._influence(family, M, features, responses, on, units)]
         return [Diagnostic(check="influence", status="not_assessed", method="",
                            reading=f"Not assessed for {family.label}: leverage and Cook's distance "
@@ -1372,7 +1463,7 @@ class _Run:
             matrix = y = None
             benchmarks = None
             reason = None
-            if family.key not in ("linear", "featurewise"):
+            if not least_squares_on_matrix(family):
                 reason = (f"it is defined for one least-squares coefficient "
                           f"({effects.CINELLI_HAZLETT}), and this family ({family.label}) does "
                           f"not fit by least squares")
@@ -1381,7 +1472,7 @@ class _Run:
             elif feature not in M.columns:
                 reason = ("the average relative effect is a contrast of several coefficients, not "
                           "one regressor's")
-            elif family.key == "featurewise":
+            elif tests_only(family):
                 # Each member's own test: the outcome on that member and the adjustment columns
                 # (the other members are separate questions), its covariates the benchmarks.
                 others = set(features) - {feature}
@@ -1397,7 +1488,7 @@ class _Run:
                 exposure_column=feature if matrix is not None else None, benchmarks=benchmarks,
                 covariance=covariance, sd_basis=basis)
             return self._sensitivity(feature, found, imputed, reason, what=what)
-        if family.key == "featurewise":
+        if tests_only(family):
             return Sensitivity(feature=feature, methods=[], reading="",
                                not_computed="The feature-wise design models each study factor on the "
                                             "outcome, so what you study is no regressor whose "
@@ -1939,5 +2030,7 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
 ))
 __all__ = ["EFFECTS_READS", "EffectsArtifact", "EffectsFamily", "POPULATION_SD", "SENSITIVITY_NAMES",
            "SequenceFit",
-           "effects_stage", "energy_outputs", "matrix_sources", "matrix_table", "methods_sentence",
-           "sensitivity_clause", "sensitivity_reading", "supplied_copies_reason"]
+           "effects_stage", "energy_outputs", "least_squares_on_matrix", "matrix_sources",
+           "matrix_table", "methods_sentence", "one_regression_on_matrix", "refits_on_matrix",
+           "sensitivity_clause", "sensitivity_reading", "split_units", "standardizes_risks",
+           "supplied_copies_reason", "tests_only"]

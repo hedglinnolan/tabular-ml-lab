@@ -632,43 +632,29 @@ def design_family(task: str) -> str | None:
     return next((f.key for f in families(task) if has_design_estimator(f, task)), None)
 
 
-# How the methods text writes an estimator fit over the design, by the name it gives the estimator
-# fit without one (``methods_label``): the design changes what the estimator is called, not which
-# family fits it. An estimator this table does not hold is called by its ``methods_label``.
-_DESIGN_WORDS = {
-    "linear regression": "least squares",
-    "logistic regression": "logistic regression (pseudo-maximum likelihood)",
-    "multinomial logistic regression":
-        "multinomial logistic regression (pseudo-maximum likelihood)",
-    "multinomial logistic regression, which ignores the levels' order":
-        "multinomial logistic regression (pseudo-maximum likelihood)",
-    "a proportional-odds (cumulative logit) model":
-        "the proportional-odds model (pseudo-maximum likelihood)",
-    "Cox proportional hazards": "Cox regression (Binder's pseudo-likelihood, Efron ties)",
-}
-# An estimator with no design-based version, as the sentence names it (each one model), by its
-# ``methods_label``; one this table does not hold is called by that label.
-_NO_DESIGN_WORDS = {
-    "a random-intercept mixed model": "the random-intercept mixed model",
-    "generalized estimating equations": "the GEE model",
-    "feature-wise least-squares tests with Benjamini–Hochberg false-discovery control":
-        "feature-wise regression",
-    "elastic net": "the elastic net",
-    "gradient-boosted trees": "the gradient-boosted tree model",
-}
+def _declared_words(family: Any, task: str, *, design_based: bool) -> str:
+    """The words ``family``'s ``inference_decl`` gives for ``task`` (``words``: one string for
+    every task, or one per task) when its ``design_based`` is ``design_based``; else, or for a
+    task they do not name, its ``methods_label``. The design changes what the estimator is
+    called, never which family fits it."""
+    decl = family.inference_decl
+    words: Any = decl.words if decl is not None and bool(decl.design_based) == design_based else ""
+    if not isinstance(words, str):
+        words = words.get(task, "")
+    return words or family.methods_label(task)
 
 
 def estimator_words(family: Any, task: str) -> str:
-    """``family``'s design-based estimator for ``task`` as the methods section writes it."""
-    label = family.methods_label(task)
-    return _DESIGN_WORDS.get(label) or label
+    """``family``'s design-based estimator for ``task`` as the methods section writes it: the
+    words its declaration gives (``InferenceDecl.words``), else its ``methods_label``."""
+    return _declared_words(family, task, design_based=True)
 
 
 def blocked_words(family: Any, task: str) -> str:
     """``family``, which has no design-based estimator for ``task``, as the methods sentence
-    names it when its estimates are blocked."""
-    label = family.methods_label(task)
-    return _NO_DESIGN_WORDS.get(label) or label
+    names it when its estimates are blocked: the words a family with no design-based estimator
+    declares (``InferenceDecl.words``), else its ``methods_label``."""
+    return _declared_words(family, task, design_based=False)
 
 
 def design_label(family: Any, task: str) -> str:

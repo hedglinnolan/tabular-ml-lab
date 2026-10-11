@@ -582,7 +582,7 @@ class Mixed(FamilyBase):
     flexible = False
     bootstrap_optimism = True
     inference_decl = InferenceDecl(table="intervals", intervals=("Satterthwaite",),
-                                   matrix_table=True)
+                                   matrix_table=True, words="the random-intercept mixed model")
     invariances = ("linear_maps",)  # its fixed effects, with random intercepts
     curve_shape = "straight"
     diagnostics = ("boundary",)
@@ -670,7 +670,8 @@ class GEE(FamilyBase):
     predicts = True
     flexible = False
     bootstrap_optimism = True
-    inference_decl = InferenceDecl(table="intervals", intervals=("CR2",), matrix_table=True)
+    inference_decl = InferenceDecl(table="intervals", intervals=("CR2",), matrix_table=True,
+                                   words="the GEE model")
     invariances = ("linear_maps",)
     curve_shape = "straight"
     diagnostics = ("convergence",)

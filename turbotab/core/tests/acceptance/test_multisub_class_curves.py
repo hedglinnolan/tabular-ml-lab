@@ -411,6 +411,7 @@ def test_1_a_resample_without_a_class_fails_its_refit_and_is_counted():
     from sklearn.linear_model import LogisticRegression
 
     from turbotab.core.methods.substitution import Shift, class_refit_band
+    from turbotab.core.models import get_family
     from turbotab.core.stages.class_substitution import class_predictor
 
     import warnings
@@ -426,7 +427,7 @@ def test_1_a_resample_without_a_class_fails_its_refit_and_is_counted():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             pipeline = Pipeline([("model", model)]).fit(Xb, yb)
-        return class_predictor(pipeline, Xb, yb, CLASSES)
+        return class_predictor(pipeline, Xb, yb, CLASSES, get_family("linear"))
 
     with pytest.raises(ValueError, match="does not hold every class"):
         fit(X.iloc[4:], y[4:])

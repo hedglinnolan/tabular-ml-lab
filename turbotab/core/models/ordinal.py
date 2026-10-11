@@ -531,7 +531,9 @@ class ProportionalOdds(FamilyBase):
     bootstrap_optimism = True
     inference_decl = InferenceDecl(table="intervals", intervals=("model", "sandwich", "Taylor"),
                                    design_based=True, product_terms=True, matrix_table=True,
-                                   default_for=("ordinal",))
+                                   default_for=("ordinal",),
+                                   words="the proportional-odds model (pseudo-maximum "
+                                         "likelihood)")
     invariances = ("linear_maps",)
     curve_shape = "straight"
     diagnostics = ("proportional_odds", "convergence")

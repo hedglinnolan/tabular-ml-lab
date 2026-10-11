@@ -626,7 +626,8 @@ class Cox(FamilyBase):
     flexible = False
     bootstrap_optimism = True
     inference_decl = InferenceDecl(table="intervals", intervals=("model", "sandwich", "Taylor"),
-                                   design_based=True, product_terms=True, matrix_table=True)
+                                   design_based=True, product_terms=True, matrix_table=True,
+                                   words="Cox regression (Binder's pseudo-likelihood, Efron ties)")
     invariances = ("linear_maps",)
     curve_shape = "straight"
     diagnostics = ("collinearity", "proportional_hazards")

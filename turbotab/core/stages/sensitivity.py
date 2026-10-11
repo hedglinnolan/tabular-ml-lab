@@ -113,6 +113,26 @@ def analyses_of(state: Any) -> list[dict[str, Any]]:
     return out
 
 
+def split_units(frame: pd.DataFrame, grouped_by: str | None) -> pd.Series | None:
+    """Each of ``frame``'s rows' unit as the split groups them (its ``grouped_by`` column),
+    indexed by row id: the groups the fit stage hands its own fits (``stages.modeling.fit_with``),
+    so a refit's inner splits keep a person's rows on one side, as the main fit's do
+    (WAVE_C6A_PLAN §7 ruling 14). None when the split grouped by no column, or when no unit
+    repeats in these rows (the rows were combined per unit), as the fit stage reads it."""
+    if not grouped_by:
+        return None
+    units = frame[grouped_by]
+    if units.nunique(dropna=False) == len(units):
+        return None
+    return pd.Series(units.to_numpy(), index=frame.index)
+
+
+def units_for(units: pd.Series | None, X: Any) -> np.ndarray | None:
+    """The units (:func:`split_units`) of ``X``'s rows, by row id: what a refit on them passes as
+    ``groups=``."""
+    return None if units is None else units.reindex(X.index).to_numpy()
+
+
 def sealed_rows(split: Any) -> np.ndarray:
     """Every row drawn to be held out (the split's ``sealed`` frame), in or out of the cohort; for
     a split artifact without that frame, its held-out rows."""
@@ -139,7 +159,8 @@ def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inp
                 y: np.ndarray, task: str, unit_columns: Sequence[str], *, outcome: Any = None,
                 survey: Any = None, levels: Sequence[str] | None = None, missing: Any = None,
                 spec: Any = None, seed: int | None = None, designs: Any = None,
-                cancelled: Any = None) -> tuple[Any, Any, list[str]]:
+                cancelled: Any = None, groups: pd.Series | None = None
+                ) -> tuple[Any, Any, list[str]]:
     """Refit ``pipeline`` on ``frame``'s rows; its coefficient table and concerns, as fit makes them.
 
     As the fit stage makes them (``stages.modeling.fit_stage``): a family that models the unit is
@@ -154,7 +175,10 @@ def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inp
     F15 (RECIPES §4.3): every refit here is fit at the split's ``seed`` (the recorded split's when
     None), with its rows' survey design under the population answer (``designs``,
     ``stages.modeling.fit_designs``, by row id), inside a cancel scope asking ``cancelled``, so a
-    tuned family searches as its plan says and a pressed Cancel stops it."""
+    tuned family searches as its plan says and a pressed Cancel stops it. ``groups``: each row's
+    unit as the split groups them (:func:`split_units`, by row id), handed to every refit as the
+    fit stage hands its own fits, so a tuned family's inner splits keep each unit whole
+    (WAVE_C6A_PLAN §7 ruling 14)."""
     from sklearn.base import clone
 
     from turbotab.core.models.inference import resolve_clusters
@@ -165,7 +189,8 @@ def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inp
         seed = int(getattr(split, "seed", 0) or 0) if split is not None else 0
 
     def refit(model: Any, X_k: pd.DataFrame, y_k: Any) -> Any:
-        return fit_with(model, X_k, y_k, designs=designs, seed=seed, cancelled=cancelled)
+        return fit_with(model, X_k, y_k, groups=units_for(groups, X_k), designs=designs,
+                        seed=seed, cancelled=cancelled)
 
     X = frame[list(inputs)]
     clusters = resolve_clusters(state, frame[list(unit_columns)]) if unit_columns else None
@@ -311,6 +336,8 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
     families = [get_family(k) for k in (state.models or []) if k in pipelines]
     analyses = analyses_of(state)
     sealed = sealed_rows(ctx.inputs["split"])
+    # The column the split kept whole: every refit's inner splits keep its units whole too.
+    grouped_by = (getattr(ctx.inputs["split"], "data", None) or {}).get("grouped_by")
     ingest = table_info(ctx)
 
     ctx.progress(0.05, "Counting the rows each analysis keeps")
@@ -333,12 +360,16 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
             kept = rows_of(store, state, ingest, a["rules"])
             rows_by.append(kept if inference else np.setdiff1d(kept, sealed))
         every = np.unique(np.concatenate([r for r in rows_by if r is not None] or [np.empty(0, np.int64)]))
+        if grouped_by not in store.columns:
+            grouped_by = None
         columns = list(dict.fromkeys([*spec.inputs, target, *unit_columns, *follow_up,
-                                      *[c for a in analyses for r in a["rules"] for c in r.reads()]]))
+                                      *[c for a in analyses for r in a["rules"] for c in r.reads()],
+                                      *([grouped_by] if grouped_by else [])]))
         frame = modeling_frame(store, columns, every, outcome=target)
         # F15: each row's stratum, PSU and weight under the population answer, for the refits.
         designs = fit_designs(state, store, frame.index.to_numpy())
     split_seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
+    split_groups = split_units(frame, grouped_by)  # ruling 14: the groups the fit stage's fits get
 
     # The outcome as the fit stage codes it: the event as 1, an ordinal outcome's declared order
     # (WP12a), a time-to-event outcome with its follow-up (WP12b), named for the table's scale (WP8).
@@ -407,7 +438,7 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
                     state, family, pipelines[family.key], part, spec.inputs,
                     y_part, task, unit_columns, outcome=outcome,
                     survey=survey, levels=levels, missing=missing_by.get(a["label"]), spec=spec,
-                    seed=split_seed, designs=designs, cancelled=ctx.cancelled)
+                    seed=split_seed, designs=designs, cancelled=ctx.cancelled, groups=split_groups)
             except Exception as exc:  # noqa: BLE001 - an analysis that cannot be fit says why
                 fits.append({"label": a["label"], "n_rows": int(len(rows)), "coefficients": None,
                              "concerns": [f"This analysis could not be fit: {exc}"]})
@@ -466,5 +497,5 @@ __all__ = [
     "BANNA", "EVERY_ROW", "SENSITIVITY_READS", "SensitivityArtifact", "SensitivityChange",
     "SensitivityFamily", "SensitivityFit", "SensitivityRow", "analyses_of", "changes_for",
     "exposure_features", "fit_on_rows", "methods_sentence", "rows_of", "sealed_rows",
-    "sensitivity_stage",
+    "sensitivity_stage", "split_units", "units_for",
 ]
