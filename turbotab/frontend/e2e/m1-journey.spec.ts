@@ -59,6 +59,19 @@ const previewMs: { kind: string; ms: number }[] = [];
 const shots: string[] = [];
 const oversize: string[] = [];
 
+/**
+ * Three guarantees the real server's stage breaks today (W1-C, reported for the shell): the M1
+ * mock asserts each inline, as before; on the real server the journey measures each and the
+ * known-defect tests after it hold them, so they stay visible in every report instead of passing
+ * as annotations. A term card or a Save that stops being covered fails its test.fail ("expected
+ * to fail") until the marker is removed; a screen over 300 KB is a fixme that names it.
+ */
+const defects: { termCardCovers?: string[]; saveCoveredBy?: string | null; oversize?: string[] } = {};
+const KNOWN = "known defect on the real server's stage (W1-C open issue; the mock asserts it inline)";
+
+// The known-defect tests read what the journey measured, so they run after it, in one worker.
+test.describe.configure({ mode: "serial" });
+
 async function settle(page: Page, ms = 400) {
   await page.waitForTimeout(ms);
 }
@@ -71,9 +84,10 @@ async function shot(page: Page, name: string, opts: { clip?: Locator; themes?: (
     const path = resolve(SCREENS, `${PREFIX}-${name}${opts.themes ? `-${theme}` : ""}.png`);
     const box = opts.clip ? await opts.clip.boundingBox() : null;
     await page.screenshot(box ? { path, clip: box } : { path });
-    // A review screen over 300 KB is listed for the reviewer (the measurements and an annotation),
-    // not a failure of the journey: the screens are for review, the journey is the check.
+    // On the mock a review screen over 300 KB fails the journey, as it always did; on the real
+    // server it is listed, and the known-defect test after the journey names it.
     const bytes = statSync(path).size;
+    if (!REAL) expect(bytes, `${name} (${theme}) stays under 300 KB`).toBeLessThan(MAX_SCREEN_BYTES);
     if (bytes >= MAX_SCREEN_BYTES) {
       oversize.push(`${name} (${theme}): ${Math.round(bytes / 1024)} KB`);
       test.info().annotations.push({ type: "screen over 300 KB", description: oversize.at(-1) });
@@ -387,10 +401,25 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
 
   // ── save the primary plot as a before/after pair, SVG and PNG ───────────────────────────
   const primary = stage(page).locator("[data-primary]");
-  // Opened from the keyboard: on the server's stage the distribution card's own Save sits over
-  // the primary's, so a pointer press lands on the other one (reported; the save is the check).
+  const primarySave = primary.getByTestId("save-button");
+  // What a pointer press at the primary's Save would land on, as Playwright's own hit check sees it
+  // (a trial click: scrolled into view, every actionability check, no press): null when the Save
+  // itself, else what intercepts it.
+  defects.saveCoveredBy = await primarySave.click({ trial: true, timeout: 5_000 }).then(
+    () => null,
+    (e: Error) =>
+      e.message
+        .split("\n")
+        .find((line) => line.includes("intercepts pointer events"))
+        ?.trim() ?? `not pressable: ${e.message.split("\n")[0]}`,
+  );
+  measurements.save_covered_by = defects.saveCoveredBy;
+  if (!REAL) expect(defects.saveCoveredBy, "nothing covers the primary's Save").toBeNull();
+  // On the mock a pointer press, as before. On the real server the distribution card's own Save
+  // sits over the primary's (the known-defect test below), so it is opened from the keyboard.
   const openSave = async () => {
-    await primary.getByTestId("save-button").focus();
+    if (!REAL) return primarySave.click();
+    await primarySave.focus();
     await page.keyboard.press("Enter");
   };
   await openSave();
@@ -433,6 +462,7 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
       if (overlaps) covered.push((await opt.getAttribute("data-key")) ?? "?");
     }
     measurements.term_card_covers = covered;
+    defects.termCardCovers = covered;
     if (covered.length) {
       test.info().annotations.push({ type: "term card covers an option", description: covered.join(", ") });
     }
@@ -681,8 +711,30 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   measurements.problems = problems;
   measurements.screens = shots.length;
   measurements.screens_over_300_kb = oversize;
+  defects.oversize = oversize;
   mkdirSync(resolve(HERE, "../test-results"), { recursive: true });
   writeFileSync(resolve(HERE, `../test-results/m1-journey-${PREFIX}.json`), JSON.stringify(measurements, null, 1));
   console.log(JSON.stringify(measurements, null, 1));
   expect(problems, "no console errors and no failed requests").toEqual([]);
+});
+
+// ── the known defects on the real server, kept visible ────────────────────────────────────────
+
+test("a term's card covers no option", () => {
+  test.skip(!REAL || defects.termCardCovers === undefined, "the mock journey asserts it inline");
+  test.fail(true, `${KNOWN}: the energy question's term card covers an option`);
+  expect(defects.termCardCovers, "the options the term card covers").toEqual([]);
+});
+
+test("nothing covers the primary plot's Save", () => {
+  test.skip(!REAL || defects.saveCoveredBy === undefined, "the mock journey asserts it inline");
+  test.fail(true, `${KNOWN}: the distribution card's Save sits over the primary's`);
+  expect(defects.saveCoveredBy, "what a pointer press at the primary's Save lands on").toBeNull();
+});
+
+test("every review screen stays under 300 KB", () => {
+  test.skip(!REAL || defects.oversize === undefined, "the mock journey asserts it inline");
+  const over = defects.oversize ?? [];
+  test.fixme(over.length > 0, `${KNOWN}: over 300 KB: ${over.join("; ")}`);
+  expect(defects.oversize).toEqual([]);
 });

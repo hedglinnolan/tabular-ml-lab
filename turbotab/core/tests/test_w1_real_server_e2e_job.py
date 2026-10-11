@@ -87,3 +87,21 @@ def test_the_held_fit_skip_expires_when_the_app_renders_a_held_fit():
         f"{rendering} render a held fit: retire HELD_WITHOUT_FIT and its skip in e2e/fit.ts, so a "
         "held journey presses that Fit")
 
+
+def test_the_real_server_defects_m1_measures_stay_visible():
+    """The M1 journey's guarantees the real server's stage breaks today are held by known-defect
+    tests (test.fail, or a fixme naming the screens), never only annotated; the mock asserts each
+    inline, as before."""
+    spec = (E2E / "m1-journey.spec.ts").read_text("utf-8")
+    assert 'test.describe.configure({ mode: "serial" })' in spec
+    for title, marker in (("a term's card covers no option", "test.fail(true"),
+                          ("nothing covers the primary plot's Save", "test.fail(true"),
+                          ("every review screen stays under 300 KB", "test.fixme(over.length > 0")):
+        start = spec.index(f'test("{title}"')
+        body = spec[start:spec.index("\n});", start)]
+        assert marker in body and "expect(" in body, title
+    # The mock still fails on each, as before.
+    assert "if (!REAL) expect(bytes" in spec
+    assert 'if (!REAL) expect(defects.saveCoveredBy, "nothing covers the primary\'s Save").toBeNull()' in spec
+    assert 'if (!REAL) expect(covered, "the term card covers an option").toEqual([])' in spec
+    assert "if (!REAL) return primarySave.click()" in spec
