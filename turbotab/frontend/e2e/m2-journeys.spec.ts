@@ -294,7 +294,9 @@ async function seal(page: Page, basis: string, name: string, themes?: ("light" |
   await shot(page, name, { at: q, themes });
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("decision-split")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("live-seal")).toBeVisible({ timeout: 30_000 });
+  // The live seal waits for the split to compute: on the 500-column genomics table, beside the
+  // shelf's ranking, that took over 30 s on a busy server (2 workers).
+  await expect(page.getByTestId("live-seal")).toBeVisible({ timeout: 120_000 });
 }
 
 /** The first substitution the stage's matrix draws (a pair refused outright, such as two shares of

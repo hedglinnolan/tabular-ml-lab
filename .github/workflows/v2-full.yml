@@ -164,9 +164,16 @@ jobs:
               > "turbotab/frontend/test-results/servers/$spec.log" 2>&1 &
             server=$!
             for i in $(seq 1 60); do curl -sf "http://127.0.0.1:$port/api/health" > /dev/null && break; sleep 1; done
-            (cd turbotab/frontend && E2E_BASE_URL="http://127.0.0.1:$port" \
-              npx playwright test "$spec" --reporter=line,github) || status=1
-            kill "$server"
+            if ! (cd turbotab/frontend && E2E_BASE_URL="http://127.0.0.1:$port" \
+              npx playwright test "$spec" --reporter=line,github); then
+              status=1
+              # The server's last lines as one annotation, which anyone can read (the uploaded
+              # log needs a sign-in): whether it was up, and what it said last.
+              alive=$(kill -0 "$server" 2>/dev/null && echo "running" || echo "exited")
+              tail -n 60 "turbotab/frontend/test-results/servers/$spec.log" | cut -c1-300 \
+                | python -c "import sys; print('::error title=server log, $spec ($alive)::' + sys.stdin.read().replace('%','%25').replace('\r','').replace('\n','%0A'))"
+            fi
+            kill "$server" 2>/dev/null || true
             wait "$server" || true
           done
           exit $status

@@ -70,35 +70,46 @@ export function pidOf(page: Page): string {
 }
 
 /**
- * The seal opened from its card as a person settles what it waits for: "open the seal" is
- * pressed; while the opening is refused with a way forward on the card (the triage of open
- * noticings settled as recommended, an "act on it" noticing recorded as a limitation, the final
- * model named on cross-validation), the first is taken, and the opening is pressed again unless
- * that way forward opened it. Returns the labels taken, in order.
+ * The seal opened from its card as a person settles what it waits for. While the card shows a
+ * refusal with a way forward (the final model named on cross-validation, the triage of open
+ * noticings kept as recommended, an "act on it" noticing recorded as a limitation), the first is
+ * taken; a way forward refused in turn shows its own, taken next. Once nothing is refused, "open
+ * the seal" is pressed again. Returns the labels taken, in order.
  */
-export async function openSealCard(page: Page, rounds = 8): Promise<string[]> {
+export async function openSealCard(page: Page, rounds = 16): Promise<string[]> {
   const card = page.getByTestId("open-seal-card");
+  const refused = card.getByTestId("open-seal-refused");
   const taken: string[] = [];
-  for (let i = 0; i < rounds; i++) {
-    if (!(await card.count())) return taken;
-    await card.getByTestId("open-seal").click();
-    const refused = card.getByTestId("open-seal-refused");
-    const settled = await Promise.race([
+  // What the last press left: the card gone (opened), a refusal, or neither (a way forward
+  // recorded, the opening still to press).
+  const outcome = async () =>
+    Promise.race([
       refused.waitFor({ state: "visible", timeout: 30_000 }).then(() => "refused" as const),
       card.waitFor({ state: "detached", timeout: 30_000 }).then(() => "opened" as const),
-    ]).catch(() => "timeout" as const);
-    if (settled !== "refused") return taken;
+    ]).catch(() => "neither" as const);
+  await card.getByTestId("open-seal").click();
+  for (let i = 0; i < rounds; i++) {
+    const now = await outcome();
+    if (now === "opened") return taken;
+    if (now === "neither") {
+      await card.getByTestId("open-seal").click();
+      continue;
+    }
     const exit = card.getByTestId("open-seal-exit").first();
     if (!(await exit.count())) return taken;
     taken.push(((await exit.textContent()) ?? "").trim());
+    // Pressing a way forward clears the refusal at once; its answer says what follows (accepted:
+    // the refusal stays away; refused: a new refusal; opened: the card goes).
+    const answered = page.waitForResponse(
+      (r) => r.request().method() === "POST" && /\/decisions$/.test(new URL(r.url()).pathname),
+      { timeout: 60_000 },
+    );
     await exit.click();
-    // The way forward was recorded (the refusal clears) or opened the seal (the card goes).
-    await expect
-      .poll(async () => (await card.count()) === 0 || !(await refused.isVisible().catch(() => false)), {
-        message: "the way forward was taken",
-        timeout: 30_000,
-      })
-      .toBe(true);
+    await answered;
+    await expect(card.getByTestId("open-seal"), "the way forward was answered").toBeEnabled({ timeout: 30_000 }).catch(() => {});
+    if (!(await card.count())) return taken;
+    const again = await refused.waitFor({ state: "visible", timeout: 2_000 }).then(() => true, () => false);
+    if (!again && (await card.count())) await card.getByTestId("open-seal").click();
   }
   return taken;
 }

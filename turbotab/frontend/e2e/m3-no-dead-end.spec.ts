@@ -144,9 +144,18 @@ const roles: Answer = async (_page, slot) => {
 };
 
 /** The first family on the shelf. */
+/** The shelf's first linear family where it has one (a fit of seconds), else its first: the
+ *  journey checks that each question renders, and a family estimated at minutes (boosted trees on
+ *  NHANES, about 10) is held for Fit and then takes that long once pressed. */
+const LIGHT = ["linear", "ridge", "elastic_net"];
 const models: Answer = async (page, slot) => {
-  const o = slot.locator('[role="option"]').first();
+  const shelf = slot.getByRole("listbox", { name: /Model families/ }).locator(':scope > [role="option"]');
+  const options = (await shelf.count()) ? shelf : slot.locator('[role="option"]');
+  const keys = await options.evaluateAll((els) => els.map((e) => e.getAttribute("data-key") ?? ""));
+  const light = keys.findIndex((k) => LIGHT.includes(k));
+  const o = options.nth(Math.max(light, 0));
   await o.focus();
+  await expect(o).toBeFocused();
   await page.keyboard.press("Space");
   await page.keyboard.press("Enter");
 };
