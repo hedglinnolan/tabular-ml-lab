@@ -10,8 +10,8 @@ says what the data shows, and the user decides.
 | Where                      | Notes                                                              |
 |----------------------------|--------------------------------------------------------------------|
 | ``set_exclusions`` preview | rows under the floor and over the ceiling, on the cut; who leaves  |
-| ``set_missing`` preview    | blanks that likely mean "not asked"; what they alone cost a        |
-|                            | complete-case analysis                                             |
+| ``set_missing`` preview    | blanks that likely mean "not asked", or the answer a most-frequent |
+|                            | fill would give them; what they alone cost complete cases          |
 | ``set_energy_adjustment``  | how tightly the nutrient tracks energy now, and what is left after |
 | ``set_aggregation``        | what combining does to replicates or time points; units it cannot  |
 |                            | combine; an outcome that varies within a unit                      |
@@ -292,6 +292,44 @@ def _not_asked(ctx: PreviewContext) -> list[str]:
     return [str(e["column"]) for e in reading.get("columns") or [] if e.get("likely_not_asked")]
 
 
+def _fills_with_the_mode(decision: Any) -> bool:
+    """Whether the answer fills a yes/no or categorical blank with its most frequent value: a single
+    fill in each training fold without blanks as their own level (``models.pipeline``)."""
+    return (getattr(decision, "strategy", None) == "impute"
+            and getattr(decision, "categorical", "impute") != "missing_category")
+
+
+def most_frequent(values: pd.Series) -> Any:
+    """The value a most-frequent fill gives a blank: the commonest, the smallest of tied ones
+    (SimpleImputer's rule, and ``methods.missing.MedianFill``'s for a two-valued number). None
+    when there is no value, or several kinds that do not order."""
+    counts = values.dropna().value_counts()
+    if not len(counts):
+        return None
+    tied = counts[counts == counts.max()].index.tolist()
+    try:
+        return sorted(tied)[0]
+    except TypeError:
+        return None
+
+
+def mode_fill_note(column: str, values: pd.Series, base: pd.Series) -> CoachNote | None:
+    """A not-asked column's blanks under a most-frequent fill, said as the answer they would be
+    given (WALKABLE_PLAN §1 B5: NHANES's `meds_hbp` blanks read as on medication). Only for a
+    column whose blanks can be a level (two values at most, or not numbers): a number's blanks
+    take its median."""
+    present = values.dropna()
+    if pd.api.types.is_numeric_dtype(present) and not pd.api.types.is_bool_dtype(present) \
+            and present.nunique() > 2:
+        return None
+    n = int((values.isna() & base).sum())
+    value_ = most_frequent(values[base])
+    if not n or value_ is None:
+        return None
+    return note(f"This fill gives {count(n)} not-asked {tick(column)} blanks {tick(value_)}",
+                "column", column)
+
+
 def missing_coach(decision: Any, views: list, ctx: PreviewContext) -> None:
     if not ctx.state.roles:
         return
@@ -312,6 +350,12 @@ def missing_coach(decision: Any, views: list, ctx: PreviewContext) -> None:
         for c in about[:MAX_COACH]:
             share = float((frame[c].isna() & base).sum()) / n_base
             if not share:
+                continue
+            filled = (mode_fill_note(c, frame[c], base)
+                      if c in likely and c not in drop and _fills_with_the_mode(decision) else None)
+            if filled is not None:
+                # What the fill does to blanks that mean "not asked" outranks how many there are.
+                notes.append(filled)
                 continue
             text = (f"{tick(c)} blank on {pct(share)}: likely a question not asked" if c in likely
                     else f"{tick(c)} is blank on {pct(share)} of these rows")

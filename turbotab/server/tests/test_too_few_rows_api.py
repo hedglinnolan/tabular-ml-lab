@@ -427,7 +427,9 @@ def test_the_not_asked_cautions_exits_are_each_accepted(client, tmp_path):
               {"kind": "set_purpose", "purpose": "prediction"}):
         prepare(client, pid, d)
         assert answer_settled(client, pid, None, d).status_code == 200
-    fill = {"kind": "set_missing", "strategy": "impute"}
+    # The most frequent value said outright (W1-H: a fill that leaves it unsaid is completed as
+    # blanks as a level where they mean not asked, and is not cautioned).
+    fill = {"kind": "set_missing", "strategy": "impute", "categorical": "impute"}
     prepare(client, pid, fill)
     wait_for(client, pid, {"proposals": "fresh"}, timeout=180)
     reading = client.get(f"/api/projects/{pid}/stages/proposals").json()["artifact"]["missing"]

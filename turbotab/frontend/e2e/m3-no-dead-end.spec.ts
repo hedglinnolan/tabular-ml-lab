@@ -14,13 +14,18 @@
  * through the generic question) and under prediction; untargeted metabolomics with pooled QCs; a
  * genomics count matrix; a 40-item survey instrument; a clinical longitudinal table (the
  * follow-up, through the generic question). The Router's state is read from the API; every
- * answer is a press in the Record.
+ * answer is a press in the Record, and Fit is pressed on the Results once the Router reaches it
+ * (SIZING P0.8: the fit is served withheld until then, and the seal waits for it).
+ *
+ * The metabolomics and survey journeys are heavy (about 27 and 31 minutes on two workers): they
+ * run only with E2E_HEAVY=1 (a scheduled run), never in the light CI job.
  */
 import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
+import { fitReached, openSealCard, pressFit } from "./fit";
 import { nhanesExport } from "./nhanes";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -51,6 +56,8 @@ type Answer = (page: Page, slot: Locator) => Promise<void>;
 interface Journey {
   name: string;
   file: string;
+  /** Run only with E2E_HEAVY=1: a journey that takes many minutes on two workers. */
+  heavy?: boolean;
   /** How each question is answered; anything else takes its first option. */
   answers: Record<string, Answer>;
   /** The adjustment set's answers, as the fixture's author knows them (truths.py). */
@@ -137,9 +144,18 @@ const roles: Answer = async (_page, slot) => {
 };
 
 /** The first family on the shelf. */
+/** The shelf's first linear family where it has one (a fit of seconds), else its first: the
+ *  journey checks that each question renders, and a family estimated at minutes (boosted trees on
+ *  NHANES, about 10) is held for Fit and then takes that long once pressed. */
+const LIGHT = ["linear", "ridge", "elastic_net"];
 const models: Answer = async (page, slot) => {
-  const o = slot.locator('[role="option"]').first();
+  const shelf = slot.getByRole("listbox", { name: /Model families/ }).locator(':scope > [role="option"]');
+  const options = (await shelf.count()) ? shelf : slot.locator('[role="option"]');
+  const keys = await options.evaluateAll((els) => els.map((e) => e.getAttribute("data-key") ?? ""));
+  const light = keys.findIndex((k) => LIGHT.includes(k));
+  const o = options.nth(Math.max(light, 0));
   await o.focus();
+  await expect(o).toBeFocused();
   await page.keyboard.press("Space");
   await page.keyboard.press("Enter");
 };
@@ -173,10 +189,9 @@ function adjustment(journey: Journey): Answer {
 const openSeal: Answer = async (page) => {
   const step = page.getByTestId("open-seal-step");
   await step.getByTestId("go-open-seal").click();
-  const card = page.getByTestId("open-seal-card");
-  await card.getByTestId("open-seal").click();
-  const exit = card.getByTestId("open-seal-exit").first();
-  if (await exit.isVisible({ timeout: 5_000 }).catch(() => false)) await exit.click();
+  // The opening waits for the triage of open noticings, then the final model: each way forward
+  // the refusal offers is taken and the opening pressed again (e2e/fit.ts openSealCard).
+  await openSealCard(page);
 };
 
 /** The ledger's ask card on the open question: confirm every line as shown, else each line, then
@@ -273,6 +288,7 @@ const JOURNEYS: Journey[] = [
   {
     name: "metabolomics",
     file: resolve(SAMPLES, "metabolomics_untargeted.csv"),
+    heavy: true,
     answers: {
       lens: lens("metabolomics"),
       orientation: option("sample_major"),
@@ -309,6 +325,7 @@ const JOURNEYS: Journey[] = [
   {
     name: "survey",
     file: resolve(SAMPLES, "survey_instrument.csv"),
+    heavy: true,
     answers: {
       lens: lens("survey"),
       target: target("sought_support"),
@@ -371,12 +388,19 @@ async function upload(page: Page, file: string): Promise<string> {
   return decodeURIComponent(/\/p\/([^/]+)$/.exec(page.url())![1]!);
 }
 
-/** The first question the Router has not settled, once nothing it waits on is computing. */
+/** The first question the Router has not settled, once nothing it waits on is computing. Fit is
+ *  pressed on the Results once the Router reaches it: the fit is served withheld until it is (the
+ *  substitution's pairs sit in the Results), and the seal waits for it. A fit held for Fit with
+ *  nothing to press skips the journey with that reason (e2e/fit.ts). */
 async function settle(page: Page, pid: string, timeout = 600_000): Promise<{ v: View; step: Step | null }> {
   const end = Date.now() + timeout;
   for (;;) {
     const v = await view(page, pid);
     const step = v.interview.find((s) => s.status === "open" || s.status === "waiting") ?? null;
+    if (await fitReached(page, pid)) {
+      await pressFit(page);
+      continue;
+    }
     if (!step || step.status === "open") return { v, step };
     // A stage that failed holds the question with the failure shown, never silently: fail here.
     const failed = step.waiting_on.filter((w) => v.stages[w]?.status === "error");
@@ -387,11 +411,13 @@ async function settle(page: Page, pid: string, timeout = 600_000): Promise<{ v: 
   }
 }
 
-test.describe.configure({ mode: "serial" });
+// Each journey opens its own table on the one server: one failing does not stop the next.
+test.describe.configure({ mode: "default" });
 
 for (const journey of JOURNEYS) {
   test(`${journey.name}: every open question renders something to answer, to the last one`, async ({ page }) => {
     test.setTimeout(1_800_000);
+    test.skip(!!journey.heavy && !process.env.E2E_HEAVY, "a heavy journey: it runs with E2E_HEAVY=1 (a scheduled run)");
     await page.goto("/");
     // The app renders once the mock API (if any) has started: ask the backend after that.
     await expect(page.getByRole("heading", { name: "Open a table to begin." })).toBeVisible();

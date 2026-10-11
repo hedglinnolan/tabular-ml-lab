@@ -29,6 +29,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
+import { confirmAsk, confirmStageAsk, firstDrawnPair } from "./ask";
+import { fitOnceComputed, openSealCard } from "./fit";
 import { nhanesExport } from "./nhanes";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -79,9 +81,9 @@ async function timed(done: () => Promise<unknown>): Promise<number> {
 }
 
 /** The stage shows the focused option's own preview and has settled. */
-async function previewed(page: Page, title?: string | RegExp) {
-  if (title) await expect(page.getByTestId("stage-title")).toHaveText(title, { timeout: 20_000 });
-  await expect(page.getByTestId("stage-loading")).not.toHaveAttribute("data-on", /.*/, { timeout: 20_000 });
+async function previewed(page: Page, title?: string | RegExp, timeout = 20_000) {
+  if (title) await expect(page.getByTestId("stage-title")).toHaveText(title, { timeout });
+  await expect(page.getByTestId("stage-loading")).not.toHaveAttribute("data-on", /.*/, { timeout });
 }
 
 /** The player has landed on a side and stopped moving. */
@@ -177,7 +179,9 @@ async function openPath(page: Page, path: string) {
 
 async function chooseLens(page: Page, lens: string) {
   await page.getByTestId(`option-${lens}`).focus();
-  await previewed(page);
+  // A lens preview reads every column: on the feature-major metabolomics copy it takes about
+  // 45 s on two workers (reported as a W1 follow-up), so it is given two minutes.
+  await previewed(page, undefined, 120_000);
   await page.keyboard.press("Space");
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("decision-lens")).toBeVisible({ timeout: 30_000 });
@@ -193,14 +197,25 @@ async function chooseTarget(page: Page, column: string) {
   await expect(page.getByTestId("decision-target")).toContainText(column, { timeout: 30_000 });
 }
 
-/** Focus an option of a question (the stage previews it), then record it with Enter. */
+/** Focus an option of a question (the stage previews it), then record it with Enter. A refusal at
+ *  the control with ways forward takes its first one (as a person pressing it would: below a
+ *  detection limit, the censoring-aware fill). */
 async function answer(page: Page, question: string, option: string, opts: { title?: string | RegExp } = {}) {
   await expect(page.getByTestId(`question-${question}`)).toBeVisible({ timeout: 60_000 });
   const o = page.getByTestId(`question-${question}`).getByTestId(`option-${option}`);
   await o.focus();
   await previewed(page, opts.title);
   await page.keyboard.press("Enter");
-  await expect(page.getByTestId(`decision-${question}`)).toBeVisible({ timeout: 60_000 });
+  const recorded = page.getByTestId(`decision-${question}`);
+  const took = await recorded.waitFor({ state: "visible", timeout: 10_000 }).then(
+    () => true,
+    () => false,
+  );
+  if (!took) {
+    const exit = page.locator(`[data-slot="${question}"] [role="alert"] button`, { hasText: / instead$/ }).first();
+    if (await exit.isVisible().catch(() => false)) await exit.click();
+  }
+  await expect(recorded).toBeVisible({ timeout: 60_000 });
 }
 
 /** The roles as proposed. */
@@ -210,20 +225,61 @@ async function confirmRoles(page: Page) {
   await expect(page.getByTestId("decision-roles")).toBeVisible({ timeout: 30_000 });
 }
 
-/** Fit the families (all of them, or the first `n` on the shelf), and wait for the Results. */
+/** Fit the families (the first `n` on the shelf, else its first three: the shelf now offers a dozen,
+ *  some estimated at most of an hour), press Fit once the fit has
+ *  computed (SIZING P0.8: no score is served before it), and wait for the Results. */
 async function fit(page: Page, n?: number): Promise<number> {
   const models = page.getByTestId("question-models");
   await expect(models).toBeVisible({ timeout: 60_000 });
-  const families = await models.getByRole("option").evaluateAll((els) => els.map((e) => e.getAttribute("data-key") ?? ""));
-  const chosen = families.slice(0, n ?? families.length);
-  await page.getByTestId(`option-${chosen[0]}`).focus();
-  for (let i = 0; i < chosen.length; i++) {
-    if (i > 0) await page.keyboard.press("ArrowDown");
-    await page.keyboard.press("Space");
+  // The shelf's own options (the ask card's selects hold options too); the roles proposed below
+  // high confidence are confirmed first, on the ledger's ask card, since the fit reads them.
+  const options = models.getByRole("listbox", { name: /Model families/ }).locator(':scope > [role="option"]');
+  await expect(options.first()).toBeVisible({ timeout: 60_000 });
+  await confirmAsk(page.locator('[data-slot="models"]'));
+  await expect(options.first()).toBeVisible({ timeout: 60_000 });
+  const families = await options.evaluateAll((els) => els.map((e) => e.getAttribute("data-key") ?? ""));
+  // The first `n`; else the three linear families where the shelf has them (the later steps refit
+  // each chosen family), else its first three.
+  const LIGHT = ["linear", "ridge", "elastic_net"];
+  const light = families.filter((k) => LIGHT.includes(k));
+  const chosen = n !== undefined ? families.slice(0, n) : light.length === 3 ? light : families.slice(0, 3);
+  // Down the list with the arrow keys, Space on each chosen family, Enter to fit them.
+  const choose = async () => {
+    await expect(options.first()).toBeVisible({ timeout: 60_000 });
+    await page.getByTestId(`option-${chosen[0]}`).focus();
+    let at = families.indexOf(chosen[0]!);
+    for (const key of chosen) {
+      for (; at < families.indexOf(key); at++) await page.keyboard.press("ArrowDown");
+      await expect(page.getByTestId(`option-${key}`)).toBeFocused();
+      if ((await page.getByTestId(`option-${key}`).getAttribute("aria-selected")) !== "true") {
+        await page.keyboard.press("Space");
+      }
+    }
+    await page.keyboard.press("Enter");
+  };
+  await choose();
+  const recorded = page.getByTestId("decision-models");
+  for (let tries = 0; tries < 3; tries++) {
+    const took = await recorded
+      .waitFor({ state: "visible", timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (took) break;
+    // Refused: for a reading the fit reads that the card asked about meanwhile (confirmed), or
+    // with ways forward at the control (raw counts: the first normalization it offers); then the
+    // families are chosen again.
+    const exit = page.locator('[data-slot="models"] [role="alert"] button', { hasText: / instead$/ }).first();
+    if (await exit.isVisible().catch(() => false)) await exit.click();
+    else await confirmAsk(page.locator('[data-slot="models"]'));
+    await page.waitForTimeout(1_500);
+    if (await recorded.isVisible().catch(() => false)) break;
+    await choose();
   }
-  await page.keyboard.press("Enter");
-  await expect(page.getByTestId("decision-models")).toBeVisible({ timeout: 30_000 });
-  return timed(() => expect(page.getByTestId("banner-result-value")).toBeVisible({ timeout: 300_000 }));
+  await expect(recorded).toBeVisible({ timeout: 30_000 });
+  return timed(async () => {
+    await fitOnceComputed(page);
+    await expect(page.getByTestId("banner-result-value")).toBeVisible({ timeout: 300_000 });
+  });
 }
 
 /** The seal question: its basis is named on the card and on the stage, then 20% is held out. */
@@ -238,15 +294,16 @@ async function seal(page: Page, basis: string, name: string, themes?: ("light" |
   await shot(page, name, { at: q, themes });
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("decision-split")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("live-seal")).toBeVisible({ timeout: 30_000 });
+  // The live seal waits for the split to compute: on the 500-column genomics table, beside the
+  // shelf's ranking, that took over 30 s on a busy server (2 workers).
+  await expect(page.getByTestId("live-seal")).toBeVisible({ timeout: 120_000 });
 }
 
-/** The first substitution the stage's matrix offers. */
+/** The first substitution the stage's matrix draws (a pair refused outright, such as two shares of
+ *  energy, which move in percentage points, gives way to the next). */
 async function substitute(page: Page) {
   await expect(page.getByTestId("question-substitution")).toBeVisible({ timeout: 60_000 });
-  const move = page.getByRole("button", { name: /^Move energy from / }).first();
-  await move.click();
-  await expect(page.getByTestId("substitution-curves")).toBeVisible({ timeout: 120_000 });
+  await firstDrawnPair(page, page.getByTestId("substitution-curves"));
   await expect(page.getByTestId("decision-substitution")).toBeVisible({ timeout: 30_000 });
 }
 
@@ -272,7 +329,10 @@ async function openSeal(page: Page, journey: string): Promise<number> {
   await expect(card).toBeInViewport();
   await shot(page, `${journey}-open-seal`, { themes: ["light", "dark"] });
   const s = await timed(async () => {
-    await card.getByTestId("open-seal").click();
+    // The opening waits for the triage of open noticings, settled as the refusal offers; with
+    // several families the final model is then named on cross-validation, the card's first way
+    // forward (e2e/fit.ts openSealCard).
+    await openSealCard(page);
     await expect(page.getByTestId("decision-open_seal")).toBeVisible({ timeout: 30_000 });
     await expect(results).toHaveAttribute("data-seal-phase", "opened", { timeout: 60_000 });
   });
@@ -302,7 +362,56 @@ function finish(journey: string, run: { problems: string[]; previews: { kind: st
   expect(run.problems, "no console errors and no failed requests").toEqual([]);
 }
 
-test.describe.configure({ mode: "serial" });
+/**
+ * What repeats, read from the data: stated when the reading is sure, else asked with the reading
+ * marked beside its option ("read from the data, medium"), which is recorded. Either way it says
+ * ``words``.
+ */
+async function whatRepeats(page: Page, words: RegExp) {
+  const asked = page.getByTestId("question-repeat_kind");
+  const stated = page.getByTestId("skip-repeat_kind");
+  await expect(asked.or(stated)).toBeVisible({ timeout: 60_000 });
+  if (await stated.isVisible()) {
+    await expect(stated).toContainText(words);
+    return;
+  }
+  const read = asked.getByRole("option").filter({ hasText: "read from the data" });
+  await expect(read).toHaveCount(1);
+  await expect(read).toContainText(words);
+  await read.focus();
+  await previewed(page);
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("decision-repeat_kind")).toBeVisible({ timeout: 30_000 });
+}
+
+/** Whether a question opens within `ms` (it is asked only where the data leave it open). */
+async function asked(page: Page, key: string, ms = 20_000): Promise<boolean> {
+  return page
+    .getByTestId(`question-${key}`)
+    .waitFor({ state: "visible", timeout: ms })
+    .then(() => true)
+    .catch(() => false);
+}
+
+/** A yes/no outcome's follow-up, when asked (WP17): the same for everyone, the yes/no outcome
+ *  standing, as these fixtures' authors state. */
+async function sameFollowUp(page: Page) {
+  if (!(await asked(page, "follow_up"))) return;
+  const slot = page.locator('[data-slot="follow_up"]');
+  await slot.getByTestId("option-same").click();
+  const record = slot.getByTestId("record-same");
+  if (await record.count()) await record.click();
+  await expect(page.getByTestId("decision-follow_up")).toBeVisible({ timeout: 30_000 });
+}
+
+/** Which way round an assay table is, when asked: one row per sample, read from the shape. */
+async function samplesAsRows(page: Page) {
+  if (!(await asked(page, "orientation"))) return;
+  await answer(page, "orientation", "sample_major");
+}
+
+// Each journey opens its own table on the one server: one failing does not stop the next.
+test.describe.configure({ mode: "default" });
 
 // ── dietary ──────────────────────────────────────────────────────────────────────────────────
 
@@ -328,9 +437,8 @@ test("dietary recalls: the grain asked, repeats stated, one row per person, the 
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("decision-grain")).toContainText("participant_id");
 
-  // What repeats is stated, not asked.
-  await expect(page.getByTestId("skip-repeat_kind")).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByTestId("skip-repeat_kind")).toContainText("repeated");
+  // What repeats: repeated measurements, read from the data.
+  await whatRepeats(page, /repeat/i);
 
   // One row per person.
   await answer(page, "unit", "unit");
@@ -341,8 +449,14 @@ test("dietary recalls: the grain asked, repeats stated, one row per person, the 
   const mean = page.getByTestId("option-mean");
   await expect(mean).toContainText("recommended");
   await expect(mean).toHaveAttribute("aria-selected", "false");
+  // Averaging reads whole-number columns as amounts: the ledger asks before it combines them.
+  await confirmAsk(page.locator('[data-slot="aggregation"]'));
   await mean.focus();
   await previewed(page);
+  if (await confirmStageAsk(page)) {
+    await mean.focus();
+    await previewed(page);
+  }
   await landed(page, "with");
   const reshape = stage(page).locator("[data-view=reshape_table]");
   await expect(reshape).toBeVisible();
@@ -411,23 +525,33 @@ test("clinical longitudinal: an impossible value repaired, time points, temporal
   await expect(event).toBeVisible({ timeout: 60_000 });
   await expect(event.getByRole("option", { selected: true })).toHaveCount(0);
   await answer(page, "event", "1");
+  await sameFollowUp(page);
   await answer(page, "purpose", "prediction");
 
   await answer(page, "grain", "repeated");
   await expect(page.getByTestId("decision-grain")).toContainText("subject_id");
-  // Time points, stated from the visit dates' spacing.
-  const repeats = page.getByTestId("skip-repeat_kind");
-  await expect(repeats).toBeVisible({ timeout: 60_000 });
-  await expect(repeats).toContainText(/time points|days apart|schedule/);
+  // Time points, read from the visit dates' spacing.
+  await whatRepeats(page, /time points|days apart|schedule/i);
   await answer(page, "unit", "row");
   // Later visits predicted from earlier ones: the seal is drawn by time, grouped too.
   const temporal = page.getByTestId("question-temporal");
   await expect(temporal).toBeVisible({ timeout: 60_000 });
   await temporal.getByTestId("option-true").focus();
   await previewed(page);
-  await landed(page, "with");
-  await shot(page, "clinical-temporal", { at: temporal });
-  await page.keyboard.press("Enter");
+  // A chronological split needs the column that says when each row was taken: the preview asks
+  // for it, and its first way forward (the visit dates) is previewed in its place, then recorded.
+  const orderBy = stage(page).getByRole("button", { name: "Order by visit_date" });
+  if (await orderBy.isVisible().catch(() => false)) {
+    await orderBy.click();
+    await previewed(page, /Order by/);
+    await landed(page, "with");
+    await shot(page, "clinical-temporal", { at: temporal });
+    await page.getByTestId("stage-record").click();
+  } else {
+    await landed(page, "with");
+    await shot(page, "clinical-temporal", { at: temporal });
+    await page.keyboard.press("Enter");
+  }
   await expect(page.getByTestId("decision-temporal")).toBeVisible({ timeout: 30_000 });
 
   await confirmRoles(page);
@@ -502,6 +626,7 @@ test("metabolomics exported features-in-rows: orientation first, the turn, then 
   await expect(page.getByTestId("finding-pack::metabolomics::no_run_order")).toHaveCount(0);
   await chooseTarget(page, "responder");
   await answer(page, "event", "1");
+  await sameFollowUp(page);
   await answer(page, "purpose", "prediction");
   await answer(page, "grain", "one_row_per_unit");
   await confirmRoles(page);
@@ -521,9 +646,11 @@ test("genomics expression: the wide path, the roles searched, elastic net first 
   const T = timings.genomics!;
   T.open_s = await timed(() => openPath(page, resolve(SAMPLES, "genomics_expression.csv")));
   await chooseLens(page, "genomics");
+  await samplesAsRows(page);
   await chooseTarget(page, "condition");
   await expect(page.getByTestId("question-event")).toBeVisible({ timeout: 60_000 });
   await answer(page, "event", "case");
+  await sameFollowUp(page);
   await answer(page, "purpose", "prediction");
   // `sample_id` names a sample, not a person: the grain is asked, never stated from it.
   await expect(page.getByTestId("question-grain")).toBeVisible({ timeout: 60_000 });
@@ -559,7 +686,9 @@ test("genomics expression: the wide path, the roles searched, elastic net first 
   // Elastic net first on the shelf; a fit long enough to weigh says so before it is chosen.
   const models = page.getByTestId("question-models");
   await expect(models).toBeVisible({ timeout: 60_000 });
-  await expect(models.getByRole("option").first()).toHaveAttribute("data-key", "elastic_net");
+  await expect(
+    models.getByRole("listbox", { name: /Model families/ }).locator(':scope > [role="option"]').first(),
+  ).toHaveAttribute("data-key", "elastic_net", { timeout: 60_000 });
   await shot(page, "genomics-models", { at: models });
   T.fit_s = await fit(page, 1);
   await expect(page.getByTestId("held-out-sealed")).toBeVisible({ timeout: 30_000 });
@@ -654,7 +783,9 @@ test("NHANES: SAS zeros repaired, the grain stated, meds_hbp kept as a Missing l
   const eligibility = page.getByTestId("question-exclusions");
   await expect(eligibility).toBeVisible({ timeout: 60_000 });
   await expect(eligibility).not.toContainText("glucose");
-  await eligibility.getByTestId("option-willett_by_sex").focus();
+  // The screens read kcal as one day's intake: the ledger's ask card says so before screening by it.
+  await confirmAsk(page.locator('[data-slot="exclusions"]'));
+  await eligibility.getByTestId("option-willett_2013_by_sex").focus();
   await previewed(page);
   await landed(page, "with");
   await expect(stage(page).locator("[data-card=distribution]")).not.toContainText("glucose");

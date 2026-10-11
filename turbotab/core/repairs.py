@@ -24,6 +24,8 @@ sentinel codes      ``sentinel_missing__<col>``,               ``set_missing`` (
 SAS zeros           ``sas_zeros`` (detected here)              ``zero`` (values)
 binary text         ``binary_text__<col>``, written as text,   ``level``: one option per level,
                     not the outcome                            which becomes 1 (values)
+                    ``binary_text__<col>`` blank where the     ``not_asked_no``: the blanks
+                    question was not asked, not the outcome    become its "no" (values)
 energy in kJ        ``pack::dietary::atwater``, verdict        ``to_kcal`` (values)
                     ``energy_in_kj``
 text numbers        ``text_numbers__<col>`` (detected here)    ``read_numbers``, or ``thousands``
@@ -536,6 +538,97 @@ def _binary_values(option: str, params: Mapping[str, Any]) -> dict[str, Wrap]:
 
 def _binary_marks(option: str, params: Mapping[str, Any]) -> set[tuple[str, str]]:
     return {(str(params.get("column")), f"level:{params.get('one')}")}
+
+
+# not asked → No (WALKABLE_PLAN §1 blocker B5) ──────────────────────────────
+# A yes/no question blank because it was not asked (NHANES asks about blood-pressure medicine only
+# of people told their blood pressure was high). By default those blanks are a level of their own
+# (``methods.missing.recommended_fills``). This repair is the other honest reading, which the person
+# chooses: a person not asked would have answered No. It is never a relabeling: the blanks change.
+
+# The answers that mean "no" as the two-level reading normalizes them (``ml.binary_text``).
+NO_TOKENS = frozenset({"no", "n", "false", "f", "0", "0.0"})
+
+
+def _written_no(s: pd.Series, negative: str, shape: str | None) -> tuple[str, Any] | None:
+    """How the column writes its "no": (``bool``, False), (``number``, 0) or (``text``, its commonest
+    spelling), or None when ``negative`` is not a "no" or the column mixes kinds of value."""
+    if negative.strip().lower() not in NO_TOKENS:
+        return None
+    if shape in ("bool_dtype", "object_bools"):
+        return "bool", False
+    if shape == "object_numbers":
+        return "number", 0
+    if shape != "object_text":
+        return None
+    raw = s.dropna().astype(str)
+    spelled = raw[raw.str.strip().str.lower() == negative.strip().lower()]
+    if not len(spelled):
+        return None
+    return "text", str(spelled.value_counts().index[0])
+
+
+def _offer_not_asked(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) -> list[RepairOption]:
+    from turbotab.core.methods.missing import blanks_mean_not_asked
+
+    column = p.get("column") or (finding.get("affected_columns") or [None])[0]
+    if not oc.has(column) or column == oc.target:
+        return []
+    s = oc.frame[column]
+    base = oc.frame[oc.target].notna().to_numpy() if oc.has(oc.target) else None
+    if not blanks_mean_not_asked(s, base):
+        return []
+    written = _written_no(s, str(p.get("negative") or ""), p.get("written_as"))
+    if written is None:
+        return []
+    kind, no = written
+    n_blank = int(s.isna().sum())
+    shown = {"bool": "False", "number": "0"}.get(kind, str(no))
+    yes = int(s.notna().sum()) - int((s.dropna().astype(str).str.strip().str.lower()
+                                      == str(p.get("negative")).strip().lower()).sum())
+    return [_option(
+        finding, "not_asked_no", "Not asked as No",
+        f"{_count(n_blank)} blanks in {_tick(column)} become {_tick(shown)}; its {_count(yes)} other "
+        f"answers stay as given.",
+        f"{_tick(column)} was blank for the {_count(n_blank)} people not asked; those blanks were "
+        f"recoded as {_tick(shown)}, on the assumption that a person not asked would have "
+        f"answered no.",
+        "values", {"column": str(column), "no": no, "kind": kind, "n_blank": n_blank,
+                   "relabels": False})]
+
+
+def _not_asked_values(option: str, params: Mapping[str, Any]) -> dict[str, Wrap]:
+    column, kind, no = params.get("column"), params.get("kind"), params.get("no")
+    if column is None or kind not in ("bool", "number", "text") or no is None:
+        return {}
+    if kind == "bool":
+        fill, cast = ("TRUE" if bool(no) else "FALSE"), "BOOLEAN"
+    elif kind == "number":
+        fill, cast = lit_num(no), "DOUBLE"
+    else:
+        fill, cast = lit_str(str(no)), "VARCHAR"
+
+    def wrap(x: str) -> str:
+        return f"COALESCE(CAST({x} AS {cast}), {fill})"
+    return {str(column): wrap}
+
+
+def _two_level_offer(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) -> list[RepairOption]:
+    """A two-level column's options: which level counts as 1 (written as text), and, where its
+    blanks mean not asked, reading them as its "no"."""
+    return [*_offer_binary(finding, p, oc), *_offer_not_asked(finding, p, oc)]
+
+
+def _two_level_values(option: str, params: Mapping[str, Any]) -> dict[str, Wrap]:
+    if option == "not_asked_no":
+        return _not_asked_values(option, params)
+    return _binary_values(option, params)
+
+
+def _two_level_marks(option: str, params: Mapping[str, Any]) -> set[tuple[str, str]]:
+    if option == "not_asked_no":
+        return {(str(params.get("column")), "not_asked:no")}
+    return _binary_marks(option, params)
 
 
 # energy in kilojoules ──────────────────────────────────────────────────────
@@ -1150,8 +1243,11 @@ register_family(Family("sentinel_codes", 3, _offer_sentinels, {"set_missing": "v
                 ["sentinel_missing", "pack::survey::sentinel_codes"])
 register_family(Family("energy_kj", 4, _offer_kj, {"to_kcal": "values"},
                        values=_kj_values, marks=_kj_marks), ["pack::dietary::atwater"])
-register_family(Family("binary_text", 5, _offer_binary, {"level": "values"},
-                       values=_binary_values, marks=_binary_marks, reparameterizes=True),
+# ``reparameterizes`` holds for the level options alone: ``not_asked_no`` carries ``relabels``
+# false, so a finding that offers it is never read as a relabeling (``sweep._relabels``).
+register_family(Family("binary_text", 5, _two_level_offer,
+                       {"level": "values", "not_asked_no": "values"},
+                       values=_two_level_values, marks=_two_level_marks, reparameterizes=True),
                 ["binary_text"])
 register_family(Family("infinite_values", 6, _offer_infinite, {"set_missing": "values"},
                        values=_infinite_values, marks=_infinite_marks), ["infinite_values"])
@@ -1955,3 +2051,7 @@ __all__ = [
 # Audit RO-13 (WP18): pooled QC injections leave as reference rows before the seal; that family
 # registers itself, its validator and its reading of the pooled-QC level on import.
 from turbotab.core import reference_rows as _reference_rows  # noqa: E402,F401
+# WALKABLE_PLAN B5: blanks that mean "not asked" keep their own level when a fill leaves its
+# categorical treatment unsaid; ``methods.missing`` registers that completion of ``set_missing``
+# on import, loaded here with the decisions the server validates.
+from turbotab.core.methods import missing as _missing  # noqa: E402,F401
