@@ -16,11 +16,25 @@ the engine:
 * scikit-learn's ``LinearRegression`` refit on the training rows and the recorded predictors (the
   cohort's), one-hot coded by pandas: the held-out RMSE, MAE and R², R² measured against the
   training rows' mean as the split's record says it is;
-* the no-predictor baseline's held-out RMSE by numpy (the held-out y around the training mean),
-  against the one the engine's held-out R² is measured against (R² = 1 − MSE/MSE_baseline);
+* the no-predictor baseline the engine serves, ``FittedModel.baseline`` (M1_CONTRACT §12.6): the
+  cross-validated MSE of the training-fold mean on the split's five folds, the folds drawn by
+  scikit-learn's ``KFold`` at the split's seed over the training rows and the score by numpy, with
+  scikit-learn's out-of-fold least squares on the same folds against the linear family's
+  cross-validated MSE (so the folds are the engine's), and the gain over the baseline on the
+  comparison substrate (ten draws of the five folds; each draw's pooled out-of-fold R² against the
+  training-fold mean, averaged) against numpy;
+* the no-predictor baseline's held-out RMSE by numpy (the held-out y around the training mean): the
+  engine serves no held-out baseline yet (the baseline above is cross-validated only), so it is
+  checked against the engine's once served, and a strict expected failure says it is not;
 * the held-out calibration (Van Calster et al. 2016, on the outcome's scale as
   ``models.performance`` defines it): the slope is statsmodels' OLS slope of y on ŷ, the intercept
-  (calibration-in-the-large) statsmodels' OLS of y − ŷ on a constant, each with its standard error.
+  (calibration-in-the-large) statsmodels' OLS of y − ŷ on a constant, each with its standard error,
+  and the observed and expected means by numpy. The engine's intercept is calibration-in-the-large,
+  not the intercept of the y-on-ŷ regression the plan's acceptance 2 names (a ruling is asked for).
+
+And the binding rule the drivers rely on: when the Router reaches Fit, no estimate stage serves a
+score (none computed yet, or served withheld for Fit with every score removed); only the press
+serves them.
 """
 from __future__ import annotations
 
@@ -33,6 +47,7 @@ import pandas as pd
 import pytest
 import statsmodels.api as sm
 from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import KFold
 
 from turbotab.core.reference import journeys as J
 
@@ -119,8 +134,34 @@ def _spec(columns: list[str]) -> Any:
         timeout=300.0)
 
 
-def _walk(home: Path) -> dict[str, Any]:
+# Every score the engine serves on a fitted model: none may be served before Fit is pressed.
+SCORES = ("holdout", "holdout_detail", "versus_baseline", "calibration", "compared_on",
+          "performance", "optimism", "nested_cv")
+
+
+def _watching(seen: list[dict[str, Any]]) -> type[J.FitPresser]:
+    """The drivers' FitPresser, reading every estimate stage as served just before each press."""
+    from turbotab.core.estimand import ESTIMATE_STAGES
+
+    class Watching(J.FitPresser):
+        def __call__(self, view: dict[str, Any]) -> bool:
+            if J.reaches_fit(view):
+                fit = (view.get("stages") or {}).get("fit") or {}
+                at = (len(view.get("decisions") or []), fit.get("key"), fit.get("status"))
+                if at not in self.pressed:
+                    stages = [n for n in ESTIMATE_STAGES if n in (view.get("stages") or {})]
+                    seen.append({n: self.c.get(f"/api/projects/{self.pid}/stages/{n}").json()
+                                 for n in stages})
+            return super().__call__(view)
+
+    return Watching
+
+
+def _walk(home: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     from turbotab.core.tests.acceptance.server_drive import Drive, local_server
+
+    before_press: list[dict[str, Any]] = []
+    monkeypatch.setattr(J, "FitPresser", _watching(before_press))
 
     path = J.nhanes_path()
     spec = _spec(list(pd.read_csv(path, nrows=1).columns))
@@ -140,7 +181,7 @@ def _walk(home: Path) -> dict[str, Any]:
         view = run.drive.view()
         stage = lambda name: client.get(f"/api/projects/{run.pid}/stages/{name}").json()  # noqa: E731
         return {"followed": followed, "results": results, "notes": list(run.notes), "view": view,
-                "fit": stage("fit"), "cohort": stage("cohort"),
+                "fit": stage("fit"), "cohort": stage("cohort"), "before_press": before_press,
                 "sealed": run.drive.sealed() if followed else set()}
 
 
@@ -148,12 +189,30 @@ def _walk(home: Path) -> dict[str, Any]:
 # explanations beside them): the full tier runs it (.github/workflows/v2-full.yml).
 @pytest.mark.slow
 def test_a_light_nhanes_predict_walk_presses_fit_and_its_held_out_numbers_match_references(
-        tmp_path: Path):
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     t0 = time.monotonic()
-    walk = _walk(tmp_path / "home")
+    walk = _walk(tmp_path / "home", monkeypatch)
     # The driver pressed Fit when the Router reached it, and walked to the Router's end.
     assert walk["followed"], walk["notes"]
     assert "the Router reached Fit: pressed" in walk["notes"], walk["notes"]
+    # No estimate before Fit: when the Router reached it, the fit (computed: two light families
+    # are not held) was served withheld for Fit, every model without a score.
+    # No estimate before Fit: when the Router reached it, no estimate stage served a score. The
+    # fit, light as it is, had not been computed (a fit that computes before the press is served
+    # withheld for Fit with every score removed, and that is checked the same way).
+    before = walk["before_press"][0]
+    assert set(before) >= {"fit", "evaluation", "explain"}, sorted(before)
+    for name, served in before.items():
+        artifact = served.get("artifact")
+        if artifact is None:
+            continue
+        assert artifact.get("withheld_for") == "fit", (name, artifact.get("withheld_for"))
+        for model in artifact.get("models") or [] if name == "fit" else []:
+            assert model["cv"] == {} and model["baseline"]["value"] is None, model["family"]
+            assert model["coefficients"] is None, model["family"]
+            for key in SCORES:
+                assert model.get(key) is None, (model["family"], key)
+    assert before["fit"]["artifact"] is None or before["fit"]["artifact"]["withheld_for"] == "fit"
     assert walk["results"], walk["notes"]
     view = walk["view"]
     assert [s["key"] for s in view["interview"] if s["status"] in ("open", "waiting")] == []
@@ -188,19 +247,92 @@ def test_a_light_nhanes_predict_walk_presses_fit_and_its_held_out_numbers_match_
     for metric, value in expected.items():
         assert opened[metric] == pytest.approx(value, rel=TOL, abs=TOL), metric
 
-    # The no-predictor baseline on the held-out rows: their y around the training rows' mean
-    # (numpy), against the baseline the engine's held-out R² is measured against.
-    baseline = float(np.sqrt(np.mean((y_held - train_mean) ** 2)))
-    engine_baseline = float(np.sqrt(linear["holdout"]["mse"] / (1 - linear["holdout"]["r2"])))
-    assert engine_baseline == pytest.approx(baseline, rel=TOL, abs=TOL)
+    # The no-predictor baseline the engine serves (cross-validated, M1_CONTRACT §12.6): the
+    # training-fold mean scored on the split's folds, scikit-learn's KFold at the split's seed over
+    # the training rows (in the table's order); the score by numpy.
+    X_train, y_train = X[~held].to_numpy(), y[~held]
+
+    def out_of_fold(seed: int) -> tuple[np.ndarray, np.ndarray]:
+        """The training-fold mean and least squares, each scored out of fold on KFold(5, seed)."""
+        mean_oof, ols_oof = np.empty_like(y_train), np.empty_like(y_train)
+        for fit_rows, scored in KFold(5, shuffle=True, random_state=seed).split(X_train):
+            mean_oof[scored] = y_train[fit_rows].mean()
+            ols_oof[scored] = LinearRegression().fit(X_train[fit_rows], y_train[fit_rows]).predict(
+                X_train[scored])
+        return mean_oof, ols_oof
+
+    mean_oof, ols_oof = out_of_fold(0)
+    # The folds are the engine's: least squares on them gives the linear family's pooled CV MSE.
+    assert linear["cv"]["mse"]["estimate"] == pytest.approx(
+        float(np.mean((y_train - ols_oof) ** 2)), rel=TOL, abs=TOL)
+    assert linear["baseline"]["metric"] == fit["artifact"]["primary_metric"] == "mse"
+    assert linear["baseline"]["value"] == pytest.approx(
+        float(np.mean((y_train - mean_oof) ** 2)), rel=TOL, abs=TOL)
+    # The gain over it (models/baseline.py), on R², on the comparison substrate: the split's
+    # folds and nine more draws of them at seeds 1 to 9 (the seed + r of models/folds.py), the
+    # linear family's pooled out-of-fold R² against the training-fold mean in each, averaged (the
+    # baseline's own pooled R² is 0 by construction).
+    comparison = fit["artifact"]["comparison"]
+    assert (comparison["folds"], comparison["repeats"], comparison["shared"]) == (5, 10, 1)
+    r2s, mses = [], []
+    for seed in range(comparison["repeats"]):
+        mean_r, ols_r = (mean_oof, ols_oof) if seed == 0 else out_of_fold(seed)
+        r2s.append(1 - np.sum((y_train - ols_r) ** 2) / np.sum((y_train - mean_r) ** 2))
+        mses.append(np.mean((y_train - ols_r) ** 2))
+    versus = linear["versus_baseline"]
+    assert versus["metric"] == "r2" and versus["df"] == 5 * 10 - 1
+    assert versus["gain"] == pytest.approx(float(np.mean(r2s)), rel=TOL, abs=TOL)
+    assert linear["compared_on"]["estimate"] == pytest.approx(float(np.mean(mses)), rel=TOL, abs=TOL)
+
+    # The no-predictor baseline on the held-out rows: their y around the training rows' mean, by
+    # numpy. The engine serves none yet (the open gap the strict expected failure below names);
+    # once it does, it is this.
+    baseline_rmse = float(np.sqrt(np.mean((y_held - train_mean) ** 2)))
+    served = _held_out_baseline(linear)
+    if served is not None:
+        assert served == pytest.approx(baseline_rmse, rel=TOL, abs=TOL)
 
     # The held-out calibration, by statsmodels: the slope of y on ŷ, and the mean of y − ŷ.
     calibration = linear["holdout_detail"]["calibration"]
     assert calibration["n"] == int(held.sum())
+    assert calibration["observed"] == pytest.approx(float(y_held.mean()), rel=TOL, abs=TOL)
+    assert calibration["expected"] == pytest.approx(float(y_hat.mean()), rel=TOL, abs=TOL)
     slope = sm.OLS(y_held, sm.add_constant(y_hat)).fit()
     large = sm.OLS(y_held - y_hat, np.ones_like(y_held)).fit()
     assert calibration["slope"]["estimate"] == pytest.approx(slope.params[1], rel=TOL, abs=TOL)
     assert calibration["slope"]["se"] == pytest.approx(slope.bse[1], rel=TOL, abs=TOL)
     assert calibration["intercept"]["estimate"] == pytest.approx(large.params[0], rel=TOL, abs=TOL)
     assert calibration["intercept"]["se"] == pytest.approx(large.bse[0], rel=TOL, abs=TOL)
+    # The engine's intercept is calibration-in-the-large (models/performance.py, Van Calster et al.
+    # 2016), not the intercept of statsmodels' OLS of y on ŷ that the plan's acceptance 2 names:
+    # the two differ here, so a change of either definition is seen.
+    assert abs(calibration["intercept"]["estimate"] - slope.params[0]) > 1e-3
     print(f"the light walk took {time.monotonic() - t0:.0f} s")
+
+
+def _held_out_baseline(model: dict[str, Any]) -> float | None:
+    """The no-predictor baseline's held-out RMSE, wherever the engine serves it on a fitted model:
+    a ``baseline`` beside the held-out scores or in their detail. None while it serves none."""
+    for where in (model.get("holdout_detail") or {}, model.get("holdout") or {}):
+        found = where.get("baseline") if isinstance(where, dict) else None
+        if isinstance(found, dict):
+            if found.get("rmse") is not None:
+                return float(found["rmse"])
+            if found.get("mse") is not None:
+                return float(np.sqrt(found["mse"]))
+        elif isinstance(found, (int, float)):
+            return float(found)
+    return None
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "The engine serves no held-out no-predictor baseline: FittedModel.baseline is the "
+    "cross-validated primary (models/artifacts.py, Baseline), and HoldoutDetail carries none, so "
+    "W1-G has no engine number for 'held-out scores against the baseline'. The fix belongs to "
+    "models/ (phase 3's files): a baseline in HoldoutDetail, its RMSE (or MSE) on the held-out rows "
+    "around the training mean, sealed with the rest. When it lands this passes, the strict mark "
+    "fails, and the walk above checks its value against numpy."))
+def test_the_engine_serves_a_held_out_no_predictor_baseline():
+    from turbotab.core.models.artifacts import HoldoutDetail
+
+    assert "baseline" in HoldoutDetail.model_fields
