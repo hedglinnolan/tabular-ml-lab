@@ -170,10 +170,263 @@ register_method(MissingMethod(
     decision={"strategy": "impute", "categorical": "missing_category"}))
 
 
-def methods_for(purpose: str | None) -> list[dict[str, Any]]:
-    """The missing-data methods, soundest first for ``purpose`` (prediction when undeclared)."""
+def methods_for(purpose: str | None, not_asked: Sequence[str] = (), *, only: bool = False
+                ) -> list[dict[str, Any]]:
+    """The missing-data methods, soundest first for ``purpose`` (prediction when undeclared).
+
+    ``not_asked``: the predictors whose blanks mean "not asked" (:func:`not_asked_columns`); they
+    change the ranking (:func:`_with_not_asked`). Under prediction blanks as their own level is
+    recommended and first, since a single fill would give those blanks the most frequent answer
+    among the people who were asked (:data:`NOT_ASKED_CAUTION`). Under inference it is first only
+    when ``only`` (they are the only predictors with blanks): one answer covers every column, and
+    elsewhere multiple imputation stays the sound fill for the other blanks. Without them the
+    ranking is the purpose's own, unchanged."""
     p = purpose if purpose in ("prediction", "inference") else "prediction"
-    return [m.for_purpose(p) for m in sorted(METHODS.values(), key=lambda m: m.order[p])]
+    ranked = [m.for_purpose(p) for m in sorted(METHODS.values(), key=lambda m: m.order[p])]
+    if not not_asked:
+        return ranked
+    return _with_not_asked(ranked, list(dict.fromkeys(not_asked)), p, only)
+
+
+# ── blanks that mean "not asked" (WALKABLE_PLAN §1 blocker B5) ──────────────
+# On NHANES `meds_hbp` is blank for 15,552 people who were never asked whether they take blood-
+# pressure medicine (the question follows "ever told you had high blood pressure?"). The most
+# frequent answer among the 6,297 who were asked is True, so a most-frequent fill says 15,552
+# people take a medicine nobody asked them about. Where the blanks read as "not asked" the
+# recommended fill is a level of their own; everywhere else the defaults stay as they were.
+
+NOT_ASKED_FILL = "missing_category"
+NOT_ASKED_CAUTION = ("a most-frequent fill gives a blank that means not asked the commonest answer "
+                     "among the people who were asked, an answer nobody gave")
+FILLS = ("missing_category", "most_frequent", "median", "multiple_imputation")
+
+
+def _not_asked_share() -> float:
+    from turbotab.core.stages.proposals import NOT_ASKED_SHARE  # the reading's own threshold
+
+    return float(NOT_ASKED_SHARE)
+
+
+def _takes_level(info: Any) -> bool:
+    """Whether a column's blanks can be a level of their own (``models.pipeline.takes_level``):
+    categorical, or two values at most. ``info`` is an ingest column record or a ColumnInfo."""
+    from turbotab.core.models.pipeline import takes_level
+
+    if info is None:
+        return False
+    get = info.get if isinstance(info, Mapping) else (lambda k, i=info: getattr(i, k, None))
+    return takes_level(get("dtype"), get("n_unique"))
+
+
+def not_asked_columns(reading: Mapping[str, Any] | None,
+                      column_info: Mapping[str, Any] | None = None) -> list[str]:
+    """The predictors whose blanks mean "not asked", in the reading's order: those the proposals'
+    missing reading marks ``likely_not_asked`` (a yes/no or medication column blank on at least
+    half the rows with the outcome measured), and, with ``column_info`` (column -> its ingest
+    record), only those whose blanks can be a level of their own."""
+    out = []
+    for e in (reading or {}).get("columns") or []:
+        column = str(e.get("column"))
+        if not e.get("likely_not_asked"):
+            continue
+        if column_info is not None and not _takes_level(column_info.get(column)):
+            continue
+        out.append(column)
+    return out
+
+
+def blanks_mean_not_asked(values: pd.Series, base: Any = None) -> bool:
+    """The reading's rule on one column's values alone: one or two values (a yes/no) and blank on
+    at least ``proposals.NOT_ASKED_SHARE`` of the ``base`` rows (default: every row; the proposals
+    count the rows with the outcome measured).
+
+    Random blanks on a quarter of the rows (the WP7 fixture's ``meds_hbp``) are not a skip pattern
+    and do not pass."""
+    s = values if base is None else values[np.asarray(base, dtype=bool)]
+    if not len(s) or not 1 <= int(s.dropna().astype(str).nunique()) <= 2:
+        return False
+    return float(s.isna().mean()) >= _not_asked_share()
+
+
+def recommended_fills(reading: Mapping[str, Any] | None, column_info: Mapping[str, Any],
+                      purpose: str | None) -> dict[str, str]:
+    """Each predictor with blanks -> the fill recommended for it (one of :data:`FILLS`).
+
+    A column whose blanks mean "not asked" keeps them as a level of its own (``missing_category``),
+    whatever the purpose: the blank is a value. Every other column keeps its purpose's fill:
+    multiple imputation under inference; under prediction (and an undeclared purpose) a single fill
+    in each training fold, the most frequent value for a categorical or yes/no column and the
+    median for a number."""
+    asked = set(not_asked_columns(reading, column_info))
+    out = {}
+    for e in (reading or {}).get("columns") or []:
+        column = str(e.get("column"))
+        if column in asked:
+            out[column] = NOT_ASKED_FILL
+        elif purpose == "inference":
+            out[column] = "multiple_imputation"
+        else:
+            out[column] = "most_frequent" if _takes_level(column_info.get(column)) else "median"
+    return out
+
+
+def honest_default(purpose: str | None, not_asked: Sequence[str], *, only: bool = False
+                   ) -> dict[str, Any] | None:
+    """The ``set_missing`` answer to set for the person when blanks mean "not asked": blanks as
+    their own level (the first method of :func:`methods_for`). Under prediction (or an undeclared
+    purpose) a fill in each training fold with those blanks as their own level. Under inference
+    only when ``only`` (no other predictor has a blank), with the attestation ``decisions`` asks of
+    blanks as a level there (a blank here means not asked), recorded with its reason. None where
+    nothing is not asked, or under inference with other blanks (multiple imputation stays first:
+    one answer cannot fill those and keep these as a level)."""
+    if not not_asked:
+        return None
+    first = methods_for(purpose, not_asked, only=only)[0]
+    if first["key"] != NOT_ASKED_FILL:
+        return None
+    return {"kind": "set_missing", **first["decision"]}
+
+
+def methods_for_reading(purpose: str | None, reading: Mapping[str, Any] | None,
+                        column_info: Mapping[str, Any] | None = None,
+                        drop: Sequence[str] = ()) -> list[dict[str, Any]]:
+    """:func:`methods_for` as the proposals' missing ``reading`` (and ``column_info``) find the
+    blanks: the not-asked predictors not left out (``drop``), and whether they are the only
+    predictors with blanks. The one call for a caller holding the reading (the proposals' card,
+    the row floor's fill exits)."""
+    gone = set(drop)
+    blank = [str(e.get("column")) for e in (reading or {}).get("columns") or []
+             if str(e.get("column")) not in gone]
+    asked = [c for c in not_asked_columns(reading, column_info) if c not in gone]
+    return methods_for(purpose, asked, only=bool(asked) and set(blank) <= set(asked))
+
+
+def not_asked_reason(columns: Sequence[str]) -> str:
+    """The attestation recorded with blanks as a level under inference (``MissingSpec.reason``)."""
+    return (f"a blank in {_named(columns)} means the question was not asked, so the blank is a "
+            f"value of its own, not a missing one")
+
+
+# Under inference: multiple imputation draws an answer for a blank from the people who were asked.
+NOT_ASKED_MI_CAUTION = ("multiple imputation gives a blank that means not asked an answer drawn "
+                        "from the people who were asked, an answer nobody gave")
+
+
+def _with_not_asked(ranked: list[dict[str, Any]], columns: list[str], purpose: str,
+                    only: bool) -> list[dict[str, Any]]:
+    """The ranking where ``columns``' blanks mean not asked.
+
+    Under prediction: blanks as their own level first and recommended; the fills that give those
+    blanks the commonest answer say so, are available, no longer recommended, and say their
+    categorical fill outright (choosing one is choosing the most frequent value).
+
+    Under inference, where ``only``: blanks as their own level first and recommended, with the
+    attestation the leash asks for (``decisions``: blanks as a level are the missing-indicator
+    method unless a blank means not asked); multiple imputation says what it would do to those
+    blanks and is available. Otherwise multiple imputation stays first, and both say which
+    columns they concern."""
+    named = _named(columns)
+    out = []
+    if purpose == "prediction":
+        mode_fills = ("impute", "indicators")
+        for m in ranked:
+            m = dict(m)
+            if m["key"] == NOT_ASKED_FILL:
+                m["rung"] = "recommended"
+                m["sound"] = (f"Sound: blank in {named} means not asked, so the blank is a value of "
+                              f"its own; the other blanks are filled in each training fold.")
+            elif m["key"] in mode_fills:
+                m["rung"] = "available"
+                m["sound"] = (f"Not for {named}: {NOT_ASKED_CAUTION}. Sound for the other columns, "
+                              f"fit in each training fold without the outcome.")
+                m["decision"] = {**m["decision"], "categorical": "impute"}
+            out.append(m)
+    else:
+        for m in ranked:
+            m = dict(m)
+            if m["key"] == NOT_ASKED_FILL:
+                if only:
+                    m["rung"] = "recommended"
+                    m["sound"] = (f"Sound here: blank in {named} means not asked, so the blank is a "
+                                  f"value, not a missing one, and the missing-indicator bias (a value "
+                                  f"that exists, unseen) does not arise; recorded with that reason.")
+                    m["decision"] = {**m["decision"], "acknowledged": True,
+                                     "reason": not_asked_reason(columns)}
+                else:
+                    m["sound"] = (f"Sound for {named}, whose blanks mean not asked; for the other "
+                                  f"blanks it is the missing-indicator method: {INDICATOR_CAUTION}.")
+            elif m["key"] == "multiple_imputation":
+                if only:
+                    m["rung"] = "available"
+                    m["sound"] = f"Not for {named}: {NOT_ASKED_MI_CAUTION}."
+                else:
+                    m["sound"] = f"{m['sound']} Not for {named}: {NOT_ASKED_MI_CAUTION}."
+            out.append(m)
+        if not only:
+            return out
+    first = [m for m in out if m["key"] == NOT_ASKED_FILL]
+    return first + [m for m in out if m["key"] != NOT_ASKED_FILL]
+
+
+# ── the default fill where blanks mean "not asked" (a completion of ``set_missing``) ──
+# A fill in each training fold that leaves its categorical treatment unsaid (``{"strategy":
+# "impute"}``: a client, a row-floor exit, a method's own decision) would take the global default,
+# the most frequent value. Where the proposals' reading finds blanks that mean not asked among the
+# predictors it keeps, the server fills the unsaid treatment in as blanks as their own level, and
+# the completed answer is what is previewed and recorded. Said outright (``"categorical":
+# "impute"``) the most-frequent fill is the person's choice and stays; nowhere else does anything
+# change. Under inference a single fill is refused or attested before this runs, and is left alone.
+
+
+def _ctx_value(ctx: Any, name: str) -> Any:
+    if ctx is None:
+        return None
+    return ctx.get(name) if isinstance(ctx, Mapping) else getattr(ctx, name, None)
+
+
+def _missing_reading_of(ctx: Any) -> Mapping[str, Any] | None:
+    """The proposals' missing reading for the answers as they stand: the fresh artifact, else the
+    one the stage settles to (``DecisionContext.settled``); None where neither can be read."""
+    for name in ("artifact", "settled"):
+        reader = _ctx_value(ctx, name)
+        if not callable(reader):
+            continue
+        try:
+            artifact = reader("proposals")
+        except Exception:  # noqa: BLE001 - an artifact that cannot be read fills nothing in
+            artifact = None
+        data = getattr(artifact, "data", artifact)
+        if isinstance(data, Mapping) and isinstance(data.get("missing"), Mapping):
+            return data["missing"]
+    return None
+
+
+def not_asked_in(ctx: Any, drop: Sequence[str] = ()) -> list[str]:
+    """The predictors, not left out (``drop``), whose blanks mean not asked and can be a level,
+    as the decision context reads them (empty where it cannot)."""
+    reading = _missing_reading_of(ctx)
+    if reading is None:
+        return []
+    info = _ctx_value(ctx, "column_info")
+    columns = not_asked_columns(reading, info if isinstance(info, Mapping) else None)
+    return [c for c in columns if c not in set(drop)]
+
+
+def _not_asked_blanks_keep_their_level(decision: Any, ctx: Any) -> Any:
+    if getattr(decision, "strategy", None) != "impute" or \
+            "categorical" in getattr(decision, "model_fields_set", {"categorical"}):
+        return decision
+    if getattr(_ctx_value(ctx, "state"), "purpose", None) == "inference":
+        return decision
+    if not not_asked_in(ctx, getattr(decision, "drop_columns", None) or ()):
+        return decision
+    return decision.model_copy(update={"categorical": NOT_ASKED_FILL})
+
+
+def _register() -> None:
+    from turbotab.core.decisions import register_completion
+
+    register_completion("set_missing", _not_asked_blanks_keep_their_level)
 
 
 BelowDetection = Literal["half_minimum", "censoring_aware", "as_missing", "qrilc"]
@@ -1767,5 +2020,9 @@ __all__ = [
     "MissingMethod", "ROW_LOSS_SHARE", "RULE", "SINGLE_FILL_CAUTION", "ZEROS", "below_detection_options",
     "below_limit_mean", "censored_columns", "energy_fill", "methods_for", "register_method",
     "row_loss", "row_loss_concern", "impute_for_inference", "imputation_frame", "mi_concerns",
-    "missing_block", "multiple_imputation_info",
+    "missing_block", "multiple_imputation_info", "FILLS", "NOT_ASKED_CAUTION", "NOT_ASKED_FILL",
+    "blanks_mean_not_asked", "honest_default", "not_asked_columns", "recommended_fills",
+    "NOT_ASKED_MI_CAUTION", "methods_for_reading", "not_asked_in", "not_asked_reason",
 ]
+
+_register()

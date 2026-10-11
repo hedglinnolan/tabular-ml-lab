@@ -163,17 +163,24 @@ def test_nhanes_can_keep_meds_hbp_blanks_as_a_missing_level(client):
     grain = next(s for s in client.get(f"/api/projects/{pid}").json()["interview"] if s["key"] == "grain")
     assert grain["status"] == "skipped" and "`SEQN` appears once" in grain["reason"]
 
-    impute = client.post(f"/api/projects/{pid}/preview", json={"kind": "set_missing", "strategy": "impute"}).json()
+    # The most frequent value said outright is cautioned, with the level as a way out (W1-H: a fill
+    # that leaves the categorical treatment unsaid is completed as the level, below).
+    impute = client.post(f"/api/projects/{pid}/preview", json={
+        "kind": "set_missing", "strategy": "impute", "categorical": "impute"}).json()
     level = {"kind": "set_missing", "strategy": "impute", "categorical": "missing_category",
              "drop_columns": [], "indicators": False, "m": 20, "below_detection": None,
              "censored_columns": [], "acknowledged": False, "reason": None,
              "imputation_model": "compatible", "imputation_levels": "clustered"}
     assert level in [e["decision"] for e in impute["caution"]["exits"]]
-    kept = client.post(f"/api/projects/{pid}/preview", json=level).json()
-    assert kept["caution"] is None
-    assert [v["title"] for v in kept["views"]][:2] == ["Rows kept when values are missing",
-                                                       "Blanks kept as their own level"]
-    assert all(row["after"]["meds_hbp"] in ("Missing", True, False) for row in kept["views"][1]["rows"])
+    previews = [client.post(f"/api/projects/{pid}/preview", json=body).json()
+                for body in (level, {"kind": "set_missing", "strategy": "impute"})]
+    for kept in previews:
+        assert kept["caution"] is None
+        assert [v["title"] for v in kept["views"]][:2] == ["Rows kept when values are missing",
+                                                           "Blanks kept as their own level"]
+        assert all(row["after"]["meds_hbp"] in ("Missing", True, False)
+                   for row in kept["views"][1]["rows"])
+    assert previews[0]["views"] == previews[1]["views"]  # the unsaid fill previews as the level
     decide(client, pid, {"kind": "set_missing", "strategy": "complete_case", "categorical": "missing_category"})
     view = wait_for(client, pid, {"cohort": "fresh"})
     cohort = client.get(f"/api/projects/{pid}/stages/cohort").json()["artifact"]
