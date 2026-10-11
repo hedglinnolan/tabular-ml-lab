@@ -93,16 +93,14 @@ def test_each_family_declares_what_sections_3_1_and_3_2_say():
 
 def test_the_declarations_say_what_the_tables_they_will_replace_say():
     """Until MC-2b moves these reads onto the declarations, each declaration agrees with the table
-    or the check it replaces, so the move changes nothing."""
-    from turbotab.core.methods.interaction import SUPPORTED
-    from turbotab.core.models.survey import has_design_estimator
+    it replaces, so the move changes nothing. ``product_terms`` and ``design_based`` are read
+    from the declarations now (MC-2b-2), checked against the old switches in
+    ``test_mc2b2_inference_declarations``."""
     from turbotab.core.stages.effects import SEQUENCE_FAMILIES
 
     for f in _families().values():
         decl = f.inference_decl or InferenceDecl(table="description_only")
-        assert decl.product_terms == (f.key in SUPPORTED), f.key
         assert decl.matrix_table == (f.key in SEQUENCE_FAMILIES), f.key
-        assert decl.design_based == any(has_design_estimator(f, t) for t in f.tasks), f.key
     # MC-2a: stages/scales.py's FAMILY_FOR, now each family's default_for
     assert {t: getattr(inference_default(t), "key", None) for t in TASKS} == {
         "regression": "linear", "binary": "linear", "multiclass": None,
@@ -560,18 +558,21 @@ def test_explanations_read_the_declared_raw_scale():
         unregister_family("scale_probe")
 
 
-def test_the_methods_text_names_a_family_neither_survey_table_holds_by_its_label():
-    """Under the population answer, a family with a design-based estimator that the estimator
-    words do not hold is weighted, not blocked, and a family with none that the blocked words do
-    not hold is named by its methods label, never by its key (the gap §3.1 cites for the screened
-    elastic net)."""
+def test_the_methods_text_names_a_family_that_declares_no_survey_words_by_its_label():
+    """Under the population answer, a family with a design-based estimator that declares no words
+    for it (``InferenceDecl.words``) is weighted, not blocked, and a family with none that
+    declares no blocked name is named by its methods label, never by its key (the gap §3.1 cites
+    for the screened elastic net)."""
     from turbotab.core.models.base import unregister_family
     from turbotab.core.models.boosted_trees import BoostedTrees
     from turbotab.core.models.survey import models_sentence
 
-    weighted = _probe(key="design_probe", methods_label=lambda self, task: "probe regression")
+    weighted = _probe(key="design_probe", methods_label=lambda self, task: "probe regression",
+                      inference_decl=replace(get_family("linear").inference_decl, default_for=(),
+                                             words=""))
     blocked = type("Blocked", (BoostedTrees,), {
-        "key": "blocked_probe", "methods_label": lambda self, task: "probe trees"})()
+        "key": "blocked_probe", "methods_label": lambda self, task: "probe trees",
+        "inference_decl": replace(BoostedTrees.inference_decl, words="")})()
     register_family(weighted)
     register_family(blocked)
     try:

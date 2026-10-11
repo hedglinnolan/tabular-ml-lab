@@ -386,19 +386,23 @@ def _correct_jointly(specs: Sequence[Any], copies: Sequence[pd.DataFrame],
                      references: Mapping[str, np.ndarray | None], *, task: str, family: Any,
                      pipeline: Any, outcome: Any, seed: int, clusters: Any,
                      progress: Any = None, imputations: Any = None, designs: Any = None,
-                     cancelled: Any = None) -> dict[str, dict[str, Any]]:
+                     cancelled: Any = None,
+                     units: pd.Series | None = None) -> dict[str, dict[str, Any]]:
     """Every score in ``specs`` corrected together in each copy, each combined over the copies by
     Rubin's rules (one copy: as it is). Raises ``ScaleRefused`` naming the score whose data refuse
     (``which``, its position in ``specs``), or None when they refuse together. ``imputations``:
     the multiple imputations ``copies`` come from, whose plan each copy's pipeline follows (the
     knots placed once on the observed values; no median fill inside a copy: ``copy_pipeline``).
     Each copy's refit is fit at the split's ``seed``, with its rows' survey design (``designs``,
-    by row id) inside a cancel scope asking ``cancelled`` (F15, ``stages.modeling.fit_with``)."""
+    by row id) inside a cancel scope asking ``cancelled`` (F15, ``stages.modeling.fit_with``), and
+    with the units the split kept whole (``units``, by row id: ``stages.sensitivity.split_units``),
+    as the fit stage's fits are (WAVE_C6A_PLAN §7 ruling 14)."""
     from turbotab.core.methods import scales as S
     from turbotab.core.methods.imputation import pool_rows, pool_scalar
     from turbotab.core.methods.missing import copy_pipeline
     from turbotab.core.models.linear import model_matrix
     from turbotab.core.stages.modeling import fit_with
+    from turbotab.core.stages.sensitivity import units_for
 
     fit = S.FITS[task]
     groups = clusters.codes if clusters.clustered else None
@@ -408,7 +412,8 @@ def _correct_jointly(specs: Sequence[Any], copies: Sequence[pd.DataFrame],
     for k, X_k in enumerate(copies):
         if progress is not None:
             progress(k, len(copies))
-        fitted = fit_with(copy_pipeline(pipeline, imputations), X_k, y, designs=designs, seed=seed,
+        fitted = fit_with(copy_pipeline(pipeline, imputations), X_k, y,
+                          groups=units_for(units, X_k), designs=designs, seed=seed,
                           cancelled=cancelled)
         matrix = model_matrix(fitted, X_k)
         names = [str(c) for c in matrix.columns]
@@ -511,6 +516,7 @@ def scales_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.stages.data import open_store
     from turbotab.core.stages.modeling import (_task, coded_outcome, fit_designs, outcome_levels,
                                                read_assignment)
+    from turbotab.core.stages.sensitivity import split_units
 
     state = ctx.state
     specs = list(state.scales or [])
@@ -530,8 +536,11 @@ def scales_stage(ctx: StageContext) -> Bundle:
     with open_store(ctx) as store:
         # Under inference the rows are grouped as the coefficient table groups them (fit stage).
         unit_columns = cluster_columns(state, store.columns, [grouped_by]) if inference else []
+        # The column the split kept whole: the refits' inner splits keep its units whole too.
+        split_column = [grouped_by] if grouped_by and grouped_by in store.columns else []
         frame = modeling_frame(store, list(dict.fromkeys([*spec.inputs, *extra, *unit_columns,
-                                                          target])), ids, outcome=target)
+                                                          *split_column, target])), ids,
+                               outcome=target)
         codes = {s.name: codes_in_values(s, frame, state, store) for s in specs}
         designs = fit_designs(state, store, frame.index.to_numpy())  # F15: for the refits
     clusters = (resolve_clusters(state, frame.loc[:, unit_columns], [grouped_by]) if inference
@@ -615,7 +624,8 @@ def scales_stage(ctx: StageContext) -> Bundle:
         eligible, copies=copies, keyed=keyed, y=y, retests=retests, references=references,
         task=task, family=family, pipeline=pipeline, outcome=outcome, seed=seed,
         clusters=clusters, progress=progress, imputations=imputations, designs=designs,
-        cancelled=ctx.cancelled) if eligible else ({}, {}))
+        cancelled=ctx.cancelled, units=split_units(frame, (split_column or [None])[0]))
+        if eligible else ({}, {}))
     for r, s in zip(out, specs):
         correction = corrections.get(s.name)
         if s.name in refused:

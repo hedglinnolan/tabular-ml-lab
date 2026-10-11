@@ -71,7 +71,7 @@ def _plain_multinomial(family: Any, model: Any) -> bool:
     A fit that does not state its penalty is read as penalized: its settings must hold the
     logit's inverse penalty ``C``, and either name no penalty or set ``C`` infinite. A ridge-type
     classifier (``alpha``, no ``C``) or a wrapper that states no settings is never refined."""
-    if family is None or not family.linear_in_values or family.output != "margin":
+    if not family.linear_in_values or family.output != "margin":
         return False
     params = model.get_params(deep=False)
     if "C" not in params:
@@ -84,16 +84,21 @@ def _plain_multinomial(family: Any, model: Any) -> bool:
 
 def class_predictor(pipeline: Any, X_rows: pd.DataFrame, y_rows: Any,
                     classes: Sequence[Any],
-                    family: Any = None) -> Callable[[pd.DataFrame], np.ndarray]:
+                    family: Any) -> Callable[[pd.DataFrame], np.ndarray]:
     """``pipeline``'s probability of each of ``classes`` (in that order) for the rows of a frame.
 
     ``X_rows`` and ``y_rows`` are the rows the pipeline was fit on, and ``family`` the family that
-    fit it. For an unpenalized multinomial logit (:func:`_plain_multinomial`: the linear family's)
-    the probabilities are its maximum-likelihood estimate on those rows, refined to convergence
-    (module docstring); for any other family, or with no family named, they are its own."""
+    fit it, which must be named: the refinement reads its declarations, and a missing family
+    would turn it off in silence. For an unpenalized multinomial logit
+    (:func:`_plain_multinomial`: the linear family's) the probabilities are its
+    maximum-likelihood estimate on those rows, refined to convergence (module docstring); for any
+    other family they are its own."""
     from turbotab.core.models.linear import model_matrix
     from turbotab.core.models.survey import _softmax, weighted_multinomial
 
+    if family is None:
+        raise TypeError("class_predictor needs the family that fit the pipeline: its "
+                        "declarations decide whether the fit is refined.")
     classes = list(classes)
     order = list(getattr(pipeline, "classes_", classes))
     if sorted(map(str, order)) != sorted(map(str, classes)) or len(order) != len(classes):

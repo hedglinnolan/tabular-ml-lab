@@ -707,7 +707,7 @@ class ElasticNet(FamilyBase):
     predicts = True
     flexible = False
     bootstrap_optimism = True
-    inference_decl = InferenceDecl(table="shrunk_no_intervals")
+    inference_decl = InferenceDecl(table="shrunk_no_intervals", words="the elastic net")
     invariances = ("column_scale",)
     curve_shape = "straight"
     # The penalty's strength, the path's own dimension: a ratio r of each fit's λ_max, which
