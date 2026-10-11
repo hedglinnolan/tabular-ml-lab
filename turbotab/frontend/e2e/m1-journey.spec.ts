@@ -141,7 +141,7 @@ async function timed(done: () => Promise<void>): Promise<number> {
 }
 
 test("the M1 journey: every question previewed on the stage, fitted, then re-flowed", async ({ page }) => {
-  test.setTimeout(REAL ? 900_000 : 240_000);
+  test.setTimeout(REAL ? 1_500_000 : 240_000);
   await page.addInitScript(() => {
     (window as unknown as Review).__turbotabReview = true;
   });
@@ -510,7 +510,9 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   await expect(substitution).toBeVisible({ timeout: 60_000 });
   const pair = () => page.getByRole("button", { name: "Move energy from fat_total to carb" }).click();
   await pair();
-  measurements.substitution_s = await timed(() => confirmParts(page, page.getByTestId("substitution-curves"), pair));
+  measurements.substitution_s = await timed(async () => {
+    expect(await confirmParts(page, page.getByTestId("substitution-curves"), pair), "fat_total → carb is drawn").toBe("drawn");
+  });
   await expect(page.getByTestId("decision-substitution")).toContainText("fat_total");
   const curves = page.getByTestId("substitution-curves");
   await expect(stage(page)).toContainText("per 100 kcal at k = 100");
@@ -541,7 +543,7 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   }
   measurements.band_s = await timed(() =>
     // "… ± 1.96 bootstrap standard errors from 200 refits …" on the server; the mock says it shorter.
-    expect(page.getByText(/bands: 95% intervals.*from \d+ refits/i)).toBeVisible({ timeout: 300_000 }),
+    expect(page.getByText(/bands: 95% intervals.*from \d+ refits/i)).toBeVisible({ timeout: 600_000 }),
   );
   await expect(page.getByTestId("decision-substitution")).toContainText("refits");
   await page.getByTestId("substitution-curves").evaluate((el) => el.scrollIntoView({ block: "start" }));

@@ -403,7 +403,8 @@ async function settle(page: Page, pid: string, timeout = 600_000): Promise<{ v: 
   }
 }
 
-test.describe.configure({ mode: "serial" });
+// Each journey opens its own table on the one server: one failing does not stop the next.
+test.describe.configure({ mode: "default" });
 
 for (const journey of JOURNEYS) {
   test(`${journey.name}: every open question renders something to answer, to the last one`, async ({ page }) => {
