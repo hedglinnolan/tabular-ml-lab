@@ -28,7 +28,7 @@ The switches that remain are listed, with the package that retires each, in
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Callable, Literal, Mapping, Protocol, Sequence, get_args, runtime_checkable
 
@@ -144,6 +144,12 @@ class InferenceDecl:
     product_terms: bool = False  # it tests product terms (``methods.interaction``)
     matrix_table: bool = False  # its table is made from a model matrix alone (``stages.effects``)
     default_for: tuple[Task, ...] = ()  # the tasks it is the default inference family for
+    # What the methods sentence calls the estimator under the surveyed population
+    # (``models.survey``): with ``design_based``, its design-based estimator ("least squares",
+    # "Cox regression (Binder's pseudo-likelihood, Efron ties)"); without, the name its blocked
+    # estimates go by ("the GEE model"). One string for every task, or one per task; a task it
+    # does not name is called by the family's ``methods_label``.
+    words: str | Mapping[Task, str] = field(default="", hash=False)
 
 
 @dataclass(frozen=True)

@@ -342,7 +342,7 @@ class FeatureWise(FamilyBase):
     flexible = False
     bootstrap_optimism = None
     inference_decl = InferenceDecl(table="intervals", intervals=("model", "CR2"),
-                                   matrix_table=True)
+                                   matrix_table=True, words="feature-wise regression")
     review_lenses = ("metabolomics", "genomics")
     consequence = ("Tests each factor on its own, adjusted for the covariates, with "
                    "Benjamini–Hochberg false-discovery control; no predictions.")

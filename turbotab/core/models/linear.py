@@ -136,7 +136,14 @@ class Linear(FamilyBase):
     inference_decl = InferenceDecl(table="intervals",
                                    intervals=("model", "HC3", "CR2", "profile", "Taylor"),
                                    design_based=True, product_terms=True, matrix_table=True,
-                                   default_for=("regression", "binary"))
+                                   default_for=("regression", "binary"),
+                                   words={"regression": "least squares",
+                                          "binary": "logistic regression (pseudo-maximum "
+                                                    "likelihood)",
+                                          "multiclass": "multinomial logistic regression "
+                                                        "(pseudo-maximum likelihood)",
+                                          "ordinal": "multinomial logistic regression "
+                                                     "(pseudo-maximum likelihood)"})
     invariances = ("linear_maps",)
     curve_shape = "straight"
     diagnostics = ("separation", "collinearity", "residual_spread", "influence")

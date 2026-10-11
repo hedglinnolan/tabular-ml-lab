@@ -77,16 +77,6 @@ def weighted_products(family: Any) -> bool:
     return decl is not None and decl.design_based and family.linear_in_values
 
 
-def __getattr__(name: str) -> Any:
-    """``SUPPORTED``, the families that test product terms, read from the registry: the agreement
-    check in ``test_mc1_family_declarations`` still imports the name the declaration replaced."""
-    if name == "SUPPORTED":
-        from turbotab.core.models.base import families
-
-        return tuple(f.key for f in families() if tests_product_terms(f))
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 def _get(obj: Any, name: str, default: Any = None) -> Any:
     if obj is None:
         return default
@@ -706,6 +696,7 @@ def _one(ctx: Any, state: Any, exposure: str, modifier: str, spec: Any) -> Modif
     from turbotab.core.stages.data import open_store
     from turbotab.core.stages.modeling import (_survey, _task, coded_outcome, fit_designs,
                                                outcome_levels, read_assignment)
+    from turbotab.core.stages.sensitivity import split_units
 
     kind = _get(spec, "kind")
     status = POST_HOC if _get(spec, "post_hoc") else "declared"
@@ -727,6 +718,8 @@ def _one(ctx: Any, state: Any, exposure: str, modifier: str, spec: Any) -> Modif
     families = [get_family(k) for k in (state.models or [])]
     families = [f for f in families if tests_product_terms(f)]
     assignment = read_assignment(ctx.inputs["split"])
+    # The column the split kept whole: every refit's inner splits keep its units whole too.
+    grouped_by = (getattr(ctx.inputs["split"], "data", None) or {}).get("grouped_by")
     wanted = [c for c in [modifier, *extra] if c not in spec_d.inputs]
     with open_store(ctx) as store:
         unit_columns = cluster_columns(state, store.columns)
@@ -736,12 +729,16 @@ def _one(ctx: Any, state: Any, exposure: str, modifier: str, spec: Any) -> Modif
             from turbotab.core.models.survival import follow_up_columns
 
             follow = follow_up_columns(state)
-        columns = list(dict.fromkeys([*spec_d.inputs, *wanted, target, *unit_columns, *follow]))
+        if grouped_by not in store.columns:
+            grouped_by = None
+        columns = list(dict.fromkeys([*spec_d.inputs, *wanted, target, *unit_columns, *follow,
+                                      *([grouped_by] if grouped_by else [])]))
         frame = modeling_frame(store, columns, assignment.index.to_numpy(), outcome=target)
         # F15 (RECIPES §4.3): under the population answer each row's stratum, PSU and weight,
         # which every refit here is handed with the split's seed, as the fit stage's are.
         designs = fit_designs(state, store, frame.index.to_numpy())
     split_seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
+    split_groups = split_units(frame, grouped_by)  # ruling 14: the groups the fit stage's get
     predictors = [*spec_d.predictors, *[c for c in [modifier, *extra]
                                         if c not in spec_d.predictors and c != exposure]]
     # The interaction's spec holds the design stage's plans, so a tuned family follows the plan
@@ -788,7 +785,7 @@ def _one(ctx: Any, state: Any, exposure: str, modifier: str, spec: Any) -> Modif
             fit, lay_f = _family(ctx, state, family, spec_m, frame, y, task=task, levels=levels,
                                  outcome=outcome, clusters=clusters, survey=survey,
                                  exposure=exposure, modifier=modifier, spec=spec, target=target,
-                                 designs=designs, split_seed=split_seed)
+                                 designs=designs, split_seed=split_seed, groups=split_groups)
             lay = lay or lay_f
             fits.append(fit)
         except Exception as exc:  # noqa: BLE001 - said in the artifact, never silent
@@ -837,19 +834,22 @@ def _failure_words(family: Any, exc: BaseException) -> str:
 def _family(ctx: Any, state: Any, family: Any, spec_m: Any, frame: pd.DataFrame, y: np.ndarray, *,
             task: str, levels: Any, outcome: Any, clusters: Any, survey: Any, exposure: str,
             modifier: str, spec: Any, target: str, designs: Any = None,
-            split_seed: int = 0) -> tuple[ModificationFit, _Layout]:
+            split_seed: int = 0, groups: pd.Series | None = None
+            ) -> tuple[ModificationFit, _Layout]:
     from sklearn.base import clone
 
     from turbotab.core.models.linear import model_matrix
     from turbotab.core.models.pipeline import build_pipeline
     from turbotab.core.stages.effects import matrix_table
     from turbotab.core.stages.modeling import _design_df, fit_with, with_units
+    from turbotab.core.stages.sensitivity import units_for
 
     def refit(model: Any, X_k: pd.DataFrame, y_k: Any) -> Any:
         # F15: the split's seed, the rows' survey design (``designs``, by row id) and the stage's
-        # cancel reach the refit, as they reach the fit stage's.
-        return fit_with(model, X_k, y_k, designs=designs, seed=split_seed,
-                        cancelled=ctx.cancelled)
+        # cancel reach the refit, as they reach the fit stage's; and ruling 14: the units the
+        # split kept whole (``groups``, by row id), so a tuned family's inner splits keep them.
+        return fit_with(model, X_k, y_k, groups=units_for(groups, X_k), designs=designs,
+                        seed=split_seed, cancelled=ctx.cancelled)
 
     concerns: list[str] = []
     X = frame[list(spec_m.inputs)]

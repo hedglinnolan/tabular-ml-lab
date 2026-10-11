@@ -222,7 +222,8 @@ class BoostedTrees(FamilyBase):
     predicts = True
     flexible = True
     # Under inference it gives no table: its curves describe the declared exposure.
-    inference_decl = InferenceDecl(table="description_only")
+    inference_decl = InferenceDecl(table="description_only",
+                                   words="the gradient-boosted tree model")
     invariances = ("monotone_per_column",)
     bias_terms = (Named(plain="Many shallow trees, each fit to what the trees before it missed.",
                         known_as="gradient boosting", source=Source("friedman2001")),)
