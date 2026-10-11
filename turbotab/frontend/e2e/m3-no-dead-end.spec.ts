@@ -25,7 +25,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
-import { fitReached, pressFit } from "./fit";
+import { fitReached, openSealCard, pressFit } from "./fit";
 import { nhanesExport } from "./nhanes";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -180,10 +180,9 @@ function adjustment(journey: Journey): Answer {
 const openSeal: Answer = async (page) => {
   const step = page.getByTestId("open-seal-step");
   await step.getByTestId("go-open-seal").click();
-  const card = page.getByTestId("open-seal-card");
-  await card.getByTestId("open-seal").click();
-  const exit = card.getByTestId("open-seal-exit").first();
-  if (await exit.isVisible({ timeout: 5_000 }).catch(() => false)) await exit.click();
+  // The opening waits for the triage of open noticings, then the final model: each way forward
+  // the refusal offers is taken and the opening pressed again (e2e/fit.ts openSealCard).
+  await openSealCard(page);
 };
 
 /** The ledger's ask card on the open question: confirm every line as shown, else each line, then

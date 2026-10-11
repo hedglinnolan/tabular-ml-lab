@@ -30,7 +30,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
 import { confirmAsk, confirmStageAsk, firstDrawnPair } from "./ask";
-import { fitOnceComputed } from "./fit";
+import { fitOnceComputed, openSealCard } from "./fit";
 import { nhanesExport } from "./nhanes";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -327,11 +327,10 @@ async function openSeal(page: Page, journey: string): Promise<number> {
   await expect(card).toBeInViewport();
   await shot(page, `${journey}-open-seal`, { themes: ["light", "dark"] });
   const s = await timed(async () => {
-    await card.getByTestId("open-seal").click();
-    // With several families the final model is named first, on cross-validation: the card's first
-    // way forward, the best by CV.
-    const exit = card.getByTestId("open-seal-exit").first();
-    if (await exit.waitFor({ state: "visible", timeout: 5_000 }).then(() => true, () => false)) await exit.click();
+    // The opening waits for the triage of open noticings, settled as the refusal offers; with
+    // several families the final model is then named on cross-validation, the card's first way
+    // forward (e2e/fit.ts openSealCard).
+    await openSealCard(page);
     await expect(page.getByTestId("decision-open_seal")).toBeVisible({ timeout: 30_000 });
     await expect(results).toHaveAttribute("data-seal-phase", "opened", { timeout: 60_000 });
   });

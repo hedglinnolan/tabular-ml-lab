@@ -69,23 +69,18 @@ def _renders_a_held_fit() -> list[str]:
                   and HELD_READ.search(path.read_text("utf-8")))
 
 
-def test_the_held_fit_skip_expires_when_the_app_renders_a_held_fit():
-    """A journey whose fit the scheduler holds skips only while the app renders nothing for it
-    (plan §1, B2): the skip checks the page for any held Fit first and fails when one is rendered
-    but not pressable as e2e/fit.ts presses it; and once the frontend reads ``StageStatus.held``
-    this test fails until the skip is retired, so it never stays on in silence."""
+def test_a_held_fit_is_pressed_never_skipped():
+    """A journey whose fit the scheduler holds presses the held Fit the stage renders (W1-B's
+    FitHeld, plan §1 B2): the frontend reads ``StageStatus.held``, and e2e/fit.ts no longer skips a
+    held journey, so the light real-server journeys walk through a held fit."""
     helper = (E2E / "fit.ts").read_text("utf-8")
-    skip = helper.index("test.skip(true, HELD_WITHOUT_FIT)")
-    # Before skipping, what renders a held fit is looked for, and finding any fails the journey.
-    assert "async function heldRendered" in helper
-    assert 'getByTestId("fit-held")' in helper
-    guard = helper.rindex("expect(rendered, HELD_RENDERED).toEqual([])", 0, skip)
-    assert helper.rindex("await heldRendered(page)", 0, guard) < guard
-    # The expiry: no skip for a held fit once the frontend renders one.
+    assert "test.skip" not in helper and "HELD_WITHOUT_FIT" not in helper
+    assert 'getByTestId("press-fit")' in helper
     rendering = _renders_a_held_fit()
-    assert not rendering, (
-        f"{rendering} render a held fit: retire HELD_WITHOUT_FIT and its skip in e2e/fit.ts, so a "
-        "held journey presses that Fit")
+    assert rendering, "nothing in the frontend renders a held fit"
+    held = (SRC / "components" / "stage" / "results" / "Results.tsx").read_text("utf-8")
+    # The held Fit is the same FitPress the helper presses, under its own wrapper.
+    assert 'data-testid="fit-held"' in held and "<FitPress" in held
 
 
 def test_the_real_server_defects_m1_measures_stay_visible():
