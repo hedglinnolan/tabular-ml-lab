@@ -1472,3 +1472,24 @@ critique asked, with the numbers of this round's run.
   variable-level stories from equally accurate models, which is what least squares and ridge tell
   inside the body-size and diet groups; but at the level the beats report, the groups, they agree,
   so the precise phenomenon is collinearity, and R3 says "credit within a group is arbitrary".
+
+## 17 · The orchestrator's rulings (2026-10-11)
+
+1. **Scope.** W2's engine work grew from about 35 to 61 units, almost all of it correctness, so it is accepted and split into W2a and W2b. Three items move to "can follow", as the reviser offered:
+   - P26 (openings remembered across projects);
+   - P28 (DIQ and DEMO joins drawn from the intended use; the card still recommends the joins in words);
+   - P24's age part.
+
+   P29 (the fit estimate counts every fit) stays. The hold depends on it, and the capture's estimate of 94 s against 220 s actual shows why.
+2. **The seal under Predict.** When a period column exists, sealing the latest period whole is Recommended. A random lockbox is used only otherwise. P21 moves to W2.
+3. **The level rule.** Booth et al.'s in-sample re-estimate on the latest period (+3.4), as built. The out-of-cycle shift (+4.0) is a validation residual, and using it as the update would fit to the check.
+4. **Data preparation in D.**
+   - NHANES's published glucose equations are set for you. They are listed with their sources, and the 2013 gap is stated with its measured agreement.
+   - Values filled before the table was made are read as missing, then filled in fold at the median without indicators. Their missingness belongs to the upstream process, not to the person, and does not exist at the moment of use.
+5. **DIQ and DEMO joins are Recommended under either use.** DIQ carries the decisive predictor under estimation and the population filter under screening; DEMO carries the subgroup checks.
+6. **One yardstick, as revised.**
+   - Verdicts are paired differences in squared miss with intervals.
+   - c-statistic words follow Hosmer and Lemeshow's bands.
+   - "Equally good" uses the stated margin of 5% of the gain over the no-predictor model.
+7. **R² on the opened cycle is computed against the cycle's own mean (0.18):** conventional and conservative. The comparison with a model a person could actually deploy is the RMSE against the development mean's RMSE. The calibration slope of 1.14 found after the opening stays a Discussion draft: nothing is recalibrated after the seal.
+8. **Every glucose value in this fixture has been read many times.** Nolan's own project draws and opens its seal once, on its own data fingerprint.
