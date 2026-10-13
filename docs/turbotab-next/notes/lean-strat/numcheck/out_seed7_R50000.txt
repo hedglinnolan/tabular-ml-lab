@@ -1,0 +1,42 @@
+A2 fresh loss: Monte Carlo (2e6 fresh draws, their event rate 0.29977) vs H(p)+KL(p||q):
+   q=0.10  MC=0.76402  formula=0.76453  diff=-0.00051 (-0.7 SE)
+   q=0.25  MC=0.61701  formula=0.61727  diff=-0.00025 (-0.7 SE)
+   q=0.30  MC=0.61067  formula=0.61086  diff=-0.00019 (-0.7 SE)
+   q=0.42  MC=0.64148  formula=0.64156  diff=-0.00007 (-0.7 SE)
+   q=0.80  MC=1.19387  formula=1.19355  diff=+0.00032 (+0.7 SE)
+A3 min KL on grid = -6.44e-17; KL at r=q: max 0.0e+00; min KL off-diagonal (|r-q|>=0.0025) = 1.25e-05
+A4 exactly stratified datasets (K | events): 9967 of 50000
+A4+ sandwich [sklearn-strat]: holds in 50000/50000; mean lo=0.00012 gap=0.00014 hi=0.00015  (1/n=0.00500)
+A4+ sandwich [plain]: holds in 50000/50000; mean lo=0.00503 gap=0.00569 hi=0.00636  (1/n=0.00500)
+
+Machine-precision identities (max |difference| over all simulated datasets):
+   A1' mean row log loss - CE(r,q)                         3.33e-16
+   A1 CE - (H + KL_direct)                                 2.22e-16
+   A4 exact-strat test/train rate - phat                   0.00e+00
+   A4 exact-strat CV - H(phat)                             5.55e-17
+   A5 truth - H(phat) - [KL(p||qT) + H(p) - H(phat)]       2.22e-16
+   A6 KL(p||phat)+KL(phat||p) - Jeffreys                   1.16e-16
+
+B1: E[(phat_m - p)^2]: exact sum = 0.0013125, p(1-p)/m = 0.0013125, simulated = 0.0013227
+     P(phat_m in {0,1}) = 1.64e-25  (forward KL is +inf there; the sim clips at 1e-06)
+A5/B: E[KL(p||phat_m)] exact (clipped) = 0.003168; on 0<k<m = 0.003168; 1/(2m) = 0.003125
+      E[KL(phat_n||p)] exact = 0.002508;  H(p)-E[H(phat_n)] = 0.002508; 1/(2n) = 0.002500; B4 bound [0, 0.0050]
+      exact-stratification optimism (random-4/5 truth) = E KL_fwd + E KL_rev = 0.005676   leading 1/(2m)+1/(2n) = 0.005625
+      sklearn rounding gap E[cv_skl - H(phat)] (>=0 by A4+) = 0.000135
+      => exact E[strat_skl CV - truth] = -0.005541   (decomposition: -0.005541)
+      simulated here (R=50000)  E[strat_skl CV - truth] = -0.005532 +- 0.000129;  STRATIFICATION_OPTIMISM.md: -0.00536 +- 0.00020
+      simulated plain CV - truth = +0.000019 +- 0.000130  (note: +0.0002 +- 0.0002 [sign: CV-truth])
+A6: fold-model truth, exact strat: optimism = E[Jeffreys] exact = 0.005035 (1/n = 0.005000);  with sklearn rounding exact = 0.004915; simulated = 0.004877 +- 0.000128 (note: 0.00458 +- 0.00020)
+     paired (strat optimism - plain optimism), fold-model truths: 0.004924 +- 0.000016  (note: 0.00493 +- 0.00003; exact 0.004915)
+A4+: plain CV - sklearn-strat CV = 0.005551 +- 0.000018; exact E = E[truth]-E[cv_skl] = 0.005541
+sample mean of phat - p in this simulation: +0.000041 (SE 0.000145)
+control-variate optimism (random-4/5 truth): -0.005567 +- 0.000034 (exact -0.005541)
+
+B2: cubic remainder bound on a 37 x 2001 grid of (p, q): violations = 0; max err/bound = 0.331
+B3: E[KL(p||phat_m); |phat_m - p| <= eps] (exact) vs proved bounds, m = 160, p = 0.3
+   eps=0.02  lower=0.000142  exact=0.000162  upper=0.003493  ok=True  tail T=1.24e-03
+   eps=0.05  lower=0.000967  exact=0.001445  upper=0.004144  ok=True  tail T=7.10e-04
+   eps=0.10  lower=0.000590  exact=0.002994  upper=0.005625  ok=True  tail T=7.38e-05
+   eps=0.15  lower=-0.001760  exact=0.003165  upper=0.008011  ok=True  tail T=1.16e-06
+   eps=0.20  lower=-0.006375  exact=0.003168  upper=0.012625  ok=True  tail T=1.75e-09
+   eps=0.25  lower=-0.019792  exact=0.003168  upper=0.026042  ok=True  tail T=2.76e-12

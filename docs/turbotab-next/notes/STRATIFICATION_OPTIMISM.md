@@ -235,3 +235,30 @@ at sizes where 1/n is a material share of the gap.
   bias, and Kohavi (1995, IJCAI) on stratified cross-validation; I could not open either here. I
   found no source that states the stratified-fold term for log loss; the derivation above is mine
   and should go to the prediction reviewer's packet as such.
+
+## Formalized in Lean 4 (2026-10-13)
+
+The derivation above is now partly machine-checked, in `lean-strat/` beside this note (Lean 4 with Mathlib). `lake build` succeeds, with no `sorry`, `admit` or new axiom. All 27 main theorems depend only on propext, Classical.choice and Quot.sound.
+
+**Proved exactly (Tier A):**
+- the cross-entropy decomposition, CE = H + KL;
+- under exact stratification, the base-rate model's CV log loss equals H(p̂) for every sample;
+- optimism = KL(p‖q_T) + (H(p) − H(p̂)), with the entropy bias exactly E[KL(p̂‖p)];
+- against the fold-model truth, the optimism is exactly the expected Jeffreys divergence;
+- a new sandwich bound (`cv_sandwich`) showing that stratification minimizes the base-rate CV loss sample by sample, so sklearn's rounding can only lower the optimism.
+
+**Proved as explicit bounds (Tier B):**
+- the binomial variance;
+- the cubic remainder of KL's quadratic approximation;
+- 0 ≤ entropy bias ≤ 1/n.
+
+The sharp limit m·E[KL] → 1/2 is not proved: Mathlib lacks the binomial's higher moments and tail bounds.
+
+**Stated only (Tier C):** the general ρ/n law with a signal.
+
+**What formalizing corrected.**
+1. The expected forward KL is +∞ without clipping (P(p̂ ∈ {0,1}) > 0), so the claim holds for a clipped predictor or conditionally.
+2. Exact stratification needs K | events (about 20% of samples at n = 200); `cv_sandwich` bounds sklearn's rounding.
+3. The exact finite-sum expectation (−0.005541 at n = 200, K = 5, p = 0.3) explains the gap between the earlier prediction and its simulation.
+
+**Numerical checks:** every proved identity was checked numerically (`lean-strat/numcheck/`).

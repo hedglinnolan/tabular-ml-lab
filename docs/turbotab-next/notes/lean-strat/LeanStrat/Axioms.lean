@@ -1,0 +1,31 @@
+import LeanStrat
+
+-- Tier A
+#print axioms Strat.CE_eq_binEntropy_add_KL
+#print axioms Strat.mean_logLoss
+#print axioms Strat.freshLoss_eq
+#print axioms Strat.KL_nonneg
+#print axioms Strat.KL_eq_zero_iff
+#print axioms Strat.stratified_rates
+#print axioms Strat.stratified_cvLoss
+#print axioms Strat.foldLoss_decomp
+#print axioms Strat.fold_KL_nonneg_and_zero_iff
+#print axioms Strat.test_eq_train_iff
+#print axioms Strat.cv_sandwich
+#print axioms Strat.optimism_pointwise
+#print axioms Strat.stratified_optimism
+#print axioms Strat.expected_optimism
+#print axioms Strat.entropy_bias_eq_KL
+#print axioms Strat.expected_optimism_two_KL
+#print axioms Strat.KL_add_KL_swap
+#print axioms Strat.expected_foldTruth_optimism
+-- Tier B
+#print axioms Strat.binom_sum
+#print axioms Strat.binom_mean
+#print axioms Strat.binom_var
+#print axioms Strat.KL_quadratic_cubic
+#print axioms Strat.KL_quad_sandwich
+#print axioms Strat.trunc_KL_upper
+#print axioms Strat.trunc_KL_lower
+#print axioms Strat.KL_le_chi2
+#print axioms Strat.entropy_bias_binom
