@@ -38,6 +38,33 @@ def test_the_reading_names_raw_values_and_stays_quiet_on_normalized_ones(name, l
     assert (reading.kind if reading else None) == kind
 
 
+def test_estimated_counts_raise_the_normalization_question():
+    """Claims backtest C-193: salmon, kallisto and RSEM write estimated counts, non-integer because
+    a read is split between transcripts, and nothing in them divides out the library size;
+    GENOMICS_PACK §02 row 2 ("Non-integer ≥0, sums vary, max ≫1e4") says ask. The whole-number test
+    read them as normalized, so no normalization question was asked and no linear family was
+    refused. Known truth: counts drawn at library sizes spread threefold, then split fractionally
+    as the repo's fixture is (each cell × U(0.97, 1.03)), are unnormalized; the same matrix scaled
+    to 1e6 per sample (as TPM is) is normalized."""
+    fixture = omics.scale_reading(pd.read_csv(SAMPLES / "genomics_estimated_counts.csv"),
+                                  ["genomics"])
+    assert fixture is not None and fixture.kind == "counts"
+    rng = np.random.default_rng(193)
+    n, p = 60, 200
+    depth = rng.uniform(1.0, 3.0, n)
+    counts = rng.poisson(np.outer(depth, rng.lognormal(4.0, 1.5, p)))
+    estimated = counts * rng.uniform(0.97, 1.03, counts.shape)
+    sums = estimated.sum(axis=1)
+    assert sums.max() / sums.min() > 2 and not np.all(np.mod(estimated, 1) == 0)
+    frame = pd.DataFrame(estimated.round(3), columns=[f"gene_{i:04d}" for i in range(p)])
+    reading = omics.scale_reading(frame, ["genomics"])
+    assert reading is not None and reading.kind == "counts", reading
+    _, finding = omics.scale_finding(frame, ["genomics"])
+    assert "whole numbers" not in finding["detail"], finding["detail"]
+    tpm = frame.div(frame.sum(axis=1), axis=0) * 1e6
+    assert omics.scale_reading(tpm, ["genomics"]) is None
+
+
 def test_genotype_dosages_and_two_level_columns_are_not_counts():
     rng = np.random.default_rng(0)
     frame = pd.DataFrame(rng.integers(0, 3, (80, 40)), columns=[f"rs{i}" for i in range(40)])
