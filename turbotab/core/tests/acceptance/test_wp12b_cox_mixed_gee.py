@@ -449,6 +449,79 @@ def test_3_harrells_c_counts_ties_as_lifelines_does():
     assert concordance(time_, event, np.zeros(400)) == pytest.approx(0.5)
 
 
+def _one_group_without_events(seed: int, n: int, *, all_events: bool = False) -> pd.DataFrame:
+    """A binary group `g` (30% of rows) and an age that carries the hazard, censored uniformly.
+    Every row of the group is censored (``all_events=False``), or every row of it has its event
+    with its time kept, so its events fall among the other rows' events and censorings."""
+    rng = np.random.default_rng(seed)
+    g = rng.binomial(1, 0.3, n).astype(float)
+    age = rng.normal(size=n)
+    t = rng.exponential(1 / (0.2 * np.exp(0.3 * age)))
+    censor = rng.uniform(1, 10, n)
+    time_ = np.where(g == 1, t, np.minimum(t, censor)) if all_events else np.minimum(t, censor)
+    event = np.where(g == 1, int(all_events), (t <= censor).astype(int))
+    return pd.DataFrame({"g": g, "age": age, "time": time_, "event": event})
+
+
+def _profile_loglik(frame: pd.DataFrame, b_g: float) -> float:
+    """Cox's partial log-likelihood at the group's log hazard ratio ``b_g``, maximized over age's,
+    written out here (untied continuous times and no late entry, where Efron's, Breslow's and the
+    exact likelihood agree): Σ over events of η_i − log Σ_{t_j ≥ t_i} exp(η_j)."""
+    from scipy.optimize import minimize_scalar
+
+    order = np.argsort(-frame["time"].to_numpy(), kind="stable")
+    g, age = frame["g"].to_numpy()[order], frame["age"].to_numpy()[order]
+    event = frame["event"].to_numpy()[order] == 1
+
+    def minus(b_age: float) -> float:
+        eta = b_g * g + b_age * age
+        top = eta.max()
+        return -float(np.sum((eta - top - np.log(np.cumsum(np.exp(eta - top))))[event]))
+
+    return -minimize_scalar(minus, bounds=(-5, 5), method="bounded",
+                            options={"xatol": 1e-10}).fun
+
+
+def test_3_a_group_with_no_events_is_refused_and_one_with_only_events_is_not():
+    """Claims backtest B-435. A group in which no row has the event orders every risk set: at each
+    event time the rows with the event sit at the group's lower value, so the partial likelihood
+    rises without end as the group's log hazard ratio runs to −∞ (monotone likelihood, Bryson &
+    Johnson 1981, *Biometrika* 68:703; Heinze & Schemper 2001, *Biometrics* 57:114). The truth is
+    checked on each fixture by the profile likelihood written out above, which climbs at
+    b_g = −10, −20, −40. With age beside it the Newton decrement had fallen below its tolerance at
+    about 18 SDs, before the 20-SD trigger, and the table showed a log hazard ratio near −36 with
+    a standard error near 10⁻¹⁷, p = 0 and an interval of zero width. Every such fit must be
+    refused, naming `g`, with no interval or p-value.
+
+    A group in which every row has the event, its events among the other rows', has a finite
+    maximum: it is estimated, matching lifelines to 10⁻⁶ relative, so the refusal must not give
+    "every row has the event" as its cause."""
+    for seed, n in [(s, 60) for s in range(12)] + [(s, 300) for s in range(4)]:
+        frame = _one_group_without_events(seed, n)
+        assert frame.loc[frame["g"] == 1, "event"].sum() == 0 and frame["event"].sum() > 5
+        climbs = [_profile_loglik(frame, b) for b in (-10.0, -20.0, -40.0)]
+        assert climbs[0] < climbs[1] < climbs[2], climbs  # no finite maximum in b_g
+        y = survival_outcome(frame["event"], frame["time"])
+        table = cox_table(frame[["g", "age"]], y, Clusters())
+        g = _row(table.rows, "g")
+        assert table.info["refused"], (seed, n, g)
+        assert g["ci_low"] is None and g["ci_high"] is None and g["p"] is None and g["se"] is None
+        assert "`g`" in table.info["refused"]
+        assert "every row has the event" not in table.info["refused"]
+
+    frame = _one_group_without_events(5, 400, all_events=True)
+    assert frame.loc[frame["g"] == 1, "event"].all()
+    assert frame.loc[frame["g"] == 0, "event"].mean() < 0.9
+    y = survival_outcome(frame["event"], frame["time"])
+    table = cox_table(frame[["g", "age"]], y, Clusters())
+    assert not table.info["refused"], table.info["refused"]
+    reference = _lifelines(frame, "time", "event", ["g", "age"])
+    np.testing.assert_allclose([_row(table.rows, n)["estimate"] for n in ("g", "age")],
+                               reference.params_.to_numpy(), rtol=1e-6)
+    np.testing.assert_allclose([_row(table.rows, n)["se"] for n in ("g", "age")],
+                               reference.standard_errors_.to_numpy(), rtol=1e-6)
+
+
 # ── 4 · the random-intercept mixed model ─────────────────────────────────────
 
 
