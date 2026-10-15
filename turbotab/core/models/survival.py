@@ -57,6 +57,14 @@ MAX_ITER = 60
 TOL = 1e-18
 LOOSE_TOL = 1e-10  # after MAX_ITER steps, still accepted as converged below this
 DIVERGED = 20.0  # |β_j| · SD(x_j) beyond this: a log hazard ratio of 20 per SD is an infinite one
+# An eigenvalue of the information (on standardized columns) below this share of its largest is
+# where a monotone likelihood shows itself: far out along a direction that orders the risk sets the
+# information there decays like exp(−|β|), and the Newton decrement can fall below TOL before any
+# coefficient passes DIVERGED. Such a fit is checked for an ordering (:func:`_ordering`).
+FLAT = 1e-8
+# Below this share the information is numerically singular at the estimate, so its pseudo-inverse is
+# no variance: the fit is not converged even when no ordering is found.
+SINGULAR = 1e-12
 PH_ALPHA = 0.01  # the proportional-hazards check speaks below this, shared over the columns
 EPV_RULE = 10  # events per predictor, a rule of thumb for Cox models (Peduzzi et al. 1995)
 
@@ -233,6 +241,53 @@ def _score_info(X: np.ndarray, y: np.ndarray, beta: np.ndarray, w: np.ndarray | 
     return rk.loglik, U, (info + info.T) / 2, rk
 
 
+def _range(values: np.ndarray, lo: np.ndarray, hi: np.ndarray, op: Any) -> np.ndarray:
+    """``op`` (np.minimum or np.maximum) over ``values[lo:hi]`` for each pair, ``hi > lo``: a sparse
+    table, each level the op over windows twice as wide as the last."""
+    table = [values]
+    width = 1
+    while 2 * width <= len(values):
+        table.append(op(table[-1][:-width], table[-1][width:]))
+        width *= 2
+    level = np.frexp((hi - lo).astype(float))[1] - 1  # ⌊log₂(hi − lo)⌋, exactly
+    out = np.empty(len(lo))
+    for k, row in enumerate(table):
+        on = level == k
+        out[on] = op(row[lo[on]], row[hi[on] - (1 << k)])
+    return out
+
+
+def _ordering(Z: np.ndarray, y: np.ndarray, directions: np.ndarray) -> np.ndarray | None:
+    """A direction ``d`` (a column of ``directions``, or its negative) that orders the risk sets
+    perfectly, else None: at every event time the rows with the event have the largest ``Zd`` of
+    the rows at risk, and some row at risk has less. The partial likelihood then rises without end
+    along ``d`` and has no finite maximum (monotone likelihood: Bryson & Johnson 1981, *Biometrika*
+    68:703; Heinze & Schemper 2001, *Biometrics* 57:114). Tied events must share the largest value,
+    as Efron's likelihood requires. Each row's event slots are those with ``entry < τ ≤ time``, a
+    run of the sorted event times, so the check is range minima and maxima over them."""
+    t, s, e = y["time"], y["entry"], y["event"]
+    events = np.flatnonzero(e)
+    times, k_of = np.unique(t[events], return_inverse=True)
+    lo = np.searchsorted(times, s, side="right")
+    hi = np.searchsorted(times, t, side="right")
+    at_risk = hi > lo
+    lo, hi = lo[at_risk], hi[at_risk]
+    for d in directions.T:
+        v = Z @ d
+        low = np.full(len(times), np.inf)
+        high = np.full(len(times), -np.inf)
+        np.minimum.at(low, k_of, v[events])
+        np.maximum.at(high, k_of, v[events])
+        least, most = _range(low, lo, hi, np.minimum), _range(high, lo, hi, np.maximum)
+        mine = v[at_risk]
+        tol = 1e-9 * max(1.0, float(np.abs(v).max()))
+        if np.all(mine <= least + tol) and np.any(mine < most - tol):
+            return d
+        if np.all(mine >= most - tol) and np.any(mine > least + tol):
+            return -d
+    return None
+
+
 @dataclass
 class CoxFit:
     beta: np.ndarray
@@ -242,6 +297,9 @@ class CoxFit:
     iterations: int
     converged: bool
     n_events: int
+    # A direction over the columns (on their SD scale) that orders the risk sets, when one does
+    # (:func:`_ordering`): the likelihood has no maximum and the fit is not converged.
+    ordering: np.ndarray | None = None
 
 
 def cox_fit(X: np.ndarray, y: np.ndarray, *, max_iter: int = MAX_ITER, tol: float = TOL,
@@ -250,8 +308,10 @@ def cox_fit(X: np.ndarray, y: np.ndarray, *, max_iter: int = MAX_ITER, tol: floa
 
     The columns are centered and scaled for the iterations (the coefficients are mapped back), so
     the Newton decrement convergence test does not depend on their units. Not converged when the
-    decrement stays above ``tol`` or a coefficient runs past :data:`DIVERGED` SDs (monotone
-    likelihood: the estimate is infinite).
+    decrement stays above ``tol``, a coefficient runs past :data:`DIVERGED` SDs, a column or a
+    flat direction of the information orders the risk sets (``ordering``: monotone likelihood,
+    the estimate is infinite; the decrement can pass ``tol`` first, since the information decays
+    along that direction as fast as the score), or the information is singular at the estimate.
 
     ``weights`` (case weights, positive) fit Binder's pseudo-likelihood, each row weighted in every
     risk set and Efron's tied slots by their time's mean weight (:func:`_risk`), as R's ``coxph``
@@ -267,7 +327,8 @@ def cox_fit(X: np.ndarray, y: np.ndarray, *, max_iter: int = MAX_ITER, tol: floa
         raise ValueError("No row has the event, so the hazard ratios cannot be estimated.")
     mean = X.mean(axis=0) if n else np.zeros(P)
     sd = X.std(axis=0)
-    sd[sd == 0] = 1.0
+    live = sd > 0  # a constant column carries no information, and is not read as a flat direction
+    sd[~live] = 1.0
     Z = (X - mean) / sd
     beta = np.zeros(P)
     ll, U, info, _ = _score_info(Z, y, beta, w)
@@ -291,10 +352,20 @@ def cox_fit(X: np.ndarray, y: np.ndarray, *, max_iter: int = MAX_ITER, tol: floa
             break
     else:
         converged = float(U @ np.linalg.lstsq(info, U, rcond=None)[0]) < max(tol, LOOSE_TOL)
+    converged = converged and not np.any(np.abs(beta) > DIVERGED)
+    ordering = None
+    if live.any():
+        lam, vec = np.linalg.eigh(info[np.ix_(live, live)])
+        top = max(float(lam[-1]), 0.0)
+        if not converged or lam[0] <= FLAT * top:
+            flat = np.zeros((P, int(np.sum(lam <= FLAT * top))))
+            flat[live] = vec[:, lam <= FLAT * top]
+            ordering = _ordering(Z, y, np.column_stack([np.eye(P)[:, live], flat]))
+        if ordering is not None or lam[0] <= SINGULAR * top:
+            converged = False
     cov_z = np.linalg.pinv(info)
     return CoxFit(beta=beta / sd, cov=cov_z / np.outer(sd, sd), loglik=ll, loglik0=ll0,
-                  iterations=it, converged=converged and not np.any(np.abs(beta) > DIVERGED),
-                  n_events=n_events)
+                  iterations=it, converged=converged, n_events=n_events, ordering=ordering)
 
 
 def score_residuals(X: np.ndarray, y: np.ndarray, beta: np.ndarray,
@@ -448,12 +519,44 @@ class ConstantRisk(BaseEstimator):
 # ── the inference table ──────────────────────────────────────────────────────
 
 
+def no_maximum(names: list[str], X: np.ndarray, fit: CoxFit, likelihood: str = "partial likelihood"
+               ) -> tuple[str, tuple[dict[str, Any], ...]]:
+    """Why a fit that did not converge has no interval, and its exit. With an ordering
+    (:func:`_ordering`), the columns that make it and what they do to the risk sets; else the
+    columns past :data:`DIVERGED` SDs, or every column."""
+    from turbotab.core.models.inference import _and
+
+    d = fit.ordering
+    if d is not None:
+        weight = np.abs(d) / np.abs(d).max()
+        cols = [n for n, w in zip(names, weight) if w > 1e-6]
+        if len(cols) == 1:
+            up = float(d[names.index(cols[0])]) > 0
+            how = (f"at every event time the rows with the event have the "
+                   f"{'highest' if up else 'lowest'} {_and(cols)} of the rows at risk (as when "
+                   f"a group has no events), so its hazard ratio runs to "
+                   f"{'infinity' if up else 'zero'}")
+        else:
+            how = (f"at every event time the rows with the event have the highest value of one "
+                   f"fixed combination of them among the rows at risk, so their hazard ratios "
+                   f"run to zero or infinity")
+        reason = (f"The {likelihood} has no maximum for {_and(cols)}: {how}, and no interval or "
+                  f"p-value is reported.")
+    else:
+        sd = X.std(axis=0)
+        cols = [n for n, b, s in zip(names, fit.beta, sd) if abs(b * s) > DIVERGED] or names
+        reason = (f"The Newton fit of the {likelihood} found no stable maximum for "
+                  f"{_and(cols)}, so no interval or p-value is reported.")
+    return reason, ({"label": f"Leave {_and(cols)} out, or merge its rare levels",
+                     "decision": None},)
+
+
 def cox_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any) -> Any:
     """The Cox model's coefficient table (log hazard ratios) on the matrix the model saw."""
     from scipy import stats
 
-    from turbotab.core.models.inference import (FEW_CLUSTERS, InferenceTable, _and, _info,
-                                                _refused, _row, _z_rows, floor_refusal, format_p)
+    from turbotab.core.models.inference import (FEW_CLUSTERS, InferenceTable, _info, _refused,
+                                                _row, _z_rows, floor_refusal, format_p)
     from turbotab.core.models.linear import collinearity_concern
 
     names = [str(c) for c in matrix.columns]
@@ -470,14 +573,7 @@ def cox_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any) -> Any:
     if singular:
         return _refused(names, fit.beta, estimator, clusters, singular, ())
     if not fit.converged:
-        sd = X.std(axis=0)
-        runaway = [n for n, b, s in zip(names, fit.beta, sd) if abs(b * s) > DIVERGED] or names
-        reason = (f"The partial likelihood has no maximum for {_and(runaway)} (in one of its groups "
-                  f"every row has the event, or none does), so the hazard ratio is infinite and no "
-                  f"interval or p-value is reported.")
-        return _refused(names, fit.beta, estimator, clusters, reason,
-                        ({"label": f"Leave {_and(runaway)} out, or merge its rare levels",
-                          "decision": None},))
+        return _refused(names, fit.beta, estimator, clusters, *no_maximum(names, X, fit))
     concerns = [clusters.note] if clusters.note else []
     refusal = floor_refusal(clusters, task="time_to_event")
     if refusal:
@@ -548,7 +644,7 @@ def survey_cox_table(matrix: pd.DataFrame, y: np.ndarray, design: Any) -> Any:
     The proportional-hazards check is Grambsch & Therneau's on these participants, unweighted: a
     diagnostic of the model's form, never a design-based test, and said so.
     """
-    from turbotab.core.models.inference import _and, format_p
+    from turbotab.core.models.inference import format_p
     from turbotab.core.models.linear import collinearity_concern
     from turbotab.core.models.survey import _refused, design_table, domain_of
 
@@ -571,14 +667,8 @@ def survey_cox_table(matrix: pd.DataFrame, y: np.ndarray, design: Any) -> Any:
     if singular:
         return _refused(names, fit.beta, estimator, design, domain.n, singular)
     if not fit.converged:
-        sd = X.std(axis=0)
-        runaway = [n for n, b, s in zip(names, fit.beta, sd) if abs(b * s) > DIVERGED] or names
-        reason = (f"The weighted partial likelihood has no maximum for {_and(runaway)} (in "
-                  f"one of its groups every row has the event, or none does), so the hazard ratio "
-                  f"is infinite and no interval or p-value is reported.")
-        return _refused(names, fit.beta, estimator, design, domain.n, reason,
-                        ({"label": f"Leave {_and(runaway)} out, or merge its rare levels",
-                          "decision": None},))
+        return _refused(names, fit.beta, estimator, design, domain.n,
+                        *no_maximum(names, X, fit, "weighted partial likelihood"))
     U = score_residuals(X, yy, fit.beta, domain.weight) * domain.weight[:, None]
     table = design_table(names, fit.beta, U, None, design, domain, estimator, bread=fit.cov)
     if table.info.get("refused"):
