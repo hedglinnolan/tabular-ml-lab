@@ -2828,9 +2828,10 @@ def _design_is_analyzed_here(decision: SetDesign, ctx: Any) -> None:
 def _no_risks_from_a_sample_drawn_by_its_outcome(declared: Any) -> None:
     """Claims backtest B-211: a case-control sample or matched sets analyzed as observational keep
     ``methods/case_control.py``'s refusal of predicted risks (its ``eligible``): the fitted
-    probabilities are set by how many cases and controls were drawn, and the Predict lane has no
-    prior correction to a stated prevalence yet, so Predict is refused and the odds ratios are
-    estimated under Estimate an effect."""
+    probabilities are set by how many cases and controls were drawn. An unmatched sample's could be
+    recalibrated to a stated prevalence, which the Predict lane does not do yet; matched sets leave
+    no baseline risk to recalibrate, a limit of the design, so nothing waits for a later version.
+    The refusal changes no purpose: the odds ratios are asked under Estimate an effect."""
     from turbotab.core.designs import SAMPLED_BY_OUTCOME, sampling_of
 
     if declared not in SAMPLED_BY_OUTCOME:
@@ -2838,14 +2839,16 @@ def _no_risks_from_a_sample_drawn_by_its_outcome(declared: Any) -> None:
     from turbotab.core.methods.case_control import eligible
 
     said = eligible("predict", sampling_of(str(declared)), "predicted_risk").says
+    estimate = {"label": "Estimate odds ratios instead",
+                "decision": {"kind": "set_purpose", "purpose": "inference"}}
+    if declared == "matched_sets":
+        raise Refusal("case_control_risks", f"{said} Their odds ratios, what the sample estimates, "
+                                            f"are asked under Estimate an effect.", exits=[estimate])
     raise Refusal(
         "case_control_risks",
         f"{said} The Predict lane does not recalibrate a model to a population prevalence yet, so "
-        f"these data are analyzed under Estimate an effect, where their odds ratios are what the "
-        f"sample estimates.",
-        exits=[{"label": "Estimate odds ratios instead",
-                "decision": {"kind": "set_purpose", "purpose": "inference"}},
-               {"label": "Keep the data as they are for a later version", "decision": None}])
+        f"their odds ratios, what the sample estimates, are asked under Estimate an effect.",
+        exits=[estimate, {"label": "Keep the data as they are for a later version", "decision": None}])
 
 
 def _purpose_reads_the_design(decision: SetPurpose, ctx: Any) -> None:

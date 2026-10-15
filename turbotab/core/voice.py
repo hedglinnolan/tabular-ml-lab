@@ -466,6 +466,9 @@ def _set_design(d: Any, state: Any, ctx: Any) -> str:
             text += (", with odds ratios only: no prevalence, absolute risk or risk difference was "
                      "estimated and no risk predicted, because the cases and the controls were "
                      "sampled separately")
+        if declared == "matched_sets":
+            # The observational lane's logistic model has no set intercepts (B-211's review).
+            text += "; the odds ratios are not conditioned on the matched sets"
         return text + "."
     if d.design == "observational":
         return ("The study was declared observational: people were observed as they were, not "
