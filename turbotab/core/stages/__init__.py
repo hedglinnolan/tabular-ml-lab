@@ -574,7 +574,10 @@ def build_graph() -> Graph:
             # reported at its middle), and ridge and the elastic net code every level of a
             # category in their own column (``onehot_drop``). Every stage that reads the design,
             # the fit first, recomputes.
-            Stage("design", 29, ("working", "split", "target_info"),
+            # design 30 (claims backtest D-058): under inference a yes/no outcome's grouping
+            # answered "adjust for it" is refused when the rows the design describes hold too few
+            # per group for an intercept each (``estimand.intercepts_refusal``).
+            Stage("design", 30, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS, "levers", "selection", "survey"),

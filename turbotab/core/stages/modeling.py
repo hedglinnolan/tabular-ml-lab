@@ -654,6 +654,11 @@ def design_stage(ctx: StageContext) -> Bundle:
             y_rows = store.materialize([state.target], design_ids)[state.target]
         # MS7: a batch perfectly confounded with the outcome is refused under both purposes.
         confounded = batch_refusal(state, store, design_ids, task)
+        # Claims backtest D-058: a yes/no outcome's intercept per group, on the rows the design
+        # describes, whatever answer moved them after the grouping was answered.
+        from turbotab.core.estimand import intercepts_refusal
+
+        small_groups = intercepts_refusal(state, store, design_ids, task)
         # The partition methods convert each energy source by its kcal per unit as the readings
         # ledger settled it over every row (a recorded unit, or grams by the Atwater test), never
         # by its name (BLUEPRINT §14.3; ``readings.predictors_or_ask`` asked any still unsettled).
@@ -664,8 +669,8 @@ def design_stage(ctx: StageContext) -> Bundle:
             from turbotab.core.readings import energy_source_factors
 
             factors = energy_source_factors(state, list(adj.nutrients), store=store)
-    if confounded:
-        raise ValueError(confounded)
+    if confounded or small_groups:
+        raise ValueError(confounded or small_groups)
     from turbotab.core.methods.qc_drift import working_qc_sd
 
     spec = design_spec(state, X, predictors, column_info=info,

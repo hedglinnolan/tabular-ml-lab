@@ -21,8 +21,11 @@ values or fewer never is. "No grouping" over a column guessed to group the parti
 values alone offers the honest answer too: its reading confirmed "no", recorded as the user's word.
 Under inference the recommended answer
 gives each group its own intercept (fixed effects) and clusters the intervals by it (CR2 with
-Bell–McCaffrey df, ``models/inference.py``); clustering alone is offered with its concern; "no
-grouping" over a column that reads as one is recorded only with an attestation. Under prediction
+Bell–McCaffrey df, ``models/inference.py``); clustering alone is offered with its concern; a yes/no
+outcome whose analyzed groups of two or more hold fewer than 16 rows on average gets no intercept
+per group (the incidental-parameter problem, :data:`FIXED_EFFECTS_LOGIT_ROWS`), checked at the
+grouping answer, the task, the models and the design; "no grouping" over a column that reads as one
+is recorded only with an attestation. Under prediction
 the answer names the cluster the split question's internal–external validation folds by.
 
 **The exposure and its effect** (MODELING_SEQUENCE §1 step 2; RO-04). Under inference: which column
@@ -1849,7 +1852,8 @@ def _clusters_name_a_grouping(decision: Any, ctx: Any) -> None:
               "decision": decision.model_copy(update={"adjust": None})}])
     cluster_only = {"label": f"Cluster the intervals by {_tick(column)} only",
                     "decision": decision.model_copy(update={"adjust": "cluster_only"})}
-    small = _too_small_for_intercepts(decision, ctx) if purpose == "inference" else None
+    small = (_too_small_for_intercepts(column, ctx, _task_of(ctx))
+             if purpose == "inference" else None)
     if small is not None and decision.adjust == "fixed_effects":
         raise _refusal("incidental_parameters", small, [cluster_only])
     if purpose == "inference" and column is not None and decision.adjust is None:
@@ -1868,31 +1872,129 @@ def _clusters_name_a_grouping(decision: Any, ctx: Any) -> None:
 # model's estimate of what you study; with pairs it is about twice the log odds ratio. Katz (2001,
 # Political Analysis 9:379) found the unconditional fixed-effects logit's bias negligible from 16
 # rows per group, growing below it.
+#
+# Which groups count, and on which rows (D-058's second round). A group of T rows biases the slope
+# by about 1/(T − 1) of itself (twice the truth for pairs, Abrevaya 1997; of order 1/T beyond, Hahn
+# & Newey 2004, Econometrica 72:1295) and keeps about (T − 1)/T of its rows' information once its
+# intercept is estimated, so every group of two or more pulls about equally and the pooled bias is
+# about 1/(m − 1), m the mean rows per group over those groups. The mean is therefore the index,
+# and 16 holds it at Katz's negligible bias. A row alone in its group adds nothing (its own
+# intercept fits it), so it is left out of m; and m is read on the analyzed rows, never the whole
+# table. Simulated with a true log odds ratio of 1 and this engine's logistic regression: 12% of
+# the rows in pairs beside four sites of 1,100 estimate 1.00, so a rule on the share of rows in
+# small groups would refuse a sound fit; 2,000 one-participant sites beside 60 sites of 50
+# estimate 1.04 with an intercept each and 1.21 without, so the whole table's mean (2.4) refused
+# the sound answer; 1,000 households analyzed in pairs in a table of 20 rows each estimate 2.1,
+# which its mean (20) let through.
 FIXED_EFFECTS_LOGIT_ROWS = 16
 
 
-def _too_small_for_intercepts(decision: Any, ctx: Any) -> str | None:
-    """Why a yes/no outcome's groups are too small for an intercept each, read from the grouping's
-    distinct values over its rows (its mean rows per group), or None: a numeric outcome's linear
-    model has no incidental-parameter bias, and an unknown size is not refused here."""
-    from turbotab.core.decisions import _ctx, _info
+def _task_of(ctx: Any) -> Any:
+    from turbotab.core.decisions import _ctx
 
-    column = decision.column
-    task = _get(_state(ctx), "task") or _ctx(ctx, "task") or _ctx(ctx, "detected_task")
-    info = _info(ctx, column) if column is not None else None
-    n_rows = _get(ctx, "n_rows")
-    if task != "binary" or info is None or n_rows is None or not info.get("n_unique"):
-        return None
-    per_group = (int(n_rows) - int(info.get("n_missing") or 0)) / int(info["n_unique"])
+    return _get(_state(ctx), "task") or _ctx(ctx, "task") or _ctx(ctx, "detected_task")
+
+
+def group_sizes(store: Any, column: str, rows: Any = None, outcome: str | None = None) -> Any:
+    """How many of ``rows`` (every row when None) each value of ``column`` holds, counting only rows
+    whose ``outcome`` is recorded (the cohort keeps no other); a blank groups nothing."""
+    columns = [column] + ([outcome] if outcome and outcome != column
+                          and outcome in store.columns else [])
+    frame = store.materialize(columns, rows)
+    if len(columns) > 1:
+        frame = frame[frame[outcome].notna()]
+    return frame[column].dropna().value_counts()
+
+
+def rows_per_intercept(sizes: Any) -> float:
+    """The mean rows per group over the groups of two rows or more, the index the comment at
+    :data:`FIXED_EFFECTS_LOGIT_ROWS` derives; 1.0 when no group has two."""
+    import numpy as np
+
+    held = np.asarray(sizes, dtype=float)
+    held = held[held >= 2]
+    return float(held.mean()) if len(held) else 1.0
+
+
+def _small_groups(column: str, per_group: float, analyzed: bool) -> str | None:
     if per_group >= FIXED_EFFECTS_LOGIT_ROWS:
         return None
-    return (f"{_tick(column)} holds {per_group:.1f} rows per group on average, too few for an "
-            f"intercept each with a yes/no outcome: each intercept is estimated from its group's "
-            f"own rows, which inflates the odds ratio of what you study (the incidental-parameter "
-            f"problem; with pairs, about twice its log). The bias is negligible only from "
-            f"{FIXED_EFFECTS_LOGIT_ROWS} rows per group (Katz 2001). The way forward clusters the "
-            f"intervals by {_tick(column)} only, and differences between groups then stay in the "
-            f"estimate.")
+    held = (f"On the analyzed rows {_tick(column)}'s groups of two or more hold {per_group:.1f} rows "
+            f"on average" if analyzed else
+            f"{_tick(column)} holds {per_group:.1f} rows per group on average")
+    return (f"{held}, too few for an intercept each with a yes/no outcome: each intercept is "
+            f"estimated from its group's own rows, which inflates the maximum-likelihood odds ratio "
+            f"of what you study (the incidental-parameter problem; with pairs, about twice its "
+            f"log). The bias is negligible only from {FIXED_EFFECTS_LOGIT_ROWS} rows per group "
+            f"(Katz 2001). The way forward clusters the intervals by {_tick(column)} only, and "
+            f"differences between groups then stay in the estimate.")
+
+
+def _too_small_for_intercepts(column: str | None, ctx: Any, task: Any,
+                              outcome: str | None = None) -> str | None:
+    """Why a yes/no outcome's groups are too small for an intercept each, or None: read on the
+    analyzed rows' groups of two or more when the store can be opened (the comment at
+    :data:`FIXED_EFFECTS_LOGIT_ROWS`), else from the column's summary over every row. A numeric
+    outcome's linear model has no incidental-parameter bias, and an unknown size is not refused
+    here (the design stage reads the rows: :func:`intercepts_refusal`)."""
+    from turbotab.core.decisions import _ctx, _info, _store_of
+
+    if task != "binary" or column is None:
+        return None
+    store = _store_of(ctx)
+    if store is not None and column in getattr(store, "columns", ()):
+        analyzed_of = _ctx(ctx, "analyzed")
+        try:
+            rows = analyzed_of() if callable(analyzed_of) else None
+            sizes = group_sizes(store, column, rows,
+                                outcome or _get(_state(ctx), "target") or _ctx(ctx, "target"))
+        except Exception:  # noqa: BLE001 - rows that cannot be read: the summary speaks
+            sizes = None
+        if sizes is not None:
+            return _small_groups(column, rows_per_intercept(sizes), analyzed=True)
+    info = _info(ctx, column)
+    n_rows = _get(ctx, "n_rows")
+    if info is None or n_rows is None or not info.get("n_unique"):
+        return None
+    per_group = (int(n_rows) - int(info.get("n_missing") or 0)) / int(info["n_unique"])
+    return _small_groups(column, per_group, analyzed=False)
+
+
+def _cluster_only_exit(state: Any) -> dict[str, Any]:
+    from turbotab.core.decisions import SetClusters
+
+    spec = _get(state, "clusters")
+    kept = spec.model_dump() if hasattr(spec, "model_dump") else dict(spec or {})
+    return {"label": f"Cluster the intervals by {_tick(kept.get('column'))} only",
+            "decision": SetClusters(**{**kept, "adjust": "cluster_only"})}
+
+
+def _intercepts_still_have_rows(decision: Any, ctx: Any) -> None:
+    """D-058: a grouping answered "adjust for it" is checked again when the outcome is answered
+    yes/no (``set_task``) and when the models are chosen (``select_models``), on the analyzed rows
+    as they stand, with clustered intervals as the way forward; the grouping answer itself is
+    checked by :func:`_clusters_name_a_grouping`, the fit by :func:`intercepts_refusal`."""
+    state = _state(ctx)
+    column = fixed_effects_column(state)
+    if column is None:
+        return
+    task = decision.task if _get(decision, "kind") == "set_task" else _task_of(ctx)
+    outcome = decision.column if _get(decision, "kind") == "set_task" else None
+    small = _too_small_for_intercepts(column, ctx, task, outcome)
+    if small is not None:
+        raise _refusal("incidental_parameters", small, [_cluster_only_exit(state)])
+
+
+def intercepts_refusal(state: Any, store: Any, rows: Any, task: str | None) -> str | None:
+    """The design stage's backstop (D-058): under inference a yes/no outcome whose fixed-effects
+    grouping holds too few rows per group on ``rows`` (the rows the design describes) for an
+    intercept each, said as the grouping answer's refusal says it; None otherwise. An answer that
+    moved the analyzed rows after the grouping and the task were given reaches it here."""
+    column = fixed_effects_column(state)
+    if column is None or task != "binary" or column not in store.columns:
+        return None
+    sizes = group_sizes(store, column, rows, _get(state, "target"))
+    return _small_groups(column, rows_per_intercept(sizes), analyzed=True)
 
 
 def _no_grouping_names_what_it_denies(decision: Any, ctx: Any) -> Any:
@@ -2484,6 +2586,8 @@ def _register() -> None:
     register_validator("set_censoring", _same_follow_up_against_the_data)
     register_validator("set_clusters", _clusters_name_a_grouping)
     register_validator("set_clusters", _no_grouping_is_recorded)
+    register_validator("set_task", _intercepts_still_have_rows)
+    register_validator("select_models", _intercepts_still_have_rows)
     register_completion("set_clusters", _no_grouping_names_what_it_denies)
     register_validator("set_estimand", _deferred_effect_is_refused)
     register_validator("set_estimand", _estimand_is_for_inference)
@@ -2514,8 +2618,8 @@ __all__ = [
     "clusters_gate", "covariates", "current_answers", "current_estimand", "derive",
     "derived_roles", "direct_questions", "effective_task", "estimand_card", "estimand_gate",
     "exposure_candidates", "fixed_effects_column", "follow_up_answer", "follow_up_candidates",
-    "follow_up_gate", "grouping_candidates", "grouping_card", "guess_blocks", "guess_of",
-    "measures_offered", "mediators", "outcome_kind_columns", "primary_features",
-    "reads_as_follow_up", "secondary_columns",
+    "follow_up_gate", "group_sizes", "grouping_candidates", "grouping_card", "guess_blocks",
+    "guess_of", "intercepts_refusal", "measures_offered", "mediators", "outcome_kind_columns",
+    "primary_features", "reads_as_follow_up", "rows_per_intercept", "secondary_columns",
     "served_gate", "unanswered", "withhold", "without_scores",
 ]
