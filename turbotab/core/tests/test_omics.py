@@ -65,6 +65,36 @@ def test_estimated_counts_raise_the_normalization_question():
     assert omics.scale_reading(tpm, ["genomics"]) is None
 
 
+def _lc_ms(seed: int, zeros: float = 0.0) -> pd.DataFrame:
+    """LC-MS peak areas: 150 log-normal features at 80 samples, each sample diluted by its own
+    factor exp(N(0, 0.25)); ``zeros`` of the cells set to 0, as mzmine writes a non-detection."""
+    rng = np.random.default_rng(seed)
+    n, p = 80, 150
+    areas = (rng.lognormal(10.0, 1.5, p) * rng.lognormal(0.0, 0.3, (n, p))
+             * np.exp(rng.normal(0.0, 0.25, n))[:, None])
+    areas[rng.random((n, p)) < zeros] = 0.0
+    return pd.DataFrame(areas.round(2), columns=[f"mz_{i:03d}" for i in range(p)])
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_lc_ms_peak_areas_are_never_read_as_estimated_counts(seed):
+    """Claims backtest C-193, review: the estimated-counts branch ran before the intensity branch
+    and asked for no zero, so LC-MS peak areas under the genomics and metabolomics lenses were named
+    salmon, kallisto or RSEM output and offered log-CPM. Known truth: these are intensities by
+    construction (no read was counted; each sample is diluted, as urine is), so under both lenses
+    they read as intensities, with or without mzmine's zeros. Under the genomics lens alone a block
+    with no zero is no transcript quantification (a zero count is a zero estimated count, TPM and
+    FPKM alike; the pack's data-type card asks for one), so it stays unread."""
+    areas = _lc_ms(seed)
+    assert not np.all(np.mod(areas.to_numpy(), 1) == 0) and (areas.to_numpy() > 0).all()
+    reading = omics.scale_reading(areas, ["genomics", "metabolomics"])
+    assert reading is not None and reading.kind == "intensities", reading
+    assert omics.scale_reading(areas, ["genomics"]) is None
+    with_zeros = _lc_ms(seed, zeros=0.1)
+    reading = omics.scale_reading(with_zeros, ["genomics", "metabolomics"])
+    assert reading is not None and reading.kind == "intensities", reading
+
+
 def test_genotype_dosages_and_two_level_columns_are_not_counts():
     rng = np.random.default_rng(0)
     frame = pd.DataFrame(rng.integers(0, 3, (80, 40)), columns=[f"rs{i}" for i in range(40)])
