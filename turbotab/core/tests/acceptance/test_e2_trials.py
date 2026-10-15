@@ -1233,6 +1233,41 @@ def test_a_variance_below_zero_in_a_small_arm_is_refused_in_plain_words():
         assert "completed by imputation" in str(r.value), str(r.value)
 
 
+def test_the_sensitivity_analyses_of_a_completely_separated_trial_count_no_imputed_outcome():
+    """Claims backtest B-281, its fourth review. The tipping-point and delta-adjusted analyses
+    fit each completed data set as the primary analysis does, so a completed set that the arm
+    and the covariates predicted exactly would be refused with the text that counts every
+    person's outcome, imputed ones among them. No completed set can be: the imputation model is
+    the analysis model fitted to the people with an outcome, whose columns have full rank, so a
+    direction that separated a completed set would separate some of them too, and that model
+    refuses first. Here everyone's outcome is whether age is over 50, 20 of 200 outcomes
+    missing: the primary analysis is refused for complete separation, counting the 180 with an
+    outcome, and both sensitivity analyses are refused for separation in the imputation model,
+    with no count of outcomes predicted exactly; with fewer covariates they run. Pinned as the
+    code already behaves: no wording changed."""
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({"arm": rng.choice(["ctl", "trt"], 200), "site": rng.choice(["a", "b"], 200),
+                       "age": rng.normal(50, 10, 200)})
+    df["event"] = (df.age > 50).astype(float)
+    df.loc[rng.choice(200, 20, replace=False), "event"] = np.nan
+    spec = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
+                       covariates=("age",))
+    with pytest.raises(T.TrialRefused) as r:
+        T.estimate(df, spec)
+    assert r.value.term == "complete separation in the logistic model"
+    assert "every person's outcome exactly (all 180 of them)" in str(r.value), str(r.value)
+    for run in (lambda s: T.tipping_point(df, s, m=5),
+                lambda s: T.delta_analysis(df, s, arm="trt", delta=1.0, m=5)):
+        with pytest.raises(T.TrialRefused) as r:
+            run(spec)
+        said = str(r.value)
+        assert r.value.term == "separation in the logistic model", said
+        assert "runs to 0% or 100%" in said and "every person" not in said, said
+        assert "200" not in said and "180" not in said, said
+        assert r.value.exits[0]["covariates"] == []
+        run(T.TrialSpec(**{**spec.__dict__, "covariates": ()}))
+
+
 # ── wording ──────────────────────────────────────────────────────────────────
 
 
