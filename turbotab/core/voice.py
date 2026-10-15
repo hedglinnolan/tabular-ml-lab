@@ -452,12 +452,24 @@ def _set_purpose(d: Any, state: Any, ctx: Any) -> str:
 
 @register_sentence("set_design")
 def _set_design(d: Any, state: Any, ctx: Any) -> str:
-    """Only a design this version analyzes is recorded (``designs.DESIGNS``)."""
+    """Only a design this version analyzes is recorded (``designs.DESIGNS``); one it does not is
+    named when its refusal's exit analyzes it as observational (``declared``), with what a sample
+    drawn by its outcome leaves out (B-211)."""
+    from turbotab.core.designs import DESIGNS, SAMPLED_BY_OUTCOME
+
+    declared = getattr(d, "declared", None)
+    if d.design == "observational" and declared in DESIGNS:
+        text = (f"The study design was declared: {DESIGNS[declared].label.lower()}. This version "
+                f"does not analyze that design yet, so the data were analyzed as an observational "
+                f"study")
+        if declared in SAMPLED_BY_OUTCOME:
+            text += (", with odds ratios only: no prevalence, absolute risk or risk difference was "
+                     "estimated and no risk predicted, because the cases and the controls were "
+                     "sampled separately")
+        return text + "."
     if d.design == "observational":
         return ("The study was declared observational: people were observed as they were, not "
                 "assigned or sampled by their outcome.")
-    from turbotab.core.designs import DESIGNS
-
     return f"The study design was declared: {DESIGNS[d.design].label.lower()}."
 
 

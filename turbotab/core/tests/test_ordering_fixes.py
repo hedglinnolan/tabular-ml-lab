@@ -85,20 +85,26 @@ def test_an_observational_answer_is_recorded_and_answers_the_question():
                                          ("repeated_measures_trial",
                                           "repeated_measures_trial_v2x")])
 def test_the_designs_deferred_to_v2x_are_named_values_refused_with_an_exit(design, code):
+    """Re-pinned (claims backtest B-211): the observational exit keeps the design declared, so
+    the methods name it as the refusal says they do."""
     error = refused({"kind": "set_design", "design": design})
     assert error.code == code
     assert error.message.startswith("Not available yet")
     assert "v2.x" in error.message
-    assert error.exits[0]["decision"] == {"kind": "set_design", "design": "observational"}
+    assert error.exits[0]["decision"] == {"kind": "set_design", "design": "observational",
+                                          "declared": design}
 
 
 @pytest.mark.parametrize("design", ["parallel_trial", "cluster_randomized_trial",
                                     "case_control", "matched_sets"])
 def test_the_designed_experiments_wait_for_their_milestone_with_an_exit(design):
+    """Re-pinned (claims backtest B-211): the observational exit keeps the design declared, so
+    the methods name it as the refusal says they do."""
     error = refused({"kind": "set_design", "design": design})
     assert error.code == "not_available_yet"
     assert error.message.startswith("Not available yet")
-    assert error.exits[0]["decision"] == {"kind": "set_design", "design": "observational"}
+    assert error.exits[0]["decision"] == {"kind": "set_design", "design": "observational",
+                                          "declared": design}
 
 
 @pytest.mark.parametrize("design", ["case_control", "matched_sets"])

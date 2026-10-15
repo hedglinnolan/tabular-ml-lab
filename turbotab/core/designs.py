@@ -51,6 +51,13 @@ _TRIALS_LATER = ("randomized trials are analyzed in the designed-experiments mil
                  "Until then the data can be analyzed as an observational study, and the methods "
                  "say so.")
 
+# A case-control sample or matched sets: drawn by the outcome, so how many cases the table holds is
+# set by the study (``methods/case_control.py``). Analyzed as observational (the refusal's first
+# exit), they keep its refusals under every goal (claims backtest B-211).
+SAMPLED_BY_OUTCOME = ("case_control", "matched_sets")
+_BY_OUTCOME = ("no prevalence, absolute risk or risk difference, and no risks predicted, since the "
+               "cases and the controls were sampled separately")
+
 DESIGNS: dict[str, Design] = {
     "observational": Design("observational", "Observed as they were", True),
     "parallel_trial": Design(
@@ -65,13 +72,14 @@ DESIGNS: dict[str, Design] = {
         "case_control", "Sampled by the outcome (case-control)", False, NOT_YET,
         f"{NOT_YET_LEAD}: a case-control sample is analyzed in the designed-experiments milestone "
         f"(no prevalence or absolute risk, conditional models for matched sets), which is not "
-        f"built yet. Until then the data can be analyzed as an observational study, and the "
-        f"methods say so."),
+        f"built yet. Until then the data can be analyzed as an observational study with odds "
+        f"ratios only ({_BY_OUTCOME}), and the methods name the design."),
     "matched_sets": Design(
         "matched_sets", "Matched sets", False, NOT_YET,
         f"{NOT_YET_LEAD}: matched sets are analyzed in the designed-experiments milestone "
         f"(conditional logistic regression within each set), which is not built yet. Until then "
-        f"the data can be analyzed as an observational study, and the methods say so."),
+        f"the data can be analyzed as an observational study with odds ratios only "
+        f"({_BY_OUTCOME}), and the methods name the design."),
     "crossover": Design(
         "crossover", "Crossover trial", False, "crossover_v2x",
         f"{NOT_YET_LEAD}: a crossover trial (each person in several periods and sequences) needs "
@@ -128,12 +136,14 @@ EFFECTS: dict[str, Effect] = {
 
 def design_refusal(decision: Any) -> tuple[str, str, list[dict[str, Any]]] | None:
     """Why a recorded design is refused (code, reason, exits), or None when this version analyzes
-    it. The first exit keeps the work: the data analyzed as an observational study."""
+    it. The first exit keeps the work: the data analyzed as an observational study, the design
+    declared kept beside it (``declared``), so the methods name it and a sample drawn by its
+    outcome keeps its refusals (:func:`sampled_by_outcome`)."""
     found = DESIGNS.get(str(getattr(decision, "design", None)))
     if found is None or found.available:
         return None
     exits = [{"label": "Analyze it as an observational study",
-              "decision": {"kind": "set_design", "design": OBSERVATIONAL}},
+              "decision": {"kind": "set_design", "design": OBSERVATIONAL, "declared": found.key}},
              {"label": "Keep the data as they are for a later version", "decision": None}]
     return str(found.code), str(found.reason), exits
 
@@ -153,5 +163,22 @@ def design_of(state: Any) -> str:
     return str(getattr(state, "design", None) or OBSERVATIONAL)
 
 
+def sampled_by_outcome(state: Any) -> str | None:
+    """The design declared when a case-control sample or matched sets are analyzed as an
+    observational study (the refusal's first exit), else None: the analysis keeps
+    ``methods/case_control.py``'s refusals of prevalence, absolute risk and a risk difference."""
+    declared = getattr(state, "design_declared", None)
+    if design_of(state) == OBSERVATIONAL and declared in SAMPLED_BY_OUTCOME:
+        return str(declared)
+    return None
+
+
+def sampling_of(design: str) -> str:
+    """``methods/case_control.py``'s sampling for a design drawn by its outcome: matched sets are
+    individually matched; a case-control sample is read as unmatched (its refusals are the same)."""
+    return "individually_matched" if design == "matched_sets" else "unmatched"
+
+
 __all__ = ["DESIGNS", "Design", "DesignKey", "EFFECTS", "Effect", "NOT_YET", "OBSERVATIONAL",
-           "OBSERVATIONAL_STATED", "design_of", "design_refusal", "effect_refusal"]
+           "OBSERVATIONAL_STATED", "SAMPLED_BY_OUTCOME", "design_of", "design_refusal",
+           "effect_refusal", "sampled_by_outcome", "sampling_of"]

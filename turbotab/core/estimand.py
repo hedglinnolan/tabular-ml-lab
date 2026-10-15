@@ -415,22 +415,40 @@ def _measure_reason(measure: str, prevalence: float | None) -> str:
 
 
 def measures_offered(task: str | None, family: bool = False,
-                     prevalence: float | None = None) -> list[dict[str, Any]]:
+                     prevalence: float | None = None, sampled: str | None = None
+                     ) -> list[dict[str, Any]]:
     """The effect measures the estimand question offers for ``task``, each with ruling 9's labels
     (a difference or a ratio; conditional or marginal; collapsible or not) and why, ranked: for a
     yes/no outcome whose event is common (``prevalence`` above 10%) the marginal risk difference and
     ratio first, else the model's conditional measure first. Another task's request for a marginal
-    measure is named and refused (:data:`NOT_FITTED`)."""
+    measure is named and refused (:data:`NOT_FITTED`). ``sampled``: a design drawn by its outcome
+    (``designs.sampled_by_outcome``), whose marginal measures are named and refused
+    (:func:`sampled_refusal`)."""
     fitted = fitted_measures(task, family)
+    refused: dict[str, str] = {}
+    if sampled and not family:
+        refused = {m: sampled_refusal(m, sampled) for m in fitted if m in MARGINAL}
+        fitted, prevalence = [m for m in fitted if m not in refused], None
     if marginal_first(task, prevalence) and not family:
         fitted = [m for m in fitted if m in MARGINAL] + [m for m in fitted if m not in MARGINAL]
     out = [{"measure": m, "label": MEASURE_LABELS[m], "fitted": True,
             "reason": _measure_reason(m, prevalence), **measure_facts(m), "rank": i + 1}
            for i, m in enumerate(fitted)]
     if not family and task is not None and task not in MARGINAL_TASKS:
-        out += [{"measure": m, "label": MEASURE_LABELS[m], "fitted": False, "reason": why,
-                 **measure_facts(m), "rank": None} for m, why in NOT_FITTED.items()]
+        refused = {**NOT_FITTED, **refused}
+    out += [{"measure": m, "label": MEASURE_LABELS[m], "fitted": False, "reason": why,
+             **measure_facts(m), "rank": None} for m, why in refused.items()]
     return out
+
+
+def sampled_refusal(measure: str, design: str) -> str:
+    """Why a marginal measure is refused for a sample drawn by its outcome, in
+    ``methods/case_control.py``'s words (its ``eligible``: absolute risk, under every goal)."""
+    from turbotab.core.designs import sampling_of
+    from turbotab.core.methods.case_control import eligible
+
+    said = eligible("estimate", sampling_of(design), "absolute_risk").says
+    return f"The {MEASURE_LABELS[measure]} is standardized from each row's risk. {said}"
 
 
 def precision_note(measure: str | None, columns: Sequence[str], *, methods: bool = False) -> str | None:
@@ -1165,9 +1183,16 @@ def estimand_card(state: Any, task: str | None, prevalence: float | None = None,
     """What the estimand question offers: the exposure candidates, the effects, the contrast for an
     energy-bearing exposure, and the measures ruling 9 labels (difference or ratio; conditional or
     marginal), ranked by the outcome's ``prevalence`` (the event's share) for a yes/no outcome.
-    ``nested``: the values' reading of the parts inside their totals (:func:`values_nesting`)."""
+    ``nested``: the values' reading of the parts inside their totals (:func:`values_nesting`). A
+    sample drawn by its outcome (``designs.sampled_by_outcome``) has no prevalence: its case share
+    was set by the study, so it ranks nothing and the marginal measures are refused."""
     if _get(state, "purpose") != "inference" or _get(state, "roles") is None:
         return None
+    from turbotab.core.designs import sampled_by_outcome
+
+    sampled = sampled_by_outcome(state)
+    if sampled:
+        prevalence = None
     candidates = exposure_candidates(state)
     family = family_exposures(state)
     # The routing gate (p16): a predictor whose role rode along unconfirmed is not offered as the
@@ -1213,7 +1238,7 @@ def estimand_card(state: Any, task: str | None, prevalence: float | None = None,
              "consequence": swapped or "More of it in place of other calories, total energy held fixed."},
             {"contrast": "addition", "label": "Addition",
              "consequence": "Its calories added on top, every other source held fixed."}],
-        "measures": measures_offered(task, prevalence=prevalence),
+        "measures": measures_offered(task, prevalence=prevalence, sampled=sampled),
         "prevalence": prevalence,
     }
 
@@ -1977,6 +2002,13 @@ def _estimand_measure_is_fitted(decision: Any, ctx: Any) -> None:
             f"Several study factors are reported by the feature-wise family, which fits a numeric or "
             f"yes/no outcome, not a {str(task).replace('_', ' ')} one; name one study factor.",
             [{"label": "Name one study factor", "decision": None}])
+    from turbotab.core.designs import sampled_by_outcome
+
+    sampled = sampled_by_outcome(state)
+    if sampled and decision.measure in MARGINAL and not decision.family:
+        raise _refusal("measure_case_control", sampled_refusal(decision.measure, sampled),
+                       [{"label": f"Report the {MEASURE_LABELS['odds_ratio']}",
+                         "decision": decision.model_copy(update={"measure": "odds_ratio"})}])
     if task and decision.measure in fitted_measures(task, decision.family):
         return
     if decision.measure in NOT_FITTED and not (task in MARGINAL_TASKS and not decision.family):
