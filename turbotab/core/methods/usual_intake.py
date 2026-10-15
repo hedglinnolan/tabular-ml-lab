@@ -1287,12 +1287,30 @@ def variance_phrase(replication: Replication | None, n_ok: int, weight: str | No
 # probability approach, not the EAR cut-point method, is recommended").
 DRI_GROUP = "DRI life-stage group (age band, sex, pregnancy and lactation status)"
 
+# What a UL covers where it is not total intake, by the nutrient the component's name reads as
+# (``turbotab.core.usual_intake.ul_form``, which quotes the IOM DRI tables' footnotes; claims
+# backtest BX-040), with the DRI report that set it. Every other UL covers intake from food, water
+# and supplements (Institute of Medicine 2000, the report on dietary assessment cited above).
+UL_FORMS = {
+    "magnesium": ("magnesium from supplements and medicines only, not from food or water",
+                  "Institute of Medicine 1997"),
+    "folate": ("folic acid from supplements and fortified foods only, not folate that occurs in "
+               "food", "Institute of Medicine 1998"),
+    "niacin": ("niacin from supplements and fortified foods only", "Institute of Medicine 1998"),
+    "vitamin E": ("alpha-tocopherol from supplements and fortified foods only, not vitamin E that "
+                  "occurs in food", "Institute of Medicine 2000"),
+    "vitamin A": ("preformed vitamin A (retinol) only, not provitamin A carotenoids",
+                  "Institute of Medicine 2001"),
+}
+
 
 def share_phrase(cutoff: float | None, kind: CutoffKind | None, *, ear_for_all: bool = False,
-                 iron: bool = False) -> str:
+                 iron: bool = False, ul_form: str | None = None) -> str:
     """The share's sentence. Below an EAR it is the prevalence of inadequacy only when the cut-off
     was answered as the EAR of every participant's DRI group (``ear_for_all``); for iron the answer
-    that its requirement is symmetric here (no menstruating women) is stated with it."""
+    that its requirement is symmetric here (no menstruating women) is stated with it. Above a UL it
+    says what the UL covers: one form only for ``ul_form``'s nutrient (:data:`UL_FORMS`), or every
+    source, so that a share from foods alone is a lower bound."""
     if cutoff is None:
         return ""
     value = _number(cutoff)
@@ -1306,9 +1324,15 @@ def share_phrase(cutoff: float | None, kind: CutoffKind | None, *, ear_for_all: 
         return (f" The share below the EAR ({value}) is reported as a share of the distribution, not "
                 f"a prevalence of inadequacy: an EAR is the median requirement of one {DRI_GROUP}, "
                 f"and that it is the EAR of every participant's group was not answered ({IOM_2000}).")
+    if kind == "UL" and ul_form in UL_FORMS:
+        covers, source = UL_FORMS[ul_form]
+        return (f" The share above the UL ({value}) is reported as a share of the distribution: the "
+                f"UL for {ul_form} covers {covers} ({source}), so it is a share at risk of excess "
+                f"only where these intakes are that form alone, supplements included.")
     if kind == "UL":
-        return (f" The share above the UL ({value}) is read as a share at risk of excess only if "
-                f"the recalls include supplements, since the UL applies to total intake.")
+        return (f" The share above the UL ({value}) is a share at risk of excess where the recalls "
+                f"include supplements, the UL covering intake from food, water and supplements "
+                f"({IOM_2000}); from foods alone it is a lower bound on that share.")
     return f" The share below {value} is reported as a share of the distribution, not a prevalence of inadequacy."
 
 
@@ -1318,7 +1342,7 @@ def methods_sentence(*, label: str, model: Model, names: Sequence[str], lam: flo
                      replication: Replication | None, n_ok: int, cutoff: float | None,
                      cutoff_kind: CutoffKind | None, rho: float | None = None,
                      attestation: str | None = None, ear_for_all: bool = False,
-                     iron: bool = False) -> str:
+                     iron: bool = False, ul_form: str | None = None) -> str:
     """The methods sentence: the model, the transform, the covariates, the variance method."""
     head = (f"Usual intake of `{label}` was estimated by the NCI method ({TOOZE_2006}; {TOOZE_2010}) "
             f"from 24-hour recalls of {n_persons:,} participants ({days_phrase(recalls)}; "
@@ -1350,9 +1374,10 @@ def methods_sentence(*, label: str, model: Model, names: Sequence[str], lam: flo
         whom = "the whole population"
         if model == "two_part":
             whom += f", everyone taken to consume it on some days ({KIPNIS_2009})"
+    share = share_phrase(cutoff, cutoff_kind, ear_for_all=ear_for_all, iron=iron, ul_form=ul_form)
     sentence = (f"{head}{body}; the distribution was {reference_phrase(names)}{integrate}, and "
                 f"describes {whom}. {variance_phrase(replication, n_ok, weight, cutoff is not None)}"
-                f"{share_phrase(cutoff, cutoff_kind, ear_for_all=ear_for_all, iron=iron)}")
+                f"{share}")
     if attestation:
         sentence += f" Survey design: {attestation}."
     return sentence

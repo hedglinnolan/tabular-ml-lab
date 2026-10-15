@@ -239,6 +239,46 @@ def reads_as_iron(nutrient: str, days: Sequence[str] = ()) -> bool:
     return False
 
 
+# The nutrients whose Tolerable Upper Intake Level covers one form only, by the nutrient a name
+# reads as (claims backtest BX-040). The IOM DRI summary tables' footnotes: magnesium's "represent
+# intake from a pharmacological agent only and do not include intake from food and water"; vitamin
+# A's "As preformed vitamin A only"; vitamin E's "applies to any form of supplemental α-tocopherol";
+# and "The ULs for vitamin E, niacin, and folate apply to synthetic forms obtained from supplements,
+# fortified foods, or a combination of the two." Every other UL covers food, water and supplements.
+UL_FORM_NUTRIENTS = {"magnesium": "magnesium", "folate": "folate", "folic acid": "folate",
+                     "folic": "folate", "food folate": "folate", "folate DFE": "folate",
+                     "niacin": "niacin", "vitamin E": "vitamin E", "added vitamin E": "vitamin E",
+                     "tocopherol": "vitamin E", "vite": "vitamin E", "vitamin A": "vitamin A",
+                     "retinol": "vitamin A", "vita": "vitamin A"}
+# A name the reader leaves unread for its food word (``food_folate_ug``) still names the nutrient.
+_UL_FORM_WORDS = {"magnesium": "magnesium", "folate": "folate", "folic": "folate",
+                  "niacin": "niacin", "tocopherol": "vitamin E", "retinol": "vitamin A"}
+
+
+def ul_form(nutrient: str, days: Sequence[str] = ()) -> str | None:
+    """The nutrient whose UL covers one form only (:data:`UL_FORM_NUTRIENTS`) that the component's
+    name (or a recall day's) reads as, or None: a proposal from the name, as :func:`reads_as_iron`
+    reads iron, used only to word the share above a UL, never to change a number. A bare
+    ``vitamin`` takes the letter beside it (``vitamin_e_mg``, ``vit_a``)."""
+    from turbotab.core.recognizers import AmbiguousNutrient, read_nutrient, tokens
+
+    for name in [nutrient, *days]:
+        try:
+            reading = read_nutrient(name)
+        except AmbiguousNutrient:
+            continue
+        words = tokens(name)
+        if reading is None:
+            found = next((_UL_FORM_WORDS[w] for w in words if w in _UL_FORM_WORDS), None)
+        elif reading.nutrient in ("vitamin", "vit"):
+            found = "vitamin E" if "e" in words else "vitamin A" if "a" in words else None
+        else:
+            found = UL_FORM_NUTRIENTS.get(reading.nutrient)
+        if found is not None:
+            return found
+    return None
+
+
 def iron_exits(nutrient: str, spec: Any) -> list[dict[str, Any]]:
     return [*cutoff_exits(nutrient, spec),
             {"label": "No participant is a menstruating woman: keep the EAR cut-point",
@@ -569,5 +609,5 @@ __all__ = ["ASSOCIATION", "ASSUMPTIONS", "CONTRACT", "EAR_CONDITIONS", "EAR_RANG
            "ENERGY_NO_EAR", "EPISODIC_SHARE", "ESTIMAND", "IRON_SKEWED", "LONELY_PSU",
            "MIN_REPEATERS", "NOT_DIETARY", "NO_RECALL_DAYS", "POPULATION_QUESTION", "PREDICTION",
            "REPEATS_UNSETTLED", "SURVEY_UNANSWERED", "TIME_POINTS", "TOO_FEW_REPEATS",
-           "TWO_PART_ASSUMPTION", "answer", "cutoff_exits", "day_columns", "ear_exits",
-           "iron_exits", "leave_out", "reads_as_iron", "suggested_model"]
+           "TWO_PART_ASSUMPTION", "UL_FORM_NUTRIENTS", "answer", "cutoff_exits", "day_columns",
+           "ear_exits", "iron_exits", "leave_out", "reads_as_iron", "suggested_model", "ul_form"]
