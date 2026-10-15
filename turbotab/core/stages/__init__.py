@@ -874,7 +874,9 @@ def build_graph() -> Graph:
             # inference shows no cross-validated score (only a declared selection sensitivity).
             # explore 2 (EXPLORE repair): a group column's groups are its code-or-amount reading's
             # (BLUEPRINT §14.3), asked while unsettled.
-            Stage("explore", 2, ("working", "cohort", "split", "target_info"),
+            # explore 3 (claims backtest C-170): under Predict the collinear lever keeps both of a
+            # pair, its "Keep both" leaving a selection it did not make as it is.
+            Stage("explore", 3, ("working", "cohort", "split", "target_info"),
                   (*EXPLORE_READS, *ROLE_READS, *WP17_READS), explore_stage, heavy=True,
                   requires=("target", "split"), label="Exploring the rows Explore may read"),
             # evaluation 2 (wave 2b integration): the seal's opening left its reads, as nothing it
