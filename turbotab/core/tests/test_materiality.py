@@ -478,6 +478,62 @@ def test_the_screen_counts_as_done_only_with_an_analysis_on_the_rows_without_it(
     assert "without the screen" in M.reporters_noticing(state, frame, kept, without).done
 
 
+def test_a_narrow_screen_whose_leavers_misreport_what_you_study_is_never_called_below_noise():
+    """Claims backtest A-124: rows × SMD on what the model adjusts for is an outcome-blind
+    screening convention, not a predictor of how far the estimate moves. A correctly specified
+    coefficient is not moved by the leavers' imbalance on what is adjusted for; it is moved by
+    what they report of what you study. Known truth: 4 of 10,000 people over-report energy
+    (5,500–9,000 kcal) and record twice the usual share of it as sugar, while their glucose
+    follows what they ate. The 500–5,000 kcal screen removes them, rows × SMD (by hand, pooled SD)
+    is below the committed cut-off of 0.0037, and yet keeping them moves sugar's coefficient by
+    more than half its half-width (least squares by NumPy, a t interval). So the screen may say
+    "could bias", never "doesn't change your numbers here"."""
+    from scipy import stats
+
+    rng = np.random.default_rng(0)
+    n = 10_000
+    age = rng.normal(50, 12, n)
+    kcal = rng.normal(2100, 550, n).clip(600, 4800)
+    sugar = 0.04 * kcal + rng.normal(0, 25, n)
+    glucose = 90 + 0.10 * sugar + 0.3 * age + rng.normal(0, 12, n)
+    over = rng.choice(n, 4, replace=False)
+    kcal[over] = rng.uniform(5500, 9000, 4)
+    sugar[over] = 0.08 * kcal[over]
+    frame = pd.DataFrame({"SEQN": range(n), "sugar": sugar, "age": age, "kcal": kcal,
+                          "glucose": glucose})
+    leaving = (kcal < 500) | (kcal > 5000)
+    assert leaving.sum() == 4
+
+    def d(x):
+        a, b = x[leaving], x[~leaving]
+        return abs(a.mean() - b.mean()) / math.sqrt((a.var(ddof=1) + b.var(ddof=1)) / 2)
+
+    proxy = leaving.mean() * max(d(age), d(kcal))
+    assert proxy < 0.0037  # narrower than the committed band-1 cut-off
+
+    def sugar_fit(keep):
+        X = np.column_stack([np.ones(keep.sum()), sugar[keep], age[keep], kcal[keep]])
+        y = glucose[keep]
+        beta = np.linalg.lstsq(X, y, rcond=None)[0]
+        e = y - X @ beta
+        df = len(y) - X.shape[1]
+        se = math.sqrt(np.linalg.inv(X.T @ X)[1, 1] * (e @ e) / df)
+        return beta[1], stats.t.ppf(0.975, df) * se
+
+    est, half = sugar_fit(~leaving)
+    every, _ = sugar_fit(np.ones(n, dtype=bool))
+    assert abs(every - est) / half > 0.5  # the truth: keeping every row is "act on it"
+
+    state = planned(roles={**ROLES_KCAL}, exclusions=[KCAL_RULE])
+    kept = np.flatnonzero(~leaving)
+    noticed = M.reporters_noticing(state, frame, kept, np.arange(n))
+    assert noticed.predicted.value == pytest.approx(proxy, rel=1e-9)
+    assert noticed.predicted.band >= 1 and not noticed.predicted.calibrated
+    disposition, reason, _owed = M.recommend(noticed)
+    assert disposition != "no_change"
+    assert "below what would move" not in reason
+
+
 def test_the_recall_days_are_read_from_the_exposures_own_units():
     frame = pd.DataFrame({"SEQN": range(4), "sugar": [1.0, 2, 3, 4], "kcal": [1.0, 2, 3, 4]})
     units = {"sugar": decisions.ColumnUnitSpec(unit="g", days=1)}
