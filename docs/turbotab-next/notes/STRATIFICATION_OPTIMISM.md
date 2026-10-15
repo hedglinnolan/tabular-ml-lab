@@ -125,8 +125,15 @@ spread is √(p(1 − p))·|logit p|, 0.39 nats at p = 0.3 and 0.66 at p = 0.1):
 | 21,849 (NHANES) | 0.00005 | 0.007% | 0.014% | 0.017 | 0.010 |
 
 So it is negligible at NHANES's size and about 1% of the entropy at n = 200, where it is still under
-a fifth of a standard error. It is below the app's smallest meaningful gain (`baseline.MIN_GAIN`,
-0.01 nats) at every n above 100, and an order smaller from n = 1,000.
+a fifth of a standard error. The app's floor on a log-loss gain over the baseline is 1% of the
+baseline's own cross-validated log loss (`baseline.min_gain`; a McFadden R² of 0.01), which for the
+class prior is about 1% of H. The term is that size or larger up to n = 100/H, where the table's
+share of H reaches 1%: about 160 rows at p = 0.3 and 300 at p = 0.1, more for a rarer outcome.
+At n = 1,000 it is a sixth of the floor at p = 0.3 and a third at p = 0.1. That matters only to an
+unpaired reading, a cross-validated log loss set against fresh-data truth, as T1's was (§6). The
+verdict against the baseline reads the paired gain on the same folds, where the term cancels under
+the null and with signal understates the gain by at most (1 − ρ_f)/n (§7), so it can withhold a
+"better" verdict at small n, never grant one.
 
 ## 6 · What it did to T1, and the redesign
 
@@ -146,10 +153,11 @@ T1 compared each procedure's cross-validated log loss with fresh-data truth at n
   absorbs much of the sample's label noise. Under the signal its ρ is the truth's (0.821); a model
   that shrinks toward the base rate has ρ between that and 1 (N's: 0.91, which the test reports), so
   the residual (ρ_N − 0.821)/n, at most 0.0009, makes (b) and (c) conservative.
-- **α = 0.05** one-sided for each; **δ = 0.005 nats**, half of `baseline.MIN_GAIN`: a residual
-  optimism below it cannot carry a family with no real gain past the smallest gain the app calls
-  meaningful. The flat leak here is of the same size, so (b) alone cannot tell nested from flat;
-  (a) does, with a paired standard deviation 3 to 5 times smaller.
+- **α = 0.05** one-sided for each; **δ = 0.005 nats** (`baseline.MIN_GAIN / 2`), under the app's
+  log-loss floor at T1's 30% event rate, 1% of H(0.3) = 0.0061 nats: a residual optimism below δ
+  cannot carry a family with no real gain past the floor. The flat leak here is of the same size,
+  so (b) alone cannot tell nested from flat; (a) does, with a paired standard deviation 3 to 5
+  times smaller.
 
 **Power** (normal approximation; per-dataset standard deviations from a pilot on T1's first 40
 datasets per generator; effects as observed in the 200-dataset run, or the value a correct
@@ -199,9 +207,10 @@ sentence, not a small-sample note.
    gain over the baseline is untouched; with signal the model carries ρ_f/n ≤ 1/n, so the gain is
    understated by at most (1 − ρ_f)/n, the conservative side.
 2. **It is small where it does not cancel.** Under a fifth of a standard error at n = 200, under a
-   tenth from n = 1,000, and well under `MIN_GAIN` everywhere the app fits boosted trees with a
-   search. A sentence about it would be an element that earns no place (BLUEPRINT's bar), and
-   "calm over complete" applies.
+   tenth from n = 1,000, and under a quarter of the log-loss floor (1% of the baseline's loss)
+   everywhere the app fits boosted trees with a search: a rarer class of 300 or more makes
+   1/n ≤ min(p, 1 − p)/300, at most 0.24 of 0.01·H(p), at p = 0.5. A sentence about it would be
+   an element that earns no place (BLUEPRINT's bar), and "calm over complete" applies.
 3. **The remedies cost more than the bias.** Unstratified folds remove it but add fold-to-fold
    variance and, for rare outcomes, folds without events, which the inner-fold floor (§4.2) and the
    per-class metrics need. A +ρ/n correction would need ρ_f, which depends on the model and the
