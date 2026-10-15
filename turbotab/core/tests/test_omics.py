@@ -136,6 +136,32 @@ def test_lc_ms_peak_areas_are_never_read_as_estimated_counts(seed):
     assert reading is not None and reading.kind == "intensities", reading
 
 
+def _with_ferritin(frame: pd.DataFrame) -> pd.DataFrame:
+    """``frame`` with one clinical column beside its assay block: serum ferritin in ng/mL,
+    log-normal, one participant at 0 and one in iron overload at 4,452."""
+    ferritin = np.round(np.random.default_rng(193).lognormal(4.5, 0.9, len(frame)), 1)
+    ferritin[:2] = (0.0, 4452.0)
+    return frame.assign(serum_ferritin=ferritin)
+
+
+@pytest.mark.parametrize("name", ["genomics_vst.csv", "genomics_microarray.csv",
+                                  "metabolomics_untargeted.csv", "metabolomics_paired_logged.csv"])
+def test_one_clinical_column_does_not_make_a_block_read_as_estimated_counts(name):
+    """Claims backtest C-193, review: the estimated-counts test read its zero and its thousands over
+    every fractional column at once, so one clinical column beside a normalized block (serum
+    ferritin, with a 0 and a 4,452) made all of it "FPKM or estimated counts" under the genomics
+    lens, and the linear families waited on a normalization the block never needed. Known truth: VST
+    and microarray values are normalized by construction, and LC-MS peak areas count no reads; a
+    transcript quantification's zeros and thousands sit in many genes (the estimated-counts fixture:
+    a zero in 282 columns, 21 reaching 1,000), so ferritin beside it changes nothing."""
+    table = pd.read_csv(SAMPLES / name)
+    assert omics.scale_reading(table, ["genomics"]) is None
+    assert omics.scale_reading(_with_ferritin(table), ["genomics"]) is None
+    estimated = _with_ferritin(pd.read_csv(SAMPLES / "genomics_estimated_counts.csv"))
+    reading = omics.scale_reading(estimated, ["genomics"])
+    assert reading is not None and reading.kind == "counts" and reading.estimated, reading
+
+
 def test_genotype_dosages_and_two_level_columns_are_not_counts():
     rng = np.random.default_rng(0)
     frame = pd.DataFrame(rng.integers(0, 3, (80, 40)), columns=[f"rs{i}" for i in range(40)])
