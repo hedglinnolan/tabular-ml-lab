@@ -16,11 +16,12 @@ soundest first:
   complement running the lasso path to its first q variables; a predictor is kept when its
   selection proportion over the 2B halves is at least τ. The path leaves off only a column that is
   an exact ± copy of one other column (a two-level category's twin, or a copied predictor), which
-  leaves the lasso unchanged; a category of three or more levels is read whole, and a kept column
-  keeps its whole term. With q chosen so that Meinshausen & Bühlmann's bound q²/((2τ − 1)p) on the
-  expected number of false selections is one (p: the columns the path reads; Shah & Samworth show
-  complementary pairs keep the bound, under the same exchangeability assumption), it "controls
-  false selections, not prediction error" (the review's label);
+  leaves the lasso unchanged; a category of three or more levels is read whole (a half's path reads
+  it less its last level only where all its levels tie, as levels in equal counts can), and a kept
+  column keeps its whole term. With q chosen so that Meinshausen & Bühlmann's bound
+  q²/((2τ − 1)p) on the expected number of false selections is one (p: the columns the path reads;
+  Shah & Samworth show complementary pairs keep the bound, under the same exchangeability
+  assumption), it "controls false selections, not prediction error" (the review's label);
 * **in-fold screening** at p ≫ n — the m predictors most correlated with the outcome on the fold
   (m = ⌊n / ln n⌋ by default; Fan & Lv's sure independence screening, JRSS B 2008;70:849);
 * **customary options, ranked lower, with their instability stated**: backward elimination by AIC
@@ -61,7 +62,8 @@ STABILITY_TAU = 0.6  # the lower end of Meinshausen & Bühlmann's (0.6, 0.9)
 STABILITY_PAIRS = 50  # Shah & Samworth's B
 EXPECTED_FALSE = 1.0  # the error bound q is chosen for
 COLLINEAR_TOL = 1e-8  # a share below which a part is rounding (rounding leaves about 10⁻¹⁵):
-# 1 − |cos| between copies, a column's part outside the others, a tied step of the lasso's penalty
+# 1 − |cos| between copies, a column's part outside the others, a coding's shortfall from the
+# residual's largest correlation
 VIP_COMPONENTS = 2
 INFERENCE_ALPHA = 0.157  # Heinze et al. 2018: AIC's equivalent significance level
 SOURCES = {
@@ -281,9 +283,12 @@ def _outside_span(Z: np.ndarray, columns: Sequence[int]) -> list[int]:
     return cols
 
 
-def path_columns(Z: np.ndarray, groups: Sequence[Sequence[int]]) -> tuple[np.ndarray, np.ndarray]:
-    """(path, spare): the columns of ``Z`` the lasso path reads, and those of them (positions in
-    ``path``) a half's path leaves off only where it ties (:func:`lasso_first`).
+def path_columns(Z: np.ndarray, groups: Sequence[Sequence[int]]
+                 ) -> tuple[np.ndarray, list[tuple[list[int], list[int]]]]:
+    """(path, codings): the columns of ``Z`` the lasso path reads, and each term whose columns on
+    the path are dependent (a full coding of three or more levels), as (its columns, its spare
+    ones) by position in ``path``; a half's path leaves the spare ones off only where the coding's
+    own levels tie (:func:`lasso_first`).
 
     The path leaves off a column only when it is an exact ± copy of one earlier column it reads
     (|cos| ≥ 1 − :data:`COLLINEAR_TOL`): a two-level category's twin, whose indicators sum to one
@@ -298,10 +303,10 @@ def path_columns(Z: np.ndarray, groups: Sequence[Sequence[int]]) -> tuple[np.nda
     rounding (LARS calls a pivot under 10⁻⁷ degenerate) at a cost linear in the columns. A
     dependence on the fold's rows holds on every half of them, so it is found once, on the fold.
 
-    ``spare``: within each term, each column the path reads that is an exact combination of the
-    term's earlier ones (a full coding's last level). LARS can tie on such a coding where the
-    lasso's split of the category among its levels is not unique, as when levels in exactly equal
-    counts split two up and two down."""
+    A term's spare columns are those the path reads that are exact combinations of the term's
+    earlier ones (a full coding's last level). LARS can tie on such a coding where the lasso's split
+    of the category among its levels is not unique, as when levels in exactly equal counts split two
+    up and two down."""
     norms = np.linalg.norm(Z, axis=0)
     U = Z / np.where(norms > 0, norms, 1.0)
     copies: set[int] = set()
@@ -322,43 +327,68 @@ def path_columns(Z: np.ndarray, groups: Sequence[Sequence[int]]) -> tuple[np.nda
                 copies.add(b)
     path = [j for j in rest.tolist() if j not in copies]
     at = {j: i for i, j in enumerate(path)}
-    spare: list[int] = []
+    codings: list[tuple[list[int], list[int]]] = []
     for g in groups:
         read = sorted(j for j in g if j in at)
-        if len(read) > 1:
-            spare += [at[j] for j in set(read) - set(_outside_span(Z, read))]
-    return np.asarray(path, dtype=int), np.asarray(sorted(spare), dtype=int)
+        spare = sorted(set(read) - set(_outside_span(Z, read))) if len(read) > 1 else []
+        if spare:
+            codings.append(([at[j] for j in read], [at[j] for j in spare]))
+    return np.asarray(path, dtype=int), codings
 
 
-def lasso_first(Z: np.ndarray, y: np.ndarray, q: int, spare: Sequence[int] = ()) -> np.ndarray:
+def lasso_first(Z: np.ndarray, y: np.ndarray, q: int,
+                codings: Sequence[tuple[Sequence[int], Sequence[int]]] = ()) -> np.ndarray:
     """The first ``q`` variables to enter the lasso path (least squares on the outcome as numbers;
     the yes/no outcome as 0/1), as Shah & Samworth's base procedure takes them: the active set at
     the first knot of the LARS–lasso path where at least ``q`` are nonzero. ``Z`` holds no exact
-    copies (:func:`path_columns`). Where the path ties on the way (scikit-learn warns, or the
-    penalty takes a step under :data:`COLLINEAR_TOL` of its start) and ``spare`` names columns,
-    the path is run again without them, and they are not chosen."""
+    copies (:func:`path_columns`).
+
+    A full coding ties (``codings``: each one's columns and its spare ones) where, at a knot before
+    the q-th variable enters, every one of its columns is as correlated with the residual as the
+    most correlated column, short of it by under :data:`COLLINEAR_TOL`: its levels then enter
+    together, which LARS cannot take, and the lasso's split of the category among them is not
+    unique. The path is run again without that coding's spare columns, which are not chosen. A tie
+    of any other kind (two columns equal on these rows, the path stopping early) is the full path's
+    own: its first q are kept, and its warnings passed on unchanged."""
     import warnings
 
-    from sklearn.exceptions import ConvergenceWarning
     from sklearn.linear_model import lars_path
 
     yc = y - y.mean()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        alphas, _, coefs = lars_path(Z, yc, method="lasso", max_iter=max(4 * q, 50))
-    knot = next((j for j in range(coefs.shape[1]) if np.count_nonzero(coefs[:, j]) >= q),
-                coefs.shape[1] - 1)
-    steps = -np.diff(alphas[: knot + 1])
-    tied = (any(issubclass(w.category, ConvergenceWarning) for w in caught)
-            or bool(steps.size and steps.min() <= COLLINEAR_TOL * alphas[0]))
-    if tied and len(spare):
-        rest = np.setdiff1d(np.arange(Z.shape[1]), np.asarray(spare, dtype=int))
+        _, _, coefs = lars_path(Z, yc, method="lasso", max_iter=max(4 * q, 50))
+    count = np.count_nonzero(coefs, axis=0)
+    knot = next((j for j in range(coefs.shape[1]) if count[j] >= q), coefs.shape[1] - 1)
+    tied = _tied(Z, yc, coefs[:, : knot + int(count[knot] < q)], codings)
+    if tied:
+        rest = np.setdiff1d(np.arange(Z.shape[1]), [j for t in tied for j in codings[t][1]])
+        at = {j: i for i, j in enumerate(rest.tolist())}
+        others = [([at[j] for j in c], [at[j] for j in sp]) for t, (c, sp) in enumerate(codings)
+                  if t not in tied]
         chosen = np.zeros(Z.shape[1], dtype=bool)
-        chosen[rest] = lasso_first(Z[:, rest], y, q)
+        chosen[rest] = lasso_first(Z[:, rest], y, q, others)
         return chosen
     for w in caught:
         warnings.warn_explicit(w.message, w.category, w.filename, w.lineno)
     return coefs[:, knot] != 0
+
+
+def _tied(Z: np.ndarray, yc: np.ndarray, coefs: np.ndarray,
+          codings: Sequence[tuple[Sequence[int], Sequence[int]]]) -> list[int]:
+    """The codings (positions in ``codings``) whose columns are all at the largest correlation with
+    the residual at the earliest knot of ``coefs`` where any is (:func:`lasso_first`); a knot whose
+    residual is rounding is passed over."""
+    if not codings or not coefs.shape[1]:
+        return []
+    corr = np.abs(Z.T @ (yc[:, None] - Z @ coefs))
+    top = corr.max(axis=0)
+    for k in np.flatnonzero(top > COLLINEAR_TOL * top[0]):
+        tied = [t for t, (c, _) in enumerate(codings)
+                if np.all(corr[list(c), k] >= (1 - COLLINEAR_TOL) * top[k])]
+        if tied:
+            return tied
+    return []
 
 
 def stability_q(p: int, tau: float, expected_false: float = EXPECTED_FALSE) -> int:
@@ -373,17 +403,18 @@ def stability_bound(q: int, tau: float, p: int) -> float:
 
 
 def complementary_pairs(Z: np.ndarray, y: np.ndarray, *, q: int, pairs: int,
-                        rng: np.random.Generator, spare: Sequence[int] = ()) -> np.ndarray:
+                        rng: np.random.Generator,
+                        codings: Sequence[tuple[Sequence[int], Sequence[int]]] = ()) -> np.ndarray:
     """Each column's selection proportion over 2B complementary halves (module docstring). Half b
-    is ``rng.permutation(n)[:⌊n/2⌋]`` and its complement the next ⌊n/2⌋ positions; ``spare`` as
-    :func:`lasso_first` takes it."""
+    is ``rng.permutation(n)[:⌊n/2⌋]`` and its complement the next ⌊n/2⌋ positions; ``codings`` as
+    :func:`lasso_first` takes them."""
     n, p = Z.shape
     half = n // 2
     counts = np.zeros(p)
     for _ in range(int(pairs)):
         order = rng.permutation(n)
         for rows in (order[:half], order[half: 2 * half]):
-            counts += lasso_first(Z[rows], y[rows], q, spare)
+            counts += lasso_first(Z[rows], y[rows], q, codings)
     return counts / (2.0 * pairs)
 
 
@@ -496,7 +527,7 @@ class Selector(TransformerMixin, BaseEstimator):
         if m == "stability":
             # the path reads every column but an exact copy of another; a column left off it has
             # no proportion (NaN) and its term is kept through its kept columns
-            path, spare = path_columns(Z, groups)
+            path, codings = path_columns(Z, groups)
             tau = float(self.threshold or STABILITY_TAU)
             q = int(self.q or stability_q(len(path), tau))
             self.q_ = min(q, len(path))
@@ -504,7 +535,7 @@ class Selector(TransformerMixin, BaseEstimator):
             freq = np.full(p, np.nan)
             freq[path] = complementary_pairs(Z[:, path], y, q=self.q_, pairs=int(self.pairs),
                                              rng=np.random.default_rng(int(self.seed)),
-                                             spare=spare)
+                                             codings=codings)
             self.frequencies_ = freq
             return lifted(freq >= tau)
         if m == "stepwise":
