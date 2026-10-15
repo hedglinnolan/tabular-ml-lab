@@ -14,10 +14,13 @@ soundest first:
 * **stability selection**, *for a short reproducible panel*, ranked after the elastic net:
   complementary pairs (Shah & Samworth, JRSS B 2013;75:55), each of B random halves and its
   complement running the lasso path to its first q variables; a predictor is kept when its
-  selection proportion over the 2B halves is at least τ. With q chosen so that Meinshausen &
-  Bühlmann's bound q²/((2τ − 1)p) on the expected number of false selections is one (which Shah &
-  Samworth show complementary pairs keep, under the same exchangeability assumption), it "controls
-  false selections, not prediction error" (the review's label);
+  selection proportion over the 2B halves is at least τ. The path reads only the columns that are
+  not exact combinations of others (a category in full coding loses its last level's column, which
+  for two levels leaves the lasso unchanged), and a kept column keeps its whole term. With q chosen
+  so that Meinshausen & Bühlmann's bound q²/((2τ − 1)p) on the expected number of false selections
+  is one (p: the columns the path reads; Shah & Samworth show complementary pairs keep the bound,
+  under the same exchangeability assumption), it "controls false selections, not prediction
+  error" (the review's label);
 * **in-fold screening** at p ≫ n — the m predictors most correlated with the outcome on the fold
   (m = ⌊n / ln n⌋ by default; Fan & Lv's sure independence screening, JRSS B 2008;70:849);
 * **customary options, ranked lower, with their instability stated**: backward elimination by AIC
@@ -57,6 +60,8 @@ UNIVARIABLE_P = 0.25  # Hosmer, Lemeshow & Sturdivant 2013, §4.2
 STABILITY_TAU = 0.6  # the lower end of Meinshausen & Bühlmann's (0.6, 0.9)
 STABILITY_PAIRS = 50  # Shah & Samworth's B
 EXPECTED_FALSE = 1.0  # the error bound q is chosen for
+COLLINEAR_TOL = 1e-8  # a column's part outside the others, of its length, below which it is exact
+# collinearity (rounding leaves about 10⁻¹⁵ of it)
 VIP_COMPONENTS = 2
 INFERENCE_ALPHA = 0.157  # Heinze et al. 2018: AIC's equivalent significance level
 SOURCES = {
@@ -261,10 +266,41 @@ def pls_vip(Z: np.ndarray, y: np.ndarray, components: int = VIP_COMPONENTS) -> n
     return np.sqrt(p * (S_[:, None] * W_ ** 2).sum(axis=0) / S_.sum())
 
 
+def _outside_span(Z: np.ndarray, columns: Sequence[int]) -> list[int]:
+    """``columns`` in order, less each that is an exact linear combination of those kept before it:
+    the first column whose QR pivot (its part outside the earlier columns, unpivoted, so the
+    earlier column always stays) is below :data:`COLLINEAR_TOL` of its length is dropped, and the
+    rest refactored. With as many columns as rows or more, centered columns are dependent whatever
+    they hold, and none is dropped."""
+    cols = list(columns)
+    if len(cols) >= Z.shape[0]:
+        return cols
+    while len(cols) > 1:
+        pivots = np.abs(np.diag(np.linalg.qr(Z[:, cols], mode="r")))
+        low = np.flatnonzero(pivots <= COLLINEAR_TOL * np.linalg.norm(Z[:, cols], axis=0))
+        if not low.size:
+            break
+        del cols[int(low[0])]
+    return cols
+
+
+def path_columns(Z: np.ndarray, groups: Sequence[Sequence[int]]) -> np.ndarray:
+    """The columns of ``Z`` the lasso path reads: within each term (``groups``, its columns'
+    positions), each column not an exact combination of the term's earlier ones, so a category's
+    full coding, whose indicators sum to one on every row, loses its last level's column; then,
+    when the fold has more rows than columns left, each not an exact combination of the earlier
+    terms' (a copy of another predictor). LARS cannot take an exactly collinear column: once its
+    twin is active it ties with the active set at every step and the path stalls. A dependence on
+    the fold's rows holds on every half of them, so it is found once, on the fold."""
+    kept = sorted(j for g in groups for j in _outside_span(Z, g))
+    return np.asarray(_outside_span(Z, kept), dtype=int)
+
+
 def lasso_first(Z: np.ndarray, y: np.ndarray, q: int) -> np.ndarray:
     """The first ``q`` variables to enter the lasso path (least squares on the outcome as numbers;
     the yes/no outcome as 0/1), as Shah & Samworth's base procedure takes them: the active set at
-    the first knot of the LARS–lasso path where at least ``q`` are nonzero."""
+    the first knot of the LARS–lasso path where at least ``q`` are nonzero. ``Z`` holds no exactly
+    collinear columns (:func:`path_columns`)."""
     from sklearn.linear_model import lars_path
 
     yc = y - y.mean()
@@ -410,12 +446,16 @@ class Selector(TransformerMixin, BaseEstimator):
                   else inner_folds(len(y), self.cv, int(self.seed)))
             return lifted(elastic_net_support(Z, y, self.task_, cv, int(self.seed)))
         if m == "stability":
+            # the path reads the columns that are not exact combinations of others; a column left
+            # off it has no proportion (NaN) and its term is kept through its kept columns
+            path = path_columns(Z, groups)
             tau = float(self.threshold or STABILITY_TAU)
-            q = int(self.q or stability_q(p, tau))
-            self.q_ = min(q, p)
-            self.bound_ = stability_bound(self.q_, tau, p)
-            freq = complementary_pairs(Z, y, q=self.q_, pairs=int(self.pairs),
-                                       rng=np.random.default_rng(int(self.seed)))
+            q = int(self.q or stability_q(len(path), tau))
+            self.q_ = min(q, len(path))
+            self.bound_ = stability_bound(self.q_, tau, len(path))
+            freq = np.full(p, np.nan)
+            freq[path] = complementary_pairs(Z[:, path], y, q=self.q_, pairs=int(self.pairs),
+                                             rng=np.random.default_rng(int(self.seed)))
             self.frequencies_ = freq
             return lifted(freq >= tau)
         if m == "stepwise":
@@ -894,6 +934,6 @@ def decision_sentence(d: Any, state: Any) -> str:
 __all__ = ["CUSTOMARY", "INFERENCE_ALPHA", "INSTABILITY", "LABELS", "PREDICTION_METHODS",
            "STABILITY_PAIRS", "STABILITY_TAU", "Selector", "UNIVARIABLE_P", "aic", "backward_aic",
            "backward_wald", "complementary_pairs", "decision_sentence", "elastic_net_support",
-           "inclusion_frequencies", "lasso_first", "outcome01", "pls_vip", "screening_keep",
-           "screening_scores", "selection_step", "stability_bound", "stability_q", "standardized",
-           "term_groups", "term_p", "univariable_p"]
+           "inclusion_frequencies", "lasso_first", "outcome01", "path_columns", "pls_vip",
+           "screening_keep", "screening_scores", "selection_step", "stability_bound", "stability_q",
+           "standardized", "term_groups", "term_p", "univariable_p"]
