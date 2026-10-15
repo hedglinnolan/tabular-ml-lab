@@ -349,8 +349,17 @@ def case(m_pre, m_post, band_post, thread="t"):
                   m_pre=m_pre, instrument_post="sensitivity", m_post=m_post, band_post=band_post)
 
 
+def unfloored():
+    """The committed start with rows × SMD's floor taken off: the calibration rule is tested on a
+    proxy that may be calibrated. Re-pinned (claims backtest A-124): these tests used the committed
+    start as it was, and rows × SMD is floored there now, so it is never calibrated."""
+    start = json.loads(json.dumps(M.calibration()))
+    start["instruments"]["rows_smd"]["convention"].pop("floored")
+    return start
+
+
 def test_calibration_lowers_a_threshold_that_would_reassure_falsely():
-    start = M.calibration()
+    start = unfloored()
     cases = [case(0.03, 0.3, 1), case(0.3, 0.02, 0), case(0.001, 0.01, 0), case(0.06, 0.2, 1),
              case(0.25, 0.7, 2)]
     out = M.calibrate(cases, start)
@@ -367,7 +376,7 @@ def test_a_proxy_says_below_noise_only_on_enough_cases_and_a_band_zero_that_held
     calibrated, and so may say "doesn't change your numbers here", only with at least the file's
     minimum number of cases and at least one case it put below noise that stayed below noise
     after the lock. Short of that it is floored at "could bias"."""
-    start = M.calibration()
+    start = unfloored()
     assert start["min_cases"] >= 5
     one = M.calibrate([case(0.185, 0.124, 1)], start)["instruments"]["rows_smd"]
     assert not one["calibrated"] and one["cases"] == 1
@@ -379,6 +388,11 @@ def test_a_proxy_says_below_noise_only_on_enough_cases_and_a_band_zero_that_held
     # With one that held below noise, it is calibrated below the lowest miss.
     held = M.calibrate([*loud, case(0.001, 0.01, 0)], start)["instruments"]["rows_smd"]
     assert held["calibrated"] and held["band_1"] == 0.004
+    # A convention that says it is floored is never calibrated, whatever its cases (A-124).
+    committed = M.calibration()
+    floored = M.calibrate([*loud, case(0.001, 0.01, 0)], committed)["instruments"]["rows_smd"]
+    assert not floored["calibrated"] and floored["band_1"] == 0.004
+    assert floored["uncalibrated"] == committed["instruments"]["rows_smd"]["convention"]["floored"]
 
 
 def test_the_committed_calibration_reassures_falsely_on_none_of_its_cases():
