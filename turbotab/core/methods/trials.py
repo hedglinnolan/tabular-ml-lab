@@ -43,7 +43,10 @@ covariate chosen after the data were seen is refused from the primary analysis
   al.'s variance counts no uncertainty in it, and the effect is refused. So it is when the arm
   and the covariates predict every outcome exactly (complete separation), since no fit is left,
   when the people the data do not separate leave the arm's coefficient unsettled, and when the
-  program cannot tell who is separated or the fit to the people left does not converge.
+  program cannot tell who is separated or the fit to the people left does not converge. Ye et
+  al.'s variance is a sum of covariances, and where it comes out below zero (in a small arm
+  fitted with many terms) the effect is refused too, as is a sensitivity analysis whose completed
+  data sets break down so.
 
 **Cluster-randomized trials** (:func:`estimate` with ``trial_design="cluster_randomized_trial"``).
 The cluster is the unit of randomization, so every cluster has one arm (refused otherwise).
@@ -1108,6 +1111,33 @@ def ye_variance(y: np.ndarray, arm_codes: np.ndarray, cf: np.ndarray, fitted: np
     return V / n
 
 
+def _checked_variance(d: _Design, y: np.ndarray, arms: list[str], cf: np.ndarray, fit: _Logit,
+                      strata: np.ndarray | None, *, imputed: bool = False) -> np.ndarray:
+    """Ye et al.'s covariance (:func:`ye_variance`), refused where it gives an arm's standardized
+    risk, or a difference or ratio of two, a variance below zero. It is a sum of covariances, not
+    of squares, and in a small arm fitted with many terms it can break down so; the arm named is
+    the one whose own variance fails, or else the smaller of the two compared."""
+    V = ye_variance(y, d.arm_codes, cf, fit.mu, strata)
+    theta = cf.mean(axis=0)
+    size = np.bincount(d.arm_codes, minlength=len(arms))
+    failed = [k for k in range(len(arms)) if V[k, k] < 0]
+    for k in range(1, len(arms)):
+        g = np.zeros(len(arms))
+        g[k], g[0] = 1 / theta[k], -1 / theta[0]
+        if V[k, k] + V[0, 0] - 2 * V[0, k] < 0 or float(g @ V @ g) < 0:
+            failed.append(k if size[k] <= size[0] else 0)
+    if not failed:
+        return V
+    a, m = arms[failed[0]], int(size[failed[0]])
+    where = "In one of the data sets completed by imputation, " if imputed else ""
+    raise TrialRefused(
+        f"{where}Ye et al.'s variance of the standardized risks comes out below zero for {a}, "
+        f"which a variance cannot be. It is built from each arm's spread of outcomes around its "
+        f"fitted risks, and with {m} people in {a} for the {d.X.shape[1]} terms of the model, "
+        f"that estimate breaks down in an arm this small, so no interval is given.",
+        (FEWER_COVARIATES_EXIT, DESCRIBE_OUTCOMES_EXIT), term="negative variance estimate")
+
+
 def _strata_codes(frame: pd.DataFrame, spec: TrialSpec, idx: pd.Index) -> np.ndarray | None:
     if not spec.strata:
         return None
@@ -1136,7 +1166,7 @@ def _standardized(d: _Design, y: np.ndarray, arms: list[str], strata: np.ndarray
                              str | None]:
     fit, cf, separated, people = _fit_risks(d, y, arms)
     theta = cf.mean(axis=0)
-    V = ye_variance(y, d.arm_codes, cf, fit.mu, strata)
+    V = _checked_variance(d, y, arms, cf, fit, strata)
     contrasts: list[Contrast] = []
     for k in range(1, len(arms)):
         se = math.sqrt(V[k, k] + V[0, 0] - 2 * V[0, k])
@@ -1774,7 +1804,7 @@ def _pool(imp: _Imputer, delta: float, arm: int, measure: str, arms: list[str]) 
                         filled={}, index=pd.RangeIndex(len(y)))
             lfit, cf, _, _ = _fit_risks(d, y, arms)
             theta = cf.mean(axis=0)
-            V = ye_variance(y, imp.arm_codes, cf, lfit.mu, imp.strata)
+            V = _checked_variance(d, y, arms, cf, lfit, imp.strata, imputed=True)
             if measure == "risk_ratio":
                 g = np.zeros(len(arms))
                 g[arm], g[0] = 1 / theta[arm], -1 / theta[0]
