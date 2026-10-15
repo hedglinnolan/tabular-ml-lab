@@ -1447,8 +1447,8 @@ def ul_journey(tmp_path_factory):
 def test_4_the_share_above_a_ul_says_what_the_ul_covers(ul_journey):
     """Claims backtest BX-040: every share above a UL was stated "a share at risk of excess only if
     the recalls include supplements, since the UL applies to total intake". The IOM tables above say
-    otherwise for magnesium, folate, niacin, vitamin E and vitamin A, whose ULs cover a supplemental
-    or synthetic form only: food magnesium above 350 mg is no risk. Expected: magnesium's sentence
+    otherwise for magnesium, folate, niacin, vitamin E and vitamin A, whose ULs cover one form only:
+    food magnesium above 350 mg is no risk. Expected: magnesium's sentence
     names the form its UL covers and claims no total intake; calcium's, whose UL covers every
     source, says a share from foods alone is a lower bound. The names are read as ``reads_as_iron``
     reads them (whole names; ``environment`` is no iron)."""
@@ -1464,6 +1464,42 @@ def test_4_the_share_above_a_ul_says_what_the_ul_covers(ul_journey):
     for name in UL_TOTAL:
         assert ui.ul_form(name) is None, name
     assert ui.ul_form("DRxTMAGN_label", ["DR1TMAGN", "DR2TMAGN"]) == "magnesium"
+
+
+# Health Canada's DRI tables (read 2026-10-15) reproduce the IOM footnotes. Vitamin A's, "UL as
+# preformed vitamin A only", limits the form and not the source; vitamin E's, niacin's and folate's
+# limit the source too: "applies only to synthetic forms obtained from supplements, fortified foods,
+# or a combination of the two".
+UL_SOURCE_LIMITED = ("magnesium", "folate", "niacin", "vitamin E")
+
+
+def test_4_vitamin_a_s_ul_covers_retinol_from_food_and_supplements():
+    """Claims backtest BX-040, review: the sentence read vitamin A's UL as it reads magnesium's, a
+    share at risk "only where these intakes are that form alone, supplements included", and so
+    dropped the reading that holds for a retinol column from foods: the UL covers preformed vitamin
+    A (retinol) from food and supplements alike, not carotenoids, so total retinol is at least the
+    food retinol and a foods-only share is a lower bound, as calcium's is. The four source-limited
+    ULs cover no form that food holds unfortified, so for them a foods-only share bounds nothing.
+    Also, "Institute of Medicine 2000" stood for two reports (vitamin E's DRI and Applications in
+    Dietary Assessment): every report a UL sentence cites is its own source in the contract."""
+    import re
+
+    from turbotab.core import usual_intake as ui
+
+    vitamin_a = nci.share_phrase(3000, "UL", ul_form="vitamin A")
+    assert "food and supplements" in vitamin_a and "lower bound" in vitamin_a, vitamin_a
+    assert "carotenoids" in vitamin_a and "that form alone" not in vitamin_a, vitamin_a
+    for nutrient in UL_SOURCE_LIMITED:
+        sentence = nci.share_phrase(100, "UL", ul_form=nutrient)
+        assert "lower bound" not in sentence, sentence
+    cited = {form: re.findall(r"Institute of Medicine \d{4}[a-z]?",
+                              nci.share_phrase(100, "UL", ul_form=form))
+             for form in [*nci.UL_FORMS, None]}
+    assert cited["vitamin E"] != cited[None], cited
+    for form, labels in cited.items():
+        assert labels, form
+        for label in labels:
+            assert any(s.startswith(f"{label}, ") for s in ui.CONTRACT.sources), (form, label)
 
 
 def test_4_every_refusal_carries_exits_that_post(journeys):
