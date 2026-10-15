@@ -1712,7 +1712,7 @@ _BODY_WORDS = {"birth", "body", "bw", "baby", "infant", "newborn", "fetal", "ges
                "tissue", "biopsy", "specimen", "wet", "dry", "organ", "tumor", "tumour", "liver",
                "brain", "muscle", "fresh", "net", "gross"}
 NHANES_WEIGHT_PREFIX = ("WTDR", "WTMEC", "WTINT", "WTSA", "WTSB", "WTSOG", "WTSAF", "WTSH",
-                        "WTSCD", "WTSPO", "WTSVOC", "WTSHM", "WTFSM", "WTSSB")
+                        "WTSCD", "WTSPO", "WTSVOC", "WTSHM", "WTFSM", "WTSSB", "WTPH")
 # Multi-cycle weights as the NHANES tutorial builds them (Weighting Module, read 2026-10-03): "if
 # sddsrvyr in (2,3) then MEC4YR = 1/2 * WTMEC2YR;", "if sddsrvyr in (2,3,4) then MEC6YR = 1/3 *
 # WTMEC2YR;", "… MEC8YR = 1/4 * WTMEC2YR;". The same rule names a pooled interview, dietary,
@@ -1781,9 +1781,15 @@ NHANES_LCD_QUOTE = ("\"A good rule of thumb is to use 'the least common denomina
                     "variable that was collected on the smallest number of respondents is the "
                     "'least common denominator.'\"")
 
-# The weights from the widest sample to the smallest: interview, examination, dietary day 1, both
-# dietary days, the morning fasting subsample (drawn from the examined sample), and the oral
-# glucose tolerance test subsample (drawn from the fasting one). Each name as the CDC codebooks
+# The weights from the widest sample to the smallest: interview, examination, phlebotomy (the
+# examined who gave blood), dietary day 1, both dietary days, the morning fasting subsample (drawn
+# from the examined sample), and the oral glucose tolerance test subsample (drawn from the fasting
+# one). The phlebotomy weight is August 2021-August 2023's (TCHOL_L "WTPH2YR - Phlebotomy 2 Year
+# Weight": "The phlebotomy weight should be used for analyses that use variables derived from
+# blood analytes"; the tutorial's Example 5, serum vitamin D: "You would use phlebotomy weights
+# (wtph2yr)"). Its sample holds the fasting one (GLU_L gives a fasting participant who gave no
+# blood a WTSAF2YR of 0), and it is larger than the day-1 recall's (TCHOL_L: 7,316 positive
+# weights; DR1TOT_L: 6,694 reliable day-1 recalls; read 2026-10-15). Each name as the CDC codebooks
 # spell it, read 2026-10-03: the 2-year and 4-year names (DR1TOT_L "WTDRD1 - Dietary day one sample
 # weight", "WTDR2D - Dietary two-day sample weight"; GLU_L "WTSAF2YR - Fasting Subsample 2 Year MEC
 # Weight"; DRXTOT_B "WTDR4YR - Dietary day one 4-Year sample weight"), the 2017-March 2020
@@ -1798,15 +1804,17 @@ NHANES_LCD_QUOTE = ("\"A good rule of thumb is to use 'the least common denomina
 WEIGHT_TIERS: tuple[tuple[str, str, int], ...] = (
     (r"^(WTINT(\d+YR|PRP)?|INT\d+YR)$", "interview", 0),
     (r"^(WTMEC(\d+YR|PRP)?|MEC\d+YR)$", "examination", 1),
-    (r"^(WTDRD1(PP)?|WTDR\d+YR|DR\d+YR|DRD1\d+YR|DR1\d+YR)$", "dietary day 1", 2),
-    (r"^(WTDR2D(PP)?|DR2D\d+YR)$", "dietary days 1 and 2", 3),
-    (r"^(WTSAF(\d+YR|PRP)?|SAF\d+YR)$", "fasting subsample", 4),
-    (r"^(WTSOG(\d+YR|PRP)?|SOG\d+YR)$", "oral glucose tolerance test subsample", 5),
+    (r"^WTPH(\d+YR)?$", "phlebotomy", 2),
+    (r"^(WTDRD1(PP)?|WTDR\d+YR|DR\d+YR|DRD1\d+YR|DR1\d+YR)$", "dietary day 1", 3),
+    (r"^(WTDR2D(PP)?|DR2D\d+YR)$", "dietary days 1 and 2", 4),
+    (r"^(WTSAF(\d+YR|PRP)?|SAF\d+YR)$", "fasting subsample", 5),
+    (r"^(WTSOG(\d+YR|PRP)?|SOG\d+YR)$", "oral glucose tolerance test subsample", 6),
 )
 # Which sample each sample is drawn from (the tutorial's subsamples, each within the examined
-# sample; the OGTT subsample within the fasting one): the order the survey question offers the
-# other weights in after the least common denominator's, every sample that contains it first.
-WEIGHT_PARENT = {5: 4, 4: 1, 3: 2, 2: 1, 1: 0, 0: None}
+# sample; the fasting subsample within the phlebotomy sample, the OGTT subsample within the fasting
+# one): the order the survey question offers the other weights in after the least common
+# denominator's, every sample that contains it first.
+WEIGHT_PARENT = {6: 5, 5: 2, 4: 3, 3: 1, 2: 1, 1: 0, 0: None}
 # Laboratory variables measured on the morning fasting subsample (NHANES GLU, TRIGLY and INS
 # files: fasting glucose LBXGLU/LBDGLUSI, triglycerides LBXTR/LBDTRSI, LDL LBDLDL/LBDLDLSI, insulin
 # LBXIN/LBDINSI), which the tutorial says take the fasting weight.
@@ -1815,7 +1823,7 @@ FASTING_ANALYTES = re.compile(r"^(LBXGLU|LBDGLUSI|LBXTR|LBDTRSI|LBDLDL|LBDLDLSI|
 # The OGTT file's analytes (OGTT_I: "LBXGLT - Two Hour Glucose (OGTT) (mg/dL)", and its SI twin).
 OGTT_ANALYTES = re.compile(r"^(LBXGLT|LBDGLTSI)$")
 _DIETARY_VARIABLE = re.compile(r"^(DR1T|DR2T|DR1I|DR2I|DR1_|DR2_|DRXT|DBQ|DBD)")
-_SUBSAMPLE = {4: "fasting subsample", 5: "oral glucose tolerance test subsample"}
+_SUBSAMPLE = {5: "fasting subsample", 6: "oral glucose tolerance test subsample"}
 
 
 def weight_tier(name: Any) -> tuple[str, int] | None:
@@ -1837,17 +1845,18 @@ def other_subsample_weight(name: Any) -> bool:
 
 def _expected(rank: int, prepandemic: bool, years: str | None = None) -> str:
     if prepandemic:
-        return {5: "WTSOG2YR", 4: "WTSAFPRP", 3: "WTDR2DPP", 2: "WTDRD1PP"}[rank]
+        return {6: "WTSOG2YR", 5: "WTSAFPRP", 4: "WTDR2DPP", 3: "WTDRD1PP"}[rank]
     if years and years != "2YR":
-        return {5: f"WTSOG{years}", 4: f"WTSAF{years}", 3: f"WTDR2D{years}", 2: f"WTDR{years}"}[rank]
-    return {5: "WTSOG2YR", 4: "WTSAF2YR", 3: "WTDR2D", 2: "WTDRD1"}[rank]
+        return {6: f"WTSOG{years}", 5: f"WTSAF{years}", 4: f"WTDR2D{years}", 3: f"WTDR{years}"}[rank]
+    return {6: "WTSOG2YR", 5: "WTSAF2YR", 4: "WTDR2D", 3: "WTDRD1"}[rank]
 
 
 def rank_weights(weights: Sequence[str], lcd: Mapping[str, Any] | None) -> list[str]:
     """``weights`` in the order the survey question offers them: the least common denominator's
     first, then the samples that contain its sample (the examination's, then the interview's), then
     the rest by sample; weights of no known sample keep their order, last. With fasting analytes:
-    fasting, then examination, then dietary (BLUEPRINT §14; the NHANES tutorial's rule)."""
+    fasting, then phlebotomy, then examination, then dietary (BLUEPRINT §14; the NHANES
+    tutorial's rule)."""
     names = [str(w) for w in weights]
     use = (lcd or {}).get("use")
     ranks = {w: (weight_tier(w) or (None, None))[1] for w in names}
@@ -1916,13 +1925,15 @@ def least_common_denominator(columns: Sequence[str], frame: Any = None) -> dict[
 
     The weight follows the smallest sample whose variables are present: an OGTT analyte names the
     OGTT subsample weight; a fasting analyte names the fasting weight; dietary variables name the
-    dietary weight; otherwise the examination weight. ``because`` says which variables set it.
-    With ``frame``, a variable recorded only where a subsample weight is positive is that
-    subsample's whatever its name (:func:`subsample_variables`). ``other_subsamples`` lists
-    subsample weights whose analytes TurboTab cannot tell (``WTSA2YR``…) and ``unconfirmed`` the
-    known subsample weights (``WTSAF2YR``) beside which no variable reads as measured on the
-    subsample: with either, the rule cannot be applied from what the table shows, and the choice is
-    the user's (``settled`` False)."""
+    dietary weight; a variable recorded only where the phlebotomy weight is positive (a blood
+    analyte of August 2021-August 2023) names the phlebotomy weight; otherwise the examination
+    weight. ``because`` says which variables set it. With ``frame``, a variable recorded only where
+    a subsample weight is positive is that subsample's whatever its name
+    (:func:`subsample_variables`). ``other_subsamples`` lists subsample weights whose analytes
+    TurboTab cannot tell (``WTSA2YR``…) and ``unconfirmed`` the known subsample weights
+    (``WTSAF2YR``, ``WTPH2YR``) beside which no variable reads as measured on the subsample: with
+    either, the rule cannot be applied from what the table shows, and the choice is the user's
+    (``settled`` False)."""
     weights = {}
     for c in columns:
         tier = weight_tier(c)
@@ -1939,7 +1950,7 @@ def least_common_denominator(columns: Sequence[str], frame: Any = None) -> dict[
     by_values: dict[int, list[str]] = {}
     other_found: dict[str, list[str]] = {}
     if frame is not None:
-        for rank in (5, 4):
+        for rank in (6, 5, 2):
             if rank in weights:
                 found = [c for c in subsample_variables(frame, weights[rank][0]) if c in present]
                 if found:
@@ -1949,27 +1960,36 @@ def least_common_denominator(columns: Sequence[str], frame: Any = None) -> dict[
             if found:
                 other_found[w] = found
     ogtt = list(dict.fromkeys([*(str(c) for c in columns if OGTT_ANALYTES.match(str(c).upper())),
-                               *by_values.get(5, [])]))
+                               *by_values.get(6, [])]))
     fasting = list(dict.fromkeys([*(str(c) for c in columns
                                     if FASTING_ANALYTES.match(str(c).upper())),
-                                  *[c for c in by_values.get(4, []) if c not in ogtt]]))
+                                  *[c for c in by_values.get(5, []) if c not in ogtt]]))
+    # The phlebotomy sample holds the fasting and OGTT subsamples, so their analytes are on its
+    # rows too; they set their own, smaller weight.
+    blood = [c for c in by_values.get(2, []) if c not in ogtt and c not in fasting]
     dietary = [str(c) for c in columns if _DIETARY_VARIABLE.match(str(c).upper())]
     # A subsample weight beside which nothing reads as its variable (by name or by values): the rule
-    # cannot tell whether the analysis uses it.
-    unconfirmed = [weights[r][0] for r in (4, 5) if r in weights
-                   and not (fasting if r == 4 else ogtt)]
+    # cannot tell whether the analysis uses it. The phlebotomy weight is in doubt only where no
+    # smaller sample is named: a blood analyte it missed would not change the fasting or dietary
+    # weight the rule names.
+    unconfirmed = [weights[r][0] for r in (5, 6) if r in weights
+                   and not (fasting if r == 5 else ogtt)]
+    if 2 in weights and not (blood or ogtt or fasting or dietary):
+        unconfirmed.append(weights[2][0])
     # An unknown subsample weight whose variables the values found is no longer unknown.
     unknown = [w for w in others if w not in other_found]
     wanted, because = None, []
     if ogtt:
-        wanted, because = 5, ogtt
+        wanted, because = 6, ogtt
     elif fasting:
-        wanted, because = 4, fasting
+        wanted, because = 5, fasting
     elif dietary:
-        wanted, because = 2, dietary
+        wanted, because = 3, dietary
+    elif blood:
+        wanted, because = 2, blood
     base = {"other_subsamples": unknown, "unconfirmed": unconfirmed,
             "settled": not unknown and not unconfirmed and not other_found}
-    if other_found and wanted not in (4, 5):
+    if other_found and wanted not in (5, 6):
         # A subsample weight the names cannot place, with variables recorded only on its rows: it is
         # that subsample's weight, the smallest sample here (the one with the fewest such rows).
         name = min(other_found, key=lambda w: _positive_rows(frame, w))
@@ -1987,15 +2007,15 @@ def least_common_denominator(columns: Sequence[str], frame: Any = None) -> dict[
                 "missing": None, **base}
     # Both dietary days are a smaller sample than day 1: prefer it when the table has it and both
     # days' variables are present.
-    if wanted == 2 and 3 in weights and any(str(c).upper().startswith(("DR2T", "DR2I", "DR2_"))
+    if wanted == 3 and 4 in weights and any(str(c).upper().startswith(("DR2T", "DR2I", "DR2_"))
                                             for c in columns):
-        wanted = 3
+        wanted = 4
     if wanted in weights:
         name, label = weights[wanted]
         return {"use": name, "sample": label, "because": because,
                 "not": [w for r, (w, _) in sorted(weights.items()) if r != wanted], "missing": None,
                 **base}
-    label = {5: _SUBSAMPLE[5], 4: _SUBSAMPLE[4], 2: "dietary day 1", 3: "dietary days 1 and 2"}[wanted]
+    label = {6: _SUBSAMPLE[6], 5: _SUBSAMPLE[5], 3: "dietary day 1", 4: "dietary days 1 and 2"}[wanted]
     return {"use": None, "sample": label, "because": because,
             "not": [w for _, (w, _) in sorted(weights.items())],
             "missing": _expected(wanted, prepandemic, years), **base}
