@@ -865,6 +865,25 @@ def test_3g_curves_drawn_by_some_families_name_only_those():
         "explanations describe each model's predictions, not causal effects.")
 
 
+def test_3h_a_gain_clearing_zero_under_the_floor_is_never_called_not_shown():
+    """Claims backtest A-029: a family whose gain over the baseline has a 95% interval above zero,
+    but under the floor (1% of the class prior's log loss here), is shown to beat the baseline by
+    too little to matter. Its reason says so and states the floor; it never says the family "is
+    not shown to beat" the baseline, nor that a curve would describe noise."""
+    fam = E.FamilyFit(key="linear", label="Linear model", fitted=None, unfitted=None,
+                      versus={"verdict": "no_better", "metric": "log_loss", "gain": 0.002,
+                              "tolerance": 0.0061, "ci_low": 0.0016, "ci_high": 0.0025},
+                      score=0.6085, baseline=0.6105)
+    s = E.Setting(task="binary", purpose="prediction", target="y", event="yes", X=pd.DataFrame(),
+                  y=np.array([]), metric_label="Log loss", baseline_label="the class prior",
+                  higher_is_better=False)
+    floor = E.floor_of(fam, s)
+    assert not floor.passed and floor.verdict == "no_better"
+    assert "not shown to beat" not in floor.reason and "noise" not in floor.reason, floor.reason
+    assert "beats the Log loss of the class prior, 0.611, by too little to matter" in floor.reason
+    assert "under 0.0061, 1% of the class prior's log loss" in floor.reason, floor.reason
+
+
 def test_3g_under_inference_no_floor_reads_or_quotes_a_cross_validated_score():
     """MODELING_SEQUENCE ruling 13 and §1 row 11 (EXPLORE repair): under inference no
     cross-validated score is shown, so the explanation reads none: no family carries a floor, the
