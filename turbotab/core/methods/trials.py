@@ -39,7 +39,9 @@ covariate chosen after the data were seen is refused from the primary analysis
   coefficients have no finite values but the standardized risks do: the fit is taken at its
   limit, those people's risks 0 or 1 under either arm (Lesaffre & Albert 1989). When the arm
   itself separates, its risk is 0% or 100%, Ye et al.'s variance counts no uncertainty in it, and
-  the effect is refused.
+  the effect is refused. So it is when the arm and the covariates predict every outcome exactly
+  (complete separation), since no fit is left, and when the people the data do not separate
+  leave the arm's coefficient unsettled.
 
 **Cluster-randomized trials** (:func:`estimate` with ``trial_design="cluster_randomized_trial"``).
 The cluster is the unit of randomization, so every cluster has one arm (refused otherwise).
@@ -758,21 +760,27 @@ def _separation() -> TrialRefused:
 
 
 LIMIT_TOL = 1e-12  # Newton's decrement at which a separated fit has reached its limit
-FLAT = 1e-8  # an information eigenvalue below this share of the largest: a separated direction
+AT_LIMIT = 1e-9  # a fitted risk this near 0 or 1 at the limit: a person the data separate
+FREE = 1e-10  # a singular value below this share of the largest: a direction the rest leave free
+FEWER_COVARIATES_EXIT = {"label": "Adjust for fewer covariates", "covariates": []}
 
 
 def _logistic_limit(X: np.ndarray, y: np.ndarray) -> tuple[_Logit, np.ndarray]:
     """The logistic fit at its likelihood's supremum, finite or not, and the directions the data
-    separate. Newton's method on the columns centered and scaled to unit SD (the intercept, column
-    0, left at 1; the coefficients and covariance are mapped back), a pseudo-inverse step halved
-    while it lowers the likelihood, until the decrement UᵀI⁺U is below :data:`LIMIT_TOL`. When the
-    data separate (Albert & Anderson 1984), the coefficients run off along the separating
-    directions, the separated people's fitted risks reach 0 or 1, and the rest of the fit converges
-    to the maximum-likelihood fit on the people the data do not separate (Lesaffre & Albert 1989,
-    *J R Stat Soc B* 51:109). The directions are the information's flat eigenvectors there
-    (eigenvalue below :data:`FLAT` of the largest), over the centered columns, so a covariate far
-    from zero is not read as the intercept's twin; without separation there are none and the fit
-    is the maximum-likelihood one."""
+    leave free. Newton's method on the columns centered and scaled to unit SD (the intercept,
+    column 0, left at 1; the coefficients and covariance are mapped back), a pseudo-inverse step
+    halved while it lowers the likelihood, until the decrement UᵀI⁺U is below :data:`LIMIT_TOL`.
+    When the data separate (Albert & Anderson 1984), the coefficients run off along the separating
+    directions, the separated people's fitted risks reach 0 or 1 (within :data:`AT_LIMIT`), and
+    the rest of the fit converges to the maximum-likelihood fit on the people the data do not
+    separate (Lesaffre & Albert 1989, *J R Stat Soc B* 51:109). The free directions are those
+    people's null space over the centered columns (singular values below :data:`FREE` of the
+    largest): every separating direction lies in it, and along it nothing those people show
+    settles a coefficient. It is read from their columns, not from the information's relative
+    eigenvalues, which lose their scale when every weight vanishes together and square a small
+    spread among the people left into a seemingly flat direction; when everyone is separated,
+    every direction is free. Without separation there are none and the fit is the
+    maximum-likelihood one."""
     mean = X.mean(axis=0)
     sd = X.std(axis=0)
     live = sd > 0  # the intercept, and any other constant column, is neither centered nor scaled
@@ -806,49 +814,70 @@ def _logistic_limit(X: np.ndarray, y: np.ndarray) -> tuple[_Logit, np.ndarray]:
         else:
             raise _separation()
         mu = _expit(Z @ b)
-    lam, vec = np.linalg.eigh(info)
-    flat = vec[:, lam <= FLAT * max(float(lam[-1]), 0.0)]
+    left = Z[~_at_limit(mu)]
+    _, s, vt = np.linalg.svd(left, full_matrices=left.shape[0] < left.shape[1])
+    free = vt[int(np.sum(s > FREE * s[0])) if s.size else 0:].T
     cov = back @ np.linalg.pinv(info) @ back.T
-    return _Logit(beta=back @ b, cov=(cov + cov.T) / 2, mu=mu), flat
+    return _Logit(beta=back @ b, cov=(cov + cov.T) / 2, mu=mu), free
+
+
+def _at_limit(mu: np.ndarray) -> np.ndarray:
+    """The people whose fitted risk at the limit is 0 or 1 (within :data:`AT_LIMIT`)."""
+    return (mu < AT_LIMIT) | (mu > 1 - AT_LIMIT)
 
 
 def _fit_risks(d: _Design, y: np.ndarray, arms: list[str]) -> tuple[_Logit, np.ndarray, list[int]]:
     """The logistic fit, every analyzed person's risk with the arm set to each arm in turn
     (:func:`_counterfactual`), and the columns the data separate (none, usually). A separated fit
     is taken at its limit (:func:`_logistic_limit`): the separated people's risks are 0 or 1 under
-    every arm and the standardized risks are finite. When the arm itself separates the outcome, it
-    is refused (:func:`_arm_separation`)."""
+    every arm and the standardized risks are finite. It is refused (:func:`_arm_separation`) when
+    everyone is separated, so no fit is left, and when a free direction moves the arm's
+    coefficient, so the people left do not settle anyone's risk under the other arm."""
     try:
         fit = _logistic(d.X, y)
         return fit, _counterfactual(d, fit.beta, arms), []
     except TrialRefused:
-        fit, flat = _logistic_limit(d.X, y)
-    load = np.abs(flat).max(axis=1) if flat.size else np.zeros(d.X.shape[1])
-    separated = [j for j in range(d.X.shape[1]) if load[j] > 1e-6 * max(1.0, float(load.max()))]
+        fit, free = _logistic_limit(d.X, y)
+    if _at_limit(fit.mu).all():
+        raise _arm_separation(d, y, arms, everyone=True)
+    load = np.linalg.norm(free, axis=1) if free.size else np.zeros(d.X.shape[1])
+    separated = [j for j in range(d.X.shape[1]) if load[j] > 1e-6]
     if any(j in d.arm_columns for j in separated):
         raise _arm_separation(d, y, arms)
     return fit, _counterfactual(d, fit.beta, arms), separated
 
 
-def _arm_separation(d: _Design, y: np.ndarray, arms: list[str]) -> TrialRefused:
-    """The refusal when an arm separates the outcome: its risk is 0% or 100%, and Ye et al.'s
-    variance, made of each arm's spread of outcomes around its fitted risks, is zero there."""
-    exits: tuple[dict[str, Any], ...] = (DESCRIBE_OUTCOMES_EXIT,)
+def _arm_separation(d: _Design, y: np.ndarray, arms: list[str], *, everyone: bool = False
+                    ) -> TrialRefused:
+    """The refusal when the separation reaches the arm. An arm with no events, or only events:
+    its risk is 0% or 100%, and Ye et al.'s variance, made of each arm's spread of outcomes around
+    its fitted risks, is zero there. Everyone separated (``everyone``): no fit is left. Otherwise
+    the arm's coefficient has no value the people left settle."""
     for k, a in enumerate(arms):
         events, m = int(y[d.arm_codes == k].sum()), int((d.arm_codes == k).sum())
         if events in (0, m):
-            who = (f"{'No one' if events == 0 else 'Everyone'} in {a} had the event ({events} of "
-                   f"{m}), so the arm's risk is {'0%' if events == 0 else '100%'}")
-            break
-    else:
-        who = ("Within some group of people, everyone in one arm had the event or no one did, so "
-               "that arm's risk there is 0% or 100%")
-        exits = ({"label": "Adjust for fewer covariates", "covariates": []}, DESCRIBE_OUTCOMES_EXIT)
+            return TrialRefused(
+                f"{'No one' if events == 0 else 'Everyone'} in {a} had the event ({events} of "
+                f"{m}), so the arm's risk is {'0%' if events == 0 else '100%'} and the logistic "
+                f"model's coefficient for the arm has no finite value. The risk difference is "
+                f"still finite, but Ye et al.'s variance, built from each arm's spread of outcomes "
+                f"around its fitted risks, counts no uncertainty where every outcome is the same, "
+                f"so no interval is given for it here.", (DESCRIBE_OUTCOMES_EXIT,),
+                term="separation in the logistic model")
+    exits = (FEWER_COVARIATES_EXIT, DESCRIBE_OUTCOMES_EXIT)
+    if everyone:
+        return TrialRefused(
+            f"The arm and the covariates predict every person's outcome exactly (all {len(y)} of "
+            f"them), so the logistic model has no fit left to rest the standardized risks on: its "
+            f"coefficients run off without end, and the risks, their difference and their "
+            f"standard errors would be set by where the fit stopped, not by the data.", exits,
+            term="complete separation in the logistic model")
     return TrialRefused(
-        f"{who} and the logistic model's coefficient for the arm has no finite value. The risk "
-        f"difference is still finite, but Ye et al.'s variance, built from each arm's spread of "
-        f"outcomes around its fitted risks, counts no uncertainty where every outcome is the "
-        f"same, so no interval is given for it here.", exits,
+        "Within some group of people the arm and the covariates tell exactly who had the event, "
+        "or the people left outside such groups are too few or too alike to show what the arm "
+        "does. Either way the logistic model's coefficient for the arm has no value the data "
+        "settle, so each person's risk under the other arm, and with it the risk difference, "
+        "would be set by where the fit stopped, not by the data.", exits,
         term="separation in the logistic model")
 
 
@@ -981,7 +1010,8 @@ def _counterfactual(d: _Design, beta: np.ndarray, arms: list[str]) -> np.ndarray
         Xk[:, d.arm_columns] = 0.0
         if k:
             Xk[:, d.arm_columns[k - 1]] = 1.0
-        out[:, k] = _expit(Xk @ beta)
+        with np.errstate(over="ignore"):  # a separated person's risk at the limit: exactly 0
+            out[:, k] = _expit(Xk @ beta)
     return out
 
 
@@ -1040,7 +1070,7 @@ def _separated_note(d: _Design, fit: _Logit, separated: list[int]) -> str | None
         return None
     terms = [d.names[j] for j in separated if d.names[j] != "(Intercept)"] or ["(Intercept)"]
     listed = terms[0] if len(terms) == 1 else f"{', '.join(terms[:-1])} and {terms[-1]}"
-    n = int(np.sum((fit.mu < 1e-9) | (fit.mu > 1 - 1e-9)))
+    n = int(np.sum(_at_limit(fit.mu)))
     one = len(terms) == 1
     return (f"The data separate the outcome on {listed}: {n} people all had the event or none did, "
             f"so {'that coefficient has' if one else 'those coefficients have'} no finite value "
@@ -2179,8 +2209,11 @@ def _register_contracts() -> None:
                      id="kr_numeric_only"),
             Relation("conflicts", "separation",
                      "refused when the logistic model's risk for an arm runs to 0% or 100% "
-                     "(for the estimating equations, for any group); a group of people the "
-                     "data separate otherwise is kept at its limit in the standardized risks",
+                     "(for the estimating equations, for any group), or when the arm and the "
+                     "covariates predict every outcome exactly (complete separation); a group "
+                     "of people the data separate otherwise is kept at its limit in the "
+                     "standardized risks, unless the people left do not settle the arm's "
+                     "coefficient",
                      purposes=est_only, rung="refused",
                      when=("standardized_risk", "gee_corrected"),
                      exits=("adjust for fewer covariates", "describe the events in each arm"),
