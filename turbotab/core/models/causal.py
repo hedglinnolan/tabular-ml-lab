@@ -1160,10 +1160,11 @@ def overlap(propensity: np.ndarray, exposure: np.ndarray, bound: float,
 # explain is a reading of precision, not of positivity. By Frisch–Waugh the partially linear
 # model rests on the variance left, so its standard error is about √(1/(1 − R²)) times what it
 # would be were the exposure unrelated to the covariates, and its interval counts that variance
-# (not a bias from nuisance misfit, which the small remainder magnifies); positivity asks for a
-# positive density of the exposure at every covariate pattern, which no global R² shows. From
-# R² ≥ 0.9, a variance inflation factor of 10 (the collinearity line of Kutner, Nachtsheim & Neter
-# 2004, *Applied Linear Regression Models* §10.5), the card names the widening.
+# (not the bias a misfit in the models of the outcome and of the exposure would bring, which the
+# small remainder magnifies); positivity asks for a positive density of the exposure at every
+# covariate pattern, which no global R² shows. From R² ≥ 0.9, a variance inflation factor of 10
+# (the collinearity line of Kutner, Nachtsheim & Neter 2004, *Applied Linear Regression Models*
+# §10.5), the card names the widening.
 CONTINUOUS_R2_LINE = 0.9
 
 
