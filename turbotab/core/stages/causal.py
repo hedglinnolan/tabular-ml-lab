@@ -2,8 +2,9 @@
 
 * ``causal_design`` (outcome-free) is the card the causal question shows before any choice: the
   options ranked for the declared plan, the four assumptions each with its diagnostic, and
-  practical positivity read from a cross-fitted main-terms propensity (a yes/no exposure) or the
-  share of a numeric exposure's variance the covariates explain. It reads the outcome's
+  practical positivity read from a cross-fitted main-terms propensity (a yes/no exposure); for a
+  numeric exposure the share of its variance the covariates explain, a note on precision, not a
+  positivity reading (``models.causal.CONTINUOUS_R2_LINE``). It reads the outcome's
   missingness and level counts, never its relationship to anything (Rubin 2008, *Ann Appl Stat*
   2:808: "design trumps analysis").
 * ``causal`` runs the chosen estimator once the answer and the model families are recorded (the
@@ -514,8 +515,6 @@ def _causal_design(ctx: StageContext) -> Bundle:
         found_v = est.variation(prep.d, m, weights)
         variation_view = VariationView(model="main-terms linear regression, cross-fitted over 5 folds",
                                        **dataclasses.asdict(found_v))
-        if found_v.violated:
-            positivity = PositivityView(violated=True, reason=_variation_reason(prep, found_v))
     limit = n_limit(prep.task, prep.y)
     many = causal.many_candidates(limit, len(prep.x_names))
     opts = causal.options(prep.exposure_kind, prep.task, many, population)
@@ -569,23 +568,14 @@ def _positivity_reason(prep: Prepared, found: Any, *, target: str = "ATE",
             f"them, or keep every row and record it.")
 
 
-def _violation_clause(prep: Prepared, found: Any = None, found_v: Any = None, *,
-                      target: str = "ATE", weighted: bool = False) -> str:
+def _violation_clause(prep: Prepared, found: Any, *, target: str = "ATE",
+                      weighted: bool = False) -> str:
     """The methods sentence's account of a positivity violation kept on the record: the
     estimator's own reading, in numbers."""
-    if found_v is not None:
-        return f"the covariates explain {found_v.r2:.0%} of `{prep.exposure}`'s variance"
     b = found.bound
     where = (f"above {1 - b:.4f}" if target == "ATT" else f"outside [{b:.4f}, {1 - b:.4f}]")
     return (f"{found.n_outside:,} of {len(prep.y):,} rows ({_share(found, weighted)}) have a "
             f"propensity {where}")
-
-
-def _variation_reason(prep: Prepared, found: Any) -> str:
-    return (f"The covariates explain {found.r2:.0%} of `{prep.exposure}`'s variance (at least "
-            f"{0.9:.0%}, a variance inflation factor of 10 or more): the effect rests on little of "
-            f"the variation of what you study itself, and the estimate extrapolates where it does not vary. "
-            f"Keep every row and record it, or revisit the adjustment set.")
 
 
 # ── causal ───────────────────────────────────────────────────────────────────
@@ -741,11 +731,6 @@ def causal_stage(ctx: StageContext) -> Bundle:
             model=(f"{est.LEARNER_WORDS['linear' if method == 'pds_lasso' else str(learner)]}, "
                    f"cross-fitted over {spec.folds} folds"), **dataclasses.asdict(found_v))
         base["assumptions"] = card(found_v=found_v)
-        if found_v.violated and not spec.acknowledged:
-            return _withheld(base, _variation_reason(prep, found_v),
-                             causal.positivity_exits(decision, binary=False))
-        if found_v.violated:
-            violation = _violation_clause(prep, found_v=found_v)
     ctx.progress(0.3, f"Estimating by {causal.METHOD_LABELS[method].lower()}")
     outcome_binary = prep.task == "binary"
     if method == "dml_plr":

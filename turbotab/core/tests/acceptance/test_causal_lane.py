@@ -1838,9 +1838,11 @@ def test_9_each_estimand_reads_its_own_positivity_and_every_exit_leads_forward(t
       and the effect among the exposed is estimated, its Record and methods sentence claiming no
       violation (the card's two readings against an independent cross-fitted logistic regression
       on its folds);
-    * a numeric exposure the covariates nearly determine is refused with the record exit only;
-      taken, the methods sentence says positivity is practically violated, with the estimator's
-      own R² (by hand on its folds), instead of listing positivity among the assumptions;
+    * a numeric exposure the covariates nearly determine is estimated, its methods sentence
+      listing positivity among the assumptions, with the estimator's own R² (by hand on its
+      folds). Re-pinned (claims backtest B-416): it had been refused with the record exit only,
+      and taken, its methods sentence said positivity was practically violated; an R² that high
+      only widens the interval, which counts it (test 9b);
     * too few clusters withhold the lane with the lane's own ways forward: keep the primary model
       only (taken: the lane recorded as such, nothing withheld) or combine each unit's rows."""
     from turbotab.core.models.inference import min_clusters
@@ -1881,14 +1883,10 @@ def test_9_each_estimand_reads_its_own_positivity_and_every_exit_leads_forward(t
                       "measure": "mean_difference"})
         drive.answer_plan("dose")
         dose_design = drive.artifact("causal_design")
-        assert dose_design["exposure"] == "dose" and dose_design["variation"]["violated"]
-        refused = drive.post({**lane, "exposure": "dose", "method": "dml_plr"})
-        assert refused.status_code == 409
-        error = refused.json()["error"]
-        assert error["code"] == "positivity"
-        [record] = error["exits"]  # a numeric exposure has no propensity to trim on
-        assert record["decision"]["acknowledged"]
-        drive.decide(record["decision"])
+        assert dose_design["exposure"] == "dose" and not dose_design["variation"]["violated"]
+        assert not dose_design["positivity"]["violated"]
+        accepted = drive.post({**lane, "exposure": "dose", "method": "dml_plr"})
+        assert accepted.status_code == 200, accepted.text
         dose = _causal_artifact(drive, lambda a: a.get("exposure") == "dose"
                                 and bool(a.get("estimates")))
 
@@ -1925,7 +1923,7 @@ def test_9_each_estimand_reads_its_own_positivity_and_every_exit_leads_forward(t
     assert att["methods"].endswith(CLOSING + E_VALUE_ONLY)
     assert "practically violated" not in att_record and "practically violated" not in att["methods"]
 
-    # The numeric exposure kept on the record: the estimator's own R², by hand on its folds.
+    # The numeric exposure, estimated: the estimator's own R², by hand on its folds.
     adjusted = ["age", "bmi", "trt"]
     hand = plr_by_hand(raw["y"].to_numpy(dtype=float), raw["dose"].to_numpy(dtype=float),
                        raw[adjusted].to_numpy(dtype=float), est.sample_splits(n, 5, 2, seed=0))
@@ -1939,11 +1937,7 @@ def test_9_each_estimand_reads_its_own_positivity_and_every_exit_leads_forward(t
         f"linear and logistic regression predicted the outcome and the exposure from "
         f"{ticked(adjusted)}, each fit on the other 4 of 5 folds, and the outcome's residual was "
         f"regressed on the exposure's; the estimate is the median over 2 random sample splits, on "
-        f"{n:,} complete rows. It rests on the declared assumptions of no unmeasured confounding "
-        f"given the adjustment set, consistency and time ordering. Positivity is practically "
-        f"violated: the covariates explain {hand['r2']:.0%} of `dose`'s variance; every row was "
-        f"kept, as recorded, so the estimate extrapolates where `dose` barely varies given the "
-        f"covariates, a stated limitation." + PLR_RV_AND_E_VALUE)
+        f"{n:,} complete rows." + CLOSING + PLR_RV_AND_E_VALUE)
 
     assert held["withheld"].startswith(f"`site` has 5 units, fewer than the {min_clusters()} "
                                        f"TurboTab requires for cluster-robust intervals")
