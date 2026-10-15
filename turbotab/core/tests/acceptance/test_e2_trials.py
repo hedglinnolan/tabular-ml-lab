@@ -849,6 +849,32 @@ def test_a_group_with_every_event_keeps_its_standardized_risks_and_an_empty_arm_
         assert not any("covariates" in e for e in refused.value.exits)
 
 
+@pytest.mark.parametrize("column, mean, sd", [("ph", 7.4, 0.05), ("year", 2021.0, 1.5)])
+def test_a_covariate_far_from_zero_leaves_a_separated_trial_as_it_is_centered(column, mean, sd):
+    """Claims backtest B-281, its review. A logistic model's fitted risks do not depend on where a
+    covariate's zero is: shifting it moves only the intercept. So the site-c trial above, with a
+    baseline pH of 7.4 ± 0.05 (or a year of 2021 ± 1.5) beside age, gives the same standardized
+    risks, difference, ratio and standard errors as the same trial with that column centered by
+    hand. The limit fit had scaled its columns without centering them, so a column some 150 SDs
+    from zero was nearly the intercept's twin; their near-flat direction loaded on the arm, and
+    the trial was refused as if an arm had separated."""
+    df = _parallel(seed=21)
+    df.loc[df.site == "c", "event"] = 1.0
+    df[column] = mean + np.random.default_rng(5).normal(0, sd, len(df))
+    spec = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
+                       covariates=("age", column), baseline="base", adherent="adherent")
+    r = T.estimate(df, spec)
+    centered = T.estimate(df.assign(**{column: df[column] - df[column].mean()}), spec)
+    for measure in ("risk_difference", "risk_ratio"):
+        a, b = r.contrast(measure=measure), centered.contrast(measure=measure)
+        assert a.estimate == pytest.approx(b.estimate, rel=1e-8)
+        assert a.se == pytest.approx(b.se, rel=1e-8)
+    assert [m.estimate for m in r.arm_estimates] == pytest.approx(
+        [m.estimate for m in centered.arm_estimates], rel=1e-8)
+    assert any("separate the outcome on site[c]:" in c for c in r.concerns), r.concerns
+    assert not any("arm[" in c for c in r.concerns), r.concerns
+
+
 # ── wording ──────────────────────────────────────────────────────────────────
 
 
