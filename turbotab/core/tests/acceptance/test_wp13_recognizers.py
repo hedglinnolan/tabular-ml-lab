@@ -1383,3 +1383,42 @@ def test_6d_interview_only_variables_name_the_interview_weight():
     assert lcd["use"] == "WTMEC2YR", lcd
     lcd = least_common_denominator(interview, frame[examined])
     assert lcd["use"] == "WTMEC2YR", lcd
+
+
+# DBQ_L, read 2026-10-15: "These questions were asked by trained interviewers using the
+# Computer-Assisted Personal Interview (CAPI) system in the participant's home or by telephone", and
+# its weight note, quoted here.
+DBQ_L_WEIGHTS = ("These questions were asked as part of the household interview, therefore, the "
+                 "interview sample weights may be used in the analysis for data in this section. "
+                 "However, if the data is joined with other data from the Mobile Examination Center "
+                 "(MEC), the MEC exam weights should be used for analyses.")
+
+
+def test_6e_diet_behavior_questions_alone_take_the_interview_weight():
+    """Claims backtest C-143, review: the rule read the diet behavior questionnaire's DBQ and DBD
+    columns as dietary-recall variables, so an analysis of them alone named the day-1 recall weight
+    WTDRD1 and dropped every participant without a recall. Expected, from DBQ_L's weight note and
+    pandas on the fixture: DBQ700 and DBD895, recorded on interviewed participants who were not
+    examined, take WTINT2YR; joined with a day-1 recall (DR1TKCAL) the recall's weight; on examined
+    rows alone, joined with the MEC's sample, WTMEC2YR."""
+    from turbotab.core.recognizers import least_common_denominator
+
+    assert "interview sample weights" in DBQ_L_WEIGHTS and "MEC exam weights" in DBQ_L_WEIGHTS
+    frame = _nhanes_2021_2023()
+    rng = np.random.default_rng(2125)
+    n = len(frame)
+    examined = frame["WTMEC2YR"] > 0
+    recall = examined & (rng.random(n) < 0.9)
+    frame["WTDRD1"] = np.where(recall, rng.uniform(3000, 120000, n), 0.0).round(1)
+    frame["DR1TKCAL"] = np.where(recall, rng.normal(2000, 600, n).round(0), np.nan)
+    frame["DBQ700"] = rng.choice([1, 2, 3, 4, 5], n)
+    frame["DBD895"] = rng.integers(0, 22, n)
+    assert frame.loc[~examined, ["DBQ700", "DBD895"]].notna().all().all()
+    assert not (frame["DR1TKCAL"].notna() & ~(frame["WTDRD1"] > 0)).any()
+    diet, weights = ["DBQ700", "DBD895"], ["WTINT2YR", "WTMEC2YR", "WTDRD1"]
+    lcd = least_common_denominator([*diet, *weights], frame)
+    assert lcd["use"] == "WTINT2YR", lcd
+    lcd = least_common_denominator([*diet, "DR1TKCAL", *weights], frame)
+    assert lcd["use"] == "WTDRD1", lcd
+    lcd = least_common_denominator([*diet, *weights], frame[examined])
+    assert lcd["use"] == "WTMEC2YR", lcd
