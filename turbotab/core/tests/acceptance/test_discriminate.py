@@ -1280,6 +1280,22 @@ def test_c3_each_value_test_can_settle_its_own_reading(kind):
     assert verdict.settles and str(verdict.value).startswith(value), (kind, verdict)
 
 
+def test_c3_one_value_beside_blanks_settles_no_constant():
+    """Claims backtest C-123: the constant test counted values after dropping blanks, so a
+    checkbox ('yes' where ticked, blank where not; 1/blank) was settled as excluded with the
+    evidence "every row holds the same value". The blank is a second value: pandas counts two,
+    blanks included, and a model can use the split. A column of one value on every row still
+    settles."""
+    for values in (pd.Series(["yes", None, None, "yes", None]), pd.Series([1.0, np.nan, 1.0])):
+        assert values.nunique(dropna=False) == 2
+        verdict = R.constant_values(values)
+        assert not verdict.settles, verdict
+        assert "same value" not in verdict.evidence, verdict
+    for values in (pd.Series([3.0] * 40), pd.Series(["yes"] * 5)):
+        assert values.nunique(dropna=False) == 1
+        assert R.constant_values(values).settles
+
+
 def test_c4_the_gates_six_fixtures_each_go_unsettled():
     """The fixtures the gate named: a household line number (1..k repeating across households);
     a measurement varying within units; FIPS 1–56 and float-written 1.0–5.0 codes; a 70-label
