@@ -18,6 +18,7 @@ documents, over the complementary halves rebuilt here from the documented rule (
 """
 from __future__ import annotations
 
+import time
 import warnings
 
 import numpy as np
@@ -313,3 +314,23 @@ def test_a_term_wider_than_the_fold_is_read_whole():
     assert np.asarray(step.frequencies_, float) == pytest.approx(expected, abs=1e-12)
     assert step.selected_ == [t for t, f in (("w", expected[:wide].max()), ("x0", expected[wide]))
                               if f >= 0.6]
+
+
+def test_a_class_of_copies_is_found_in_time_linear_in_its_size():
+    """30,000 single-row indicators on 20 rows, each a term of its own, fall into 20 classes of
+    about 1,500 exact copies: two standardized single-row indicators are ± copies exactly when they
+    mark the same row. The path reads the first indicator of each row, found in under 5 s (about
+    0.1 s idle; comparing every pair inside a class takes about 17 s)."""
+    from turbotab.core.models.variable_selection import path_columns
+
+    n, p = 20, 30_000
+    row = np.random.default_rng(0).integers(0, n, p)
+    D = np.zeros((n, p))
+    D[row, np.arange(p)] = 1.0
+    Z = (D - D.mean(axis=0)) / D.std(axis=0, ddof=1)
+    started = time.perf_counter()
+    path, codings = path_columns(Z, [[j] for j in range(p)])
+    took = time.perf_counter() - started
+    assert path.tolist() == sorted(int(np.flatnonzero(row == i)[0]) for i in range(n))
+    assert not codings
+    assert took < 5, f"{took:.1f} s"  # a loose guard: CI runs four at once
