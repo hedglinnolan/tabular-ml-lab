@@ -125,6 +125,26 @@ def test_positivity_is_block_and_record_with_a_stated_trimming_exit():
     assert [_taken(e).acknowledged for e in refusal.exits] == [True]  # no propensity to trim
 
 
+def test_a_numeric_exposure_s_positivity_is_stated_and_its_r2_read_as_precision():
+    """Claims backtest B-416, its review. Nothing checks a numeric exposure's positivity: the
+    covariates' cross-fitted R² says how much of it they explain, which by Frisch–Waugh is
+    precision, not whether each value compared has a positive density at every level of the
+    covariates. So its row is a stated assumption at any R², phrased as one; at R² ≥ 0.9 the
+    standard error's widening is named, and the interval is said to count that variance but not a
+    bias from nuisance models that misfit, which so small a remainder magnifies."""
+    for r2 in (0.5, 0.96):
+        [card] = [a for a in causal.assumption_card(
+            exposure="dose", exposure_kind="continuous", adjusted=["age"], timing_unknown=[],
+            overlap=None, variation={"r2": r2, "residual_sd": 1.0}, contrast=None, level=None)
+            if a["key"] == "positivity"]
+        assert card["status"] == "stated", card
+        assert "still" not in card["statement"], card["statement"]
+        assert f"{r2:.0%} of `dose`'s variance" in card["diagnostic"]
+    assert "5.0 times" in card["diagnostic"]
+    [interval] = [s for s in card["diagnostic"].split(". ") if s.startswith("Its interval")]
+    assert "variance" in interval and "bias" in interval, interval
+
+
 def test_the_method_fits_the_declared_estimand():
     numeric = _design(exposure_kind="continuous")
     refusal = _refused(_set(method="tmle"), _ctx(_state(), numeric))

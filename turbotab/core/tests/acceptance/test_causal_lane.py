@@ -1957,7 +1957,11 @@ def test_9b_a_numeric_exposure_the_covariates_nearly_determine_is_estimated_not_
     specified here, the estimate is unbiased (Chernozhukov et al. 2018). The lane estimates it: no
     refusal, nothing withheld, the estimator's own R² (by hand on its folds) and that widening
     shown on the card, the estimate within 3 standard errors of −0.2, and the methods sentence
-    listing positivity among the declared assumptions."""
+    listing positivity among the declared assumptions.
+
+    Re-pinned on review: the card's positivity row is a stated assumption (no R² checks a
+    positive density at every covariate level), phrased as one, and its interval sentence says it
+    counts the wider variance but not a bias from nuisance models that misfit."""
     from turbotab.core.tests.acceptance.server_drive import local_server
     from turbotab.core.tests.truths import Truth
 
@@ -1995,6 +1999,9 @@ def test_9b_a_numeric_exposure_the_covariates_nearly_determine_is_estimated_not_
     assert "practically violated" not in dose["methods"] and "practically violated" not in record
     assert CLOSING in dose["methods"]
     [card] = [a for a in design["assumptions"] if a["key"] == "positivity"]
-    assert card["status"] != "violated"
+    assert card["status"] == "stated", card
+    assert "still" not in card["statement"], card["statement"]
     assert f"{design['variation']['r2']:.0%}" in card["diagnostic"]
     assert f"{1 / math.sqrt(1 - design['variation']['r2']):.1f} times" in card["diagnostic"]
+    [interval] = [s for s in card["diagnostic"].split(". ") if s.startswith("Its interval")]
+    assert "variance" in interval and "bias" in interval, interval
