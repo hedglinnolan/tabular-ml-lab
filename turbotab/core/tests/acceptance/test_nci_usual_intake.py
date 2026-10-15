@@ -1220,7 +1220,9 @@ def test_4_the_amount_only_analysis_is_an_independent_mixed_model_of_the_csv(jou
 def test_4_the_amount_only_methods_sentence_is_verbatim(journeys):
     """(5) The sentence names the model, the transform (with λ), the nuisance covariates, the
     variance method and the intervals' scales, word for word; below an EAR not answered as every
-    participant's group's, the share is stated as a plain share and says why."""
+    participant's group's, the share is stated as a plain share and says why. Re-pinned for claims
+    backtest BX-040's review, an intended change: the EAR's report is cited "Institute of Medicine
+    2000a", apart from vitamin E's DRI report of the same year ("2000b")."""
     a = journeys["A"]["protein"]
     n, n2 = a["n_persons"], a["n_repeat"]
     assert a["methods"] == (
@@ -1237,7 +1239,7 @@ def test_4_the_amount_only_methods_sentence_is_verbatim(journeys):
         f"reported as a share of the distribution, not a prevalence of inadequacy: an EAR is the "
         f"median requirement of one DRI life-stage group (age band, sex, pregnancy and lactation "
         f"status), and that it is the EAR of every participant's group was not answered (Institute "
-        f"of Medicine 2000).")
+        f"of Medicine 2000a).")
     assert a["population_statement"] == ("Results describe the whole population (STROBE-nut nut-14: "
                                          "total population, not consumers only).")
     assert a["share_label"] == ("share below the EAR (46), not a prevalence of inadequacy: whether it "
@@ -1393,6 +1395,115 @@ def test_4_iron_is_refused_an_ear_until_its_requirement_is_answered_symmetric(jo
     assert ui.reads_as_iron("DRxTIRON_label", ["DR1TIRON", "DR2TIRON"])
 
 
+# The Food and Nutrition Board's Tolerable Upper Intake Levels (IOM DRI summary tables) cover
+# intake from food, water and supplements, except five: the footnotes "The ULs for magnesium
+# represent intake from a pharmacological agent only and do not include intake from food and
+# water", "As preformed vitamin A only", "As α-tocopherol; applies to any form of supplemental
+# α-tocopherol", and "The ULs for vitamin E, niacin, and folate apply to synthetic forms obtained
+# from supplements, fortified foods, or a combination of the two." (The NCBI and ODS copies refused
+# the fetch on 2026-10-15; the Linus Pauling Institute's pages, read that day, agree for magnesium,
+# "this UL applies specifically to supplemental magnesium", folate, "folic acid (supplements and
+# fortification)", vitamin E, "α-tocopherol in any supplemental form", and vitamin A, "The UL does
+# not apply to vitamin A derived from carotenoids".)
+UL_FORM_ONLY = {"DR1TMAGN": "magnesium", "magnesium_mg": "magnesium", "DR1TFA": "folate",
+                "folic_acid_ug": "folate", "DR1TFOLA": "folate", "DR1TNIAC": "niacin",
+                "niacin_mg": "niacin", "DR1TATOC": "vitamin E", "vitamin_e_mg": "vitamin E",
+                "alpha_tocopherol_mg": "vitamin E", "DR1TVARA": "vitamin A",
+                "retinol_ug": "vitamin A", "vitamin_a_rae_ug": "vitamin A"}
+UL_TOTAL = ("DR1TCALC", "calcium_mg", "iron_mg", "DR1TZINC", "vitamin_d_ug", "DR1TSELE",
+            "protein_g", "environment")
+
+
+def ul_recall_table() -> pd.DataFrame:
+    """The recall table with magnesium and calcium drawn from their own stream after it, so no other
+    column moves: food magnesium around 300 mg a day, much of it above the 350 mg UL that covers
+    supplements only, and calcium around 900 mg, whose 2,500 mg UL covers every source."""
+    frame = recall_table()
+    extra = np.random.default_rng(64)
+    person = frame["participant_id"].str[1:].astype(int).to_numpy()
+    level = extra.normal(0, 0.3, int(person.max()) + 1)
+    day = len(frame)
+    frame["magnesium_mg"] = np.round(np.exp(5.7 + level[person] + extra.normal(0, 0.35, day)), 1)
+    frame["calcium_mg"] = np.round(np.exp(6.8 + level[person] + extra.normal(0, 0.4, day)), 1)
+    return frame
+
+
+@pytest.fixture(scope="module")
+def ul_journey(tmp_path_factory):
+    """The share above a UL for magnesium and for calcium, through one local server."""
+    root = tmp_path_factory.mktemp("nci_ul")
+    path = root / "recalls_ul.csv"
+    ul_recall_table().to_csv(path, index=False)
+    out: dict = {}
+    with local_server(root / "home") as client:
+        d = open_project(client, path, recall_truth())
+        opening(d)
+        answer_the_plan(d, "protein_g")
+        for name, cutoff in (("magnesium_mg", 350), ("calcium_mg", 2500)):
+            d.decide({**PROTEIN, "nutrient": name, "cutoff": cutoff, "cutoff_kind": "UL",
+                      "n_boot": 50})
+            out[name] = by_name(d.artifact("usual_intake"), name)
+    return out
+
+
+def test_4_the_share_above_a_ul_says_what_the_ul_covers(ul_journey):
+    """Claims backtest BX-040: every share above a UL was stated "a share at risk of excess only if
+    the recalls include supplements, since the UL applies to total intake". The IOM tables above say
+    otherwise for magnesium, folate, niacin, vitamin E and vitamin A, whose ULs cover one form only:
+    food magnesium above 350 mg is no risk. Expected: magnesium's sentence
+    names the form its UL covers and claims no total intake; calcium's, whose UL covers every
+    source, says a share from foods alone is a lower bound. The names are read as ``reads_as_iron``
+    reads them (whole names; ``environment`` is no iron)."""
+    from turbotab.core import usual_intake as ui
+
+    magnesium, calcium = ul_journey["magnesium_mg"], ul_journey["calcium_mg"]
+    assert magnesium["applies"] and calcium["applies"]
+    assert "applies to total intake" not in magnesium["methods"], magnesium["methods"]
+    assert "supplements and medicines" in magnesium["methods"], magnesium["methods"]
+    assert "lower bound" in calcium["methods"], calcium["methods"]
+    for name, nutrient in UL_FORM_ONLY.items():
+        assert ui.ul_form(name) == nutrient, name
+    for name in UL_TOTAL:
+        assert ui.ul_form(name) is None, name
+    assert ui.ul_form("DRxTMAGN_label", ["DR1TMAGN", "DR2TMAGN"]) == "magnesium"
+
+
+# Health Canada's DRI tables (read 2026-10-15) reproduce the IOM footnotes. Vitamin A's, "UL as
+# preformed vitamin A only", limits the form and not the source; vitamin E's, niacin's and folate's
+# limit the source too: "applies only to synthetic forms obtained from supplements, fortified foods,
+# or a combination of the two".
+UL_SOURCE_LIMITED = ("magnesium", "folate", "niacin", "vitamin E")
+
+
+def test_4_vitamin_a_s_ul_covers_retinol_from_food_and_supplements():
+    """Claims backtest BX-040, review: the sentence read vitamin A's UL as it reads magnesium's, a
+    share at risk "only where these intakes are that form alone, supplements included", and so
+    dropped the reading that holds for a retinol column from foods: the UL covers preformed vitamin
+    A (retinol) from food and supplements alike, not carotenoids, so total retinol is at least the
+    food retinol and a foods-only share is a lower bound, as calcium's is. The four source-limited
+    ULs cover no form that food holds unfortified, so for them a foods-only share bounds nothing.
+    Also, "Institute of Medicine 2000" stood for two reports (vitamin E's DRI and Applications in
+    Dietary Assessment): every report a UL sentence cites is its own source in the contract."""
+    import re
+
+    from turbotab.core import usual_intake as ui
+
+    vitamin_a = nci.share_phrase(3000, "UL", ul_form="vitamin A")
+    assert "food and supplements" in vitamin_a and "lower bound" in vitamin_a, vitamin_a
+    assert "carotenoids" in vitamin_a and "that form alone" not in vitamin_a, vitamin_a
+    for nutrient in UL_SOURCE_LIMITED:
+        sentence = nci.share_phrase(100, "UL", ul_form=nutrient)
+        assert "lower bound" not in sentence, sentence
+    cited = {form: re.findall(r"Institute of Medicine \d{4}[a-z]?",
+                              nci.share_phrase(100, "UL", ul_form=form))
+             for form in [*nci.UL_FORMS, None]}
+    assert cited["vitamin E"] != cited[None], cited
+    for form, labels in cited.items():
+        assert labels, form
+        for label in labels:
+            assert any(s.startswith(f"{label}, ") for s in ui.CONTRACT.sources), (form, label)
+
+
 def test_4_every_refusal_carries_exits_that_post(journeys):
     """Every analysis-level refusal carries its ways forward, the last always "Leave usual intake
     out", and the exits taken here post and run: the two-part model on a component with no zero
@@ -1464,7 +1575,8 @@ def test_4_under_the_survey_design_the_estimate_is_weighted_and_fay_brr_gives_it
     are Fay's BRR (16 replicates over 15 strata, t on 15 df, each interval the log-scale form with
     t's critical value), the weekend read from NHANES's day codes (1, 6, 7). The point estimates are
     the engine's own on the CSV read by pandas with those weights (sections 1 and 3 verify the
-    arithmetic)."""
+    arithmetic). Re-pinned for claims backtest BX-040's review, an intended change: the EAR's report
+    is cited "Institute of Medicine 2000a", apart from vitamin E's DRI report ("2000b")."""
     from turbotab.core import usual_intake as ui
     from turbotab.core.models.survey import SAMPLE_EXIT
 
@@ -1510,7 +1622,7 @@ def test_4_under_the_survey_design_the_estimate_is_weighted_and_fay_brr_gives_it
         f"balanced repeated replication (16 of 16 replicates over 15 strata of two PSUs, Fay "
         f"coefficient 0.3), each refitting the whole model, with t intervals on 15 degrees of "
         f"freedom.{INTERVALS_WITH_SHARE} The share below the EAR (46) is the EAR cut-point estimate "
-        f"of the prevalence of inadequacy (Institute of Medicine 2000), the cut-off answered as the "
+        f"of the prevalence of inadequacy (Institute of Medicine 2000a), the cut-off answered as the "
         f"EAR of every participant's DRI life-stage group (age band, sex, pregnancy and lactation "
         f"status).")
 

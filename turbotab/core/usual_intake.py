@@ -35,11 +35,11 @@ with no consumption on their two recall days are not non-consumers, so "consumer
 days" is refused.
 
 **Cut-offs.** The share below the EAR is the EAR cut-point estimate of the prevalence of inadequacy
-(Institute of Medicine 2000), valid only for usual intake, which is why it lives here. An AI cannot
+(Institute of Medicine 2000a), valid only for usual intake, which is why it lives here. An AI cannot
 yield a prevalence of inadequacy (NUTRITION_PACK §07: "the app must refuse to compute one and say
 why"); total energy has no EAR. The UL's share is the share above it.
 
-The EAR cut-point's own conditions (Institute of Medicine 2000, *DRI: Applications in Dietary
+The EAR cut-point's own conditions (Institute of Medicine 2000a, *DRI: Applications in Dietary
 Assessment*, ch. 4, read 2026-10-05: it "works best ... when: 1. intakes and requirements are
 independent 2. the requirement distribution is symmetrical around the EAR 3. the variance in intakes
 is larger than the variance of requirements 4. true prevalence of inadequacy in the population is no
@@ -108,22 +108,22 @@ LONELY_PSU = ("The standard errors for the surveyed population replicate the des
               "two or more PSUs in every stratum, so no distribution is estimated for it "
               "(MODELING_SEQUENCE §4: block and record).")
 IRON_SKEWED = ("Iron's requirement distribution is skewed in menstruating women, so the share below "
-               "its EAR is no prevalence of inadequacy for them: Institute of Medicine 2000, \"when "
+               "its EAR is no prevalence of inadequacy for them: Institute of Medicine 2000a, \"when "
                "the distribution of requirements is known to be asymmetrical, as for iron in "
                "menstruating women, the probability approach, not the EAR cut-point method, is "
                "recommended\" (NUTRITION_PACK §07: an exception that \"must be hard-coded\"). The "
                "probability approach is not implemented here.")
 EAR_UNANSWERED = ("The share is reported as a plain share, not a prevalence of inadequacy: an EAR is "
                   "\"the median requirement of a nutrient for a given life stage and gender group\" "
-                  "(Institute of Medicine 2000), and whether this cut-off is the EAR of every "
+                  "(Institute of Medicine 2000a), and whether this cut-off is the EAR of every "
                   "participant's DRI life-stage group (age band, sex, pregnancy and lactation "
                   "status) is not answered. Across groups with different EARs one cut-off misplaces "
                   "the requirement of every group but one.")
 EAR_CONDITIONS = ("The EAR cut-point estimate assumes what the recalls cannot show (Institute of "
-                  "Medicine 2000): \"intakes and requirements are independent\", \"the requirement "
+                  "Medicine 2000a): \"intakes and requirements are independent\", \"the requirement "
                   "distribution is symmetrical around the EAR\", and \"the variance in intakes is "
                   "larger than the variance of requirements\".")
-# Institute of Medicine 2000: the cut-point "works best" when the "true prevalence of inadequacy in
+# Institute of Medicine 2000a: the cut-point "works best" when the "true prevalence of inadequacy in
 # the population is no smaller than 8 to 10 percent or no larger than 90 to 92 percent".
 EAR_RANGE = (0.10, 0.90)
 
@@ -239,6 +239,47 @@ def reads_as_iron(nutrient: str, days: Sequence[str] = ()) -> bool:
     return False
 
 
+# The nutrients whose Tolerable Upper Intake Level covers one form only, by the nutrient a name
+# reads as (claims backtest BX-040). The IOM DRI summary tables' footnotes: magnesium's "represent
+# intake from a pharmacological agent only and do not include intake from food and water"; vitamin
+# A's "As preformed vitamin A only", which limits the form and not the source (retinol from food
+# counts); vitamin E's "applies to any form of supplemental α-tocopherol"; and "The ULs for vitamin
+# E, niacin, and folate apply to synthetic forms obtained from supplements, fortified foods, or a
+# combination of the two." Every other UL covers food, water and supplements.
+UL_FORM_NUTRIENTS = {"magnesium": "magnesium", "folate": "folate", "folic acid": "folate",
+                     "folic": "folate", "food folate": "folate", "folate DFE": "folate",
+                     "niacin": "niacin", "vitamin E": "vitamin E", "added vitamin E": "vitamin E",
+                     "tocopherol": "vitamin E", "vite": "vitamin E", "vitamin A": "vitamin A",
+                     "retinol": "vitamin A", "vita": "vitamin A"}
+# A name the reader leaves unread for its food word (``food_folate_ug``) still names the nutrient.
+_UL_FORM_WORDS = {"magnesium": "magnesium", "folate": "folate", "folic": "folate",
+                  "niacin": "niacin", "tocopherol": "vitamin E", "retinol": "vitamin A"}
+
+
+def ul_form(nutrient: str, days: Sequence[str] = ()) -> str | None:
+    """The nutrient whose UL covers one form only (:data:`UL_FORM_NUTRIENTS`) that the component's
+    name (or a recall day's) reads as, or None: a proposal from the name, as :func:`reads_as_iron`
+    reads iron, used only to word the share above a UL, never to change a number. A bare
+    ``vitamin`` takes the letter beside it (``vitamin_e_mg``, ``vit_a``)."""
+    from turbotab.core.recognizers import AmbiguousNutrient, read_nutrient, tokens
+
+    for name in [nutrient, *days]:
+        try:
+            reading = read_nutrient(name)
+        except AmbiguousNutrient:
+            continue
+        words = tokens(name)
+        if reading is None:
+            found = next((_UL_FORM_WORDS[w] for w in words if w in _UL_FORM_WORDS), None)
+        elif reading.nutrient in ("vitamin", "vit"):
+            found = "vitamin E" if "e" in words else "vitamin A" if "a" in words else None
+        else:
+            found = UL_FORM_NUTRIENTS.get(reading.nutrient)
+        if found is not None:
+            return found
+    return None
+
+
 def iron_exits(nutrient: str, spec: Any) -> list[dict[str, Any]]:
     return [*cutoff_exits(nutrient, spec),
             {"label": "No participant is a menstruating woman: keep the EAR cut-point",
@@ -313,7 +354,7 @@ def _cutoff_fits_the_reference(decision: Any, ctx: Any) -> None:
         raise Refusal(
             "ai_no_prevalence",
             "An Adequate Intake is not a requirement's median, so the share of usual intakes below it "
-            "is no prevalence of inadequacy (Institute of Medicine 2000); NUTRITION_PACK §07: \"I can "
+            "is no prevalence of inadequacy (Institute of Medicine 2000a); NUTRITION_PACK §07: \"I can "
             "show the distribution against the AI, but I cannot compute a prevalence of inadequacy "
             "from an AI, and neither can anyone else.\"",
             exits=[{"label": "Show the distribution without a cut-off", "decision": dropped},
@@ -558,8 +599,17 @@ def _contract() -> Any:
                  "Kipnis et al. 2009, Biometrics 65:1003 (PMC2881223)",
                  "NCI MIXTRAN and DISTRIB macros v2.1 (epi.grants.cancer.gov/diet/usualintakes)",
                  "Lachat et al. 2016, STROBE-nut, PLoS Med 13:e1002036 (nut-14)",
-                 "Institute of Medicine 2000, Dietary Reference Intakes: Applications in Dietary "
-                 "Assessment"),
+                 "Institute of Medicine 1997, Dietary Reference Intakes for Calcium, Phosphorus, "
+                 "Magnesium, Vitamin D, and Fluoride",
+                 "Institute of Medicine 1998, Dietary Reference Intakes for Thiamin, Riboflavin, "
+                 "Niacin, Vitamin B6, Folate, Vitamin B12, Pantothenic Acid, Biotin, and Choline",
+                 "Institute of Medicine 2000a, Dietary Reference Intakes: Applications in Dietary "
+                 "Assessment",
+                 "Institute of Medicine 2000b, Dietary Reference Intakes for Vitamin C, Vitamin E, "
+                 "Selenium, and Carotenoids",
+                 "Institute of Medicine 2001, Dietary Reference Intakes for Vitamin A, Vitamin K, "
+                 "Arsenic, Boron, Chromium, Copper, Iodine, Iron, Manganese, Molybdenum, Nickel, "
+                 "Silicon, Vanadium, and Zinc"),
     ))
 
 
@@ -569,5 +619,5 @@ __all__ = ["ASSOCIATION", "ASSUMPTIONS", "CONTRACT", "EAR_CONDITIONS", "EAR_RANG
            "ENERGY_NO_EAR", "EPISODIC_SHARE", "ESTIMAND", "IRON_SKEWED", "LONELY_PSU",
            "MIN_REPEATERS", "NOT_DIETARY", "NO_RECALL_DAYS", "POPULATION_QUESTION", "PREDICTION",
            "REPEATS_UNSETTLED", "SURVEY_UNANSWERED", "TIME_POINTS", "TOO_FEW_REPEATS",
-           "TWO_PART_ASSUMPTION", "answer", "cutoff_exits", "day_columns", "ear_exits",
-           "iron_exits", "leave_out", "reads_as_iron", "suggested_model"]
+           "TWO_PART_ASSUMPTION", "UL_FORM_NUTRIENTS", "answer", "cutoff_exits", "day_columns",
+           "ear_exits", "iron_exits", "leave_out", "reads_as_iron", "suggested_model", "ul_form"]

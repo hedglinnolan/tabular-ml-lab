@@ -249,6 +249,33 @@ def test_nhanes_roles_link_flags_and_name_the_respondent(stores):
     assert all(len(p["reason"].split()) <= 16 for p in roles.values())
 
 
+def test_one_value_beside_blanks_is_asked_never_left_out_as_a_constant(tmp_path):
+    """Claims backtest C-123: a checkbox exported as 'yes' (or 1) where ticked and blank where not
+    holds two values on its rows, the value and the blank, so it is no constant: it is never left
+    out at high confidence, and its reason never says every row holds the same value. A column
+    truly constant on every row still is. The truth is counted by pandas with blanks included,
+    never by the store's summary."""
+    rng = np.random.default_rng(123)
+    n = 200
+    ticked = rng.random(n) < 0.4
+    frame = pd.DataFrame({"y": rng.normal(size=n), "supplement_use": np.where(ticked, "yes", None),
+                          "multi_select_3": np.where(ticked, 1.0, np.nan), "const": 3.0})
+    frame.to_csv(tmp_path / "t.csv", index=False)
+    ingest(tmp_path / "t.csv", tmp_path / "t.parquet")
+    store = DataStore(tmp_path / "t.parquet", 2 << 30)
+    try:
+        roles = _proposals(store, [], "y")
+    finally:
+        store.close()
+    for column in ("supplement_use", "multi_select_3"):
+        assert frame[column].nunique(dropna=False) == 2 and frame[column].notna().any()
+        p = roles[column]
+        assert not (p["proposed"] == "excluded" and p["confidence"] == "high"), p
+        assert p["attention"] and "same value" not in p["reason"], p
+    assert frame["const"].nunique(dropna=False) == 1
+    assert roles["const"]["proposed"] == "excluded" and roles["const"]["confidence"] == "high"
+
+
 def test_energy_bearing_means_an_amount_that_carries_kcal():
     assert all(energy_bearing(c) for c in ("protein_g", "fat_total", "carb", "DR1TPROT", "fiber_g",
                                            "sugar", "sugar_g"))

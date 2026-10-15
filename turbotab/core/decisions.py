@@ -1943,7 +1943,7 @@ class SetUsualIntake(_DecisionModel):
     cutoff_kind: CutoffKind | None = None
     n_boot: int = Field(default=200, ge=50, le=2000)
     # The EAR cut-point's conditions the recalls cannot show, answered by the user (Institute of
-    # Medicine 2000, ch. 4; turbotab/core/usual_intake.py). ``ear_for_all``: the cut-off is the EAR
+    # Medicine 2000a, ch. 4; turbotab/core/usual_intake.py). ``ear_for_all``: the cut-off is the EAR
     # of every participant's DRI life-stage group (age band, sex, pregnancy and lactation status);
     # unanswered, the share below it is reported as a plain share (block and record).
     # ``ear_symmetric``: the requirement distribution is symmetric in these participants, asked of

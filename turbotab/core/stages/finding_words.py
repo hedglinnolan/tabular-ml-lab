@@ -632,14 +632,21 @@ NHANES_WEIGHTING_EVIDENCE = {
 # when analyzing these data."
 OGTT_QUOTE = ("\"Specific sample weights for this subsample are included in this data file and "
               "should be used when analyzing these data.\" (NHANES OGTT_I documentation)")
+# NHANES TCHOL_L (August 2021-August 2023) documentation, read 2026-10-15: "WTPH2YR - Phlebotomy 2
+# Year Weight" (claims backtest C-143).
+PHLEBOTOMY_QUOTE = ("\"The phlebotomy weight should be used for analyses that use variables "
+                    "derived from blood analytes, and is included in all relevant data files.\" "
+                    "(NHANES TCHOL_L documentation)")
 _SUBSAMPLE_WORDS = {
+    "phlebotomy": ("phlebotomy weight", "the examined participants who gave blood"),
     "fasting subsample": ("fasting subsample weight", "the morning fasting subsample"),
     "oral glucose tolerance test subsample": (
         "OGTT subsample weight", "the oral glucose tolerance test subsample, drawn from the "
                                  "fasting subsample"),
     "subsample": ("subsample weight", "the subsample that weight describes"),
 }
-_SUBSAMPLE_OF = {"fasting subsample": "the morning fasting subsample",
+_SUBSAMPLE_OF = {"phlebotomy": "the examined participants who gave blood",
+                 "fasting subsample": "the morning fasting subsample",
                  "oral glucose tolerance test subsample": "the OGTT subsample"}
 
 
@@ -682,7 +689,8 @@ def restate_survey_weights(f: dict[str, Any], p: dict[str, Any], fc: FindingCont
         because = [fc.target, *[c for c in because if c != fc.target]][:4]
     measured = (f"{listing(because, limit=4)} {plural(len(because), 'was', 'were')} measured on "
                 f"{sample_words}, the smallest sample among this table's variables")
-    cdc = f" CDC: {OGTT_QUOTE}" if lcd["sample"] != "fasting subsample" else ""
+    cdc = ("" if lcd["sample"] == "fasting subsample" else
+           f" CDC: {PHLEBOTOMY_QUOTE}" if lcd["sample"] == "phlebotomy" else f" CDC: {OGTT_QUOTE}")
     if lcd["use"]:
         p.update({"use": [lcd["use"]], "not": list(lcd["not"]), "sample": lcd["sample"],
                   "other_subsamples": others, "unconfirmed": unconfirmed})
@@ -710,7 +718,7 @@ def _survey_weights(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) ->
     avoid = [str(w) for w in p.get("not") or []]
     sample = p.get("sample")
     if sample in _SUBSAMPLE_WORDS:
-        which = {"fasting subsample": "Fasting analytes",
+        which = {"phlebotomy": "Blood analytes", "fasting subsample": "Fasting analytes",
                  "oral glucose tolerance test subsample": "OGTT analytes"}.get(sample,
                                                                                "Subsample analytes")
         if not use:

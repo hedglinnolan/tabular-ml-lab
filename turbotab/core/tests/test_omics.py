@@ -38,6 +38,130 @@ def test_the_reading_names_raw_values_and_stays_quiet_on_normalized_ones(name, l
     assert (reading.kind if reading else None) == kind
 
 
+def test_estimated_counts_raise_the_normalization_question():
+    """Claims backtest C-193: salmon, kallisto and RSEM write estimated counts, non-integer because
+    a read is split between transcripts, and nothing in them divides out the library size;
+    GENOMICS_PACK §02 row 2 ("Non-integer ≥0, sums vary, max ≫1e4") says ask. The whole-number test
+    read them as normalized, so no normalization question was asked and no linear family was
+    refused. Known truth: counts drawn at library sizes spread threefold, then split fractionally
+    as the repo's fixture is (each cell × U(0.97, 1.03)), are unnormalized; the same matrix scaled
+    to 1e6 per sample (as TPM is) is normalized."""
+    fixture = omics.scale_reading(pd.read_csv(SAMPLES / "genomics_estimated_counts.csv"),
+                                  ["genomics"])
+    assert fixture is not None and fixture.kind == "counts"
+    rng = np.random.default_rng(193)
+    n, p = 60, 200
+    depth = rng.uniform(1.0, 3.0, n)
+    counts = rng.poisson(np.outer(depth, rng.lognormal(4.0, 1.5, p)))
+    estimated = counts * rng.uniform(0.97, 1.03, counts.shape)
+    sums = estimated.sum(axis=1)
+    assert sums.max() / sums.min() > 2 and not np.all(np.mod(estimated, 1) == 0)
+    frame = pd.DataFrame(estimated.round(3), columns=[f"gene_{i:04d}" for i in range(p)])
+    reading = omics.scale_reading(frame, ["genomics"])
+    assert reading is not None and reading.kind == "counts", reading
+    _, finding = omics.scale_finding(frame, ["genomics"])
+    assert "whole numbers" not in finding["detail"], finding["detail"]
+    tpm = frame.div(frame.sum(axis=1), axis=0) * 1e6
+    assert omics.scale_reading(tpm, ["genomics"]) is None
+
+
+def _estimated_at_balanced_depth(seed: int) -> pd.DataFrame:
+    """salmon-like estimated counts from evenly sequenced samples: negative-binomial counts
+    (dispersion 0.2) at library depths exp(N(0, 0.1)), each cell then split fractionally."""
+    rng = np.random.default_rng(seed)
+    n, p, phi = 60, 200, 0.2
+    mu = np.outer(np.exp(rng.normal(0.0, 0.1, n)), rng.lognormal(5.0, 1.5, p))
+    counts = rng.negative_binomial(1 / phi, 1 / (1 + mu * phi))
+    estimated = counts * rng.uniform(0.97, 1.03, counts.shape)
+    return pd.DataFrame(estimated.round(3), columns=[f"gene_{i:04d}" for i in range(p)])
+
+
+@pytest.mark.parametrize("seed", range(8))
+def test_estimated_counts_at_balanced_depth_are_asked_about(seed):
+    """Claims backtest C-193, review: the reading asked about fractional counts only where their
+    library sizes were spread wider than a coefficient of variation of about 0.19, the midpoint the
+    pack's data-type card only ORDERS two names by, so salmon output from evenly sequenced samples
+    read as normalized: no question, no log, the linear families let through. Known truth: these
+    are unnormalized counts by construction (library-size CV 0.05-0.15), and FPKM spreads as little
+    (``genomics_fpkm.csv``, CV 0.11), so the values cannot tell the two apart; GENOMICS_PACK §02
+    says ask. Expected: both are asked about, the finding names both readings, and it names them in
+    the order the pack's card does wherever the card reads the matrix."""
+    from turbotab import packs
+
+    frame = _estimated_at_balanced_depth(seed)
+    v, sums = frame.to_numpy(), frame.sum(axis=1)
+    assert 0.05 <= sums.std(ddof=1) / sums.mean() <= 0.15
+    assert (v == 0).any() and not np.all(np.mod(v, 1) == 0) and v.max() >= 1000
+    fpkm = pd.read_csv(SAMPLES / "genomics_fpkm.csv")
+    for table in (frame, fpkm):
+        reading = omics.scale_reading(table, ["genomics"])
+        assert reading is not None and reading.kind == "counts", reading
+        _, finding = omics.scale_finding(table, ["genomics"])
+        title = finding["title"]
+        assert "FPKM" in title and "estimated counts" in title, title
+        keys = packs._classify(packs.read_matrix(table))["keys"]
+        if keys:
+            first = "FPKM" if keys[0] == packs.FPKM else "estimated counts"
+            assert title.index(first) == min(title.index("FPKM"), title.index("estimated counts")), \
+                (keys, title)
+
+
+def _lc_ms(seed: int, zeros: float = 0.0) -> pd.DataFrame:
+    """LC-MS peak areas: 150 log-normal features at 80 samples, each sample diluted by its own
+    factor exp(N(0, 0.25)); ``zeros`` of the cells set to 0, as mzmine writes a non-detection."""
+    rng = np.random.default_rng(seed)
+    n, p = 80, 150
+    areas = (rng.lognormal(10.0, 1.5, p) * rng.lognormal(0.0, 0.3, (n, p))
+             * np.exp(rng.normal(0.0, 0.25, n))[:, None])
+    areas[rng.random((n, p)) < zeros] = 0.0
+    return pd.DataFrame(areas.round(2), columns=[f"mz_{i:03d}" for i in range(p)])
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_lc_ms_peak_areas_are_never_read_as_estimated_counts(seed):
+    """Claims backtest C-193, review: the estimated-counts branch ran before the intensity branch
+    and asked for no zero, so LC-MS peak areas under the genomics and metabolomics lenses were named
+    salmon, kallisto or RSEM output and offered log-CPM. Known truth: these are intensities by
+    construction (no read was counted; each sample is diluted, as urine is), so under both lenses
+    they read as intensities, with or without mzmine's zeros. Under the genomics lens alone a block
+    with no zero is no transcript quantification (a zero count is a zero estimated count, TPM and
+    FPKM alike; the pack's data-type card asks for one), so it stays unread."""
+    areas = _lc_ms(seed)
+    assert not np.all(np.mod(areas.to_numpy(), 1) == 0) and (areas.to_numpy() > 0).all()
+    reading = omics.scale_reading(areas, ["genomics", "metabolomics"])
+    assert reading is not None and reading.kind == "intensities", reading
+    assert omics.scale_reading(areas, ["genomics"]) is None
+    with_zeros = _lc_ms(seed, zeros=0.1)
+    reading = omics.scale_reading(with_zeros, ["genomics", "metabolomics"])
+    assert reading is not None and reading.kind == "intensities", reading
+
+
+def _with_ferritin(frame: pd.DataFrame) -> pd.DataFrame:
+    """``frame`` with one clinical column beside its assay block: serum ferritin in ng/mL,
+    log-normal, one participant at 0 and one in iron overload at 4,452."""
+    ferritin = np.round(np.random.default_rng(193).lognormal(4.5, 0.9, len(frame)), 1)
+    ferritin[:2] = (0.0, 4452.0)
+    return frame.assign(serum_ferritin=ferritin)
+
+
+@pytest.mark.parametrize("name", ["genomics_vst.csv", "genomics_microarray.csv",
+                                  "metabolomics_untargeted.csv", "metabolomics_paired_logged.csv"])
+def test_one_clinical_column_does_not_make_a_block_read_as_estimated_counts(name):
+    """Claims backtest C-193, review: the estimated-counts test read its zero and its thousands over
+    every fractional column at once, so one clinical column beside a normalized block (serum
+    ferritin, with a 0 and a 4,452) made all of it "FPKM or estimated counts" under the genomics
+    lens, and the linear families waited on a normalization the block never needed. Known truth: VST
+    and microarray values are normalized by construction, and LC-MS peak areas count no reads; a
+    transcript quantification's zeros and thousands sit in many genes (the estimated-counts fixture:
+    a zero in 282 columns, 21 reaching 1,000), so ferritin beside it changes nothing."""
+    table = pd.read_csv(SAMPLES / name)
+    assert omics.scale_reading(table, ["genomics"]) is None
+    assert omics.scale_reading(_with_ferritin(table), ["genomics"]) is None
+    estimated = _with_ferritin(pd.read_csv(SAMPLES / "genomics_estimated_counts.csv"))
+    reading = omics.scale_reading(estimated, ["genomics"])
+    assert reading is not None and reading.kind == "counts" and reading.estimated, reading
+
+
 def test_genotype_dosages_and_two_level_columns_are_not_counts():
     rng = np.random.default_rng(0)
     frame = pd.DataFrame(rng.integers(0, 3, (80, 40)), columns=[f"rs{i}" for i in range(40)])

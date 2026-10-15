@@ -836,11 +836,21 @@ def characteristic_predictor(name: Any, values: Any, units: Any = None) -> Verdi
 
 
 def constant_values(values: Any) -> Verdict:
-    """Left out because every row holds one value: no reading of a constant explains anything."""
-    s = _present(values)
-    if int(s.nunique()) <= 1:
+    """Left out because every row holds one value: no reading of a constant explains anything. A
+    blank is a value here: one value beside blanks (a checkbox exported as 'yes' or 1 where ticked,
+    blank where not) varies through its blanks, so it is asked (claims backtest C-123)."""
+    import pandas as pd
+
+    s = pd.Series(values)
+    present, blanks = s.dropna(), int(s.isna().sum())
+    if not len(present):
+        return Verdict(True, "excluded", "every row is blank")
+    if int(present.nunique()) <= 1 and not blanks:
         return Verdict(True, "excluded", "every row holds the same value")
-    return Verdict(False, None, f"`{int(s.nunique()):,}` different values")
+    if int(present.nunique()) <= 1:
+        return Verdict(False, None, f"one value, blank on `{blanks:,}` of `{len(s):,}` rows: the "
+                                    f"blank may be the other answer")
+    return Verdict(False, None, f"`{int(present.nunique()):,}` different values")
 
 
 def height_in_band(values: Any) -> Verdict:
@@ -1170,8 +1180,11 @@ KIND_RULES: dict[str, KindRule] = {r.kind: r for r in (
                "it must not change within most units")),
              helpers=("turbotab.core.stages.rows:characteristic_fits",)),
     KindRule("role:excluded", "the column holds one value, so it explains nothing",
-             ("a predictor",), constant_values,
-             (("a predictor", "a constant has no variation for any model to use"),)),
+             ("a predictor", "a checkbox: one value where ticked, blank where not ('yes' or 1, "
+              "and blank)"), constant_values,
+             (("a predictor", "a constant has no variation for any model to use"),
+              ("a checkbox: one value where ticked, blank where not ('yes' or 1, and blank)",
+               "a blank counts as a value, so one value beside blanks is two"))),
     # The sixth gate: a BMI exported from SAS with ten "." for missing, and a CRP with fifteen
     # "<0.20", arrived as text; "labels, not numbers" settled them codes, and the fit entered 175
     # and 300 indicators where one slope belonged. Numbers written as text are an alternative to

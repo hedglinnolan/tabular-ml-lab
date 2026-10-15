@@ -13,6 +13,12 @@ the values alone; it never looks at the outcome:
 
 * **counts** — whole numbers, none negative, reaching at least :data:`COUNT_MAX` (genotype dosages
   0/1/2 and scores do not), under the genomics lens. A row total is the sample's library size.
+  Values none negative, with fractions, a zero in :data:`ESTIMATED_COLUMNS` columns or more and as
+  many reaching :data:`RAW_MAX`, whose sample totals are not the million CPM and TPM rescale to,
+  may be estimated counts (salmon, kallisto, RSEM) or FPKM, and the values cannot tell which:
+  GENOMICS_PACK §02 row 2 says ask, so they are read as counts that may be unnormalized
+  (``estimated``), after the intensity reading declines. The library-size spread orders the two
+  names, as the pack's data-type card does (:func:`_estimated_counts_cv`); it decides nothing.
 * **intensities** — none negative, spanning :data:`RAW_RANGE`-fold, and either reaching
   :data:`RAW_MAX` (log-scale values sit below ~40) or right-skewed feature by feature (median
   skewness at least :data:`RAW_SKEW`; a log scale is near-symmetric), under the metabolomics lens.
@@ -66,6 +72,7 @@ COUNT_MAX = 100.0  # whole numbers whose largest value is below this are not rea
 RAW_MAX = 1_000.0  # raw intensities reach thousands; log2 intensities stay below ~40
 RAW_RANGE = 100.0  # ... and span two orders of magnitude (largest over smallest positive value)
 RAW_SKEW = 0.5  # or, below RAW_MAX (a targeted panel in µM), are right-skewed feature by feature
+ESTIMATED_COLUMNS = 2  # estimated counts' zero and thousands, each in this many columns: not one's
 CHECK_ALPHA = 0.01  # the library-size check speaks below this p-value
 PRIOR_COUNT = 2.0  # edgeR cpm(log = TRUE)'s default prior.count
 LOGRATIO_TRIM, SUM_TRIM, A_CUTOFF = 0.3, 0.05, -1e10  # edgeR calcNormFactors' TMM defaults
@@ -105,6 +112,7 @@ class ScaleReading:
     minimum_positive: float
     n_zero: int  # cells equal to zero (intensities: they cannot be logged)
     n_missing: int
+    estimated: bool = False  # fractional: estimated counts or FPKM, which the values cannot tell apart
 
     @property
     def spread(self) -> float:
@@ -196,7 +204,38 @@ def scale_reading(frame: pd.DataFrame, lenses: Sequence[str] | None, target: str
         if positive.size and float(positive.max()) / float(positive.min()) >= RAW_RANGE and (
                 float(positive.max()) >= RAW_MAX or _median_skew(block) >= RAW_SKEW):
             return _reading("intensities", [c for c, k in zip(columns, keep) if k], block)
+    if "genomics" in lenses:
+        # After the intensity reading declines: under both omics lenses, fractional values that
+        # reach the thousands are LC-MS peak areas as readily as estimated counts.
+        return _estimated_counts(values, columns, keep & ~whole)
     return None
+
+
+def _estimated_counts(values: np.ndarray, columns: Sequence[str],
+                      estimated: np.ndarray) -> ScaleReading | None:
+    """GENOMICS_PACK §02 row 2, "Non-integer ≥0, sums vary, max ≫1e4: Estimated counts
+    (salmon/kallisto/RSEM) — ask" (claims backtest C-193): the whole-number test read them as
+    normalized, and no normalization was asked. A block with no zero is no transcript
+    quantification, as the pack's data-type card reads it (a zero count is a zero estimated count,
+    TPM and FPKM alike), so LC-MS peak areas under a genomics lens stay unread. The zero and the
+    thousands each sit in :data:`ESTIMATED_COLUMNS` columns or more, as a quantification's do in
+    many genes, so one clinical column beside a normalized block (serum ferritin, with a 0 and a
+    4,452) does not make it estimated counts. Totals within the card's tolerance of a million on
+    every sample are CPM, TPM or TMM-scaled CPM (§02 rows 3 and 4), normalized. Every other block
+    is asked about whatever its library-size spread: estimated counts from evenly sequenced samples
+    spread as little as FPKM does."""
+    from turbotab import packs
+
+    if estimated.sum() < MIN_FEATURES:
+        return None
+    block = values[:, estimated]
+    totals = np.nansum(block, axis=1)
+    per_million = np.abs(totals / packs._LIBRARY_TOTAL - 1) <= packs._LIBRARY_NEAR
+    reaching = int(np.sum(np.nanmax(block, axis=0) >= RAW_MAX))
+    zeroed = int(np.sum((np.isfinite(block) & (block == 0)).any(axis=0)))
+    if min(reaching, zeroed) < ESTIMATED_COLUMNS or per_million.all():
+        return None
+    return _reading("counts", [c for c, k in zip(columns, estimated) if k], block, estimated=True)
 
 
 def _median_skew(block: np.ndarray) -> float:
@@ -211,13 +250,34 @@ def _median_skew(block: np.ndarray) -> float:
     return float(np.median(s)) if s.size else float("nan")
 
 
-def _reading(kind: str, columns: list[str], block: np.ndarray) -> ScaleReading:
+def _cv(totals: np.ndarray) -> float:
+    """The coefficient of variation of the per-sample totals (sample standard deviation over mean),
+    as the genomics pack's data-type card measures a library-size spread."""
+    t = totals[np.isfinite(totals)]
+    return float(t.std(ddof=1) / t.mean()) if t.size > 1 and t.mean() > 0 else 0.0
+
+
+def _estimated_counts_cv() -> float:
+    """The library-size spread at which fractional values are named estimated counts first, and
+    below it FPKM: the split the pack's data-type card orders the two by, the midpoint of the
+    spreads measured on ``genomics_estimated_counts.csv`` and ``genomics_fpkm.csv``
+    (``packs._ESTIMATED_COUNTS_CV``, ``packs._FPKM_CV``; the fixture test keeps them true). FPKM
+    divided the library size out; estimated counts did not, so theirs is spread as raw counts' is,
+    unless the samples were sequenced evenly. It orders the names and decides nothing."""
+    from turbotab import packs
+
+    return (packs._ESTIMATED_COUNTS_CV + packs._FPKM_CV) / 2
+
+
+def _reading(kind: str, columns: list[str], block: np.ndarray,
+             estimated: bool = False) -> ScaleReading:
     finite = np.isfinite(block)
     positive = block[finite & (block > 0)]
     return ScaleReading(
         kind=kind, columns=tuple(columns), totals=np.nansum(block, axis=1),
         maximum=float(np.nanmax(block)), minimum_positive=float(positive.min()) if positive.size else 0.0,
-        n_zero=int(np.sum(finite & (block == 0))), n_missing=int(np.sum(~finite)))
+        n_zero=int(np.sum(finite & (block == 0))), n_missing=int(np.sum(~finite)),
+        estimated=estimated)
 
 
 # ── edgeR's TMM and log-CPM, by their definitions ───────────────────────────
@@ -572,7 +632,40 @@ def scale_finding(frame: pd.DataFrame, lenses: Sequence[str] | None,
     totals = reading.totals[np.isfinite(reading.totals) & (reading.totals > 0)]
     lo, hi = (float(totals.min()), float(totals.max())) if totals.size else (float("nan"),) * 2
     spread = reading.spread
-    if reading.kind == "counts":
+    fpkm_first = reading.estimated and _cv(reading.totals) < _estimated_counts_cv()
+    if reading.kind == "counts" and fpkm_first:
+        # A spread FPKM leaves, and evenly sequenced estimated counts too: both names, FPKM first.
+        title = (f"{_count(n)} columns read as FPKM or as estimated counts, which the values cannot "
+                 f"tell apart.")
+        detail = (f"{_count(n)} columns hold non-whole values from 0 to "
+                  f"{_tick(_num(reading.maximum))}. Each sample's total over them runs from "
+                  f"{_tick(_num(lo))} to {_tick(_num(hi))}, a {spread:.1f}-fold spread. FPKM, which "
+                  f"divided out each sample's library size, spreads this little, and so do salmon, "
+                  f"kallisto or RSEM estimated counts from evenly sequenced samples. On counts a "
+                  f"sample sequenced deeper has larger values in every gene; if these were "
+                  f"normalized before this file, say so.")
+        why = ("If these are counts, a model fit to them can read sequencing depth as biology: in a "
+               "test with no gene differing, cases sequenced 1.46 times deeper gave a "
+               "cross-validated AUC near 1. Linear models wait until a normalization is chosen or "
+               "you state the values are already normalized.")
+        summary = (f"{_count(n)} columns read as FPKM or estimated counts; unless they were "
+                   f"normalized, depth would read as biology.")
+    elif reading.kind == "counts" and reading.estimated:
+        # GENOMICS_PACK §02 row 2 says ask: estimated counts, or values normalized before this file.
+        title = f"{_count(n)} columns read as estimated counts, and library sizes differ by sample."
+        detail = (f"{_count(n)} columns hold non-whole values from 0 to "
+                  f"{_tick(_num(reading.maximum))}, as salmon, kallisto or RSEM estimated counts "
+                  f"do. Each sample's total over them runs "
+                  f"from {_tick(_num(lo))} to {_tick(_num(hi))}, a {spread:.1f}-fold spread that "
+                  f"FPKM or TPM would have divided out. On counts a sample sequenced deeper has "
+                  f"larger values in every gene; if these were normalized before this file, say so.")
+        why = ("A model fit to unnormalized counts can read sequencing depth as biology: in a test "
+               "with no gene differing, cases sequenced 1.46 times deeper gave a cross-validated "
+               "AUC near 1. Linear models wait until a normalization is chosen or you state the "
+               "values are already normalized.")
+        summary = (f"{_count(n)} columns read as estimated counts; library sizes vary "
+                   f"{spread:.1f}-fold, so depth would read as biology unless they were normalized.")
+    elif reading.kind == "counts":
         title = f"{_count(n)} columns hold raw counts, and library sizes differ by sample."
         detail = (f"{_count(n)} columns are whole numbers from 0 to {_tick(_num(reading.maximum))}. "
                   f"Each sample's total over them, its library size, runs from {_tick(_num(lo))} to "
@@ -1057,7 +1150,8 @@ def design_refusal(state: Any, frame: pd.DataFrame, families: Sequence[Any]) -> 
     if reading is None:
         return None
     names = ", ".join(f.label for f in linear)
-    return (f"{len(reading.columns):,} study factors are raw {reading.kind} and no normalization was "
+    what = "may be unnormalized counts" if reading.estimated else f"are raw {reading.kind}"
+    return (f"{len(reading.columns):,} study factors {what} and no normalization was "
             f"chosen: {names} would read depth or dilution as biology. Choose one on the finding "
             f"about them, or state that the values are already normalized.")
 

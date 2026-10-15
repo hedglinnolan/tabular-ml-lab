@@ -1113,6 +1113,9 @@ ALTERNATIVE_FIXTURES: dict[str, dict[str, tuple[Any, Any]]] = {
     "role:excluded": {
         "a predictor": (lambda: R.constant_values(pd.Series(
             np.random.default_rng(8).normal(size=50))), "excluded"),
+        # claims backtest C-123: a supplement-use checkbox, 'yes' where ticked, blank where not
+        "a checkbox: one value where ticked, blank where not ('yes' or 1, and blank)":
+            (lambda: R.constant_values(pd.Series(["yes", None, None, "yes", None])), "excluded"),
     },
     "code_or_count": {
         # codes 1–5 written 1.0–5.0 after a blank: never settled as amounts
@@ -1278,6 +1281,22 @@ def test_c3_each_value_test_can_settle_its_own_reading(kind):
     make, value = POSITIVE_FIXTURES[kind]
     verdict = make()
     assert verdict.settles and str(verdict.value).startswith(value), (kind, verdict)
+
+
+def test_c3_one_value_beside_blanks_settles_no_constant():
+    """Claims backtest C-123: the constant test counted values after dropping blanks, so a
+    checkbox ('yes' where ticked, blank where not; 1/blank) was settled as excluded with the
+    evidence "every row holds the same value". The blank is a second value: pandas counts two,
+    blanks included, and a model can use the split. A column of one value on every row still
+    settles."""
+    for values in (pd.Series(["yes", None, None, "yes", None]), pd.Series([1.0, np.nan, 1.0])):
+        assert values.nunique(dropna=False) == 2
+        verdict = R.constant_values(values)
+        assert not verdict.settles, verdict
+        assert "same value" not in verdict.evidence, verdict
+    for values in (pd.Series([3.0] * 40), pd.Series(["yes"] * 5)):
+        assert values.nunique(dropna=False) == 1
+        assert R.constant_values(values).settles
 
 
 def test_c4_the_gates_six_fixtures_each_go_unsettled():

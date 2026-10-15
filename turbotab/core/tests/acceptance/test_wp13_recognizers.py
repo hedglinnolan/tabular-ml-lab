@@ -1261,3 +1261,164 @@ def test_6b_pre_pandemic_and_ogtt_weights_follow_the_rule(tmp_path):
     other = tables["ogtt"][0].drop(columns=["LBXGLT", "WTSOG2YR"]).assign(WTSA2YR=50000.0)
     f = weights_finding(other, "other")
     assert "`WTSA2YR`" in f["detail"] and f["evidence"]["status"] != "SETTLED"
+
+
+# The CDC's words on the August 2021-August 2023 phlebotomy weight, read 2026-10-15: the TCHOL_L
+# codebook ("WTPH2YR - Phlebotomy 2 Year Weight"; "Examined participants aged 6 years and older
+# were eligible") and the weighting tutorial's Example 5 (a 2021-2023 analysis of serum vitamin D
+# by age: "You would use phlebotomy weights (wtph2yr)"). GLU_L gives a fasting participant who
+# gave no blood a WTSAF2YR of 0, so the fasting subsample lies inside the phlebotomy sample.
+TCHOL_L_WTPH2YR = "Phlebotomy 2 Year Weight"
+TCHOL_L_RULE = ("The phlebotomy weight should be used for analyses that use variables derived from "
+                "blood analytes, and is included in all relevant data files.")
+
+
+def _nhanes_2021_2023(with_fasting: bool = False) -> pd.DataFrame:
+    """An August 2021-August 2023 merge as the CDC files build it: DEMO_L's interview and MEC
+    weights (WTMEC2YR 0 for an interviewed participant not examined), TCHOL_L's WTPH2YR (blank off
+    the file: not examined, or under 6; 0 for an eligible participant who gave no blood, about a
+    third of children and one adult in twenty) and LBXTC only where blood was drawn, and BMXBMI on
+    every examined row. ``with_fasting``: GLU_L's morning subsample, LBXGLU only where its
+    WTSAF2YR is positive (fasting, and blood drawn)."""
+    rng = np.random.default_rng(2123)
+    n = 600
+    age = rng.integers(1, 80, n)
+    examined = rng.random(n) < 0.75
+    eligible = examined & (age >= 6)
+    drawn = eligible & (rng.random(n) < np.where(age < 18, 0.67, 0.95))
+    df = pd.DataFrame({
+        "SEQN": np.arange(130000, 130000 + n), "RIDAGEYR": age,
+        "SDMVSTRA": rng.integers(173, 188, n), "SDMVPSU": rng.integers(1, 3, n),
+        "WTINT2YR": rng.uniform(3000, 90000, n).round(1),
+        "WTMEC2YR": np.where(examined, rng.uniform(3000, 90000, n), 0.0).round(1),
+        "WTPH2YR": np.where(drawn, rng.uniform(3000, 90000, n), np.where(eligible, 0.0, np.nan)),
+        "LBXTC": np.where(drawn, rng.normal(185, 38, n).round(0), np.nan),
+        "BMXBMI": np.where(examined, rng.normal(28, 6, n).round(1), np.nan)})
+    if with_fasting:
+        morning = drawn & (age >= 12) & (rng.random(n) < 0.45)
+        df["WTSAF2YR"] = np.where(morning, rng.uniform(5000, 150000, n),
+                                  np.where(eligible & (age >= 12), 0.0, np.nan))
+        df["LBXGLU"] = np.where(morning, rng.normal(102, 14, n).round(0), np.nan)
+    return df
+
+
+def test_6c_blood_analytes_of_2021_2023_name_the_phlebotomy_weight(tmp_path):
+    """Claims backtest C-143: WTPH2YR had no tier, so beside total cholesterol recorded only where
+    it is positive the rule named WTMEC2YR, settled, a weight without the phlebotomy nonresponse
+    adjustment CDC added for this cycle. Expected, from the CDC's words above and pandas on the
+    fixture: total cholesterol is recorded only where WTPH2YR is positive, so its analyses take
+    WTPH2YR, offered first, then the samples that contain it (examination, interview); with
+    fasting glucose the fasting weight stays the smaller sample, then phlebotomy."""
+    from turbotab.core.recognizers import least_common_denominator, rank_weights
+    from turbotab.core.stages.findings import findings_stage
+    from turbotab.core.survey import offered
+
+    assert TCHOL_L_WTPH2YR == "Phlebotomy 2 Year Weight" and "blood analytes" in TCHOL_L_RULE
+    frame = _nhanes_2021_2023()
+    inside = frame["WTPH2YR"] > 0
+    assert not (frame["LBXTC"].notna() & ~inside).any() and frame["LBXTC"].isna().mean() > 0.05
+    assert (frame["BMXBMI"].notna() & ~inside).sum() > 0.01 * frame["BMXBMI"].notna().sum()
+    columns = ["LBXTC", "RIDAGEYR", "BMXBMI", "WTINT2YR", "WTMEC2YR", "WTPH2YR"]
+    lcd = least_common_denominator(columns, frame)
+    assert lcd["use"] == "WTPH2YR" and "LBXTC" in lcd["because"], lcd
+    assert rank_weights(["WTINT2YR", "WTMEC2YR", "WTPH2YR"], lcd) == \
+        ["WTPH2YR", "WTMEC2YR", "WTINT2YR"]
+
+    # The survey question offers it first.
+    roles = {"SEQN": "identifier", "RIDAGEYR": "covariate", "BMXBMI": "covariate",
+             "WTINT2YR": "design", "WTMEC2YR": "design", "WTPH2YR": "design",
+             "SDMVSTRA": "design", "SDMVPSU": "design"}
+    state = ProjectState(target="LBXTC", roles=roles, purpose="inference")
+    options = [o["decision"].get("weight") for o in offered(state, None, frame)
+               if o["decision"].get("weight")]
+    assert options[0] == "WTPH2YR", options
+
+    # The dietary lens's weights finding names it.
+    path = _write(frame, tmp_path, "tchol_l.csv")
+    found = Ingested(path, tmp_path / "tchol").run(
+        findings_stage, ProjectState(lens=["dietary"], target="LBXTC"))["findings"]
+    f = next(f for f in found if f["id"] == "pack::dietary::survey_weights")
+    assert "`WTPH2YR`" in f["title"], f["title"]
+
+    # The fasting subsample lies inside the phlebotomy sample: its weight stays first.
+    fasting = _nhanes_2021_2023(with_fasting=True)
+    assert not (fasting["LBXGLU"].notna() & ~(fasting["WTSAF2YR"] > 0)).any()
+    assert not ((fasting["WTSAF2YR"] > 0) & ~(fasting["WTPH2YR"] > 0)).any()
+    lcd = least_common_denominator([*columns, "LBXGLU", "WTSAF2YR"], fasting)
+    assert lcd["use"] == "WTSAF2YR", lcd
+    assert rank_weights(["WTINT2YR", "WTMEC2YR", "WTPH2YR", "WTSAF2YR"], lcd) == \
+        ["WTSAF2YR", "WTPH2YR", "WTMEC2YR", "WTINT2YR"]
+
+
+# The weighting tutorial, read 2026-10-15. Example 1 (race and Hispanic origin and poverty on a
+# previous diagnosis of diabetes, "All of these variables were collected in the in-home
+# interview"): "You would use the interview weights for your analysis (wtint4yr)." Example 2 (the
+# same with blood pressure, "collected during the MEC exam"): "You would use the MEC exam weight
+# for your analysis (wtmec4yr)."
+TUTORIAL_EXAMPLE_1 = "You would use the interview weights for your analysis (wtint4yr)."
+TUTORIAL_EXAMPLE_2 = "You would use the MEC exam weight for your analysis (wtmec4yr)."
+
+
+def test_6d_interview_only_variables_name_the_interview_weight():
+    """Claims backtest C-143 (the audit's interview-only departure): the rule named the MEC weight
+    whenever the table had one, so an analysis of interview variables alone dropped every
+    interviewed participant not examined (WTMEC2YR 0). Expected, from the tutorial's Examples 1
+    and 2 and pandas on the fixture: a previous diagnosis of diabetes (DIQ010) and age, recorded
+    on interviewed rows that were not examined, take WTINT2YR; with BMXBMI, recorded only on
+    examined rows, WTMEC2YR. A table that holds examined rows alone is the MEC sample, so it keeps
+    WTMEC2YR: the interview weight does not describe those rows."""
+    from turbotab.core.recognizers import least_common_denominator
+
+    assert "interview weights" in TUTORIAL_EXAMPLE_1 and "MEC exam weight" in TUTORIAL_EXAMPLE_2
+    frame = _nhanes_2021_2023()
+    frame["DIQ010"] = np.random.default_rng(2124).choice([1, 2], len(frame), p=[0.12, 0.88])
+    examined = frame["WTMEC2YR"] > 0
+    assert (~examined).sum() >= 50
+    assert frame.loc[~examined, ["DIQ010", "RIDAGEYR"]].notna().all().all()
+    assert not (frame["BMXBMI"].notna() & ~examined).any()
+    interview = ["DIQ010", "RIDAGEYR", "WTINT2YR", "WTMEC2YR"]
+    lcd = least_common_denominator(interview, frame)
+    assert lcd["use"] == "WTINT2YR", lcd
+    lcd = least_common_denominator([*interview, "BMXBMI"], frame)
+    assert lcd["use"] == "WTMEC2YR", lcd
+    lcd = least_common_denominator(interview, frame[examined])
+    assert lcd["use"] == "WTMEC2YR", lcd
+
+
+# DBQ_L, read 2026-10-15: "These questions were asked by trained interviewers using the
+# Computer-Assisted Personal Interview (CAPI) system in the participant's home or by telephone", and
+# its weight note, quoted here.
+DBQ_L_WEIGHTS = ("These questions were asked as part of the household interview, therefore, the "
+                 "interview sample weights may be used in the analysis for data in this section. "
+                 "However, if the data is joined with other data from the Mobile Examination Center "
+                 "(MEC), the MEC exam weights should be used for analyses.")
+
+
+def test_6e_diet_behavior_questions_alone_take_the_interview_weight():
+    """Claims backtest C-143, review: the rule read the diet behavior questionnaire's DBQ and DBD
+    columns as dietary-recall variables, so an analysis of them alone named the day-1 recall weight
+    WTDRD1 and dropped every participant without a recall. Expected, from DBQ_L's weight note and
+    pandas on the fixture: DBQ700 and DBD895, recorded on interviewed participants who were not
+    examined, take WTINT2YR; joined with a day-1 recall (DR1TKCAL) the recall's weight; on examined
+    rows alone, joined with the MEC's sample, WTMEC2YR."""
+    from turbotab.core.recognizers import least_common_denominator
+
+    assert "interview sample weights" in DBQ_L_WEIGHTS and "MEC exam weights" in DBQ_L_WEIGHTS
+    frame = _nhanes_2021_2023()
+    rng = np.random.default_rng(2125)
+    n = len(frame)
+    examined = frame["WTMEC2YR"] > 0
+    recall = examined & (rng.random(n) < 0.9)
+    frame["WTDRD1"] = np.where(recall, rng.uniform(3000, 120000, n), 0.0).round(1)
+    frame["DR1TKCAL"] = np.where(recall, rng.normal(2000, 600, n).round(0), np.nan)
+    frame["DBQ700"] = rng.choice([1, 2, 3, 4, 5], n)
+    frame["DBD895"] = rng.integers(0, 22, n)
+    assert frame.loc[~examined, ["DBQ700", "DBD895"]].notna().all().all()
+    assert not (frame["DR1TKCAL"].notna() & ~(frame["WTDRD1"] > 0)).any()
+    diet, weights = ["DBQ700", "DBD895"], ["WTINT2YR", "WTMEC2YR", "WTDRD1"]
+    lcd = least_common_denominator([*diet, *weights], frame)
+    assert lcd["use"] == "WTINT2YR", lcd
+    lcd = least_common_denominator([*diet, "DR1TKCAL", *weights], frame)
+    assert lcd["use"] == "WTDRD1", lcd
+    lcd = least_common_denominator([*diet, *weights], frame[examined])
+    assert lcd["use"] == "WTMEC2YR", lcd
