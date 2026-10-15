@@ -376,11 +376,11 @@ def lasso_first(Z: np.ndarray, y: np.ndarray, q: int,
     the first knot of the LARS–lasso path where at least ``q`` are nonzero. ``Z`` holds no exact
     copies (:func:`path_columns`).
 
-    A full coding ties (``codings``: each one's columns and its spare ones) where, at a knot before
-    the q-th variable enters, every one of its columns is as correlated with the residual as the
-    most correlated column, short of it by under :data:`COLLINEAR_TOL`: its levels then enter
-    together, which LARS cannot take, and the lasso's split of the category among them is not
-    unique. The path is run again without that coding's spare columns, which are not chosen. A tie
+    A full coding ties (``codings``: each one's columns and its spare ones) where, at a knot up to
+    the one where the q-th variable enters, every one of its columns is as correlated with the
+    residual as the most correlated column, short of it by under :data:`COLLINEAR_TOL`: its levels
+    then enter together, which LARS cannot take, and the lasso's split of the category among them
+    is not unique. The path is run again without that coding's spare columns, which are not chosen. A tie
     of any other kind (two columns equal on these rows, the path stopping early) is the full path's
     own: its first q are kept, and its warnings passed on unchanged."""
     import warnings

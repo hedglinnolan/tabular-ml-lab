@@ -234,11 +234,11 @@ def test_the_lasso_path_leaves_off_a_spare_level_only_where_its_coding_ties(case
     """``lasso_first`` reads a full coding less its spare column only where the coding's own levels
     tie. For twins that is whenever the category enters, and the answer is the reference-coded
     lasso, the same problem (module docstring), on every seed. For a balanced coding it is where, at
-    a knot before the q-th variable enters, scikit-learn's path on the full coding has every level
-    at the residual's largest correlation, and the answer is that path less the spare level. Two
-    copies of a flag tie for a reason that is not the coding's (scikit-learn warns on some seeds,
-    and on others admits both): the answer is the full path's own first q, with its warnings passed
-    on unchanged, though the signal sits in the spare level."""
+    a knot up to the q-th variable's entry, scikit-learn's path on the full coding has every level
+    at the residual's largest correlation, and the answer is the path on the coding less its spare
+    level. Two copies of a flag tie for a reason that is not the coding's (scikit-learn warns on
+    some seeds, and on others admits both): the answer is the full path's own first q, with its
+    warnings passed on unchanged, though the signal sits in the spare level."""
     from turbotab.core.models.variable_selection import lasso_first
 
     reran = warned = 0
