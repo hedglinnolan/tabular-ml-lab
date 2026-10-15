@@ -494,8 +494,11 @@ def test_3_a_group_with_no_events_is_refused_and_one_with_only_events_is_not():
     refused, naming `g`, with no interval or p-value.
 
     A group in which every row has the event, its events among the other rows', has a finite
-    maximum: it is estimated, matching lifelines to 10⁻⁶ relative, so the refusal must not give
-    "every row has the event" as its cause."""
+    maximum: it is estimated, matching statsmodels' ``PHReg`` (Efron ties) to 10⁻⁸ relative and its
+    standard errors to 10⁻⁶ (lifelines stops about 5 × 10⁻⁸ short on the group's estimate of 0.03),
+    so the refusal must not give "every row has the event" as its cause."""
+    from statsmodels.duration.hazard_regression import PHReg
+
     for seed, n in [(s, 60) for s in range(12)] + [(s, 300) for s in range(4)]:
         frame = _one_group_without_events(seed, n)
         assert frame.loc[frame["g"] == 1, "event"].sum() == 0 and frame["event"].sum() > 5
@@ -515,11 +518,14 @@ def test_3_a_group_with_no_events_is_refused_and_one_with_only_events_is_not():
     y = survival_outcome(frame["event"], frame["time"])
     table = cox_table(frame[["g", "age"]], y, Clusters())
     assert not table.info["refused"], table.info["refused"]
-    reference = _lifelines(frame, "time", "event", ["g", "age"])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        reference = PHReg(frame["time"].to_numpy(), frame[["g", "age"]].to_numpy(float),
+                          status=frame["event"].to_numpy(), ties="efron").fit()
     np.testing.assert_allclose([_row(table.rows, n)["estimate"] for n in ("g", "age")],
-                               reference.params_.to_numpy(), rtol=1e-6)
-    np.testing.assert_allclose([_row(table.rows, n)["se"] for n in ("g", "age")],
-                               reference.standard_errors_.to_numpy(), rtol=1e-6)
+                               reference.params, rtol=1e-8)
+    np.testing.assert_allclose([_row(table.rows, n)["se"] for n in ("g", "age")], reference.bse,
+                               rtol=1e-6)
 
 
 # ── 4 · the random-intercept mixed model ─────────────────────────────────────
