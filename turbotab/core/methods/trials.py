@@ -37,11 +37,13 @@ covariate chosen after the data were seen is refused from the primary analysis
   each stratum, as permuted blocks do); z intervals. This is R's ``beeca`` (``method = "Ye"``).
   When the data separate a group of people (they all had the event, or none did), its
   coefficients have no finite values but the standardized risks do: the fit is taken at its
-  limit, those people's risks 0 or 1 under either arm (Lesaffre & Albert 1989). When the arm
-  itself separates, its risk is 0% or 100%, Ye et al.'s variance counts no uncertainty in it, and
-  the effect is refused. So it is when the arm and the covariates predict every outcome exactly
-  (complete separation), since no fit is left, and when the people the data do not separate
-  leave the arm's coefficient unsettled.
+  limit, those people's risks 0 or 1 under either arm and the rest of the model the fit to the
+  people left (Lesaffre & Albert 1989), the separated people found by a linear program (Albert
+  & Anderson 1984; Konis 2007). When the arm itself separates, its risk is 0% or 100%, Ye et
+  al.'s variance counts no uncertainty in it, and the effect is refused. So it is when the arm
+  and the covariates predict every outcome exactly (complete separation), since no fit is left,
+  when the people the data do not separate leave the arm's coefficient unsettled, and when the
+  program cannot tell who is separated or the fit to the people left does not converge.
 
 **Cluster-randomized trials** (:func:`estimate` with ``trial_design="cluster_randomized_trial"``).
 The cluster is the unit of randomization, so every cluster has one arm (refused otherwise).
@@ -719,9 +721,13 @@ class _Logit:
     mu: np.ndarray
 
 
-def _logistic(X: np.ndarray, y: np.ndarray, *, offset: np.ndarray | None = None) -> _Logit:
+def _logistic(X: np.ndarray, y: np.ndarray, *, offset: np.ndarray | None = None,
+              separable: bool = True) -> _Logit:
     """Maximum likelihood by Newton's method to |step| ≤ 1e-12 (R's ``glm`` with a tight
-    ``epsilon``); a fitted risk of 0 or 1 or no convergence (separation) is refused."""
+    ``epsilon``); no convergence, a coefficient past 25 or a fitted risk within 1e-10 of 0 or 1
+    (signs of separation) is refused. Where a linear program has shown that no one is separated
+    (``separable=False``, :func:`_separated_people`), the last two are a finite fit's, and are
+    kept."""
     off = np.zeros(len(y)) if offset is None else offset
     beta = np.zeros(X.shape[1])
     p0 = float(np.clip(y.mean(), 1e-6, 1 - 1e-6))
@@ -741,7 +747,8 @@ def _logistic(X: np.ndarray, y: np.ndarray, *, offset: np.ndarray | None = None)
             else:
                 raise _separation()
             mu = _expit(X @ beta + off)
-            if np.max(np.abs(beta)) > 25 or np.min(mu) < 1e-10 or np.max(mu) > 1 - 1e-10:
+            if separable and (np.max(np.abs(beta)) > 25 or np.min(mu) < 1e-10
+                              or np.max(mu) > 1 - 1e-10):
                 raise _separation()
             w = mu * (1 - mu)
             cov = np.linalg.inv(X.T @ (X * w[:, None]))
@@ -759,7 +766,6 @@ def _separation() -> TrialRefused:
         term="separation in the logistic model")
 
 
-LIMIT_TOL = 1e-12  # Newton's decrement at which a fit on standardized columns has converged
 FREE = 1e-10  # a singular value below this share of the largest: a direction the columns leave free
 FEWER_COVARIATES_EXIT = {"label": "Adjust for fewer covariates", "covariates": []}
 
@@ -807,42 +813,17 @@ def _separated_people(X: np.ndarray, y: np.ndarray) -> np.ndarray | None:
     return t > 0.5
 
 
-def _logistic_limit(X: np.ndarray, y: np.ndarray) -> _Logit:
-    """The logistic fit at its likelihood's supremum, finite or not: Newton's method on the
-    columns centered and scaled (:func:`_centered`; the coefficients and covariance are mapped
-    back), a pseudo-inverse step halved while it lowers the likelihood, until the decrement
-    UᵀI⁺U is below :data:`LIMIT_TOL`. When the data separate (Albert & Anderson 1984), the
-    coefficients run off along the separating directions and the separated people's fitted
-    risks run to 0 or 1. Without separation the fit is the maximum-likelihood one."""
+def _logistic_standardized(X: np.ndarray, y: np.ndarray) -> _Logit:
+    """The maximum-likelihood fit of people no direction separates (:func:`_separated_people`),
+    which is finite, by :func:`_logistic` on their columns centered and scaled
+    (:func:`_centered`), the coefficients and covariance mapped back, keeping a large coefficient
+    or a fitted risk near 0 or 1, and refused only when Newton's method does not converge. Its
+    step is solved on the information, not on a pseudo-inverse, which drops a direction whose
+    small spread the information squares and stops short along it."""
     Z, back = _centered(X)
-
-    def loglik(b: np.ndarray) -> float:
-        eta = Z @ b
-        return float(y @ eta - np.logaddexp(0.0, eta).sum())
-
-    b = np.zeros(X.shape[1])
-    p0 = float(np.clip(y.mean(), 1e-6, 1 - 1e-6))
-    b[0] = math.log(p0 / (1 - p0))
-    ll = loglik(b)
-    with np.errstate(over="ignore"):
-        for _ in range(200):
-            mu = _expit(Z @ b)
-            info = Z.T @ (Z * (mu * (1 - mu))[:, None])
-            U = Z.T @ (y - mu)
-            step = np.linalg.lstsq(info, U, rcond=None)[0]
-            if float(U @ step) < LIMIT_TOL:
-                break
-            for _ in range(40):
-                trial = loglik(b + step)
-                if trial >= ll - 1e-12 * max(1.0, abs(ll)):
-                    break
-                step = step / 2
-            b, ll = b + step, trial
-        else:
-            raise _separation()
-        mu = _expit(Z @ b)
-    cov = back @ np.linalg.pinv(info) @ back.T
-    return _Logit(beta=back @ b, cov=(cov + cov.T) / 2, mu=mu)
+    fit = _logistic(Z, y, separable=False)
+    cov = back @ fit.cov @ back.T
+    return _Logit(beta=back @ fit.beta, cov=(cov + cov.T) / 2, mu=fit.mu)
 
 
 def _fit_risks(d: _Design, y: np.ndarray, arms: list[str]
@@ -852,9 +833,10 @@ def _fit_risks(d: _Design, y: np.ndarray, arms: list[str]
     usually). When :func:`_logistic` refuses, the separated people are found exactly
     (:func:`_separated_people`), and the effect is refused with the plain separation reason when
     that cannot be done. No one separated: the fit is the finite maximum-likelihood one that
-    :func:`_logistic`'s bounds refused (:func:`_logistic_limit`). Everyone: no fit is left, and
-    the effect is refused (:func:`_arm_separation`). Otherwise the fit is taken at its limit, the
-    separated people's risks 0 or 1 under every arm (:func:`_people_left`)."""
+    :func:`_logistic`'s bounds refused (:func:`_logistic_standardized`). Everyone: no fit is
+    left, and the effect is refused (:func:`_arm_separation`). Otherwise the fit is taken at its
+    limit, the separated people's risks 0 or 1 under every arm and the rest the fit to the people
+    left (:func:`_people_left`)."""
     try:
         fit = _logistic(d.X, y)
         return fit, _counterfactual(d, fit.beta, arms), [], np.zeros(len(y), dtype=bool)
@@ -866,31 +848,55 @@ def _fit_risks(d: _Design, y: np.ndarray, arms: list[str]
     if separated.all():
         raise _arm_separation(d, y, arms, everyone=True)
     if not separated.any():
-        fit = _logistic_limit(d.X, y)
+        fit = _logistic_standardized(d.X, y)
         return fit, _counterfactual(d, fit.beta, arms), [], separated
     return _people_left(d, y, arms, separated)
 
 
 def _people_left(d: _Design, y: np.ndarray, arms: list[str], separated: np.ndarray
                  ) -> tuple[_Logit, np.ndarray, list[int], np.ndarray]:
-    """A separated fit at its limit. Every separating direction is zero on the people the data do
-    not separate, so it lies in their null space over the columns, read on those columns
-    centered and scaled on them (:func:`_centered`; singular values below :data:`FREE` of the
-    largest); the columns it moves are the ones the data separate, and along it nothing those
-    people show settles a coefficient. When it moves an arm's coefficient, they do not settle
-    anyone's risk under the other arm, and the effect is refused (:func:`_arm_separation`).
-    Otherwise the fit is taken at its limit (:func:`_logistic_limit`)."""
+    """A separated fit at its limit (Lesaffre & Albert 1989, *J R Stat Soc B* 51:109): the
+    separated people's risks are their own outcomes under every arm, and the rest of the model
+    is the maximum-likelihood fit to the people the data do not separate, on their own. Every
+    separating direction is zero on those people, so it lies in their null space over the
+    columns, read on those columns centered and scaled on them (:func:`_centered`; singular
+    values below :data:`FREE` of the largest); the columns it moves are the ones the data
+    separate, and along it nothing those people show settles a coefficient. When it moves an
+    arm's coefficient, they do not settle anyone's risk under the other arm, and the effect is
+    refused (:func:`_arm_separation`). Otherwise the separating directions leave the arm alone,
+    so each separated person's risk is their outcome under either arm, and the people left are
+    fitted on a basis of their columns (the intercept and the arms first) by
+    :func:`_logistic_standardized`; when that fit refuses, so does the effect. A coefficient the
+    data separate has no finite value, and is NaN."""
     left = ~separated
+    p = d.X.shape[1]
     Z, _ = _centered(d.X[left])
     _, s, vt = np.linalg.svd(Z, full_matrices=Z.shape[0] < Z.shape[1])
     tol = FREE * s[0]
     free = vt[int(np.sum(s > tol)):].T
-    load = np.linalg.norm(free, axis=1) if free.size else np.zeros(d.X.shape[1])
-    columns = [j for j in range(d.X.shape[1]) if load[j] > 1e-6]
-    if any(j in d.arm_columns for j in columns):
+    load = np.linalg.norm(free, axis=1) if free.size else np.zeros(p)
+    columns = [j for j in range(p) if load[j] > 1e-6]
+    keep: list[int] = []
+    for j in [0, *d.arm_columns, *(j for j in range(1, p) if j not in d.arm_columns)]:
+        if np.linalg.matrix_rank(Z[:, keep + [j]], tol=tol) > len(keep):
+            keep.append(j)
+    if any(j in d.arm_columns for j in columns) or not set(d.arm_columns) <= set(keep):
         raise _arm_separation(d, y, arms)
-    fit = _logistic_limit(d.X, y)
-    return fit, _counterfactual(d, fit.beta, arms), columns, separated
+    rest = _logistic_standardized(d.X[left][:, keep], y[left])
+    beta = np.zeros(p)
+    beta[keep] = rest.beta
+    cf = np.repeat(y[:, None], len(arms), axis=1)
+    cf[left] = _counterfactual(_Design(X=d.X[left], names=d.names, arm_codes=d.arm_codes[left],
+                                       arm_columns=d.arm_columns, filled={},
+                                       index=d.index[left]), beta, arms)
+    mu = y.copy()
+    mu[left] = rest.mu
+    cov = np.full((p, p), np.nan)
+    cov[np.ix_(keep, keep)] = rest.cov
+    beta[columns] = np.nan
+    cov[columns, :] = np.nan
+    cov[:, columns] = np.nan
+    return _Logit(beta=beta, cov=cov, mu=mu), cf, columns, separated
 
 
 def _arm_separation(d: _Design, y: np.ndarray, arms: list[str], *, everyone: bool = False
@@ -974,7 +980,7 @@ class TrialEffect:
     adjusted_for: list[str]
     filled_baselines: dict[str, int]
     terms: list[str]
-    coefficients: list[float]
+    coefficients: list[float]  # NaN for a term the data separate: it has no finite value
     interval: str  # how the intervals were built
     causal: bool  # causal wording allowed: intention to treat under a declared randomization
     secondary: bool = False
