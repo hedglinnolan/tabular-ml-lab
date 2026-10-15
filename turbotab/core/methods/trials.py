@@ -763,17 +763,23 @@ FLAT = 1e-8  # an information eigenvalue below this share of the largest: a sepa
 
 def _logistic_limit(X: np.ndarray, y: np.ndarray) -> tuple[_Logit, np.ndarray]:
     """The logistic fit at its likelihood's supremum, finite or not, and the directions the data
-    separate. Newton's method on the columns scaled to unit SD, a pseudo-inverse step halved while
-    it lowers the likelihood, until the decrement UᵀI⁺U is below :data:`LIMIT_TOL`. When the data
-    separate (Albert & Anderson 1984), the coefficients run off along the separating directions,
-    the separated people's fitted risks reach 0 or 1, and the rest of the fit converges to the
-    maximum-likelihood fit on the people the data do not separate (Lesaffre & Albert 1989, *J R
-    Stat Soc B* 51:109). The directions are the information's flat eigenvectors there (eigenvalue
-    below :data:`FLAT` of the largest), over the scaled columns; without separation there are
-    none and the fit is the maximum-likelihood one."""
+    separate. Newton's method on the columns centered and scaled to unit SD (the intercept, column
+    0, left at 1; the coefficients and covariance are mapped back), a pseudo-inverse step halved
+    while it lowers the likelihood, until the decrement UᵀI⁺U is below :data:`LIMIT_TOL`. When the
+    data separate (Albert & Anderson 1984), the coefficients run off along the separating
+    directions, the separated people's fitted risks reach 0 or 1, and the rest of the fit converges
+    to the maximum-likelihood fit on the people the data do not separate (Lesaffre & Albert 1989,
+    *J R Stat Soc B* 51:109). The directions are the information's flat eigenvectors there
+    (eigenvalue below :data:`FLAT` of the largest), over the centered columns, so a covariate far
+    from zero is not read as the intercept's twin; without separation there are none and the fit
+    is the maximum-likelihood one."""
+    mean = X.mean(axis=0)
     sd = X.std(axis=0)
-    sd[sd == 0] = 1.0
-    Z = X / sd
+    live = sd > 0  # the intercept, and any other constant column, is neither centered nor scaled
+    mean[~live], sd[~live] = 0.0, 1.0
+    Z = (X - mean) / sd
+    back = np.diag(1 / sd)  # β = back @ b: βⱼ = bⱼ/sdⱼ, the intercept b₀ − Σⱼ bⱼ meanⱼ/sdⱼ
+    back[0, live] -= mean[live] / sd[live]
 
     def loglik(b: np.ndarray) -> float:
         eta = Z @ b
@@ -802,7 +808,8 @@ def _logistic_limit(X: np.ndarray, y: np.ndarray) -> tuple[_Logit, np.ndarray]:
         mu = _expit(Z @ b)
     lam, vec = np.linalg.eigh(info)
     flat = vec[:, lam <= FLAT * max(float(lam[-1]), 0.0)]
-    return _Logit(beta=b / sd, cov=np.linalg.pinv(info) / np.outer(sd, sd), mu=mu), flat
+    cov = back @ np.linalg.pinv(info) @ back.T
+    return _Logit(beta=back @ b, cov=(cov + cov.T) / 2, mu=mu), flat
 
 
 def _fit_risks(d: _Design, y: np.ndarray, arms: list[str]) -> tuple[_Logit, np.ndarray, list[int]]:
