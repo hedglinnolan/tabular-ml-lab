@@ -166,7 +166,7 @@
     "turbotab/nutrition.py:841 variance_components",
     "STROBE-nut nut-8.3, nut-12.2, nut-14 (Lachat 2016)",
     "Tooze JA et al. 2006 J Am Diet Assoc 106:1575; 2010 Stat Med 29:2857",
-    "Institute of Medicine 2000, DRI: Applications in Dietary Assessment"
+    "Institute of Medicine 2000a, DRI: Applications in Dietary Assessment"
    ],
    "engine": "Exists.",
    "tier": "asked",
@@ -214,7 +214,7 @@
     "turbotab/core/usual_intake.py:218-340 (ear_for_every_group, iron_skewed_requirement, ai_no_prevalence, energy_no_ear)",
     "turbotab/core/methods/usual_intake.py:1290",
     "turbotab/core/methods/misreporting.py:217 (Goldberg age bands)",
-    "Institute of Medicine 2000, DRI: Applications in Dietary Assessment, ch. 4",
+    "Institute of Medicine 2000a, DRI: Applications in Dietary Assessment, ch. 4",
     "Institute of Medicine 2001, DRI for vitamin A, vitamin K, ... iron and zinc (iron requirement distributions)",
     "NHANES DEMO documentation (RIDEXPRG)",
     "Black AE 2000 Int J Obes 24:1119",
@@ -1408,7 +1408,7 @@
     "Bailey RL et al. 2019 J Nutr 149:181",
     "Bailey RL et al. 2011 J Nutr 141:261",
     "Garriguet D 2010 Health Rep 21(4):71",
-    "Institute of Medicine 2000, DRI: Applications in Dietary Assessment",
+    "Institute of Medicine 2000a, DRI: Applications in Dietary Assessment",
     "NHANES Dietary Supplement Use documentation",
     "Lachat 2016 nut-8.1, nut-16"
    ],

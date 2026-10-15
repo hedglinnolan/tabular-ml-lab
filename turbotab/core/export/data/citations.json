@@ -2568,7 +2568,7 @@
    "key": "iom2000dri",
    "kind": "book",
    "cited_as": [
-    "Institute of Medicine\\b[^;()]{0,90}?\\(?2000\\b"
+    "Institute of Medicine\\b[^;()]{0,90}?\\(?2000a?\\b"
    ],
    "doi": "10.17226/9956",
    "authors": [
@@ -2587,7 +2587,88 @@
    ],
    "isbn": "9780309071833",
    "verified_by": "crossref",
-   "verified_on": "2026-10-09",
+   "verified_on": "2026-10-15",
+   "disagreements": [],
+   "overrides": {
+    "fields": {
+     "authors": [
+      "Institute of Medicine"
+     ]
+    },
+    "why": "Crossref's record names no author; the National Academies Press credits the Institute of Medicine."
+   },
+   "crossref_original": {
+    "authors": []
+   }
+  },
+  {
+   "key": "iom2000vitamine",
+   "kind": "book",
+   "cited_as": [
+    "Institute of Medicine\\b[^;()]{0,90}?\\(?2000b\\b"
+   ],
+   "doi": "10.17226/9810",
+   "authors": [
+    "Institute of Medicine"
+   ],
+   "title": "Dietary Reference Intakes for Vitamin C, Vitamin E, Selenium, and Carotenoids",
+   "year": 2000,
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "National Academies Press",
+   "crossref_type": "edited-book",
+   "years_seen": [
+    2000
+   ],
+   "isbn": "9780309069359",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-15",
+   "disagreements": [],
+   "overrides": {
+    "fields": {
+     "authors": [
+      "Institute of Medicine"
+     ]
+    },
+    "why": "Crossref's record names the report's panel, its three subcommittees, the standing committee and the Food and Nutrition Board before the Institute of Medicine; the National Academies Press credits the Institute of Medicine, as the app cites it."
+   },
+   "crossref_original": {
+    "authors": [
+     "Panel on Dietary Antioxidants and Related Compounds",
+     "Subcommittee on Upper Reference Levels of Nutrients",
+     "Subcommittee on Interpretation and Uses of Dietary Reference Intakes",
+     "Standing Committee on the Scientific Evaluation of Dietary Reference Intakes",
+     "Food and Nutrition Board",
+     "Institute of Medicine"
+    ]
+   }
+  },
+  {
+   "key": "iom1997magnesium",
+   "kind": "book",
+   "cited_as": [
+    "Institute of Medicine\\b[^;()]{0,90}?\\(?1997\\b"
+   ],
+   "doi": "10.17226/5776",
+   "authors": [
+    "Institute of Medicine"
+   ],
+   "title": "Dietary Reference Intakes for Calcium, Phosphorus, Magnesium, Vitamin D, and Fluoride",
+   "year": 1997,
+   "venue": "",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "National Academies Press",
+   "crossref_type": "edited-book",
+   "years_seen": [
+    1997
+   ],
+   "isbn": "9780309064033",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-15",
    "disagreements": [],
    "overrides": {
     "fields": {
@@ -2642,6 +2723,7 @@
    "key": "iom2001vitamina",
    "kind": "book",
    "cited_as": [
+    "Institute of Medicine\\b[^;()]{0,90}?\\(?2001\\b",
     "2001 \\(RAE\\)"
    ],
    "doi": "10.17226/10026",
@@ -2661,7 +2743,7 @@
    ],
    "isbn": "9780309072793",
    "verified_by": "crossref",
-   "verified_on": "2026-10-09",
+   "verified_on": "2026-10-15",
    "disagreements": [],
    "overrides": {
     "fields": {
