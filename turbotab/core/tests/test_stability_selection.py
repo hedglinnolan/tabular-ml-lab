@@ -270,3 +270,46 @@ def test_the_lasso_path_leaves_off_a_spare_level_only_where_its_coding_ties(case
         assert warned and not reran  # the copies' tie warns on some seeds
     else:
         assert reran
+
+
+def test_a_term_wider_than_the_fold_is_read_whole():
+    """A term of 80 columns on a fold of 50 rows, beside a predictor, fits. Centered on the fold the
+    term's columns span at most 49 dimensions, so each column that does not raise the rank of the
+    term's columns up to it (numpy's ``matrix_rank``, column by column) is spare; the 80 never tie
+    at once, so each column's selection proportion is scikit-learn's path's own over the halves
+    rebuilt from the documented rule."""
+    from sklearn.linear_model import lars_path
+
+    from turbotab.core.models.variable_selection import Selector, path_columns
+
+    n, wide, q, pairs = 50, 80, 3, 10
+    rng = np.random.default_rng(0)
+    X = pd.DataFrame(rng.standard_normal((n, wide)), columns=[f"w_{k}" for k in range(wide)])
+    X["x0"] = rng.standard_normal(n)
+    y = 2.0 * X["x0"].to_numpy() + rng.standard_normal(n)
+    R = X.to_numpy()
+    Z = (R - R.mean(axis=0)) / R.std(axis=0, ddof=1)
+    ranks = [0, *(np.linalg.matrix_rank(Z[:, : j + 1]) for j in range(wide))]
+    spare = [j for j in range(wide) if ranks[j + 1] == ranks[j]]
+    path, codings = path_columns(Z, [list(range(wide)), [wide]])
+    assert path.tolist() == list(range(wide + 1))
+    assert codings == [(list(range(wide)), spare)] and spare == list(range(n - 1, wide))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        step = Selector("stability", "regression", q=q, pairs=pairs, seed=0,
+                        inputs=["w", "x0"]).fit(X, y)
+    rng = np.random.default_rng(0)
+    counts = np.zeros(wide + 1)
+    for _ in range(pairs):
+        order = rng.permutation(n)
+        for rows in (order[: n // 2], order[n // 2: 2 * (n // 2)]):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                _, _, coefs = lars_path(Z[rows], y[rows] - y[rows].mean(), method="lasso")
+            counts += coefs[:, next(j for j in range(coefs.shape[1])
+                                    if (coefs[:, j] != 0).sum() >= q)] != 0
+    expected = counts / (2.0 * pairs)
+    assert np.asarray(step.frequencies_, float) == pytest.approx(expected, abs=1e-12)
+    assert step.selected_ == [t for t, f in (("w", expected[:wide].max()), ("x0", expected[wide]))
+                              if f >= 0.6]
