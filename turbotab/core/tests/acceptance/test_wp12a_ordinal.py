@@ -286,6 +286,43 @@ def test_2_cluster_robust_intervals_match_statsmodels_sandwich_on_t_g_minus_1():
         assert r["ci_high"] - r["estimate"] == pytest.approx(half, rel=1e-9)
 
 
+def _units(seed: int, G: int) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
+    """G units of lognormal size (median 20, at least 2), a column that varies only between units,
+    and a proportional-odds outcome on it with β = 0.5 and cut-points −1, 0, 1, rows independent."""
+    rng = np.random.default_rng(seed)
+    unit = np.repeat(np.arange(G), np.maximum(2, np.round(rng.lognormal(np.log(20), 1.0, G))
+                                                .astype(int)))
+    x = rng.normal(size=G)[unit]
+    y = np.searchsorted([-1.0, 0.0, 1.0], 0.5 * x + rng.logistic(size=len(unit)))
+    return pd.DataFrame({"x": x}), y, unit
+
+
+def test_2_clustered_intervals_say_cr1_on_t_g_minus_1_and_that_few_units_can_make_them_narrow():
+    """Claims backtest A-102. Rows that repeat by a unit get CR1: the sandwich over the units'
+    summed scores with G/(G − 1), on t(G − 1). The caption said so, but the concern lines beside
+    it, the linear family's, said CR2 with Bell–McCaffrey degrees of freedom, which the table does
+    not use. And t(G − 1) is the least Cameron & Miller (2015, §VI) ask for, not a few-cluster
+    correction: in this known-truth simulation (the proportional-odds model holds, rows are
+    independent, β = 0.5 on a column that varies only between 12 units of unequal size), the 95%
+    intervals cover β in well under 95% of 1,000 data sets (Monte Carlo SE 0.007). So the table
+    names CR1 on t(G − 1) and nothing else, and with 12 units says its intervals can be too
+    narrow."""
+    R = 1000
+    covered = 0
+    for rep in range(R):
+        X, y, unit = _units(rep, 12)
+        r = ordinal_table(X, y, None, as_clusters(unit)).rows[0]
+        covered += r["ci_low"] <= 0.5 <= r["ci_high"]
+    assert covered / R < 0.95 - 3 * np.sqrt(0.95 * 0.05 / R), covered / R
+
+    X, y, unit = _units(0, 12)
+    table = ordinal_table(X, y, None, as_clusters(unit))
+    said = " ".join([table.info["caption"], *table.concerns])
+    assert table.info["covariance"] == "CR1" and "t(11)" in table.info["caption"]
+    assert "CR2" not in said and "Bell–McCaffrey" not in said, said
+    assert any("CR1" in c and "12" in c and "too narrow" in c for c in table.concerns), said
+
+
 # ── the proportional-odds check (Brant) ──────────────────────────────────────
 
 
