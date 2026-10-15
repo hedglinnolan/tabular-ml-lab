@@ -1951,3 +1951,56 @@ def test_9_each_estimand_reads_its_own_positivity_and_every_exit_leads_forward(t
     assert kept["withheld"] is None and kept["estimates"] == []
     assert kept_record == ("No causal machine-learning estimate was set beside the primary model "
                            "for the effect of `sodium`.")
+
+
+def test_9b_a_numeric_exposure_the_covariates_nearly_determine_is_estimated_not_withheld(tmp_path):
+    """Claims backtest B-416. The ATT cohort's `dose` is 2·(age − 55) + 0.5·(bmi − 28) plus
+    Gaussian noise of SD 4, so the covariates explain about 96% of its variance, and its effect on
+    `y` is −0.2 per unit. That is no positivity violation: given any age and BMI, every dose has a
+    positive density. By Frisch–Waugh the partially linear model rests on the variance left, so its
+    standard error is about √(1/(1 − R²)) times what it would be were `dose` unrelated to the
+    covariates, and the interval counts that; with main-terms linear nuisances, correctly
+    specified here, the estimate is unbiased (Chernozhukov et al. 2018). The lane estimates it: no
+    refusal, nothing withheld, the estimator's own R² (by hand on its folds) and that widening
+    shown on the card, the estimate within 3 standard errors of −0.2, and the methods sentence
+    listing positivity among the declared assumptions."""
+    from turbotab.core.tests.acceptance.server_drive import local_server
+    from turbotab.core.tests.truths import Truth
+
+    path = tmp_path / "att.csv"
+    att_cohort(path)
+    truth = Truth({"adjust:age": "yes,yes,no", "adjust:bmi": "yes,yes,no",
+                   "adjust:dose": "no,yes,no", "adjust:trt": "no,yes,no",
+                   "code_or_count:trt": "code", "cluster:pid": "no"}, fixture="the ATT cohort")
+    with local_server(tmp_path / "home") as client:
+        drive = _start(client, path, truth, "y")
+        _plan(drive, {"pid": "identifier", "age": "covariate", "bmi": "covariate",
+                      "trt": "exposure", "dose": "exposure"}, "dose")
+        design = drive.artifact("causal_design")
+        assert design["exposure"] == "dose" and not design["positivity"]["violated"]
+        lane = {"kind": "set_causal", "exposure": "dose", "method": "dml_plr", "learner": "linear",
+                "repetitions": 2, "assumptions": ALL4}
+        accepted = drive.post(lane)
+        assert accepted.status_code == 200, accepted.text
+        drive.decide({"kind": "select_models", "models": ["linear"]})
+        dose = _causal_artifact(drive, lambda a: a.get("exposure") == "dose"
+                                and bool(a.get("estimates") or a.get("withheld")))
+        record = _causal_records(drive)[-1]["sentence"]
+
+    raw = pd.read_csv(path)
+    n = len(raw)
+    adjusted = ["age", "bmi", "trt"]
+    hand = plr_by_hand(raw["y"].to_numpy(dtype=float), raw["dose"].to_numpy(dtype=float),
+                       raw[adjusted].to_numpy(dtype=float), est.sample_splits(n, 5, 2, seed=0))
+    assert hand["r2"] >= 0.9
+    assert dose["withheld"] is None
+    assert dose["variation"]["r2"] == pytest.approx(hand["r2"], abs=1e-9)
+    [row] = dose["estimates"]
+    assert row["estimate"] == pytest.approx(hand["theta"], abs=1e-8)
+    assert abs(row["estimate"] - (-0.2)) < 3 * row["se"]
+    assert "practically violated" not in dose["methods"] and "practically violated" not in record
+    assert CLOSING in dose["methods"]
+    [card] = [a for a in design["assumptions"] if a["key"] == "positivity"]
+    assert card["status"] != "violated"
+    assert f"{design['variation']['r2']:.0%}" in card["diagnostic"]
+    assert f"{1 / math.sqrt(1 - design['variation']['r2']):.1f} times" in card["diagnostic"]
