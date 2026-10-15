@@ -13,9 +13,10 @@ the values alone; it never looks at the outcome:
 
 * **counts** — whole numbers, none negative, reaching at least :data:`COUNT_MAX` (genotype dosages
   0/1/2 and scores do not), under the genomics lens. A row total is the sample's library size.
-  Estimated counts (salmon, kallisto, RSEM) are counts too: none negative, with fractions, reaching
-  :data:`RAW_MAX`, their library sizes still as spread as raw counts' (:func:`_estimated_counts_cv`;
-  GENOMICS_PACK §02 row 2 says ask, and FPKM or TPM would have divided the spread out).
+  Estimated counts (salmon, kallisto, RSEM) are counts too: none negative, with fractions and at
+  least one zero, reaching :data:`RAW_MAX`, their library sizes still as spread as raw counts'
+  (:func:`_estimated_counts_cv`; GENOMICS_PACK §02 row 2 says ask, and FPKM or TPM would have
+  divided the spread out). They are read after the intensity reading declines.
 * **intensities** — none negative, spanning :data:`RAW_RANGE`-fold, and either reaching
   :data:`RAW_MAX` (log-scale values sit below ~40) or right-skewed feature by feature (median
   skewness at least :data:`RAW_SKEW`; a log scale is near-symmetric), under the metabolomics lens.
@@ -194,23 +195,34 @@ def scale_reading(frame: pd.DataFrame, lenses: Sequence[str] | None, target: str
             block = values[:, counts]
             if np.nanmax(block) >= COUNT_MAX:
                 return _reading("counts", [c for c, k in zip(columns, counts) if k], block)
-        # GENOMICS_PACK §02 row 2, "Non-integer ≥0, sums vary, max ≫1e4: Estimated counts
-        # (salmon/kallisto/RSEM) — ask" (claims backtest C-193): the whole-number test read them
-        # as normalized, and no normalization was asked.
-        estimated = keep & ~whole
-        if estimated.sum() >= MIN_FEATURES:
-            block = values[:, estimated]
-            totals = np.nansum(block, axis=1)
-            if np.nanmax(block) >= RAW_MAX and _cv(totals) >= _estimated_counts_cv():
-                return _reading("counts", [c for c, k in zip(columns, estimated) if k], block,
-                                estimated=True)
     if "metabolomics" in lenses and keep.sum() >= MIN_FEATURES:
         block = values[:, keep]
         positive = block[np.isfinite(block) & (block > 0)]
         if positive.size and float(positive.max()) / float(positive.min()) >= RAW_RANGE and (
                 float(positive.max()) >= RAW_MAX or _median_skew(block) >= RAW_SKEW):
             return _reading("intensities", [c for c, k in zip(columns, keep) if k], block)
+    if "genomics" in lenses:
+        # After the intensity reading declines: under both omics lenses, fractional values that
+        # reach the thousands are LC-MS peak areas as readily as estimated counts.
+        return _estimated_counts(values, columns, keep & ~whole)
     return None
+
+
+def _estimated_counts(values: np.ndarray, columns: Sequence[str],
+                      estimated: np.ndarray) -> ScaleReading | None:
+    """GENOMICS_PACK §02 row 2, "Non-integer ≥0, sums vary, max ≫1e4: Estimated counts
+    (salmon/kallisto/RSEM) — ask" (claims backtest C-193): the whole-number test read them as
+    normalized, and no normalization was asked. A block with no zero is no transcript
+    quantification, as the pack's data-type card reads it (a zero count is a zero estimated count,
+    TPM and FPKM alike), so LC-MS peak areas under a genomics lens stay unread."""
+    if estimated.sum() < MIN_FEATURES:
+        return None
+    block = values[:, estimated]
+    totals = np.nansum(block, axis=1)
+    if (np.nanmax(block) < RAW_MAX or not np.any(np.isfinite(block) & (block == 0))
+            or _cv(totals) < _estimated_counts_cv()):
+        return None
+    return _reading("counts", [c for c, k in zip(columns, estimated) if k], block, estimated=True)
 
 
 def _median_skew(block: np.ndarray) -> float:
