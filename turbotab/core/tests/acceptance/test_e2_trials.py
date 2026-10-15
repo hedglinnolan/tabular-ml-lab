@@ -15,6 +15,7 @@ from __future__ import annotations
 import importlib
 import math
 import subprocess
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -762,6 +763,86 @@ def test_separation_is_refused_in_plain_words():
         T.estimate(df, BSPEC)
     assert r.value.term == "separation in the logistic model"
     assert "0% or 100%" in str(r.value)
+
+
+def _ye_by_hand(y: np.ndarray, arm: np.ndarray, cf: np.ndarray, mu: np.ndarray,
+                strata: np.ndarray) -> np.ndarray:
+    """Ye, Shao, Yi & Zhao's (2023) covariance of the standardized risks of two arms, written out
+    from their Theorem 1 as R's ``beeca`` ``varcov_ye`` computes it (n − 1 denominators), less the
+    stratified randomization's term Σ_z (n_z/n) R_z(diag π − ππᵀ)R_z, all over n."""
+    n = len(y)
+    pi = np.array([np.mean(arm == 0), np.mean(arm == 1)])
+    V = np.zeros((2, 2))
+    for j in (0, 1):
+        k = 1 - j
+        yj, cj = y[arm == j], cf[arm == j, j]
+        V[j, j] = ((np.var(yj, ddof=1) - 2 * np.cov(yj, cj)[0, 1] + np.var(cf[:, j], ddof=1))
+                   / pi[j] + 2 * np.cov(yj, cj)[0, 1] - np.var(cf[:, j], ddof=1))
+        V[j, k] = (np.cov(yj, cf[arm == j, k])[0, 1] + np.cov(y[arm == k], cf[arm == k, j])[0, 1]
+                   - np.cov(cf[:, j], cf[:, k])[0, 1])
+    for z in np.unique(strata):
+        R = np.diag([np.mean((y - mu)[(strata == z) & (arm == j)]) / pi[j] for j in (0, 1)])
+        V -= R @ (np.diag(pi) - np.outer(pi, pi)) @ R * np.mean(strata == z)
+    return V / n
+
+
+def test_a_group_with_every_event_keeps_its_standardized_risks_and_an_empty_arm_says_why():
+    """Claims backtest B-281. Everyone at site c had the event, so the logistic model separates:
+    site c's coefficient has no finite value. The standardized risks still do. The likelihood's
+    supremum is approached as that coefficient runs to +∞, each site-c person's risk to 1 under
+    either arm, while the other coefficients converge to the maximum-likelihood fit on the other
+    sites' people alone (Lesaffre & Albert 1989, *J R Stat Soc B* 51:109). Reference: statsmodels'
+    ``Logit`` on those people, each arm's counterfactual risks averaged over everyone with site c's
+    at 1, and Ye et al.'s variance (the stratification term too) written out above on those risks.
+    The effect had been refused because "no finite estimate exists".
+
+    When no one in an arm had the event, its risk is 0% and the risk difference is still finite
+    (minus the other arm's risk), but Ye et al.'s variance, built from each arm's spread of
+    outcomes around its fitted risks, counts no uncertainty in that arm: the effect is refused
+    for that reason, and fewer covariates is no way out (the arm alone separates too)."""
+    import statsmodels.api as sm
+
+    df = _parallel(seed=21)
+    df.loc[df.site == "c", "event"] = 1.0
+    r = T.estimate(df, BSPEC)
+    rand = df.arm.notna()
+    data = _filled(df[rand], "age", pd.Series(True, index=df[rand].index))
+    data = data[data.event.notna()].reset_index(drop=True)
+    y = data.event.to_numpy()
+    arm = (data.arm == "trt").to_numpy(dtype=int)
+    at_c = (data.site == "c").to_numpy()
+
+    def design(a: np.ndarray) -> np.ndarray:
+        return np.column_stack([np.ones(len(data)), a, (data.site == "b").to_numpy(float),
+                                data.base, data.age, data.age_miss])
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        rest = sm.Logit(y[~at_c], design(arm)[~at_c]).fit(method="newton", tol=1e-14,
+                                                           maxiter=100, disp=0)
+    cf = np.ones((len(data), 2))
+    for k in (0, 1):
+        cf[~at_c, k] = rest.predict(design(np.full(len(data), k))[~at_c])
+    mu = np.where(arm == 1, cf[:, 1], cf[:, 0])
+    theta = cf.mean(axis=0)
+    V = _ye_by_hand(y, arm, cf, mu, pd.factorize(data.site)[0])
+    rd, rr = r.contrast(measure="risk_difference"), r.contrast(measure="risk_ratio")
+    assert [m.estimate for m in r.arm_estimates] == pytest.approx(theta, rel=1e-9)
+    assert rd.estimate == pytest.approx(theta[1] - theta[0], rel=1e-8)
+    assert rd.se == pytest.approx(math.sqrt(V[0, 0] + V[1, 1] - 2 * V[0, 1]), rel=1e-6)
+    assert rr.estimate == pytest.approx(theta[1] / theta[0], rel=1e-9)
+    g = np.array([-1 / theta[0], 1 / theta[1]])
+    assert rr.se == pytest.approx(math.sqrt(g @ V @ g), rel=1e-6)
+    assert rd.lower < rd.estimate < rd.upper
+
+    none = _parallel(seed=21)
+    none.loc[(none.arm == "trt") & none.event.notna(), "event"] = 0.0
+    for spec in (BSPEC, T.TrialSpec(arm="arm", control="ctl", outcome="event")):
+        with pytest.raises(T.TrialRefused) as refused:
+            T.estimate(none, spec)
+        said = str(refused.value)
+        assert "`trt`" in said and "no finite estimate exists" not in said, said
+        assert not any("covariates" in e for e in refused.value.exits)
 
 
 # ── wording ──────────────────────────────────────────────────────────────────
