@@ -74,9 +74,11 @@ def test_the_pair_scan_alone_and_the_other_findings_keep_their_places():
     # no near dependency measured: a pair of adjustment terms changes nothing here
     assert quest.explore_place("collinear", s, pairs=[("fat", "protein")]).label == "For the record"
     assert quest.explore_place("collinear", s, pairs=[("sugar", "carb")]).label == "Decide"
-    # under Predict the pair scan's lever (a penalty in each fold) is a decision
+    # under Predict both of a pair are kept, a convention set for the person (BEATS_PREDICT M4).
+    # Re-pinned (claims backtest C-170): it was a Decide, though a near-collinear pair does not
+    # harm prediction and both are kept by default.
     assert quest.explore_place("collinear", state(ADJUST, purpose="prediction"),
-                               pairs=[("fat", "protein")]).label == "Decide"
+                               pairs=[("fat", "protein")]).label == "Confirm"
     # every other finding sits where the crosswalk places it, as before
     assert quest.explore_place("wide", s) == quest.EXPLORE_FINDINGS["wide"]
     assert quest.explore_place("low_variance", s).label == "Confirm"

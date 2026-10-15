@@ -252,7 +252,10 @@ def test_the_collinear_finding_is_served_as_a_decide_when_what_you_study_is_insi
     assert served["findings"][0]["label"] == "Decide"
 
 
-def test_under_predict_the_pair_scan_is_a_decide_and_nothing_is_measured():
+def test_under_predict_the_pair_scan_is_a_confirm_and_nothing_is_measured():
+    """Re-pinned (claims backtest C-170): under Predict the line was a Decide, though a
+    near-collinear pair does not harm prediction and both are kept by default; it is a Confirm,
+    as BEATS_PREDICT M4 sets it for the person."""
     from turbotab.server.service import explore_labeled
 
     def never():
@@ -260,7 +263,7 @@ def test_under_predict_the_pair_scan_is_a_decide_and_nothing_is_measured():
 
     served = explore_labeled(_explore(("collinear", ["fat", "protein"])),
                              collinear_state(ADJUST, purpose="prediction"), never)
-    assert served["findings"][0]["label"] == "Decide"
+    assert served["findings"][0]["label"] == "Confirm"
 
 
 # ── 5 · methods sentences that agree with their exhibits ─────────────────────

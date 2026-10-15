@@ -663,11 +663,22 @@ def _collinear_lever(state: Any) -> Lever:
                         customary="One of a collinear pair is often dropped by its p-value",
                         sound="Under inference the set is declared from subject knowledge; the "
                               "intervals show the cost", rung="recommended")])
-    return _lever("Let a penalty share the weight between them, inside each fold?", [
-        LeverOption(key="elastic_net", label="Elastic net in each fold",
+    # Claims backtest C-170: the elastic-net answer is set_selection's in-fold filter, put before
+    # every family (pipeline.explore_steps), not a penalty in the fitted model: it keeps both of a
+    # pair and can drop a predictor a tree family reads through a bend.
+    return _lever("Keep both, and read them together?", [
+        LeverOption(key="keep_both", label="Keep both; read their importance together",
                     customary="One of a pair is often dropped by hand",
-                    sound="Sound: the penalty spreads the weight; the resampling repeats it",
-                    rung="recommended", in_fold=True,
+                    sound="Sound: a near-collinear pair does not harm prediction on rows like "
+                          "these, and a penalized family shrinks the pair on its own; how the "
+                          "credit splits between the two is arbitrary",
+                    rung="recommended", decision={"kind": "set_selection", "method": "none"}),
+        LeverOption(key="elastic_net", label="Elastic-net selection in each fold",
+                    customary="Penalized selection is common in omics prediction",
+                    sound="A filter put before every family: it keeps what a linear elastic net "
+                          "keeps on the fold, so it can drop a predictor a tree family reads "
+                          "through a bend; it does not share weight within the pair",
+                    rung="available", in_fold=True,
                     decision={"kind": "set_selection", "method": "elastic_net"}),
         LeverOption(key="by_hand", label="Leave one out by hand",
                     customary="Common practice",

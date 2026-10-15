@@ -443,7 +443,7 @@ def explore_labeled(artifact: Any, state: Any, noticed: Callable[[], Any]) -> An
     """The explore artifact with each finding's ``label`` (Decide, Confirm, For the record) as the
     person sees it (``quest.explore_label``). ``noticed`` returns the K5 collinear noticing measured
     on the table (None when there is none); it is read only when a collinear finding is served
-    outside Predict, where the pair scan's lever is a Decide whatever the table. ``artifact`` is
+    outside Predict, where the pair scan's line is a Confirm whatever the table. ``artifact`` is
     never changed in place."""
     if not isinstance(artifact, dict):
         return artifact

@@ -304,9 +304,11 @@ def test_the_collinear_line_is_decide_only_where_what_you_study_is_in_it():
     # holds what you study is decided at the adjustment question.
     assert M.collinear_label(s, None, [("fat_total", "fat_mon")]) == quest.RECORD
     assert M.collinear_label(s, None, [("sugar", "carb")]) == quest.DECIDE
-    # Under Predict the pair scan's lever (a penalty in each fold) is the decision.
+    # Under Predict both of a pair are kept, a convention set for the person: Confirm
+    # (BEATS_PREDICT M4). Re-pinned (claims backtest C-170): it was a Decide, though a
+    # near-collinear pair does not harm prediction and both are kept by default.
     assert M.collinear_label(state(ADJUST, purpose="prediction"), None,
-                             [("fat_total", "fat_mon")]) == quest.DECIDE
+                             [("fat_total", "fat_mon")]) == quest.CONFIRM
 
 
 def test_under_predict_a_collinear_pair_is_kept_and_the_selection_filter_is_not_recommended():

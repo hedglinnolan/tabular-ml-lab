@@ -944,16 +944,18 @@ def collinear_label(state: Any, noticed: Noticing | None,
                     pairs: Iterable[Sequence[str]] = ()) -> str:
     """The label the quest log's collinear line takes on this table (the crosswalk's
     ``noticing:explore::collinear``, which carries ``shared-collinear-predictors``; its tier in
-    ``quest_noticings.json`` is the ceiling, Decide). Under Predict the pair scan's lever (a penalty
-    in each fold) is a decision: Decide. Under Estimate or Describe the K5 noticing decides
-    (:func:`noticing_tier`): Decide for an exact identity or with what you study in the dependency,
-    For the record outside it. With no near dependency, a pair (``pairs``: explore's, two columns
-    each) that holds what you study is decided at the adjustment question; pairs of adjustment
-    terms alone change nothing here (Frisch–Waugh–Lovell), For the record."""
-    from turbotab.core.quest import DECIDE, RECORD
+    ``quest_noticings.json`` is the ceiling, Decide). Under Predict a near-collinear pair does not
+    harm prediction on rows like these, and both are kept by default (no selection), so the line is
+    a convention set for the person: Confirm (BEATS_PREDICT M4 line 4; claims backtest C-170).
+    Under Estimate or Describe the K5 noticing decides (:func:`noticing_tier`): Decide for an exact
+    identity or with what you study in the dependency, For the record outside it. With no near
+    dependency, a pair (``pairs``: explore's, two columns each) that holds what you study is
+    decided at the adjustment question; pairs of adjustment terms alone change nothing here
+    (Frisch–Waugh–Lovell), For the record."""
+    from turbotab.core.quest import CONFIRM, DECIDE, RECORD
 
     if getattr(state, "purpose", None) == "prediction":
-        return DECIDE
+        return CONFIRM
     if noticed is not None:
         return noticing_tier(noticed)
     exposure = _exposure(state)
