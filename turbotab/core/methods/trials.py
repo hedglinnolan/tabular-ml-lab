@@ -35,6 +35,11 @@ covariate chosen after the data were seen is refused from the primary analysis
   which stays valid when the logistic model is wrong and, with the randomization factors named,
   subtracts the stratification's term (taking the randomization to have balanced the arms within
   each stratum, as permuted blocks do); z intervals. This is R's ``beeca`` (``method = "Ye"``).
+  When the data separate a group of people (they all had the event, or none did), its
+  coefficients have no finite values but the standardized risks do: the fit is taken at its
+  limit, those people's risks 0 or 1 under either arm (Lesaffre & Albert 1989). When the arm
+  itself separates, its risk is 0% or 100%, Ye et al.'s variance counts no uncertainty in it, and
+  the effect is refused.
 
 **Cluster-randomized trials** (:func:`estimate` with ``trial_design="cluster_randomized_trial"``).
 The cluster is the unit of randomization, so every cluster has one arm (refused otherwise).
@@ -745,9 +750,98 @@ def _logistic(X: np.ndarray, y: np.ndarray, *, offset: np.ndarray | None = None)
 
 def _separation() -> TrialRefused:
     return TrialRefused(
-        "Some group of people here all had the event, or none did, so the model's risk for them "
-        "runs to 0% or 100% and no finite estimate exists.",
+        "The logistic model's risk for some group of people here runs to 0% or 100% (they all had "
+        "the event, or none did), so its coefficients have no finite values, or values too large "
+        "to rest an interval on.",
         ({"label": "Adjust for fewer covariates", "covariates": []}, DESCRIBE_OUTCOMES_EXIT),
+        term="separation in the logistic model")
+
+
+LIMIT_TOL = 1e-12  # Newton's decrement at which a separated fit has reached its limit
+FLAT = 1e-8  # an information eigenvalue below this share of the largest: a separated direction
+
+
+def _logistic_limit(X: np.ndarray, y: np.ndarray) -> tuple[_Logit, np.ndarray]:
+    """The logistic fit at its likelihood's supremum, finite or not, and the directions the data
+    separate. Newton's method on the columns scaled to unit SD, a pseudo-inverse step halved while
+    it lowers the likelihood, until the decrement UᵀI⁺U is below :data:`LIMIT_TOL`. When the data
+    separate (Albert & Anderson 1984), the coefficients run off along the separating directions,
+    the separated people's fitted risks reach 0 or 1, and the rest of the fit converges to the
+    maximum-likelihood fit on the people the data do not separate (Lesaffre & Albert 1989, *J R
+    Stat Soc B* 51:109). The directions are the information's flat eigenvectors there (eigenvalue
+    below :data:`FLAT` of the largest), over the scaled columns; without separation there are
+    none and the fit is the maximum-likelihood one."""
+    sd = X.std(axis=0)
+    sd[sd == 0] = 1.0
+    Z = X / sd
+
+    def loglik(b: np.ndarray) -> float:
+        eta = Z @ b
+        return float(y @ eta - np.logaddexp(0.0, eta).sum())
+
+    b = np.zeros(X.shape[1])
+    p0 = float(np.clip(y.mean(), 1e-6, 1 - 1e-6))
+    b[0] = math.log(p0 / (1 - p0))
+    ll = loglik(b)
+    with np.errstate(over="ignore"):
+        for _ in range(200):
+            mu = _expit(Z @ b)
+            info = Z.T @ (Z * (mu * (1 - mu))[:, None])
+            U = Z.T @ (y - mu)
+            step = np.linalg.lstsq(info, U, rcond=None)[0]
+            if float(U @ step) < LIMIT_TOL:
+                break
+            for _ in range(40):
+                trial = loglik(b + step)
+                if trial >= ll - 1e-12 * max(1.0, abs(ll)):
+                    break
+                step = step / 2
+            b, ll = b + step, trial
+        else:
+            raise _separation()
+        mu = _expit(Z @ b)
+    lam, vec = np.linalg.eigh(info)
+    flat = vec[:, lam <= FLAT * max(float(lam[-1]), 0.0)]
+    return _Logit(beta=b / sd, cov=np.linalg.pinv(info) / np.outer(sd, sd), mu=mu), flat
+
+
+def _fit_risks(d: _Design, y: np.ndarray, arms: list[str]) -> tuple[_Logit, np.ndarray, list[int]]:
+    """The logistic fit, every analyzed person's risk with the arm set to each arm in turn
+    (:func:`_counterfactual`), and the columns the data separate (none, usually). A separated fit
+    is taken at its limit (:func:`_logistic_limit`): the separated people's risks are 0 or 1 under
+    every arm and the standardized risks are finite. When the arm itself separates the outcome, it
+    is refused (:func:`_arm_separation`)."""
+    try:
+        fit = _logistic(d.X, y)
+        return fit, _counterfactual(d, fit.beta, arms), []
+    except TrialRefused:
+        fit, flat = _logistic_limit(d.X, y)
+    load = np.abs(flat).max(axis=1) if flat.size else np.zeros(d.X.shape[1])
+    separated = [j for j in range(d.X.shape[1]) if load[j] > 1e-6 * max(1.0, float(load.max()))]
+    if any(j in d.arm_columns for j in separated):
+        raise _arm_separation(d, y, arms)
+    return fit, _counterfactual(d, fit.beta, arms), separated
+
+
+def _arm_separation(d: _Design, y: np.ndarray, arms: list[str]) -> TrialRefused:
+    """The refusal when an arm separates the outcome: its risk is 0% or 100%, and Ye et al.'s
+    variance, made of each arm's spread of outcomes around its fitted risks, is zero there."""
+    exits: tuple[dict[str, Any], ...] = (DESCRIBE_OUTCOMES_EXIT,)
+    for k, a in enumerate(arms):
+        events, m = int(y[d.arm_codes == k].sum()), int((d.arm_codes == k).sum())
+        if events in (0, m):
+            who = (f"{'No one' if events == 0 else 'Everyone'} in {a} had the event ({events} of "
+                   f"{m}), so the arm's risk is {'0%' if events == 0 else '100%'}")
+            break
+    else:
+        who = ("Within some group of people, everyone in one arm had the event or no one did, so "
+               "that arm's risk there is 0% or 100%")
+        exits = ({"label": "Adjust for fewer covariates", "covariates": []}, DESCRIBE_OUTCOMES_EXIT)
+    return TrialRefused(
+        f"{who} and the logistic model's coefficient for the arm has no finite value. The risk "
+        f"difference is still finite, but Ye et al.'s variance, built from each arm's spread of "
+        f"outcomes around its fitted risks, counts no uncertainty where every outcome is the "
+        f"same, so no interval is given for it here.", exits,
         term="separation in the logistic model")
 
 
@@ -933,10 +1027,25 @@ def _strata_codes(frame: pd.DataFrame, spec: TrialSpec, idx: pd.Index) -> np.nda
     return pd.factorize(lab)[0]
 
 
+def _separated_note(d: _Design, fit: _Logit, separated: list[int]) -> str | None:
+    """What a fit taken at its limit says (:func:`_fit_risks`), or None when nothing separates."""
+    if not separated:
+        return None
+    terms = [d.names[j] for j in separated if d.names[j] != "(Intercept)"] or ["(Intercept)"]
+    listed = terms[0] if len(terms) == 1 else f"{', '.join(terms[:-1])} and {terms[-1]}"
+    n = int(np.sum((fit.mu < 1e-9) | (fit.mu > 1 - 1e-9)))
+    one = len(terms) == 1
+    return (f"The data separate the outcome on {listed}: {n} people all had the event or none did, "
+            f"so {'that coefficient has' if one else 'those coefficients have'} no finite value "
+            f"and their risks are 0% or 100% under either arm. The standardized risks average them "
+            f"in at that limit, where the rest of the model is the fit to everyone else (Lesaffre "
+            f"& Albert 1989); the risks, their difference and their ratio are finite.")
+
+
 def _standardized(d: _Design, y: np.ndarray, arms: list[str], strata: np.ndarray | None
-                  ) -> tuple[list[Contrast], list[ArmEstimate], _Logit, np.ndarray, np.ndarray]:
-    fit = _logistic(d.X, y)
-    cf = _counterfactual(d, fit.beta, arms)
+                  ) -> tuple[list[Contrast], list[ArmEstimate], _Logit, np.ndarray, np.ndarray,
+                             str | None]:
+    fit, cf, separated = _fit_risks(d, y, arms)
     theta = cf.mean(axis=0)
     V = ye_variance(y, d.arm_codes, cf, fit.mu, strata)
     contrasts: list[Contrast] = []
@@ -954,7 +1063,7 @@ def _standardized(d: _Design, y: np.ndarray, arms: list[str], strata: np.ndarray
         lo, hi, _ = _t_interval(theta[k], se, None)
         risks.append(ArmEstimate(a, float(theta[k]), se, lo, hi, None,
                                  int((d.arm_codes == k).sum())))
-    return contrasts, risks, fit, theta, V
+    return contrasts, risks, fit, theta, V, _separated_note(d, fit, separated)
 
 
 # ── cluster-randomized trials: the mixed model with Kenward–Roger ────────────
@@ -1347,7 +1456,8 @@ def estimate(frame: pd.DataFrame, spec: TrialSpec, *, analysis_set: str = "itt",
             coefs = fit.beta
         else:
             strata = _strata_codes(frame, spec, d.index)
-            contrasts, estimates, lfit, _, _ = _standardized(d, y, arms, strata)
+            contrasts, estimates, lfit, _, _, note = _standardized(d, y, arms, strata)
+            concerns += [note] if note else []
             estimator = ("logistic regression, risks standardized over the analyzed people, "
                          "Ye et al.'s variance" + (" with the stratification term" if
                                                    strata is not None else ""))
@@ -1573,8 +1683,7 @@ def _pool(imp: _Imputer, delta: float, arm: int, measure: str, arms: list[str]) 
         else:
             d = _Design(X=imp.X, names=[], arm_codes=imp.arm_codes, arm_columns=imp.arm_columns,
                         filled={}, index=pd.RangeIndex(len(y)))
-            lfit = _logistic(imp.X, y)
-            cf = _counterfactual(d, lfit.beta, arms)
+            lfit, cf, _ = _fit_risks(d, y, arms)
             theta = cf.mean(axis=0)
             V = ye_variance(y, imp.arm_codes, cf, lfit.mu, imp.strata)
             if measure == "risk_ratio":
@@ -2062,7 +2171,9 @@ def _register_contracts() -> None:
                      condition="a yes/no outcome", enforced_by=f"{here}:estimate",
                      id="kr_numeric_only"),
             Relation("conflicts", "separation",
-                     "refused when the logistic model's risks run to 0% or 100%",
+                     "refused when the logistic model's risk for an arm runs to 0% or 100% "
+                     "(for the estimating equations, for any group); a group of people the "
+                     "data separate otherwise is kept at its limit in the standardized risks",
                      purposes=est_only, rung="refused",
                      when=("standardized_risk", "gee_corrected"),
                      exits=("adjust for fewer covariates", "describe the events in each arm"),

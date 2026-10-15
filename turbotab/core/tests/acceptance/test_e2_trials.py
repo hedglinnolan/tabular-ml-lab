@@ -757,12 +757,16 @@ def test_a_measure_that_does_not_fit_the_outcome_is_refused_with_the_one_that_do
 
 
 def test_separation_is_refused_in_plain_words():
+    """Re-pinned (claims backtest B-281): this test had everyone at site c have the event and
+    held the effect refused, but a site the data separate leaves the standardized risks finite,
+    and they are now reported (the test after this one). The arm is what still refuses: when
+    everyone in the control arm had the event its risk is 100%, and the refusal says so."""
     df = _parallel(seed=21)
-    df.loc[df.site == "c", "event"] = 1.0
+    df.loc[(df.arm == "ctl") & df.event.notna(), "event"] = 1.0
     with pytest.raises(T.TrialRefused) as r:
         T.estimate(df, BSPEC)
     assert r.value.term == "separation in the logistic model"
-    assert "0% or 100%" in str(r.value)
+    assert "Everyone in ctl had the event" in str(r.value) and "100%" in str(r.value)
 
 
 def _ye_by_hand(y: np.ndarray, arm: np.ndarray, cf: np.ndarray, mu: np.ndarray,
