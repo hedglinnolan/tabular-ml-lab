@@ -1261,3 +1261,90 @@ def test_6b_pre_pandemic_and_ogtt_weights_follow_the_rule(tmp_path):
     other = tables["ogtt"][0].drop(columns=["LBXGLT", "WTSOG2YR"]).assign(WTSA2YR=50000.0)
     f = weights_finding(other, "other")
     assert "`WTSA2YR`" in f["detail"] and f["evidence"]["status"] != "SETTLED"
+
+
+# The CDC's words on the August 2021-August 2023 phlebotomy weight, read 2026-10-15: the TCHOL_L
+# codebook ("WTPH2YR - Phlebotomy 2 Year Weight"; "Examined participants aged 6 years and older
+# were eligible") and the weighting tutorial's Example 5 (a 2021-2023 analysis of serum vitamin D
+# by age: "You would use phlebotomy weights (wtph2yr)"). GLU_L gives a fasting participant who
+# gave no blood a WTSAF2YR of 0, so the fasting subsample lies inside the phlebotomy sample.
+TCHOL_L_WTPH2YR = "Phlebotomy 2 Year Weight"
+TCHOL_L_RULE = ("The phlebotomy weight should be used for analyses that use variables derived from "
+                "blood analytes, and is included in all relevant data files.")
+
+
+def _nhanes_2021_2023(with_fasting: bool = False) -> pd.DataFrame:
+    """An August 2021-August 2023 merge as the CDC files build it: DEMO_L's interview and MEC
+    weights (WTMEC2YR 0 for an interviewed participant not examined), TCHOL_L's WTPH2YR (blank off
+    the file: not examined, or under 6; 0 for an eligible participant who gave no blood, about a
+    third of children and one adult in twenty) and LBXTC only where blood was drawn, and BMXBMI on
+    every examined row. ``with_fasting``: GLU_L's morning subsample, LBXGLU only where its
+    WTSAF2YR is positive (fasting, and blood drawn)."""
+    rng = np.random.default_rng(2123)
+    n = 600
+    age = rng.integers(1, 80, n)
+    examined = rng.random(n) < 0.75
+    eligible = examined & (age >= 6)
+    drawn = eligible & (rng.random(n) < np.where(age < 18, 0.67, 0.95))
+    df = pd.DataFrame({
+        "SEQN": np.arange(130000, 130000 + n), "RIDAGEYR": age,
+        "SDMVSTRA": rng.integers(173, 188, n), "SDMVPSU": rng.integers(1, 3, n),
+        "WTINT2YR": rng.uniform(3000, 90000, n).round(1),
+        "WTMEC2YR": np.where(examined, rng.uniform(3000, 90000, n), 0.0).round(1),
+        "WTPH2YR": np.where(drawn, rng.uniform(3000, 90000, n), np.where(eligible, 0.0, np.nan)),
+        "LBXTC": np.where(drawn, rng.normal(185, 38, n).round(0), np.nan),
+        "BMXBMI": np.where(examined, rng.normal(28, 6, n).round(1), np.nan)})
+    if with_fasting:
+        morning = drawn & (age >= 12) & (rng.random(n) < 0.45)
+        df["WTSAF2YR"] = np.where(morning, rng.uniform(5000, 150000, n),
+                                  np.where(eligible & (age >= 12), 0.0, np.nan))
+        df["LBXGLU"] = np.where(morning, rng.normal(102, 14, n).round(0), np.nan)
+    return df
+
+
+def test_6c_blood_analytes_of_2021_2023_name_the_phlebotomy_weight(tmp_path):
+    """Claims backtest C-143: WTPH2YR had no tier, so beside total cholesterol recorded only where
+    it is positive the rule named WTMEC2YR, settled, a weight without the phlebotomy nonresponse
+    adjustment CDC added for this cycle. Expected, from the CDC's words above and pandas on the
+    fixture: total cholesterol is recorded only where WTPH2YR is positive, so its analyses take
+    WTPH2YR, offered first, then the samples that contain it (examination, interview); with
+    fasting glucose the fasting weight stays the smaller sample, then phlebotomy."""
+    from turbotab.core.recognizers import least_common_denominator, rank_weights
+    from turbotab.core.stages.findings import findings_stage
+    from turbotab.core.survey import offered
+
+    assert TCHOL_L_WTPH2YR == "Phlebotomy 2 Year Weight" and "blood analytes" in TCHOL_L_RULE
+    frame = _nhanes_2021_2023()
+    inside = frame["WTPH2YR"] > 0
+    assert not (frame["LBXTC"].notna() & ~inside).any() and frame["LBXTC"].isna().mean() > 0.05
+    assert (frame["BMXBMI"].notna() & ~inside).sum() > 0.01 * frame["BMXBMI"].notna().sum()
+    columns = ["LBXTC", "RIDAGEYR", "BMXBMI", "WTINT2YR", "WTMEC2YR", "WTPH2YR"]
+    lcd = least_common_denominator(columns, frame)
+    assert lcd["use"] == "WTPH2YR" and "LBXTC" in lcd["because"], lcd
+    assert rank_weights(["WTINT2YR", "WTMEC2YR", "WTPH2YR"], lcd) == \
+        ["WTPH2YR", "WTMEC2YR", "WTINT2YR"]
+
+    # The survey question offers it first.
+    roles = {"SEQN": "identifier", "RIDAGEYR": "covariate", "BMXBMI": "covariate",
+             "WTINT2YR": "design", "WTMEC2YR": "design", "WTPH2YR": "design",
+             "SDMVSTRA": "design", "SDMVPSU": "design"}
+    state = ProjectState(target="LBXTC", roles=roles, purpose="inference")
+    options = [o["decision"].get("weight") for o in offered(state, None, frame)
+               if o["decision"].get("weight")]
+    assert options[0] == "WTPH2YR", options
+
+    # The dietary lens's weights finding names it.
+    path = _write(frame, tmp_path, "tchol_l.csv")
+    found = Ingested(path, tmp_path / "tchol").run(
+        findings_stage, ProjectState(lens=["dietary"], target="LBXTC"))["findings"]
+    f = next(f for f in found if f["id"] == "pack::dietary::survey_weights")
+    assert "`WTPH2YR`" in f["title"], f["title"]
+
+    # The fasting subsample lies inside the phlebotomy sample: its weight stays first.
+    fasting = _nhanes_2021_2023(with_fasting=True)
+    assert not (fasting["LBXGLU"].notna() & ~(fasting["WTSAF2YR"] > 0)).any()
+    assert not ((fasting["WTSAF2YR"] > 0) & ~(fasting["WTPH2YR"] > 0)).any()
+    lcd = least_common_denominator([*columns, "LBXGLU", "WTSAF2YR"], fasting)
+    assert lcd["use"] == "WTSAF2YR", lcd
+    assert rank_weights(["WTINT2YR", "WTMEC2YR", "WTPH2YR", "WTSAF2YR"], lcd) == \
+        ["WTSAF2YR", "WTPH2YR", "WTMEC2YR", "WTINT2YR"]
