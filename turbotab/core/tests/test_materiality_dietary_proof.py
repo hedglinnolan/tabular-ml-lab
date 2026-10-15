@@ -153,7 +153,10 @@ def test_the_screens_rows_times_smd_is_computed_by_hand(noticed, frame):
     assert worst == "kcal"
     assert n.predicted.instrument == "rows_smd"
     assert n.predicted.value == pytest.approx(want, rel=1e-9)
-    assert n.predicted.band == 1 and n.predicted.calibrated  # 0.185: could bias
+    # 0.185: could bias. Re-pinned (claims backtest A-124): rows × SMD was marked calibrated on
+    # nine in-sample cases from this one fixture, though it does not track the movement; it is a
+    # screening convention now, floored at "could bias" and never calibrated.
+    assert n.predicted.band == 1 and not n.predicted.calibrated
     assert "`5,212` of `21,849` rows (23.9%)" in n.predicted.words
     assert "glucose" not in n.predicted.words
     assert n.done and "Banna" in n.done  # the every-row analysis is declared
@@ -266,8 +269,8 @@ def test_the_ledger_replays_and_calibrates_the_committed_file(loop):
 def test_a_narrow_screen_once_said_to_change_nothing_could_bias_and_is_upgraded_openly(proof, frame):
     """The verifier's case: a 500–5,000 kcal screen removes few rows that differ little on what is
     adjusted for (rows × SMD ≈ 0.019), yet the every-row refit moves sugar's coefficient by about
-    0.63 of its half-width, since the extreme reports are high-leverage. Calibrated on the ladder
-    of screens, the rows instrument calls it "could bias", never "doesn't change your numbers
+    0.63 of its half-width, since the extreme reports are high-leverage. The rows instrument is a
+    screening convention floored at "could bias" (A-124), never "doesn't change your numbers
     here"; after the lock the realized band 2 is above it, so the exhibit is relabeled openly."""
     rule = decisions.ExclusionRule(column="kcal", low=500, high=5000, reason="implausible intake")
     state = C.proof_state(exclusions=[rule])

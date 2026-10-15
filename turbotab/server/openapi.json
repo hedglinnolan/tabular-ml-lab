@@ -11028,6 +11028,26 @@
               }
             ],
             "title": "Design"
+          },
+          "design_declared": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "observational",
+                  "parallel_trial",
+                  "cluster_randomized_trial",
+                  "case_control",
+                  "matched_sets",
+                  "crossover",
+                  "repeated_measures_trial"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Design Declared"
           }
         },
         "type": "object",
@@ -11093,7 +11113,8 @@
           "intended_use",
           "updating",
           "sweeps",
-          "design"
+          "design",
+          "design_declared"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -13969,6 +13990,26 @@
             ],
             "title": "Design",
             "default": "observational"
+          },
+          "declared": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "observational",
+                  "parallel_trial",
+                  "cluster_randomized_trial",
+                  "case_control",
+                  "matched_sets",
+                  "crossover",
+                  "repeated_measures_trial"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared"
           }
         },
         "additionalProperties": false,
@@ -13977,7 +14018,7 @@
           "kind"
         ],
         "title": "SetDesign",
-        "description": "How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked\nin Your question before the goal, observational stated until answered. Every design is a named\nvalue (``turbotab.core.designs``); one this version does not analyze is refused with its code,\nits reason and the observational exit (V2X_SEAMS seam guard 6)."
+        "description": "How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked\nin Your question before the goal, observational stated until answered. Every design is a named\nvalue (``turbotab.core.designs``); one this version does not analyze is refused with its code,\nits reason and the observational exit (V2X_SEAMS seam guard 6). ``declared``: the design the\nperson declared when the exit analyzes it as observational, kept so the methods name it and a\nsample drawn by its outcome keeps its refusals (claims backtest B-211)."
       },
       "SetDesign-Output": {
         "properties": {
@@ -14000,16 +14041,37 @@
             ],
             "title": "Design",
             "default": "observational"
+          },
+          "declared": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "observational",
+                  "parallel_trial",
+                  "cluster_randomized_trial",
+                  "case_control",
+                  "matched_sets",
+                  "crossover",
+                  "repeated_measures_trial"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "kind",
-          "design"
+          "design",
+          "declared"
         ],
         "title": "SetDesign",
-        "description": "How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked\nin Your question before the goal, observational stated until answered. Every design is a named\nvalue (``turbotab.core.designs``); one this version does not analyze is refused with its code,\nits reason and the observational exit (V2X_SEAMS seam guard 6)."
+        "description": "How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked\nin Your question before the goal, observational stated until answered. Every design is a named\nvalue (``turbotab.core.designs``); one this version does not analyze is refused with its code,\nits reason and the observational exit (V2X_SEAMS seam guard 6). ``declared``: the design the\nperson declared when the exit analyzes it as observational, kept so the methods name it and a\nsample drawn by its outcome keeps its refusals (claims backtest B-211)."
       },
       "SetEnergyAdjustment-Input": {
         "properties": {
@@ -36625,7 +36687,7 @@
       },
       "SetDesign": {
         "additionalProperties": false,
-        "description": "How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked\nin Your question before the goal, observational stated until answered. Every design is a named\nvalue (``turbotab.core.designs``); one this version does not analyze is refused with its code,\nits reason and the observational exit (V2X_SEAMS seam guard 6).",
+        "description": "How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked\nin Your question before the goal, observational stated until answered. Every design is a named\nvalue (``turbotab.core.designs``); one this version does not analyze is refused with its code,\nits reason and the observational exit (V2X_SEAMS seam guard 6). ``declared``: the design the\nperson declared when the exit analyzes it as observational, kept so the methods name it and a\nsample drawn by its outcome keeps its refusals (claims backtest B-211).",
         "properties": {
           "kind": {
             "const": "set_design",
@@ -36646,11 +36708,33 @@
             ],
             "title": "Design",
             "type": "string"
+          },
+          "declared": {
+            "anyOf": [
+              {
+                "enum": [
+                  "observational",
+                  "parallel_trial",
+                  "cluster_randomized_trial",
+                  "case_control",
+                  "matched_sets",
+                  "crossover",
+                  "repeated_measures_trial"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Declared"
           }
         },
         "required": [
           "kind",
-          "design"
+          "design",
+          "declared"
         ],
         "title": "SetDesign",
         "type": "object"

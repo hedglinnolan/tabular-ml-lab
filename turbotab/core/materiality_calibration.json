@@ -17,11 +17,12 @@
       "convention": {
         "band_1": 0.05,
         "band_2": 0.2,
-        "reason": "Rows changed × the leavers' largest SMD on the adjustment set (SURFACING_POLICY §2.4 starting values)."
+        "reason": "Rows changed × the leavers' largest SMD on the adjustment set (SURFACING_POLICY §2.4 starting values).",
+        "floored": "Rows × the leavers' largest SMD is an outcome-blind screening convention, not a predictor of how far the estimate moves: what moves a correctly specified coefficient is what the leavers report of what you study, not their imbalance on what is adjusted for, and the product has no n. Its cases so far come from one fixture, where a screen at 0.019 moved the estimate 0.63 of its half-width, so it never says \"doesn't change your numbers here\" (claims backtest A-124)."
       },
       "band_1": 0.003697,
       "band_2": 0.2,
-      "calibrated": true,
+      "calibrated": false,
       "reason": "Rows changed × the leavers' largest SMD on the adjustment set (SURFACING_POLICY §2.4 starting values). Lowered to 0.003697 so that no case is predicted below noise and realized above it.",
       "cases": 9,
       "confusion": {
@@ -46,7 +47,8 @@
         ],
         "false_reassurance": 0,
         "cry_wolf": 0
-      }
+      },
+      "uncalibrated": "Rows × the leavers' largest SMD is an outcome-blind screening convention, not a predictor of how far the estimate moves: what moves a correctly specified coefficient is what the leavers report of what you study, not their imbalance on what is adjusted for, and the product has no n. Its cases so far come from one fixture, where a screen at 0.019 moved the estimate 0.63 of its half-width, so it never says \"doesn't change your numbers here\" (claims backtest A-124)."
     },
     "exposure_shift": {
       "regime": "predicted",

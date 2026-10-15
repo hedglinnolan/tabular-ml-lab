@@ -32,14 +32,17 @@ change your numbers here", "could bias" and "act on it", in two regimes recorded
 τ₀ and τ₁. A proxy is *calibrated* only with at least ``min_cases`` cases and at least one it put
 below noise that stayed below noise after the lock; an uncalibrated proxy is floored at band 1 (the
 cap of §2.6 read as a floor: it may say "could bias" or "act on it", never "doesn't change your
-numbers here"). A movement that changes the question (substitution versus addition) is band 2 and
-never graded by a number; one that cannot be measured on these rows (one recall day for λ) is band
-1, "not measurable here". :func:`calibrate` chooses the thresholds from the cases (each labeled
-with the pipeline it was run on) to leave no false reassurance, and reports the confusion matrix
-per instrument. An instrument exact by theorem (:func:`invariance`: Frisch–Waugh–Lovell, a
-reparameterization of a column that is not focal) is not floored: its 0 is a proof, so it needs no
-cases; ``calibrate`` keeps its entry, which names the theorem, and each movement carries it
-(§2.6 as amended, WAVE_C6A_PLAN §7 ruling 2).
+numbers here"). Rows × SMD is floored whatever its cases (its convention's ``floored``, claims
+backtest A-124): it is an outcome-blind screening convention, not a predictor of the movement,
+since what moves a correctly specified coefficient is what the leavers report of what you study,
+not their imbalance on what is adjusted for. A movement that changes the question (substitution
+versus addition) is band 2 and never graded by a number; one that cannot be measured on these rows
+(one recall day for λ) is band 1, "not measurable here". :func:`calibrate` chooses the thresholds
+from the cases (each labeled with the pipeline it was run on) to leave no false reassurance, and
+reports the confusion matrix per instrument. An instrument exact by theorem (:func:`invariance`:
+Frisch–Waugh–Lovell, a reparameterization of a column that is not focal) is not floored: its 0 is a
+proof, so it needs no cases; ``calibrate`` keeps its entry, which names the theorem, and each
+movement carries it (§2.6 as amended, WAVE_C6A_PLAN §7 ruling 2).
 
 **Structure among the adjustment terms** (K5, :func:`collinear_noticing`): Belsley's
 variance-decomposition proportions of what you study and the adjustment set, outcome-blind. What
@@ -941,16 +944,18 @@ def collinear_label(state: Any, noticed: Noticing | None,
                     pairs: Iterable[Sequence[str]] = ()) -> str:
     """The label the quest log's collinear line takes on this table (the crosswalk's
     ``noticing:explore::collinear``, which carries ``shared-collinear-predictors``; its tier in
-    ``quest_noticings.json`` is the ceiling, Decide). Under Predict the pair scan's lever (a penalty
-    in each fold) is a decision: Decide. Under Estimate or Describe the K5 noticing decides
-    (:func:`noticing_tier`): Decide for an exact identity or with what you study in the dependency,
-    For the record outside it. With no near dependency, a pair (``pairs``: explore's, two columns
-    each) that holds what you study is decided at the adjustment question; pairs of adjustment
-    terms alone change nothing here (Frisch–Waugh–Lovell), For the record."""
-    from turbotab.core.quest import DECIDE, RECORD
+    ``quest_noticings.json`` is the ceiling, Decide). Under Predict a near-collinear pair does not
+    harm prediction on rows like these, and both are kept by default (no selection), so the line is
+    a convention set for the person: Confirm (BEATS_PREDICT M4 line 4; claims backtest C-170).
+    Under Estimate or Describe the K5 noticing decides (:func:`noticing_tier`): Decide for an exact
+    identity or with what you study in the dependency, For the record outside it. With no near
+    dependency, a pair (``pairs``: explore's, two columns each) that holds what you study is
+    decided at the adjustment question; pairs of adjustment terms alone change nothing here
+    (Frisch–Waugh–Lovell), For the record."""
+    from turbotab.core.quest import CONFIRM, DECIDE, RECORD
 
     if getattr(state, "purpose", None) == "prediction":
-        return DECIDE
+        return CONFIRM
     if noticed is not None:
         return noticing_tier(noticed)
     exposure = _exposure(state)
@@ -1032,8 +1037,13 @@ def recommend(n: Noticing, *, purpose: str | None = None) -> tuple[Disposition, 
         return ("no_change", f"{m.words} That holds exactly ({m.theorem}), so there is nothing to "
                              f"check after the plan is fixed.", False)
     if m.band == 0:
-        return ("no_change", f"{m.words} That is below what would move the {what}; it is checked "
-                             f"again after the plan is fixed.", False)
+        # Only a calibrated proxy reaches here: its band 0 is what its cases showed, not a
+        # prediction of this table's movement, and it is checked only where something declared
+        # verifies it (realized_from_sensitivity reads a declared analysis, else nothing).
+        check = ("it is checked again after the plan is fixed" if n.done else
+                 "nothing declared checks it after the plan is fixed")
+        return ("no_change", f"{m.words} Movements this small stayed below noise in the {what} "
+                             f"on its calibration cases; {check}.", False)
     if n.done:
         return ("could_bias", f"{m.words} {n.done} Its result goes in the supplement.", False)
     if m.not_measurable:
@@ -1267,7 +1277,9 @@ def calibrate(cases: Sequence[Case], start: Mapping[str, Any]) -> dict[str, Any]
     cry-wolf cases (predicted ≥ 1, realized 0). An instrument is calibrated, and so may say
     "doesn't change your numbers here", only with at least ``min_cases`` cases and at least one
     case it put below noise that stayed below noise (a band 0 that held); short of that it is
-    uncalibrated and floored at band 1, its thresholds still reported."""
+    uncalibrated and floored at band 1, its thresholds still reported. A proxy whose convention
+    says it is ``floored`` (a screening convention that does not track the movement) is never
+    calibrated, whatever its cases: the floor's reason is its ``uncalibrated``."""
     out = json.loads(json.dumps(dict(start)))
     min_cases = int(out.get("min_cases", 5))
     by: dict[str, list[Case]] = {}
@@ -1294,10 +1306,11 @@ def calibrate(cases: Sequence[Case], start: Mapping[str, Any]) -> dict[str, Any]
         for c in mine:
             matrix[_raw_band(c.m_pre, b1, b2)][c.band_post] += 1
         held = matrix[0][0]
-        entry["calibrated"] = len(mine) >= min_cases and held > 0
+        floored = entry["convention"].get("floored")
+        entry["calibrated"] = not floored and len(mine) >= min_cases and held > 0
         entry["cases"] = len(mine)
         if mine and not entry["calibrated"]:
-            entry["uncalibrated"] = (
+            entry["uncalibrated"] = floored or (
                 f"{len(mine)} case(s), fewer than {min_cases}" if len(mine) < min_cases else
                 "no case it put below noise stayed below noise after the lock")
         else:

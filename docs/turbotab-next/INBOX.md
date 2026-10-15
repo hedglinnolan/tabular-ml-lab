@@ -376,6 +376,7 @@ SURFACING_POLICY recommendation 1 (`core/materiality.py`, `materiality_calibrati
 ## From the claims backtest (2026-10-15)
 
 - [next] 15 S1 middle-layer defects, each to start with a test that fails on today's code: A-001, A-029, A-102, A-124, B-211, B-281, B-416, B-435, BX-040, C-123, C-143, C-170, C-193, D-058, D-086 — notes/claims-backtest/FIXES.md
+- [B-211, open] An undeclared case-control table is still read as observational by the unanswered default, and its estimand card ranks the risk difference first on a case share near 50%: only a declared design keeps the odds-ratio-only refusals. The fix list's second sentence is not built: route `prevalence_signal` and `matched_sets_signal` to ask the design question instead of leaving them unwired (see [E4, noticings]) — core/designs.py, core/methods/case_control.py, notes/claims-backtest/FIXES.md B-211
 - [next] 39 S2 and 16 S3 fixes, most of them wording or scope: overstated reasons, conventions shown as findings, and rulings the teaching text describes but the code never built — notes/claims-backtest/FIXES.md
 - [v2.x] Show each claim's grade (proved, certified, sourced, judgment) on screen, and never badge a disputed rule SETTLED (D-037, D-021) — notes/claims-backtest/README.md
 - [v2.x] A ruling-to-code ledger: every ruling the app's text describes points at the code and the test that carry it — notes/claims-backtest/README.md

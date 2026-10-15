@@ -772,6 +772,185 @@ def test_4_under_prediction_the_grouping_names_internal_external_validation(tmp_
     assert estimand.fixed_effects_column(grouped) is None  # no intercepts under prediction
 
 
+def _grouped(sizes: list[int], seed: int = 5) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Groups of ``sizes`` rows sharing an effect on the outcome that also moves the exposure; the
+    exposure's true log odds ratio is 1 given the group."""
+    rng = np.random.default_rng(seed)
+    group = np.repeat(np.arange(len(sizes)), sizes)
+    shared = rng.normal(0, 1, len(sizes))[group]
+    x = rng.normal(0, 1, len(group)) + 0.5 * shared
+    y = rng.binomial(1, 1 / (1 + np.exp(-(shared + 1.0 * x))))
+    return group, x, y
+
+
+def _households(size: int, groups: int, seed: int = 5) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Households of ``size`` (:func:`_grouped`, the same draws)."""
+    return _grouped([size] * groups, seed)
+
+
+def _logit_slope(x: np.ndarray, y: np.ndarray, group: np.ndarray | None = None) -> float:
+    """The exposure's log odds ratio from the engine's own yes/no inference model (the linear
+    family's unpenalized logistic regression), with one indicator per group when ``group``."""
+    import warnings
+
+    from turbotab.core.models.linear import LINEAR
+
+    X = x[:, None] if group is None else np.column_stack(
+        [x, pd.get_dummies(group, drop_first=True, dtype=float).to_numpy()])
+    model = LINEAR.build("binary", "inference", len(y), X.shape[1])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model.fit(X, y)
+    return float(model.coef_[0][0])
+
+
+class _Store:
+    """A store a decision context reads (the server's ``DataStore`` shape)."""
+
+    def __init__(self, frame: pd.DataFrame):
+        self.frame = frame
+        self.columns = list(frame.columns)
+
+    def materialize(self, columns: list[str], rows: Any = None) -> pd.DataFrame:
+        out = self.frame[list(columns)]
+        return out if rows is None else out.iloc[np.asarray(rows, dtype=int)]
+
+
+def test_4_a_yes_no_outcome_in_small_groups_gets_no_intercept_per_group():
+    """Claims backtest D-058: the incidental-parameter problem. Known truth: 1,000 households of
+    two, the exposure's log odds ratio 1 given the household. The engine's own yes/no inference
+    model (the linear family's unpenalized logistic regression) with one indicator per household
+    estimates about twice it (the unconditional estimator converges to 2β with pairs; Andersen
+    1970), while statsmodels' conditional logistic regression recovers 1. So "Adjust and cluster"
+    is refused for a yes/no outcome in groups that small, with clustered intervals as the way
+    forward, and is not offered first; groups of 20 keep it (Katz 2001, Political Analysis 9:379:
+    negligible bias from 16 per group), as does a numeric outcome in pairs."""
+    import warnings
+
+    from statsmodels.discrete.conditional_models import ConditionalLogit
+
+    from turbotab.core.models.linear import LINEAR
+
+    group, x, y = _households(2, 1000)
+    X = np.column_stack([x, pd.get_dummies(group, drop_first=True, dtype=float).to_numpy()])
+    model = LINEAR.build("binary", "inference", len(y), X.shape[1])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model.fit(X, y)
+        conditional = ConditionalLogit(y, x[:, None], groups=group).fit(disp=0)
+    assert model.coef_[0][0] > 1.7  # one intercept per pair: about twice the truth
+    assert abs(conditional.params[0] - 1.0) < 0.25  # conditioning on the pair: the truth
+
+    def ctx(size, task="binary"):
+        state = ProjectState(lens=["clinical"], target="ill", task=task, purpose="inference",
+                             grain={"grain": "one_row_per_unit"},
+                             roles={"pid": "identifier", "household": "cluster", "x": "exposure"})
+        n = 2000
+        return {"state": state, "columns": ["pid", "household", "x", "ill"], "n_rows": n,
+                "column_info": {"household": {"n_unique": n // size, "n_missing": 0}}}
+
+    adjust = {"kind": "set_clusters", "column": "household", "adjust": "fixed_effects"}
+    with pytest.raises(Refusal) as refused:
+        d.validate(adjust, ctx(2))
+    assert "incidental" in refused.value.message
+    assert [e["decision"]["adjust"] for e in refused.value.exits if e["decision"]] == [
+        "cluster_only"]
+    with pytest.raises(Refusal) as how:
+        d.validate({"kind": "set_clusters", "column": "household"}, ctx(2))
+    assert how.value.code == "how_adjusted"
+    assert "fixed_effects" not in [(e["decision"] or {}).get("adjust") for e in how.value.exits]
+    assert d.validate(adjust, ctx(20)).adjust == "fixed_effects"  # 20 per group: kept
+    assert d.validate(adjust, ctx(2, task="regression")).adjust == "fixed_effects"  # linear
+
+
+def _grouping_ctx(frame: pd.DataFrame, column: str, *, task: str = "binary", rows: Any = "all",
+                  clusters: Any = None) -> dict[str, Any]:
+    """What the server tells a validator about ``frame`` under inference: the column summaries
+    over every row, the store, and the analyzed rows (``rows``; "all" for every row)."""
+    state = ProjectState(lens=["clinical"], target="ill", task=task, purpose="inference",
+                         grain={"grain": "one_row_per_unit"},
+                         roles={"pid": "identifier", column: "cluster", "x": "exposure"},
+                         clusters=clusters)
+    info = {column: {"dtype": "integer", "n_unique": int(frame[column].nunique()), "n_missing": 0},
+            "ill": {"dtype": "numeric", "n_unique": 2, "n_missing": int(frame["ill"].isna().sum())}}
+    return {"state": state, "columns": list(frame.columns), "n_rows": len(frame),
+            "column_info": info, "store": lambda: _Store(frame),
+            "analyzed": lambda: np.arange(len(frame)) if isinstance(rows, str) else rows}
+
+
+def test_4_intercepts_per_group_are_judged_on_the_analyzed_rows_groups_of_two_or_more():
+    """Claims backtest D-058, second round: which rows the group size is read on. Known truth, the
+    exposure's log odds ratio 1 given the group, estimated by the engine's own yes/no inference
+    model. (a) 2,000 sites that enrolled one participant each beside 60 sites of 50: with an
+    intercept per site the estimate is about 1, since a site of one is fitted by its own intercept
+    and adds nothing to the slope, while clustered intervals alone leave the sites' confounding in
+    (about 1.2). The whole table's mean, 2.4 rows per site, refused the sound answer; the analyzed
+    rows' groups of two or more hold 50 rows each and keep it. (b) 1,000 households in a table of
+    20 rows each, the outcome recorded for two members of each: the whole table's mean (20) let one
+    intercept per pair through, and on the rows analyzed, pairs, the estimate is about twice the
+    truth. A rule on the share of rows in small groups was not taken: 12% of the rows in pairs
+    beside four sites of 1,100 estimate 1.00 (``estimand.FIXED_EFFECTS_LOGIT_ROWS``)."""
+    group, x, y = _grouped([1] * 2000 + [50] * 60)
+    with_intercepts, alone = _logit_slope(x, y, group), _logit_slope(x, y)
+    assert abs(with_intercepts - 1.0) < 0.15 < alone - 1.0  # sound with intercepts; confounded
+    sites = pd.DataFrame({"pid": np.arange(len(y)), "site": group, "x": x, "ill": y})
+    adjust = {"kind": "set_clusters", "column": "site", "adjust": "fixed_effects"}
+    assert d.validate(adjust, _grouping_ctx(sites, "site")).adjust == "fixed_effects"
+    with pytest.raises(Refusal) as how:
+        d.validate({"kind": "set_clusters", "column": "site"}, _grouping_ctx(sites, "site"))
+    assert how.value.code == "how_adjusted"
+    assert [(e["decision"] or {}).get("adjust") for e in how.value.exits] == [
+        "fixed_effects", "cluster_only"]
+
+    pairs, x2, y2 = _households(2, 1000)
+    assert _logit_slope(x2, y2, pairs) > 1.7  # one intercept per pair: about twice the truth
+    rng = np.random.default_rng(1)
+    table = pd.DataFrame({"pid": np.arange(20_000),
+                          "household": np.concatenate([pairs, np.repeat(np.arange(1000), 18)]),
+                          "x": np.concatenate([x2, rng.normal(0, 1, 18_000)]),
+                          "ill": np.concatenate([y2.astype(float), np.full(18_000, np.nan)])})
+    assert len(table) / table["household"].nunique() == 20  # the whole table's mean
+    for analyzed in (np.arange(2000), None):  # the cohort's rows, or none computed yet
+        with pytest.raises(Refusal) as refused:
+            d.validate({**adjust, "column": "household"},
+                       _grouping_ctx(table, "household", rows=analyzed))
+        assert refused.value.code == "incidental_parameters"
+        assert "analyzed rows" in refused.value.message and "2.0 rows" in refused.value.message
+
+
+def test_4_intercepts_per_group_are_checked_again_at_the_task_the_models_and_the_design():
+    """Claims backtest D-058: the grouping answer is not the only door to an intercept per pair.
+    A grouping answered "adjust for it" under a numeric outcome, then the outcome answered yes/no,
+    is refused at the task with clustered intervals as the way forward; choosing the models checks
+    it again on the analyzed rows; and the design stage, which builds the fit, refuses it on the
+    rows it reads, the backstop for an answer that moved those rows after both were given. Known
+    truth: the households of two whose intercepts double the log odds ratio (above)."""
+    pairs, x, y = _households(2, 1000)
+    assert _logit_slope(x, y, pairs) > 1.7
+    frame = pd.DataFrame({"pid": np.arange(len(y)), "household": pairs, "x": x, "ill": y})
+    fixed = d.ClusterSpec(column="household", adjust="fixed_effects")
+    numeric = _grouping_ctx(frame, "household", task="regression", clusters=fixed)
+    with pytest.raises(Refusal) as task:
+        d.validate({"kind": "set_task", "column": "ill", "task": "binary"}, numeric)
+    assert task.value.code == "incidental_parameters"
+    [way] = [e["decision"] for e in task.value.exits if e["decision"]]
+    assert (way["kind"], way["column"], way["adjust"]) == ("set_clusters", "household",
+                                                           "cluster_only")
+    binary = _grouping_ctx(frame, "household", clusters=fixed)
+    with pytest.raises(Refusal) as models:
+        d.validate({"kind": "select_models", "models": ["linear"]}, binary)
+    assert models.value.code == "incidental_parameters"
+    state, store, rows = binary["state"], _Store(frame), np.arange(len(frame))
+    assert "incidental" in (estimand.intercepts_refusal(state, store, rows, "binary") or "")
+    assert estimand.intercepts_refusal(state, store, rows, "regression") is None  # linear
+    only = d.ClusterSpec(column="household", adjust="cluster_only")
+    clustered = state.model_copy(update={"clusters": only})
+    assert estimand.intercepts_refusal(clustered, store, rows, "binary") is None
+    numeric_only = _grouping_ctx(frame, "household", task="regression", clusters=only)
+    assert d.validate({"kind": "set_task", "column": "ill", "task": "binary"},
+                      numeric_only).task == "binary"
+
+
 # ── 5 · the energy order under prediction ────────────────────────────────────
 
 

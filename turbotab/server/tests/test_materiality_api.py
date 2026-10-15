@@ -68,9 +68,11 @@ def test_the_triage_and_the_ledger_carry_the_measured_noticings_through_the_lock
     # Few rows leave a 500–5,000 kcal screen and they differ little on what is adjusted for
     # (rows × SMD ≈ 0.019), but the calibration cases show such screens moving the estimate: the
     # rows instrument says it could bias, never that it changes nothing. The every-row analysis
-    # is declared, which is something done: no limitation sentence.
+    # is declared, which is something done: no limitation sentence. Re-pinned (claims backtest
+    # A-124): rows × SMD is an outcome-blind screening convention floored at band 1, no longer
+    # marked calibrated on its nine in-sample cases from one fixture.
     assert screen["family"] == "S5" and screen["measure"].startswith("rows × SMD")
-    assert screen["calibrated"] and screen["band"] == 1
+    assert not screen["calibrated"] and screen["band"] == 1
     assert screen["recommended"] == "could_bias" and not screen["limitation"]
     assert "Banna" in screen["done"]
     assert noticed[DAYS]["limitation"] and noticed[DAYS]["label"].endswith("(not measurable here)")

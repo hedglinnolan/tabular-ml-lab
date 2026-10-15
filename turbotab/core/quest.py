@@ -581,8 +581,8 @@ EXPLORE_FINDINGS: dict[str, Place] = {
     "survey_design": Place("whos_in", "q:survey", DECIDE, 7),
     "low_variance": Place("models", "noticing:explore::low_variance", CONFIRM, 0),
     "wide": Place("models", "noticing:explore::wide", DECIDE, 17),
-    # The crosswalk's ceiling (``quest_noticings.json``: Decide, right under Predict); on a table
-    # the line takes the K5 noticing's tier (:func:`explore_place`).
+    # The crosswalk's ceiling (``quest_noticings.json``: Decide); on a table the line takes the K5
+    # noticing's tier, and under Predict it is a Confirm (:func:`explore_place`).
     "collinear": Place("models", "noticing:explore::collinear", DECIDE, 18),
 }
 
@@ -593,7 +593,8 @@ def explore_place(kind: str, state: Any = None, *, noticed: Any = None,
     :data:`EXPLORE_FINDINGS`, the collinear line labeled as the K5 noticing decides it
     (``materiality.collinear_label``: ``noticed``, the noticing measured on the table, and
     ``pairs``, Explore's pair scan, two columns each). Decide only when what you study is inside
-    the dependency, an exact identity, or under Predict; For the record at band 0."""
+    the dependency or an exact identity; a Confirm under Predict, both kept; For the record at
+    band 0."""
     place = EXPLORE_FINDINGS[kind]
     if kind != "collinear":
         return place

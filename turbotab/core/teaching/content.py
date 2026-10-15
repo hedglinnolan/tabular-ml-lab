@@ -1339,14 +1339,16 @@ CLUSTERS = {
     "one_liner": "People in one group are more alike than people across groups, so the model and "
                  "its intervals must know the groups.",
     "why": "Under inference a site that differs in both what you study and the outcome confounds the "
-           "estimate, and intervals that treat its participants as independent are too narrow: "
-           "each site gets its own intercept and the intervals are clustered by it. Under "
-           "prediction, validation keeps a group together and can hold out whole groups.",
+           "estimate, and intervals treating its participants as independent can be too narrow: "
+           "each site gets its own intercept and clustered intervals, except a yes/no outcome in "
+           "groups under 16 rows. Under prediction, validation keeps a group together and can "
+           "hold out whole groups.",
     "consumer": "The model's intercepts, the intervals, the split's internal–external option and "
                 "the methods read it.",
     "options": [
         option("fixed_effects", "Adjust and cluster",
-               "Each group gets its own intercept; intervals are cluster-robust by the group."),
+               "Each group gets its own intercept and clustered intervals; yes/no outcomes need 16 "
+               "rows per group."),
         option("cluster_only", "Cluster only",
                "Intervals cluster-robust by the group; differences between groups stay in the "
                "estimate."),
@@ -1354,8 +1356,9 @@ CLUSTERS = {
                "Every participant is analyzed as independent; recorded with its reason."),
     ],
     "terms": [
-        term("fixed effects", "One intercept per group, so what you study is compared within groups, "
-                              "never between them."),
+        term("fixed effects", "One intercept per group, so what you study is compared within groups. "
+                              "In a logistic model, small groups' intercepts inflate the odds "
+                              "ratio (incidental parameters)."),
         term("cluster-robust", "Intervals that let rows in one group share more than chance; few "
                                "groups need a small-sample correction."),
     ],

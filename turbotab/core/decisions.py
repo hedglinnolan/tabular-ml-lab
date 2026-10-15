@@ -127,10 +127,13 @@ class SetDesign(_DecisionModel):
     """How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked
     in Your question before the goal, observational stated until answered. Every design is a named
     value (``turbotab.core.designs``); one this version does not analyze is refused with its code,
-    its reason and the observational exit (V2X_SEAMS seam guard 6)."""
+    its reason and the observational exit (V2X_SEAMS seam guard 6). ``declared``: the design the
+    person declared when the exit analyzes it as observational, kept so the methods name it and a
+    sample drawn by its outcome keeps its refusals (claims backtest B-211)."""
 
     kind: Literal["set_design"] = "set_design"
     design: DesignKey = "observational"
+    declared: DesignKey | None = None
 
 
 class Revert(_DecisionModel):
@@ -2278,6 +2281,8 @@ class ProjectState(BaseModel):
     sweeps: dict[str, SweepConfirmation] | None = None
     # P0.6 (crosswalk disagreement 10): the study design; None is observational, stated.
     design: DesignKey | None = None
+    # The design declared before the observational exit (``SetDesign.declared``; B-211).
+    design_declared: DesignKey | None = None
 
     @field_validator("form_domains", mode="after")
     @classmethod
@@ -2775,7 +2780,8 @@ register_kind(SetIntendedUse, "intended_use",
 register_kind(SetUpdating, "updating", value=lambda d: UpdatingSpec(**d.model_dump(exclude={"kind"})))
 register_kind(ConfirmSweep, "sweeps", key=lambda d: sweep_key(d.stage, d.sweep),
               value=lambda d: SweepConfirmation(**d.model_dump(exclude={"kind"})))
-register_kind(SetDesign, "design")
+register_kind(SetDesign, "design", value=lambda d: d.design,
+              also={"design_declared": lambda d: d.declared})
 
 
 def _scheme_onto_the_draw(decision: Any, split: Any) -> Any:
@@ -2804,9 +2810,56 @@ def _design_is_analyzed_here(decision: SetDesign, ctx: Any) -> None:
     if found is not None:
         code, reason, exits = found
         raise Refusal(code, reason, exits=exits)
+    from turbotab.core.designs import DESIGNS, OBSERVATIONAL
+
+    declared = DESIGNS.get(str(decision.declared)) if decision.declared else None
+    if declared is not None and (decision.design != OBSERVATIONAL or declared.available):
+        raise Refusal(
+            "design_declared",
+            "A declared design is kept beside the observational reading only when this version "
+            "does not analyze it, as its refusal's first exit keeps it.",
+            exits=[{"label": "Analyze it as an observational study",
+                    "decision": {"kind": "set_design", "design": OBSERVATIONAL}}])
+    state = _state(ctx)
+    if getattr(state, "purpose", None) == "prediction":
+        _no_risks_from_a_sample_drawn_by_its_outcome(decision.declared)
+
+
+def _no_risks_from_a_sample_drawn_by_its_outcome(declared: Any) -> None:
+    """Claims backtest B-211: a case-control sample or matched sets analyzed as observational keep
+    ``methods/case_control.py``'s refusal of predicted risks (its ``eligible``): the fitted
+    probabilities are set by how many cases and controls were drawn. An unmatched sample's could be
+    recalibrated to a stated prevalence, which the Predict lane does not do yet; matched sets leave
+    no baseline risk to recalibrate, a limit of the design, so nothing waits for a later version.
+    The refusal changes no purpose: the odds ratios are asked under Estimate an effect."""
+    from turbotab.core.designs import SAMPLED_BY_OUTCOME, sampling_of
+
+    if declared not in SAMPLED_BY_OUTCOME:
+        return
+    from turbotab.core.methods.case_control import eligible
+
+    said = eligible("predict", sampling_of(str(declared)), "predicted_risk").says
+    estimate = {"label": "Estimate odds ratios instead",
+                "decision": {"kind": "set_purpose", "purpose": "inference"}}
+    if declared == "matched_sets":
+        raise Refusal("case_control_risks", f"{said} Their odds ratios, what the sample estimates, "
+                                            f"are asked under Estimate an effect.", exits=[estimate])
+    raise Refusal(
+        "case_control_risks",
+        f"{said} The Predict lane does not recalibrate a model to a population prevalence yet, so "
+        f"their odds ratios, what the sample estimates, are asked under Estimate an effect.",
+        exits=[estimate, {"label": "Keep the data as they are for a later version", "decision": None}])
+
+
+def _purpose_reads_the_design(decision: SetPurpose, ctx: Any) -> None:
+    from turbotab.core.designs import sampled_by_outcome
+
+    if decision.purpose == "prediction":
+        _no_risks_from_a_sample_drawn_by_its_outcome(sampled_by_outcome(_state(ctx)))
 
 
 register_validator("set_design", _design_is_analyzed_here)
+register_validator("set_purpose", _purpose_reads_the_design)
 
 
 # ── M1 validators (M1_CONTRACT.md §2) ────────────────────────────────────────

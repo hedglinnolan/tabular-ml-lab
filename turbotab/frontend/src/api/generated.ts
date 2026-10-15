@@ -3648,6 +3648,8 @@ export interface components {
             } | null;
             /** Design */
             design: ("observational" | "parallel_trial" | "cluster_randomized_trial" | "case_control" | "matched_sets" | "crossover" | "repeated_measures_trial") | null;
+            /** Design Declared */
+            design_declared: ("observational" | "parallel_trial" | "cluster_randomized_trial" | "case_control" | "matched_sets" | "crossover" | "repeated_measures_trial") | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -4837,7 +4839,9 @@ export interface components {
          * @description How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked
          *     in Your question before the goal, observational stated until answered. Every design is a named
          *     value (``turbotab.core.designs``); one this version does not analyze is refused with its code,
-         *     its reason and the observational exit (V2X_SEAMS seam guard 6).
+         *     its reason and the observational exit (V2X_SEAMS seam guard 6). ``declared``: the design the
+         *     person declared when the exit analyzes it as observational, kept so the methods name it and a
+         *     sample drawn by its outcome keeps its refusals (claims backtest B-211).
          */
         "SetDesign-Input": {
             /**
@@ -4851,13 +4855,17 @@ export interface components {
              * @enum {string}
              */
             design: "observational" | "parallel_trial" | "cluster_randomized_trial" | "case_control" | "matched_sets" | "crossover" | "repeated_measures_trial";
+            /** Declared */
+            declared?: ("observational" | "parallel_trial" | "cluster_randomized_trial" | "case_control" | "matched_sets" | "crossover" | "repeated_measures_trial") | null;
         };
         /**
          * SetDesign
          * @description How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked
          *     in Your question before the goal, observational stated until answered. Every design is a named
          *     value (``turbotab.core.designs``); one this version does not analyze is refused with its code,
-         *     its reason and the observational exit (V2X_SEAMS seam guard 6).
+         *     its reason and the observational exit (V2X_SEAMS seam guard 6). ``declared``: the design the
+         *     person declared when the exit analyzes it as observational, kept so the methods name it and a
+         *     sample drawn by its outcome keeps its refusals (claims backtest B-211).
          */
         "SetDesign-Output": {
             /**
@@ -4871,6 +4879,8 @@ export interface components {
              * @enum {string}
              */
             design: "observational" | "parallel_trial" | "cluster_randomized_trial" | "case_control" | "matched_sets" | "crossover" | "repeated_measures_trial";
+            /** Declared */
+            declared: ("observational" | "parallel_trial" | "cluster_randomized_trial" | "case_control" | "matched_sets" | "crossover" | "repeated_measures_trial") | null;
         };
         /** SetEnergyAdjustment */
         "SetEnergyAdjustment-Input": {
@@ -13976,7 +13986,9 @@ export interface components {
          * @description How people were assigned or sampled (crosswalk disagreement 10, ``q:study-design``): asked
          *     in Your question before the goal, observational stated until answered. Every design is a named
          *     value (``turbotab.core.designs``); one this version does not analyze is refused with its code,
-         *     its reason and the observational exit (V2X_SEAMS seam guard 6).
+         *     its reason and the observational exit (V2X_SEAMS seam guard 6). ``declared``: the design the
+         *     person declared when the exit analyzes it as observational, kept so the methods name it and a
+         *     sample drawn by its outcome keeps its refusals (claims backtest B-211).
          */
         SetDesign: {
             /**
@@ -13991,6 +14003,11 @@ export interface components {
              * @enum {string}
              */
             design: "observational" | "parallel_trial" | "cluster_randomized_trial" | "case_control" | "matched_sets" | "crossover" | "repeated_measures_trial";
+            /**
+             * Declared
+             * @default null
+             */
+            declared: ("observational" | "parallel_trial" | "cluster_randomized_trial" | "case_control" | "matched_sets" | "crossover" | "repeated_measures_trial") | null;
         };
         /** SetEnergyAdjustment */
         SetEnergyAdjustment: {

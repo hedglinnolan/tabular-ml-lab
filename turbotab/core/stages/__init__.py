@@ -574,7 +574,10 @@ def build_graph() -> Graph:
             # reported at its middle), and ridge and the elastic net code every level of a
             # category in their own column (``onehot_drop``). Every stage that reads the design,
             # the fit first, recomputes.
-            Stage("design", 29, ("working", "split", "target_info"),
+            # design 30 (claims backtest D-058): under inference a yes/no outcome's grouping
+            # answered "adjust for it" is refused when the rows the design describes hold too few
+            # per group for an intercept each (``estimand.intercepts_refusal``).
+            Stage("design", 30, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS, "levers", "selection", "survey"),
@@ -871,7 +874,9 @@ def build_graph() -> Graph:
             # inference shows no cross-validated score (only a declared selection sensitivity).
             # explore 2 (EXPLORE repair): a group column's groups are its code-or-amount reading's
             # (BLUEPRINT §14.3), asked while unsettled.
-            Stage("explore", 2, ("working", "cohort", "split", "target_info"),
+            # explore 3 (claims backtest C-170): under Predict the collinear lever keeps both of a
+            # pair, its "Keep both" leaving a selection it did not make as it is.
+            Stage("explore", 3, ("working", "cohort", "split", "target_info"),
                   (*EXPLORE_READS, *ROLE_READS, *WP17_READS), explore_stage, heavy=True,
                   requires=("target", "split"), label="Exploring the rows Explore may read"),
             # evaluation 2 (wave 2b integration): the seal's opening left its reads, as nothing it

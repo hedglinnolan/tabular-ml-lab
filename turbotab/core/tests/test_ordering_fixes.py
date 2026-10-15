@@ -85,20 +85,108 @@ def test_an_observational_answer_is_recorded_and_answers_the_question():
                                          ("repeated_measures_trial",
                                           "repeated_measures_trial_v2x")])
 def test_the_designs_deferred_to_v2x_are_named_values_refused_with_an_exit(design, code):
+    """Re-pinned (claims backtest B-211): the observational exit keeps the design declared, so
+    the methods name it as the refusal says they do."""
     error = refused({"kind": "set_design", "design": design})
     assert error.code == code
     assert error.message.startswith("Not available yet")
     assert "v2.x" in error.message
-    assert error.exits[0]["decision"] == {"kind": "set_design", "design": "observational"}
+    assert error.exits[0]["decision"] == {"kind": "set_design", "design": "observational",
+                                          "declared": design}
 
 
 @pytest.mark.parametrize("design", ["parallel_trial", "cluster_randomized_trial",
                                     "case_control", "matched_sets"])
 def test_the_designed_experiments_wait_for_their_milestone_with_an_exit(design):
+    """Re-pinned (claims backtest B-211): the observational exit keeps the design declared, so
+    the methods name it as the refusal says they do."""
     error = refused({"kind": "set_design", "design": design})
     assert error.code == "not_available_yet"
     assert error.message.startswith("Not available yet")
-    assert error.exits[0]["decision"] == {"kind": "set_design", "design": "observational"}
+    assert error.exits[0]["decision"] == {"kind": "set_design", "design": "observational",
+                                          "declared": design}
+
+
+@pytest.mark.parametrize("design", ["case_control", "matched_sets"])
+def test_a_sample_drawn_by_its_outcome_analyzed_as_observational_keeps_odds_ratios_only(design):
+    """Claims backtest B-211. Known truth: a population of 200,000 in which about 6% have the
+    outcome, the exposure's log odds ratio 0.7 given age; then 1,000 cases and 1,000 controls drawn
+    from it separately. Fitted by statsmodels on the sample, the exposure's log odds ratio is the
+    population's (Prentice & Pyke 1979), but the case share is 50%, not a prevalence, the mean
+    fitted probability is no one's risk, and the risk difference standardized over the sample is
+    several times the population's. So when a declared case-control sample or matched set is
+    analyzed as observational (the refusal's first exit), the record names the sampling, the
+    marginal risk difference and ratio are refused under Estimate, the card reads no prevalence
+    from the case share, and Predict's risks are refused, the odds ratios asked under Estimate an
+    effect. Matched sets are refused as a limit of the design (``case_control.eligible``: no
+    baseline risk is left to recalibrate), so nothing waits for a later version, and the methods
+    say the observational lane's odds ratios are not conditioned on the sets; an unmatched sample's
+    probabilities could be recalibrated with a stated prevalence, which Predict does not do yet."""
+    import numpy as np
+    import statsmodels.api as sm
+
+    from turbotab.core import voice
+    from turbotab.core.estimand import estimand_card
+
+    rng = np.random.default_rng(3)
+    n = 200_000
+    x = rng.binomial(1, 0.4, n).astype(float)
+    age = rng.normal(0, 1, n)
+
+    def rd(b, a):  # the risk difference standardized over the rows of ``a``
+        def p(xx):
+            return 1 / (1 + np.exp(-(b[0] + b[1] * xx + b[2] * a)))
+        return float(np.mean(p(1.0) - p(0.0)))
+
+    truth = np.array([-3.2, 0.7, 0.5])
+    y = rng.binomial(1, 1 / (1 + np.exp(-(truth[0] + truth[1] * x + truth[2] * age))))
+    rows = np.concatenate([rng.choice(np.flatnonzero(y == 1), 1000, replace=False),
+                           rng.choice(np.flatnonzero(y == 0), 1000, replace=False)])
+    fit = sm.Logit(y[rows], sm.add_constant(np.column_stack([x[rows], age[rows]]))).fit(disp=0)
+    assert abs(fit.params[1] - 0.7) < 0.2  # the odds ratio is the population's
+    assert y.mean() < 0.1 and y[rows].mean() == 0.5  # the case share is not a prevalence
+    assert np.mean(fit.predict()) == pytest.approx(0.5, abs=1e-6)  # no one's risk
+    assert rd(fit.params, age[rows]) > 2.5 * rd(truth, age)  # nor is the risk difference
+
+    error = refused({"kind": "set_design", "design": design})
+    first = error.exits[0]
+    assert first["label"] == "Analyze it as an observational study"
+    taken = d.validate(first["decision"], {})
+    state = d.fold([record(1, first["decision"])])
+    said = voice.sentence_for(taken, ProjectState(), None)
+    assert "not assigned or sampled by their outcome" not in said
+    assert ("case-control" if design == "case_control" else "matched sets") in said.lower()
+    assert "odds ratio" in said
+
+    roles = {"pid": "identifier", "x": "exposure", "age": "covariate"}
+    estimate = state.model_copy(update=dict(lens=["clinical"], target="case", task="binary",
+                                            purpose="inference", roles=roles))
+    for measure in ("risk_difference", "risk_ratio"):
+        no = refused({"kind": "set_estimand", "exposure": "x", "measure": measure},
+                     {"state": estimate})
+        assert "odds ratio" in no.message
+    assert d.validate({"kind": "set_estimand", "exposure": "x", "measure": "odds_ratio"},
+                      {"state": estimate}).measure == "odds_ratio"
+    card = estimand_card(estimate, "binary", prevalence=0.5)
+    assert [m["measure"] for m in card["measures"] if m["fitted"]] == ["odds_ratio"]
+    assert card["prevalence"] is None
+    assert not any("common here" in m["reason"] for m in card["measures"])
+    predict = refused({"kind": "set_purpose", "purpose": "prediction"}, {"state": state})
+    assert "not risks" in predict.message or "cannot be predicted" in predict.message
+    # The refusal leaves the purpose as it was: the odds ratios are asked under Estimate an effect.
+    assert "asked under Estimate an effect" in predict.message
+    assert "analyzed under" not in predict.message
+    later = [e for e in predict.exits if "later version" in e["label"]]
+    if design == "matched_sets":
+        # No risk can come from matched sets (eligible: "a limit of the design, not a missing
+        # feature"), so nothing waits for a later version; the methods say the observational
+        # lane's odds ratios are not conditioned on the sets.
+        assert " yet" not in predict.message and not later
+        assert "not conditioned on the matched sets" in said
+    else:
+        # An unmatched sample's probabilities can be recalibrated with a stated prevalence
+        # (eligible), which the Predict lane does not do yet.
+        assert "recalibrate" in predict.message and later
 
 
 def test_the_design_registry_names_every_value_the_slot_accepts():

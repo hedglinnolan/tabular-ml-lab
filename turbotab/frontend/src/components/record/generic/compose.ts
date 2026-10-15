@@ -187,7 +187,7 @@ function design(ctx: ComposeContext): GenericQuestion {
         (key === "observational"
           ? "Confounders are adjusted; the results are worded as associations."
           : "Not available yet: the reason and the way forward are shown when chosen."),
-      build: (): SetDesign => ({ kind: "set_design", design: key }),
+      build: (): SetDesign => ({ kind: "set_design", design: key, declared: null }),
     })),
   };
 }

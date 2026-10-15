@@ -1011,6 +1011,7 @@ export function fold(records: DecisionRecord[]): ProjectState {
     updating: null,
     sweeps: null,
     design: null,
+    design_declared: null,
   };
   // Each record's slots as they stood before it (a block confirmation writes several).
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }[]>();
