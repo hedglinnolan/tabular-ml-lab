@@ -307,6 +307,65 @@ def test_a_gain_inside_the_tolerance_is_no_better_than_the_baseline():
     assert noisy.tolerance > MIN_GAIN and noisy.verdict == "no_better"
 
 
+def _true_risks(metric: str, a: float, b: float, n: int, seed: int) -> tuple[list[float], list[float]]:
+    """Five folds' scores, worked here, of the true risks of a known logistic model (logit
+    a + b·x, x ~ N(0, 1)) and of the training folds' event share: the log loss, or the Brier score
+    of having had the event by the horizon, which with no censoring before it is the Brier score
+    at the horizon. No model predicts better than the true risks."""
+    rng = np.random.default_rng(seed)
+    x = rng.standard_normal(n)
+    p = 1.0 / (1.0 + np.exp(-(a + b * x)))
+    y = (rng.random(n) < p).astype(float)
+    fold = rng.permutation(n) % 5
+    model, base = [], []
+    for k in range(5):
+        test, prior = fold == k, float(y[fold != k].mean())
+        for out, q in ((model, p[test]), (base, np.full(int(test.sum()), prior))):
+            if metric == "log_loss":
+                out.append(float(-np.mean(y[test] * np.log(q) + (1 - y[test]) * np.log(1 - q))))
+            else:
+                out.append(float(np.mean((y[test] - q) ** 2)))
+    return model, base
+
+
+@pytest.mark.parametrize("metric, a, b, n, seed", [
+    ("log_loss", -5.3, 1.1, 60_000, 0),  # 0.9% have the event; AUC 0.79
+    ("log_loss", -5.0, 1.0, 60_000, 1),  # 1.0%; AUC 0.74
+    ("brier_t", -2.6, 0.9, 20_000, 2),  # 9% by the horizon; AUC 0.73
+    ("brier_t", -3.4, 1.15, 20_000, 3),  # 6% by the horizon; AUC 0.78
+])
+def test_a_rare_outcomes_true_risks_beat_the_baseline_by_enough_to_matter(metric, a, b, n, seed):
+    """Claims backtest A-029. The true risks of a rare outcome gain 6% to 12% of the baseline's
+    own loss (a McFadden R² or a scaled Brier score of 0.06 to 0.12, worked here), with a 95%
+    interval above zero: a gain that matters. On the loss's own scale the gain is 0.004 to 0.006,
+    under a fixed floor of 0.01, which called them better than the baseline "by too little to
+    matter". A loss's floor is a share of the baseline's loss, as R²'s 0.01 is of the MSE's."""
+    model, base = _true_risks(metric, a, b, n, seed)
+    gain = float(np.mean(base) - np.mean(model))
+    assert 0.06 <= gain / float(np.mean(base)) <= 0.12 and gain < MIN_GAIN
+    versus = versus_baseline(metric, model, base, test_share=0.25)
+    assert versus.ci_low > 0
+    assert versus.verdict == "better", versus.tolerance_basis
+
+
+def test_a_real_gain_under_a_hundredth_of_the_baseline_loss_is_too_little_to_matter():
+    """The floor still holds a gain that is real but small: a weak predictor at 30% prevalence,
+    over 400,000 rows, gains 0.3% of the class prior's log loss (a McFadden R² of 0.003), its
+    interval above zero. It is no better, and the sentence states the floor: 1% of the class
+    prior's log loss, worked here."""
+    from turbotab.core.models.baseline import no_better_concern
+
+    model, base = _true_risks("log_loss", -0.85, 0.14, 400_000, 4)
+    floor = MIN_GAIN * float(np.mean(base))
+    versus = versus_baseline("log_loss", model, base, test_share=0.25)
+    assert versus.ci_low > 0 and versus.gain < floor and versus.verdict == "no_better"
+    assert versus.tolerance == pytest.approx(floor, rel=1e-12)
+    said = no_better_concern("binary", "log loss", versus, float(np.mean(model)),
+                             float(np.mean(base)), lambda m, b: (f"{m:.3f}", f"{b:.3f}"))
+    assert said.startswith("Better than the class prior by too little to matter"), said
+    assert f"under {floor:.2g}, 1% of the class prior's log loss" in said, said
+
+
 def test_a_fit_on_noise_says_it_is_no_better_than_the_baseline_first(tmp_path):
     frame = mf.nhanes_like(400, seed=5)
     frame["glucose"] = np.random.default_rng(9).normal(100, 10, len(frame))  # nothing to learn

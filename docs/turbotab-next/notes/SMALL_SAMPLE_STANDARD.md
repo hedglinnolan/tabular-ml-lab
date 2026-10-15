@@ -1,7 +1,7 @@
 # The standard settings below an effective size of 300
 
-*Finding 2 of the T1 heavy run (2026-10-10), and the analysis behind RECIPES §4.6's open ruling.
-Status: proposed ruling, for the orchestrator. No engine code changed.*
+*Finding 2 of the T1 heavy run (2026-10-10), and the analysis behind RECIPES §4.6's ruling.
+Status: ruled on 2026-10-11 as proposed below; built on 2026-10-15 (RECIPES §4.6, "Built").*
 
 **The question.** Below an effective size of 300, the plan keeps only the standard candidate: for
 boosted trees, scikit-learn's `HistGradientBoosting` defaults; for XGBoost, XGBoost's. T1 found

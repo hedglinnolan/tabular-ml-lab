@@ -278,10 +278,13 @@ def _prediction(ctx: StageContext, task: str, fit: Any, comparison: Mapping[str,
         diffs = [d.model_dump(mode="json") for d in diffs if d.a == BENCHMARK or d.b == BENCHMARK]
         words = {"better": "better than", "no_better": "not shown better than",
                  "worse": "worse than"}[versus.verdict]
+        tail = ""
+        if versus.verdict == "no_better" and versus.ci_low is not None and versus.ci_low > 0:
+            words, tail = "better than", " by too little to matter"  # under the floor (A-029)
         said = (f"The regression-with-splines benchmark (every continuous predictor a restricted "
                 f"cubic spline, knots by Harrell's rule, on the same in-fold preprocessing) scored "
                 f"cross-validated {label} {_fmt(entry.get('estimate'))} on the families' "
-                f"{len(pairs)} paired folds, {words} the no-predictor baseline.")
+                f"{len(pairs)} paired folds, {words} the no-predictor baseline{tail}.")
         out.benchmark = Benchmark(metric=metric, estimate=entry.get("estimate"),
                                   ci_low=entry.get("ci_low"), ci_high=entry.get("ci_high"),
                                   versus_baseline=versus.model_dump(mode="json"),

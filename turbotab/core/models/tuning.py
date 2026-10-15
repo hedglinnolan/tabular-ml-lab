@@ -14,7 +14,9 @@ MODEL_FAMILY_CONTRACT C6; WAVE_C6A_PLAN §2).
   the final refit (RECIPES §4.2). Only a setting declared as a share of a fit's units rescales.
 * The candidates: the standard settings first, once per combination of "Try both" options, then a
   scrambled Sobol sample mapped through each dimension's scale (:func:`sobol_sample`,
-  :func:`map_unit`), or, for a path family, its grid (:func:`path_grid`). The candidate list is
+  :func:`map_unit`), or, for a path family, its grid (:func:`path_grid`). Below an effective size
+  of :data:`SMALL_N` there is no Sobol sample, and a family's small-sample standard, where it
+  declares one, is its standard (:func:`standard_for`; §4.6). The candidate list is
   fixed before any score is seen, so replay never depends on the order fits finish in.
 * The strategy: :data:`STRATEGIES`, keyed by the strategy's name and never by a family (V2X_SEAMS
   seam guard 3). v2 has one, ``"sobol"``; it owns the candidate generator and the fit count
@@ -89,7 +91,8 @@ Loss = Literal["mse", "log_loss", "rps"]  # validation.PER_ROW_LOSSES' strictly 
 SizeUnit = Literal["units", "events", "rarest_class"]
 Activity = Literal["always", "without_early_stopping"]
 
-SMALL_N = 300  # below this effective size a search keeps its standard candidates (§4.6)
+SMALL_N = 300  # below this effective size a search keeps its standard candidates (§4.6), a
+# family's small-sample standard where it declares one
 MID_N = 1_000  # from this size the Sobol sample doubles, 8 to 16 (§4.2)
 STOP_FROM_N = 1_500  # Sobol candidates stop early from this effective size (§4.2)
 STANDARD_STOP_ROWS = 10_000  # standard candidates stop early above this many plan rows (sklearn)
@@ -158,6 +161,10 @@ class TuningDecl:
       or ``"search"`` (candidates from the plan's strategy).
     * ``standard``: the standard settings, by name; every searched and by-hand dimension has one.
       A value may be symbolic (``"default"``), resolved per task and per fit by ``settings``.
+    * ``small_standard``: the standard settings below an effective size of :data:`SMALL_N`, where
+      the plan draws no search (§4.6), when they are not ``standard``: the same names, never
+      stopping early (``small_standard_source`` says whose they are); empty: ``standard`` at
+      every size.
     * ``fixed``: stated and never searched (``{"n_estimators": 500}``); merged under the values.
     * ``early_stopping``: :data:`EARLY_STOPPING_KEYS`, plus the optional
       :data:`STANDARD_ROWS_KEY`; None when the family never stops early.
@@ -174,6 +181,8 @@ class TuningDecl:
     by_hand: tuple[Dimension, ...] = ()  # settable by hand, never searched (Huber's threshold)
     standard: Mapping[str, Any] = field(default_factory=dict)  # the standard settings
     standard_source: str = ""  # "scikit-learn's defaults", "ranger's defaults"
+    small_standard: Mapping[str, Any] = field(default_factory=dict)  # below SMALL_N (§4.6)
+    small_standard_source: str = ""  # "TurboTab's small-sample standard, chosen by simulation"
     fixed: Mapping[str, Any] = field(default_factory=dict)  # stated, never searched
     early_stopping: Mapping[str, Any] | None = None
     out_of_bag: bool = False
@@ -226,6 +235,12 @@ def tuning_problems(decl: TuningDecl) -> list[str]:
         if unstated:
             out.append(f"no standard value for {unstated}: the standard settings are always a "
                        f"candidate (RECIPES §4.1)")
+    if decl.small_standard and set(decl.small_standard) != set(decl.standard):
+        out.append(f"the small-sample standard names {sorted(decl.small_standard)} and the "
+                   f"standard {sorted(decl.standard)}: below an effective size of {SMALL_N} it "
+                   f"stands in for the standard (RECIPES §4.6)")
+    if decl.small_standard and not decl.small_standard_source:
+        out.append("the small-sample standard says whose it is (small_standard_source)")
     if decl.max_drawn is not None and (not isinstance(decl.max_drawn, int) or decl.max_drawn < 1
                                        or decl.max_drawn & (decl.max_drawn - 1)):
         out.append(f"max_drawn is {decl.max_drawn!r}: a Sobol sample is a power of two")
@@ -370,7 +385,8 @@ class TuningPlan:
       holding fewer than the floor keeps this K and draws its folds as evenly as its units allow.
     * ``early_stopping``: the Sobol candidates stop early (decided once: ``n_plan`` ≥
       :data:`STOP_FROM_N`); ``standard_stops``: the standard candidates do (plan rows above the
-      declaration's ``standard_rows``, scikit-learn's 10,000 unless it says otherwise).
+      declaration's ``standard_rows``, scikit-learn's 10,000 unless it says otherwise; never at a
+      small-sample standard, :func:`standard_for`).
     * ``stop_share``: the stopping set's share of a fit's units, whole units, drawn first.
     * ``seed``: :func:`derive_seed` of (``split_seed``, family, ``space_version``); it seeds the
       candidates. The inner splits (:data:`INNER_SPLITS`) and each fit's own draws, its
@@ -616,6 +632,15 @@ def inner_k(kind: str, n_plan: int, *, rarest: int | None = None, psus: int | No
     return k if k >= 2 else 0
 
 
+def standard_for(decl: TuningDecl, n_plan: int) -> Mapping[str, Any]:
+    """The standard settings a plan at ``n_plan`` holds (RECIPES §4.6, ruled 2026-10-11): the
+    declaration's ``small_standard`` below :data:`SMALL_N`, where it has one, since below it no
+    search runs and the one fit is at the standard; ``standard`` otherwise."""
+    if decl.small_standard and int(n_plan) < SMALL_N:
+        return decl.small_standard
+    return decl.standard
+
+
 def searched_size(decl: TuningDecl, *, n_plan: int, mode: str) -> int:
     """S, the Sobol candidates a search draws (RECIPES §4.2, §4.6): none below an effective size
     of :data:`SMALL_N`, 8 from there, 16 from :data:`MID_N`, never more than the declaration's
@@ -763,7 +788,7 @@ class SobolStrategy:
                     out.append(Candidate(len(out), {**dict(zip(grid, point)), **manual},
                                          dict(zip(slots, combo))))
             return tuple(out)
-        standard = {**decl.standard, **manual}
+        standard = {**standard_for(decl, n_plan), **manual}
         for combo in combos:
             out.append(Candidate(len(out), dict(standard), dict(zip(slots, combo)), True))
         free = [d for d in decl.dimensions if d.name not in manual
@@ -952,8 +977,10 @@ def make_plan(family: Any, *, task: str, loss: str, n_plan: int, plan_rows: int,
             f"{short[1]}, and the plan's fit holds {short[0]:,}.")
     early = decl.kind == "search" and decl.early_stopping is not None and n_plan >= STOP_FROM_N
     standard_rows = (decl.early_stopping or {}).get(STANDARD_ROWS_KEY, STANDARD_STOP_ROWS)
+    small = bool(decl.small_standard) and n_plan < SMALL_N  # §4.6: it never stops early
     standard_stops = (decl.kind == "search" and decl.early_stopping is not None
-                      and standard_rows is not None and plan_rows > int(standard_rows))
+                      and standard_rows is not None and plan_rows > int(standard_rows)
+                      and not small)
     scored = k >= 2 or out_of_bag
     size = searched_size(decl, n_plan=n_plan, mode=mode) if scored else 0
     seed = derive_seed(split_seed, family.key, decl.space_version)
@@ -1965,5 +1992,5 @@ __all__ = [
     "derive_seed", "effective_size", "estimator_params", "fit_head", "fit_model", "fit_parts",
     "fit_seed", "inner_k", "inner_splits_for", "make_plan", "map_unit", "observing", "path_folds",
     "path_grid", "plan_size", "pooled_loss", "range_words", "searched_size", "sobol_sample",
-    "tuning_for", "tuning_problems",
+    "standard_for", "tuning_for", "tuning_problems",
 ]

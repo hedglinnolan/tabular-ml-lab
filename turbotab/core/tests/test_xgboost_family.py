@@ -5,7 +5,9 @@ Each check stands on a reference the family's code does not compute:
 * **native ``xgb.train``** with its parameters written out here, on the same stopping rows: the same
   best iteration and the same margins, bit for bit;
 * **xgboost's own ``XGBRegressor`` / ``XGBClassifier``** at their defaults and the same thread
-  count, the labels encoded by hand: the standard settings are XGBoost's defaults, exactly;
+  count, the labels encoded by hand: the standard settings are XGBoost's defaults, exactly; and,
+  below an effective size of 300, at RECIPES §4.6's small-sample standard written out here, its
+  child weight of 20 rows times p̄(1 − p̄) worked by hand;
 * **xgboost's ``pred_contribs``** against the engine's numpy TreeSHAP on the converted trees (rule
   ``<``, each split's default branch for blanks), to 1e-6, with rows on a threshold;
 * **xgboost's own covers** (``trees_to_dataframe``) for the mean hessian at the base score, and the
@@ -164,6 +166,37 @@ def test_the_standard_settings_are_xgboosts_own_defaults(task: str) -> None:
     assert np.array_equal(step.decision_function(X),
                           direct.predict(X, output_margin=True).astype(float))
     assert np.array_equal(step.predict(X), np.asarray(sorted(set(y)))[direct.predict(X)])
+
+
+@pytest.mark.parametrize("task", ["regression", "binary"])
+def test_below_300_the_standard_is_the_small_sample_standard(task: str) -> None:
+    """Below an effective size of 300 the plan's one candidate is RECIPES §4.6's small-sample
+    standard (ruled 2026-10-11): 100 rounds of depth 3 at learning rate 0.02, λ 1 and a least
+    child weight of 20 rows, times the mean hessian (1 for a number; p̄(1 − p̄) for yes/no, the
+    share worked by hand). The step equals xgboost's own estimator there, bit for bit."""
+    X, y = _data(task)
+    family = get_family("xgboost")
+    plan = make_plan(family, task=task, loss="mse" if task == "regression" else "log_loss",
+                     n_plan=250, plan_rows=400, unit="units" if task == "regression" else "events",
+                     split_seed=7, threads=THREADS)
+    [standard] = plan.candidates
+    assert standard.standard and not plan.standard_stops and family.defaults_version == "2"
+    params = estimator_params(family, task, standard.values, n_units=len(y), n_rows=len(y), y=y,
+                              plan=plan)
+    p = float(np.mean(y == "no")) if task == "binary" else None  # "no" sorts first: coded 0
+    weight = 20.0 if task == "regression" else 20.0 * p * (1.0 - p)
+    assert params["min_child_weight"] == pytest.approx(weight, rel=1e-12)
+    small = dict(learning_rate=0.02, max_depth=3, min_child_weight=params["min_child_weight"],
+                 subsample=1.0, colsample_bytree=1.0, reg_lambda=1.0, reg_alpha=0.0,
+                 n_estimators=100, tree_method="hist", n_jobs=THREADS,
+                 random_state=params["random_state"])
+    step = family.build(task, "prediction", len(y), 4).set_params(**params).fit(X, y)
+    if task == "regression":
+        direct = xgb.XGBRegressor(**small).fit(X, y)
+        assert np.array_equal(step.predict(X), direct.predict(X).astype(float))
+        return
+    direct = xgb.XGBClassifier(**small).fit(X, _codes(y))
+    assert np.array_equal(step.predict_proba(X), direct.predict_proba(X).astype(float))
 
 
 # ── T11: SHAP and the trees ───────────────────────────────────────────────────

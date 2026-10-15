@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -731,7 +732,10 @@ def test_3d_a_family_below_the_floor_draws_no_curve_and_says_why(noise):
     methods paragraph, verbatim: it says no curve was drawn (never that one was drawn for each
     family), and the elastic net, one of whose refits shrinks every coefficient to zero, has an
     undefined correlation between refits, said in words. The correlations are SciPy's Spearman
-    of the reported importances, the training rows the design's own count."""
+    of the reported importances, the training rows the design's own count. Re-pinned for claims
+    backtest A-029, intended: the paragraph says the families were "not shown to beat" the
+    baseline "by enough to matter", which is true whether a family is worse, not distinguishable
+    from it, or better by too little; it used to say "not shown to beat" alone."""
     import warnings
 
     assert noise.art["curves"]
@@ -776,8 +780,9 @@ def test_3d_a_family_below_the_floor_draws_no_curve_and_says_why(noise):
         "such correlation when either gives every input the same mean absolute SHAP value, as a "
         "refit that predicts one value for every row does: there is no ranking to compare. No "
         "curve was drawn and no interaction was ranked for the linear model, the elastic net and "
-        "the boosted trees, whose cross-validated MSE was not shown to beat the outcome's average. "
-        "These explanations describe each model's predictions, not causal effects.")
+        "the boosted trees, whose cross-validated MSE was not shown to beat the outcome's average "
+        "by enough to matter. These explanations describe each model's predictions, not causal "
+        "effects.")
     assert "n/a" not in noise.art["methods"] and "drawn for" not in noise.art["methods"]
 
 
@@ -816,7 +821,7 @@ def test_3f_the_top_exposures_are_the_exposures_the_best_family_leans_on(regress
     assert E.SCALE_SAYS in regression.art["relations"]
 
 
-def _two_families(purpose: str):
+def _two_families(purpose: str, versus: dict | None = None):
     from sklearn.ensemble import HistGradientBoostingRegressor
     from sklearn.linear_model import LinearRegression
     from sklearn.pipeline import Pipeline
@@ -832,7 +837,7 @@ def _two_families(purpose: str):
         E.FamilyFit(key="linear", label="Linear model", fitted=linear, unfitted=linear,
                     versus={"verdict": "better"}, score=0.62, baseline=0.0),
         E.FamilyFit(key="boosted_trees", label="Boosted trees", fitted=trees, unfitted=trees,
-                    versus={"verdict": "no_better"}, score=24.92, baseline=25.01)]
+                    versus=versus or {"verdict": "no_better"}, score=24.92, baseline=25.01)]
     return E.explain(families, E.Setting(
         task="regression", purpose=purpose, target="glucose", event=None, X=X, y=y,
         declared=["protein"] if purpose == "inference" else [], exposures=["protein", "age"],
@@ -844,7 +849,8 @@ def test_3g_curves_drawn_by_some_families_name_only_those():
     (MSE 24.92 against 25.01, MS6's primary for a regression: below the baseline's number, lower
     being better, yet not shown to beat it): the paragraph names the linear model as the one that
     drew curves and says the trees drew none and ranked no interaction. Whole paragraph, verbatim;
-    the trees' curves are withheld with their reason."""
+    the trees' curves are withheld with their reason. Re-pinned for claims backtest A-029,
+    intended: the trees were "not shown to beat" the baseline "by enough to matter" (3d)."""
     art = _two_families("prediction")
     assert [(c.input, c.role) for c in art.curves] == [("protein", "predictor"),
                                                         ("age", "predictor")]
@@ -861,8 +867,37 @@ def test_3g_curves_drawn_by_some_families_name_only_those():
         "Accumulated local effects (Apley and Zhu 2020) of `protein` and `age` were drawn for the "
         "linear model on one grid of the inputs' quantiles, with no curve where an interval held "
         "fewer than 5 rows. No curve was drawn and no interaction was ranked for the boosted "
-        "trees, whose cross-validated MSE was not shown to beat the outcome's average. These "
-        "explanations describe each model's predictions, not causal effects.")
+        "trees, whose cross-validated MSE was not shown to beat the outcome's average by enough "
+        "to matter. These explanations describe each model's predictions, not causal effects.")
+
+
+def test_3h_a_gain_clearing_zero_under_the_floor_is_never_called_not_shown():
+    """Claims backtest A-029: a family whose gain over the baseline has a 95% interval above zero,
+    but under the floor (1% of the class prior's log loss here), is shown to beat the baseline by
+    too little to matter. Its reason says so and states the floor; it never says the family "is
+    not shown to beat" the baseline, nor that a curve would describe noise. The methods paragraph
+    names it among the families "not shown to beat" the baseline only "by enough to matter", true
+    of it and of a family worse than the baseline or not distinguishable from it."""
+    fam = E.FamilyFit(key="linear", label="Linear model", fitted=None, unfitted=None,
+                      versus={"verdict": "no_better", "metric": "log_loss", "gain": 0.002,
+                              "tolerance": 0.0061, "ci_low": 0.0016, "ci_high": 0.0025},
+                      score=0.6085, baseline=0.6105)
+    s = E.Setting(task="binary", purpose="prediction", target="y", event="yes", X=pd.DataFrame(),
+                  y=np.array([]), metric_label="Log loss", baseline_label="the class prior",
+                  higher_is_better=False)
+    floor = E.floor_of(fam, s)
+    assert not floor.passed and floor.verdict == "no_better"
+    assert "not shown to beat" not in floor.reason and "noise" not in floor.reason, floor.reason
+    assert "beats the Log loss of the class prior, 0.611, by too little to matter" in floor.reason
+    assert "under 0.0061, 1% of the class prior's log loss" in floor.reason, floor.reason
+    # the methods paragraph, for boosted trees whose R² gain of 0.004 has its interval above zero
+    small = {"verdict": "no_better", "metric": "r2", "gain": 0.004, "tolerance": 0.01,
+             "ci_low": 0.001, "ci_high": 0.007}
+    for trees in (small, {**small, "ci_low": -0.002}, {**small, "verdict": "worse", "gain": -0.02,
+                                                        "ci_low": -0.03, "ci_high": -0.01}):
+        methods = _two_families("prediction", trees).methods
+        said = re.findall(r"[^.]*not shown to beat[^.]*\.", methods)
+        assert said and all("by enough to matter" in x for x in said), methods
 
 
 def test_3g_under_inference_no_floor_reads_or_quotes_a_cross_validated_score():

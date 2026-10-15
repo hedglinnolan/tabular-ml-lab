@@ -1197,8 +1197,20 @@ def floor_of(fam: FamilyFit, s: Setting) -> Floor:
     verdict = str(versus.get("verdict") or "unscored")
     passed = verdict == "better"
     how = {"worse": "is worse than", "no_better": "is not shown to beat"}.get(verdict)
+    # no better, its interval above zero: shown to beat the baseline, by less than the floor
+    small = (verdict == "no_better" and versus.get("ci_low") is not None
+             and float(versus["ci_low"]) > 0)
     if passed:
         reason = None
+    elif small:
+        from turbotab.core.models.baseline import floor_words
+
+        floor = floor_words(str(versus.get("metric") or ""), float(versus["tolerance"]),
+                            s.baseline_label)
+        reason = (f"{fam.label} draws no curve: its cross-validated {s.metric_label} of "
+                  f"{_fmt(fam.score)} beats the {s.metric_label} of {s.baseline_label}, "
+                  f"{_fmt(fam.baseline)}, by too little to matter (a gain under {floor}), so a "
+                  f"curve would describe next to nothing.")
     elif how is None:
         reason = (f"{fam.label} draws no curve: it has no cross-validated score to show that it "
                   f"beats {s.baseline_label}.")
@@ -1638,12 +1650,14 @@ def methods_sentence(a: ExplainArtifact, s: Setting) -> str:
                        f"{'is an adjustment term' if one else 'are adjustment terms'}, not "
                        f"{'an effect estimate' if one else 'effect estimates'}: "
                        f"{'its curve describes' if one else 'their curves describe'} the models.")
+    # "by enough to matter": true of a family worse than the baseline, not distinguishable from
+    # it, or better by less than the floor (claims backtest A-029)
     below = [f for f in done if f.floor is not None and not f.floor.passed]
     if below:
         what = "No curve was drawn and no interaction was ranked" if a.curves else \
             "No interaction was ranked"
         out.append(f"{what} for {_the(below)}, whose cross-validated {s.metric_label} was not "
-                   f"shown to beat {s.baseline_label}.")
+                   f"shown to beat {s.baseline_label} by enough to matter.")
     out.append("These explanations describe each model's predictions, not causal effects.")
     if s.purpose == "inference":
         out.append("Under inference they were not used as effect estimates.")

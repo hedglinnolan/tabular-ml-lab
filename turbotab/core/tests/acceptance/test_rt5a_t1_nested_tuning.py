@@ -41,9 +41,11 @@ standard error of the mean of the paired, per-dataset difference (optimism O = t
 
 * (a) tuning outside nesting is optimistic: O_F − O_N > 0;
 * (b) nesting removes the optimism: O_N − O_control is equivalent to 0 within δ = 0.005 nats (two
-  one-sided tests: the 90% interval lies inside ±δ). δ is half of the smallest log-loss gain the
-  app calls meaningful (``baseline.MIN_GAIN``). F's own leak here is of the same size, so it is
-  (a) that tells nesting from flat tuning; (b) bounds what is left;
+  one-sided tests: the 90% interval lies inside ±δ). δ is ``baseline.MIN_GAIN / 2``, under the
+  app's log-loss floor at T1's 30% event rate, 1% of H(0.3) = 0.0061 nats (``baseline.min_gain``:
+  1% of the baseline's loss), so a residual optimism below δ cannot carry a family with no real
+  gain past the floor. F's own leak here is of the same size, so it is (a) that tells nesting from
+  flat tuning; (b) bounds what is left;
 * (c) BBC-CV's corrected estimate is not optimistic: O_C − O_control < δ (non-inferiority);
 * under (a), every truth averages at least the entropy.
 

@@ -5,9 +5,11 @@ Each check stands on a reference the family's code does not compute:
 
 * **the declaration** against plan §2's table, written out here, and the standard settings against
   scikit-learn's own ``HistGradientBoosting*().get_params()`` (the library is the reference);
-* **below an effective size of 300** the plan keeps the standard candidate alone, and the tuned fit
-  is bit-equal to a direct ``HistGradientBoostingRegressor()`` / ``…Classifier()`` at scikit-learn's
-  defaults on the same rows (a scikit-learn identity);
+* **below an effective size of 300** the plan keeps one candidate, the small-sample standard
+  ruled on 2026-10-11 (RECIPES §4.6, written out here), and the tuned fit is bit-equal to a direct
+  ``HistGradientBoostingRegressor`` / ``…Classifier`` at those values on the same rows (a
+  scikit-learn identity); that it predicts and calibrates as the ruling says is
+  ``test_small_sample_standard.py``'s known-truth check against nested tuning;
 * **the leaf cap** worked by hand: a twentieth of the plan's units, never the standard's 20;
 * **T2(c) pinned replay:** the plain pipeline at the recorded settings, through the plain path at the
   seed of the search's own draws (the SHA-256 of the canonical JSON of (split seed, "stopping
@@ -104,7 +106,14 @@ def test_its_tuning_is_plan_section_2s_declaration():
                                          "share": 0.1}
     assert decl.space_version == "boosted_trees/1" and decl.structural == ("loss",)
     assert decl.standard_source == "scikit-learn's defaults" and not decl.by_hand
-    assert family.defaults_version == "2"
+    # RECIPES §4.6 (ruled 2026-10-11): 100 trees, at most 8 leaves, learning rate 0.02, smallest
+    # leaf 20 (the standard's own, never capped), L2 1, every column
+    assert dict(decl.small_standard) == {"learning_rate": 0.02, "max_leaf_nodes": 8,
+                                         "min_samples_leaf": "default", "l2_regularization": 1.0,
+                                         "max_features": 1.0, "max_iter": 100}
+    assert decl.small_standard_source.startswith("TurboTab's small-sample standard")
+    # 3 since the small-sample standard (was 2, RT-5a's tuning): a default changed
+    assert family.defaults_version == "3"
     assert "derive_seed" in family.identity.seed_policy
     # "Try both" for blanks waits for RT-3 (C6b): no plan carries options yet
     plan = make_plan(family, task="regression", loss="mse", n_plan=400, plan_rows=400,
@@ -114,13 +123,16 @@ def test_its_tuning_is_plan_section_2s_declaration():
 
 @pytest.mark.parametrize("task", ["regression", "binary", "multiclass"])
 def test_the_standard_candidate_is_scikit_learns_own_defaults(task):
-    """The standard values, resolved by ``settings`` at a plan small enough to cap a searched leaf
-    below 20, are scikit-learn's own defaults: the cap never reaches the standard."""
+    """From an effective size of 300 the standard values, resolved by ``settings`` at a plan small
+    enough to cap a searched leaf below 20 (300 // 20 = 15), are scikit-learn's own defaults: the
+    cap never reaches the standard. (The plan was at 100 before the small-sample standard, whose
+    own test is below: under 300 the standard candidate is no longer scikit-learn's defaults.)"""
     family = get_family("boosted_trees")
     plan = make_plan(family, task=task, loss="mse" if task == "regression" else "log_loss",
-                     n_plan=100, plan_rows=100, unit="units", split_seed=7)
-    [standard] = plan.candidates
-    params = estimator_params(family, task, standard.values, n_units=100, n_rows=100, plan=plan)
+                     n_plan=300, plan_rows=300, unit="units", split_seed=7)
+    standard = plan.candidates[0]
+    assert standard.standard and not any(c.standard for c in plan.candidates[1:])
+    params = estimator_params(family, task, standard.values, n_units=300, n_rows=300, plan=plan)
     cls = HistGradientBoostingRegressor if task == "regression" else HistGradientBoostingClassifier
     library = cls().get_params()
     for name in ("learning_rate", "max_leaf_nodes", "min_samples_leaf", "l2_regularization",
@@ -128,7 +140,7 @@ def test_the_standard_candidate_is_scikit_learns_own_defaults(task):
         assert params[name] == library[name], name
     # the loss is structural: never among a candidate's parameters, the library's own as built
     assert "loss" not in params
-    built = family.build(task, "prediction", 100, 4).set_params(**params)
+    built = family.build(task, "prediction", 300, 4).set_params(**params)
     assert built.get_params()["loss"] == library["loss"]
 
 
@@ -152,14 +164,21 @@ def test_a_searched_leaf_is_capped_at_a_twentieth_of_the_plans_units():
         assert 2 <= p["min_samples_leaf"] <= 20
 
 
-# ── below an effective size of 300: scikit-learn's defaults, bit for bit ──────
+# ── below an effective size of 300: the small-sample standard, bit for bit ────
+
+# RECIPES §4.6 (ruled 2026-10-11), as scikit-learn's own parameters
+SMALL = {"learning_rate": 0.02, "max_leaf_nodes": 8, "min_samples_leaf": 20,
+         "l2_regularization": 1.0, "max_features": 1.0, "max_iter": 100}
 
 
 @pytest.mark.parametrize("task", ["regression", "binary"])
-def test_below_300_the_tuned_fit_is_a_direct_default_fit(task):
-    """At n = 360 (n_plan 288 units, or about 90 events), the plan the design makes keeps the
-    standard candidate alone and makes one fit, and the tuned fit equals a direct
-    ``HistGradientBoosting*()`` at scikit-learn's defaults on the same rows, bit for bit."""
+def test_below_300_the_tuned_fit_is_a_direct_fit_at_the_small_sample_standard(task):
+    """At n = 360 (n_plan 288 units, or about 90 events), the plan the design makes keeps one
+    candidate and makes one fit, and the tuned fit equals a direct ``HistGradientBoosting*`` at
+    RECIPES §4.6's small-sample standard on the same rows, bit for bit. Its leaf of 20 is not
+    capped at a twentieth of the plan's units (14 here). This replaces the pin to a fit at
+    scikit-learn's defaults, which the ruling retired: they were the worst arm below 300 in every
+    cell of notes/SMALL_SAMPLE_STANDARD.md, with calibration slopes of 0.2 to 0.5."""
     X, y = _data(task, 360)
     family = get_family("boosted_trees")
     plans = make_plans([family], task, y, folds=5, split_seed=11)
@@ -170,15 +189,27 @@ def test_below_300_the_tuned_fit_is_a_direct_default_fit(task):
     assert fitted.tuning_.n_fits == 1 and fitted.tuning_.inner_k_used == 0
     if task == "regression":
         with _at(THREADS):
-            direct = HistGradientBoostingRegressor().fit(X, y)
+            direct = HistGradientBoostingRegressor(**SMALL).fit(X, y)
             expected = direct.predict(X)
         assert np.array_equal(fitted.predict(X), expected)
         return
     with _at(THREADS):
-        direct = HistGradientBoostingClassifier().fit(X, y)
+        direct = HistGradientBoostingClassifier(**SMALL).fit(X, y)
         proba, labels = direct.predict_proba(X), direct.predict(X)
     assert np.array_equal(fitted.predict_proba(X), proba)
     assert np.array_equal(fitted.predict(X), labels)
+
+
+def test_the_small_sample_standard_never_stops_early():
+    """Above 10,000 of the plan's rows scikit-learn's defaults stop early by its own rule; the
+    small-sample standard runs its 100 trees whatever the rows (notes/SMALL_SAMPLE_STANDARD.md:
+    "no early stopping"), as at 250 events among 20,000 rows."""
+    family = get_family("boosted_trees")
+    common = dict(task="binary", loss="log_loss", plan_rows=20_000, unit="events", split_seed=7)
+    small = make_plan(family, n_plan=250, **common)
+    large = make_plan(family, n_plan=300, **common)
+    assert small.candidates[0].values["learning_rate"] == 0.02 and not small.standard_stops
+    assert large.candidates[0].values["learning_rate"] == 0.1 and large.standard_stops
 
 
 # ── T2(c) · pinned replay ─────────────────────────────────────────────────────

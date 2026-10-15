@@ -25,8 +25,13 @@ histogram boosting:
 **Settings** (:meth:`XGBoost.settings`): the least child weight is searched in rows (1 to 64) and
 multiplied by the mean hessian at the base score on each fit's own outcome
 (:func:`mean_hessian`), since it is a sum of hessians: at 5% prevalence an unscaled 64 would ask
-for about 1,350 rows per leaf (RECIPES §4.1). The standard settings are XGBoost's defaults, so
-the standard child weight is its unscaled 1 (``"default"``).
+for about 1,350 rows per leaf (RECIPES §4.1). From an effective size of 300 the standard settings
+are XGBoost's defaults, so the standard child weight is its unscaled 1 (``"default"``). Below it
+the plan draws no search and keeps one candidate, the small-sample standard ruled on 2026-10-11
+(RECIPES §4.6; notes/SMALL_SAMPLE_STANDARD.md): :data:`SMALL_STANDARD`, 100 rounds of depth 3 at
+learning rate 0.02, a least child weight of 20 rows-equivalent (scaled like a searched one) and
+λ = 1, every row and column, never stopping early. XGBoost's defaults were the worst arm there in
+every cell of that study, with calibration slopes of 0.2 to 0.5.
 
 **Trees** (:func:`xgb_ensemble`): the fitted booster's JSON as an ``explain.TreeEnsemble`` on the
 margin, with xgboost's split rule (a row goes left when its value is ``<`` the threshold) and
@@ -70,6 +75,11 @@ UNSAFE = {"[": "(", "]": ")", "<": "lt"}
 STOP_ROUNDS = 2_000  # the most rounds under early stopping (RECIPES §4.1)
 PATIENCE = 50  # rounds without improvement on the stopping rows before it stops
 STANDARD_CHILD_WEIGHT = 1.0  # XGBoost's default min_child_weight, unscaled
+# The standard below an effective size of 300 (RECIPES §4.6, ruled 2026-10-11); its child weight is
+# in rows, scaled by the mean hessian as a searched one is.
+SMALL_STANDARD = {"learning_rate": 0.02, "max_depth": 3, "min_child_weight": 20.0,
+                  "subsample": 1.0, "colsample_bytree": 1.0, "reg_lambda": 1.0,
+                  "n_estimators": 100}
 
 
 class XGBoostUnavailable(RuntimeError):
@@ -502,16 +512,20 @@ TUNING = TuningDecl(
     standard={"learning_rate": 0.3, "max_depth": 6, "min_child_weight": "default",
               "subsample": 1.0, "colsample_bytree": 1.0, "reg_lambda": 1.0, "n_estimators": 100},
     standard_source="XGBoost's defaults",
+    small_standard=SMALL_STANDARD,
+    small_standard_source="TurboTab's small-sample standard, chosen by simulation "
+                          "(notes/SMALL_SAMPLE_STANDARD.md)",
     fixed={"booster": "gbtree", "reg_alpha": 0.0, "tree_method": "hist"},
-    # The standard settings never stop early (XGBoost's defaults run 100 rounds); Sobol
-    # candidates stop early by the plan, on a tenth of each fit's units drawn first.
+    # The standard settings never stop early (XGBoost's defaults and the small-sample standard
+    # run 100 rounds); Sobol candidates stop early by the plan, on a tenth of each fit's units
+    # drawn first.
     early_stopping={"param": "n_estimators", "rounds": STOP_ROUNDS,
                     "patience_param": "early_stopping_rounds", "patience": PATIENCE,
                     "share": 0.1, "standard_rows": None},
     space_version="xgboost/1",
     structural=("booster", "objective"),
-    reason="Its settings are searched inside every training fold, with XGBoost's defaults always "
-           "among the candidates.",
+    reason="Its settings are searched inside every training fold from an effective size of 300, "
+           "XGBoost's defaults among them; below, a small-sample standard.",
 )
 
 
@@ -564,6 +578,7 @@ class XGBoost(FamilyBase):
     review_lenses = ("shared",)
     sources = (Source("chen2016xgboost"),)
     tuning = TUNING
+    defaults_version = "2"  # 2: the small-sample standard below 300 (RECIPES §4.6)
     consequence = ("The same kind of model as boosted trees, in the XGBoost library reviewers "
                    "often name.")
 
@@ -612,10 +627,16 @@ class XGBoost(FamilyBase):
         return contributions(step, Z)
 
     def describe(self, task: Task, purpose: Purpose | None) -> tuple[str, str]:
+        d, s = TUNING.standard, TUNING.small_standard
         return ("XGBoost",
-                "Gradient-boosted trees in the XGBoost library: 100 trees of depth up to 6 at "
-                "learning rate 0.3 (its defaults); a blank follows the branch each split learned "
-                "for blanks.")
+                f"Gradient-boosted trees in the XGBoost library. From an effective size of 300 "
+                f"(units, events or the rarest class's count) its settings are searched inside "
+                f"every training fold, its defaults ({d['n_estimators']} trees of depth up to "
+                f"{d['max_depth']} at learning rate {d['learning_rate']:g}) among them. Below it "
+                f"one fit is made at a small-sample standard: {s['n_estimators']} trees of depth "
+                f"up to {s['max_depth']} at learning rate {s['learning_rate']:g}, a least child "
+                f"weight of {s['min_child_weight']:g} rows, λ = {s['reg_lambda']:g}. A blank "
+                f"follows the branch each split learned for blanks.")
 
     def assess(self, s: Situation) -> Assessment:
         """Boosted trees' assessment less 1.0, at least 0.5 (``base.assessment``): the same kind
