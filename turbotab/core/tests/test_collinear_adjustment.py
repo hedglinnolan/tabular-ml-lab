@@ -363,3 +363,54 @@ def test_under_predict_a_collinear_pair_is_kept_and_the_selection_filter_is_not_
     assert recommended and not any((o.decision or {}).get("method") == "elastic_net"
                                    for o in recommended)
     assert not any("spreads the weight" in o.sound for o in lever.options)
+
+
+def test_keeping_both_of_a_pair_leaves_a_selection_it_did_not_make_alone():
+    """Claims backtest C-170, the review's doubt: "Keep both" posted no selection whatever was
+    recorded, so it cleared a selection chosen for another reason. Known truth: 150 rows and 300
+    candidate predictors, x0 and x1 at r = 0.95, the outcome from x0, x1, x2 and x3; five draws
+    scored on 2,000 new rows by scikit-learn's least squares, with and without the app's own
+    in-fold screening (``set_selection`` screening, the wide table's lever). The screening keeps
+    both of the pair in every draw and more than halves the error of no selection. So on a table
+    with a recorded screening (or any selection the lever did not make) "Keep both" leaves it as it
+    is and says so; with nothing recorded it records no selection; and on a table that is not wide
+    it takes back the lever's own elastic-net filter, which only it or the selection question
+    posts there."""
+    from sklearn.linear_model import LinearRegression
+    from sklearn.pipeline import Pipeline
+
+    from turbotab.core.models.variable_selection import selection_step
+    from turbotab.core.stages.explore import _collinear_lever
+
+    rng = np.random.default_rng(7)
+    names = [f"x{j}" for j in range(300)]
+
+    def draw(n):
+        X = rng.normal(size=(n, 300))
+        X[:, 1] = 0.95 * X[:, 0] + np.sqrt(1 - 0.95 ** 2) * X[:, 1]
+        f = X[:, 0] + 0.5 * X[:, 1] + X[:, 2] + X[:, 3]
+        return pd.DataFrame(X, columns=names), f + rng.normal(size=n)
+
+    for r in range(5):
+        X, y = draw(150)
+        Xt, yt = draw(2000)
+        unselected = np.mean((yt - LinearRegression().fit(X, y).predict(Xt)) ** 2)
+        screened = Pipeline([*selection_step({"method": "screening"}, "regression", seed=r,
+                                             inputs=names), ("model", LinearRegression())])
+        error = np.mean((yt - screened.fit(X, y).predict(Xt)) ** 2)
+        assert {"x0", "x1"} <= set(screened.named_steps["select"].kept_)  # both of the pair
+        assert error < 0.5 * unselected  # the width's selection earns its place
+
+    def kept_after(selection, **table):
+        now = state(ADJUST, purpose="prediction", selection=selection)
+        [keep] = [o for o in _collinear_lever(now, **table).options if o.key == "keep_both"]
+        after = now if keep.decision is None else d.fold_onto(now, d.parse_decision(keep.decision))
+        return after.selection, keep
+
+    selection, keep = kept_after(d.SelectionSpec(method="screening"))
+    assert selection == d.SelectionSpec(method="screening")  # left alone
+    assert "In-fold screening by correlation with the outcome" in keep.sound
+    assert kept_after(None)[0] == d.SelectionSpec(method="none")  # recorded: no selection
+    net = d.SelectionSpec(method="elastic_net")
+    assert kept_after(net)[0] == d.SelectionSpec(method="none")  # the lever's own, taken back
+    assert kept_after(net, wide=True)[0] == net  # on a wide table, the width's lever offers it too
