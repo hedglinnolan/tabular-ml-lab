@@ -494,7 +494,8 @@ the diabetic range. That is what people who cut sugar after a diagnosis would le
 1. The two groups of people: "People whose day looked like this" and "people whose day had 25 g more
    sugar, 25 g less other carbohydrate", with the bracket "Fasting glucose, on average, 0.50 mg/dL
    lower (95% CI 0.18 to 0.82)". The difference belongs to the groups, never to an imagined day.
-2. "Where it comes from: two thirds of the 0.50 mg/dL is in the diabetic range": a split bar (0.34
+2. "Where it comes from: two thirds of the 0.50 mg/dL is in the diabetic range, which holds 12% of
+   people" (a uniform shift would put 12% of it there, §6): a split bar (0.34
    from values in the diabetic range, 0.16 from the rest), glucose's own spread with the values at
    or above 126 mg/dL in ink ("126 mg/dL and above: 12% of people"), and the share in the diabetic
    range by fifth of sugar (18%, 14%, 10%, 9%, 7%), the lowest fifth in ink.
@@ -552,7 +553,9 @@ Pointing draws each other question's evidence: the expectation beside the interv
 (sugar as a five-knot spline in the primary model, its pointwise band, each fifth against the
 lowest with its interval, your straight line; F(3, 21,827) = 24.5, p = 8 × 10⁻¹⁶; "your straight line
 stays the estimate"); the tail (yours −0.50 split into −0.34, −0.61 to −0.08, from values of 126 or
-more and −0.16, −0.26 to −0.06, from values up to 126); the what-if forest, benchmarked on age,
+more and −0.16, −0.26 to −0.06, from values up to 126: 68% of it above the cut-off, where a uniform
+shift would put 12%, the share of people at or above 126; the interval of `tail − 0.12·y` that
+settles "mostly" is design-time, E23); the what-if forest, benchmarked on age,
 gender and survey cycle only (survey cycle moves it half its margin; three times as strong erases
 it); the recall lineage; the design effect of 2.44 at which the interval reaches zero; and the
 choices forest, under the lead "Your sealed estimate stands; these are sensitivity analyses beside
@@ -648,11 +651,27 @@ you".
    - **Is a straight line fair?** For a declared straight line, the spline's test for nonlinearity;
      "it bends" when p < 0.05.
    - **The typical person, or the tail?** (Round 2, E23.) Standing for an outcome with a clinical
-     cut-off (a lens fact known before the lock: fasting glucose's 126 mg/dL, ADA). The primary is
-     split exactly at the cut-off, `y = min(y, c) + max(y − c, 0)`: least squares is linear in `y`,
-     so the two parts' coefficients add up to the primary's. "Mostly the tail" when the part above
-     the cut-off is more than half of the estimate and its interval excludes zero; else
-     "throughout". The share at or above the cut-off is reported beside it, per step and by fifth.
+     cut-off (a lens fact known before the lock: fasting glucose's 126 mg/dL, ADA). The lens fact
+     also says which side is the tail: past a high cut-off (the diabetic range), the part
+     `max(y − c, 0)`; short of a low one (a hemoglobin under 12 g/dL), the part `min(y − c, 0)`.
+     The primary is split exactly at the cut-off, `y = min(y, c) + max(y − c, 0)`: least squares
+     is linear in `y`, so the two parts' coefficients add up to the primary's, and a test holds
+     their sum to the primary's coefficient. The tail's share is its part's coefficient over the
+     primary's, read on the primary's sign. It is judged against the share a uniform shift gives,
+     never against one half: shifting every value by δ moves the tail part by δ times the share of
+     values on the tail's side of the cut-off, so under a uniform shift the tail's share is about
+     p, the share of rows on the tail's side. "Mostly the tail" only when the share clearly
+     exceeds p: the coefficient of `tail − p·y` (the tail part less p times the outcome, p held at
+     its sample value) has the primary's sign and its 95% interval excludes zero. "Mostly short of
+     the cut-off" when that interval excludes zero on the other side; else "throughout, as a
+     uniform shift would". Nothing is read when the primary's own interval includes zero. One half
+     is no test: where most people are past the cut-off (a BMI of 25, an LDL of 100 mg/dL), a
+     uniform shift already puts more than half of the estimate in the tail. p is a first-order
+     baseline, so the build's test checks that a uniform shift reads "throughout" at about its
+     nominal rate both where most rows are past the cut-off and where few are (in a design-time
+     simulation of a BMI-like outcome, 6% of uniform shifts read otherwise against 5% nominal with
+     two thirds of rows past 25, and 18% with 0.3% past 40). The share past the cut-off is reported
+     beside it, per step and by fifth.
    - **Could it run the other way?** Standing whenever the exposure and the outcome come from the
      same visit. When a diagnosis marker exists (E19), the primary and the fifths are fit within the
      rows with and without it, and the groups' difference is reported beside their two estimates.
@@ -816,7 +835,10 @@ for each is in `capture/capture.py` and `capture/build.py`.
   analyses. An analysis decided after the lock is the only one labeled post hoc.
 - **E23. The tail question** (Round 2). For an outcome with a clinical cut-off (a lens fact), the
   primary split exactly at the cut-off and the share past it, per step and by fifth; the size said
-  on that scale, not against the standard deviation of a skewed outcome. A quantile family (the
+  on that scale, not against the standard deviation of a skewed outcome. The tail's share of the
+  estimate is judged against p, about the share a uniform shift would give (the share of rows on
+  the tail's side of the cut-off), by the interval of the coefficient of `tail − p·y`, never
+  against one half (§6); the two parts' sum to the primary is a test. A quantile family (the
   median's contrast) would add "the typical person" directly; the engine has none today, so the
   split is used.
 - **E24. Repairs per column** (Round 2). The SAS-zero repair reads every column's misread zeros as
