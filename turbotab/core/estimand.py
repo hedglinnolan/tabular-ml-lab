@@ -1847,15 +1847,52 @@ def _clusters_name_a_grouping(decision: Any, ctx: Any) -> None:
             "across groups), not the model's intercepts; it is recorded without them.",
             [{"label": f"Group by {_tick(column)}" if column else "Record the grouping",
               "decision": decision.model_copy(update={"adjust": None})}])
+    cluster_only = {"label": f"Cluster the intervals by {_tick(column)} only",
+                    "decision": decision.model_copy(update={"adjust": "cluster_only"})}
+    small = _too_small_for_intercepts(decision, ctx) if purpose == "inference" else None
+    if small is not None and decision.adjust == "fixed_effects":
+        raise _refusal("incidental_parameters", small, [cluster_only])
     if purpose == "inference" and column is not None and decision.adjust is None:
+        adjust = {"label": f"Adjust for {_tick(column)} and cluster by it",
+                  "decision": decision.model_copy(update={"adjust": "fixed_effects"})}
         raise _refusal(
             "how_adjusted",
             f"Under inference participants in one {_tick(column)} share more than chance: say "
-            f"whether each {_tick(column)} gets its own intercept as well as clustered intervals.",
-            [{"label": f"Adjust for {_tick(column)} and cluster by it",
-              "decision": decision.model_copy(update={"adjust": "fixed_effects"})},
-             {"label": f"Cluster the intervals by {_tick(column)} only",
-              "decision": decision.model_copy(update={"adjust": "cluster_only"})}])
+            f"whether each {_tick(column)} gets its own intercept as well as clustered intervals."
+            + (f" {small}" if small else ""),
+            [cluster_only] if small else [adjust, cluster_only])
+
+
+# Claims backtest D-058, the incidental-parameter problem (Neyman & Scott 1948, Econometrica 16:1):
+# one intercept per group, each estimated from that group's own few rows, biases a logistic
+# model's estimate of what you study; with pairs it is about twice the log odds ratio. Katz (2001,
+# Political Analysis 9:379) found the unconditional fixed-effects logit's bias negligible from 16
+# rows per group, growing below it.
+FIXED_EFFECTS_LOGIT_ROWS = 16
+
+
+def _too_small_for_intercepts(decision: Any, ctx: Any) -> str | None:
+    """Why a yes/no outcome's groups are too small for an intercept each, read from the grouping's
+    distinct values over its rows (its mean rows per group), or None: a numeric outcome's linear
+    model has no incidental-parameter bias, and an unknown size is not refused here."""
+    from turbotab.core.decisions import _ctx, _info
+
+    column = decision.column
+    task = _get(_state(ctx), "task") or _ctx(ctx, "task") or _ctx(ctx, "detected_task")
+    info = _info(ctx, column) if column is not None else None
+    n_rows = _get(ctx, "n_rows")
+    if task != "binary" or info is None or n_rows is None or not info.get("n_unique"):
+        return None
+    per_group = (int(n_rows) - int(info.get("n_missing") or 0)) / int(info["n_unique"])
+    if per_group >= FIXED_EFFECTS_LOGIT_ROWS:
+        return None
+    return (f"{_tick(column)} holds {per_group:.1f} rows per group on average, too few for an "
+            f"intercept each with a yes/no outcome: each intercept is estimated from its group's "
+            f"own rows, which inflates the odds ratio of what you study (the incidental-parameter "
+            f"problem; with pairs, about twice its log). The bias is negligible only from "
+            f"{FIXED_EFFECTS_LOGIT_ROWS} rows per group (Katz 2001). The way forward clusters the "
+            f"intervals by {_tick(column)} only, and differences between groups then stay in the "
+            f"estimate.")
 
 
 def _no_grouping_names_what_it_denies(decision: Any, ctx: Any) -> Any:
