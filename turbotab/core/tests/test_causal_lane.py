@@ -130,8 +130,12 @@ def test_a_numeric_exposure_s_positivity_is_stated_and_its_r2_read_as_precision(
     covariates' cross-fitted R² says how much of it they explain, which by Frisch–Waugh is
     precision, not whether each value compared has a positive density at every level of the
     covariates. So its row is a stated assumption at any R², phrased as one; at R² ≥ 0.9 the
-    standard error's widening is named, and the interval is said to count that variance but not a
-    bias from nuisance models that misfit, which so small a remainder magnifies."""
+    standard error's widening is named, and the interval is said to count that variance but not
+    the bias a misfit in the models of the outcome and of the exposure given the covariates would
+    bring, which so small a remainder magnifies.
+
+    Re-pinned on its second review, an intended change of words: the card is the analyst's, so it
+    names those models in plain words, never as "nuisance models"."""
     for r2 in (0.5, 0.96):
         [card] = [a for a in causal.assumption_card(
             exposure="dose", exposure_kind="continuous", adjusted=["age"], timing_unknown=[],
@@ -140,9 +144,34 @@ def test_a_numeric_exposure_s_positivity_is_stated_and_its_r2_read_as_precision(
         assert card["status"] == "stated", card
         assert "still" not in card["statement"], card["statement"]
         assert f"{r2:.0%} of `dose`'s variance" in card["diagnostic"]
+        assert "nuisance" not in card["diagnostic"], card["diagnostic"]
     assert "5.0 times" in card["diagnostic"]
     [interval] = [s for s in card["diagnostic"].split(". ") if s.startswith("Its interval")]
     assert "variance" in interval and "bias" in interval, interval
+    assert "the models of the outcome and of `dose` given the covariates" in interval, interval
+
+
+def test_the_positivity_relation_blocks_a_propensity_and_states_a_numeric_exposure():
+    """Claims backtest B-416, its second review. A numeric exposure has no propensity to bound,
+    and no R² is read as its positivity: ``models.causal.variation`` marks none violated, even
+    where the covariates explain 99% of it, and the lane estimates it (the causal lane's test 9b).
+    So the relation every causal contract carries, dml_plr's among them, says that propensities
+    outside the truncation bound block the estimate and that a numeric exposure's positivity is
+    stated, not that one the covariates nearly determine is blocked."""
+    import numpy as np
+
+    from turbotab.core.models import causal as est
+
+    rng = np.random.default_rng(0)
+    covariate = rng.normal(size=2000)
+    reading = est.variation(covariate + rng.normal(0, 0.1, 2000), covariate)
+    assert reading.r2 > 0.98 and not reading.violated
+    relation = causal.RELATIONS["positivity_blocks"]
+    assert all(relation in c.relations for c in causal.CONTRACTS.values())
+    says = relation.says
+    assert says.startswith("Propensities outside the truncation bound block the estimate"), says
+    assert "nearly determine" not in says and "continuous exposure" not in says, says
+    assert "A numeric exposure has no propensity to bound; its positivity is stated" in says, says
 
 
 def test_the_method_fits_the_declared_estimand():

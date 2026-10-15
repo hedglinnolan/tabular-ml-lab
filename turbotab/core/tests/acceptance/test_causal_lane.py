@@ -1961,7 +1961,9 @@ def test_9b_a_numeric_exposure_the_covariates_nearly_determine_is_estimated_not_
 
     Re-pinned on review: the card's positivity row is a stated assumption (no R² checks a
     positive density at every covariate level), phrased as one, and its interval sentence says it
-    counts the wider variance but not a bias from nuisance models that misfit."""
+    counts the wider variance but not the bias a misfit in the models of the outcome and of `dose`
+    given the covariates would bring. Re-pinned on the second review, an intended change of words:
+    those models are named in plain words, not as "nuisance models"."""
     from turbotab.core.tests.acceptance.server_drive import local_server
     from turbotab.core.tests.truths import Truth
 
@@ -2005,3 +2007,5 @@ def test_9b_a_numeric_exposure_the_covariates_nearly_determine_is_estimated_not_
     assert f"{1 / math.sqrt(1 - design['variation']['r2']):.1f} times" in card["diagnostic"]
     [interval] = [s for s in card["diagnostic"].split(". ") if s.startswith("Its interval")]
     assert "variance" in interval and "bias" in interval, interval
+    assert "the models of the outcome and of `dose` given the covariates" in interval, interval
+    assert "nuisance" not in card["diagnostic"], card["diagnostic"]
