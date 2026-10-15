@@ -65,6 +65,47 @@ def test_estimated_counts_raise_the_normalization_question():
     assert omics.scale_reading(tpm, ["genomics"]) is None
 
 
+def _estimated_at_balanced_depth(seed: int) -> pd.DataFrame:
+    """salmon-like estimated counts from evenly sequenced samples: negative-binomial counts
+    (dispersion 0.2) at library depths exp(N(0, 0.1)), each cell then split fractionally."""
+    rng = np.random.default_rng(seed)
+    n, p, phi = 60, 200, 0.2
+    mu = np.outer(np.exp(rng.normal(0.0, 0.1, n)), rng.lognormal(5.0, 1.5, p))
+    counts = rng.negative_binomial(1 / phi, 1 / (1 + mu * phi))
+    estimated = counts * rng.uniform(0.97, 1.03, counts.shape)
+    return pd.DataFrame(estimated.round(3), columns=[f"gene_{i:04d}" for i in range(p)])
+
+
+@pytest.mark.parametrize("seed", range(8))
+def test_estimated_counts_at_balanced_depth_are_asked_about(seed):
+    """Claims backtest C-193, review: the reading asked about fractional counts only where their
+    library sizes were spread wider than a coefficient of variation of about 0.19, the midpoint the
+    pack's data-type card only ORDERS two names by, so salmon output from evenly sequenced samples
+    read as normalized: no question, no log, the linear families let through. Known truth: these
+    are unnormalized counts by construction (library-size CV 0.05-0.15), and FPKM spreads as little
+    (``genomics_fpkm.csv``, CV 0.11), so the values cannot tell the two apart; GENOMICS_PACK §02
+    says ask. Expected: both are asked about, the finding names both readings, and it names them in
+    the order the pack's card does wherever the card reads the matrix."""
+    from turbotab import packs
+
+    frame = _estimated_at_balanced_depth(seed)
+    v, sums = frame.to_numpy(), frame.sum(axis=1)
+    assert 0.05 <= sums.std(ddof=1) / sums.mean() <= 0.15
+    assert (v == 0).any() and not np.all(np.mod(v, 1) == 0) and v.max() >= 1000
+    fpkm = pd.read_csv(SAMPLES / "genomics_fpkm.csv")
+    for table in (frame, fpkm):
+        reading = omics.scale_reading(table, ["genomics"])
+        assert reading is not None and reading.kind == "counts", reading
+        _, finding = omics.scale_finding(table, ["genomics"])
+        title = finding["title"]
+        assert "FPKM" in title and "estimated counts" in title, title
+        keys = packs._classify(packs.read_matrix(table))["keys"]
+        if keys:
+            first = "FPKM" if keys[0] == packs.FPKM else "estimated counts"
+            assert title.index(first) == min(title.index("FPKM"), title.index("estimated counts")), \
+                (keys, title)
+
+
 def _lc_ms(seed: int, zeros: float = 0.0) -> pd.DataFrame:
     """LC-MS peak areas: 150 log-normal features at 80 samples, each sample diluted by its own
     factor exp(N(0, 0.25)); ``zeros`` of the cells set to 0, as mzmine writes a non-detection."""
