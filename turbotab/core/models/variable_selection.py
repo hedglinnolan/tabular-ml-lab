@@ -270,17 +270,23 @@ def pls_vip(Z: np.ndarray, y: np.ndarray, components: int = VIP_COMPONENTS) -> n
 
 def _outside_span(Z: np.ndarray, columns: Sequence[int]) -> list[int]:
     """``columns`` in order, less each that is an exact linear combination of those kept before it:
-    the first column whose QR pivot (its part outside the earlier columns, unpivoted, so the
-    earlier column always stays) is below :data:`COLLINEAR_TOL` of its length is dropped, and the
-    rest refactored."""
-    cols = list(columns)
-    while len(cols) > 1:
-        pivots = np.abs(np.diag(np.linalg.qr(Z[:, cols], mode="r")))
-        low = np.flatnonzero(pivots <= COLLINEAR_TOL * np.linalg.norm(Z[:, cols], axis=0))
-        if not low.size:
+    its part outside them (Gram–Schmidt on an orthonormal basis of the kept columns, run twice so
+    that rounding stays rounding) is below :data:`COLLINEAR_TOL` of its length. Once the kept
+    columns span the rows, every later column is in their span, however many the term has."""
+    n = Z.shape[0]
+    basis = np.empty((n, min(n, len(columns))))
+    kept: list[int] = []
+    for j in columns:
+        if len(kept) == n:
             break
-        del cols[int(low[0])]
-    return cols
+        z, Q = Z[:, j], basis[:, : len(kept)]
+        part = z - Q @ (Q.T @ z)
+        part -= Q @ (Q.T @ part)
+        size = float(np.linalg.norm(part))
+        if size > COLLINEAR_TOL * float(np.linalg.norm(z)):
+            basis[:, len(kept)] = part / size
+            kept.append(int(j))
+    return kept
 
 
 def path_columns(Z: np.ndarray, groups: Sequence[Sequence[int]]
