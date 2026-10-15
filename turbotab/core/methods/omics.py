@@ -13,12 +13,12 @@ the values alone; it never looks at the outcome:
 
 * **counts** — whole numbers, none negative, reaching at least :data:`COUNT_MAX` (genotype dosages
   0/1/2 and scores do not), under the genomics lens. A row total is the sample's library size.
-  Values none negative, with fractions and at least one zero, reaching :data:`RAW_MAX`, whose
-  sample totals are not the million CPM and TPM rescale to, may be estimated counts (salmon,
-  kallisto, RSEM) or FPKM, and the values cannot tell which: GENOMICS_PACK §02 row 2 says ask, so
-  they are read as counts that may be unnormalized (``estimated``), after the intensity reading
-  declines. The library-size spread orders the two names, as the pack's data-type card does
-  (:func:`_estimated_counts_cv`); it decides nothing.
+  Values none negative, with fractions, a zero in :data:`ESTIMATED_COLUMNS` columns or more and as
+  many reaching :data:`RAW_MAX`, whose sample totals are not the million CPM and TPM rescale to,
+  may be estimated counts (salmon, kallisto, RSEM) or FPKM, and the values cannot tell which:
+  GENOMICS_PACK §02 row 2 says ask, so they are read as counts that may be unnormalized
+  (``estimated``), after the intensity reading declines. The library-size spread orders the two
+  names, as the pack's data-type card does (:func:`_estimated_counts_cv`); it decides nothing.
 * **intensities** — none negative, spanning :data:`RAW_RANGE`-fold, and either reaching
   :data:`RAW_MAX` (log-scale values sit below ~40) or right-skewed feature by feature (median
   skewness at least :data:`RAW_SKEW`; a log scale is near-symmetric), under the metabolomics lens.
@@ -72,6 +72,7 @@ COUNT_MAX = 100.0  # whole numbers whose largest value is below this are not rea
 RAW_MAX = 1_000.0  # raw intensities reach thousands; log2 intensities stay below ~40
 RAW_RANGE = 100.0  # ... and span two orders of magnitude (largest over smallest positive value)
 RAW_SKEW = 0.5  # or, below RAW_MAX (a targeted panel in µM), are right-skewed feature by feature
+ESTIMATED_COLUMNS = 2  # estimated counts' zero and thousands, each in this many columns: not one's
 CHECK_ALPHA = 0.01  # the library-size check speaks below this p-value
 PRIOR_COUNT = 2.0  # edgeR cpm(log = TRUE)'s default prior.count
 LOGRATIO_TRIM, SUM_TRIM, A_CUTOFF = 0.3, 0.05, -1e10  # edgeR calcNormFactors' TMM defaults
@@ -216,10 +217,13 @@ def _estimated_counts(values: np.ndarray, columns: Sequence[str],
     (salmon/kallisto/RSEM) — ask" (claims backtest C-193): the whole-number test read them as
     normalized, and no normalization was asked. A block with no zero is no transcript
     quantification, as the pack's data-type card reads it (a zero count is a zero estimated count,
-    TPM and FPKM alike), so LC-MS peak areas under a genomics lens stay unread. Totals within the
-    card's tolerance of a million on every sample are CPM, TPM or TMM-scaled CPM (§02 rows 3 and
-    4), normalized. Every other block is asked about whatever its library-size spread: estimated
-    counts from evenly sequenced samples spread as little as FPKM does."""
+    TPM and FPKM alike), so LC-MS peak areas under a genomics lens stay unread. The zero and the
+    thousands each sit in :data:`ESTIMATED_COLUMNS` columns or more, as a quantification's do in
+    many genes, so one clinical column beside a normalized block (serum ferritin, with a 0 and a
+    4,452) does not make it estimated counts. Totals within the card's tolerance of a million on
+    every sample are CPM, TPM or TMM-scaled CPM (§02 rows 3 and 4), normalized. Every other block
+    is asked about whatever its library-size spread: estimated counts from evenly sequenced samples
+    spread as little as FPKM does."""
     from turbotab import packs
 
     if estimated.sum() < MIN_FEATURES:
@@ -227,8 +231,9 @@ def _estimated_counts(values: np.ndarray, columns: Sequence[str],
     block = values[:, estimated]
     totals = np.nansum(block, axis=1)
     per_million = np.abs(totals / packs._LIBRARY_TOTAL - 1) <= packs._LIBRARY_NEAR
-    if (np.nanmax(block) < RAW_MAX or not np.any(np.isfinite(block) & (block == 0))
-            or per_million.all()):
+    reaching = int(np.sum(np.nanmax(block, axis=0) >= RAW_MAX))
+    zeroed = int(np.sum((np.isfinite(block) & (block == 0)).any(axis=0)))
+    if min(reaching, zeroed) < ESTIMATED_COLUMNS or per_million.all():
         return None
     return _reading("counts", [c for c, k in zip(columns, estimated) if k], block, estimated=True)
 
