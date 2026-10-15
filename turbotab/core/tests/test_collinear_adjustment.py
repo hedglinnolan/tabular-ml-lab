@@ -307,3 +307,57 @@ def test_the_collinear_line_is_decide_only_where_what_you_study_is_in_it():
     # Under Predict the pair scan's lever (a penalty in each fold) is the decision.
     assert M.collinear_label(state(ADJUST, purpose="prediction"), None,
                              [("fat_total", "fat_mon")]) == quest.DECIDE
+
+
+def test_under_predict_a_collinear_pair_is_kept_and_the_selection_filter_is_not_recommended():
+    """Claims backtest C-170. Under Predict a pair at |r| ≥ 0.9 does not harm prediction on rows
+    like these, so it is no decision "regardless of materiality"; and the elastic-net answer the
+    collinear lever offered is ``set_selection`` (the selection menu's in-fold filter, put before
+    every family, ``pipeline.explore_steps``), not a penalty inside the fitted model. Known truth,
+    the adjudicator's design: x0 and x1 at r = 0.95, x3 bent into a U, a sine in x4, five noise
+    columns; 500 training rows and 5,000 new ones, ten draws. Scored by scikit-learn's forest and
+    least squares with and without the filter: the filter keeps both of the pair every time (it
+    shares nothing), leaves least squares where it was, and raises the forest's error, since it
+    drops the U-shaped predictor a linear fit cannot see. So the line is not a Decide under
+    Predict, the filter is not the recommended answer, and no option says it spreads the weight."""
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.linear_model import LinearRegression
+    from sklearn.pipeline import Pipeline
+
+    from turbotab.core.models.variable_selection import selection_step
+    from turbotab.core.stages.explore import _collinear_lever
+
+    rng = np.random.default_rng(7)
+    names = [f"x{j}" for j in range(10)]
+
+    def draw(n):
+        X = rng.normal(size=(n, 10))
+        X[:, 1] = 0.95 * X[:, 0] + np.sqrt(1 - 0.95 ** 2) * X[:, 1]
+        f = X[:, 0] + 0.5 * X[:, 1] + X[:, 2] + 1.5 * (X[:, 3] ** 2 - 1) + np.sin(2 * X[:, 4])
+        return pd.DataFrame(X, columns=names), f + rng.normal(size=n)
+
+    mse = {"forest": [], "forest_filtered": [], "ols": [], "ols_filtered": []}
+    both_kept = 0
+    for r in range(10):
+        X, y = draw(500)
+        Xt, yt = draw(5000)
+        filtered = selection_step({"method": "elastic_net"}, "regression", seed=r, inputs=names)
+        for name, model in (("forest", RandomForestRegressor(n_estimators=150, min_samples_leaf=5,
+                                                             random_state=r, n_jobs=1)),
+                            ("ols", LinearRegression())):
+            mse[name].append(np.mean((yt - model.fit(X, y).predict(Xt)) ** 2))
+            piped = Pipeline([*filtered, ("model", model)]).fit(X, y)
+            mse[f"{name}_filtered"].append(np.mean((yt - piped.predict(Xt)) ** 2))
+        both_kept += {"x0", "x1"} <= set(piped.named_steps["select"].kept_)
+    mean = {k: float(np.mean(v)) for k, v in mse.items()}
+    assert both_kept == 10  # nothing is shared between the pair: both stay in every draw
+    assert mean["ols_filtered"] == pytest.approx(mean["ols"], rel=0.01)
+    assert mean["forest_filtered"] > 1.3 * mean["forest"]  # the filter harms the forest
+
+    predict = state(ADJUST, purpose="prediction")
+    assert M.collinear_label(predict, None, [("x0", "x1")]) != quest.DECIDE
+    lever = _collinear_lever(predict)
+    recommended = [o for o in lever.options if o.rung == "recommended"]
+    assert recommended and not any((o.decision or {}).get("method") == "elastic_net"
+                                   for o in recommended)
+    assert not any("spreads the weight" in o.sound for o in lever.options)
