@@ -103,7 +103,10 @@ from scipy import optimize, special, stats
 TOOZE_2006 = "Tooze et al. 2006"
 TOOZE_2010 = "Tooze et al. 2010"
 KIPNIS_2009 = "Kipnis et al. 2009"
-IOM_2000 = "Institute of Medicine 2000"
+# Two reports of 2000, cited apart: Dietary Reference Intakes: Applications in Dietary Assessment
+# (2000a), and Dietary Reference Intakes for Vitamin C, Vitamin E, Selenium, and Carotenoids (2000b).
+IOM_2000 = "Institute of Medicine 2000a"
+IOM_2000B = "Institute of Medicine 2000b"
 
 Model = Literal["amount_only", "two_part"]
 Variance = Literal["bootstrap", "brr", "psu_bootstrap"]
@@ -1281,7 +1284,7 @@ def variance_phrase(replication: Replication | None, n_ok: int, weight: str | No
     return f"Standard errors came from {n_ok:,} bootstrap resamples of {whom}, {every}.{intervals}"
 
 
-# The EAR cut-point's conditions the recalls cannot show (Institute of Medicine 2000, ch. 4: the
+# The EAR cut-point's conditions the recalls cannot show (Institute of Medicine 2000a, ch. 4: the
 # EAR is "the median requirement of a nutrient for a given life stage and gender group"; "when the
 # distribution of requirements is known to be asymmetrical, as for iron in menstruating women, the
 # probability approach, not the EAR cut-point method, is recommended").
@@ -1289,8 +1292,12 @@ DRI_GROUP = "DRI life-stage group (age band, sex, pregnancy and lactation status
 
 # What a UL covers where it is not total intake, by the nutrient the component's name reads as
 # (``turbotab.core.usual_intake.ul_form``, which quotes the IOM DRI tables' footnotes; claims
-# backtest BX-040), with the DRI report that set it. Every other UL covers intake from food, water
-# and supplements (Institute of Medicine 2000, the report on dietary assessment cited above).
+# backtest BX-040), with the DRI report that set it. Magnesium's, folate's, niacin's and vitamin E's
+# limit the source as well as the form (supplements and medicines, or supplements and fortified
+# foods), so the nutrient as food holds it counts toward none of them; vitamin A's limits the form
+# only, retinol from food counting as retinol from supplements does. Every other UL covers intake
+# from food, water and supplements (Institute of Medicine 2000a, the report on dietary assessment
+# cited above).
 UL_FORMS = {
     "magnesium": ("magnesium from supplements and medicines only, not from food or water",
                   "Institute of Medicine 1997"),
@@ -1298,9 +1305,9 @@ UL_FORMS = {
                "food", "Institute of Medicine 1998"),
     "niacin": ("niacin from supplements and fortified foods only", "Institute of Medicine 1998"),
     "vitamin E": ("alpha-tocopherol from supplements and fortified foods only, not vitamin E that "
-                  "occurs in food", "Institute of Medicine 2000"),
-    "vitamin A": ("preformed vitamin A (retinol) only, not provitamin A carotenoids",
-                  "Institute of Medicine 2001"),
+                  "occurs in food", IOM_2000B),
+    "vitamin A": ("preformed vitamin A (retinol) from food and supplements, not provitamin A "
+                  "carotenoids", "Institute of Medicine 2001"),
 }
 
 
@@ -1310,7 +1317,8 @@ def share_phrase(cutoff: float | None, kind: CutoffKind | None, *, ear_for_all: 
     was answered as the EAR of every participant's DRI group (``ear_for_all``); for iron the answer
     that its requirement is symmetric here (no menstruating women) is stated with it. Above a UL it
     says what the UL covers: one form only for ``ul_form``'s nutrient (:data:`UL_FORMS`), or every
-    source, so that a share from foods alone is a lower bound."""
+    source, so that a share from foods alone is a lower bound. Vitamin A's covers one form from every
+    source, so a share of retinol from foods alone is a lower bound too."""
     if cutoff is None:
         return ""
     value = _number(cutoff)
@@ -1324,6 +1332,13 @@ def share_phrase(cutoff: float | None, kind: CutoffKind | None, *, ear_for_all: 
         return (f" The share below the EAR ({value}) is reported as a share of the distribution, not "
                 f"a prevalence of inadequacy: an EAR is the median requirement of one {DRI_GROUP}, "
                 f"and that it is the EAR of every participant's group was not answered ({IOM_2000}).")
+    if kind == "UL" and ul_form == "vitamin A":
+        covers, source = UL_FORMS[ul_form]
+        return (f" The share above the UL ({value}) is a share at risk of excess where these intakes "
+                f"are retinol with supplements included, the UL for vitamin A covering "
+                f"{covers} ({source}); from foods alone it is a lower bound on that share, and a "
+                f"total that counts carotenoids, as retinol activity equivalents do, is not the form "
+                f"the UL covers.")
     if kind == "UL" and ul_form in UL_FORMS:
         covers, source = UL_FORMS[ul_form]
         return (f" The share above the UL ({value}) is reported as a share of the distribution: the "
@@ -1386,7 +1401,7 @@ def methods_sentence(*, label: str, model: Model, names: Sequence[str], lam: flo
 __all__ = [
     "AmountFit", "CutoffKind", "DRI_GROUP", "Distribution", "covariates_phrase", "days_phrase",
     "interval_phrase", "log_interval", "logit_interval", "methods_sentence",
-    "reference_phrase", "share_phrase", "variance_phrase", "Estimate", "FAY", "IOM_2000", "KIPNIS_2009", "LAMBDA_RANGE",
+    "reference_phrase", "share_phrase", "variance_phrase", "Estimate", "FAY", "IOM_2000", "IOM_2000B", "KIPNIS_2009", "LAMBDA_RANGE",
     "N_BOOT", "NINE_POINT_C", "NINE_POINT_W", "PERCENTILES", "Recalls", "Replication", "Result",
     "TOOZE_2006", "TOOZE_2010", "TwoPartFit", "UsualIntakeRefused", "WEEKEND_SHARE", "Z_95",
     "amount_distribution", "back_transform", "boxcox", "boxcox_inverse", "brr", "fit_amount",

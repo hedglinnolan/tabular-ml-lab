@@ -509,7 +509,11 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
 - Kipnis et al. 2009, Biometrics 65:1003 (PMC2881223)
 - NCI MIXTRAN and DISTRIB macros v2.1 (epi.grants.cancer.gov/diet/usualintakes)
 - Lachat et al. 2016, STROBE-nut, PLoS Med 13:e1002036 (nut-14)
-- Institute of Medicine 2000, Dietary Reference Intakes: Applications in Dietary Assessment
+- Institute of Medicine 1997, Dietary Reference Intakes for Calcium, Phosphorus, Magnesium, Vitamin D, and Fluoride
+- Institute of Medicine 1998, Dietary Reference Intakes for Thiamin, Riboflavin, Niacin, Vitamin B6, Folate, Vitamin B12, Pantothenic Acid, Biotin, and Choline
+- Institute of Medicine 2000a, Dietary Reference Intakes: Applications in Dietary Assessment
+- Institute of Medicine 2000b, Dietary Reference Intakes for Vitamin C, Vitamin E, Selenium, and Carotenoids
+- Institute of Medicine 2001, Dietary Reference Intakes for Vitamin A, Vitamin K, Arsenic, Boron, Chromium, Copper, Iodine, Iron, Manganese, Molybdenum, Nickel, Silicon, Vanadium, and Zinc
 
 #### The population estimand under a survey design (`survey_population`)
 

@@ -635,7 +635,7 @@ def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str |
                 f"The share below the EAR is {below.value:.1%}. The EAR cut-point method is least "
                 f"accurate in the tails: it \"works best\" when the \"true prevalence of inadequacy "
                 f"in the population is no smaller than 8 to 10 percent or no larger than 90 to 92 "
-                f"percent\" (Institute of Medicine 2000).")
+                f"percent\" (Institute of Medicine 2000a).")
     rep = result.replication
     variance = UsualIntakeVariance(method=rep.method if rep is not None else "none",
                                    replicates=0 if rep is None else len(rep.factors),

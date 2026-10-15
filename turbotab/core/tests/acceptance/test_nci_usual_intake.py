@@ -1220,7 +1220,9 @@ def test_4_the_amount_only_analysis_is_an_independent_mixed_model_of_the_csv(jou
 def test_4_the_amount_only_methods_sentence_is_verbatim(journeys):
     """(5) The sentence names the model, the transform (with λ), the nuisance covariates, the
     variance method and the intervals' scales, word for word; below an EAR not answered as every
-    participant's group's, the share is stated as a plain share and says why."""
+    participant's group's, the share is stated as a plain share and says why. Re-pinned for claims
+    backtest BX-040's review, an intended change: the EAR's report is cited "Institute of Medicine
+    2000a", apart from vitamin E's DRI report of the same year ("2000b")."""
     a = journeys["A"]["protein"]
     n, n2 = a["n_persons"], a["n_repeat"]
     assert a["methods"] == (
@@ -1237,7 +1239,7 @@ def test_4_the_amount_only_methods_sentence_is_verbatim(journeys):
         f"reported as a share of the distribution, not a prevalence of inadequacy: an EAR is the "
         f"median requirement of one DRI life-stage group (age band, sex, pregnancy and lactation "
         f"status), and that it is the EAR of every participant's group was not answered (Institute "
-        f"of Medicine 2000).")
+        f"of Medicine 2000a).")
     assert a["population_statement"] == ("Results describe the whole population (STROBE-nut nut-14: "
                                          "total population, not consumers only).")
     assert a["share_label"] == ("share below the EAR (46), not a prevalence of inadequacy: whether it "
@@ -1573,7 +1575,8 @@ def test_4_under_the_survey_design_the_estimate_is_weighted_and_fay_brr_gives_it
     are Fay's BRR (16 replicates over 15 strata, t on 15 df, each interval the log-scale form with
     t's critical value), the weekend read from NHANES's day codes (1, 6, 7). The point estimates are
     the engine's own on the CSV read by pandas with those weights (sections 1 and 3 verify the
-    arithmetic)."""
+    arithmetic). Re-pinned for claims backtest BX-040's review, an intended change: the EAR's report
+    is cited "Institute of Medicine 2000a", apart from vitamin E's DRI report ("2000b")."""
     from turbotab.core import usual_intake as ui
     from turbotab.core.models.survey import SAMPLE_EXIT
 
@@ -1619,7 +1622,7 @@ def test_4_under_the_survey_design_the_estimate_is_weighted_and_fay_brr_gives_it
         f"balanced repeated replication (16 of 16 replicates over 15 strata of two PSUs, Fay "
         f"coefficient 0.3), each refitting the whole model, with t intervals on 15 degrees of "
         f"freedom.{INTERVALS_WITH_SHARE} The share below the EAR (46) is the EAR cut-point estimate "
-        f"of the prevalence of inadequacy (Institute of Medicine 2000), the cut-off answered as the "
+        f"of the prevalence of inadequacy (Institute of Medicine 2000a), the cut-off answered as the "
         f"EAR of every participant's DRI life-stage group (age band, sex, pregnancy and lactation "
         f"status).")
 
