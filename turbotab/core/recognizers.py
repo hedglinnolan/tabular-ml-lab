@@ -1927,13 +1927,14 @@ def least_common_denominator(columns: Sequence[str], frame: Any = None) -> dict[
     OGTT subsample weight; a fasting analyte names the fasting weight; dietary variables name the
     dietary weight; a variable recorded only where the phlebotomy weight is positive (a blood
     analyte of August 2021-August 2023) names the phlebotomy weight; otherwise the examination
-    weight. ``because`` says which variables set it. With ``frame``, a variable recorded only where
-    a subsample weight is positive is that subsample's whatever its name
-    (:func:`subsample_variables`). ``other_subsamples`` lists subsample weights whose analytes
-    TurboTab cannot tell (``WTSA2YR``…) and ``unconfirmed`` the known subsample weights
-    (``WTSAF2YR``, ``WTPH2YR``) beside which no variable reads as measured on the subsample: with
-    either, the rule cannot be applied from what the table shows, and the choice is the user's
-    (``settled`` False)."""
+    weight, or the interview weight where the values show every variable recorded on interviewed
+    rows not examined (:func:`_interview_only`). ``because`` says which variables set it. With
+    ``frame``, a variable recorded only where a subsample weight is positive is that subsample's
+    whatever its name (:func:`subsample_variables`). ``other_subsamples`` lists subsample weights
+    whose analytes TurboTab cannot tell (``WTSA2YR``…) and ``unconfirmed`` the known subsample
+    weights (``WTSAF2YR``, ``WTPH2YR``) beside which no variable reads as measured on the
+    subsample: with either, the rule cannot be applied from what the table shows, and the choice is
+    the user's (``settled`` False)."""
     weights = {}
     for c in columns:
         tier = weight_tier(c)
@@ -2001,6 +2002,12 @@ def least_common_denominator(columns: Sequence[str], frame: Any = None) -> dict[
         if not weights:
             return {"use": None, "sample": None, "because": [], "not": [], "missing": None, **base}
         rank = 1 if 1 in weights else min(weights)
+        # The tutorial's Example 1, variables all from the in-home interview: "You would use the
+        # interview weights for your analysis (wtint4yr)"; its Example 2, one from the MEC exam:
+        # "You would use the MEC exam weight" (claims backtest C-143).
+        if rank == 1 and 0 in weights and frame is not None \
+                and _interview_only(frame, weights[1][0], columns):
+            rank = 0
         name, label = weights[rank]
         return {"use": name, "sample": label, "because": [], "not": [w for r, (w, _) in
                                                                sorted(weights.items()) if r != rank],
@@ -2026,6 +2033,26 @@ def _positive_rows(frame: Any, weight: str) -> int:
 
     w = pd.to_numeric(frame[weight], errors="coerce")
     return int((w > 0).sum())
+
+
+def _interview_only(frame: Any, examination: str, columns: Sequence[str]) -> bool:
+    """Whether every variable in ``columns`` is recorded on rows the ``examination`` weight leaves
+    out (0 or blank: interviewed, not examined), so none was collected at the exam. A variable
+    recorded only on examined rows (within :data:`SUBSAMPLE_SLACK`) is the exam's. A table with
+    fewer than :data:`SUBSAMPLE_MIN_ROWS` rows outside the examined sample is that sample, and
+    keeps its weight: the interview weight does not describe examined rows alone."""
+    import pandas as pd
+
+    outside = ~(pd.to_numeric(frame[examination], errors="coerce") > 0)
+    variables = [c for c in columns if c in frame.columns and weight_tier(c) is None
+                 and not other_subsample_weight(c)]
+    if int(outside.sum()) < SUBSAMPLE_MIN_ROWS or not variables:
+        return False
+    for c in variables:
+        present = frame[c].notna()
+        if int((present & outside).sum()) <= SUBSAMPLE_SLACK * int(present.sum()):
+            return False
+    return True
 
 
 __all__ = [
