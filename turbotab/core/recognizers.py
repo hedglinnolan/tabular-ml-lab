@@ -1822,7 +1822,11 @@ FASTING_ANALYTES = re.compile(r"^(LBXGLU|LBDGLUSI|LBXTR|LBDTRSI|LBDLDL|LBDLDLSI|
                               r"LBXIN|LBDINSI|LBXAPB|LBDAPBSI)$")
 # The OGTT file's analytes (OGTT_I: "LBXGLT - Two Hour Glucose (OGTT) (mg/dL)", and its SI twin).
 OGTT_ANALYTES = re.compile(r"^(LBXGLT|LBDGLTSI)$")
-_DIETARY_VARIABLE = re.compile(r"^(DR1T|DR2T|DR1I|DR2I|DR1_|DR2_|DRXT|DBQ|DBD)")
+# The 24-hour recalls' variables. The diet behavior questionnaire's DBQ and DBD columns are no
+# recall's: DBQ_L, "These questions were asked as part of the household interview, therefore, the
+# interview sample weights may be used" (claims backtest C-143), so they take the interview or MEC
+# weight as any interview variable does (:func:`_interview_only`).
+_DIETARY_VARIABLE = re.compile(r"^(DR1T|DR2T|DR1I|DR2I|DR1_|DR2_|DRXT)")
 _SUBSAMPLE = {5: "fasting subsample", 6: "oral glucose tolerance test subsample"}
 
 
