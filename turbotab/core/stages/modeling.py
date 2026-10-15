@@ -2251,7 +2251,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 if estimate is not None and base_value is not None else None)
         versus = versus_baseline(versus_metric, sub_result.folds_of(versus_metric),
                                  base_sub.folds_of(versus_metric), gain=gain,
-                                 test_share=sub_result.test_share)
+                                 test_share=sub_result.test_share, baseline=base_value)
         worse = baseline_concern(task, score_words(versus_metric), estimate, base_value,
                                  lower=not higher, metric=versus_metric)
         tie = None if worse else no_better_concern(task, score_words(versus_metric), versus, estimate,

@@ -1197,8 +1197,20 @@ def floor_of(fam: FamilyFit, s: Setting) -> Floor:
     verdict = str(versus.get("verdict") or "unscored")
     passed = verdict == "better"
     how = {"worse": "is worse than", "no_better": "is not shown to beat"}.get(verdict)
+    # no better, its interval above zero: shown to beat the baseline, by less than the floor
+    small = (verdict == "no_better" and versus.get("ci_low") is not None
+             and float(versus["ci_low"]) > 0)
     if passed:
         reason = None
+    elif small:
+        from turbotab.core.models.baseline import floor_words
+
+        floor = floor_words(str(versus.get("metric") or ""), float(versus["tolerance"]),
+                            s.baseline_label)
+        reason = (f"{fam.label} draws no curve: its cross-validated {s.metric_label} of "
+                  f"{_fmt(fam.score)} beats the {s.metric_label} of {s.baseline_label}, "
+                  f"{_fmt(fam.baseline)}, by too little to matter (a gain under {floor}), so a "
+                  f"curve would describe next to nothing.")
     elif how is None:
         reason = (f"{fam.label} draws no curve: it has no cross-validated score to show that it "
                   f"beats {s.baseline_label}.")
