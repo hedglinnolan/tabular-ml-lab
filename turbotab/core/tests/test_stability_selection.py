@@ -129,62 +129,144 @@ def test_a_category_of_three_or_more_levels_is_selected_whatever_its_level_order
     assert kept["last"] == kept["first"]
 
 
+RARE_N, RARE_PAIRS, RARE_SEEDS = 120, 20, 20
+FLAGS = [f"f{j}" for j in range(12)]
+
+
+def _beside_rare_flags(seed: int) -> tuple[pd.DataFrame, np.ndarray, str]:
+    """A yes/no outcome whose risk rises in one level (drawn at random) of a four-level category
+    (shares drawn from a Dirichlet(4)), in full coding beside twelve flags of 3% prevalence that do
+    not predict (the stage-1 re-review's design)."""
+    rng = np.random.default_rng(seed)
+    level = rng.choice(4, RARE_N, p=rng.dirichlet(np.full(4, 4.0)))
+    signal = int(rng.integers(4))
+    X = pd.DataFrame({f"g_{k}": (level == k).astype(float) for k in range(4)})
+    for c in FLAGS:
+        X[c] = (rng.random(RARE_N) < 0.03).astype(float)
+    risk = 1.0 / (1.0 + np.exp(0.5 - 1.0 * (level == signal)))
+    return X, (rng.random(RARE_N) < risk).astype(int), f"g_{signal}"
+
+
+def test_a_category_beside_rare_flags_is_selected_whatever_its_level_order():
+    """Rare flags make a half's path tie for reasons that are not the category's: a flag with no
+    ones on the half, or two flags with the same rows on it. The category's own coding does not tie
+    (its shares are unbalanced), and the lasso is blind to the order of the columns, so in every
+    dataset each column's selection proportion, and whether the category is kept, are the same
+    whichever level the encoder lists last. A flag with no ones on the fold has no spread and no
+    proportion."""
+    from turbotab.core.models.variable_selection import Selector
+
+    for seed in range(RARE_SEEDS):
+        X, y, signal = _beside_rare_flags(seed)
+        rest = [c for c in X.columns if c.startswith("g_") and c != signal]
+        found, kept = {}, {}
+        for where, order in (("first", [signal, *rest]), ("last", [*rest, signal])):
+            columns = [*order, *FLAGS]
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                step = Selector("stability", "binary", q=4, pairs=RARE_PAIRS, seed=seed,
+                                inputs=["g", *FLAGS]).fit(X[columns], y)
+            usable = [c for c in columns if X[c].std() > 0]
+            found[where] = dict(zip(usable, np.asarray(step.frequencies_, float)))
+            kept[where] = "g" in step.selected_
+        assert found["last"] == pytest.approx(found["first"], abs=1e-12, nan_ok=True), seed
+        assert kept["last"] == kept["first"], seed
+
+
 def _stalled_coding(case: str, seed: int) -> tuple[np.ndarray, np.ndarray, int, int]:
-    """(Z, y, q, spare) on which scikit-learn's path sometimes ties: a two-level category's twins
-    (``_full_coded``), or a four-level category in exactly equal counts whose levels split two
-    up and two down, where the lasso's split of the category among its levels is not unique.
-    ``spare`` is the column a fallback leaves off: the twin, or the last level."""
+    """(Z, y, q, spare): a four-level coding (the first four columns) or a two-level one (the first
+    two) whose spare column is ``spare``, standardized (ddof = 1).
+
+    * twins: a two-level category (``_full_coded``), whose twins tie as soon as it enters;
+    * balanced four: a four-level category in exactly equal counts whose levels split two up and
+      two down, where the lasso's split of the category among its levels is not unique;
+    * rare copy: a four-level category in unequal counts (a Dirichlet(4)) whose signal sits in its
+      last level, beside a flag that predicts and a copy of it on these rows: the copies tie, and
+      the coding does not."""
+    rng = np.random.default_rng(seed)
     if case == "twins":
         X, y = _full_coded(seed)
         R, q, spare = X.to_numpy(dtype=float), Q, 1
-    else:
-        rng = np.random.default_rng(seed)
+    elif case == "balanced four":
         level = rng.permutation(np.repeat(np.arange(4), 15))
         D = np.column_stack([(level == k).astype(float) for k in range(4)])
         R = np.column_stack([D, rng.standard_normal((60, 4))])
         y = D @ np.array([1.0, 1.0, -1.0, -1.0]) + 0.5 * R[:, 4] + 0.5 * rng.standard_normal(60)
         q, spare = 4, 3
+    else:
+        level = rng.choice(4, 60, p=rng.dirichlet(np.full(4, 4.0)))
+        D = np.column_stack([(level == k).astype(float) for k in range(4)])
+        flag = np.zeros(60)
+        flag[rng.choice(60, 6, replace=False)] = 1.0
+        R = np.column_stack([D, flag, flag, rng.standard_normal((60, 3))])
+        y = 1.0 * D[:, 3] + 1.5 * flag + 0.5 * R[:, 6] + rng.standard_normal(60)
+        q, spare = 4, 3
     return (R - R.mean(axis=0)) / R.std(axis=0, ddof=1), np.asarray(y, dtype=float), q, spare
 
 
-def _first_q(Z: np.ndarray, yc: np.ndarray, q: int) -> tuple[np.ndarray, bool]:
-    """scikit-learn's path to its first knot with ``q`` nonzero, and whether it tied on the way:
-    a ConvergenceWarning, or a step of the penalty under 10⁻⁸ of its start."""
-    from sklearn.exceptions import ConvergenceWarning
+def _lars(Z: np.ndarray, yc: np.ndarray, q: int) -> tuple[np.ndarray, np.ndarray, list]:
+    """scikit-learn's path to its first knot with ``q`` nonzero: (that knot's nonzero mask, the
+    coefficients at the knots before it, or through the last knot where it stops short of q, and
+    its warnings)."""
     from sklearn.linear_model import lars_path
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        alphas, _, coefs = lars_path(Z, yc, method="lasso", max_iter=max(4 * q, 50))
-    knot = next((j for j in range(coefs.shape[1]) if (coefs[:, j] != 0).sum() >= q),
-                coefs.shape[1] - 1)
-    steps = -np.diff(alphas[: knot + 1])
-    tied = (any(issubclass(w.category, ConvergenceWarning) for w in caught)
-            or bool(steps.size and steps.min() <= 1e-8 * alphas[0]))
-    return coefs[:, knot] != 0, tied
+        _, _, coefs = lars_path(Z, yc, method="lasso", max_iter=max(4 * q, 50))
+    count = (coefs != 0).sum(axis=0)
+    reached = np.flatnonzero(count >= q)
+    knot = int(reached[0]) if reached.size else coefs.shape[1] - 1
+    before = coefs[:, :knot] if reached.size else coefs
+    return coefs[:, knot] != 0, before, [(w.category, str(w.message)) for w in caught]
 
 
-@pytest.mark.parametrize("case", ["twins", "balanced four"])
-def test_the_lasso_path_leaves_off_a_spare_level_only_where_it_ties(case):
-    """Where scikit-learn's path on the full coding ties before its first q (it warns, or the
-    penalty takes a step of length zero), ``lasso_first`` reads the coding less its spare column,
-    and its first q are that path's; for twins it is the reference-coded lasso, the same problem
-    (module docstring). Where the path does not tie, its first q are the full coding's own."""
+def _coding_ties(Z: np.ndarray, yc: np.ndarray, before: np.ndarray, coding: list[int]) -> bool:
+    """Whether, at some knot of ``before``, every column of the coding is as correlated with the
+    residual as the most correlated column (to 10⁻⁸ of it): its levels enter together."""
+    corr = np.abs(Z.T @ (yc[:, None] - Z @ before))
+    top = corr.max(axis=0)
+    return bool(np.any((corr[coding] >= (1 - 1e-8) * top).all(axis=0) & (top > 1e-8 * top[0])))
+
+
+@pytest.mark.parametrize("case", ["twins", "balanced four", "rare copy"])
+def test_the_lasso_path_leaves_off_a_spare_level_only_where_its_coding_ties(case):
+    """``lasso_first`` reads a full coding less its spare column only where the coding's own levels
+    tie. For twins that is whenever the category enters, and the answer is the reference-coded
+    lasso, the same problem (module docstring), on every seed. For a balanced coding it is where, at
+    a knot before the q-th variable enters, scikit-learn's path on the full coding has every level
+    at the residual's largest correlation, and the answer is that path less the spare level. Two
+    copies of a flag tie for a reason that is not the coding's (scikit-learn warns on some seeds,
+    and on others admits both): the answer is the full path's own first q, with its warnings passed
+    on unchanged, though the signal sits in the spare level."""
     from turbotab.core.models.variable_selection import lasso_first
 
-    seen = {True: 0, False: 0}
+    reran = warned = 0
     for seed in range(40):
         Z, y, q, spare = _stalled_coding(case, seed)
+        coding = [0, 1] if case == "twins" else [0, 1, 2, 3]
         yc = y - y.mean()
-        full, tied = _first_q(Z, yc, q)
-        expected = full
-        if tied:
-            rest = [j for j in range(Z.shape[1]) if j != spare]
-            expected = np.zeros(Z.shape[1], dtype=bool)
-            expected[rest] = _first_q(Z[:, rest], yc, q)[0]
-        seen[tied] += 1
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            got = lasso_first(Z, y, q, spare=[spare])
+        rest = [j for j in range(Z.shape[1]) if j != spare]
+        less = np.zeros(Z.shape[1], dtype=bool)
+        less[rest], _, quiet = _lars(Z[:, rest], yc, q)
+        full, before, said = _lars(Z, yc, q)
+        if case == "twins":
+            assert not quiet  # the reference coding has full rank: no degenerate step
+            expected, rerun = less, bool(less[0])
+        elif case == "balanced four":
+            rerun = _coding_ties(Z, yc, before, coding)
+            expected = less if rerun else full
+        else:
+            assert not _coding_ties(Z, yc, before, coding)
+            expected, rerun = full, False
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            got = lasso_first(Z, y, q, [(coding, [spare])])
         assert got.tolist() == expected.tolist(), seed
-    assert seen[True] and seen[False]
+        if case == "rare copy":
+            assert [(w.category, str(w.message)) for w in caught] == said, seed
+        reran += rerun
+        warned += bool(said)
+    if case == "rare copy":
+        assert warned and not reran  # the copies' tie warns on some seeds
+    else:
+        assert reran
