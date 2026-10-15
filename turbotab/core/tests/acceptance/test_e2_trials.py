@@ -771,21 +771,23 @@ def test_separation_is_refused_in_plain_words():
 
 def _ye_by_hand(y: np.ndarray, arm: np.ndarray, cf: np.ndarray, mu: np.ndarray,
                 strata: np.ndarray) -> np.ndarray:
-    """Ye, Shao, Yi & Zhao's (2023) covariance of the standardized risks of two arms, written out
-    from their Theorem 1 as R's ``beeca`` ``varcov_ye`` computes it (n − 1 denominators), less the
-    stratified randomization's term Σ_z (n_z/n) R_z(diag π − ππᵀ)R_z, all over n."""
-    n = len(y)
-    pi = np.array([np.mean(arm == 0), np.mean(arm == 1)])
-    V = np.zeros((2, 2))
-    for j in (0, 1):
-        k = 1 - j
+    """Ye, Shao, Yi & Zhao's (2023) covariance of the standardized risks of the arms (the columns
+    of ``cf``), written out from their Theorem 1 as R's ``beeca`` ``varcov_ye`` computes it (n − 1
+    denominators), less the stratified randomization's term Σ_z (n_z/n) R_z(diag π − ππᵀ)R_z, all
+    over n."""
+    n, K = cf.shape
+    pi = np.array([np.mean(arm == j) for j in range(K)])
+    V = np.zeros((K, K))
+    for j in range(K):
         yj, cj = y[arm == j], cf[arm == j, j]
         V[j, j] = ((np.var(yj, ddof=1) - 2 * np.cov(yj, cj)[0, 1] + np.var(cf[:, j], ddof=1))
                    / pi[j] + 2 * np.cov(yj, cj)[0, 1] - np.var(cf[:, j], ddof=1))
-        V[j, k] = (np.cov(yj, cf[arm == j, k])[0, 1] + np.cov(y[arm == k], cf[arm == k, j])[0, 1]
-                   - np.cov(cf[:, j], cf[:, k])[0, 1])
+        for k in set(range(K)) - {j}:
+            V[j, k] = (np.cov(yj, cf[arm == j, k])[0, 1]
+                       + np.cov(y[arm == k], cf[arm == k, j])[0, 1]
+                       - np.cov(cf[:, j], cf[:, k])[0, 1])
     for z in np.unique(strata):
-        R = np.diag([np.mean((y - mu)[(strata == z) & (arm == j)]) / pi[j] for j in (0, 1)])
+        R = np.diag([np.mean((y - mu)[(strata == z) & (arm == j)]) / pi[j] for j in range(K)])
         V -= R @ (np.diag(pi) - np.outer(pi, pi)) @ R * np.mean(strata == z)
     return V / n
 
@@ -1109,7 +1111,8 @@ def test_a_weight_recorded_a_million_times_larger_where_everyone_had_the_event_i
     limit fit's Newton step, read on the information, squared the weight's small spread among
     sites a and b into a direction it could not move along, and stopped short. Reading those
     people from a fit of their own but taking the separated people from fitted risks within 1e-9
-    of 0 or 1 still missed a site-c person in 4 of the 60, which were then refused."""
+    of 0 or 1 still refused 4 of the 60: in 3 those risks missed a site-c person, and in 1 the
+    limit fit did not converge."""
     import scipy.optimize
     import statsmodels.api as sm
 
@@ -1160,6 +1163,74 @@ def test_a_weight_recorded_a_million_times_larger_where_everyone_had_the_event_i
         T.estimate(site_c, BSPEC)
     assert r.value.term == "separation in the logistic model"
     assert "runs to 0% or 100%" in str(r.value), str(r.value)
+
+
+def _three_arms(seed: int = 2065, n: int = 45) -> pd.DataFrame:
+    """A small three-arm trial at two sites, with three normal covariates."""
+    rng = np.random.default_rng(seed)
+    df = pd.DataFrame({"arm": rng.choice(["ctl", "pa", "pb"], n), "site": rng.choice(["a", "b"], n),
+                       "x1": rng.normal(0, 1, n), "x2": rng.normal(0, 1, n),
+                       "x3": rng.normal(0, 1, n)})
+    lp = (-0.2 + 0.8 * (df.arm == "pa") - 0.6 * (df.arm == "pb") + 1.6 * df.x1 + 1.0 * df.x2
+          + 0.5 * df.x3)
+    df["event"] = (rng.random(n) < 1 / (1 + np.exp(-lp))).astype(float)
+    return df
+
+
+THREE = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
+                    covariates=("x1", "x2", "x3"))
+
+
+def test_a_variance_below_zero_in_a_small_arm_is_refused_in_plain_words():
+    """Claims backtest B-281, its fourth review: a failure older than the branch. Ye et al.'s
+    variance is a sum of covariances, not of squares, and in a small arm with many terms it can
+    come out below zero. Here three arms of 14, 20 and 11 people and seven terms, with no one
+    separated (statsmodels' ``Logit`` converges on everyone): from statsmodels' fitted risks,
+    Ye et al.'s variance written out above is below zero for pb's standardized risk. The effect
+    is refused, saying that the estimate breaks down in an arm this small and naming pb's 11
+    people, with fewer covariates (which runs) and describing the outcomes as its exits. With 2
+    of pb's outcomes missing, the delta-adjusted and tipping-point analyses refuse the same way,
+    since a completed data set breaks down there too.
+
+    On the prior code the effect failed with math.sqrt's ValueError (math domain error), and the
+    sensitivity analyses pooled the completed sets as if their variances held."""
+    import statsmodels.api as sm
+
+    df = _three_arms()
+    arm = df.arm.map({"ctl": 0, "pa": 1, "pb": 2}).to_numpy()
+    X = np.column_stack([np.ones(len(df)), arm == 1, arm == 2, df.site == "b", df.x1, df.x2,
+                         df.x3]).astype(float)
+    y = df.event.to_numpy()
+    fit = sm.Logit(y, X).fit(method="newton", tol=1e-12, maxiter=100, disp=0)
+    assert fit.mle_retvals["converged"]
+    cf = np.empty((len(df), 3))
+    for k in range(3):
+        at = X.copy()
+        at[:, 1:3] = 0.0
+        if k:
+            at[:, k] = 1.0
+        cf[:, k] = fit.predict(at)
+    V = _ye_by_hand(y, arm, cf, cf[np.arange(len(df)), arm], pd.factorize(df.site)[0])
+    assert V[2, 2] < 0 < min(V[0, 0], V[1, 1]), np.diag(V)
+
+    with pytest.raises(T.TrialRefused) as r:
+        T.estimate(df, THREE)
+    said = str(r.value)
+    assert r.value.term == "negative variance estimate", said
+    assert "below zero for pb" in said and "11 people in pb" in said, said
+    assert "breaks down in an arm this small" in said, said
+    assert [e.get("covariates") for e in r.value.exits] == [[], None]
+    assert r.value.exits[-1]["describe"] is True
+    T.estimate(df, T.TrialSpec(**{**THREE.__dict__, "covariates": ()}))
+
+    gone = df.copy()
+    gone.loc[gone.index[gone.arm == "pb"][:2], "event"] = np.nan
+    for run in (lambda: T.delta_analysis(gone, THREE, arm="pb", delta=0.0, m=10),
+                lambda: T.tipping_point(gone, THREE, m=10)):
+        with pytest.raises(T.TrialRefused) as r:
+            run()
+        assert r.value.term == "negative variance estimate", str(r.value)
+        assert "completed by imputation" in str(r.value), str(r.value)
 
 
 # ── wording ──────────────────────────────────────────────────────────────────
