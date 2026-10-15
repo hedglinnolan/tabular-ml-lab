@@ -1,0 +1,6 @@
+[
+ {"id": "C-163", "dup_of": "A-125", "why": "the same energy-screen 'doesn't change your numbers' cutoff (0.003697), inventoried in A and C; both agents put it in their suspect lists"},
+ {"id": "D-036", "dup_of": "B-151", "why": "the same complete-case 'only if missingness does not depend on the outcome' claim, inventoried in B and D; both agents put it in their suspect lists"},
+ {"id": "D-048", "dup_of": "C-143", "why": "the same NHANES 'smallest subsample weight' rule, both in the random sample"},
+ {"id": "C-242", "dup_of": "C-032", "why": "the same design-based survey cross-validation rule, both in C's random sample"}
+]

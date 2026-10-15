@@ -1,0 +1,229 @@
+{
+ "missing_merits": [],
+ "gate": {
+  "false_decoys": 26,
+  "passed_gate": 0,
+  "passed_ids": [],
+  "upper95_rule_of_three": 0.115,
+  "wilson_passed": [
+   0,
+   0.129
+  ],
+  "single_opus_passed": [],
+  "single_opus_verdicts": {
+   "false": 26
+  },
+  "single_sonnet_passed": [],
+  "single_sonnet_verdicts": {
+   "false": 26
+  },
+  "by_type": {
+   "constant": {
+    "opus:false": 4,
+    "sonnet:false": 4
+   },
+   "citation": {
+    "opus:false": 5,
+    "sonnet:false": 5
+   },
+   "mechanism": {
+    "opus:false": 6,
+    "sonnet:false": 6
+   },
+   "overreach": {
+    "opus:false": 6,
+    "sonnet:false": 6
+   },
+   "direction": {
+    "opus:false": 5,
+    "sonnet:false": 5
+   }
+  }
+ },
+ "vacuous": {
+  "K-144": {
+   "orig": "DA7",
+   "opus": {
+    "truth": "overstated",
+    "bite": "yes"
+   },
+   "sonnet": {
+    "truth": "true",
+    "bite": "no"
+   }
+  },
+  "K-010": {
+   "orig": "DC7",
+   "opus": {
+    "truth": "true",
+    "bite": "no"
+   },
+   "sonnet": {
+    "truth": "true",
+    "bite": "no"
+   }
+  },
+  "K-118": {
+   "orig": "DD7",
+   "opus": {
+    "truth": "true",
+    "bite": "no"
+   },
+   "sonnet": {
+    "truth": "true",
+    "bite": "no"
+   }
+  },
+  "K-046": {
+   "orig": "DB8",
+   "opus": {
+    "truth": "true",
+    "bite": "no"
+   },
+   "sonnet": {
+    "truth": "true",
+    "bite": "no"
+   }
+  }
+ },
+ "agreement_real": {
+  "same_truth": 87,
+  "n": 117,
+  "share": 0.744
+ },
+ "real_random": {
+  "n": 98,
+  "both_true": 32,
+  "flagged_any_false_or_overstated": 63,
+  "any_false": 7,
+  "both_bite_no": 5,
+  "pairs": {
+   "overstated/overstated": 39,
+   "true/true": 32,
+   "overstated/true": 13,
+   "false/overstated": 4,
+   "true/overstated": 3,
+   "not_established/not_established": 2,
+   "not_established/overstated": 1,
+   "false/not_established": 1,
+   "true/not_established": 1,
+   "false/false": 1,
+   "false/true": 1
+  }
+ },
+ "real_tier2": {
+  "n": 10,
+  "both_true": 2,
+  "flagged_any_false_or_overstated": 8,
+  "any_false": 1,
+  "both_bite_no": 1,
+  "pairs": {
+   "overstated/overstated": 4,
+   "true/true": 2,
+   "overstated/true": 2,
+   "true/overstated": 1,
+   "false/overstated": 1
+  }
+ },
+ "real_targeted": {
+  "n": 9,
+  "both_true": 0,
+  "flagged_any_false_or_overstated": 9,
+  "any_false": 5,
+  "both_bite_no": 1,
+  "pairs": {
+   "false/false": 4,
+   "overstated/overstated": 3,
+   "false/overstated": 1,
+   "overstated/true": 1
+  }
+ },
+ "weighted_random": {
+  "both_true": [
+   0.279,
+   [
+    0.174,
+    0.385
+   ]
+  ],
+  "flagged": [
+   0.698,
+   [
+    0.591,
+    0.806
+   ]
+  ],
+  "any_false": [
+   0.073,
+   [
+    0.009,
+    0.136
+   ]
+  ]
+ },
+ "by_area_random": {
+  "A": {
+   "n": 25,
+   "both_true": 4,
+   "flagged": 19,
+   "any_false": 3
+  },
+  "B": {
+   "n": 25,
+   "both_true": 6,
+   "flagged": 19,
+   "any_false": 2
+  },
+  "C": {
+   "n": 24,
+   "both_true": 8,
+   "flagged": 15,
+   "any_false": 1
+  },
+  "D": {
+   "n": 24,
+   "both_true": 14,
+   "flagged": 10,
+   "any_false": 1
+  }
+ },
+ "basis_missing": [],
+ "basis_fidelity": {
+  "partly": 48,
+  "faithful": 64,
+  "unfaithful": 5
+ },
+ "basis_grade": {
+  "judgment": 56,
+  "certified": 21,
+  "sourced": 29,
+  "proved": 6,
+  "unsupported": 5
+ },
+ "basis_test_check": {
+  "no_test": 29,
+  "weak_test": 63,
+  "real_test": 25
+ },
+ "basis_source_check": {
+  "partly": 64,
+  "supports": 30,
+  "none_cited": 20,
+  "does_not_support": 3
+ },
+ "basis_display": {
+  "soften": 33,
+  "show_grade": 30,
+  "needs_test": 3,
+  "review": 32,
+  "as_is": 19
+ },
+ "grade_random": {
+  "judgment": 46,
+  "certified": 20,
+  "sourced": 24,
+  "proved": 5,
+  "unsupported": 3
+ },
+ "adjudicate_count": 96
+}
