@@ -95,6 +95,48 @@ def test_a_citation_two_records_share_is_settled_only_by_its_contract_s_sources(
     assert C.cited_keys_at(settled, text.index("Collins")) == ["collins2024evaluation"]
 
 
+# The Institute of Medicine's DRI reports the usual-intake sentences cite, as Crossref has them
+# (api.crossref.org/works/<doi>, read 2026-10-15): the DOI, the year and the title of each. The two
+# reports of 2000 are cited as 2000a and 2000b in title order.
+DRI_REPORTS = {
+    "1997": ("10.17226/5776", 1997, "Dietary Reference Intakes for Calcium, Phosphorus, Magnesium, "
+                                    "Vitamin D, and Fluoride"),
+    "1998": ("10.17226/6015", 1998, "Dietary Reference Intakes for Thiamin, Riboflavin, Niacin, "
+                                    "Vitamin B6, Folate, Vitamin B12, Pantothenic Acid, Biotin, "
+                                    "and Choline"),
+    "2000a": ("10.17226/9956", 2000, "Dietary Reference Intakes: Applications in Dietary Assessment"),
+    "2000b": ("10.17226/9810", 2000, "Dietary Reference Intakes for Vitamin C, Vitamin E, Selenium, "
+                                     "and Carotenoids"),
+    "2001": ("10.17226/10026", 2001, "Dietary Reference Intakes for Vitamin A, Vitamin K, Arsenic, "
+                                     "Boron, Chromium, Copper, Iodine, Iron, Manganese, Molybdenum, "
+                                     "Nickel, Silicon, Vanadium, and Zinc"),
+}
+
+
+def test_each_dri_report_the_usual_intake_sentences_cite_is_its_own_record():
+    """Claims backtest BX-040, review: the UL sentences cite five DRI reports, two of them from 2000,
+    and the registry held three, its 2000 record matching no "2000a". Each citation, in a sources
+    entry or in a sentence's parenthesis, names exactly the record with its report's DOI; a bare
+    2000, as the dietary catalog cites it, is the report on dietary assessment, never 2000b."""
+    from turbotab.core.contracts import contracts
+
+    reg = C.registry()
+    for cited, (doi, year, title) in DRI_REPORTS.items():
+        for text in (f"Institute of Medicine {cited}, {title}", f"(Institute of Medicine {cited})",
+                     f"the UL (Institute of Medicine {cited}), so"):
+            keys = C.resolve_at(text, text.index("Institute"))
+            assert len(keys) == 1, (text, keys)
+            r = reg[keys[0]]
+            assert (r.doi, r.year, r.title) == (doi, year, title), (cited, r.key)
+            assert r.authors == ("Institute of Medicine",), r.key
+            assert r.publisher == "National Academies Press" and not C.record_problems(r), r.key
+    bare = C.resolve_at("Institute of Medicine 2000, DRI: Applications in Dietary Assessment", 0)
+    assert [reg[k].doi for k in bare] == ["10.17226/9956"]
+    sources = [s for s in contracts()["nci_usual_intake"].sources if "Institute of Medicine" in s]
+    assert sorted(reg[k].doi for s in sources for k in C.resolve(s)) == sorted(
+        doi for doi, _, _ in DRI_REPORTS.values())
+
+
 def test_each_work_in_a_sources_entry_names_a_record():
     assert C.segments("Rubin 1987; Little & Rubin 2019 (ch. 10; ref. 4)") == [
         "Rubin 1987", "Little & Rubin 2019 (ch. 10; ref. 4)"]
