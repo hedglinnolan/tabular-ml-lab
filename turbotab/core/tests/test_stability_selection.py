@@ -85,3 +85,106 @@ def test_a_full_coded_category_enters_the_lasso_path_as_one_variable(seed):
     kept = {t for t, f in expected.items() if f >= 0.6}
     assert set(step.selected_) == kept
     assert ({"sex_F", "sex_M"} <= set(step.kept_)) == ("sex" in kept)
+
+
+ORDER_N, ORDER_PAIRS, ORDER_SEEDS = 150, 20, 10
+
+
+def _category(seed: int, levels: int) -> tuple[pd.DataFrame, np.ndarray, str]:
+    """A category of ``levels`` levels (shares drawn from a Dirichlet(4)) in full coding, whose
+    signal sits in one level drawn at random, beside two numbers that predict less and four that
+    do not (the stage-1 reviewer's design)."""
+    rng = np.random.default_rng(seed)
+    level = rng.choice(levels, ORDER_N, p=rng.dirichlet(np.full(levels, 4.0)))
+    signal = int(rng.integers(levels))
+    X = pd.DataFrame({f"g_{k}": (level == k).astype(float) for k in range(levels)})
+    for c in OTHERS:
+        X[c] = rng.standard_normal(ORDER_N)
+    y = 1.0 * (level == signal) + 0.6 * X["x0"] + 0.4 * X["x1"] + rng.standard_normal(ORDER_N)
+    return X, y.to_numpy(), f"g_{signal}"
+
+
+@pytest.mark.parametrize("levels", [3, 4])
+def test_a_category_of_three_or_more_levels_is_selected_whatever_its_level_order(levels):
+    """The lasso's penalty and fit are blind to the order of the columns, so where its solution is
+    unique (a full coding of three or more levels whose shares do not split into equal halves), the
+    path and the variables it makes active are the same whichever level the encoder lists last.
+    Each level's selection proportion is the same under either order, and so is whether the
+    category is kept."""
+    from turbotab.core.models.variable_selection import Selector
+
+    kept = {"first": 0, "last": 0}
+    for seed in range(ORDER_SEEDS):
+        X, y, signal = _category(seed, levels)
+        rest = [c for c in X.columns if c.startswith("g_") and c != signal]
+        found = {}
+        for where, order in (("first", [signal, *rest]), ("last", [*rest, signal])):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                step = Selector("stability", "regression", q=Q, pairs=ORDER_PAIRS, seed=seed,
+                                inputs=["g", *OTHERS]).fit(X[[*order, *OTHERS]], y)
+            found[where] = dict(zip([*order, *OTHERS], np.asarray(step.frequencies_, float)))
+            kept[where] += "g" in step.selected_
+        assert found["last"] == pytest.approx(found["first"], abs=1e-12), seed
+    assert kept["last"] == kept["first"]
+
+
+def _stalled_coding(case: str, seed: int) -> tuple[np.ndarray, np.ndarray, int, int]:
+    """(Z, y, q, spare) on which scikit-learn's path sometimes ties: a two-level category's twins
+    (``_full_coded``), or a four-level category in exactly equal counts whose levels split two
+    up and two down, where the lasso's split of the category among its levels is not unique.
+    ``spare`` is the column a fallback leaves off: the twin, or the last level."""
+    if case == "twins":
+        X, y = _full_coded(seed)
+        R, q, spare = X.to_numpy(dtype=float), Q, 1
+    else:
+        rng = np.random.default_rng(seed)
+        level = rng.permutation(np.repeat(np.arange(4), 15))
+        D = np.column_stack([(level == k).astype(float) for k in range(4)])
+        R = np.column_stack([D, rng.standard_normal((60, 4))])
+        y = D @ np.array([1.0, 1.0, -1.0, -1.0]) + 0.5 * R[:, 4] + 0.5 * rng.standard_normal(60)
+        q, spare = 4, 3
+    return (R - R.mean(axis=0)) / R.std(axis=0, ddof=1), np.asarray(y, dtype=float), q, spare
+
+
+def _first_q(Z: np.ndarray, yc: np.ndarray, q: int) -> tuple[np.ndarray, bool]:
+    """scikit-learn's path to its first knot with ``q`` nonzero, and whether it tied on the way:
+    a ConvergenceWarning, or a step of the penalty under 10⁻⁸ of its start."""
+    from sklearn.exceptions import ConvergenceWarning
+    from sklearn.linear_model import lars_path
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        alphas, _, coefs = lars_path(Z, yc, method="lasso", max_iter=max(4 * q, 50))
+    knot = next((j for j in range(coefs.shape[1]) if (coefs[:, j] != 0).sum() >= q),
+                coefs.shape[1] - 1)
+    steps = -np.diff(alphas[: knot + 1])
+    tied = (any(issubclass(w.category, ConvergenceWarning) for w in caught)
+            or bool(steps.size and steps.min() <= 1e-8 * alphas[0]))
+    return coefs[:, knot] != 0, tied
+
+
+@pytest.mark.parametrize("case", ["twins", "balanced four"])
+def test_the_lasso_path_leaves_off_a_spare_level_only_where_it_ties(case):
+    """Where scikit-learn's path on the full coding ties before its first q (it warns, or the
+    penalty takes a step of length zero), ``lasso_first`` reads the coding less its spare column,
+    and its first q are that path's; for twins it is the reference-coded lasso, the same problem
+    (module docstring). Where the path does not tie, its first q are the full coding's own."""
+    from turbotab.core.models.variable_selection import lasso_first
+
+    seen = {True: 0, False: 0}
+    for seed in range(40):
+        Z, y, q, spare = _stalled_coding(case, seed)
+        yc = y - y.mean()
+        full, tied = _first_q(Z, yc, q)
+        expected = full
+        if tied:
+            rest = [j for j in range(Z.shape[1]) if j != spare]
+            expected = np.zeros(Z.shape[1], dtype=bool)
+            expected[rest] = _first_q(Z[:, rest], yc, q)[0]
+        seen[tied] += 1
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            got = lasso_first(Z, y, q, spare=[spare])
+        assert got.tolist() == expected.tolist(), seed
+    assert seen[True] and seen[False]
