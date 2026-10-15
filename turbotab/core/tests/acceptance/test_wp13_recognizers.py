@@ -1348,3 +1348,38 @@ def test_6c_blood_analytes_of_2021_2023_name_the_phlebotomy_weight(tmp_path):
     assert lcd["use"] == "WTSAF2YR", lcd
     assert rank_weights(["WTINT2YR", "WTMEC2YR", "WTPH2YR", "WTSAF2YR"], lcd) == \
         ["WTSAF2YR", "WTPH2YR", "WTMEC2YR", "WTINT2YR"]
+
+
+# The weighting tutorial, read 2026-10-15. Example 1 (race and Hispanic origin and poverty on a
+# previous diagnosis of diabetes, "All of these variables were collected in the in-home
+# interview"): "You would use the interview weights for your analysis (wtint4yr)." Example 2 (the
+# same with blood pressure, "collected during the MEC exam"): "You would use the MEC exam weight
+# for your analysis (wtmec4yr)."
+TUTORIAL_EXAMPLE_1 = "You would use the interview weights for your analysis (wtint4yr)."
+TUTORIAL_EXAMPLE_2 = "You would use the MEC exam weight for your analysis (wtmec4yr)."
+
+
+def test_6d_interview_only_variables_name_the_interview_weight():
+    """Claims backtest C-143 (the audit's interview-only departure): the rule named the MEC weight
+    whenever the table had one, so an analysis of interview variables alone dropped every
+    interviewed participant not examined (WTMEC2YR 0). Expected, from the tutorial's Examples 1
+    and 2 and pandas on the fixture: a previous diagnosis of diabetes (DIQ010) and age, recorded
+    on interviewed rows that were not examined, take WTINT2YR; with BMXBMI, recorded only on
+    examined rows, WTMEC2YR. A table that holds examined rows alone is the MEC sample, so it keeps
+    WTMEC2YR: the interview weight does not describe those rows."""
+    from turbotab.core.recognizers import least_common_denominator
+
+    assert "interview weights" in TUTORIAL_EXAMPLE_1 and "MEC exam weight" in TUTORIAL_EXAMPLE_2
+    frame = _nhanes_2021_2023()
+    frame["DIQ010"] = np.random.default_rng(2124).choice([1, 2], len(frame), p=[0.12, 0.88])
+    examined = frame["WTMEC2YR"] > 0
+    assert (~examined).sum() >= 50
+    assert frame.loc[~examined, ["DIQ010", "RIDAGEYR"]].notna().all().all()
+    assert not (frame["BMXBMI"].notna() & ~examined).any()
+    interview = ["DIQ010", "RIDAGEYR", "WTINT2YR", "WTMEC2YR"]
+    lcd = least_common_denominator(interview, frame)
+    assert lcd["use"] == "WTINT2YR", lcd
+    lcd = least_common_denominator([*interview, "BMXBMI"], frame)
+    assert lcd["use"] == "WTMEC2YR", lcd
+    lcd = least_common_denominator(interview, frame[examined])
+    assert lcd["use"] == "WTMEC2YR", lcd
