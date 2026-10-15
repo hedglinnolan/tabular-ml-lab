@@ -1650,12 +1650,14 @@ def methods_sentence(a: ExplainArtifact, s: Setting) -> str:
                        f"{'is an adjustment term' if one else 'are adjustment terms'}, not "
                        f"{'an effect estimate' if one else 'effect estimates'}: "
                        f"{'its curve describes' if one else 'their curves describe'} the models.")
+    # "by enough to matter": true of a family worse than the baseline, not distinguishable from
+    # it, or better by less than the floor (claims backtest A-029)
     below = [f for f in done if f.floor is not None and not f.floor.passed]
     if below:
         what = "No curve was drawn and no interaction was ranked" if a.curves else \
             "No interaction was ranked"
         out.append(f"{what} for {_the(below)}, whose cross-validated {s.metric_label} was not "
-                   f"shown to beat {s.baseline_label}.")
+                   f"shown to beat {s.baseline_label} by enough to matter.")
     out.append("These explanations describe each model's predictions, not causal effects.")
     if s.purpose == "inference":
         out.append("Under inference they were not used as effect estimates.")
