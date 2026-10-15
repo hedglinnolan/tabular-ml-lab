@@ -587,8 +587,15 @@ def propose_roles(
         elif kind == "visit":
             put("time", "medium", "Named like a visit or encounter index: when a row was "
                                   "measured.")
-        elif n_unique <= 1:
+        elif n_unique <= 1 and not n_present:
+            put("excluded", "high", "Every row is blank, so it cannot explain anything.")
+        elif n_unique <= 1 and n_present >= n_rows:
             put("excluded", "high", "Every row holds the same value, so it cannot explain anything.")
+        elif n_unique <= 1:
+            # Claims backtest C-123: the store counts values without blanks, and one value beside
+            # blanks (a checkbox exported as 'yes' or 1 where ticked) varies through its blanks.
+            put(lens_default, "medium", f"One value, blank on `{n_rows - n_present:,}` of "
+                                        f"`{n_rows:,}` rows: the blank may be the other answer.")
         elif not numeric and dtype in ("categorical", "text") and n_present and n_unique >= 0.95 * n_present:
             put("identifier", "medium", f"`{n_unique:,}` different values in `{n_present:,}` rows: it names rows.")
         elif energy_column is not None and name == energy_column:

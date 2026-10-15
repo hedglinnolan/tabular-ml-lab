@@ -1113,6 +1113,9 @@ ALTERNATIVE_FIXTURES: dict[str, dict[str, tuple[Any, Any]]] = {
     "role:excluded": {
         "a predictor": (lambda: R.constant_values(pd.Series(
             np.random.default_rng(8).normal(size=50))), "excluded"),
+        # claims backtest C-123: a supplement-use checkbox, 'yes' where ticked, blank where not
+        "a checkbox: one value where ticked, blank where not ('yes' or 1, and blank)":
+            (lambda: R.constant_values(pd.Series(["yes", None, None, "yes", None])), "excluded"),
     },
     "code_or_count": {
         # codes 1–5 written 1.0–5.0 after a blank: never settled as amounts
