@@ -772,6 +772,64 @@ def test_4_under_prediction_the_grouping_names_internal_external_validation(tmp_
     assert estimand.fixed_effects_column(grouped) is None  # no intercepts under prediction
 
 
+def _households(size: int, groups: int, seed: int = 5) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Households of ``size`` sharing an effect on the outcome that also moves the exposure; the
+    exposure's true log odds ratio is 1 given the household."""
+    rng = np.random.default_rng(seed)
+    group = np.repeat(np.arange(groups), size)
+    shared = rng.normal(0, 1, groups)[group]
+    x = rng.normal(0, 1, groups * size) + 0.5 * shared
+    y = rng.binomial(1, 1 / (1 + np.exp(-(shared + 1.0 * x))))
+    return group, x, y
+
+
+def test_4_a_yes_no_outcome_in_small_groups_gets_no_intercept_per_group():
+    """Claims backtest D-058: the incidental-parameter problem. Known truth: 1,000 households of
+    two, the exposure's log odds ratio 1 given the household. The engine's own yes/no inference
+    model (the linear family's unpenalized logistic regression) with one indicator per household
+    estimates about twice it (the unconditional estimator converges to 2β with pairs; Andersen
+    1970), while statsmodels' conditional logistic regression recovers 1. So "Adjust and cluster"
+    is refused for a yes/no outcome in groups that small, with clustered intervals as the way
+    forward, and is not offered first; groups of 20 keep it (Katz 2001, Political Analysis 9:379:
+    negligible bias from 16 per group), as does a numeric outcome in pairs."""
+    import warnings
+
+    from statsmodels.discrete.conditional_models import ConditionalLogit
+
+    from turbotab.core.models.linear import LINEAR
+
+    group, x, y = _households(2, 1000)
+    X = np.column_stack([x, pd.get_dummies(group, drop_first=True, dtype=float).to_numpy()])
+    model = LINEAR.build("binary", "inference", len(y), X.shape[1])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model.fit(X, y)
+        conditional = ConditionalLogit(y, x[:, None], groups=group).fit(disp=0)
+    assert model.coef_[0][0] > 1.7  # one intercept per pair: about twice the truth
+    assert abs(conditional.params[0] - 1.0) < 0.25  # conditioning on the pair: the truth
+
+    def ctx(size, task="binary"):
+        state = ProjectState(lens=["clinical"], target="ill", task=task, purpose="inference",
+                             grain={"grain": "one_row_per_unit"},
+                             roles={"pid": "identifier", "household": "cluster", "x": "exposure"})
+        n = 2000
+        return {"state": state, "columns": ["pid", "household", "x", "ill"], "n_rows": n,
+                "column_info": {"household": {"n_unique": n // size, "n_missing": 0}}}
+
+    adjust = {"kind": "set_clusters", "column": "household", "adjust": "fixed_effects"}
+    with pytest.raises(Refusal) as refused:
+        d.validate(adjust, ctx(2))
+    assert "incidental" in refused.value.message
+    assert [e["decision"]["adjust"] for e in refused.value.exits if e["decision"]] == [
+        "cluster_only"]
+    with pytest.raises(Refusal) as how:
+        d.validate({"kind": "set_clusters", "column": "household"}, ctx(2))
+    assert how.value.code == "how_adjusted"
+    assert "fixed_effects" not in [(e["decision"] or {}).get("adjust") for e in how.value.exits]
+    assert d.validate(adjust, ctx(20)).adjust == "fixed_effects"  # 20 per group: kept
+    assert d.validate(adjust, ctx(2, task="regression")).adjust == "fixed_effects"  # linear
+
+
 # ── 5 · the energy order under prediction ────────────────────────────────────
 
 
