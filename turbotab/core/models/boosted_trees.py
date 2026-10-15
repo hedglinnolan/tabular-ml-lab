@@ -8,12 +8,17 @@ one place that reads scikit-learn's private ``_predictors`` and ``_baseline_pred
 (:data:`TUNING`): learning rate, leaves per tree, the smallest leaf (capped at a twentieth of the
 plan's units, or of its rows when it does not count units, :func:`leaf_cap`), the L2 pull, the
 share of columns per split, and the number of trees when the plan does not stop early.
-scikit-learn's defaults are the standard candidate, and below an effective size of 300 (units,
-events or the rarest class's count) the plan keeps it alone: one fit at scikit-learn's defaults.
-That fit equals a direct ``HistGradientBoosting*()`` fit at the same thread count while the plan's
+scikit-learn's defaults are the standard candidate from an effective size of 300 (units, events or
+the rarest class's count). Below it the plan draws no search and keeps one candidate, the
+small-sample standard ruled on 2026-10-11 (RECIPES §4.6; notes/SMALL_SAMPLE_STANDARD.md):
+:data:`SMALL_STANDARD`, 100 trees of at most 8 leaves at learning rate 0.02, the smallest leaf 20
+rows (never capped) and an L2 pull of 1, every column, never stopping early. The library's
+defaults were the worst arm there in every cell of that study, with calibration slopes of 0.2 to
+0.5. That fit equals a direct ``HistGradientBoosting*()`` fit at those values and the same thread
+count while the fit's rows are at most 200,000 (above them the plan's seed, not scikit-learn's,
+picks the binning subsample); a standard fit at scikit-learn's defaults does too while the plan's
 rows are at most 10,000 (above them the stopping rows are whole units the plan draws, not
-scikit-learn's 10% of positions) and the fit's rows at most 200,000 (above them the plan's seed,
-not scikit-learn's, picks the binning subsample). "Try both" for blanks waits for RT-3 (C6b).
+scikit-learn's 10% of positions). "Try both" for blanks waits for RT-3 (C6b).
 
 **Pinned threads (RECIPES §4.7).** The family builds :class:`PinnedHistGradientBoostingRegressor`
 / :class:`PinnedHistGradientBoostingClassifier`: scikit-learn's estimators with one more
@@ -50,6 +55,10 @@ TINY_N = 200
 STANDARD = "default"  # the standard smallest leaf: scikit-learn's own, never capped
 STANDARD_LEAF = 20  # HistGradientBoosting*'s min_samples_leaf default
 LEAF_SHARE = 20  # a searched leaf holds at most a twentieth of the plan's units (RECIPES §4.1)
+# The standard below an effective size of 300 (RECIPES §4.6, ruled 2026-10-11). Its leaf is the
+# standard's 20, never capped: the cap, a twentieth of the plan's units, is under 20 below 400.
+SMALL_STANDARD = {"learning_rate": 0.02, "max_leaf_nodes": 8, "min_samples_leaf": STANDARD,
+                  "l2_regularization": 1.0, "max_features": 1.0, "max_iter": 100}
 _TUNABILITY = "Probst, Boulesteix & Bischl 2019"
 
 TUNING = TuningDecl(
@@ -71,6 +80,9 @@ TUNING = TuningDecl(
     standard={"learning_rate": 0.1, "max_leaf_nodes": 31, "min_samples_leaf": STANDARD,
               "l2_regularization": 0.0, "max_features": 1.0, "max_iter": 100},
     standard_source="scikit-learn's defaults",
+    small_standard=SMALL_STANDARD,
+    small_standard_source="TurboTab's small-sample standard, chosen by simulation "
+                          "(notes/SMALL_SAMPLE_STANDARD.md)",
     # Sobol candidates stop early from an effective size of 1,500 (the plan's); the standard ones
     # by scikit-learn's own rule, above 10,000 of the plan's rows, at its own 100 trees and
     # patience.
@@ -78,8 +90,8 @@ TUNING = TuningDecl(
                     "patience": 20, "share": 0.1},
     space_version="boosted_trees/1",
     structural=("loss",),
-    reason="Its settings are searched inside every training fold, with scikit-learn's defaults "
-           "always among the candidates.",
+    reason="Its settings are searched inside every training fold from an effective size of 300, "
+           "scikit-learn's defaults among them; below, a small-sample standard.",
 )
 
 
@@ -248,7 +260,9 @@ class BoostedTrees(FamilyBase):
     sources = (Source("friedman2001"),)
     consequence = "Many shallow trees: finds curves and interactions; gives no coefficients."
     tuning = TUNING
-    defaults_version = "2"  # RT-5a: tuned; "Try both" for blanks joins with RT-3
+    # RT-5a: tuned; 3: the small-sample standard below 300 (RECIPES §4.6); "Try both" for blanks
+    # joins with RT-3
+    defaults_version = "3"
 
     def methods_label(self, task: Task | None) -> str:
         return "gradient-boosted trees"
@@ -284,13 +298,17 @@ class BoostedTrees(FamilyBase):
         return PinnedHistGradientBoostingClassifier(random_state=0)
 
     def describe(self, task: Task, purpose: Purpose | None) -> tuple[str, str]:
+        d, s = TUNING.standard, TUNING.small_standard
         return ("Histogram gradient boosting",
-                "Its settings are searched inside every training fold, scikit-learn's defaults "
-                "(100 trees of at most 31 leaves) always among them and used alone below an "
-                "effective size of 300 (units, events or the rarest class's count). Searched "
-                "settings stop early from an effective size of 1,500, the defaults above 10,000 "
-                "training rows, holding back a tenth of the fold's units, the latest when the "
-                "folds follow time.")
+                f"From an effective size of 300 (units, events or the rarest class's count) its "
+                f"settings are searched inside every training fold, scikit-learn's defaults "
+                f"({d['max_iter']} trees of at most {d['max_leaf_nodes']} leaves) among them. "
+                f"Below it one fit is made at a small-sample standard: {s['max_iter']} trees of "
+                f"at most {s['max_leaf_nodes']} leaves, learning rate {s['learning_rate']:g}, "
+                f"smallest leaf {STANDARD_LEAF} rows, L2 pull {s['l2_regularization']:g}. "
+                f"Searched settings stop early from an effective size of 1,500, the defaults "
+                f"above 10,000 training rows, holding back a tenth of the fold's units, the "
+                f"latest when the folds follow time.")
 
     def assess(self, s: Situation) -> Assessment:
         concerns: list[str] = []

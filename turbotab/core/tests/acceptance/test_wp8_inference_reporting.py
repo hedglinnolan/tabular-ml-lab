@@ -570,7 +570,8 @@ def test_3b_the_optimism_of_choosing_the_best_family_is_estimated_on_null_data()
                       impute=False)
     # Boosted trees are tuned (RT-5a), so they are built through the plan the design makes. With
     # about 60 events in an outer training fold (n_plan below 300) it holds the standard settings
-    # alone: scikit-learn's defaults, one fit per fold, whatever each replicate's outcome.
+    # alone: its small-sample standard (RECIPES §4.6), one fit per fold, whatever each
+    # replicate's outcome.
     spec = with_plans(spec, [get_family(k) for k in FAMILIES], "binary", np.arange(n) % 2)
     trees = spec.plans["boosted_trees"]
     assert trees["n_plan"] < 300 and len(trees["candidates"]) == 1

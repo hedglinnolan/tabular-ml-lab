@@ -220,13 +220,17 @@ def test_1d_the_fit_reports_out_of_fold_and_held_out_calibration(tmp_path):
     every family carries its out-of-fold calibration (intercept, slope, curve) in the public
     artifact; the held-out intervals and calibration stay sealed with the held-out scores and are
     served once the seal is opened; each equals ``performance.calibration`` on the refit model's
-    held-out predictions, recomputed here from the parquet with the refit pipeline. The boosted
-    trees' flagged calibration is one of its concerns, worded with its slope.
+    held-out predictions, recomputed here from the parquet with the refit pipeline. A family's
+    concern names its calibration slope exactly when it is flagged.
 
-    At this size an outer training fold holds fewer than 300 events, so the plan keeps
-    scikit-learn's defaults alone (RT-5a), the settings test 1c finds miscalibrated in every one
-    of its datasets. (At 2,000 rows the plan searches, and the tuned trees on this table are not
-    flagged.) A family's concern names its calibration slope exactly when it is flagged."""
+    At this size an outer training fold holds fewer than 300 events, so the plan keeps one
+    candidate, the boosted trees' small-sample standard (RECIPES §4.6, ruled 2026-10-11).
+    **Re-pinned:** the plan kept scikit-learn's defaults here before, the settings test 1c finds
+    miscalibrated in every one of its datasets, and this test asserted the trees flagged. That was
+    the defect the ruling fixed (claims backtest A-001): at the small-sample standard their
+    out-of-fold slope is 1.11 on this table, within the tolerance, and not flagged. (At 2,000 rows
+    the plan searches, and the tuned trees are not flagged either.) No family is flagged here now,
+    so the flag itself is test 1c's, on scikit-learn's defaults."""
     X, y, _ = _logistic_table(1500, seed=7)
     frame = X.assign(id=np.arange(1500), event=np.where(y == 1, "yes", "no"))
     source = tmp_path / "logistic.csv"
@@ -248,8 +252,8 @@ def test_1d_the_fit_reports_out_of_fold_and_held_out_calibration(tmp_path):
     plan = design.objects["spec"]["plans"]["boosted_trees"]
     assert plan["n_plan"] < 300 and len(plan["candidates"]) == 1 and plan["candidates"][0]["standard"]
     trees = models["boosted_trees"]
-    assert trees["calibration"]["flagged"]
-    assert any("calibration slope" in c and "too extreme" in c for c in trees["concerns"]), trees["concerns"]
+    assert not trees["calibration"]["flagged"], trees["calibration"]["slope"]
+    assert not any("calibration slope" in c for c in trees["concerns"]), trees["concerns"]
     for m in models.values():
         assert m["calibration"]["flagged"] == any("calibration slope" in c for c in m["concerns"])
 
