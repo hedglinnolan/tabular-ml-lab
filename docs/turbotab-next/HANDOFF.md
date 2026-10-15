@@ -1,5 +1,34 @@
 # Handoff
 
+**State on 2026-10-15.** turbotab-next = the stage-1 merge (feat/s1-int).
+
+**Landed since 2026-10-11:**
+- **Stratification optimism in Lean 4** (914a054a): the exact decomposition and the stratification sandwich are proved, and the general law is stated — notes/lean-strat/.
+- **The claims backtest** (e6e58809): about 970 decision-setting claims inventoried, a seeded sample of 117 refereed blind and audited against the code. 14.5% (5.7–23.3%) carry an S1 defect, and 44% none. The plan, the sealed key, every verdict and the fix list are in notes/claims-backtest/; the lessons are in its README.
+- **Stage 1, the 15 S1 defects** (this merge of fix/s1-prediction, fix/s1-inference, fix/s1-routing and fix/s1-data). Each fix starts with a test that fails on the old code, and each was re-reviewed by a fresh agent until approved: three rounds of fix-ups, four for B-281. The reviewers' follow-ups are in INBOX under "From the claims backtest".
+  - The known-red stability-selection bug is fixed (S0): exact copies and full codings are found before the lasso path, a coding's spare level is left off only where the coding ties, and the result no longer depends on level order in the reviewer's known-truth test.
+- **Replication data checks** (notes/replication/): Bang 2009 and Menke 2015 can be replicated approximately from public data. Yang 2014 cannot (its mortality-file version is gone), so Nolan chose to replace it with a continuous-NHANES Estimate paper; the candidates are in estimate_candidates.md.
+
+**Known red:**
+- **The e2e-real job is still `continue-on-error`** until its waits are tuned to CI's runners.
+
+**Next, in order:**
+1. **The claims registry spec,** for Nolan's review, before W1 part 2. Every methods rule, threshold and teaching sentence becomes a declared object (schema, basis, grade, test) that code reads; its sentences are generated from the parameters actually used. The 39 S2 and 16 S3 fixes wait for it, so their sentences are not hand-patched twice. A ruling stays "proposed" until its code and test exist.
+2. **W1 part 2** (WALKABLE_PLAN §5, unchanged from the list below), then my walkthrough of NHANES glucose under Predict, with a friction log, before Nolan sees it.
+3. **W2–W4,** each registering the claims it adds and absorbing the S2/S3 fixes in its area. At each wave's end, ask the builder for its three most doubtful claims.
+4. **Heavy runs, scheduled with Nolan:** the T1 rerun at 600 datasets (the small-sample standard is now in code, A-001); the reference-journey recapture, then the materiality calibration on it.
+5. **The Lean pilot:** about a dozen invariance and exactness claims ("doesn't change your numbers"), each theorem's hypotheses checked at run time as predicates, the app asserting only when every one holds.
+6. **The stage-3 audit** of the remaining claims through the registry, with decoy set v2 (16 decoys and 5 controls, approved by Nolan, sealed outside the repo; never shown to an agent with its key, and fork agents are never referees).
+7. **The replication pilot:** Bang 2009 (Predict), Menke 2015 (Describe) and an Estimate paper. Each replication reports the decisions the paper stated, the ones it left unstated, and how far each unstated option moves the published number.
+8. **Data provenance in ingest:** record each file's source URL and release or revision date, not only its hash.
+9. Then the research swarm, once its gates are passed.
+
+The 2026-10-11 lists below still hold for the phase-4 and W1 part-1 leftovers.
+
+**Waiting on Nolan:** thumbs up or down on Sullivan 2021 (Am J Prev Med 61:563) as the Estimate paper.
+
+---
+
 **PAUSED on 2026-10-11 to save usage** (91% of the week's limit; it resets Thursday 2026-10-15). turbotab-next = c07e0c3e.
 
 **Landed since 2026-10-10:**
@@ -31,14 +60,14 @@
 - **The new e2e-real job is `continue-on-error`** until its waits are tuned to CI's runners.
 
 **Next, in order (Thursday):**
-1. Fix the stability-selection collinearity bug (S): drop exactly collinear columns, rank-revealing, before the lasso path, and map selections back to their variable.
+1. ~~Fix the stability-selection collinearity bug (S)~~ — fixed on 2026-10-15 (S0, stage 1).
 2. **W1 part 2** (WALKABLE_PLAN §5):
    - W1-E: the quest-log shell on live /quest;
    - W1-F: the Predict cards;
    - W1-G: Predict Results v0;
    - e2e quest-nhanes-predict and quest-own-csv;
    - then my own walkthrough of NHANES glucose under Predict, with a friction log, before Nolan sees it.
-3. The small-sample standard in code (RECIPES §4.6), then the T1 rerun (a heavy run, about 60 minutes at 4 jobs; approved).
+3. The small-sample standard in code (RECIPES §4.6; done on 2026-10-15, A-001), then the T1 rerun (a heavy run, about 60 minutes at 4 jobs; approved).
 4. **Phase-4 leftovers:**
    - a plan_units field for the leaf cap on yes/no and class outcomes;
    - the forest and boosted trees reading "units" alike;
