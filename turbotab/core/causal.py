@@ -33,8 +33,10 @@ prediction"):
   until the analyst trims to the overlap population
   (propensities in [0.1, 0.9]; Crump, Hotz, Imbens & Mitnik 2009, *Biometrika* 96:187) or records
   that every row is kept. The methods sentence then says which, with the violation's numbers. A
-  numeric exposure the covariates explain to R² ≥ 0.9 is not refused: its estimate rests on the
-  variance left, and the card says how much wider that makes its interval, which counts it.
+  numeric exposure's positivity is a stated assumption, which no R² checks: one the covariates
+  explain to R² ≥ 0.9 is not refused, its estimate rests on the variance left, and the card says
+  how much wider that makes its interval, which counts that variance but not a bias from nuisance
+  models that misfit.
 * **A survey design** (MODELING_SEQUENCE ruling 6): the weights enter every nuisance fit and the
   estimating equation of the DML and TMLE estimators; the post-double-selection lasso's plug-in
   penalty is derived for independent, unweighted rows, so under the surveyed-population answer it
@@ -488,10 +490,13 @@ def assumption_card(*, exposure: str, exposure_kind: str, adjusted: Sequence[str
         if r2 >= CONTINUOUS_R2_LINE:
             diag += (f" The estimate rests on what is left, so its standard error is about "
                      f"{(1 - r2) ** -0.5:.1f} times what it would be were {x} unrelated to the "
-                     f"covariates (a variance inflation factor of {1 / (1 - r2):.0f}). Its "
-                     f"interval counts this: it is a matter of precision, not of positivity.")
-        statement = f"{x} still varies at every level of the covariates."
-        status = "checked"
+                     f"covariates (a variance inflation factor of {1 / (1 - r2):.0f}): a matter "
+                     f"of precision, not of positivity. Its interval counts that wider variance, "
+                     f"but not a bias from nuisance models that misfit, which so small a "
+                     f"remainder magnifies.")
+        # no R² reads a positive density at every level of the covariates: declared, not checked
+        statement = f"{x} could take each value compared at every level of the covariates."
+        status = "stated"
     else:
         diag, status = "Computed with the estimate.", "pending"
         statement = f"{x} varies at every level of the covariates."
