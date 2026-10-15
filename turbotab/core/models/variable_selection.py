@@ -305,9 +305,11 @@ def path_columns(Z: np.ndarray, groups: Sequence[Sequence[int]]
     several columns: LARS solves those lassos exactly, so which level the encoder lists last does
     not matter. Within a term (``groups``, its columns' positions) every pair is compared. Across
     terms the columns are sorted by the size of their projection on a fixed random unit vector, and
-    only those whose projections agree within 10⁻⁷ are compared, which finds every copy exact to
-    rounding (LARS calls a pivot under 10⁻⁷ degenerate) at a cost linear in the columns. A
-    dependence on the fold's rows holds on every half of them, so it is found once, on the fold.
+    each is compared only with the first column of each class of copies whose projection agrees
+    with its own within 10⁻⁷ (:func:`_copies_across`), which finds every copy exact to rounding
+    (LARS calls a pivot under 10⁻⁷ degenerate) at a cost linear in the columns, however large a
+    class. A dependence on the fold's rows holds on every half of them, so it is found once, on the
+    fold.
 
     A term's spare columns are those the path reads that are exact combinations of the term's
     earlier ones (a full coding's last level). LARS can tie on such a coding where the lasso's split
@@ -322,15 +324,7 @@ def path_columns(Z: np.ndarray, groups: Sequence[Sequence[int]]
             if any(cos[a, b] >= 1 - COLLINEAR_TOL for a in range(b) if g[a] not in copies):
                 copies.add(g[b])
     rest = np.asarray(sorted(j for g in groups for j in g if j not in copies), dtype=int)
-    r = np.random.default_rng(0).standard_normal(Z.shape[0])
-    size = np.abs(U[:, rest].T @ (r / np.linalg.norm(r)))
-    order = np.argsort(size, kind="stable")
-    ends = np.searchsorted(size[order], size[order] + 1e-7, side="right")
-    for i in np.flatnonzero(ends > np.arange(len(order)) + 1):
-        for j in range(i + 1, int(ends[i])):
-            a, b = sorted((int(rest[order[i]]), int(rest[order[j]])))
-            if abs(float(U[:, a] @ U[:, b])) >= 1 - COLLINEAR_TOL:
-                copies.add(b)
+    copies |= _copies_across(U, rest)
     path = [j for j in rest.tolist() if j not in copies]
     at = {j: i for i, j in enumerate(path)}
     codings: list[tuple[list[int], list[int]]] = []
@@ -340,6 +334,39 @@ def path_columns(Z: np.ndarray, groups: Sequence[Sequence[int]]
         if spare:
             codings.append(([at[j] for j in read], [at[j] for j in spare]))
     return np.asarray(path, dtype=int), codings
+
+
+def _copies_across(U: np.ndarray, columns: np.ndarray) -> set[int]:
+    """Each of ``columns`` (unit columns of ``U``) that is an exact ± copy of an earlier one
+    (:func:`path_columns`). Sorted by the size of their projection on a fixed random unit vector, a
+    column is compared only with the first column of each class of copies whose projection is
+    within 10⁻⁷ of its own, so the cost is linear in the columns however large a class; a class
+    keeps its earliest column."""
+    r = np.random.default_rng(0).standard_normal(U.shape[0])
+    size = np.abs(U[:, columns].T @ (r / np.linalg.norm(r)))
+    order = np.argsort(size, kind="stable")
+    size, columns = size[order], np.asarray(columns)[order]
+    copies: set[int] = set()
+    start = 0
+    for end in [*(np.flatnonzero(np.diff(size) > 1e-7) + 1).tolist(), len(size)]:
+        # a run of projections each within 10⁻⁷ of the next; a column alone in its run has no copy
+        heads: list[int] = []  # the run's positions whose column begins a class
+        classes: dict[int, list[int]] = {}
+        lo = 0
+        for t in range(start, end if end - start > 1 else start):
+            while lo < len(heads) and size[heads[lo]] < size[t] - 1e-7:
+                lo += 1
+            cos = np.abs(U[:, columns[heads[lo:]]].T @ U[:, columns[t]])
+            hit = np.flatnonzero(cos >= 1 - COLLINEAR_TOL)
+            if hit.size:
+                classes[heads[lo + int(hit[0])]].append(int(columns[t]))
+            else:
+                heads.append(t)
+                classes[t] = [int(columns[t])]
+        for members in classes.values():
+            copies.update(sorted(members)[1:])
+        start = end
+    return copies
 
 
 def lasso_first(Z: np.ndarray, y: np.ndarray, q: int,
