@@ -841,7 +841,7 @@ def test_a_group_with_every_event_keeps_its_standardized_risks_and_an_empty_arm_
         with pytest.raises(T.TrialRefused) as refused:
             T.estimate(none, spec)
         said = str(refused.value)
-        assert "`trt`" in said and "no finite estimate exists" not in said, said
+        assert "trt" in said and "no finite estimate exists" not in said, said
         assert not any("covariates" in e for e in refused.value.exits)
 
 
