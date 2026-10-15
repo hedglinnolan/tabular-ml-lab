@@ -117,7 +117,11 @@ def test_a_sample_drawn_by_its_outcome_analyzed_as_observational_keeps_odds_rati
     several times the population's. So when a declared case-control sample or matched set is
     analyzed as observational (the refusal's first exit), the record names the sampling, the
     marginal risk difference and ratio are refused under Estimate, the card reads no prevalence
-    from the case share, and Predict's risks are refused."""
+    from the case share, and Predict's risks are refused, the odds ratios asked under Estimate an
+    effect. Matched sets are refused as a limit of the design (``case_control.eligible``: no
+    baseline risk is left to recalibrate), so nothing waits for a later version, and the methods
+    say the observational lane's odds ratios are not conditioned on the sets; an unmatched sample's
+    probabilities could be recalibrated with a stated prevalence, which Predict does not do yet."""
     import numpy as np
     import statsmodels.api as sm
 
@@ -169,6 +173,20 @@ def test_a_sample_drawn_by_its_outcome_analyzed_as_observational_keeps_odds_rati
     assert not any("common here" in m["reason"] for m in card["measures"])
     predict = refused({"kind": "set_purpose", "purpose": "prediction"}, {"state": state})
     assert "not risks" in predict.message or "cannot be predicted" in predict.message
+    # The refusal leaves the purpose as it was: the odds ratios are asked under Estimate an effect.
+    assert "asked under Estimate an effect" in predict.message
+    assert "analyzed under" not in predict.message
+    later = [e for e in predict.exits if "later version" in e["label"]]
+    if design == "matched_sets":
+        # No risk can come from matched sets (eligible: "a limit of the design, not a missing
+        # feature"), so nothing waits for a later version; the methods say the observational
+        # lane's odds ratios are not conditioned on the sets.
+        assert " yet" not in predict.message and not later
+        assert "not conditioned on the matched sets" in said
+    else:
+        # An unmatched sample's probabilities can be recalibrated with a stated prevalence
+        # (eligible), which the Predict lane does not do yet.
+        assert "recalibrate" in predict.message and later
 
 
 def test_the_design_registry_names_every_value_the_slot_accepts():
