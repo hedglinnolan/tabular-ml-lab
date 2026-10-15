@@ -1393,6 +1393,79 @@ def test_4_iron_is_refused_an_ear_until_its_requirement_is_answered_symmetric(jo
     assert ui.reads_as_iron("DRxTIRON_label", ["DR1TIRON", "DR2TIRON"])
 
 
+# The Food and Nutrition Board's Tolerable Upper Intake Levels (IOM DRI summary tables) cover
+# intake from food, water and supplements, except five: the footnotes "The ULs for magnesium
+# represent intake from a pharmacological agent only and do not include intake from food and
+# water", "As preformed vitamin A only", "As α-tocopherol; applies to any form of supplemental
+# α-tocopherol", and "The ULs for vitamin E, niacin, and folate apply to synthetic forms obtained
+# from supplements, fortified foods, or a combination of the two." (The NCBI and ODS copies refused
+# the fetch on 2026-10-15; the Linus Pauling Institute's pages, read that day, agree for magnesium,
+# "this UL applies specifically to supplemental magnesium", folate, "folic acid (supplements and
+# fortification)", vitamin E, "α-tocopherol in any supplemental form", and vitamin A, "The UL does
+# not apply to vitamin A derived from carotenoids".)
+UL_FORM_ONLY = {"DR1TMAGN": "magnesium", "magnesium_mg": "magnesium", "DR1TFA": "folate",
+                "folic_acid_ug": "folate", "DR1TFOLA": "folate", "DR1TNIAC": "niacin",
+                "niacin_mg": "niacin", "DR1TATOC": "vitamin E", "vitamin_e_mg": "vitamin E",
+                "alpha_tocopherol_mg": "vitamin E", "DR1TVARA": "vitamin A",
+                "retinol_ug": "vitamin A", "vitamin_a_rae_ug": "vitamin A"}
+UL_TOTAL = ("DR1TCALC", "calcium_mg", "iron_mg", "DR1TZINC", "vitamin_d_ug", "DR1TSELE",
+            "protein_g", "environment")
+
+
+def ul_recall_table() -> pd.DataFrame:
+    """The recall table with magnesium and calcium drawn from their own stream after it, so no other
+    column moves: food magnesium around 300 mg a day, much of it above the 350 mg UL that covers
+    supplements only, and calcium around 900 mg, whose 2,500 mg UL covers every source."""
+    frame = recall_table()
+    extra = np.random.default_rng(64)
+    person = frame["participant_id"].str[1:].astype(int).to_numpy()
+    level = extra.normal(0, 0.3, int(person.max()) + 1)
+    day = len(frame)
+    frame["magnesium_mg"] = np.round(np.exp(5.7 + level[person] + extra.normal(0, 0.35, day)), 1)
+    frame["calcium_mg"] = np.round(np.exp(6.8 + level[person] + extra.normal(0, 0.4, day)), 1)
+    return frame
+
+
+@pytest.fixture(scope="module")
+def ul_journey(tmp_path_factory):
+    """The share above a UL for magnesium and for calcium, through one local server."""
+    root = tmp_path_factory.mktemp("nci_ul")
+    path = root / "recalls_ul.csv"
+    ul_recall_table().to_csv(path, index=False)
+    out: dict = {}
+    with local_server(root / "home") as client:
+        d = open_project(client, path, recall_truth())
+        opening(d)
+        answer_the_plan(d, "protein_g")
+        for name, cutoff in (("magnesium_mg", 350), ("calcium_mg", 2500)):
+            d.decide({**PROTEIN, "nutrient": name, "cutoff": cutoff, "cutoff_kind": "UL",
+                      "n_boot": 50})
+            out[name] = by_name(d.artifact("usual_intake"), name)
+    return out
+
+
+def test_4_the_share_above_a_ul_says_what_the_ul_covers(ul_journey):
+    """Claims backtest BX-040: every share above a UL was stated "a share at risk of excess only if
+    the recalls include supplements, since the UL applies to total intake". The IOM tables above say
+    otherwise for magnesium, folate, niacin, vitamin E and vitamin A, whose ULs cover a supplemental
+    or synthetic form only: food magnesium above 350 mg is no risk. Expected: magnesium's sentence
+    names the form its UL covers and claims no total intake; calcium's, whose UL covers every
+    source, says a share from foods alone is a lower bound. The names are read as ``reads_as_iron``
+    reads them (whole names; ``environment`` is no iron)."""
+    from turbotab.core import usual_intake as ui
+
+    magnesium, calcium = ul_journey["magnesium_mg"], ul_journey["calcium_mg"]
+    assert magnesium["applies"] and calcium["applies"]
+    assert "applies to total intake" not in magnesium["methods"], magnesium["methods"]
+    assert "supplements and medicines" in magnesium["methods"], magnesium["methods"]
+    assert "lower bound" in calcium["methods"], calcium["methods"]
+    for name, nutrient in UL_FORM_ONLY.items():
+        assert ui.ul_form(name) == nutrient, name
+    for name in UL_TOTAL:
+        assert ui.ul_form(name) is None, name
+    assert ui.ul_form("DRxTMAGN_label", ["DR1TMAGN", "DR2TMAGN"]) == "magnesium"
+
+
 def test_4_every_refusal_carries_exits_that_post(journeys):
     """Every analysis-level refusal carries its ways forward, the last always "Leave usual intake
     out", and the exits taken here post and run: the two-part model on a component with no zero
