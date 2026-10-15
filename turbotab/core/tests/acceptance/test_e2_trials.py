@@ -1073,6 +1073,95 @@ def test_a_separated_trial_is_read_from_the_people_the_data_do_not_separate():
         assert any("separate the outcome on site[c]:" in c for c in r.concerns), r.concerns
 
 
+def _milligrams(seed: int, scale: float, n: int = 240) -> pd.DataFrame:
+    """Everyone at site c had the event, which otherwise rises with the arm and with weight, 0.1
+    on the log odds a kilogram; site c recorded weight ``scale`` times larger (at 1e6, milligrams
+    where the others wrote kilograms)."""
+    rng = np.random.default_rng(7000 + seed)
+    df = pd.DataFrame({"arm": rng.choice(["ctl", "trt"], n), "site": rng.choice(["a", "b", "c"], n)})
+    kg = 75 + rng.normal(0, 2, n)
+    df["weight"] = np.where(df.site == "c", scale * kg, kg)
+    lp = -0.4 + 0.6 * (df.arm == "trt") + 0.1 * (kg - 75)
+    df["event"] = (rng.random(n) < 1 / (1 + np.exp(-lp))).astype(float)
+    df.loc[df.site == "c", "event"] = 1.0
+    return df
+
+
+MG = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
+                 covariates=("weight",))
+
+
+def test_a_weight_recorded_a_million_times_larger_where_everyone_had_the_event_is_read_or_refused(
+        monkeypatch):
+    """Claims backtest B-281, its fourth review. Everyone at site c had the event, and site c
+    recorded weight 1e6 to 1e7 times larger than sites a and b, where it matters (0.1 a
+    kilogram). Known truth: site c is separated (its indicator puts everyone there at 1) and no
+    one else is, since statsmodels' ``Logit`` converges on sites a and b alone, which a direction
+    separating anyone there would not allow. So site c's risks are 1 under either arm and the rest
+    is statsmodels' fit to sites a and b (Lesaffre & Albert 1989), with Ye et al.'s variance
+    written out above. Of 60 such trials (1e6, 3e6 and 1e7, 20 seeds each), each is reported as
+    that truth (the risk difference to 1e-8, its standard error to 1e-6, the note counting site
+    c's people) or refused, and no more than 2 are refused. When the linear program that finds
+    the separated people fails, the site-c trial above is refused, not read from a fit.
+
+    On the prior code 54 of the 60 were reported wrong, the risk difference off by up to 0.02
+    (about 0.4 SE), under a note saying the rest of the model was the fit to everyone else: the
+    limit fit's Newton step, read on the information, squared the weight's small spread among
+    sites a and b into a direction it could not move along, and stopped short. Reading those
+    people from a fit of their own but taking the separated people from fitted risks within 1e-9
+    of 0 or 1 still missed a site-c person in 4 of the 60, which were then refused."""
+    import scipy.optimize
+    import statsmodels.api as sm
+
+    refused = []
+    for scale in (1e6, 3e6, 1e7):
+        for seed in range(20):
+            df = _milligrams(seed, scale)
+            y = df.event.to_numpy()
+            arm = (df.arm == "trt").to_numpy(dtype=int)
+            at_c = (df.site == "c").to_numpy()
+
+            def design(a: np.ndarray) -> np.ndarray:
+                return np.column_stack([np.ones(len(df)), a, df.site == "b",
+                                        df.weight]).astype(float)
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                rest = sm.Logit(y[~at_c], design(arm)[~at_c]).fit(method="newton", tol=1e-12,
+                                                                   maxiter=100, disp=0)
+            assert rest.mle_retvals["converged"], (scale, seed)
+            cf = np.ones((len(df), 2))
+            for k in (0, 1):
+                cf[~at_c, k] = rest.predict(design(np.full(len(df), k))[~at_c])
+            V = _ye_by_hand(y, arm, cf, np.where(arm == 1, cf[:, 1], cf[:, 0]),
+                            pd.factorize(df.site)[0])
+            theta = cf.mean(axis=0)
+            try:
+                r = T.estimate(df, MG)
+            except T.TrialRefused as e:
+                refused.append((scale, seed, e.term))
+                continue
+            rd = r.contrast(measure="risk_difference")
+            assert rd.estimate == pytest.approx(theta[1] - theta[0], rel=1e-8), (scale, seed)
+            assert rd.se == pytest.approx(math.sqrt(V[0, 0] + V[1, 1] - 2 * V[0, 1]),
+                                          rel=1e-6), (scale, seed)
+            assert any(f"separate the outcome on site[c]: {int(at_c.sum())} people " in c
+                       for c in r.concerns), r.concerns
+    assert len(refused) <= 2, refused
+
+    def fails(*args, **kwargs):
+        return scipy.optimize.OptimizeResult(status=4, x=None, success=False,
+                                             message="numerical difficulties")
+
+    monkeypatch.setattr(scipy.optimize, "linprog", fails)
+    site_c = _parallel(seed=21)
+    site_c.loc[site_c.site == "c", "event"] = 1.0
+    with pytest.raises(T.TrialRefused) as r:
+        T.estimate(site_c, BSPEC)
+    assert r.value.term == "separation in the logistic model"
+    assert "runs to 0% or 100%" in str(r.value), str(r.value)
+
+
 # ── wording ──────────────────────────────────────────────────────────────────
 
 
