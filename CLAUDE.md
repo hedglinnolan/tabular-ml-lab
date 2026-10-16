@@ -43,6 +43,8 @@ turn, so it holds only the rules any agent can break.
   a derivation, never from the engine's own output or constant.
 - Test a guard both ways: it fires where it should and stays silent where it should.
 - A number is right or it is refused. A caveat beside a number the fit cannot certify is no fix.
+- Where float64 or a solver can tip a case either way, the test pins that claim (right, or refused),
+  not which refusal fires: that differs between platforms (CI's Linux runner, twice in 2026-10).
 - A sentence the user reads says only what the code does. A number in it is interpolated from the
   value the code uses, never retyped beside the constant that holds it.
 

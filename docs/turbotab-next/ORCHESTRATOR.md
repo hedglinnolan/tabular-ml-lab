@@ -52,7 +52,10 @@ not infallible orders, 2026-10-02; he confirmed this habit on 2026-10-15).
   `INBOX.md`. The backtest's lesson is to test different things, not more.
 - **Usage is finite.** Run one well-scoped workflow at a time; a week once paused at 91% of its
   limit. Tell Nolan before any step expected to exceed about 3M subagent tokens or 25 agent runs
-  (Nolan, 2026-10-15; B-281's seven rounds came to about 4M).
+  (Nolan, 2026-10-15). The stage-1 inference package's seven rounds took 3.9M fresh tokens and
+  re-read about 190M from cache; 2.25M of the fresh went to B-281 alone, and its rounds 4 and 5
+  (about 1.2M) built a feature that round 6 withdrew. Count spend from the agent transcripts, not
+  by estimate (memory: measuring subagent spend).
 - **Stopping rules before round one.** Fix the defect, file the feature. Unless the plan says
   otherwise, a defect gets two repair rounds; if the second finds a narrower edge of the same
   defect, fall back to the honest refusal and file the capability (B-281 grew from a refusal into
@@ -71,7 +74,8 @@ not infallible orders, 2026-10-02; he confirmed this habit on 2026-10-15).
   ruling, or usage is near its limit. At the end of each numbered step in `HANDOFF.md`, send him a
   short status, which also says plainly what went wrong on your watch (an incident, a wasted run, a
   number he saw that moved) and what changed because of it, and ends with one line of cost and
-  rework: agent runs, rounds, defects caught after build, subagent tokens (Nolan, 2026-10-15). His
+  rework: agent runs, rounds, defects caught after build, subagent tokens (fresh input plus
+  output, with cached re-reads beside them) (Nolan, 2026-10-15). His
   drive findings jump the queue. The pause point set on 2026-10-15: after his NHANES glucose
   walkthrough and friction log are ready for him.
 
