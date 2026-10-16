@@ -45,7 +45,11 @@ from typing import Any, Literal, Sequence
 
 from pydantic import BaseModel, ConfigDict
 
-MIN_GAIN = 0.01  # the floor on a score better when higher; on a loss, this share of the baseline's
+from turbotab.core import claims
+
+# The floor on a score better when higher; on a loss, this share of the baseline's loss. The value
+# is its claim's (claims backtest A-029).
+MIN_GAIN = claims.value("baseline.min_gain", "min_gain")
 LEVEL = 0.95
 # What a loss's floor is as a scaled score, 1 − loss / the baseline's loss (module docstring).
 SKILL = {"log_loss": "a McFadden R²", "rps": "a ranked probability skill score",
