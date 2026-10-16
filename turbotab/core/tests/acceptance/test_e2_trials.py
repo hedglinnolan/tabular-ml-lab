@@ -1275,7 +1275,7 @@ def _refused_or_exact(df: pd.DataFrame, spec: T.TrialSpec, column: str) -> str:
         return "refused"
     X, y = _x_design(df, column), df.event.to_numpy()
     b = _exact_fit(X, y)
-    assert b is not None, "reported, but no finite fit exists in 60 digits"
+    assert b is not None, "reported, but no finite fit is certified in 60 digits"
     rd, se = _exact_effect(X, y, b, pd.factorize(df.site)[0])
     got = r.contrast(measure="risk_difference")
     assert abs(got.estimate - rd) <= 1e-6 * se, (got.estimate, rd, se)
@@ -1289,24 +1289,32 @@ def test_a_covariate_the_people_left_share_only_to_rounding_is_refused_or_read_e
     body-mass index is from weight and height, can tie people at a threshold only to float
     rounding. Here everyone's diagnosis is whether BMI is over 30, but for 12 or 24 people whose
     computed BMI is 30 give or take one unit in the last place (a spread of 7.1e-15), and whose
-    diagnoses are mixed. Known truth: the maximum-likelihood fit on the float data in 60-digit
-    arithmetic (:func:`_exact_fit`), each arm's risks and Ye et al.'s variance written out above;
-    where that fit does not converge, the rounding itself separates some of them in exact
-    arithmetic, and only a refusal is right. Over 20 trials (10 seeds at each size) each is
+    diagnoses are mixed; then the same trials with those people all at site a, which leaves site
+    b's coefficient free among them. Known truth: the maximum-likelihood fit on the float data in
+    60-digit arithmetic (:func:`_exact_fit`), each arm's risks and Ye et al.'s variance written
+    out above; where that fit is not certified (the rounding itself may separate some of them in
+    exact arithmetic, or the fit lie beyond 60 digits' reach), no report can be checked, and only
+    a refusal passes. Over 40 trials (10 seeds at each size, at two sites and at one) each is
     refused, or reported as that fit with no note that anyone is separated.
 
-    On the prior code 10 of the 20 were reported wrong, by 0.05 to 1.06 standard errors, with no
-    note: the linear program's tolerance accepted the tie as a separation, the people left were
-    centered and scaled on themselves, so that BMI's rounding became a covariate of unit spread,
-    and with no direction left free nothing refused. At 24 people, seed 4, the risk difference was
-    0.000 where the fit gives 0.024 (SE 0.023), the coefficient on BMI −4.3e14."""
+    On the prior code 10 of the 20 at two sites were reported wrong, by 0.05 to 1.06 standard
+    errors, with no note: the linear program's tolerance accepted the tie as a separation, the
+    people left were centered and scaled on themselves, so that BMI's rounding became a
+    covariate of unit spread, and with no direction left free nothing refused. At 24 people, seed
+    4, the risk difference was 0.000 where the fit gives 0.024 (SE 0.023), the coefficient on BMI
+    −4.3e14. At one site 5 of the 20 were reported wrong, by 0.05 to 0.96 standard errors, under a
+    note that site b separates the outcome, and 6 more were reported where no fit is certified:
+    site b left a direction free, so only the rounding's spread tells such a trial apart."""
     spec = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
                        covariates=("bmi",))
-    for m in (12, 24):
-        for seed in range(10):
-            df = _bmi_trial(seed, m)
-            assert 0 < np.ptp(df.bmi[:m]) < 1e-14, (m, seed)
-            _refused_or_exact(df, spec, "bmi")
+    for one_site in (False, True):
+        for m in (12, 24):
+            for seed in range(10):
+                df = _bmi_trial(seed, m)
+                assert 0 < np.ptp(df.bmi[:m]) < 1e-14, (m, seed)
+                if one_site:
+                    df = df.assign(site=np.where(df.index < m, "a", df.site))
+                _refused_or_exact(df, spec, "bmi")
 
 
 def _tied(sigma: float, seed: int, n: int = 160, m: int = 30) -> pd.DataFrame:
@@ -1335,11 +1343,16 @@ def test_a_group_tied_up_to_noise_is_read_as_tied_as_noise_or_refused():
     - σ = 1e-6: no one is separated, and the truth is the finite maximum-likelihood fit in
       60-digit arithmetic (:func:`_exact_fit`). Each of 10 is reported as it, with no note.
     - σ from 1e-12 to 1e-8, where float arithmetic hardly tells the noise from a tie: the truth
-      is that fit too, and each of 30 is refused or reported as it, with no note.
+      is that fit too, and each of 30 is refused or reported as it, with no note; so is each of
+      30 more with the 30 all at site a, which leaves site b's coefficient free among them.
+      Where that fit is not certified, only a refusal passes.
 
     On the prior code 15 of the 30 at σ from 1e-12 to 1e-8 were reported wrong, by 0.01 to 0.06
     standard errors, with no note: the linear program had named the 130 separated, and the 30's
-    noise was scaled up to a covariate of unit spread."""
+    noise was scaled up to a covariate of unit spread. At one site 17 of the 30 were reported
+    wrong, by 0.001 to 0.06 standard errors, under a note that the data separate the outcome on
+    site b for 130 people, and 9 more where no fit is certified: the 30 left site b free, so only
+    their distance from the program's separating plane tells such a trial apart."""
     import statsmodels.api as sm
 
     spec = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
@@ -1366,9 +1379,46 @@ def test_a_group_tied_up_to_noise_is_read_as_tied_as_noise_or_refused():
         assert any("separate the outcome on x: 130 people " in c for c in r.concerns), r.concerns
     for seed in range(10):
         assert _refused_or_exact(_tied(1e-6, seed), spec, "x") == "reported", seed
-    for sigma in (1e-12, 1e-10, 1e-8):
-        for seed in range(10):
-            _refused_or_exact(_tied(sigma, seed), spec, "x")
+    for one_site in (False, True):
+        for sigma in (1e-12, 1e-10, 1e-8):
+            for seed in range(10):
+                df = _tied(sigma, seed)
+                if one_site:
+                    df = df.assign(site=np.where(df.index < 30, "a", df.site))
+                _refused_or_exact(df, spec, "x")
+
+
+def test_people_the_program_names_whom_the_rest_leave_no_direction_to_separate_are_refused(
+        monkeypatch):
+    """Claims backtest B-281, its fifth review. A partly separated fit is reported only where the
+    people the linear program leaves leave some direction free, along which the people it names
+    are separated; where they leave none, the program and the columns disagree. Here no one is
+    separated (statsmodels' ``Logit`` converges on everyone), but the coefficient on a pH of
+    7.4 ± 0.02 is near 55, past :func:`_logistic`'s bound, so the program is asked. Made to name
+    one person who had the event, the trial is refused with the plain separation reason, not
+    reported with that person's risk at 100% under either arm; as the program is, it is reported.
+
+    On the prior code it was reported with no note, its risk difference 0.0795 where it is
+    0.0828 as the program is."""
+    import statsmodels.api as sm
+
+    rng = np.random.default_rng(91000)
+    df = pd.DataFrame({"arm": rng.choice(["ctl", "trt"], 150), "site": rng.choice(["a", "b"], 150),
+                       "ph": 7.4 + rng.normal(0, 0.02, 150)})
+    lp = -0.3 + 0.7 * (df.arm == "trt") + 60 * (df.ph - 7.4)
+    df["event"] = (rng.random(150) < 1 / (1 + np.exp(-lp))).astype(float)
+    fit = sm.Logit(df.event.to_numpy(), _x_design(df, "ph")).fit(method="newton", tol=1e-12,
+                                                                 disp=0)
+    assert fit.mle_retvals["converged"] and fit.params[-1] > 25
+    spec = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
+                       covariates=("ph",))
+    T.estimate(df, spec)
+    monkeypatch.setattr(T, "_separated_people",
+                        lambda X, y: np.arange(len(y)) == int(np.argmax(y)))
+    with pytest.raises(T.TrialRefused) as r:
+        T.estimate(df, spec)
+    assert r.value.term == "separation in the logistic model"
+    assert "runs to 0% or 100%" in str(r.value), str(r.value)
 
 
 def _three_arms(seed: int = 2065, n: int = 45) -> pd.DataFrame:
