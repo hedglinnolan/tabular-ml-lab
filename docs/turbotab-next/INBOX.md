@@ -430,3 +430,7 @@ SURFACING_POLICY recommendation 1 (`core/materiality.py`, `materiality_calibrati
   - It passed on c2f07562's CI run the same hour, and three times locally on both trees. R0a changes no code it runs.
   - The likely cause is a race: `at_the_change` reads the stage statuses in the decision's response, and `cohort` may already be recomputed, or not yet marked, when the response is built.
   - Reproduce it on Linux before fixing it. The reopen reasons are on the quest page Nolan walks.
+- [W1, e2e-real] The same five light real-server journeys failed on all three CI runs of 2026-10-16 (c2f07562, 246a09c7, 3655d6ad): m1's journey, m2's dietary, NHANES and genomics-wide journeys, and m3's genomics no-dead-end.
+  - Three of the five stop at "the ask card answers the press", which the press does not change within 90 s. The dietary journey fails that comparison outright, not on a timeout.
+  - So the premise "its waits need tuning to CI's runners" (HANDOFF, known red) is a hypothesis: check each one for a real defect before raising a wait.
+  - The NHANES journey is the one Nolan walks.
