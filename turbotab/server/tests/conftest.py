@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import os
 import time
 from pathlib import Path
 
@@ -10,6 +11,11 @@ from fastapi.testclient import TestClient
 
 from turbotab.core.config import Settings
 from turbotab.server.app import create_app
+
+# The claims registry's strict mode (CLAIMS_REGISTRY.md §2.2), on for every server test as for the
+# core tests (turbotab/core/tests/conftest.py): a claim rendered outside its regime raises instead
+# of falling back. Set at import, so each xdist worker, and each job worker it starts, has it.
+os.environ["TURBOTAB_CLAIMS_STRICT"] = "1"
 
 def pytest_configure(config) -> None:
     config.addinivalue_line(
