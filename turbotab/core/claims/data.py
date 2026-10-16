@@ -357,10 +357,11 @@ register(Claim(
     id="data.omics_raw_scale",
     kind="rule",
     card="Under the genomics or metabolomics lens, assay values are read from the numeric "
-         "columns that are not the outcome, a yes/no column, a column named for how the samples "
-         "were acquired (a batch, plate, well, run, run order, plex or polarity) or a numbering of "
-         "the rows, and that are non-negative with more than {indicator_levels} distinct values "
-         "each; a numeric identifier or a person's characteristic is not left out by its name. A "
+         "columns that are not the outcome, a column whose name reads as an identifier, a "
+         "person's characteristic or covariate, or a time (SEQN, a sample ID, age, sex, BMI, "
+         "smoking, a visit), a yes/no column, a column named for how the samples were acquired (a "
+         "batch, plate, well, run, run order, plex or polarity) or a numbering of the rows, and "
+         "that are non-negative with more than {indicator_levels} distinct values each. A "
          "reading takes at least {min_features} such columns and names only those. They are read "
          "as raw counts under genomics when {min_features} or more of them hold whole numbers, "
          "the largest reaching {count_max:,.0f}; as raw intensities under metabolomics when they "
@@ -371,20 +372,18 @@ register(Claim(
          "sample totals not all within {per_million_near:.0%} of a million. Other values are read "
          "as already normalized or on a log scale.",
     methods="Assay values were read as unnormalized from the values alone, never the outcome, over "
-            "the numeric columns other than yes/no columns, those named for how the samples were "
-            "acquired and a numbering of the rows, that were non-negative with more than "
-            "{indicator_levels} distinct values each, at least {min_features} of them: "
-            "whole-number counts reaching {count_max:,.0f}, intensities spanning "
+            "the numeric columns other than those whose names read as an identifier, a "
+            "participant characteristic or covariate, or a time, yes/no columns, those named for "
+            "how the samples were acquired and a numbering of the rows, that were non-negative "
+            "with more than {indicator_levels} distinct values each, at least {min_features} of "
+            "them: whole-number counts reaching {count_max:,.0f}, intensities spanning "
             "{raw_range:,.0f}-fold and either reaching {raw_max:,.0f} or right-skewed (median "
             "skewness at least {raw_skew}), or fractional values with zeros and values of "
             "{raw_max:,.0f} or more in {estimated_columns} columns or more whose sample totals "
             "were not all within {per_million_near:.0%} of a million (FPKM or estimated counts).",
     regime=Regime("a table under the genomics or metabolomics lens whose assay values are as the "
-                  "file holds them, and whose numeric columns besides the outcome, the acquisition "
-                  "columns and a row numbering are assay values or columns of two values or fewer; "
-                  "a numeric identifier or a person's characteristic beside them (SEQN, an age) "
-                  "enters the block, so a table that holds one is outside it. The reading looks at "
-                  "the values alone, never at the outcome",
+                  "file holds them, an identifier, a person's characteristics or a time beside "
+                  "them included; the reading looks at the values alone, never at the outcome",
                   requires=(f"{HERE}:under_an_omics_lens",)),
     decision="omics_normalization",
     verdict="noted",
@@ -414,6 +413,11 @@ register(Claim(
                    "table's handful of laboratory values is never read as one, and leave out of it "
                    "a column of two values or fewer, an indicator however large its code; "
                    "unsourced conventions.")),
+        Part("names", grade="judgment", basis=Basis(
+            reason="We leave out of the block a column whose name's words read as an identifier, "
+                   "a person's characteristic or covariate, or a time, by the roles stage's own "
+                   "name rules, so the block and the roles agree; a name whose words do not say "
+                   "it (NHANES's RIDAGEYR) is read by its values like any other column.")),
         Part("counts", grade="judgment", basis=Basis(
             reason="We read whole numbers reaching 100 as counts: genotype dosages (0, 1 and 2) "
                    "and scores stay below it; an unsourced convention.")),
@@ -465,8 +469,14 @@ register(Claim(
                "intensities", truth="construction"),
         Silent(f"{TESTS}::test_a_clinical_handful_of_laboratory_columns_is_no_feature_block",
                truth="construction"),
+        Fires(f"{TESTS}::test_an_identifier_and_an_age_beside_the_assay_columns_stay_out_of_the_"
+              "block", truth="construction"),
+        Silent(f"{TESTS}::test_an_assay_column_whose_name_is_no_identifier_characteristic_or_time_"
+               "stays_in", truth="construction"),
     ),
     enforced_by=("turbotab.core.methods.omics:scale_reading",
+                 "turbotab.core.methods.omics:candidate_columns",
+                 "turbotab.core.methods.omics:_excluded_by_name",
                  "turbotab.core.methods.omics:_estimated_counts"),
     author=AUTHOR,
 ))

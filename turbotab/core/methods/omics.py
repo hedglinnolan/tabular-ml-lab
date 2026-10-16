@@ -140,14 +140,18 @@ class ScaleReading:
 
 
 def _excluded_by_name(name: str) -> bool:
-    """Identifiers and a person's characteristics are never assay features (the roles stage's own
-    name rules, so the block and the roles agree)."""
-    try:
-        from turbotab.core.stages.rows import _COVARIATE_TOKENS, _TIME_TOKENS, _id_like, _tokens
-    except ImportError:  # pragma: no cover - the roles module always exists in this app
-        return False
+    """Identifiers, a person's characteristics and covariates, and times are never assay features:
+    the roles stage's own name rules (its identifier reader and covariate words, and the
+    recognizers' time words), read as whole words, so the block and the roles agree. A name its
+    words do not read (NHANES's RIDAGEYR) is not left out. The time words moved to the
+    recognizers (ffaf2d0f) and the import that read them here failed silently, so until the claim
+    data.omics_raw_scale was registered (claims backtest C-193) nothing was left out by its name
+    and a numeric SEQN entered the block."""
+    from turbotab.core.recognizers import _TIME_WORDS
+    from turbotab.core.stages.rows import _COVARIATE_TOKENS, _id_like, _tokens
+
     tokens = set(_tokens(str(name)))
-    return _id_like(str(name)) or bool(tokens & _COVARIATE_TOKENS) or bool(tokens & _TIME_TOKENS)
+    return _id_like(str(name)) or bool(tokens & _COVARIATE_TOKENS) or bool(tokens & _TIME_WORDS)
 
 
 def candidate_columns(frame: pd.DataFrame, target: str | None = None,

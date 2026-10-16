@@ -357,6 +357,56 @@ def _panel(draw, k: int = 25, n: int = 60) -> pd.DataFrame:
     return pd.DataFrame({f"m{j}": draw(n) for j in range(k)})
 
 
+def test_an_identifier_and_an_age_beside_the_assay_columns_stay_out_of_the_block():
+    """Claims backtest C-193, the fires side of the names the block leaves out: an NHANES
+    participant number (SEQN, whole numbers from 130,000) and an age in years (18 to 80) are
+    numeric, non-negative and take many values, so only their names keep them out of the assay
+    block. Beside 25 gene counts (Poisson(200), 60 samples) under the genomics lens, the reading
+    names the 25 genes alone, and each sample's total is the sum of its gene counts (numpy). Beside
+    25 log2 intensities (normal, mean 20 and standard deviation 2) under the metabolomics lens,
+    nothing is read as raw intensities, as the block alone reads: the participant numbers' size
+    is no intensity's."""
+    from turbotab.core.methods import omics
+
+    rng = np.random.default_rng(1937)
+    n = 60
+    genes = pd.DataFrame({f"g{j}": rng.poisson(200, n) for j in range(25)})
+    person = pd.DataFrame({"SEQN": np.arange(130000, 130000 + 7 * n, 7),
+                           "age": rng.integers(18, 81, n)})
+    reading = omics.scale_reading(pd.concat([person, genes], axis=1), ["genomics"])
+    assert reading is not None and reading.kind == "counts", reading
+    assert reading.columns == tuple(genes.columns), reading.columns
+    assert np.array_equal(reading.totals, genes.to_numpy().sum(axis=1))
+    logged = pd.DataFrame({f"m{j}": rng.normal(20.0, 2.0, n) for j in range(25)})
+    assert omics.scale_reading(logged, ["metabolomics"]) is None
+    beside = pd.concat([person[["SEQN"]], logged], axis=1)
+    assert omics.scale_reading(beside, ["metabolomics"]) is None
+
+
+# Assay columns named as laboratories name them, among them gene symbols that begin with a
+# covariate's or a time's letters but are whole other words: AGER (the advanced glycosylation
+# end-product receptor), TIMELESS, HIPK2, BMI1, IDH1, PER1.
+ASSAY_NAMES = ("AGER", "TIMELESS", "HIPK2", "BMI1", "IDH1", "PER1", "TP53", "GAPDH", "ACTB",
+               "ENSG00000141510", "HMDB0000122", "LysoPC a C18:0", "mz_123.4_rt_5.6", "glucose",
+               "lactate", "alanine", "C14:0", "feature_1", "gene_7", "X21", "SLC2A1", "HMDB0000190",
+               "PC aa C36:2", "Cer d18:1/16:0", "citrulline", "M123T45")
+
+
+def test_an_assay_column_whose_name_is_no_identifier_characteristic_or_time_stays_in():
+    """Claims backtest C-193, the silent side of the names the block leaves out: 26 assay columns
+    named as laboratories name them (gene symbols, Ensembl and HMDB accessions, lipid and m/z
+    features, metabolites), several beginning with the letters of a covariate or a time as a
+    word does not, each Poisson(200) counts by construction, 60 samples, under the genomics lens.
+    Expected: every one stays in the block the reading names."""
+    from turbotab.core.methods import omics
+
+    rng = np.random.default_rng(1938)
+    frame = pd.DataFrame({name: rng.poisson(200, 60) for name in ASSAY_NAMES})
+    reading = omics.scale_reading(frame, ["genomics"])
+    assert reading is not None and reading.kind == "counts", reading
+    assert reading.columns == ASSAY_NAMES, set(ASSAY_NAMES) - set(reading.columns)
+
+
 def _median_skewness(frame: pd.DataFrame) -> float:
     """The median over the columns of each one's sample skewness, as scipy computes it."""
     from scipy.stats import skew
