@@ -1,4 +1,50 @@
 {
-  "claims": [],
+  "claims": [
+    {
+      "hash": "f2cb429ffae09b217f00ad72c1da3fe55db6743e81be823b29cd0df66caeddf1",
+      "id": "causal.numeric_exposure_r2",
+      "status": "built"
+    },
+    {
+      "hash": "c16347e5180c2e81a7bd356ab4fcc9822e9b8efa484ae1fbc8d142c6e50b862a",
+      "id": "designs.observational_default",
+      "status": "built"
+    },
+    {
+      "hash": "9cb2d2909f0acb1cbf8f673698c9f3f108de6ff453d1209af362d2a091a47c84",
+      "id": "designs.sampled_by_outcome",
+      "status": "built"
+    },
+    {
+      "hash": "2e04441f79d69984f8e911d592fe08f79c47d3fea336fc285835c46465906866",
+      "id": "inference.few_clusters",
+      "status": "built"
+    },
+    {
+      "hash": "b4eccfac7c056e51a91a6a01d02a60fd1188428474bbcb3a7a824f92b3f95c2c",
+      "id": "ordinal.cluster_robust_intervals",
+      "status": "built"
+    },
+    {
+      "hash": "2b2d7f8d7094dc64b175e3c7ae4dde589c94491bb0351446cad159f33d4dbdc0",
+      "id": "results.tail_share",
+      "status": "proposed"
+    },
+    {
+      "hash": "0823abfb52e5983fa6f39cad089e97668aa7a053bf9f07c0725519fd6a12594e",
+      "id": "survival.monotone_likelihood",
+      "status": "built"
+    },
+    {
+      "hash": "d41e898a4ed31b235a14a87ffd9113d187192403fbfc97c0a69c87df64c0d318",
+      "id": "trials.few_clusters",
+      "status": "built"
+    },
+    {
+      "hash": "5b997260bbd777186ff55007f3436672bac20bbc4fc582c0ec6e78f997736aea",
+      "id": "trials.separation",
+      "status": "built"
+    }
+  ],
   "generated_by": "python -m turbotab.core.reference.claims"
 }

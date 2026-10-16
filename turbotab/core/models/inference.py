@@ -40,10 +40,13 @@ from typing import Any, Literal, Mapping, Sequence
 import numpy as np
 import pandas as pd
 
+from turbotab.core import claims
+
 LEVEL = 0.95
 # Cameron & Miller (2015) §VI: "'few' may range from less than 20 clusters to less than 50
-# clusters in the balanced case". Below this many, a concern names the number of clusters.
-FEW_CLUSTERS = 30
+# clusters in the balanced case". Below this many, a concern names the number of clusters. The
+# number is its claim's (``inference.few_clusters``), not the trial core's ten.
+FEW_CLUSTERS = claims.value("inference.few_clusters", "few_clusters")
 # The Breusch–Pagan check speaks below this p-value. HC3 is used whatever it says; the check only
 # tells the reader the spread is not constant, so it is kept strict to stay silent on clean data.
 HETERO_ALPHA = 0.01

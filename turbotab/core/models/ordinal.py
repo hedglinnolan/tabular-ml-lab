@@ -330,7 +330,9 @@ def _cr1_concerns(clusters: Any) -> list[str]:
     still be too narrow. Cameron & Miller (2015, §VI) give t(G − 1) as the least allowance, which
     lessens but does not remove the sandwich's downward bias, the more so for units of unequal
     size (MacKinnon & Webb 2017, *J Appl Econom* 32:233); a known-truth simulation in the tests
-    (12 units of lognormal size) covers β in well under 95%."""
+    (12 units of lognormal size) covers β in well under 95%. What it says of them is its claim's
+    (``ordinal.cluster_robust_intervals``), rendered for this model and its units."""
+    from turbotab.core import claims
     from turbotab.core.models.inference import FEW_CLUSTERS
 
     out = [clusters.note] if clusters.note else []
@@ -339,12 +341,13 @@ def _cr1_concerns(clusters: Any) -> list[str]:
         out.append(f"Intervals are cluster-robust by `{clusters.column}` (CR1, G = {G:,}), because "
                    f"its rows repeat.")
     if G < FEW_CLUSTERS:
+        narrow = claims.card("ordinal.cluster_robust_intervals",
+                             {"model": "proportional_odds", "covariance": "CR1",
+                              "cluster_codes": clusters.codes})
         out.append(f"Only {G} `{clusters.column}` clusters: the intervals use the CR1 sandwich "
                    f"with the G/(G − 1) correction on t({G - 1}), the least allowance Cameron & "
-                   f"Miller (2015) ask for. With this few clusters, and more so when their sizes "
-                   f"differ or a column varies only between them, such intervals can still be too "
-                   f"narrow (MacKinnon & Webb 2017), so a p-value near 0.05 may overstate the "
-                   f"evidence.")
+                   f"Miller (2015) ask for. {narrow} (MacKinnon & Webb 2017), so a p-value near "
+                   f"0.05 may overstate the evidence.")
     return out
 
 

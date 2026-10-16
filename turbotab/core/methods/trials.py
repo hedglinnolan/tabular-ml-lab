@@ -122,6 +122,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from turbotab.core import claims
+
 CONF = 0.95
 TRIAL_DESIGNS: tuple[str, ...] = ("parallel_trial", "cluster_randomized_trial")
 SETS: tuple[str, ...] = ("itt", "per_protocol")
@@ -136,7 +138,12 @@ CORRECTIONS: tuple[str, ...] = ("auto", "kc", "fg", "md")
 GOALS: tuple[str, ...] = ("inference", "prediction", "describe")
 FG_BOUND = 0.75  # Fay & Graubard's b, geesmv's default
 CV_RULE = 0.6  # Li & Redden 2015: KC below this coefficient of variation of cluster sizes, FG above
-FEW_CLUSTERS = 10  # the fewest clusters Li & Redden 2015 simulated
+# The fewest clusters Li & Redden 2015 simulated: its claim's (``trials.few_clusters``), not the
+# model families' thirty (``inference.few_clusters``).
+FEW_CLUSTERS = claims.value("trials.few_clusters", "few_clusters")
+# A fitted risk this near 0 or 1 is a sign of separation (``trials.separation``): in
+# :func:`_logistic` it sends the fit to the linear program, and in :func:`fit_gee` it refuses.
+RISK_FLOOR = claims.value("trials.separation", "risk_floor")
 GEE_TOL = 1e-12
 GEE_MAXITER = 200
 
@@ -756,8 +763,8 @@ def _logistic(X: np.ndarray, y: np.ndarray, *, offset: np.ndarray | None = None,
             else:
                 raise _separation()
             mu = _expit(X @ beta + off)
-            if separable and (np.max(np.abs(beta)) > 25 or np.min(mu) < 1e-10
-                              or np.max(mu) > 1 - 1e-10):
+            if separable and (np.max(np.abs(beta)) > 25 or np.min(mu) < RISK_FLOOR
+                              or np.max(mu) > 1 - RISK_FLOOR):
                 raise _separation()
             w = mu * (1 - mu)
             cov = np.linalg.inv(X.T @ (X * w[:, None]))
@@ -1361,7 +1368,7 @@ def fit_gee(X: np.ndarray, y: np.ndarray, codes: np.ndarray, family: str) -> GEE
         raise TrialRefused("The estimating equations did not settle on an answer.",
                            (GEE_EXIT,), term="GEE did not converge")
     mu = X @ beta if family == "gaussian" else _expit(X @ beta)
-    if family == "binary" and (np.min(mu) < 1e-10 or np.max(mu) > 1 - 1e-10):
+    if family == "binary" and (np.min(mu) < RISK_FLOOR or np.max(mu) > 1 - RISK_FLOOR):
         raise _separation()
     return GEEResult(beta=beta, alpha=alpha, phi=phi, mu=mu, iterations=it)
 
@@ -1613,9 +1620,9 @@ def estimate(frame: pd.DataFrame, spec: TrialSpec, *, analysis_set: str = "itt",
                 f"same for everyone in a cluster; the comparison needs more clusters than those "
                 f"terms.", exits, term="too few clusters")
         if K < FEW_CLUSTERS:
-            concerns.append(f"Only {K} clusters were randomized; the intervals rest on the "
-                            f"small-sample correction, and the fewest clusters Li & Redden (2015) "
-                            f"studied was {FEW_CLUSTERS}.")
+            few = claims.card("trials.few_clusters", {"trial_design": spec.trial_design,
+                                                      "n_clusters": K})
+            concerns.append(f"Only {K} clusters were randomized; {few}")
         if method == "mixed":
             if pr.kind == "binary":
                 raise TrialRefused(
@@ -2272,13 +2279,10 @@ def _register_contracts() -> None:
                      condition="one cluster in an arm, or clusters ≤ cluster-level terms",
                      enforced_by=f"{here}:estimate",
                      id="cluster_floor"),
-            Relation("implies", "few_clusters_noticed",
-                     "fewer than 10 clusters are named among the concerns (the fewest Li & Redden "
-                     "2015 studied), beside the missing-outcome notice, neither displacing the "
-                     "other",
+            Relation("implies", "few_clusters_noticed", claims.methods("trials.few_clusters"),
                      purposes=est_only, when=("mixed_kr", "gee_corrected"),
-                     condition="fewer than 10 clusters", enforced_by=f"{here}:estimate",
-                     id="few_clusters"),
+                     condition=f"fewer than {FEW_CLUSTERS} clusters",
+                     enforced_by=f"{here}:estimate", id="few_clusters"),
             Relation("implies", "correction_by_cluster_sizes",
                      "Kauermann–Carroll when the cluster sizes' coefficient of variation is below "
                      "0.6, Fay–Graubard otherwise (Li & Redden 2015)", purposes=est_only,
@@ -2290,13 +2294,7 @@ def _register_contracts() -> None:
                      exits=("estimating equations with a corrected sandwich",),
                      condition="a yes/no outcome", enforced_by=f"{here}:estimate",
                      id="kr_numeric_only"),
-            Relation("conflicts", "separation",
-                     "refused when the logistic model's risk for any group of people runs to "
-                     "0% or 100% (the arm and the covariates predict exactly whether they had "
-                     "the event): an arm, everyone (complete separation), or a group a linear "
-                     "program finds or cannot rule out (for the estimating equations, any "
-                     "fitted risk within 1e-10 of either); a partly separated fit is not read "
-                     "at its limit",
+            Relation("conflicts", "separation", claims.methods("trials.separation"),
                      purposes=est_only, rung="refused",
                      when=("standardized_risk", "gee_corrected"),
                      exits=("adjust for fewer covariates", "describe the events in each arm"),

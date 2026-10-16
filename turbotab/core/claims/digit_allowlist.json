@@ -390,10 +390,6 @@
       "tag": "name"
     },
     {
-      "text": "fewer than 10 clusters are named among the concerns (the fewest Li & Redden 2015 studied), beside the missing-outcome notice, neither displacing the other",
-      "tag": "threshold-pending-claim"
-    },
-    {
       "text": "filters run before selection (MODELING_SEQUENCE §1.1)",
       "tag": "citation"
     },
@@ -410,8 +406,8 @@
       "tag": "guideline item"
     },
     {
-      "text": "refused when the logistic model's risk for any group of people runs to 0% or 100% (the arm and the covariates predict exactly whether they had the event): an arm, everyone (complete separation), or a group a linear program finds or cannot rule out (for the estimating equations, any fitted risk within 1e-10 of either); a partly separated fit is not read at its limit",
-      "tag": "threshold-pending-claim"
+      "text": "refused when the logistic model's risk for any group of people runs to 0% or 100% (the arm and the covariates predict exactly whether they had the event): an arm, everyone (complete separation), or a group a linear program finds or cannot rule out (for the estimating equations, any fitted risk within {risk_floor} of either); a partly separated fit is not read at its limit",
+      "tag": "mathematical constant"
     },
     {
       "text": "refused: compositional models go to v2.x",

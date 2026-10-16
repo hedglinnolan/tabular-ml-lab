@@ -16,13 +16,16 @@ estimand), the complier effect and the per-protocol effect are named values of `
 each refused with a ``*_v2x`` code and the whole effect as its exit. The direct effect's own
 machinery (``estimand.direct_questions`` and its refusals) is kept for the mediation milestone.
 
-This module is light (no import of the decisions at load), so ``decisions`` imports its
-vocabulary; the refusals are registered by ``decisions`` and ``estimand``.
+This module is light (no import of the decisions at load: the claims registry it reads its two
+statements from imports no engine module), so ``decisions`` imports its vocabulary; the refusals
+are registered by ``decisions`` and ``estimand``.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Literal
+
+from turbotab.core import claims
 
 DesignKey = Literal["observational", "parallel_trial", "cluster_randomized_trial", "case_control",
                     "matched_sets", "crossover", "repeated_measures_trial"]
@@ -53,10 +56,10 @@ _TRIALS_LATER = ("randomized trials are analyzed in the designed-experiments mil
 
 # A case-control sample or matched sets: drawn by the outcome, so how many cases the table holds is
 # set by the study (``methods/case_control.py``). Analyzed as observational (the refusal's first
-# exit), they keep its refusals under every goal (claims backtest B-211).
+# exit), they keep its refusals under every goal (claims backtest B-211; its claim,
+# ``designs.sampled_by_outcome``, holds the words).
 SAMPLED_BY_OUTCOME = ("case_control", "matched_sets")
-_BY_OUTCOME = ("no prevalence, absolute risk or risk difference, and no risks predicted, since the "
-               "cases and the controls were sampled separately")
+_BY_OUTCOME = claims.card("designs.sampled_by_outcome")
 
 DESIGNS: dict[str, Design] = {
     "observational": Design("observational", "Observed as they were", True),
@@ -95,9 +98,8 @@ DESIGNS: dict[str, Design] = {
         f"them as an observational study, or keep them for a later version."),
 }
 
-OBSERVATIONAL_STATED = ("Read as an observational study: people were observed as they were, not "
-                        "assigned or sampled by their outcome. Change it if they were randomized, "
-                        "sampled by the outcome or matched.")
+# The unanswered design's statement (its claim, ``designs.observational_default``).
+OBSERVATIONAL_STATED = claims.card("designs.observational_default")
 
 
 @dataclass(frozen=True)
