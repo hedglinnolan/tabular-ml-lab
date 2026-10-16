@@ -65,11 +65,12 @@ Send Nolan a short status at the end of each step, ending with one line of cost 
    - Check that it quotes builder.md's first step.
    - Check that it sees one copy of CLAUDE.md, not two.
 
-   **[Nolan]** The remaining worktrees need his word:
-   - the builder experiment's `exp/F1-*` and `exp/F2-*`;
-   - `design/quest-meaning-first` and `design/quest-models-stage`;
-   - Classic's `TurboTab-L66-A1` to `-A3`;
-   - four with uncommitted changes.
+   Until that check, agents are told to read CLAUDE.md and their role file by path
+   (ORCHESTRATOR §0 step 4): Nolan was remote on 2026-10-16, so step 2 went ahead in the old session.
+
+   **[Nolan]** The remaining 15 worktrees: Nolan approved their removal on 2026-10-16, branches
+   kept, and removes them himself at the shell. No agent removes them: auto mode refused it. The
+   two with unlanded code are saved as `wip/2026-10-05-*` commits (INBOX, worktree clean-up).
 2. **The claims registry, R0, in one wave** (plans/CLAIMS_REGISTRY.md §7): the registry, its meta-tests and the 15 S1 claims. Why: the claims the walkthrough puts on screen need a home before they are audited. Stop at R0's scope: the S2/S3 wording fixes wait for the walkthrough's pull.
 3. **W1 part 2** (WALKABLE_PLAN §5; the packages are under Leftovers), then your own walkthrough of NHANES glucose under Predict, with a friction log, before Nolan sees it. Every claim that journey puts on screen is audited and registered as R1's first batch. Why: this is the walkable product, and the friction log decides what gets work next. **[Nolan]** He judges the walkthrough on screen. Then pause.
 4. **The Sullivan 2021 replication** (Am J Prev Med 61:563). Why: the first end-to-end check of the Estimate lane. It reports the decisions the paper stated, the ones it left unstated, and how far each unstated option moves the published number.
