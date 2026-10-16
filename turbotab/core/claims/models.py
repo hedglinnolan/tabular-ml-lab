@@ -159,9 +159,10 @@ SMALL_SAMPLE_STANDARD = register(Claim(
                    "n = 200.")),
         Part("scope", grade="judgment", basis=Basis(
             reason="The study fit the two boosting families on ten normal predictors with a "
-                   "yes/no outcome, a numeric one checked; multiclass and ordered outcomes, "
-                   "categorical predictors, p = 50 and NHANES subsamples are not yet checked "
-                   "(RECIPES §4.6, before release). It scored predictions alone. The plan reads "
+                   "yes/no outcome, a numeric one checked; multiclass outcomes, categorical "
+                   "predictors, p = 50 and NHANES subsamples are to be checked before release "
+                   "(RECIPES §4.6), and ordered outcomes are not checked either. It scored "
+                   "predictions alone. The plan reads "
                    "neither the task nor the purpose, so it applies the same rule under Estimate "
                    "and to several classes or ordered ones, each its fallback's judgment "
                    "(tuning.small_sample_standard_estimate, then "
@@ -630,8 +631,10 @@ COLLINEAR_UNDER_PREDICTION = register(Claim(
          "on rows like these. Reading their importance together is the line's advice to you.",
     methods="Under Predict, both predictors of a nearly collinear pair were kept, a convention the "
             "analyst confirmed rather than a decision: keeping both recorded no predictor "
-            "selection, taking back the line's own elastic-net filter where it was recorded and "
-            "leaving any other selection as it stood, since collinearity does not harm "
+            "selection, taking back the line's own elastic-net filter where it was recorded on a "
+            "table with fewer candidate predictors than rows (on a wide table the width's lever "
+            "offers the same filter, so it stays), and leaving any other selection as it stood, "
+            "since collinearity does not harm "
             "prediction on rows like the training rows; the elastic-net selection filter, a step "
             "before every family, was offered but not recommended. The line advised reading the "
             "pair's importance together; no importance was grouped for the pair.",
@@ -665,9 +668,12 @@ COLLINEAR_UNDER_PREDICTION = register(Claim(
         Silent("turbotab/core/tests/test_collinear_adjustment.py::"
                "test_the_collinear_line_is_decide_only_where_what_you_study_is_in_it",
                truth="construction"),
+        Fires(f"{TESTS}::test_the_collinear_methods_sentence_says_where_keeping_both_takes_back_"
+              "the_filter", truth="construction"),
     ),
     enforced_by=("turbotab.core.materiality:collinear_label",
-                 "turbotab.core.stages.explore:_collinear_lever"),
+                 "turbotab.core.stages.explore:_collinear_lever",
+                 "turbotab.core.stages.explore:_keep_both"),
     author=AUTHOR,
     ruled="calm/BEATS_PREDICT.md M4, its fourth line (near-collinear predictors, all kept; the "
           "grouped importance it rules for Results is not built)",

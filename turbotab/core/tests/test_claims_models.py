@@ -528,6 +528,29 @@ def test_under_predict_the_collinear_line_is_a_confirm_whatever_the_pair_holds()
     assert recommended(s) == ["keep_both"]
 
 
+def test_the_collinear_methods_sentence_says_where_keeping_both_takes_back_the_filter():
+    """The verifier's V9 on claims backtest C-170, the sentence against the code: under Predict,
+    with the line's own elastic-net filter recorded, keeping both takes it back on a table with
+    fewer candidate predictors than rows and leaves it on a wide one, where the width's lever
+    offers the same filter (asked of the line itself); the collinear claim's methods sentence says
+    both."""
+    from turbotab.core import claims
+    from turbotab.core.stages.explore import _collinear_lever
+
+    now = state(purpose="prediction", selection=d.SelectionSpec(method="elastic_net"))
+    after = {}
+    for wide in (False, True):
+        [keep] = [o for o in _collinear_lever(now, wide=wide).options if o.key == "keep_both"]
+        after[wide] = (now if keep.decision is None
+                       else d.fold_onto(now, d.parse_decision(keep.decision))).selection
+    assert after == {False: d.SelectionSpec(method="none"),
+                     True: d.SelectionSpec(method="elastic_net")}, after
+    said = claims.methods(area.COLLINEAR_UNDER_PREDICTION.id, {"purpose": "prediction"})
+    assert ("taking back the line's own elastic-net filter where it was recorded on a table with "
+            "fewer candidate predictors than rows") in said, said
+    assert "on a wide table" in said and "so it stays" in said, said
+
+
 def test_under_estimate_a_pair_holding_what_you_study_is_decided_at_the_adjustment_question():
     """Under Estimate the Confirm does not leak: a pair that holds what you study is a Decide, a
     pair of adjustment terms alone For the record, and the recommended answer is the adjustment
