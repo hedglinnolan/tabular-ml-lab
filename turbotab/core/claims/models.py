@@ -6,9 +6,11 @@ the engine constant that holds it reads it with ``claims.value``.
 * ``tuning.small_sample_standard`` (A-001): below an effective-size threshold the plan draws no
   search, and boosted trees and XGBoost are fit once at a small-sample standard (RECIPES §4.6,
   ruled 2026-10-11). ``tuning.SMALL_N`` reads it, and so do the four family sentences that state
-  it, boosted trees' and XGBoost's tuning reasons and descriptions. Its study scored predictions,
-  so under Estimate, where the plan applies the same rule, its fallback
-  ``tuning.small_sample_standard_estimate`` records it as a judgment carried from Predict.
+  it, boosted trees' and XGBoost's tuning reasons and descriptions. Its study scored predictions
+  of a yes/no or numeric outcome, and the plan reads neither purpose nor task, so two fallbacks
+  record where it applies the same rule as judgments: ``tuning.small_sample_standard_estimate``
+  under Estimate, carried from Predict, and ``tuning.small_sample_standard_classes`` for several
+  classes or ordered ones under either purpose, carried from a yes/no outcome.
 * ``boosted_trees.small_rows`` and ``forest.small_rows``: the rows below which the shelf rates
   each family fair, the rows it ranks for (training rows under Predict, every analyzed row under
   Estimate or Describe, as the shelf stage counts them). Both modules named theirs ``SMALL_N``,
@@ -25,7 +27,8 @@ the engine constant that holds it reads it with ``claims.value``.
   no purpose, so under Predict its fallback ``materiality.rows_smd_floor_prediction`` records it on
   the score, a judgment.
 * ``materiality.collinear_under_prediction`` (C-170): under Predict the collinear line is a
-  Confirm, both of a pair kept.
+  Confirm, both of a pair kept and no selection recorded; reading their importance together is
+  the line's advice, since nothing groups it (BEATS_PREDICT M4's grouped importance is not built).
 
 The regime predicates below read the context the caller passes, a mapping or an object with
 those names, and nothing of the engine: each is written from the regime's words, never by calling
@@ -61,6 +64,11 @@ def under_inference(ctx: Any) -> bool:
     return _field(ctx, "purpose") == "inference"
 
 
+def under_either_purpose(ctx: Any) -> bool:
+    """The question is Predict, or Estimate or Describe: a purpose is set."""
+    return _field(ctx, "purpose") in ("prediction", "inference")
+
+
 def standard_from_the_study(ctx: Any) -> bool:
     """The family's small-sample standard is the one notes/SMALL_SAMPLE_STANDARD.md chose, as its
     tuning declaration says (``small_standard_source``): the declaration is read, never the
@@ -71,6 +79,12 @@ def standard_from_the_study(ctx: Any) -> bool:
 def yes_no_or_numeric(ctx: Any) -> bool:
     """The outcome is yes/no or a number, the two the small-sample study simulated."""
     return _field(ctx, "task") in ("binary", "regression")
+
+
+def classes_or_ordered(ctx: Any) -> bool:
+    """The outcome is one of several classes, or of several ordered ones: the two the small-sample
+    study did not simulate."""
+    return _field(ctx, "task") in ("multiclass", "ordinal")
 
 
 def rated_before_any_fit(ctx: Any) -> bool:
@@ -136,9 +150,11 @@ SMALL_SAMPLE_STANDARD = register(Claim(
             reason="The study fit the two boosting families on ten normal predictors with a "
                    "yes/no outcome, a numeric one checked; multiclass and ordered outcomes, "
                    "categorical predictors, p = 50 and NHANES subsamples are not yet checked "
-                   "(RECIPES §4.6, before release), though the plan applies the standard to "
-                   "every task. It scored predictions alone; under Estimate the plan, which "
-                   "reads no purpose, applies the same rule, its fallback's judgment.")),
+                   "(RECIPES §4.6, before release). It scored predictions alone. The plan reads "
+                   "neither the task nor the purpose, so it applies the same rule under Estimate "
+                   "and to several classes or ordered ones, each its fallback's judgment "
+                   "(tuning.small_sample_standard_estimate, then "
+                   "tuning.small_sample_standard_classes).")),
     ),
     params={"small_n": Param(300, unit="units of effective size (units, events or the rarest "
                                        "class's count, in one outer training fold)",
@@ -210,8 +226,9 @@ SMALL_SAMPLE_STANDARD_ESTIMATE = register(Claim(
                    "expected, not measured.")),
         Part("scope", grade="judgment", basis=Basis(
             reason="The same design limits as under Predict (ten normal predictors, a yes/no "
-                   "outcome chosen on and a numeric one checked), and no estimand: the plan "
-                   "applies the standard to every task and purpose.")),
+                   "outcome chosen on and a numeric one checked), and no estimand. Several "
+                   "classes or ordered ones, to which the plan applies the same rule under "
+                   "either purpose, are its fallback's.")),
     ),
     # The threshold under Predict, read from that claim here: one number in one place.
     params={"small_n": Param(SMALL_SAMPLE_STANDARD.params["small_n"].value,
@@ -221,6 +238,64 @@ SMALL_SAMPLE_STANDARD_ESTIMATE = register(Claim(
               "standard", truth="construction"),
         Silent(f"{TESTS}::test_under_estimate_from_300_the_plan_searches_after_the_library_"
                "defaults", truth="independent:scikit-learn"),
+    ),
+    enforced_by=("turbotab.core.models.tuning:standard_for",
+                 "turbotab.core.models.tuning:searched_size",
+                 "turbotab.core.stages.modeling:tuning_plans"),
+    fallback="tuning.small_sample_standard_classes",
+    author=AUTHOR,
+))
+
+SMALL_SAMPLE_STANDARD_CLASSES = register(Claim(
+    id="tuning.small_sample_standard_classes",
+    kind="rule",
+    card="For an outcome of several classes, ordered or not, below an effective size of "
+         "{small_n} boosted trees and XGBoost are not tuned either but fit once at the "
+         "small-sample standard: a judgment, since the simulation that chose it had a yes/no "
+         "outcome and a numeric one, never several classes or an order.",
+    methods="For a multiclass or ordinal outcome, under either purpose, the tuning plan followed "
+            "the same rule, a judgment carried from the yes/no and numeric outcomes its "
+            "simulation covered: below an effective size of {small_n}, counted as the rarest "
+            "class's units, it drew no candidate settings, and boosted trees and XGBoost were "
+            "fit once at the small-sample standard; from {small_n} their settings were searched, "
+            "the defaults among the candidates.",
+    goal=("prediction", "inference"),
+    regime=Regime(
+        "boosted trees or XGBoost under either purpose on an outcome of several classes or "
+        "several ordered ones, at any effective size (the rarest class's units), since both "
+        "sentences are conditioned on the threshold they state: the plan reads no task, and "
+        "notes/SMALL_SAMPLE_STANDARD.md simulated neither",
+        requires=(f"{HERE}:standard_from_the_study", f"{HERE}:classes_or_ordered",
+                  f"{HERE}:under_either_purpose"),
+        disjoint_from=("tuning.small_sample_standard", "tuning.small_sample_standard_estimate")),
+    decision="set_tuning",
+    options=("automatic", "lighter", "standard", "manual"),
+    verdict="recommended",
+    parts=(
+        Part("value", grade="judgment", basis=Basis(
+            reason="The threshold for a yes/no or numeric outcome, a convention (RECIPES §4.6, "
+                   "ruled 2026-10-11), read here unchanged on the rarest class's units: nothing "
+                   "locates one for several classes or an order.")),
+        Part("direction", grade="judgment", basis=Basis(
+            reason="Carried from a yes/no outcome: docs/turbotab-next/notes/SMALL_SAMPLE_"
+                   "STANDARD.md chose the standard on yes/no cells and checked it on a numeric "
+                   "outcome (its §2 and §4), and simulated neither several classes nor ordered "
+                   "ones. That it also predicts about as well as tuning and stays calibrated "
+                   "where the defaults do not, when the rarest of several classes is small, is "
+                   "expected, not measured.")),
+        Part("scope", grade="judgment", basis=Basis(
+            reason="Every limit of the study, with no class or ordered outcome among its cells: "
+                   "RECIPES §4.6 names multiclass among the shapes to check before release, and "
+                   "ordered outcomes nowhere; under Estimate there is no estimand either.")),
+    ),
+    # The threshold for a yes/no or numeric outcome, read from that claim: one number in one place.
+    params={"small_n": Param(SMALL_SAMPLE_STANDARD.params["small_n"].value,
+                             unit=SMALL_SAMPLE_STANDARD.params["small_n"].unit)},
+    tests=(
+        Fires(f"{TESTS}::test_for_a_class_or_ordered_outcome_below_300_the_plan_is_one_fit_at_"
+              "the_standard", truth="construction"),
+        Silent(f"{TESTS}::test_for_a_class_or_ordered_outcome_from_300_the_plan_searches_after_"
+               "the_library_defaults", truth="independent:scikit-learn"),
     ),
     enforced_by=("turbotab.core.models.tuning:standard_for",
                  "turbotab.core.models.tuning:searched_size",
@@ -427,18 +502,23 @@ ROWS_SMD_FLOOR_PREDICTION = register(Claim(
     id="materiality.rows_smd_floor_prediction",
     kind="rule",
     card="Under Predict too, the share of rows an energy screen removes, times how far they differ "
-         "on the predictors, is a screening convention: it can say the screen could bias the "
-         "score or that you should act on it, never that it doesn't change your numbers here.",
+         "on what the model adjusts for (its predictors other than one with the exposure role), "
+         "is a screening convention: it can say the screen could bias the score or that you "
+         "should act on it, never that it doesn't change your numbers here.",
     methods="Under Predict, rows changed times the leavers' largest standardized mean difference "
-            "on the predictors served as the same outcome-blind screening convention, floored at "
-            "could bias: a judgment carried from Estimate, where a constructed case showed the "
-            "product does not track how far a coefficient moves; whether it tracks how far a "
-            "cross-validated score moves was not measured.",
+            "on what the model adjusts for (the predictors by role, less the outcome, those left "
+            "out and one exposure: the estimand's where one is declared, else the first column "
+            "with the exposure role) served as the same outcome-blind screening convention, "
+            "floored at could bias: a judgment carried from Estimate, where a constructed case "
+            "showed the product does not track how far a coefficient moves; whether it tracks "
+            "how far a cross-validated score moves was not measured.",
     goal=("prediction",),
     regime=Regime(
         "the energy screen's noticing (diet-implausible-reporters) under Predict, before the "
         "lock: the predicted movement of keeping every row, read as rows changed times the "
-        "leavers' largest SMD on the predictors, whatever its calibration cases",
+        "leavers' largest SMD on what the model adjusts for, as under Estimate (its predictors "
+        "by role less the outcome, those left out and one exposure, the estimand's or else the "
+        "first column with the exposure role), whatever its calibration cases",
         requires=(f"{HERE}:rows_times_smd", f"{HERE}:under_prediction"),
         disjoint_from=("materiality.rows_smd_floor",)),
     decision="materiality.diet_implausible_reporters",
@@ -468,14 +548,16 @@ ROWS_SMD_FLOOR_PREDICTION = register(Claim(
 COLLINEAR_UNDER_PREDICTION = register(Claim(
     id="materiality.collinear_under_prediction",
     kind="rule",
-    card="Under Predict, both of a nearly collinear pair are kept and their importance read "
-         "together, a convention set for you to confirm: such a pair does not harm prediction on "
-         "rows like these.",
-    methods="Under Predict, both predictors of a nearly collinear pair were kept and their "
-            "importance read together, a convention the analyst confirmed rather than a "
-            "decision: collinearity does not harm prediction on rows like the training rows, and "
-            "the elastic-net selection filter, a step before every family, was offered but not "
-            "recommended.",
+    card="Under Predict, both of a nearly collinear pair are kept and keeping them records no "
+         "selection, a convention set for you to confirm: such a pair does not harm prediction "
+         "on rows like these. Reading their importance together is the line's advice to you.",
+    methods="Under Predict, both predictors of a nearly collinear pair were kept, a convention the "
+            "analyst confirmed rather than a decision: keeping both recorded no predictor "
+            "selection, taking back the line's own elastic-net filter where it was recorded and "
+            "leaving any other selection as it stood, since collinearity does not harm "
+            "prediction on rows like the training rows; the elastic-net selection filter, a step "
+            "before every family, was offered but not recommended. The line advised reading the "
+            "pair's importance together; no importance was grouped for the pair.",
     goal=("prediction",),
     regime=Regime(
         "Predict, a pair of numeric predictors nearly collinear on the training rows (explore's "
@@ -510,17 +592,17 @@ COLLINEAR_UNDER_PREDICTION = register(Claim(
     enforced_by=("turbotab.core.materiality:collinear_label",
                  "turbotab.core.stages.explore:_collinear_lever"),
     author=AUTHOR,
-    ruled="calm/BEATS_PREDICT.md M4, its fourth line (near-collinear predictors; grouped "
-          "importance)",
+    ruled="calm/BEATS_PREDICT.md M4, its fourth line (near-collinear predictors, all kept; the "
+          "grouped importance it rules for Results is not built)",
 ))
 
-CLAIMS = (SMALL_SAMPLE_STANDARD, SMALL_SAMPLE_STANDARD_ESTIMATE, BOOSTED_TREES_SMALL_ROWS,
-          FOREST_SMALL_ROWS, BASELINE_FLOOR, ROWS_SMD_FLOOR, ROWS_SMD_FLOOR_PREDICTION,
-          COLLINEAR_UNDER_PREDICTION)
+CLAIMS = (SMALL_SAMPLE_STANDARD, SMALL_SAMPLE_STANDARD_ESTIMATE, SMALL_SAMPLE_STANDARD_CLASSES,
+          BOOSTED_TREES_SMALL_ROWS, FOREST_SMALL_ROWS, BASELINE_FLOOR, ROWS_SMD_FLOOR,
+          ROWS_SMD_FLOOR_PREDICTION, COLLINEAR_UNDER_PREDICTION)
 
 __all__ = ["AUTHOR", "BASELINE_FLOOR", "BOOSTED_TREES_SMALL_ROWS", "CLAIMS",
            "COLLINEAR_UNDER_PREDICTION", "FOREST_SMALL_ROWS", "ROWS_SMD_FLOOR",
-           "ROWS_SMD_FLOOR_PREDICTION", "SMALL_SAMPLE_STANDARD", "SMALL_SAMPLE_STANDARD_ESTIMATE",
-           "rated_before_any_fit", "rows_times_smd",
-           "standard_from_the_study", "under_inference", "under_prediction",
-           "verdict_metric", "yes_no_or_numeric"]
+           "ROWS_SMD_FLOOR_PREDICTION", "SMALL_SAMPLE_STANDARD", "SMALL_SAMPLE_STANDARD_CLASSES",
+           "SMALL_SAMPLE_STANDARD_ESTIMATE", "classes_or_ordered", "rated_before_any_fit",
+           "rows_times_smd", "standard_from_the_study", "under_either_purpose", "under_inference",
+           "under_prediction", "verdict_metric", "yes_no_or_numeric"]

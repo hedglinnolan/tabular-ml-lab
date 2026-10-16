@@ -16,7 +16,7 @@
       "status": "built"
     },
     {
-      "hash": "6c3ec4cc230275a9ad61bbed8fef319c2592e18ab23f4002cc885cc44b43ec13",
+      "hash": "19dbf8b487d8cb6a635749ba43021acbdfdfab44e6eefbbd0c1cf5f911696119",
       "id": "materiality.collinear_under_prediction",
       "status": "built"
     },
@@ -26,17 +26,22 @@
       "status": "built"
     },
     {
-      "hash": "72b1367bd5e2912d4ecbcad39d2fc61807e5da3c15efaa57516d6ddcdeea6003",
+      "hash": "d40035453bc2d844bc74b801192b7d83cb7626083dcc12f0ae6441c0802aa6d9",
       "id": "materiality.rows_smd_floor_prediction",
       "status": "built"
     },
     {
-      "hash": "26abc3dad38d256b2dca60ae541cd3e0aab24f6b05d4f64c1d752eb25b10ea8e",
+      "hash": "ac9ade36a8d08f2cc6e0871a6448fdce01ea57ef2d6b3450cf118bd072fac8e7",
       "id": "tuning.small_sample_standard",
       "status": "built"
     },
     {
-      "hash": "507c5d13b4e5cbd3d3c228809b21789062d1d29cf5a53959919148dce0b5e634",
+      "hash": "d0dc969c1c1e860fa7e60114edcb6901cb846752947f03e432ba33ab3b8dab41",
+      "id": "tuning.small_sample_standard_classes",
+      "status": "built"
+    },
+    {
+      "hash": "affca61e63111399d4ce5d92a58f3e55bfe4e7302e275f5a737b878d4caf865c",
       "id": "tuning.small_sample_standard_estimate",
       "status": "built"
     }

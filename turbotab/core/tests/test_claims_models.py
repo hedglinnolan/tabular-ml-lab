@@ -6,7 +6,10 @@ known-truth tests both ways, and the split of the two rules once named ``SMALL_N
   small-sample standard (written out here from the ruling); from 300 the search draws 8 Sobol
   candidates (§4.2) after the libraries' defaults (scikit-learn's own ``get_params``; XGBoost's
   documented defaults, written out). Under Estimate the design stage's plans are the same,
-  through its own entry point with the purpose set (the plan reads none).
+  through its own entry point with the purpose set (the plan reads none), and so are they for
+  several classes or ordered ones under either purpose (it reads no task). For every task the
+  standard acts on, under each purpose, a sentence renders, and exactly one tuning claim's regime
+  holds.
 * **The shelf's rows** (RECIPES §2.6, and draft 2's shelf for boosted trees): fair below 500
   rows, boosted trees poor below 200, on the boundary both ways (the rows the shelf ranks for,
   training rows under Predict and every analyzed row under Estimate, as its stage passes them).
@@ -15,7 +18,8 @@ known-truth tests both ways, and the split of the two rules once named ``SMALL_N
   better, a real gain of 0.3% of it is too little to matter; on a score better when higher (R²,
   and Harrell's C for a time to event with delayed entry), fold scores written out.
 * **Rows × SMD** (A-124): floored at "could bias" whatever its cases, never capped, and the floor
-  is its convention's own; cases and values built here. Under Predict the same, on the score.
+  is its convention's own; cases and values built here. Under Predict the same, on the score,
+  read on what the model adjusts for, which leaves out a column with the exposure role.
 * **The collinear line** (C-170): a Confirm under Predict, the noticing's tier under Estimate, on
   states built here.
 
@@ -24,8 +28,8 @@ Then the split itself: each constant a claim names is bound, in its module's sou
 searches, asked of the plan; and every tuning plan's seeds and candidate counts are the ones the
 base (turbotab-next at 3655d6ad) computed, so the split moved no plan. No test here names a claim
 by its id or reads a claim's value, so none can take its expected value from the claim it tests
-(meta-test 2): the source check reads only the claims' ids and parameter names, through the area
-module's ``CLAIMS``.
+(meta-test 2): the source check reads only the claims' ids and parameter names, and the
+rendering check only whether a sentence renders, each through the area module's ``CLAIMS``.
 """
 from __future__ import annotations
 
@@ -113,8 +117,10 @@ def test_from_an_effective_size_of_300_the_search_runs_with_the_library_defaults
 def design_plans(task: str, size: int, purpose: str) -> dict:
     """Boosted trees' and XGBoost's plans as the design stage makes them
     (``stages.modeling.tuning_plans``) under ``purpose``, every row a training row in five folds:
-    ``size`` rows of a number, or ``size`` events among 1,000 rows of a yes/no outcome, so one
-    outer training fold holds ⌊size·4/5⌋ units or events (by hand: 374 → 299, 375 → 300)."""
+    ``size`` rows of a number, ``size`` events among 1,000 rows of a yes/no outcome, or, for
+    several classes or ordered ones, ``size`` rows of the rarest of three classes beside 500 of
+    each other, so one outer training fold holds ⌊size·4/5⌋ units, events or units of the rarest
+    class (by hand: 374 → 299, 375 → 300)."""
     from types import SimpleNamespace
 
     import pandas as pd
@@ -125,8 +131,11 @@ def design_plans(task: str, size: int, purpose: str) -> dict:
     rng = np.random.default_rng(3)
     if task == "regression":
         y = rng.normal(size=size)
-    else:
+    elif task == "binary":
         y = rng.permutation(np.r_[np.ones(size, dtype=int), np.zeros(1000 - size, dtype=int)])
+    else:
+        y = rng.permutation(np.r_[np.zeros(size, dtype=int), np.ones(500, dtype=int),
+                                  np.full(500, 2, dtype=int)])
     ids = np.arange(len(y)) + 1
     table = pd.DataFrame({"y": y}, index=pd.Index(ids, name="row_id"))
 
@@ -181,6 +190,88 @@ def test_under_estimate_from_300_the_plan_searches_after_the_library_defaults(ta
                  "max_iter"):
         assert standard[name] == library[name], name
     assert dict(plans["xgboost"].candidates[0].values) == XGBOOST_DEFAULTS
+
+
+CLASSES = [(task, purpose) for task in ("multiclass", "ordinal")
+           for purpose in ("prediction", "inference")]
+
+
+@pytest.mark.parametrize("task, purpose", CLASSES)
+def test_for_a_class_or_ordered_outcome_below_300_the_plan_is_one_fit_at_the_standard(task,
+                                                                                       purpose):
+    """Three classes, or three ordered ones, the rarest 299 units in one outer training fold,
+    under either purpose: boosted trees and XGBoost each keep one candidate, their small-sample
+    standard (the ruling's values, written out), never stopping early, and the plan is the one the
+    other purpose makes on the same rows."""
+    plans = design_plans(task, 374, purpose)
+    assert set(plans) == {"boosted_trees", "xgboost"}
+    for key, small in (("boosted_trees", BOOSTED_SMALL), ("xgboost", XGBOOST_SMALL)):
+        p = plans[key]
+        assert p.n_plan == 299 and len(p.candidates) == 1 and p.candidates[0].standard, key
+        assert dict(p.candidates[0].values) == small, key
+        assert not p.standard_stops and not p.early_stopping, key
+    other = design_plans(task, 374, "inference" if purpose == "prediction" else "prediction")
+    assert {k: p.to_dict() for k, p in plans.items()} == {k: p.to_dict()
+                                                          for k, p in other.items()}
+
+
+@pytest.mark.parametrize("task, purpose", CLASSES)
+def test_for_a_class_or_ordered_outcome_from_300_the_plan_searches_after_the_library_defaults(
+        task, purpose):
+    """The rarest class at 300 units in one outer training fold: 8 Sobol candidates after the
+    standard one, which is the library's defaults (scikit-learn's own classifier, which boosted
+    trees fit for several classes and ordered ones alike; XGBoost's documented defaults), not the
+    small-sample standard."""
+    from sklearn.ensemble import HistGradientBoostingClassifier
+
+    library = HistGradientBoostingClassifier().get_params()
+    plans = design_plans(task, 375, purpose)
+    for key in ("boosted_trees", "xgboost"):
+        p = plans[key]
+        assert p.n_plan == 300 and len(p.candidates) == 9, key
+        assert p.candidates[0].standard and not any(c.standard for c in p.candidates[1:]), key
+    standard = dict(plans["boosted_trees"].candidates[0].values)
+    for name in ("learning_rate", "max_leaf_nodes", "l2_regularization", "max_features",
+                 "max_iter"):
+        assert standard[name] == library[name], name
+    assert dict(plans["xgboost"].candidates[0].values) == XGBOOST_DEFAULTS
+
+
+def test_a_sentence_renders_for_every_task_and_purpose_the_standard_acts_on():
+    """Every task whose plan at an effective size of 299 holds other settings than at 300, the
+    tasks the small-sample standard acts on (asked of the plan), is regression, yes/no, several
+    classes and ordered ones, for boosted trees and XGBoost alike. For each, under each purpose,
+    with the family's own tuning declaration, the standard's sentence renders, falling back where
+    its regime fails (lenient), and exactly one of the area's tuning claims holds there (strict),
+    so the rule never acts where no claim covers it (CLAIMS_REGISTRY §2.2). The ids are read off
+    the area's claims, never typed here."""
+    from turbotab.core import claims
+
+    tuning = [c for c in area.CLAIMS if c.decision == "set_tuning"]
+    # the standard's own claim: the one no other tuning claim falls back to
+    (first,) = [c for c in tuning if not any(t.fallback == c.id for t in tuning)]
+    acted = {}
+    for key in ("boosted_trees", "xgboost"):
+        family = get_family(key)
+        acted[key] = [t for t in family.tasks if tuning_for(family, t) is not None
+                      and plan(key, t, 299).candidates[0].values
+                      != plan(key, t, 300).candidates[0].values]
+    assert acted == {k: ["regression", "binary", "multiclass", "ordinal"] for k in acted}
+    for key, tasks in acted.items():
+        for task in tasks:
+            source = tuning_for(get_family(key), task).small_standard_source
+            for purpose in ("prediction", "inference"):
+                ctx = {"task": task, "purpose": purpose, "small_standard_source": source}
+                assert "effective size of" in claims.card(first.id, ctx, strict=False)
+                assert "effective size of" in claims.methods(first.id, ctx, strict=False)
+                held = []
+                for c in tuning:
+                    try:
+                        claims.card(c.id, ctx, strict=True)
+                    except claims.OutsideRegime:
+                        continue
+                    held.append(c.id)
+                assert len(held) == 1, (key, task, purpose, held)
 
 
 # ── the shelf's rows ─────────────────────────────────────────────────────────────────────────
@@ -377,6 +468,33 @@ def test_under_predict_the_floor_never_caps_and_is_its_conventions_own(monkeypat
     assert disposition == "no_change" and "below noise in the score" in reason
 
 
+def test_under_predict_the_screen_reads_what_the_model_adjusts_for_less_the_exposure():
+    """What the Predict fallback's sentences say the product is read on. A hundred of 1,000 rows
+    leave; every column but sugar takes the values 0 to 9 equally often among leavers and stayers,
+    so their SMD is 0, and the leavers' sugar is 10 higher. With sugar given the exposure role the
+    screen's largest SMD on what the model adjusts for is 0; with sugar a covariate it is sugar's,
+    the pooled-SD SMD worked here."""
+    import pandas as pd
+
+    n, gone = 1000, 100
+    cycle = np.tile(np.arange(10.0), n // 10)
+    leaving = np.arange(n) < gone
+    sugar = cycle + 10.0 * leaving
+    frame = pd.DataFrame({"SEQN": np.arange(n), "sugar": sugar, "kcal": cycle,
+                          "protein": cycle, "glucose": cycle})
+    rule = d.ExclusionRule(column="kcal", low=500, high=5000, reason="implausible intake")
+    kept = np.flatnonzero(~leaving)
+    a, b = sugar[leaving], sugar[~leaving]
+    by_hand = gone / n * abs(a.mean() - b.mean()) / np.sqrt((a.var(ddof=1) + b.var(ddof=1)) / 2)
+    for role, want in (("exposure", 0.0), ("covariate", by_hand)):
+        s = d.ProjectState(lens=["dietary"], target="glucose", purpose="prediction",
+                           roles={"SEQN": "identifier", "sugar": role, "kcal": "energy",
+                                  "protein": "covariate"}, exclusions=[rule])
+        noticed = M.reporters_noticing(s, frame, kept, np.arange(n))
+        assert noticed.predicted.value == pytest.approx(want, rel=1e-9, abs=1e-12), role
+        assert ("`sugar`" in noticed.predicted.words) is (role == "covariate"), role
+
+
 # ── the collinear line (C-170) ───────────────────────────────────────────────────────────────
 
 ADJUST = ["kcal", "protein", "carb", "fat", "alcohol", "age"]
@@ -525,6 +643,10 @@ def test_every_tuning_plans_seeds_and_candidates_are_the_bases():
                                "(notes/SMALL_SAMPLE_STANDARD.md)"},
      {"small_standard_source": "scikit-learn's defaults"}),
     (area.yes_no_or_numeric, {"task": "binary"}, {"task": "multiclass"}),
+    (area.classes_or_ordered, {"task": "multiclass"}, {"task": "binary"}),
+    (area.classes_or_ordered, {"task": "ordinal"}, {"task": "regression"}),
+    (area.under_either_purpose, {"purpose": "inference"}, {"purpose": "describe"}),
+    (area.under_either_purpose, {"purpose": "prediction"}, {"purpose": None}),
     (area.rated_before_any_fit, {"n_rows": 499, "n_features": 4},
      {"n_rows": 499.5, "n_features": 4}),
     (area.verdict_metric, {"metric": "brier_t"}, {"metric": "auc"}),
