@@ -1,6 +1,6 @@
 # The claims registry
 
-**DRAFT 2 for Nolan's review, 2026-10-15.** It is not ruled yet, so by its own rule (§7) every part of it is proposed.
+**Draft 2, ruled by Nolan on 2026-10-15:** he accepted §11's three recommendations. By the spec's own rule (§6), each part stays proposed ("ruled, not built") until its code and tests exist. R0 follows the stage-1 merge.
 
 This draft was rewritten after an independent critique tested draft 1 against the backtest's 15 S1 defects. Draft 1 would have caught none of them outright and only partly exposed 5. Draft 1 aimed at invented precision and tests that pin the code to itself. Both problems exist in the code, but neither caused an S1. This draft is organized around the failures that did, and §10 says plainly what it still would not catch.
 
@@ -279,10 +279,10 @@ That is 8 to 10 of 15, against none for draft 1; the critique's own count, witho
 
 The registry is the checker layer. The independent audit and the domain reviewers are the other layers, and the backtest showed all are needed.
 
-## 11. For Nolan to rule
+## 11. Nolan's rulings (2026-10-15, all three as recommended)
 
-1. **Grades on screen:** in the "why" layer only, as one phrase (recommended), or visible on each card?
-2. **Unsupported claims:** never a refusal; a default that changes much becomes a Decide; others stay as a labeled convention under SURFACING_POLICY (recommended). Or should every unsupported default become a question?
-3. **The swarm's corpus:** kept apart from the registry, with promotion into it (recommended), or one ledger with statuses?
+1. **Grades on screen:** in the "why" layer only, as one phrase. Ruled.
+2. **Unsupported claims:** never a refusal; a default that changes much becomes a Decide; others stay as a labeled convention under SURFACING_POLICY. Ruled.
+3. **The swarm's corpus:** kept apart from the registry, with promotion into it. Ruled.
 
-The rest are methods and architecture decisions, which Nolan has delegated to me. I will build R0 on approval.
+The rest are methods and architecture decisions, which Nolan has delegated to me.
