@@ -549,7 +549,13 @@ def test_2_prediction_results_reproduce_todays_to_1e_9(prediction_run):
     They were captured once more the same day (C6a phase 3), when the elastic net moved onto the
     path search with each split's own λ_max and full coding: every level of a category now has its
     own coefficient (gender_female, and meds_hbp_0 under indicators), and its cross-validated R²
-    moved by 0.001 to 0.007. Linear and boosted trees again match to 5e-11."""
+    moved by 0.001 to 0.007. Linear and boosted trees again match to 5e-11.
+
+    The boosted trees' entries were captured again on 2026-10-15 (claims backtest A-001), when
+    below an effective size of 300 its one fit moved from scikit-learn's defaults to the family's
+    small-sample standard (RECIPES §4.6): its cross-validated R² moved from 0.236 to 0.269. With
+    ``tuning.standard_for`` held to the large-sample standard, every entry matches the stored ones
+    to 1e-9; linear and the elastic net are unchanged."""
     reference = json.loads(REFERENCE.read_text())["configs"]
     _, _, _, now = prediction_run
     assert set(now) == set(reference)
