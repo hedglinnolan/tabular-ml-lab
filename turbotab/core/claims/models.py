@@ -6,11 +6,14 @@ the engine constant that holds it reads it with ``claims.value``.
 * ``tuning.small_sample_standard`` (A-001): below an effective-size threshold the plan draws no
   search, and boosted trees and XGBoost are fit once at a small-sample standard (RECIPES §4.6,
   ruled 2026-10-11). ``tuning.SMALL_N`` reads it, and so do the four family sentences that state
-  it, boosted trees' and XGBoost's tuning reasons and descriptions.
+  it, boosted trees' and XGBoost's tuning reasons and descriptions. Its study scored predictions,
+  so under Estimate, where the plan applies the same rule, its fallback
+  ``tuning.small_sample_standard_estimate`` records it as a judgment carried from Predict.
 * ``boosted_trees.small_rows`` and ``forest.small_rows``: the rows below which the shelf rates
   each family fair, the rows it ranks for (training rows under Predict, every analyzed row under
-  Estimate or Describe, as the shelf stage counts them). Both modules named theirs ``SMALL_N``, beside the tuning's threshold of
-  the same name, and their values are equal, but they are two claims, not one read by both:
+  Estimate or Describe, as the shelf stage counts them). Both modules named theirs ``SMALL_N``,
+  beside the tuning's threshold of the same name, and their values are equal, but they are two
+  claims, not one read by both:
   RECIPES §2.6 gives each family its own row of base scores, all conventions; it states the
   forest's rows and not boosted trees', which come from draft 2's shelf with a second, poor step
   and a reason of their own (they overfit easily). One claim would move the forest's rating
@@ -18,7 +21,9 @@ the engine constant that holds it reads it with ``claims.value``.
 * ``baseline.min_gain`` (A-029): the floor a gain over the no-predictor baseline must exceed, on
   its own scale for a score better when higher, as a share of the baseline's loss on a loss.
 * ``materiality.rows_smd_floor`` (A-124): the energy screen's rows times SMD never says "doesn't
-  change your numbers here".
+  change your numbers here". Its construction moves a coefficient under Estimate; the floor reads
+  no purpose, so under Predict its fallback ``materiality.rows_smd_floor_prediction`` records it on
+  the score, a judgment.
 * ``materiality.collinear_under_prediction`` (C-170): under Predict the collinear line is a
   Confirm, both of a pair kept.
 
@@ -79,8 +84,8 @@ def rated_before_any_fit(ctx: Any) -> bool:
 def verdict_metric(ctx: Any) -> bool:
     """The score a verdict against the baseline is read on: R² for a number, log loss for a
     yes/no or class outcome, the ranked probability score for an ordered one, the Brier score at
-    the horizon for time to event."""
-    return _field(ctx, "metric") in ("r2", "log_loss", "rps", "brier_t")
+    the horizon for time to event, and Harrell's C for a time to event with delayed entry."""
+    return _field(ctx, "metric") in ("r2", "log_loss", "rps", "brier_t", "c_index")
 
 
 def rows_times_smd(ctx: Any) -> bool:
@@ -132,7 +137,8 @@ SMALL_SAMPLE_STANDARD = register(Claim(
                    "yes/no outcome, a numeric one checked; multiclass and ordered outcomes, "
                    "categorical predictors, p = 50 and NHANES subsamples are not yet checked "
                    "(RECIPES §4.6, before release), though the plan applies the standard to "
-                   "every task.")),
+                   "every task. It scored predictions alone; under Estimate the plan, which "
+                   "reads no purpose, applies the same rule, its fallback's judgment.")),
     ),
     params={"small_n": Param(300, unit="units of effective size (units, events or the rarest "
                                        "class's count, in one outer training fold)",
@@ -163,8 +169,63 @@ SMALL_SAMPLE_STANDARD = register(Claim(
     enforced_by=("turbotab.core.models.tuning:standard_for",
                  "turbotab.core.models.tuning:searched_size",
                  "turbotab.core.models.tuning:make_plan"),
+    fallback="tuning.small_sample_standard_estimate",
     author=AUTHOR,
     ruled="RECIPES_AND_TUNING.md §4.6, ruled 2026-10-11 (built 2026-10-15)",
+))
+
+SMALL_SAMPLE_STANDARD_ESTIMATE = register(Claim(
+    id="tuning.small_sample_standard_estimate",
+    kind="rule",
+    card="Under Estimate too, below an effective size of {small_n} boosted trees and XGBoost are "
+         "not tuned but fit once at the small-sample standard chosen for Predict: a judgment, "
+         "since the simulation that chose it scored predictions and their calibration, not the "
+         "curves an estimate is read from.",
+    methods="Under Estimate or Describe the tuning plan followed the same rule as under Predict, "
+            "a judgment carried from it: below an effective size of {small_n} it drew no "
+            "candidate settings, and boosted trees and XGBoost were fit once at the small-sample "
+            "standard, which its simulation chose on predictive loss and calibration, not on the "
+            "effect curves these families describe under Estimate; from {small_n} their settings "
+            "were searched as under Predict, the defaults among the candidates.",
+    goal=("inference",),
+    regime=Regime(
+        "boosted trees or XGBoost under Estimate or Describe on a yes/no or numeric outcome, at "
+        "any effective size, since both sentences are conditioned on the threshold they state: "
+        "the plan reads no purpose, and no study of its own covers this purpose",
+        requires=(f"{HERE}:standard_from_the_study", f"{HERE}:yes_no_or_numeric",
+                  f"{HERE}:under_inference"),
+        disjoint_from=("tuning.small_sample_standard",)),
+    decision="set_tuning",
+    options=("automatic", "lighter", "standard", "manual"),
+    verdict="recommended",
+    parts=(
+        Part("value", grade="judgment", basis=Basis(
+            reason="The threshold under Predict, a convention (RECIPES §4.6, ruled "
+                   "2026-10-11), read here unchanged: nothing locates one for an estimate.")),
+        Part("direction", grade="judgment", basis=Basis(
+            reason="Carried from Predict: notes/SMALL_SAMPLE_STANDARD.md §1 scored each arm by "
+                   "its excess log loss and calibration slope on fresh rows, never an effect "
+                   "curve's bias or coverage. That a calibrated fit which predicts as well as "
+                   "tuning also draws a better curve than the overconfident defaults is "
+                   "expected, not measured.")),
+        Part("scope", grade="judgment", basis=Basis(
+            reason="The same design limits as under Predict (ten normal predictors, a yes/no "
+                   "outcome chosen on and a numeric one checked), and no estimand: the plan "
+                   "applies the standard to every task and purpose.")),
+    ),
+    # The threshold under Predict, read from that claim here: one number in one place.
+    params={"small_n": Param(SMALL_SAMPLE_STANDARD.params["small_n"].value,
+                             unit=SMALL_SAMPLE_STANDARD.params["small_n"].unit)},
+    tests=(
+        Fires(f"{TESTS}::test_under_estimate_below_300_the_plan_is_one_fit_at_the_small_sample_"
+              "standard", truth="construction"),
+        Silent(f"{TESTS}::test_under_estimate_from_300_the_plan_searches_after_the_library_"
+               "defaults", truth="independent:scikit-learn"),
+    ),
+    enforced_by=("turbotab.core.models.tuning:standard_for",
+                 "turbotab.core.models.tuning:searched_size",
+                 "turbotab.core.stages.modeling:tuning_plans"),
+    author=AUTHOR,
 ))
 
 
@@ -269,7 +330,7 @@ BASELINE_FLOOR = register(Claim(
         "a family's cross-validated primary against its no-predictor baseline under either "
         "purpose, paired over the same folds: R² for a numeric outcome, log loss for a yes/no or "
         "class outcome, the ranked probability score for an ordered one, the Brier score at the "
-        "horizon for time to event",
+        "horizon for time to event, Harrell's C for a time to event with delayed entry",
         requires=(f"{HERE}:verdict_metric",)),
     decision="baseline.verdict",
     options=("better", "no_better", "worse"),
@@ -358,6 +419,49 @@ ROWS_SMD_FLOOR = register(Claim(
     ),
     enforced_by=("turbotab.core.materiality:band_of", "turbotab.core.materiality:calibrate",
                  "turbotab.core.materiality:recommend"),
+    fallback="materiality.rows_smd_floor_prediction",
+    author=AUTHOR,
+))
+
+ROWS_SMD_FLOOR_PREDICTION = register(Claim(
+    id="materiality.rows_smd_floor_prediction",
+    kind="rule",
+    card="Under Predict too, the share of rows an energy screen removes, times how far they differ "
+         "on the predictors, is a screening convention: it can say the screen could bias the "
+         "score or that you should act on it, never that it doesn't change your numbers here.",
+    methods="Under Predict, rows changed times the leavers' largest standardized mean difference "
+            "on the predictors served as the same outcome-blind screening convention, floored at "
+            "could bias: a judgment carried from Estimate, where a constructed case showed the "
+            "product does not track how far a coefficient moves; whether it tracks how far a "
+            "cross-validated score moves was not measured.",
+    goal=("prediction",),
+    regime=Regime(
+        "the energy screen's noticing (diet-implausible-reporters) under Predict, before the "
+        "lock: the predicted movement of keeping every row, read as rows changed times the "
+        "leavers' largest SMD on the predictors, whatever its calibration cases",
+        requires=(f"{HERE}:rows_times_smd", f"{HERE}:under_prediction"),
+        disjoint_from=("materiality.rows_smd_floor",)),
+    decision="materiality.diet_implausible_reporters",
+    options=("no_change", "could_bias", "act_on_it"),
+    verdict="noted",
+    parts=(
+        Part("direction", grade="judgment", basis=Basis(
+            reason="Carried from Estimate: the certified construction there (four over-reporters "
+                   "out of 10,000) moves a least-squares coefficient, not a cross-validated "
+                   "score. That the product can sit below its cut-off while the score moves is "
+                   "expected from it, with no case of its own.")),
+        Part("scope", grade="judgment", basis=Basis(
+            reason="The floor is the convention's own (its floored reason in "
+                   "materiality_calibration.json), and band_of reads no purpose: the same floor "
+                   "acts on the score as on the estimate.")),
+    ),
+    tests=(
+        Fires(f"{TESTS}::test_under_predict_rows_times_smd_is_never_below_could_bias_the_score",
+              truth="construction"),
+        Silent(f"{TESTS}::test_under_predict_the_floor_never_caps_and_is_its_conventions_own",
+               truth="construction"),
+    ),
+    enforced_by=("turbotab.core.materiality:band_of", "turbotab.core.materiality:recommend"),
     author=AUTHOR,
 ))
 
@@ -410,11 +514,13 @@ COLLINEAR_UNDER_PREDICTION = register(Claim(
           "importance)",
 ))
 
-CLAIMS = (SMALL_SAMPLE_STANDARD, BOOSTED_TREES_SMALL_ROWS, FOREST_SMALL_ROWS, BASELINE_FLOOR,
-          ROWS_SMD_FLOOR, COLLINEAR_UNDER_PREDICTION)
+CLAIMS = (SMALL_SAMPLE_STANDARD, SMALL_SAMPLE_STANDARD_ESTIMATE, BOOSTED_TREES_SMALL_ROWS,
+          FOREST_SMALL_ROWS, BASELINE_FLOOR, ROWS_SMD_FLOOR, ROWS_SMD_FLOOR_PREDICTION,
+          COLLINEAR_UNDER_PREDICTION)
 
 __all__ = ["AUTHOR", "BASELINE_FLOOR", "BOOSTED_TREES_SMALL_ROWS", "CLAIMS",
            "COLLINEAR_UNDER_PREDICTION", "FOREST_SMALL_ROWS", "ROWS_SMD_FLOOR",
-           "SMALL_SAMPLE_STANDARD", "rated_before_any_fit", "rows_times_smd",
+           "ROWS_SMD_FLOOR_PREDICTION", "SMALL_SAMPLE_STANDARD", "SMALL_SAMPLE_STANDARD_ESTIMATE",
+           "rated_before_any_fit", "rows_times_smd",
            "standard_from_the_study", "under_inference", "under_prediction",
            "verdict_metric", "yes_no_or_numeric"]

@@ -420,7 +420,8 @@ class RandomForest(FamilyBase):
     def assess(self, s: Situation) -> Assessment:
         """RECIPES §2.6: 2.0 from 2,000 training rows, 1.5 from 500, "fair" at 1.0 below; "fair" at
         1.5 at most when predictors outnumber rows; under inference, as boosted trees (conventions:
-        no validated rule says which family will predict best)."""
+        no validated rule says which family will predict best). The rows are those the shelf ranks
+        for: the training rows under Predict, every analyzed row under Estimate."""
         concerns: list[str] = []
         fit = "good"
         score = 2.0 if s.n_rows >= MID_N else 1.5

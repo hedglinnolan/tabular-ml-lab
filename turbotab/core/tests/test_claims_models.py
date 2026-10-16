@@ -5,16 +5,17 @@ known-truth tests both ways, and the split of the two rules once named ``SMALL_N
   effective size of 300 a searched family keeps one candidate, boosted trees and XGBoost their
   small-sample standard (written out here from the ruling); from 300 the search draws 8 Sobol
   candidates (§4.2) after the libraries' defaults (scikit-learn's own ``get_params``; XGBoost's
-  documented defaults, written out).
+  documented defaults, written out). Under Estimate the design stage's plans are the same,
+  through its own entry point with the purpose set (the plan reads none).
 * **The shelf's rows** (RECIPES §2.6, and draft 2's shelf for boosted trees): fair below 500
   rows, boosted trees poor below 200, on the boundary both ways (the rows the shelf ranks for,
   training rows under Predict and every analyzed row under Estimate, as its stage passes them).
 * **The baseline verdict's floor** (A-029): the true risks of known logistic models, scored here
   by hand, so no model can beat them: a rare outcome's gain of 6% to 12% of the baseline's loss is
-  better, a real gain of 0.3% of it is too little to matter; on a score better when higher, fold
-  scores written out.
+  better, a real gain of 0.3% of it is too little to matter; on a score better when higher (R²,
+  and Harrell's C for a time to event with delayed entry), fold scores written out.
 * **Rows × SMD** (A-124): floored at "could bias" whatever its cases, never capped, and the floor
-  is its convention's own; cases and values built here.
+  is its convention's own; cases and values built here. Under Predict the same, on the score.
 * **The collinear line** (C-170): a Confirm under Predict, the noticing's tier under Estimate, on
   states built here.
 
@@ -109,6 +110,79 @@ def test_from_an_effective_size_of_300_the_search_runs_with_the_library_defaults
     assert dict(xgboost.candidates[0].values) == XGBOOST_DEFAULTS
 
 
+def design_plans(task: str, size: int, purpose: str) -> dict:
+    """Boosted trees' and XGBoost's plans as the design stage makes them
+    (``stages.modeling.tuning_plans``) under ``purpose``, every row a training row in five folds:
+    ``size`` rows of a number, or ``size`` events among 1,000 rows of a yes/no outcome, so one
+    outer training fold holds ⌊size·4/5⌋ units or events (by hand: 374 → 299, 375 → 300)."""
+    from types import SimpleNamespace
+
+    import pandas as pd
+
+    from turbotab.core.graph import Bundle
+    from turbotab.core.stages.modeling import tuning_plans
+
+    rng = np.random.default_rng(3)
+    if task == "regression":
+        y = rng.normal(size=size)
+    else:
+        y = rng.permutation(np.r_[np.ones(size, dtype=int), np.zeros(1000 - size, dtype=int)])
+    ids = np.arange(len(y)) + 1
+    table = pd.DataFrame({"y": y}, index=pd.Index(ids, name="row_id"))
+
+    class Store:
+        columns = list(table.columns)
+
+        def materialize(self, columns, row_ids):
+            return table.loc[np.asarray(row_ids), list(columns)]
+
+    assignment = pd.DataFrame({"row_id": ids, "partition": "train", "fold": np.arange(len(y)) % 5})
+    split = Bundle(data={"folds": 5, "seed": 9, "grouped_by": None},
+                   frames={"assignment": assignment})
+    ctx = SimpleNamespace(state=SimpleNamespace(target="y", split=None, survey=None,
+                                                purpose=purpose), inputs={"split": split})
+    return tuning_plans(ctx, task, [get_family("boosted_trees"), get_family("xgboost")],
+                        store=Store(), train_ids=ids)
+
+
+@pytest.mark.parametrize("task", ["regression", "binary"])
+def test_under_estimate_below_300_the_plan_is_one_fit_at_the_small_sample_standard(task):
+    """Under Estimate, one outer training fold of 299 units or events: boosted trees and XGBoost
+    each keep one candidate, their small-sample standard (the ruling's values, written out), and
+    the plan is the one Predict makes on the same rows."""
+    plans = design_plans(task, 374, "inference")
+    assert set(plans) == {"boosted_trees", "xgboost"}
+    for key, small in (("boosted_trees", BOOSTED_SMALL), ("xgboost", XGBOOST_SMALL)):
+        p = plans[key]
+        assert p.n_plan == 299 and len(p.candidates) == 1 and p.candidates[0].standard, key
+        assert dict(p.candidates[0].values) == small, key
+        assert not p.standard_stops and not p.early_stopping, key
+    predict = design_plans(task, 374, "prediction")
+    assert {k: p.to_dict() for k, p in plans.items()} == {k: p.to_dict()
+                                                          for k, p in predict.items()}
+
+
+@pytest.mark.parametrize("task", ["regression", "binary"])
+def test_under_estimate_from_300_the_plan_searches_after_the_library_defaults(task):
+    """Under Estimate at 300: 8 Sobol candidates after the standard one, which is the library's
+    defaults (scikit-learn's own parameters; XGBoost's documented ones), not the small-sample
+    standard."""
+    from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
+
+    library = (HistGradientBoostingRegressor() if task == "regression"
+               else HistGradientBoostingClassifier()).get_params()
+    plans = design_plans(task, 375, "inference")
+    for key in ("boosted_trees", "xgboost"):
+        p = plans[key]
+        assert p.n_plan == 300 and len(p.candidates) == 9, key
+        assert p.candidates[0].standard and not any(c.standard for c in p.candidates[1:]), key
+    standard = dict(plans["boosted_trees"].candidates[0].values)
+    for name in ("learning_rate", "max_leaf_nodes", "l2_regularization", "max_features",
+                 "max_iter"):
+        assert standard[name] == library[name], name
+    assert dict(plans["xgboost"].candidates[0].values) == XGBOOST_DEFAULTS
+
+
 # ── the shelf's rows ─────────────────────────────────────────────────────────────────────────
 
 
@@ -145,7 +219,8 @@ def test_below_500_rows_the_shelf_rates_a_random_forest_fair():
 
 
 def test_from_500_rows_a_random_forest_carries_no_small_table_concern():
-    """RECIPES §2.6: 1.5 from 500 training rows, 2.0 from 2,000, good and with no concern."""
+    """RECIPES §2.6: 1.5 from 500 training rows, 2.0 from 2,000, good and with no concern (the
+    rows the shelf ranks for: training rows under Predict, every analyzed row under Estimate)."""
     assert judged("random_forest", 500) == (1.5, "good", ())
     assert judged("random_forest", 2000) == (2.0, "good", ())
 
@@ -185,10 +260,18 @@ def test_a_real_gain_under_a_hundredth_of_the_baseline_loss_is_too_little_to_mat
     assert versus.ci_low > 0 and versus.verdict == "no_better", versus.tolerance_basis
 
 
-def test_a_gain_under_a_hundredth_on_a_score_better_when_higher_is_too_little_to_matter():
-    """R² folds of 0.004 to 0.006 against a baseline of 0: a gain of 0.0048, its interval above
-    zero, is no better."""
-    versus = versus_baseline("r2", [0.004, 0.006, 0.005, 0.005, 0.004], [0.0] * 5)
+# A score better when higher, and its no-predictor baseline: R² 0, and Harrell's C 0.5 (a constant
+# risk ties every pair), the score a time to event with delayed entry is read on.
+HIGHER = [("r2", 0.0), ("c_index", 0.5)]
+
+
+@pytest.mark.parametrize("metric, base", HIGHER)
+def test_a_gain_under_a_hundredth_on_a_score_better_when_higher_is_too_little_to_matter(metric,
+                                                                                       base):
+    """Folds 0.004 to 0.006 above the baseline: a gain of 0.0048, its interval above zero, is no
+    better."""
+    gains = [0.004, 0.006, 0.005, 0.005, 0.004]
+    versus = versus_baseline(metric, [base + g for g in gains], [base] * 5)
     assert versus.gain == pytest.approx(0.0048) and versus.ci_low > 0
     assert versus.verdict == "no_better"
 
@@ -210,8 +293,10 @@ def test_a_rare_outcomes_true_risks_beat_the_baseline_by_enough_to_matter(metric
     assert versus.ci_low > 0 and versus.verdict == "better", versus.tolerance_basis
 
 
-def test_a_gain_of_three_hundredths_on_a_score_better_when_higher_is_better():
-    versus = versus_baseline("r2", [0.03, 0.032, 0.029, 0.031, 0.03], [0.0] * 5)
+@pytest.mark.parametrize("metric, base", HIGHER)
+def test_a_gain_of_three_hundredths_on_a_score_better_when_higher_is_better(metric, base):
+    gains = [0.03, 0.032, 0.029, 0.031, 0.03]
+    versus = versus_baseline(metric, [base + g for g in gains], [base] * 5)
     assert versus.ci_low > 0 and versus.verdict == "better"
 
 
@@ -253,19 +338,43 @@ def test_rows_times_smd_past_its_band_two_convention_is_act_on_it():
     assert M.band_of("rows_smd", 0.1) == 1
 
 
+def unfloored() -> dict:
+    """The committed conventions with rows × SMD's floor taken off."""
+    start = M.calibration()
+    rows_smd = start["instruments"]["rows_smd"]
+    return {**start, "instruments": {**start["instruments"], "rows_smd": {
+        **rows_smd, "convention": {k: v for k, v in rows_smd["convention"].items()
+                                   if k != "floored"}}}}
+
+
 def test_a_proxy_whose_convention_is_not_floored_may_say_below_noise(monkeypatch):
     """The floor is the convention's own: with it taken off, the same six cases calibrate the
     proxy, and on that calibration a screen below its band-1 cut-off is band 0, "doesn't change
     your numbers here"."""
-    start = M.calibration()
-    unfloored = {**start, "instruments": {**start["instruments"], "rows_smd": {
-        **start["instruments"]["rows_smd"],
-        "convention": {k: v for k, v in start["instruments"]["rows_smd"]["convention"].items()
-                       if k != "floored"}}}}
-    out = M.calibrate(QUIET, unfloored)
+    out = M.calibrate(QUIET, unfloored())
     assert out["instruments"]["rows_smd"]["calibrated"]
     monkeypatch.setattr(M, "calibration", lambda: out)
     assert M.band_of("rows_smd", 0.0) == 0 and M.recommend(screen(0.0))[0] == "no_change"
+
+
+def test_under_predict_rows_times_smd_is_never_below_could_bias_the_score():
+    """Under Predict the same floor: a screen whose leavers do not differ at all (0) could bias
+    the score, never "doesn't change your numbers here"."""
+    disposition, reason, _ = M.recommend(screen(0.0), purpose="prediction")
+    assert disposition == "could_bias" and "could bias the score" in reason
+    assert "below noise" not in reason
+
+
+def test_under_predict_the_floor_never_caps_and_is_its_conventions_own(monkeypatch):
+    """Under Predict the floor raises, never caps (0.25 is act on it), and it is the convention's
+    own: with it taken off, the six quiet cases calibrate the proxy and a screen at 0 is
+    "doesn't change your numbers here", below noise in the score."""
+    assert M.recommend(screen(0.25), purpose="prediction")[0] == "act_on_it"
+    out = M.calibrate(QUIET, unfloored())
+    assert out["instruments"]["rows_smd"]["calibrated"]
+    monkeypatch.setattr(M, "calibration", lambda: out)
+    disposition, reason, _ = M.recommend(screen(0.0), purpose="prediction")
+    assert disposition == "no_change" and "below noise in the score" in reason
 
 
 # ── the collinear line (C-170) ───────────────────────────────────────────────────────────────
@@ -419,6 +528,7 @@ def test_every_tuning_plans_seeds_and_candidates_are_the_bases():
     (area.rated_before_any_fit, {"n_rows": 499, "n_features": 4},
      {"n_rows": 499.5, "n_features": 4}),
     (area.verdict_metric, {"metric": "brier_t"}, {"metric": "auc"}),
+    (area.verdict_metric, {"metric": "c_index"}, {"metric": "accuracy"}),
     (area.rows_times_smd, {"instrument": "rows_smd"}, {"instrument": "attenuation"}),
 ])
 def test_each_regime_predicate_holds_where_its_words_say_and_nowhere_else(predicate, holds, fails):
