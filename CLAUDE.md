@@ -42,21 +42,20 @@ turn, so it holds only the rules any agent can break.
   a derivation, never from the engine's own output or constant.
 - Test a guard both ways: it fires where it should and stays silent where it should.
 - A number is right or it is refused. A caveat beside a number the fit cannot certify is no fix.
-- A sentence the user reads says only what the code does, generated from the value the code uses,
-  never written by hand beside it.
+- A sentence the user reads says only what the code does. A number in it is interpolated from the
+  value the code uses, never retyped beside the constant that holds it.
 
 ## Environment and tests
-- Python is `scripts/py`, the main checkout's venv, from any worktree (a worktree has no venv;
-  `.venv` lacks pytest). Run from your worktree's root so `turbotab` imports from your tree, and
-  prefix every command with `OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2`.
+- Python is `scripts/py`: the main checkout's `venv-next`, pinned to
+  `turbotab/server/constraints.txt` as CI is (a worktree has no venv; `venv/` is Classic's; `.venv`
+  lacks pytest). Run from your worktree's root so `turbotab` imports from your tree, and prefix
+  every command with `OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2`.
 - A targeted run: `OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2 scripts/py -m pytest <paths> -m "not slow" -q -n 2 -p no:cacheprovider --timeout=600 2>&1 | tail -15`
 - A test you name on purpose: drop `-m "not slow"` and check that the summary counts it, not as
   deselected. Find the tests that reach your code with `git grep -l <name> -- 'turbotab/*test_*.py'`;
   run an acceptance or legacy file only by name, and only when it reaches your code.
 - For frontend work in a worktree, symlink the main checkout's `turbotab/frontend/node_modules`.
   Leave nothing behind: no server, background process, scratch worktree or symlink you made.
-- The venv is slightly off `turbotab/server/constraints.txt` and CI is on it: if a pinned number
-  passes here and fails on CI, suspect the versions first.
 - Read what your prompt names, by section or line range; grep first, keep output short. For what
   the code does, the code is the truth. The methods documents in `docs/turbotab-next/`
   (MODELING_SEQUENCE, RECIPES_AND_TUNING, MODEL_FAMILY_CONTRACT, SURFACING_POLICY) give test paths
@@ -68,6 +67,6 @@ turn, so it holds only the rules any agent can break.
   (only if it gives none, those your prompt supplies).
 - The pre-commit hook checks that every `.py` file parses and that `.py` and `.md` prose is
   American English. If it prints GATES CANNOT RUN, set `TURBOTAB_PYTHON` to the main checkout's
-  `venv/bin/python`.
+  `venv-next/bin/python`.
 - Return your report as data in your final response, in the shape your prompt's schema or your
   role's file gives, with your three most doubtful claims.

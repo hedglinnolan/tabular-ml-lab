@@ -23,6 +23,7 @@ wheels/
 # Virtual environments
 .venv/
 venv/
+venv-next/
 ENV/
 env/
 

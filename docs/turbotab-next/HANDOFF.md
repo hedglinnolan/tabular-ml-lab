@@ -60,7 +60,7 @@ v2.0.0. Send Nolan a short status at the end of each step. Wait for him only whe
 2. **Land the onboarding guidance** (docs/agent-onboarding). Why: every later wave's agents start
    from it.
    - **[Nolan]** Before the merge, he answers whether `CLAUDE.md` and `.claude/agents/` may be
-     public (Open for Nolan).
+     public (ruled 2026-10-15: yes, and kept out of the release zip).
    - After the merge, start a fresh session if the agent registry does not list the four roles. In
      one agent call with `agentType: 'builder'`, worktree isolation and no `model`, check three
      things: it quotes builder.md's first step; it sees one copy of CLAUDE.md, not two; and its
@@ -68,8 +68,8 @@ v2.0.0. Send Nolan a short status at the end of each step. Wait for him only whe
      ATTRIBUTION field.
    - Apply the memory recommendations (the onboarding bundle in this session's scratchpad; if it is
      lost, AUDIT.md §2 S5). Strike `plans/WAVE_C6A_PLAN.md:375`, which tells builders to pip install.
-     Schedule the venv's alignment with `turbotab/server/constraints.txt` (an install, so not beside
-     a wave), then delete CLAUDE.md's sentence about the drift.
+     `venv-next/` was built on 2026-10-15 with uv from `turbotab/server/constraints.txt` (CI's pins);
+     `scripts/py` and the hook hint use it.
 3. **The claims registry, R0, in one wave** (plans/CLAIMS_REGISTRY.md §7; Nolan ruled its three
    questions on 2026-10-15): the registry, its meta-tests and the 15 S1 claims. Why: the claims the
    walkthrough puts on screen need a home before they are audited. Stop at R0's scope: the S2/S3
@@ -120,21 +120,12 @@ v2.0.0. Send Nolan a short status at the end of each step. Wait for him only whe
 
 ## Open for Nolan
 
-- **May `CLAUDE.md` and `.claude/agents/` be public?** The `.gitignore` kept `CLAUDE.md` out of the
-  public repo in 2025; `turbotab/frontend/CLAUDE.md` has been public since 2026-10-05; and
-  `release.yml` would ship both in the release zip. After this revision they hold rules and repo
-  paths, but no personal detail. Either:
-  - **A, public:** merge as they are; the rules are versioned, reviewed and spell-checked with
-    the code.
-  - **B, local only:** restore the `.gitignore` lines, and keep the files untracked in the main
-    checkout, where the orchestrator and every workflow agent still read them; they are then not
-    versioned, and a fresh clone lacks them.
-- **Is the `v1.0-paper` tag on `main` still wanted** for the AJCN availability statement? None
-  exists; a `v*` tag publishes a release, so none is made without his word.
-- **"No proprietary tools"** (2026-10-10): the product only, or also the tools agents use while
-  building? CLAUDE.md states the product reading.
-- Nothing is pending from the quest-log design: FOUNDATION §0 superseded the two rulings listed on
-  2026-10-10 (WALKABLE_PLAN §6).
+- Nothing pending. On 2026-10-15 he ruled:
+  - `CLAUDE.md` and `.claude/agents/` are committed to the public repo and kept out of the release zip.
+  - "No proprietary tools" covers the product only.
+  - The paper's tag is `v1.0.0` on main (2026-09-19); no other tag is wanted.
+  - The venv drift is the orchestrator's call: `venv-next/` (pinned to `turbotab/server/constraints.txt`, as CI is) is TurboTab v2's environment, and `venv/` stays Classic's, untouched.
+- Nothing is pending from the quest-log design: FOUNDATION §0 superseded the two rulings listed on 2026-10-10 (WALKABLE_PLAN §6).
 
 ## Nolan's context
 
