@@ -35,7 +35,10 @@ turn, so it holds only the rules any agent can break.
 - Push, or create a tag, unless your prompt names the exact branch. A `v*` tag publishes a release.
 - `git commit --no-verify`.
 - Hand-edit a generated file: `turbotab/server/openapi.json`, `turbotab/frontend/src/api/generated.ts`,
-  `docs/turbotab-next/reference/METHODS_REFERENCE.md`, `docs/turbotab-next/review-packets/*.md`.
+  `docs/turbotab-next/reference/METHODS_REFERENCE.md`, `docs/turbotab-next/review-packets/*.md`,
+  and the claims registry's `docs/turbotab-next/reference/CLAIMS_REFERENCE.md`,
+  `turbotab/core/claims/status.json` and `turbotab/core/claims/history.jsonl`
+  (`python -m turbotab.core.reference.claims` writes them).
 - Edit Classic's app code (`ml/`, `pages/`, `utils/`, `app.py`); Classic's `tests/` may change.
 - Add a proprietary tool or service to the product.
 
