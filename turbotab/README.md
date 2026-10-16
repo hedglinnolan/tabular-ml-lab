@@ -22,8 +22,9 @@ This builds the frontend when it is missing or stale, then serves the app and AP
 <http://127.0.0.1:8787/>. `make turbotab-next-dev` prints how to run the Vite dev server beside the
 API.
 
-The fast checks are `venv/bin/python -m pytest turbotab/core turbotab/server -q` and, in
-`turbotab/frontend`, `npm run check`.
+The test tiers are CI's: `.github/workflows/v2.yml` runs the fast tier (`-m "not slow"`, in shards)
+on every push, and `v2-full.yml` runs the whole suite (50 to 58 minutes). Locally, run a targeted
+selection with the flags the root `CLAUDE.md` gives, and `npm run check` in `turbotab/frontend`.
 
 The legacy TurboTab app (the Guided door: `api.py`, `web/index.html`) was retired. Its README is
 `docs/turbotab/archive/GUIDED_DOOR_README.md`, and its design record is `docs/turbotab/archive/`.

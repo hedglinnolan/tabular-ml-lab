@@ -34,8 +34,9 @@ env/
 *.swo
 *~
 
-# Claude Code local project state
-.claude/
+# Claude Code local project state; the agent definitions in .claude/agents/ are versioned
+.claude/*
+!.claude/agents/
 
 # Streamlit (but allow config)
 .streamlit/*
@@ -69,9 +70,6 @@ datasets.db
 # Session files (user data)
 tabular_ml_session_*.pkl
 *.pkl
-
-# Claude Code project context (local-only, not for public repo)
-CLAUDE.md
 
 # Internal dev artifacts (not needed by outside users)
 docs/archived/
