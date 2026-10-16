@@ -1838,9 +1838,11 @@ def test_9_each_estimand_reads_its_own_positivity_and_every_exit_leads_forward(t
       and the effect among the exposed is estimated, its Record and methods sentence claiming no
       violation (the card's two readings against an independent cross-fitted logistic regression
       on its folds);
-    * a numeric exposure the covariates nearly determine is refused with the record exit only;
-      taken, the methods sentence says positivity is practically violated, with the estimator's
-      own R² (by hand on its folds), instead of listing positivity among the assumptions;
+    * a numeric exposure the covariates nearly determine is estimated, its methods sentence
+      listing positivity among the assumptions, with the estimator's own R² (by hand on its
+      folds). Re-pinned (claims backtest B-416): it had been refused with the record exit only,
+      and taken, its methods sentence said positivity was practically violated; an R² that high
+      only widens the interval, which counts it (test 9b);
     * too few clusters withhold the lane with the lane's own ways forward: keep the primary model
       only (taken: the lane recorded as such, nothing withheld) or combine each unit's rows."""
     from turbotab.core.models.inference import min_clusters
@@ -1881,14 +1883,10 @@ def test_9_each_estimand_reads_its_own_positivity_and_every_exit_leads_forward(t
                       "measure": "mean_difference"})
         drive.answer_plan("dose")
         dose_design = drive.artifact("causal_design")
-        assert dose_design["exposure"] == "dose" and dose_design["variation"]["violated"]
-        refused = drive.post({**lane, "exposure": "dose", "method": "dml_plr"})
-        assert refused.status_code == 409
-        error = refused.json()["error"]
-        assert error["code"] == "positivity"
-        [record] = error["exits"]  # a numeric exposure has no propensity to trim on
-        assert record["decision"]["acknowledged"]
-        drive.decide(record["decision"])
+        assert dose_design["exposure"] == "dose" and not dose_design["variation"]["violated"]
+        assert not dose_design["positivity"]["violated"]
+        accepted = drive.post({**lane, "exposure": "dose", "method": "dml_plr"})
+        assert accepted.status_code == 200, accepted.text
         dose = _causal_artifact(drive, lambda a: a.get("exposure") == "dose"
                                 and bool(a.get("estimates")))
 
@@ -1925,7 +1923,7 @@ def test_9_each_estimand_reads_its_own_positivity_and_every_exit_leads_forward(t
     assert att["methods"].endswith(CLOSING + E_VALUE_ONLY)
     assert "practically violated" not in att_record and "practically violated" not in att["methods"]
 
-    # The numeric exposure kept on the record: the estimator's own R², by hand on its folds.
+    # The numeric exposure, estimated: the estimator's own R², by hand on its folds.
     adjusted = ["age", "bmi", "trt"]
     hand = plr_by_hand(raw["y"].to_numpy(dtype=float), raw["dose"].to_numpy(dtype=float),
                        raw[adjusted].to_numpy(dtype=float), est.sample_splits(n, 5, 2, seed=0))
@@ -1939,11 +1937,7 @@ def test_9_each_estimand_reads_its_own_positivity_and_every_exit_leads_forward(t
         f"linear and logistic regression predicted the outcome and the exposure from "
         f"{ticked(adjusted)}, each fit on the other 4 of 5 folds, and the outcome's residual was "
         f"regressed on the exposure's; the estimate is the median over 2 random sample splits, on "
-        f"{n:,} complete rows. It rests on the declared assumptions of no unmeasured confounding "
-        f"given the adjustment set, consistency and time ordering. Positivity is practically "
-        f"violated: the covariates explain {hand['r2']:.0%} of `dose`'s variance; every row was "
-        f"kept, as recorded, so the estimate extrapolates where `dose` barely varies given the "
-        f"covariates, a stated limitation." + PLR_RV_AND_E_VALUE)
+        f"{n:,} complete rows." + CLOSING + PLR_RV_AND_E_VALUE)
 
     assert held["withheld"].startswith(f"`site` has 5 units, fewer than the {min_clusters()} "
                                        f"TurboTab requires for cluster-robust intervals")
@@ -1951,3 +1945,67 @@ def test_9_each_estimand_reads_its_own_positivity_and_every_exit_leads_forward(t
     assert kept["withheld"] is None and kept["estimates"] == []
     assert kept_record == ("No causal machine-learning estimate was set beside the primary model "
                            "for the effect of `sodium`.")
+
+
+def test_9b_a_numeric_exposure_the_covariates_nearly_determine_is_estimated_not_withheld(tmp_path):
+    """Claims backtest B-416. The ATT cohort's `dose` is 2·(age − 55) + 0.5·(bmi − 28) plus
+    Gaussian noise of SD 4, so the covariates explain about 96% of its variance, and its effect on
+    `y` is −0.2 per unit. That is no positivity violation: given any age and BMI, every dose has a
+    positive density. By Frisch–Waugh the partially linear model rests on the variance left, so its
+    standard error is about √(1/(1 − R²)) times what it would be were `dose` unrelated to the
+    covariates, and the interval counts that; with main-terms linear nuisances, correctly
+    specified here, the estimate is unbiased (Chernozhukov et al. 2018). The lane estimates it: no
+    refusal, nothing withheld, the estimator's own R² (by hand on its folds) and that widening
+    shown on the card, the estimate within 3 standard errors of −0.2, and the methods sentence
+    listing positivity among the declared assumptions.
+
+    Re-pinned on review: the card's positivity row is a stated assumption (no R² checks a
+    positive density at every covariate level), phrased as one, and its interval sentence says it
+    counts the wider variance but not the bias a misfit in the models of the outcome and of `dose`
+    given the covariates would bring. Re-pinned on the second review, an intended change of words:
+    those models are named in plain words, not as "nuisance models"."""
+    from turbotab.core.tests.acceptance.server_drive import local_server
+    from turbotab.core.tests.truths import Truth
+
+    path = tmp_path / "att.csv"
+    att_cohort(path)
+    truth = Truth({"adjust:age": "yes,yes,no", "adjust:bmi": "yes,yes,no",
+                   "adjust:dose": "no,yes,no", "adjust:trt": "no,yes,no",
+                   "code_or_count:trt": "code", "cluster:pid": "no"}, fixture="the ATT cohort")
+    with local_server(tmp_path / "home") as client:
+        drive = _start(client, path, truth, "y")
+        _plan(drive, {"pid": "identifier", "age": "covariate", "bmi": "covariate",
+                      "trt": "exposure", "dose": "exposure"}, "dose")
+        design = drive.artifact("causal_design")
+        assert design["exposure"] == "dose" and not design["positivity"]["violated"]
+        lane = {"kind": "set_causal", "exposure": "dose", "method": "dml_plr", "learner": "linear",
+                "repetitions": 2, "assumptions": ALL4}
+        accepted = drive.post(lane)
+        assert accepted.status_code == 200, accepted.text
+        drive.decide({"kind": "select_models", "models": ["linear"]})
+        dose = _causal_artifact(drive, lambda a: a.get("exposure") == "dose"
+                                and bool(a.get("estimates") or a.get("withheld")))
+        record = _causal_records(drive)[-1]["sentence"]
+
+    raw = pd.read_csv(path)
+    n = len(raw)
+    adjusted = ["age", "bmi", "trt"]
+    hand = plr_by_hand(raw["y"].to_numpy(dtype=float), raw["dose"].to_numpy(dtype=float),
+                       raw[adjusted].to_numpy(dtype=float), est.sample_splits(n, 5, 2, seed=0))
+    assert hand["r2"] >= 0.9
+    assert dose["withheld"] is None
+    assert dose["variation"]["r2"] == pytest.approx(hand["r2"], abs=1e-9)
+    [row] = dose["estimates"]
+    assert row["estimate"] == pytest.approx(hand["theta"], abs=1e-8)
+    assert abs(row["estimate"] - (-0.2)) < 3 * row["se"]
+    assert "practically violated" not in dose["methods"] and "practically violated" not in record
+    assert CLOSING in dose["methods"]
+    [card] = [a for a in design["assumptions"] if a["key"] == "positivity"]
+    assert card["status"] == "stated", card
+    assert "still" not in card["statement"], card["statement"]
+    assert f"{design['variation']['r2']:.0%}" in card["diagnostic"]
+    assert f"{1 / math.sqrt(1 - design['variation']['r2']):.1f} times" in card["diagnostic"]
+    [interval] = [s for s in card["diagnostic"].split(". ") if s.startswith("Its interval")]
+    assert "variance" in interval and "bias" in interval, interval
+    assert "the models of the outcome and of `dose` given the covariates" in interval, interval
+    assert "nuisance" not in card["diagnostic"], card["diagnostic"]

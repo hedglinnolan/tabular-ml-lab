@@ -1156,10 +1156,15 @@ def overlap(propensity: np.ndarray, exposure: np.ndarray, bound: float,
         violated=bool(np.sum(sw * outside) / np.sum(sw) >= POSITIVITY_SHARE))
 
 
-# A continuous exposure has no propensity to bound; its practical-positivity reading is how much of
-# its variance the covariates explain. R² ≥ 0.9 is a variance inflation factor of 10, the
-# conventional line past which a coefficient rests on little of its own variation (Kutner,
-# Nachtsheim & Neter 2004, *Applied Linear Regression Models* §10.5).
+# A continuous exposure has no propensity to bound, and how much of its variance the covariates
+# explain is a reading of precision, not of positivity. By Frisch–Waugh the partially linear
+# model rests on the variance left, so its standard error is about √(1/(1 − R²)) times what it
+# would be were the exposure unrelated to the covariates, and its interval counts that variance
+# (not the bias a misfit in the models of the outcome and of the exposure would bring, which the
+# small remainder magnifies); positivity asks for a positive density of the exposure at every
+# covariate pattern, which no global R² shows. From R² ≥ 0.9, a variance inflation factor of 10
+# (the collinearity line of Kutner, Nachtsheim & Neter 2004, *Applied Linear Regression Models*
+# §10.5), the card names the widening.
 CONTINUOUS_R2_LINE = 0.9
 
 
@@ -1169,7 +1174,7 @@ class Variation:
 
     r2: float  # the cross-fitted share of the exposure's variance the covariates explain
     residual_sd: float
-    violated: bool
+    violated: bool = False  # never read from R² (above): the card's positivity field, kept False
 
 
 def variation(exposure: np.ndarray, fitted: np.ndarray, weight: np.ndarray | None = None) -> Variation:
@@ -1178,8 +1183,7 @@ def variation(exposure: np.ndarray, fitted: np.ndarray, weight: np.ndarray | Non
     resid = d - np.asarray(fitted, dtype=float)
     total = float(np.sum(w * (d - np.average(d, weights=w)) ** 2))
     r2 = 1.0 - float(np.sum(w * resid ** 2)) / total if total > 0 else 1.0
-    return Variation(r2=r2, residual_sd=float(math.sqrt(np.average(resid ** 2, weights=w))),
-                     violated=bool(r2 >= CONTINUOUS_R2_LINE))
+    return Variation(r2=r2, residual_sd=float(math.sqrt(np.average(resid ** 2, weights=w))))
 
 
 def trim_rows(propensity: np.ndarray, at: float) -> np.ndarray:

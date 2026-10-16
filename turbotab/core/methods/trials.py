@@ -35,6 +35,24 @@ covariate chosen after the data were seen is refused from the primary analysis
   which stays valid when the logistic model is wrong and, with the randomization factors named,
   subtracts the stratification's term (taking the randomization to have balanced the arms within
   each stratum, as permuted blocks do); z intervals. This is R's ``beeca`` (``method = "Ye"``).
+  When the data separate a group of people (the arm and the covariates predict exactly whether
+  they had the event), found by a linear program (Albert & Anderson 1984; Konis 2007), the
+  logistic model has no finite fit for them, and the effect is refused, saying what separates them
+  and how many they are: when the arm itself separates, its risk is 0% or 100% and Ye et al.'s
+  variance counts no uncertainty in it; when everyone is separated (complete separation), no fit
+  is left; otherwise the standardized risks would be set by where the fit stopped. They are finite
+  at the fit's limit (Lesaffre & Albert 1989), the separated people at their own outcome under
+  every arm and the rest the fit to the people left, but reading that fit is withdrawn until a
+  certificate robust to rounding is built (claims backtest B-281, its sixth review): ties to float
+  rounding, on one covariate or on a combination of them, made it report a wrong risk difference.
+  The effect is refused too when the program cannot tell who is separated. When no one is, a fit
+  that only looked separated (a coefficient past 25, or a risk within 1e-10 of 0 or 1) is the
+  finite maximum-likelihood fit, taken on standardized columns, and refused where its information
+  there is too nearly singular for float64 to resolve it (the data barely tell some combination
+  of the columns apart, so the rounding of the numbers would set the fit). Ye et al.'s variance
+  is a sum of covariances, and where it comes out below zero (in a small arm fitted with many
+  terms) the effect is refused too, as is a sensitivity analysis whose completed data sets break
+  down so.
 
 **Cluster-randomized trials** (:func:`estimate` with ``trial_design="cluster_randomized_trial"``).
 The cluster is the unit of randomization, so every cluster has one arm (refused otherwise).
@@ -712,9 +730,13 @@ class _Logit:
     mu: np.ndarray
 
 
-def _logistic(X: np.ndarray, y: np.ndarray, *, offset: np.ndarray | None = None) -> _Logit:
+def _logistic(X: np.ndarray, y: np.ndarray, *, offset: np.ndarray | None = None,
+              separable: bool = True) -> _Logit:
     """Maximum likelihood by Newton's method to |step| ≤ 1e-12 (R's ``glm`` with a tight
-    ``epsilon``); a fitted risk of 0 or 1 or no convergence (separation) is refused."""
+    ``epsilon``); no convergence, a coefficient past 25 or a fitted risk within 1e-10 of 0 or 1
+    (signs of separation) is refused. Where a linear program has shown that no one is separated
+    (``separable=False``, :func:`_separated_people`), the last two are a finite fit's, and are
+    kept."""
     off = np.zeros(len(y)) if offset is None else offset
     beta = np.zeros(X.shape[1])
     p0 = float(np.clip(y.mean(), 1e-6, 1 - 1e-6))
@@ -734,7 +756,8 @@ def _logistic(X: np.ndarray, y: np.ndarray, *, offset: np.ndarray | None = None)
             else:
                 raise _separation()
             mu = _expit(X @ beta + off)
-            if np.max(np.abs(beta)) > 25 or np.min(mu) < 1e-10 or np.max(mu) > 1 - 1e-10:
+            if separable and (np.max(np.abs(beta)) > 25 or np.min(mu) < 1e-10
+                              or np.max(mu) > 1 - 1e-10):
                 raise _separation()
             w = mu * (1 - mu)
             cov = np.linalg.inv(X.T @ (X * w[:, None]))
@@ -745,10 +768,189 @@ def _logistic(X: np.ndarray, y: np.ndarray, *, offset: np.ndarray | None = None)
 
 def _separation() -> TrialRefused:
     return TrialRefused(
-        "Some group of people here all had the event, or none did, so the model's risk for them "
-        "runs to 0% or 100% and no finite estimate exists.",
+        "The logistic model's risk for some group of people here runs to 0% or 100% (they all had "
+        "the event, or none did), so its coefficients have no finite values, or values too large "
+        "to rest an interval on.",
         ({"label": "Adjust for fewer covariates", "covariates": []}, DESCRIBE_OUTCOMES_EXIT),
         term="separation in the logistic model")
+
+
+FREE = 1e-10  # a singular value below this share of the largest: a direction the columns leave free
+FEWER_COVARIATES_EXIT = {"label": "Adjust for fewer covariates", "covariates": []}
+# The program's answer is taken only where it is decided (claims backtest B-281, its fifth
+# review): its tᵢ each 0 or 1 to within FRACTIONAL, and the people it does not separate on its
+# separating plane to within ON_PLANE of the direction's norm. Measured on the review's
+# generators, those people sit within 9.2e-15 of the norm off the plane where the data separate
+# the rest, and 2.4e-13 or more where the solver's tolerance did (a group tied at x = 0 up to
+# noise of 1e-12 or more).
+FRACTIONAL = 1e-6  # a tᵢ further than this from 0 and from 1: the program did not decide them
+ON_PLANE = 1e-13  # the people left off the plane by more than this share of the direction's norm
+LOADS = 1e-6  # the program's direction moves a column whose share of it is above this
+# A finite fit is reported only where float64 can resolve it (claims backtest B-281, its sixth
+# review's re-review). A solve's relative error is about the condition number times machine
+# epsilon (2.2e-16), so where the information on the standardized columns, Z'WZ, has its smallest
+# eigenvalue below SINGULAR of its largest (a condition number above 1e14), rounding alone can
+# leave the fit 2% or more off along that eigenvector, and the risks that move with it. It is a
+# heuristic, measured on the review's generators as the tolerances above were: two people at
+# x = ±ε with the outcomes x does not predict, both treated at one site, gave ratios of 1.2e-15
+# and 5.5e-15 at the 60-digit fit (3.8e-16 and 1.3e-15 on the raw columns), and were reported
+# 1.48e-2 and 1.28e-3 standard errors off. On that re-review's sweeps every report it keeps is
+# within 6e-5 of a standard error, and every trial it refuses the base refused too, though the
+# code before it reported 12 of them within 1e-3 of a standard error.
+SINGULAR = 1e-14  # the information's smallest eigenvalue below this share of its largest
+
+
+def _centered(X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """X's columns centered and scaled to unit SD (the intercept, column 0, and any other column
+    constant here left as they are), and the map back to the columns' own units: β = back @ b,
+    βⱼ = bⱼ/sdⱼ and the intercept b₀ − Σⱼ bⱼ meanⱼ/sdⱼ."""
+    mean = X.mean(axis=0)
+    sd = X.std(axis=0)
+    live = sd > 0
+    mean[~live], sd[~live] = 0.0, 1.0
+    back = np.diag(1 / sd)
+    back[0, live] -= mean[live] / sd[live]
+    return (X - mean) / sd, back
+
+
+def _separated_people(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, list[int]] | None:
+    """The people some direction of the coefficients separates (Albert & Anderson 1984,
+    *Biometrika* 71:1): a direction d reaches person i when sᵢxᵢᵀd > 0, sᵢ = ±1 by the outcome,
+    and puts no one on the wrong side (every sᵢxᵢᵀd ≥ 0). One linear program finds them all, as
+    Konis (2007) and R's ``detectseparation`` find separation by linear programming: maximize
+    Σ tᵢ over 0 ≤ tᵢ ≤ 1 and tᵢ ≤ sᵢqᵢᵀd, d free, by HiGHS. The sum of the directions that reach
+    each separable person reaches them all at once, so scaled up it puts each such tᵢ at 1, and
+    every other tᵢ is 0. The qᵢ are the rows of an orthonormal basis of the standardized
+    columns' span (singular values below :data:`FREE` of the largest dropped), which separates
+    the people X separates and keeps a covariate recorded at very different scales in different
+    groups (milligrams at one site, kilograms at the others) from spreading too little within a
+    group for the solver's tolerance. With them, the columns other than the intercept that the
+    program's direction moves, read on the standardized columns (a share of it above
+    :data:`LOADS`). None when the program fails, leaves a tᵢ neither 0 nor 1
+    (:data:`FRACTIONAL`), or leaves the people it does not separate off its separating plane by
+    more than :data:`ON_PLANE` of the direction's norm: the solver's tolerance, not the data,
+    separated the rest, as it does for a group tied up to noise."""
+    from scipy import sparse
+    from scipy.optimize import linprog
+
+    u, s, vt = np.linalg.svd(_centered(X)[0], full_matrices=False)
+    live = s > FREE * s[0]
+    q = (2 * y - 1)[:, None] * u[:, live]
+    n, r = q.shape
+    res = linprog(np.r_[np.zeros(r), -np.ones(n)],
+                  A_ub=sparse.hstack([sparse.csr_matrix(-q), sparse.eye(n)]), b_ub=np.zeros(n),
+                  bounds=[(None, None)] * r + [(0, 1)] * n, method="highs")
+    if res.status != 0:
+        return None
+    d, t = res.x[:r], res.x[r:]
+    if np.any((t > FRACTIONAL) & (t < 1 - FRACTIONAL)):
+        return None
+    on = t < 0.5
+    if on.any() and not on.all() and (np.max(np.abs(q[on] @ d))
+                                      > ON_PLANE * np.linalg.norm(d)):
+        return None
+    b = vt[live].T @ (d / s[live])  # the direction on the standardized columns Z: Zb = ud
+    moved = np.abs(b) > LOADS * np.linalg.norm(b)
+    return ~on, [j for j in range(1, X.shape[1]) if moved[j]]
+
+
+def _logistic_standardized(X: np.ndarray, y: np.ndarray) -> _Logit:
+    """The maximum-likelihood fit of people no direction separates (:func:`_separated_people`),
+    which is finite, by :func:`_logistic` on their columns centered and scaled
+    (:func:`_centered`), the coefficients and covariance mapped back, keeping a large coefficient
+    or a fitted risk near 0 or 1. Its step is solved on the information, not on a pseudo-inverse,
+    which drops a direction whose small spread the information squares and stops short along it.
+    Refused when Newton's method does not converge, and when the information on those columns is
+    too nearly singular for float64 to resolve the fit (:data:`SINGULAR`)."""
+    Z, back = _centered(X)
+    fit = _logistic(Z, y, separable=False)
+    ev = np.linalg.eigvalsh(Z.T @ (Z * (fit.mu * (1 - fit.mu))[:, None]))
+    if not ev[0] > SINGULAR * ev[-1]:
+        raise _nearly_singular()
+    cov = back @ fit.cov @ back.T
+    return _Logit(beta=back @ fit.beta, cov=(cov + cov.T) / 2, mu=fit.mu)
+
+
+def _fit_risks(d: _Design, y: np.ndarray, arms: list[str]) -> tuple[_Logit, np.ndarray]:
+    """The logistic fit and every analyzed person's risk with the arm set to each arm in turn
+    (:func:`_counterfactual`). When :func:`_logistic` refuses, the separated people are found
+    exactly (:func:`_separated_people`), and the effect is refused with the plain separation
+    reason when that cannot be done, and for the separation when anyone is separated
+    (:func:`_separated_refusal`). No one separated: the fit is the finite maximum-likelihood one
+    that :func:`_logistic`'s bounds refused (:func:`_logistic_standardized`), refused where its
+    information is too nearly singular to resolve it (:func:`_nearly_singular`)."""
+    try:
+        fit = _logistic(d.X, y)
+        return fit, _counterfactual(d, fit.beta, arms)
+    except TrialRefused:
+        pass
+    found = _separated_people(d.X, y)
+    if found is None:
+        raise _separation()
+    people, columns = found
+    if people.any():
+        raise _separated_refusal(d, y, arms, people, columns)
+    fit = _logistic_standardized(d.X, y)
+    return fit, _counterfactual(d, fit.beta, arms)
+
+
+def _nearly_singular() -> TrialRefused:
+    """The refusal when no one is separated but the information is too nearly singular for
+    float64 to resolve the fit (:data:`SINGULAR`): the data barely tell apart some combination of
+    the columns, as two covariates that nearly copy each other do, or a fit resting on a few
+    people nearly alike in every column, its other risks all near 0 or 1."""
+    return TrialRefused(
+        "The data here barely tell apart some combination of the model's terms: two covariates "
+        "nearly copy each other, say, or almost everyone's risk is so near 0% or 100% that the "
+        "fit rests on a few people nearly alike in every term. Along that combination the "
+        "logistic model's coefficients would be set by the rounding of the numbers, not by the "
+        "data, and the standardized risks, their difference and their standard errors could be "
+        "too.",
+        (FEWER_COVARIATES_EXIT, DESCRIBE_OUTCOMES_EXIT),
+        term="nearly singular information in the logistic model")
+
+
+def _separated_refusal(d: _Design, y: np.ndarray, arms: list[str], people: np.ndarray,
+                       columns: list[int]) -> TrialRefused:
+    """The refusal when the data separate some people (:func:`_separated_people`). An arm with no
+    events, or only events: its risk is 0% or 100%, and Ye et al.'s variance, made of each arm's
+    spread of outcomes around its fitted risks, is zero there. Everyone separated: no fit is
+    left. Otherwise the terms ``columns`` predict those people's outcomes exactly, and the
+    logistic model has no finite fit for them. At its limit the standardized risks are finite
+    (Lesaffre & Albert 1989, *J R Stat Soc B* 51:109), those people at their own outcome under
+    every arm and the rest the fit to the people left, but reading that fit is withdrawn (claims
+    backtest B-281, its sixth review): ties to float rounding, on one column and then on a
+    combination of columns, made the people-left fit report a wrong risk difference, by up to
+    1.06 standard errors."""
+    for k, a in enumerate(arms):
+        events, m = int(y[d.arm_codes == k].sum()), int((d.arm_codes == k).sum())
+        if events in (0, m):
+            return TrialRefused(
+                f"{'No one' if events == 0 else 'Everyone'} in {a} had the event ({events} of "
+                f"{m}), so the arm's risk is {'0%' if events == 0 else '100%'} and the logistic "
+                f"model's coefficient for the arm has no finite value. The risk difference is "
+                f"still finite, but Ye et al.'s variance, built from each arm's spread of outcomes "
+                f"around its fitted risks, counts no uncertainty where every outcome is the same, "
+                f"so no interval is given for it here.", (DESCRIBE_OUTCOMES_EXIT,),
+                term="separation in the logistic model")
+    exits = (FEWER_COVARIATES_EXIT, DESCRIBE_OUTCOMES_EXIT)
+    if people.all():
+        return TrialRefused(
+            f"The arm and the covariates predict every person's outcome exactly (all {len(y)} of "
+            f"them), so the logistic model has no fit left to rest the standardized risks on: its "
+            f"coefficients run off without end, and the risks, their difference and their "
+            f"standard errors would be set by where the fit stopped, not by the data.", exits,
+            term="complete separation in the logistic model")
+    terms = [d.names[j] for j in columns] or ["the arm and the covariates"]
+    listed = terms[0] if len(terms) == 1 else f"{', '.join(terms[:-1])} and {terms[-1]}"
+    one = len(columns) == 1
+    return TrialRefused(
+        f"From {listed}, the data predict exactly whether {int(people.sum())} of the {len(y)} "
+        f"people had the event, so the logistic model has no finite fit for them: "
+        f"{'that coefficient runs' if one else 'those coefficients run'} off without end, or so "
+        f"far that only the rounding of the numbers stops {'it' if one else 'them'}, and the "
+        f"standardized risks, their difference and their standard errors would be set by where "
+        f"the fit stopped, not by the data.", exits, term="separation in the logistic model")
 
 
 # ── results ──────────────────────────────────────────────────────────────────
@@ -880,7 +1082,8 @@ def _counterfactual(d: _Design, beta: np.ndarray, arms: list[str]) -> np.ndarray
         Xk[:, d.arm_columns] = 0.0
         if k:
             Xk[:, d.arm_columns[k - 1]] = 1.0
-        out[:, k] = _expit(Xk @ beta)
+        with np.errstate(over="ignore"):  # a finite fit's risk far out on a steep term: exactly 0
+            out[:, k] = _expit(Xk @ beta)
     return out
 
 
@@ -925,6 +1128,33 @@ def ye_variance(y: np.ndarray, arm_codes: np.ndarray, cf: np.ndarray, fitted: np
     return V / n
 
 
+def _checked_variance(d: _Design, y: np.ndarray, arms: list[str], cf: np.ndarray, fit: _Logit,
+                      strata: np.ndarray | None, *, imputed: bool = False) -> np.ndarray:
+    """Ye et al.'s covariance (:func:`ye_variance`), refused where it gives an arm's standardized
+    risk, or a difference or ratio of two, a variance below zero. It is a sum of covariances, not
+    of squares, and in a small arm fitted with many terms it can break down so; the arm named is
+    the one whose own variance fails, or else the smaller of the two compared."""
+    V = ye_variance(y, d.arm_codes, cf, fit.mu, strata)
+    theta = cf.mean(axis=0)
+    size = np.bincount(d.arm_codes, minlength=len(arms))
+    failed = [k for k in range(len(arms)) if V[k, k] < 0]
+    for k in range(1, len(arms)):
+        g = np.zeros(len(arms))
+        g[k], g[0] = 1 / theta[k], -1 / theta[0]
+        if V[k, k] + V[0, 0] - 2 * V[0, k] < 0 or float(g @ V @ g) < 0:
+            failed.append(k if size[k] <= size[0] else 0)
+    if not failed:
+        return V
+    a, m = arms[failed[0]], int(size[failed[0]])
+    where = "In one of the data sets completed by imputation, " if imputed else ""
+    raise TrialRefused(
+        f"{where}Ye et al.'s variance of the standardized risks comes out below zero for {a}, "
+        f"which a variance cannot be. It is built from each arm's spread of outcomes around its "
+        f"fitted risks, and with {m} people in {a} for the {d.X.shape[1]} terms of the model, "
+        f"that estimate breaks down in an arm this small, so no interval is given.",
+        (FEWER_COVARIATES_EXIT, DESCRIBE_OUTCOMES_EXIT), term="negative variance estimate")
+
+
 def _strata_codes(frame: pd.DataFrame, spec: TrialSpec, idx: pd.Index) -> np.ndarray | None:
     if not spec.strata:
         return None
@@ -935,10 +1165,9 @@ def _strata_codes(frame: pd.DataFrame, spec: TrialSpec, idx: pd.Index) -> np.nda
 
 def _standardized(d: _Design, y: np.ndarray, arms: list[str], strata: np.ndarray | None
                   ) -> tuple[list[Contrast], list[ArmEstimate], _Logit, np.ndarray, np.ndarray]:
-    fit = _logistic(d.X, y)
-    cf = _counterfactual(d, fit.beta, arms)
+    fit, cf = _fit_risks(d, y, arms)
     theta = cf.mean(axis=0)
-    V = ye_variance(y, d.arm_codes, cf, fit.mu, strata)
+    V = _checked_variance(d, y, arms, cf, fit, strata)
     contrasts: list[Contrast] = []
     for k in range(1, len(arms)):
         se = math.sqrt(V[k, k] + V[0, 0] - 2 * V[0, k])
@@ -1470,6 +1699,7 @@ class _Imputer:
 
     kind: str
     X: np.ndarray  # every randomized person in the set
+    names: list[str]  # X's terms
     y: np.ndarray  # NaN where missing
     missing: np.ndarray
     arm_codes: np.ndarray
@@ -1513,7 +1743,7 @@ def _imputer(d: _Design, y: np.ndarray, kind: str, m: int, seed: int,
     else:
         fit = _logistic(Xo, yo)
         draws = [(rng.standard_normal(p), rng.random(n_mis)) for _ in range(m)]
-    return _Imputer(kind=kind, X=d.X, y=y, missing=miss, arm_codes=d.arm_codes,
+    return _Imputer(kind=kind, X=d.X, names=d.names, y=y, missing=miss, arm_codes=d.arm_codes,
                     arm_columns=d.arm_columns, draws=draws, fit=fit, strata=strata)
 
 
@@ -1571,12 +1801,11 @@ def _pool(imp: _Imputer, delta: float, arm: int, measure: str, arms: list[str]) 
             variances.append(fit.cov[j, j])
             df_com = fit.df
         else:
-            d = _Design(X=imp.X, names=[], arm_codes=imp.arm_codes, arm_columns=imp.arm_columns,
-                        filled={}, index=pd.RangeIndex(len(y)))
-            lfit = _logistic(imp.X, y)
-            cf = _counterfactual(d, lfit.beta, arms)
+            d = _Design(X=imp.X, names=imp.names, arm_codes=imp.arm_codes,
+                        arm_columns=imp.arm_columns, filled={}, index=pd.RangeIndex(len(y)))
+            lfit, cf = _fit_risks(d, y, arms)
             theta = cf.mean(axis=0)
-            V = ye_variance(y, imp.arm_codes, cf, lfit.mu, imp.strata)
+            V = _checked_variance(d, y, arms, cf, lfit, imp.strata, imputed=True)
             if measure == "risk_ratio":
                 g = np.zeros(len(arms))
                 g[arm], g[0] = 1 / theta[arm], -1 / theta[0]
@@ -2062,7 +2291,12 @@ def _register_contracts() -> None:
                      condition="a yes/no outcome", enforced_by=f"{here}:estimate",
                      id="kr_numeric_only"),
             Relation("conflicts", "separation",
-                     "refused when the logistic model's risks run to 0% or 100%",
+                     "refused when the logistic model's risk for any group of people runs to "
+                     "0% or 100% (the arm and the covariates predict exactly whether they had "
+                     "the event): an arm, everyone (complete separation), or a group a linear "
+                     "program finds or cannot rule out (for the estimating equations, any "
+                     "fitted risk within 1e-10 of either); a partly separated fit is not read "
+                     "at its limit",
                      purposes=est_only, rung="refused",
                      when=("standardized_risk", "gee_corrected"),
                      exits=("adjust for fewer covariates", "describe the events in each arm"),

@@ -29,11 +29,14 @@ prediction"):
   as declared. The estimate is computed only after.
 * **Positivity** (block and record): 1% or more of the rows with a propensity outside
   ``[b, 1 − b]`` (b, tmle's truncation level ``5/(√n ln n)``; the 1% is this app's stated line;
-  for the effect among the exposed, a propensity above ``1 − b``, its own reading), or
-  a continuous exposure the covariates explain to R² ≥ 0.9 (a variance inflation factor of 10),
-  are refused until the analyst trims to the overlap population
+  for the effect among the exposed, a propensity above ``1 − b``, its own reading) are refused
+  until the analyst trims to the overlap population
   (propensities in [0.1, 0.9]; Crump, Hotz, Imbens & Mitnik 2009, *Biometrika* 96:187) or records
-  that every row is kept. The methods sentence then says which, with the violation's numbers.
+  that every row is kept. The methods sentence then says which, with the violation's numbers. A
+  numeric exposure's positivity is a stated assumption, which no R² checks: one the covariates
+  explain to R² ≥ 0.9 is not refused, its estimate rests on the variance left, and the card says
+  how much wider that makes its interval, which counts that variance but not the bias a misfit in
+  the models of the outcome and of the exposure given the covariates would bring.
 * **A survey design** (MODELING_SEQUENCE ruling 6): the weights enter every nuisance fit and the
   estimating equation of the DML and TMLE estimators; the post-double-selection lasso's plug-in
   penalty is derived for independent, unweighted rows, so under the surveyed-population answer it
@@ -154,8 +157,8 @@ RELATIONS: dict[str, Any] = {r.name: r for r in (
               "The four assumptions are declared, each beside its diagnostic, before any estimate is "
               "computed."),
     _relation("positivity_blocks", "conflicts", "a positivity violation", "the estimate",
-              "Propensities outside the truncation bound (or a continuous exposure the covariates "
-              "nearly determine) block the estimate until trimmed or recorded.",
+              "Propensities outside the truncation bound block the estimate until trimmed or "
+              "recorded. A numeric exposure has no propensity to bound; its positivity is stated.",
               "Trim to the overlap population, or keep every row and record it",
               rung="block_and_record"),
     _relation("trim_changes_estimand", "implies", "trimming", "the estimand",
@@ -479,10 +482,21 @@ def assumption_card(*, exposure: str, exposure_kind: str, adjusted: Sequence[str
         statement = f"Every kind of participant could have had either level of {x}."
         status = "violated" if overlap.get("violated") else "checked"
     elif variation is not None:
-        diag = (f"The covariates explain {variation['r2']:.0%} of {x}'s variance; what is left has "
-                f"a standard deviation of {variation['residual_sd']:.4g}.")
-        statement = f"{x} still varies at every level of the covariates."
-        status = "violated" if variation.get("violated") else "checked"
+        from turbotab.core.models.causal import CONTINUOUS_R2_LINE
+
+        r2 = float(variation["r2"])
+        diag = (f"The covariates explain {r2:.0%} of {x}'s variance; what is left has a standard "
+                f"deviation of {variation['residual_sd']:.4g}.")
+        if r2 >= CONTINUOUS_R2_LINE:
+            diag += (f" The estimate rests on what is left, so its standard error is about "
+                     f"{(1 - r2) ** -0.5:.1f} times what it would be were {x} unrelated to the "
+                     f"covariates (a variance inflation factor of {1 / (1 - r2):.0f}): a matter "
+                     f"of precision, not of positivity. Its interval counts that wider variance, "
+                     f"but not the bias a misfit in the models of the outcome and of {x} given "
+                     f"the covariates would bring; so small a remainder magnifies that bias.")
+        # no R² reads a positive density at every level of the covariates: declared, not checked
+        statement = f"{x} could take each value compared at every level of the covariates."
+        status = "stated"
     else:
         diag, status = "Computed with the estimate.", "pending"
         statement = f"{x} varies at every level of the covariates."
@@ -789,12 +803,11 @@ def methods_sentence(*, method: str, exposure: str, outcome: str, effect: str,
     if ratios_refused:
         text += _ratios_refused_sentence(ratios_refused)
     if violation:
-        where = (f"one level of {x} is all but impossible given the covariates"
-                 if level is not None else f"{x} barely varies given the covariates")
         text += (" It rests on the declared assumptions of no unmeasured confounding given the "
                  f"adjustment set, consistency and time ordering. Positivity is practically "
                  f"violated: {violation}; every row was kept, as recorded, so the estimate "
-                 f"extrapolates where {where}, a stated limitation.")
+                 f"extrapolates where one level of {x} is all but impossible given the "
+                 f"covariates, a stated limitation.")
     else:
         text += (" It rests on the declared assumptions of no unmeasured confounding given the "
                  "adjustment set, positivity, consistency and time ordering.")

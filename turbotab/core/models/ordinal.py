@@ -18,11 +18,14 @@ concave in (θ, β) for the logistic link: Pratt 1981, *J Am Stat Assoc* 76:103)
 that keeps the cut-points increasing.
 
 **Intervals.** Independent rows: Wald intervals from the inverse observed information, as
-``polr``'s ``summary`` and statsmodels report. Rows that repeat by a unit: the sandwich
+``polr``'s ``summary`` and statsmodels report. Rows that repeat by a unit: the CR1 sandwich
 ``(G/(G − 1)) · I⁻¹ (Σ_g s_g s_gᵀ) I⁻¹`` over the units' summed scores, on t(G − 1), which is
 Stata's ``vce(cluster)`` for maximum-likelihood models (Cameron & Miller 2015, *J Hum Resour*
 50:317, §VI: "at a minimum one should use the T(G − 1) distribution"); below the unit floor no
 interval is reported, as for every family (:func:`~turbotab.core.models.inference.floor_refusal`).
+That minimum is not a few-cluster correction, and the table says so below 30 units: such
+intervals can still be too narrow, more so for units of unequal size. The linear family's
+few-cluster correction, CR2 with Bell–McCaffrey degrees of freedom, is not built for this model.
 
 **The proportional-odds check** is Brant's (1990, *Biometrics* 46:1171): the K − 1 binary logistic
 regressions of 1{Y > j} on x are fit separately, and a Wald test asks whether their slopes are
@@ -321,12 +324,35 @@ def cut_names(levels: Sequence[Any]) -> list[str]:
     return [f"(cut-point {levels[j]} | {levels[j + 1]})" for j in range(len(levels) - 1)]
 
 
+def _cr1_concerns(clusters: Any) -> list[str]:
+    """What the clustered table says of its intervals: the CR1 sandwich on t(G − 1) it computes,
+    and below :data:`~turbotab.core.models.inference.FEW_CLUSTERS` units that such intervals can
+    still be too narrow. Cameron & Miller (2015, §VI) give t(G − 1) as the least allowance, which
+    lessens but does not remove the sandwich's downward bias, the more so for units of unequal
+    size (MacKinnon & Webb 2017, *J Appl Econom* 32:233); a known-truth simulation in the tests
+    (12 units of lognormal size) covers β in well under 95%."""
+    from turbotab.core.models.inference import FEW_CLUSTERS
+
+    out = [clusters.note] if clusters.note else []
+    G = clusters.n_clusters
+    if clusters.note is None:
+        out.append(f"Intervals are cluster-robust by `{clusters.column}` (CR1, G = {G:,}), because "
+                   f"its rows repeat.")
+    if G < FEW_CLUSTERS:
+        out.append(f"Only {G} `{clusters.column}` clusters: the intervals use the CR1 sandwich "
+                   f"with the G/(G − 1) correction on t({G - 1}), the least allowance Cameron & "
+                   f"Miller (2015) ask for. With this few clusters, and more so when their sizes "
+                   f"differ or a column varies only between them, such intervals can still be too "
+                   f"narrow (MacKinnon & Webb 2017), so a p-value near 0.05 may overstate the "
+                   f"evidence.")
+    return out
+
+
 def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, clusters: Any) -> Any:
     """The proportional-odds inference table on the model matrix: coefficients (log cumulative
     odds ratios), then the cut-points; intervals as the module docstring says."""
     from turbotab.core.models.inference import (
         InferenceTable,
-        _cluster_concerns,
         _info,
         _refused,
         _t_rows,
@@ -374,7 +400,7 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
                    f"units with the G/(G − 1) correction, Stata's vce(cluster)), on t({G - 1:,}). "
                    f"{scale}")
         info = _info(estimator, "CR1", caption, clusters)
-        concerns = _cluster_concerns(clusters) + concerns
+        concerns = _cr1_concerns(clusters) + concerns
         concerns.append("The proportional-odds check (Brant) is not computed when rows repeat: it "
                         "assumes independent rows.")
         return InferenceTable(rows, info, concerns, cov=V)
