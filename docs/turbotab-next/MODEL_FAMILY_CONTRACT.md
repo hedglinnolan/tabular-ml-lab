@@ -522,7 +522,7 @@ A single complexity axis shared by all families has been proposed (Allerbo & Sch
   - a clustered fixture resampled by unit;
   - plus a p ≫ n signal fixture for the screened elastic net, which is declared sound but unverified.
 - **Seeds are fixed,** so a run is deterministic.
-- **It does not run in CI.** It is a Monte Carlo against fresh data for every family, scheduled with Nolan, because the dev machine is beside the bed. Each run writes a results file per family version. The CI gate reads that file and fails only when a family's identity or defaults version has changed since its last recorded pass.
+- **It does not run in CI.** It is a Monte Carlo against fresh data for every family, scheduled with Nolan, like every heavy run. Each run writes a results file per family version. The CI gate reads that file and fails only when a family's identity or defaults version has changed since its last recorded pass.
 - **Today:**
   - `featurewise` skips the loop (`stages/modeling.py:fit_stage`), yet the methods reference prints "sound: yes" for it (`reference/methods.py:family_section`). It should print "not applicable".
   - `flexible` is read by `models/selection.py:is_flexible` and declared by no family.
@@ -1008,7 +1008,7 @@ xRFM combines kernel machines that learn features through the AGOP with a tree p
 - **MC-11 follows MC-1. MC-19** follows MC-1; its runs are heavy and scheduled with Nolan.
 - **MC-17 lands with C6d** (Models under Predict).
 - **Gate items turn blocking** as their packages land: item 2 with MC-2b, item 3 with MC-5, item 7 with MC-18, item 9 with MC-7, item 10 with MC-19's first recorded run, item 4 against X4 once it lands.
-- **Heavy runs are scheduled with Nolan.** These are RT-13's regenerated journeys and MC-19's soundness runs. The dev machine is beside the bed.
+- **Heavy runs are scheduled with Nolan.** These are RT-13's regenerated journeys and MC-19's soundness runs.
 
 **Not taken in this design.**
 - Ranking families by a pre-fit risk estimate such as KARE: it reads the outcome (§2.1).

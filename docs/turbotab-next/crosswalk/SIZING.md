@@ -177,7 +177,7 @@ Each package: what it is, what it depends on, its size, whether it is engine, in
 | The zero-row refusal: no stage is handed an empty frame (19109ef4, on `fix/zero-rows-refusal`; merge pending). Part of P0.10. | S |
 | **All** | **222 units** |
 
-Sources: `HANDOFF.md` ("The engine (done and independently verified)"), `V2_DEFINITION_OF_DONE.md` §6 ("Done (through 2026-10-06)"), BLUEPRINT §9 (the milestones), and the commits named in the table.
+Sources: `HANDOFF_HISTORY.md` ("The engine (done and independently verified)"), `V2_DEFINITION_OF_DONE.md` §6 ("Done (through 2026-10-06)"), BLUEPRINT §9 (the milestones), and the commits named in the table.
 
 ## What would shrink the road
 

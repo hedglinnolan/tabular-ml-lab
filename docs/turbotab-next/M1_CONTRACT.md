@@ -195,7 +195,7 @@ within 500 ms. Every finding with a lever routes to its question. The DRIVE_RUBR
 # M1 part 2 — the frontend on the ruled design, plus four fixes from the live journey
 
 Part 1 (§1–§9) is built and merged. Part 2 builds the production frontend on the design Nolan ruled
-(BLUEPRINT §11.1), and fixes what the live NHANES journey found (HANDOFF.md). The `stage` prototype
+(BLUEPRINT §11.1), and fixes what the live NHANES journey found (HANDOFF_HISTORY.md, 2026-09-27). The `stage` prototype
 lives on the branch at `turbotab/frontend/src/explore/stage/` (route `/lab/explore/stage`): **lift its
 views into production components.** Don't rebuild them from scratch. The lineage diagram is the one
 Nolan called the best he has seen.

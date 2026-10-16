@@ -9,7 +9,7 @@ document here, they win.
 |---|---|---|
 | `OPENING_SEQUENCE.md` | Everything before the seal: the order of the questions, their copy, and their firing rules. Nothing may be resequenced. | M2_CONTRACT; the Router (`turbotab/core/interview.py`) |
 | `LOCKBOX_CONSTITUTION.md` | What the app may know, and when (§01–§08): the fixed pre-seal order, grain asked rather than inferred, the seal's three states, eligibility and trims, declaration and execution, missingness. Its appendix is the routing constitution: fact, choice, consequence. | `turbotab/core/seal.py`, `decisions.py`, `repairs.py`, `coach.py`; the seal components |
-| `DESIGN_LANGUAGE.md` | §02 color tokens, §03 the three voices, §04 components, §05 motion, §09 question grammar, §11 the evidence badge | BLUEPRINT §7; `turbotab/frontend/CLAUDE.md` |
+| `DESIGN_LANGUAGE.md` | §05 motion, §09 question grammar, §11 the evidence badge. §02 color tokens, §03 the three voices and §04 components are amended by `../calm/FOUNDATION.md` §2 and §4 (Nolan, 2026-10-05), which wins where they differ | BLUEPRINT §7; `turbotab/frontend/CLAUDE.md` |
 | `prototypes/design-language.html` | The design language, drawn. Open it in a browser. | `DESIGN_LANGUAGE.md` |
 | `PRODUCT_VISION.md` | The product owner's rulings in §06b ("correct, surfaced, beautiful") and §06c (the substitution curve and its five marks). Its two-door sections (§04b, §05) describe the legacy app. | `turbotab/core/methods/substitution.py`; M1_CONTRACT; DRIVE_RUBRIC |
 | `DOMAIN_PACKS.md` | What a domain pack may change and what it may never change, its three guards, and the lens question (§01) | the lens-contradiction finding (`turbotab/core/detectors/lenses.py`) |

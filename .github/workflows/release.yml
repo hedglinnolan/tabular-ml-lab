@@ -42,11 +42,13 @@ jobs:
           mkdir -p "build/$NAME"
           # Ship the application, not the development scaffolding. Tests, CI
           # config and git metadata are not useful to a researcher and only
-          # add surface for archive scanners to object to.
+          # add surface for archive scanners to object to. The agents' CLAUDE.md files and
+          # .claude/ are development guidance too (Nolan, 2026-10-15: public in the repo, not in the zip).
           rsync -a \
             --exclude '.git' --exclude '.github' --exclude 'tests' \
             --exclude 'scripts' --exclude '.venv' --exclude '.tools' \
             --exclude '__pycache__' --exclude '*.pyc' --exclude '.pytest_cache' \
+            --exclude 'CLAUDE.md' --exclude '.claude' \
             ./ "build/$NAME/"
           cd build
           zip -qr "../$NAME.zip" "$NAME"
