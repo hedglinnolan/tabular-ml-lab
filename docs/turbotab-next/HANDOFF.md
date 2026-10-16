@@ -12,16 +12,20 @@
 **Known red:**
 - **The e2e-real job is still `continue-on-error`** until its waits are tuned to CI's runners.
 
-**Next, in order:**
-1. **The claims registry, R0** (plans/CLAIMS_REGISTRY.md; Nolan ruled its three questions on 2026-10-15), before W1 part 2. Every methods rule, threshold and teaching sentence becomes a declared object (schema, basis, grade, test) that code reads; its sentences are generated from the parameters actually used. The 39 S2 and 16 S3 fixes wait for it, so their sentences are not hand-patched twice. A ruling stays "proposed" until its code and test exist.
-2. **W1 part 2** (WALKABLE_PLAN §5, unchanged from the list below), then my walkthrough of NHANES glucose under Predict, with a friction log, before Nolan sees it.
-3. **W2–W4,** each registering the claims it adds and absorbing the S2/S3 fixes in its area. At each wave's end, ask the builder for its three most doubtful claims.
-4. **Heavy runs, scheduled with Nolan:** the T1 rerun at 600 datasets (the small-sample standard is now in code, A-001); the reference-journey recapture, then the materiality calibration on it.
-5. **The Lean pilot:** about a dozen invariance and exactness claims ("doesn't change your numbers"), each theorem's hypotheses checked at run time as predicates, the app asserting only when every one holds.
-6. **The stage-3 audit** of the remaining claims through the registry, with decoy set v2 (16 decoys and 5 controls, approved by Nolan, sealed outside the repo; never shown to an agent with its key, and fork agents are never referees).
-7. **The replication pilot:** Bang 2009 (Predict), Menke 2015 (Describe) and Sullivan 2021 (Estimate; Am J Prev Med 61:563; chosen by Nolan on 2026-10-15). Each replication reports the decisions the paper stated, the ones it left unstated, and how far each unstated option moves the published number.
-8. **Data provenance in ingest:** record each file's source URL and release or revision date, not only its hash.
-9. Then the research swarm, once its gates are passed.
+**Next, in order** (re-ordered 2026-10-15 at Nolan's direction: the product walkable sooner):
+1. **Land stage 1:** B-281's fallback round, then merge fix/s1-inference and push turbotab-next.
+2. **The onboarding audit:** an independent Fable audit and revision of the base instructions agents get when they join the project, as orchestrator or executor.
+3. **The claims registry, R0, in one wave** (plans/CLAIMS_REGISTRY.md; Nolan ruled its three questions on 2026-10-15): the registry, its meta-tests and the 15 S1 claims.
+4. **W1 part 2** (WALKABLE_PLAN §5, unchanged from the list below), then my walkthrough of NHANES glucose under Predict, with a friction log, before Nolan sees it. Every claim that journey puts on screen is audited and registered as R1's first batch.
+5. **The Sullivan 2021 replication** (Am J Prev Med 61:563, chosen by Nolan on 2026-10-15), as the first end-to-end check of the Estimate lane. It reports the decisions the paper stated, the ones it left unstated, and how far each unstated option moves the published number.
+6. **W2–W4,** each registering the claims it adds. The remaining S2/S3 fixes go in the order the walkthrough and the replication surface them. At each wave's end, the builder names its three most doubtful claims.
+7. **Heavy runs, scheduled with Nolan:** the T1 rerun at 600 datasets (the small-sample standard is now in code, A-001); the reference-journey recapture, then the materiality calibration on it.
+8. **The Lean pilot** on about a dozen invariance and exactness claims; **the stage-3 audit** with decoy set v2 (sealed outside the repo, never shown to an agent with its key, and fork agents are never referees); the Bang 2009 and Menke 2015 replications; **data provenance in ingest** (each file's source URL and release date).
+9. Then the research swarm, once its gates are passed. It writes to a corpus apart from the registry (ruled 2026-10-15).
+
+**Process rules learned on 2026-10-15:**
+- **Fix the defect, file the feature, and set the stopping rule before the first round.** B-281 grew from an honest refusal into partial reporting and took six review rounds to come back to the refusal.
+- **A change to a family's defaults runs every reproducibility pin,** not only the tests that import the touched code (test_wp7's boosted-trees reference failed only on CI).
 
 The 2026-10-11 lists below still hold for the phase-4 and W1 part-1 leftovers.
 
