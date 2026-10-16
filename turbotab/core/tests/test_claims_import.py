@@ -65,8 +65,28 @@ def test_the_scan_imports_every_public_module_and_no_private_one(tmp_path, monke
             del sys.modules[name]
 
 
-def test_the_default_registry_holds_no_claim_yet():
-    """R0a ships the registry with no real claim in it; R0b registers the first ones."""
+R0B_IDS = {
+    # inference (turbotab/core/claims/inference.py)
+    "causal.numeric_exposure_r2", "designs.observational_default", "designs.sampled_by_outcome",
+    "inference.few_clusters", "ordinal.cluster_robust_intervals", "results.tail_share",
+    "survival.monotone_likelihood", "trials.few_clusters", "trials.few_clusters_extended",
+    "trials.separation",
+    # models (turbotab/core/claims/models.py)
+    "baseline.min_gain", "boosted_trees.small_rows", "forest.small_rows",
+    "materiality.collinear_under_prediction", "materiality.rows_smd_floor",
+    "materiality.rows_smd_floor_prediction", "tuning.small_sample_standard",
+    "tuning.small_sample_standard_classes", "tuning.small_sample_standard_estimate",
+    # data (turbotab/core/claims/data.py)
+    "data.clusters_adjust", "data.constant_column", "data.nhanes_weight", "data.omics_raw_scale",
+    "data.tail_share", "data.ul_share", "data.ul_share_unread",
+}
+
+
+def test_the_default_registry_holds_r0bs_claims():
+    """R0a shipped the registry with no real claim in it; R0b registers its three areas' claims,
+    found by the package scan, and no other."""
     assert isinstance(claims.registry(), Registry)
-    assert len(claims.registry()) == 0
-    assert claims.scan("turbotab.core.claims") == []
+    assert claims.scan("turbotab.core.claims") == [
+        "turbotab.core.claims.data", "turbotab.core.claims.inference",
+        "turbotab.core.claims.models"]
+    assert {c.id for c in claims.registry()} == R0B_IDS
