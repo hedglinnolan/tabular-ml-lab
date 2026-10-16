@@ -13,19 +13,18 @@
 - **The e2e-real job is still `continue-on-error`** until its waits are tuned to CI's runners.
 
 **Next, in order:**
-1. **The claims registry spec,** for Nolan's review, before W1 part 2. Every methods rule, threshold and teaching sentence becomes a declared object (schema, basis, grade, test) that code reads; its sentences are generated from the parameters actually used. The 39 S2 and 16 S3 fixes wait for it, so their sentences are not hand-patched twice. A ruling stays "proposed" until its code and test exist.
+1. **The claims registry, R0** (plans/CLAIMS_REGISTRY.md; Nolan ruled its three questions on 2026-10-15), before W1 part 2. Every methods rule, threshold and teaching sentence becomes a declared object (schema, basis, grade, test) that code reads; its sentences are generated from the parameters actually used. The 39 S2 and 16 S3 fixes wait for it, so their sentences are not hand-patched twice. A ruling stays "proposed" until its code and test exist.
 2. **W1 part 2** (WALKABLE_PLAN §5, unchanged from the list below), then my walkthrough of NHANES glucose under Predict, with a friction log, before Nolan sees it.
 3. **W2–W4,** each registering the claims it adds and absorbing the S2/S3 fixes in its area. At each wave's end, ask the builder for its three most doubtful claims.
 4. **Heavy runs, scheduled with Nolan:** the T1 rerun at 600 datasets (the small-sample standard is now in code, A-001); the reference-journey recapture, then the materiality calibration on it.
 5. **The Lean pilot:** about a dozen invariance and exactness claims ("doesn't change your numbers"), each theorem's hypotheses checked at run time as predicates, the app asserting only when every one holds.
 6. **The stage-3 audit** of the remaining claims through the registry, with decoy set v2 (16 decoys and 5 controls, approved by Nolan, sealed outside the repo; never shown to an agent with its key, and fork agents are never referees).
-7. **The replication pilot:** Bang 2009 (Predict), Menke 2015 (Describe) and an Estimate paper. Each replication reports the decisions the paper stated, the ones it left unstated, and how far each unstated option moves the published number.
+7. **The replication pilot:** Bang 2009 (Predict), Menke 2015 (Describe) and Sullivan 2021 (Estimate; Am J Prev Med 61:563; chosen by Nolan on 2026-10-15). Each replication reports the decisions the paper stated, the ones it left unstated, and how far each unstated option moves the published number.
 8. **Data provenance in ingest:** record each file's source URL and release or revision date, not only its hash.
 9. Then the research swarm, once its gates are passed.
 
 The 2026-10-11 lists below still hold for the phase-4 and W1 part-1 leftovers.
 
-**Waiting on Nolan:** thumbs up or down on Sullivan 2021 (Am J Prev Med 61:563) as the Estimate paper.
 
 ---
 

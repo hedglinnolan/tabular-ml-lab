@@ -1,5 +1,7 @@
 # Candidates for the pilot's "Estimate" slot (replacing Yang 2014)
 
+**Chosen (Nolan, 2026-10-15): Sullivan 2021.** The replication pilot is Bang 2009 (Predict), Menke 2015 (Describe) and Sullivan 2021 (Estimate). Kant 2015 stays the candidate for a second Estimate paper later.
+
 Checked 2026-10-15. Each fact is tagged **[V]** (verified at the URL or file named) or **[U]** (unverified: inferred, not stated by the source, or not checked).
 
 Working files: `scratchpad/replication/est/` holds the E-utilities helpers (`eu.py`, `abs.py`, `pmc.py`, `tables.py`), the PMC XML and text (`PMC*.xml`, `PMC*.txt`), the search results (`res*.txt`), the HEAD results (`heads_est.tsv`) and the codebook pages (`cb/*.htm`). No XPT file was downloaded; every XPT check was a HEAD request.
