@@ -1714,12 +1714,14 @@ _BODY_WORDS = {"birth", "body", "bw", "baby", "infant", "newborn", "fetal", "ges
                "tissue", "biopsy", "specimen", "wet", "dry", "organ", "tumor", "tumour", "liver",
                "brain", "muscle", "fresh", "net", "gross"}
 NHANES_WEIGHT_PREFIX = ("WTDR", "WTMEC", "WTINT", "WTSA", "WTSB", "WTSOG", "WTSAF", "WTSH",
-                        "WTSC", "WTSPO", "WTSVOC", "WTSHM", "WTFSM", "WTSSB", "WTPH")
+                        "WTSCD", "WTSPO", "WTSVOC", "WTSHM", "WTFSM", "WTSSB", "WTPH")
 # A subsample's weight as NCHS names one, whether or not its letters are among the prefixes above:
 # ``WTS``, the subsample's letters and the cycle, within the eight characters a SAS transport name
 # holds (Subsample A, B and C's WTSA2YR, WTSB2YR and WTSC2YR; the VOC subsample's WTSVOC2Y). The
 # claim data.nhanes_weight's verifier found WTSC2YR read as no weight at all, so a variable recorded
-# only on its rows took the examination weight, settled (claims backtest C-143).
+# only on its rows took the examination weight, settled (claims backtest C-143). WTSC2YR is read
+# through this name alone, never through a bare ``WTSC`` prefix, which would read a body weight
+# named ``wtscale`` or a ``wtscore`` as a sampling weight in any table (audit IN-10).
 SUBSAMPLE_WEIGHT_NAME = re.compile(r"WTS(?=[A-Z0-9]{2,5}$)[A-Z]+\d+YR?")
 
 

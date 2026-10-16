@@ -331,10 +331,21 @@ register(Claim(
                truth="construction"),
         Silent(f"{TESTS}::test_an_examination_variable_keeps_the_mec_weight_beside_interview_ones",
                truth="construction"),
+        Silent(f"{TESTS}::test_a_word_that_begins_like_subsample_c_s_weight_is_no_sampling_weight",
+               truth="construction"),
+        Silent(f"{TESTS}::test_a_variable_on_four_rows_inside_the_fasting_subsample_is_not_that_"
+               "subsample_s", truth="construction"),
+        Silent(f"{TESTS}::test_a_variable_on_nearly_every_row_is_no_subsample_s_where_the_weight_"
+               "covers_nearly_all", truth="construction"),
+        Fires(f"{TESTS}::test_a_subsample_variable_with_a_stray_row_outside_it_is_still_that_"
+              "subsample_s", truth="construction"),
+        Silent(f"{TESTS}::test_a_table_with_five_rows_outside_the_examination_keeps_the_mec_weight",
+               truth="construction"),
     ),
     enforced_by=("turbotab.core.recognizers:least_common_denominator",
                  "turbotab.core.recognizers:subsample_variables",
                  "turbotab.core.recognizers:other_subsample_weight",
+                 "turbotab.core.recognizers:_nhanes_weight_name",
                  "turbotab.core.recognizers:_interview_only"),
     author=AUTHOR,
 ))
@@ -446,6 +457,14 @@ register(Claim(
               "million_are_asked_about", truth="construction"),
         Silent(f"{TESTS}::test_fractional_values_whose_totals_sit_within_the_packs_tolerance_of_a_"
                "million_are_normal", truth="construction"),
+        Fires(f"{TESTS}::test_a_right_skewed_panel_below_the_thousands_reads_as_raw_intensities",
+              truth="construction"),
+        Silent(f"{TESTS}::test_a_symmetric_block_below_the_thousands_is_not_read_as_raw_"
+               "intensities", truth="construction"),
+        Silent(f"{TESTS}::test_a_block_in_the_thousands_that_spans_little_is_not_read_as_raw_"
+               "intensities", truth="construction"),
+        Silent(f"{TESTS}::test_a_clinical_handful_of_laboratory_columns_is_no_feature_block",
+               truth="construction"),
     ),
     enforced_by=("turbotab.core.methods.omics:scale_reading",
                  "turbotab.core.methods.omics:_estimated_counts"),

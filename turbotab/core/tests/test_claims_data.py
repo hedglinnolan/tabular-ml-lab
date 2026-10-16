@@ -1,7 +1,8 @@
 """The data area's claims (``turbotab/core/claims/data.py``; R0_PLAN.md R0b): the Silent tests
-stage 1 left missing, the Subsample C weight read by where its variable is recorded, the omics
-reading's distinct-values and per-million tests both ways, the grouping entry's number held to its
-guard, and the regime predicates tested both ways.
+stage 1 left missing, the Subsample C weight read by its name and by where its variable is
+recorded (and a word that begins like it read as no weight), the NHANES subsample tolerances both
+ways, the omics reading's floor, span, skewness, distinct-values and per-million tests both ways,
+the grouping entry's number held to its guard, and the regime predicates tested both ways.
 
 A Silent test holds a guard quiet where its evidence says it must be: a UL that covers every
 source, an NHANES table with no variable measured on a subsample alone, a block of two-level
@@ -157,6 +158,159 @@ def test_a_variable_recorded_only_where_the_subsample_c_weight_is_positive_names
     assert alone["other_subsamples"] == ["WTSC2YR"] and not alone["settled"], alone
 
 
+def _summaries(frame: pd.DataFrame) -> list[dict]:
+    """The profile's column summaries, as the roles proposal reads them."""
+    return [{"name": c, "dtype": "integer" if frame[c].dtype.kind == "i" else "numeric",
+             "n_unique": int(frame[c].nunique()), "n_missing": int(frame[c].isna().sum()),
+             "min": float(frame[c].min()), "median": float(frame[c].median())} for c in frame]
+
+
+def test_a_word_that_begins_like_subsample_c_s_weight_is_no_sampling_weight():
+    """Claims backtest C-143 and audit IN-10, the silent side of reading Subsample C's weight by
+    its name: a clinical table with no survey design (no strata, no sampling units), whose columns
+    begin with Subsample C's letters only as words do. By construction ``wtscale`` is a body
+    weight read off a scale (45 to 120 kg), ``wtscore`` a score (0.1 to 10) and ``WTSCHOOL`` a
+    child's weight at school (15 to 60 kg); none is a weight as NCHS names one, ``WTS``, the
+    subsample's letters and its cycle (WTSC2YR). Expected: none reads as a sampling weight, the
+    roles proposal proposes none as part of a survey design, and the survey question offers no
+    weight."""
+    from turbotab.core import survey
+    from turbotab.core.recognizers import reads_as_survey_weight
+    from turbotab.core.stages import rows
+
+    rng = np.random.default_rng(1433)
+    n = 200
+    frame = pd.DataFrame({"id": np.arange(n), "age": rng.integers(20, 80, n),
+                          "wtscale": rng.uniform(45, 120, n).round(1),
+                          "wtscore": rng.uniform(0.1, 10, n).round(2),
+                          "WTSCHOOL": rng.uniform(15, 60, n).round(1),
+                          "sbp": rng.normal(120, 15, n).round(0)})
+    words = ("wtscale", "wtscore", "WTSCHOOL")
+    for name in words:
+        assert not reads_as_survey_weight(name, median=float(frame[name].median())), name
+    proposals = {p["column"]: p for p in rows.propose_roles(_summaries(frame), lens=["clinical"],
+                                                            target="sbp", n_rows=n)}
+    for name in words:
+        assert proposals[name]["proposed"] != "design", proposals[name]
+        assert "sampling weight" not in proposals[name]["reason"], proposals[name]
+    assert survey.read_design(list(frame.columns), target="sbp").weights == []
+
+
+def test_subsample_c_s_weight_beside_the_design_is_named_as_nchs_names_it():
+    """Claims backtest C-143, the fires side of the roles proposal's name test: WTSC2YR, Subsample
+    C's weight as NCHS names it (``survey.NHANES_WEIGHTS`` lists it), beside the survey's own
+    strata and sampling units (SDMVSTRA, SDMVPSU, whole-number codes) and the examination weight,
+    its values positive weights on a third of the examined rows. Expected: it is proposed as part
+    of the design, its values read and its name read as a published design variable, so its reason
+    never says its name is none."""
+    from turbotab.core.stages import rows
+
+    frame = _merge()
+    rng = np.random.default_rng(1434)
+    examined = frame["WTMEC2YR"] > 0
+    frame["WTSC2YR"] = np.where(examined & (rng.random(len(frame)) < 1 / 3),
+                                rng.uniform(5000, 150000, len(frame)), 0.0).round(1)
+    frame["SDMVSTRA"] = rng.integers(173, 188, len(frame))
+    frame["SDMVPSU"] = rng.integers(1, 3, len(frame))
+    frame = frame[["SEQN", "RIDAGEYR", "BMXBMI", "WTMEC2YR", "WTSC2YR", "SDMVSTRA", "SDMVPSU",
+                   "DIQ010"]]
+    facts = {c: {"design_values": rows.design_values_fit(c, frame[c])}
+             for c in ("WTMEC2YR", "WTSC2YR", "SDMVSTRA", "SDMVPSU")}
+    assert all(f["design_values"] for f in facts.values()), facts
+    proposals = {p["column"]: p for p in rows.propose_roles(
+        _summaries(frame), lens=["clinical"], target="DIQ010", n_rows=len(frame), facts=facts)}
+    weight = proposals["WTSC2YR"]
+    assert weight["proposed"] == "design", weight
+    assert "no published design variable" not in weight["reason"], weight
+    assert "Confirm it is part of the design" in weight["reason"], weight
+
+
+# ── C-143 · the subsample tolerances, both ways ──────────────────────────────────────────────
+
+
+def test_a_variable_on_four_rows_inside_the_fasting_subsample_is_not_that_subsample_s():
+    """Claims backtest C-143, the silent side of the subsample's row floor: a variable recorded on
+    four rows only, all of them by construction inside the fasting subsample (WTSAF2YR positive),
+    four of the some 190 fasting rows. Four rows cannot show where a variable was measured, so it
+    is no fasting variable: the rule does not read it as the subsample's, and names WTMEC2YR."""
+    from turbotab.core.recognizers import least_common_denominator, subsample_variables
+
+    frame = _merge()
+    morning = np.flatnonzero((frame["WTSAF2YR"] > 0).to_numpy())
+    assert len(morning) >= 100
+    frame["analyte_q"] = np.nan
+    frame.loc[morning[:4], "analyte_q"] = [1.2, 3.4, 0.8, 2.2]
+    assert frame["analyte_q"].notna().sum() == 4
+    assert (frame["analyte_q"].notna() <= (frame["WTSAF2YR"] > 0)).all()
+    assert "analyte_q" not in subsample_variables(frame, "WTSAF2YR")
+    lcd = least_common_denominator(["analyte_q", "RIDAGEYR", "WTMEC2YR", "WTSAF2YR"], frame)
+    assert lcd["use"] == "WTMEC2YR", lcd
+
+
+def test_a_variable_on_nearly_every_row_is_no_subsample_s_where_the_weight_covers_nearly_all():
+    """Claims backtest C-143, the silent side of the subsample's share of blanks: a table of
+    examined participants alone, 600 rows, every one but six with blood drawn (WTPH2YR positive,
+    0 on the six), and BMI, measured at the examination, blank on those same six rows by
+    construction (they left before both). BMI is then recorded only where the phlebotomy weight
+    is positive, but it is blank on 1% of the table, too few blanks to mark a subsample: it is no
+    phlebotomy variable, and the rule keeps WTMEC2YR for it."""
+    from turbotab.core.recognizers import least_common_denominator, subsample_variables
+
+    rng = np.random.default_rng(1435)
+    n = 600
+    left = np.zeros(n, dtype=bool)
+    left[rng.choice(n, 6, replace=False)] = True
+    frame = pd.DataFrame({
+        "SEQN": np.arange(130000, 130000 + n), "RIDAGEYR": rng.integers(18, 80, n),
+        "WTMEC2YR": rng.uniform(3000, 90000, n).round(1),
+        "WTPH2YR": np.where(left, 0.0, rng.uniform(3000, 90000, n)).round(1),
+        "BMXBMI": np.where(left, np.nan, rng.normal(28, 6, n).round(1))})
+    assert (frame["BMXBMI"].notna() == (frame["WTPH2YR"] > 0)).all()
+    assert frame["BMXBMI"].isna().sum() == 6
+    assert "BMXBMI" not in subsample_variables(frame, "WTPH2YR")
+    lcd = least_common_denominator(["BMXBMI", "RIDAGEYR", "WTMEC2YR", "WTPH2YR"], frame)
+    assert lcd["use"] == "WTMEC2YR", lcd
+
+
+def test_a_subsample_variable_with_a_stray_row_outside_it_is_still_that_subsample_s():
+    """Claims backtest C-143, the fires side of the subsample's slack: a fasting analyte recorded
+    on every row of the fasting subsample (WTSAF2YR positive) and, by construction, on one row
+    outside it, a merge's stray row, so one of its some 480 rows (about 0.2%) lies outside the
+    subsample. It is the subsample's: the rule reads it as a fasting variable whatever its name,
+    and names WTSAF2YR for it."""
+    from turbotab.core.recognizers import least_common_denominator, subsample_variables
+
+    frame = _merge(n=2000)
+    rng = np.random.default_rng(1436)
+    morning = (frame["WTSAF2YR"] > 0).to_numpy()
+    frame["analyte_q"] = np.where(morning, rng.lognormal(1.0, 0.5, len(frame)), np.nan)
+    stray = np.flatnonzero((frame["WTMEC2YR"] > 0).to_numpy() & ~morning)[0]
+    frame.loc[stray, "analyte_q"] = 2.5
+    recorded = frame["analyte_q"].notna()
+    assert recorded.sum() >= 400 and (recorded & ~morning).sum() == 1
+    assert "analyte_q" in subsample_variables(frame, "WTSAF2YR")
+    lcd = least_common_denominator(["analyte_q", "RIDAGEYR", "WTMEC2YR", "WTSAF2YR"], frame)
+    assert lcd["use"] == "WTSAF2YR" and lcd["because"] == ["analyte_q"], lcd
+
+
+def test_a_table_with_five_rows_outside_the_examination_keeps_the_mec_weight():
+    """Claims backtest C-143, the silent side of the interview weight's row floor: 300 examined
+    participants and, by construction, five interviewed and not examined (WTMEC2YR 0), with
+    diabetes diagnosed and age recorded on all 305. Five rows outside the examined sample do not
+    make the table the interview sample, so the rule keeps WTMEC2YR; the whole merge, a quarter of
+    its rows outside the examination, takes WTINT2YR for the same two variables."""
+    from turbotab.core.recognizers import least_common_denominator
+
+    frame = _merge()
+    examined = (frame["WTMEC2YR"] > 0).to_numpy()
+    keep = np.concatenate([np.flatnonzero(examined)[:300], np.flatnonzero(~examined)[:5]])
+    small = frame.iloc[keep].reset_index(drop=True)
+    assert (small["WTMEC2YR"] == 0).sum() == 5 and small[["DIQ010", "RIDAGEYR"]].notna().all().all()
+    interview = ["DIQ010", "RIDAGEYR", "WTINT2YR", "WTMEC2YR"]
+    assert least_common_denominator(interview, small)["use"] == "WTMEC2YR"
+    assert least_common_denominator(interview, frame)["use"] == "WTINT2YR"
+
+
 # ── C-193 · a column of two values is no assay reading ───────────────────────────────────────
 
 
@@ -196,6 +350,92 @@ def test_a_block_of_two_level_columns_is_never_read_as_raw_counts():
     frame = pd.DataFrame({f"g{i}": _levels(rng, [0, 500]) for i in range(30)})
     assert all(frame[c].nunique() == 2 for c in frame) and frame.to_numpy().max() == 500
     assert omics.scale_reading(frame, ["genomics"]) is None
+
+
+def _panel(draw, k: int = 25, n: int = 60) -> pd.DataFrame:
+    """``k`` assay columns of ``n`` samples, each drawn by ``draw(size)``."""
+    return pd.DataFrame({f"m{j}": draw(n) for j in range(k)})
+
+
+def _median_skewness(frame: pd.DataFrame) -> float:
+    """The median over the columns of each one's sample skewness, as scipy computes it."""
+    from scipy.stats import skew
+
+    return float(np.median(skew(frame.to_numpy(dtype=float), axis=0)))
+
+
+def _span(frame: pd.DataFrame) -> float:
+    """The largest value over the smallest positive one."""
+    v = frame.to_numpy(dtype=float)
+    return float(v.max() / v[v > 0].min())
+
+
+def test_a_right_skewed_panel_below_the_thousands_reads_as_raw_intensities():
+    """Claims backtest C-193, the fires side of the skewness test: a targeted metabolomics panel in
+    µM, 25 metabolites on 60 samples, each log-normal by construction (log-concentration normal,
+    mean 2 and standard deviation 1), so unlogged. Its values stay in the hundreds, never reaching
+    the thousands raw peak areas reach, but they span orders of magnitude and every feature is
+    right-skewed (scipy's sample skewness, median well above 1), as an unlogged concentration is.
+    Expected: under the metabolomics lens it reads as raw intensities, all 25 columns."""
+    from turbotab.core.methods import omics
+
+    rng = np.random.default_rng(1933)
+    frame = _panel(lambda n: rng.lognormal(2.0, 1.0, n))
+    assert frame.to_numpy().max() < 500 and _span(frame) > 300, (frame.to_numpy().max(),
+                                                                  _span(frame))
+    assert _median_skewness(frame) > 1.5, _median_skewness(frame)
+    reading = omics.scale_reading(frame, ["metabolomics"])
+    assert reading is not None and reading.kind == "intensities", reading
+    assert reading.columns == tuple(frame.columns)
+
+
+def test_a_symmetric_block_below_the_thousands_is_not_read_as_raw_intensities():
+    """Claims backtest C-193, the silent side of the skewness test: 25 columns on 60 samples, each
+    uniform from 1 to 400 by construction, so symmetric (scipy's median sample skewness near 0),
+    with no right tail an unlogged concentration has. They span two orders of magnitude and stay
+    below the thousands. Expected: nothing is read as raw intensities, since neither the
+    thousands nor a right skew says the values are unlogged."""
+    from turbotab.core.methods import omics
+
+    rng = np.random.default_rng(1934)
+    frame = _panel(lambda n: rng.uniform(1.0, 400.0, n))
+    assert frame.to_numpy().max() < 400 and _span(frame) > 200, _span(frame)
+    assert abs(_median_skewness(frame)) < 0.2, _median_skewness(frame)
+    assert omics.scale_reading(frame, ["metabolomics"]) is None
+
+
+def test_a_block_in_the_thousands_that_spans_little_is_not_read_as_raw_intensities():
+    """Claims backtest C-193, the silent side of the span test: log2 intensities (normal, mean 20
+    and standard deviation 1.5) stored as thousandths, so by construction logged values that reach
+    the tens of thousands but span less than threefold, 25 features on 60 samples. Expected:
+    nothing is read as raw intensities, since raw intensities reaching the thousands also span
+    orders of magnitude."""
+    from turbotab.core.methods import omics
+
+    rng = np.random.default_rng(1935)
+    frame = _panel(lambda n: (rng.normal(20.0, 1.5, n) * 1000).round(0))
+    assert frame.to_numpy().max() > 10_000 and _span(frame) < 3, _span(frame)
+    assert omics.scale_reading(frame, ["metabolomics"]) is None
+
+
+def test_a_clinical_handful_of_laboratory_columns_is_no_feature_block():
+    """Claims backtest C-193, the silent side of the block's floor: eight laboratory columns, a
+    clinical table's handful, under either omics lens. By construction each would read as raw on
+    its values: under genomics whole Poisson(200) counts, under metabolomics log-normal values
+    (log mean 7, standard deviation 1) reaching the thousands and spanning orders of magnitude.
+    Expected: neither eight-column table is read as a block, while the same draws over 25
+    columns read as raw counts and raw intensities."""
+    from turbotab.core.methods import omics
+
+    rng = np.random.default_rng(1936)
+    counts = _panel(lambda n: rng.poisson(200, n))
+    peaks = _panel(lambda n: rng.lognormal(7.0, 1.0, n).round(1))
+    assert peaks.to_numpy().max() > 1_000 and _span(peaks) > 300, _span(peaks)
+    assert omics.scale_reading(counts, ["genomics"]).kind == "counts"
+    assert omics.scale_reading(peaks, ["metabolomics"]).kind == "intensities"
+    handful = [f"m{j}" for j in range(8)]
+    assert omics.scale_reading(counts[handful], ["genomics"]) is None
+    assert omics.scale_reading(peaks[handful], ["metabolomics"]) is None
 
 
 def _estimated_block(share_of_a_million: float, seed: int = 1932) -> pd.DataFrame:
