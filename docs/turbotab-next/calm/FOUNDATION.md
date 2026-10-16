@@ -33,7 +33,7 @@ the quest log; still the reference for the card, its options and the tapestry), 
 and dark), `system.json` (the same values as data).
 
 Rewritten on 2026-10-08 for the quest log, from Nolan's rulings of 2026-10-06 to 2026-10-08
-(`HANDOFF.md`, "UI and scope discussion"; `V2_DEFINITION_OF_DONE.md`, the amendments of 2026-10-07
+(`HANDOFF_HISTORY.md`, "UI and scope discussion"; `V2_DEFINITION_OF_DONE.md`, the amendments of 2026-10-07
 and 2026-10-08) and the crosswalk (`crosswalk/CROSSWALK.md`), and revised the same day after
 review. At the end: what the rewrite replaced ("Superseded"), the one question still open for
 Nolan, and the review's notes not taken.
@@ -602,7 +602,7 @@ From the review of 2026-10-08 (the merge `d9908297` and the first rewrite `d9747
 - **Splitting Results' sweep under Predict,** with the explanation defaults left last. Its one
   explanation default does not depend on the opening, so one sweep before the opening keeps one
   Confirm objective per stage (§3).
-- **Updating the documents that still cite the old FOUNDATION** (`HANDOFF.md`'s note that §3 and
+- **Updating the documents that still cite the old FOUNDATION** (`HANDOFF_HISTORY.md`'s note of 2026-10-06 that §3 and
   §6 must be amended, two notes in `crosswalk/crosswalk.json`, SIZING P0.3a, and BLUEPRINT §11 and
   §11.4's objective list by guideline section), and the crosswalk's Focus on the outcome's
   distribution in Your question (narrowed in §5, rule 6). The review leaves them to the

@@ -1,6 +1,6 @@
 # The crosswalk
 
-What TurboTab v2's engine needs you to decide, when it asks, and what the canvas shows; then, after the fit, what each result is and where it can go. This is the input to the quest-log redesign (`HANDOFF.md`, "The structure (Nolan, 2026-10-06)").
+What TurboTab v2's engine needs you to decide, when it asks, and what the canvas shows; then, after the fit, what each result is and where it can go. This is the input to the quest-log redesign (`HANDOFF_HISTORY.md`, "The structure (Nolan, 2026-10-06)").
 
 Written 2026-10-08 against `turbotab-next` at `2627066d`, and patched the same day after the completeness critic's review (the critic's notes not taken are listed at the end). Every item is in [`crosswalk.json`](crosswalk.json), with `engine_source` naming the file and symbol behind each claim. [`SIZING.md`](SIZING.md) turns the gaps into work packages.
 
@@ -119,7 +119,7 @@ Each remaining noticing is either stated as one methods sentence, or listed in I
 
 **5. When a paper has several goals, where are blanks filled?**
 
-The shared stages run once (HANDOFF, 2026-10-07). But the goals' rules on blanks differ, so one shared Who's in answer cannot fit them all:
+The shared stages run once (HANDOFF_HISTORY, 2026-10-07). But the goals' rules on blanks differ, so one shared Who's in answer cannot fit them all:
 - multiple imputation is refused under Predict, and a single fill is blocked under Estimate (`decisions.py:_missing_fits_the_purpose`);
 - multiple imputation compatible with the analysis model reads Models answers, the forms and the energy model (disagreement 7).
 
@@ -172,7 +172,7 @@ Rulings already made, and the methods calls the crosswalk owns. Each cites its s
 
     A Predict track whose outcome no earlier track reads draws its held-out rows in the shared Who's in, as usual.
   - SIZING D2 builds the track id, the scoped lock and mark, and this row rule.
-- **A direct effect is "Not available yet".** Mediation is out of v2 (HANDOFF; DoD §5). A direct effect is a mediation estimand: it needs the mediator–outcome confounders and the interaction (`estimand.direct_questions`). So the effect card offers the whole effect, and "only the direct part" reads "Not available yet", with its reason and an exit to the whole effect (`q:estimand`). Mediators are still recognized and kept out of the adjustment set.
+- **A direct effect is "Not available yet".** Mediation is out of v2 (HANDOFF_HISTORY, 2026-10-07; DoD §5). A direct effect is a mediation estimand: it needs the mediator–outcome confounders and the interaction (`estimand.direct_questions`). So the effect card offers the whole effect, and "only the direct part" reads "Not available yet", with its reason and an exit to the whole effect (`q:estimand`). Mediators are still recognized and kept out of the adjustment set.
 - **Methods text changes only through its decisions** (methods editing). Each methods sentence is the record's own, and every number in it must trace to the record (DoD gate 7).
   - A sentence changes when its decision changes: its "change" link opens the card that asks it (disagreement 19).
   - The author adds text in author-only paragraphs. They export as `\todo` until written, and pass the manuscript gate once written.
@@ -1464,7 +1464,7 @@ Over all items: 12% on screen, 21% engine only, 38% partial, 24% missing, 5% new
 - choose a drafted wording, or write your own;
 - place it in Results, the Discussion or the Supplement, or leave it out. Left out, it is still listed and stays in the record.
 
-**The floor** (HANDOFF, "The orchestrator's methods floor"):
+**The floor** (HANDOFF_HISTORY, "The orchestrator's methods floor"):
 - **Primary results.** Under Estimate, the locked primary always stays in Results. Under Predict, so does the held-out score, or the declared cross-validated result.
 - **Exposure families.** A declared family is never trimmed by p-value (`refusal:report_by_significance`).
 - **Explanations** are never worded as effects (`models/explain.py:DESCRIBES`; `refusal:explain_as_effect`).
@@ -2038,7 +2038,7 @@ P0.4's stage registry maps these as well as the questions, so a drop-back can na
 12. **Refusals with exits:**
     - Zero rows left after exclusions or complete cases crash the design stage with scikit-learn's error (INBOX 255).
     - An unorderable time column raises `ValueError` in `stages/rows.py:split_stage` instead of refusing with exits.
-13. **Previews and follow-ups** (HANDOFF, "Engine follow-ups found"):
+13. **Previews and follow-ups** (HANDOFF_HISTORY, "Engine follow-ups found"):
     - the energy preview quotes a coefficient before the lock;
     - the exposure and estimand previews draw nothing;
     - the event and goal previews draw only a note;

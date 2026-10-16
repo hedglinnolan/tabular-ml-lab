@@ -1,4 +1,4 @@
-"""Stability selection's base procedure on a full-coded category (HANDOFF of 2026-10-11, "Known
+"""Stability selection's base procedure on a full-coded category (HANDOFF_HISTORY, 2026-10-11, "Known
 red"; ``variable_selection.lasso_first``).
 
 The elastic net and ridge read a category in full coding: a two-level ``sex`` becomes ``sex_F``

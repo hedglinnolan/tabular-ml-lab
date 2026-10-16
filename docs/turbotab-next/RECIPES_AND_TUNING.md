@@ -36,7 +36,7 @@
   - the abstract of Perez-Lebel et al. 2022.
 - **Read by the reviewers as well:** `seal.py`, `stages/evaluation.py`, `stages/__init__.py`, `export/replay.py`, `export/record.py`, `models/explain.py` and `frontend/src/components/record/ask/ChoiceQuestions.tsx`.
 - **Added for draft 3:**
-  - `HANDOFF.md`: the rulings of 2026-10-06, the UI and scope discussion of 2026-10-06/07, and the crosswalk and UI rulings of 2026-10-08;
+  - `HANDOFF_HISTORY.md`: the rulings of 2026-10-06, the UI and scope discussion of 2026-10-06/07, and the crosswalk and UI rulings of 2026-10-08;
   - `V2_DEFINITION_OF_DONE.md`: the amendments of 2026-10-05, 2026-10-07 and 2026-10-08, and the seam guards;
   - `crosswalk/CROSSWALK.md` (the six questions, "Settled here", the Models stage, disagreements 12 and 20) and `crosswalk/SIZING.md`;
   - `MODEL_FAMILY_CONTRACT.md` (§0, C1 to C6, §3, §5, §6 and its review notes);
@@ -1108,7 +1108,7 @@ The engine's order differs: the Router answers the validation scheme and the lev
 - The shared fill's line ("The other models use the fill learned in each training fold.") is silent when the table has no blanks.
 - **One quiet link, "What each model is given",** sits under the lines. It lists each chosen family's non-silent slots with their stated phrases, each clickable. This makes every override one step away, the linear model's included.
 
-**Pointing at a phrase elaborates it in one line** (the HANDOFF ruling: hovering "elaborates slightly"). **Clicking it opens the phrase, which takes over the card's focal region.**
+**Pointing at a phrase elaborates it in one line** (the ruling of 2026-10-06 in HANDOFF_HISTORY: hovering "elaborates slightly"). **Clicking it opens the phrase, which takes over the card's focal region.**
 - The family list collapses to the chosen names, and Escape returns to it.
 - Options open with their consequence and at most one quiet label. Arrow keys move through them.
 - The canvas layout follows the option's footprint:
@@ -1679,7 +1679,7 @@ In-fold PCA for omics stays its own v2 item (SIZING C6e).
 
 | # | Ruling | Date and source | Where |
 |---|---|---|---|
-| 1 | The tree models try both with blanks by default (`choose: [native, fill]`), chosen in each training fold; "Fill in each fold" becomes "Keep every row". | Nolan, 2026-10-06 (HANDOFF; DoD 2026-10-07) | §2.2, §2.3, §2.4, §3.3(c), §4.2, §6.1 |
+| 1 | The tree models try both with blanks by default (`choose: [native, fill]`), chosen in each training fold; "Fill in each fold" becomes "Keep every row". | Nolan, 2026-10-06 (HANDOFF_HISTORY; DoD 2026-10-07) | §2.2, §2.3, §2.4, §3.3(c), §4.2, §6.1 |
 | 2 | A fit expected to take over about 2 minutes waits for Fit, pressed on the analysis flowchart. Under Estimate and Describe, pressing Fit records the lock, and the server withholds estimates until then. | Nolan, 2026-10-06; CROSSWALK "Settled here", 2026-10-08 | §4.4, §5, §10 |
 | 3 | The three groups kept on 2026-10-07 are displaced to v2.x as package C6c; their seam is `TuningPlan.strategy`. | DoD, 2026-10-08 | §0, §4.2, §9, §10 |
 | 4 | The kept comparisons stay v2.x, but a shared-step change after first results keeps a read-only earlier row, its trunk key and log sequence persisted; versions are keyed over the fields that differ from their defaults. | DoD, 2026-10-07; crosswalk ruling 6 and seam guards 4 and 5, 2026-10-08 | §3.2, §3.3, §3.7, §9 |

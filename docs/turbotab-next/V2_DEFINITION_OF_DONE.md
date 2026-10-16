@@ -25,7 +25,7 @@ conflict inside rows already in v2.
 
 LightGBM, ExtraTrees, kNN, SVM, naive Bayes, LDA and neural networks stay v2.x. Per-model preprocessing overrides and hyperparameter optimization are specified in `RECIPES_AND_TUNING.md`.
 
-**Amended 2026-10-07 (Nolan, after the recipes-and-tuning rulings and a UI and scope discussion; `HANDOFF.md` has the record).** These are additions at his direction; nothing was displaced. He expects no further major changes, "but I cannot make promises since the act of design revealed this conversation in the first place."
+**Amended 2026-10-07 (Nolan, after the recipes-and-tuning rulings and a UI and scope discussion; `HANDOFF_HISTORY.md`, the state of 2026-10-06, has the record).** These are additions at his direction; nothing was displaced. He expects no further major changes, "but I cannot make promises since the act of design revealed this conversation in the first place."
 - **Recipes and tuning,** as ruled:
   - the trees "try both" for blanks by default, chosen in each training fold;
   - fits expected to take over about 2 minutes wait for the Fit action;
