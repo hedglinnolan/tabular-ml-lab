@@ -83,6 +83,8 @@ from typing import (Any, Callable, Iterator, Literal, Mapping, Protocol, Sequenc
 import numpy as np
 from sklearn.pipeline import Pipeline
 
+from turbotab.core import claims
+
 TuningKind = Literal["none", "path", "search"]
 Scale = Literal["log", "linear", "int", "log_int", "choice", "share_of_units"]
 StrategyName = Literal["sobol"]  # seam guard 3: v2.x adds names, never renames one
@@ -91,8 +93,9 @@ Loss = Literal["mse", "log_loss", "rps"]  # validation.PER_ROW_LOSSES' strictly 
 SizeUnit = Literal["units", "events", "rarest_class"]
 Activity = Literal["always", "without_early_stopping"]
 
-SMALL_N = 300  # below this effective size a search keeps its standard candidates (§4.6), a
-# family's small-sample standard where it declares one
+# Below this effective size a search keeps its standard candidates (§4.6), a family's
+# small-sample standard where it declares one; the value is its claim's (claims backtest A-001).
+SMALL_N = claims.value("tuning.small_sample_standard", "small_n")
 MID_N = 1_000  # from this size the Sobol sample doubles, 8 to 16 (§4.2)
 STOP_FROM_N = 1_500  # Sobol candidates stop early from this effective size (§4.2)
 STANDARD_STOP_ROWS = 10_000  # standard candidates stop early above this many plan rows (sklearn)

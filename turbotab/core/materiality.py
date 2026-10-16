@@ -33,11 +33,12 @@ change your numbers here", "could bias" and "act on it", in two regimes recorded
 below noise that stayed below noise after the lock; an uncalibrated proxy is floored at band 1 (the
 cap of §2.6 read as a floor: it may say "could bias" or "act on it", never "doesn't change your
 numbers here"). Rows × SMD is floored whatever its cases (its convention's ``floored``, claims
-backtest A-124): it is an outcome-blind screening convention, not a predictor of the movement,
-since what moves a correctly specified coefficient is what the leavers report of what you study,
-not their imbalance on what is adjusted for. A movement that changes the question (substitution
-versus addition) is band 2 and never graded by a number; one that cannot be measured on these rows
-(one recall day for λ) is band 1, "not measurable here". :func:`calibrate` chooses the thresholds
+backtest A-124; the claim ``materiality.rows_smd_floor``): it is an outcome-blind screening
+convention, not a predictor of the movement, since what moves a correctly specified coefficient is
+what the leavers report of what you study, not their imbalance on what is adjusted for. A
+movement that changes the question (substitution versus addition) is band 2 and never graded by a
+number; one that cannot be measured on these rows (one recall day for λ) is band 1, "not
+measurable here". :func:`calibrate` chooses the thresholds
 from the cases (each labeled with the pipeline it was run on) to leave no false reassurance, and
 reports the confusion matrix per instrument. An instrument exact by theorem (:func:`invariance`:
 Frisch–Waugh–Lovell, a reparameterization of a column that is not focal) is not floored: its 0 is a
@@ -946,7 +947,8 @@ def collinear_label(state: Any, noticed: Noticing | None,
     ``noticing:explore::collinear``, which carries ``shared-collinear-predictors``; its tier in
     ``quest_noticings.json`` is the ceiling, Decide). Under Predict a near-collinear pair does not
     harm prediction on rows like these, and both are kept by default (no selection), so the line is
-    a convention set for the person: Confirm (BEATS_PREDICT M4 line 4; claims backtest C-170).
+    a convention set for the person: Confirm (BEATS_PREDICT M4 line 4; claims backtest C-170; the
+    claim ``materiality.collinear_under_prediction``).
     Under Estimate or Describe the K5 noticing decides (:func:`noticing_tier`): Decide for an exact
     identity or with what you study in the dependency, For the record outside it. With no near
     dependency, a pair (``pairs``: explore's, two columns each) that holds what you study is

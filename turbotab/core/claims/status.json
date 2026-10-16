@@ -1,6 +1,16 @@
 {
   "claims": [
     {
+      "hash": "b54a6d90a1ff399aca97bf7a6ad4e4669d06cf2fba7a33fb1f359a48a9d8bda3",
+      "id": "baseline.min_gain",
+      "status": "built"
+    },
+    {
+      "hash": "0ad8bc341d73cab1a55346dc3049583e766a33324693931addad5c1792f26dde",
+      "id": "boosted_trees.small_rows",
+      "status": "built"
+    },
+    {
       "hash": "2c56ce9bb85ca5d26764226e5f287b294b9cd931be637e99ab12e730a43f3d7b",
       "id": "causal.numeric_exposure_r2",
       "status": "built"
@@ -16,8 +26,28 @@
       "status": "built"
     },
     {
+      "hash": "c4b227b07dd6dea272098b62362bf98cf4e22dbdbd5b3ecefed262c4d035870d",
+      "id": "forest.small_rows",
+      "status": "built"
+    },
+    {
       "hash": "360cbafdf778881f83257d1c599959334b711f95ef1e99c6fbc6927fdec27388",
       "id": "inference.few_clusters",
+      "status": "built"
+    },
+    {
+      "hash": "19dbf8b487d8cb6a635749ba43021acbdfdfab44e6eefbbd0c1cf5f911696119",
+      "id": "materiality.collinear_under_prediction",
+      "status": "built"
+    },
+    {
+      "hash": "99dbbc8e24af20d8e8a6e62a4245ea71ec60aa6246a145f37a9d540b6379d08a",
+      "id": "materiality.rows_smd_floor",
+      "status": "built"
+    },
+    {
+      "hash": "d40035453bc2d844bc74b801192b7d83cb7626083dcc12f0ae6441c0802aa6d9",
+      "id": "materiality.rows_smd_floor_prediction",
       "status": "built"
     },
     {
@@ -48,6 +78,21 @@
     {
       "hash": "1ac5ba535eb6e33f300ade67554430478f0f154d13caa3685015319f75990b2a",
       "id": "trials.separation",
+      "status": "built"
+    },
+    {
+      "hash": "ac9ade36a8d08f2cc6e0871a6448fdce01ea57ef2d6b3450cf118bd072fac8e7",
+      "id": "tuning.small_sample_standard",
+      "status": "built"
+    },
+    {
+      "hash": "d0dc969c1c1e860fa7e60114edcb6901cb846752947f03e432ba33ab3b8dab41",
+      "id": "tuning.small_sample_standard_classes",
+      "status": "built"
+    },
+    {
+      "hash": "affca61e63111399d4ce5d92a58f3e55bfe4e7302e275f5a737b878d4caf865c",
+      "id": "tuning.small_sample_standard_estimate",
       "status": "built"
     }
   ],

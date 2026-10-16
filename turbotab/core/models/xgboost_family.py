@@ -68,6 +68,7 @@ from turbotab.core.models.base import (
     assessment,
     register_family,
 )
+from turbotab.core.models.tuning import SMALL_N as SEARCHED_FROM
 from turbotab.core.models.tuning import Dimension, TuningDecl
 
 # xgboost refuses these characters in a feature name; each is replaced by its stand-in.
@@ -524,8 +525,8 @@ TUNING = TuningDecl(
                     "share": 0.1, "standard_rows": None},
     space_version="xgboost/1",
     structural=("booster", "objective"),
-    reason="Its settings are searched inside every training fold from an effective size of 300, "
-           "XGBoost's defaults among them; below, a small-sample standard.",
+    reason=f"Its settings are searched inside every training fold from an effective size of "
+           f"{SEARCHED_FROM:,}, XGBoost's defaults among them; below, a small-sample standard.",
 )
 
 
@@ -629,10 +630,11 @@ class XGBoost(FamilyBase):
     def describe(self, task: Task, purpose: Purpose | None) -> tuple[str, str]:
         d, s = TUNING.standard, TUNING.small_standard
         return ("XGBoost",
-                f"Gradient-boosted trees in the XGBoost library. From an effective size of 300 "
-                f"(units, events or the rarest class's count) its settings are searched inside "
-                f"every training fold, its defaults ({d['n_estimators']} trees of depth up to "
-                f"{d['max_depth']} at learning rate {d['learning_rate']:g}) among them. Below it "
+                f"Gradient-boosted trees in the XGBoost library. From an effective size of "
+                f"{SEARCHED_FROM:,} (units, events or the rarest class's count) its settings are "
+                f"searched inside every training fold, its defaults ({d['n_estimators']} trees "
+                f"of depth up to {d['max_depth']} at learning rate {d['learning_rate']:g}) "
+                f"among them. Below it "
                 f"one fit is made at a small-sample standard: {s['n_estimators']} trees of depth "
                 f"up to {s['max_depth']} at learning rate {s['learning_rate']:g}, a least child "
                 f"weight of {s['min_child_weight']:g} rows, λ = {s['reg_lambda']:g}. A blank "
