@@ -25,10 +25,13 @@ import pytest
 
 from turbotab.core import claims
 from turbotab.core.claims import inference as area
-from turbotab.core.claims.inference import (cluster_randomized_trial, cox_partial_likelihood,
-                                            design_unanswered, drawn_by_outcome,
-                                            numeric_exposure, proportional_odds_cluster_sandwich,
-                                            randomized_trial, rows_repeat, yes_no_outcome)
+from turbotab.core.claims.inference import (beyond_li_redden, cluster_randomized_trial,
+                                            cox_partial_likelihood, design_unanswered,
+                                            drawn_by_outcome, estimating_equations,
+                                            least_squares_with_a_cut_off, numeric_exposure,
+                                            primary_interval_excludes_zero,
+                                            proportional_odds_cluster_sandwich, randomized_trial,
+                                            rows_repeat, yes_no_outcome, zero_one_outcome)
 
 # ── the trial core's few clusters (Li & Redden 2015) ─────────────────────────
 
@@ -85,6 +88,54 @@ def test_a_cluster_trial_of_twelve_clusters_names_no_few_clusters(K):
     assert not any("Li & Redden" in c for c in r.concerns), r.concerns
     rd = r.contrast(measure="risk_difference")
     assert np.isfinite(rd.estimate) and rd.lower < rd.estimate < rd.upper
+
+
+def _numeric_cluster_trial(K: int, seed: int = 7) -> pd.DataFrame:
+    """``_cluster_trial``'s design with a numeric outcome: a cluster effect, the arm's shift of
+    0.6 and a covariate, with normal noise."""
+    df = _cluster_trial(K, seed)
+    rng = np.random.default_rng(seed + 1)
+    u = rng.normal(0, 0.8, K + 1)
+    df["y"] = u[df.cluster] + 0.6 * (df.arm == "trt") + 0.8 * df.x + rng.normal(0, 2, len(df))
+    return df
+
+
+def _numeric_spec():
+    from turbotab.core.methods import trials as T
+
+    return T.TrialSpec(arm="arm", control="ctl", outcome="y",
+                       trial_design="cluster_randomized_trial", cluster="cluster",
+                       covariates=("x",))
+
+
+@pytest.mark.parametrize("method", ["mixed", "gee"])
+@pytest.mark.parametrize("K", [8, 9])
+def test_a_numeric_cluster_trial_of_eight_clusters_names_the_few_clusters(K, method):
+    """Li & Redden (2015) simulated from 10 clusters, with a yes/no outcome only; a numeric
+    outcome's trial, by the mixed model's Kenward–Roger intervals or by the estimating equations,
+    is named the same concern below 10 clusters, by judgment, in the same words, with the mean
+    difference still reported."""
+    from turbotab.core.methods import trials as T
+
+    r = T.estimate(_numeric_cluster_trial(K), _numeric_spec(), cluster_method=method)
+    [said] = _few(r.concerns)
+    assert said == (f"Only {K} clusters were randomized; the intervals rest on the small-sample "
+                    f"correction, and the fewest clusters Li & Redden (2015) studied was 10.")
+    assert r.contrast(measure="mean_difference").se > 0
+
+
+@pytest.mark.parametrize("method", ["mixed", "gee"])
+@pytest.mark.parametrize("K", [10, 12])
+def test_a_numeric_cluster_trial_of_twelve_clusters_names_no_few_clusters(K, method):
+    """From 10 clusters a numeric outcome's trial, by either analysis, names no count of
+    clusters."""
+    from turbotab.core.methods import trials as T
+
+    r = T.estimate(_numeric_cluster_trial(K), _numeric_spec(), cluster_method=method)
+    assert _few(r.concerns) == [], r.concerns
+    assert not any("Li & Redden" in c for c in r.concerns), r.concerns
+    md = r.contrast(measure="mean_difference")
+    assert np.isfinite(md.estimate) and md.lower < md.estimate < md.upper
 
 
 # ── the trial's separation (claims backtest B-281) ───────────────────────────
@@ -234,6 +285,42 @@ def _units(seed: int, G: int) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
     return pd.DataFrame({"x": x}), y, unit
 
 
+def test_an_ordinal_table_over_twelve_units_computes_statsmodels_cr1_and_says_it_can_be_narrow():
+    """Twelve units of unequal size, below the thirty the table reads as few: its standard errors
+    are statsmodels' ``OrderedModel`` cluster sandwich, rescaled from statsmodels' small-sample
+    factor (G/(G − 1))·((n − 1)/(n − k)) to the G/(G − 1) alone that Stata uses for a
+    maximum-likelihood model (CR1), its intervals are on t(11), and the line it names says CR1 on
+    t(11) and that such intervals can still be too narrow, naming neither CR2 nor
+    Bell–McCaffrey."""
+    import warnings
+
+    from scipy import stats
+    from statsmodels.miscmodels.ordinal_model import OrderedModel
+
+    from turbotab.core.models.linear import as_clusters
+    from turbotab.core.models.ordinal import ordinal_table
+
+    X, y, unit = _units(0, 12)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        reference = OrderedModel(y, X, distr="logit").fit(
+            method="bfgs", maxiter=20_000, gtol=1e-10, disp=False, cov_type="cluster",
+            cov_kwds={"groups": unit})
+    n, k = len(y), reference.params.size
+    expected = reference.bse.to_numpy()[0] / np.sqrt((n - 1) / (n - k))
+    table = ordinal_table(X, y, None, as_clusters(unit))
+    row = table.rows[0]
+    assert row["estimate"] == pytest.approx(reference.params.to_numpy()[0], abs=1e-5)
+    assert row["se"] == pytest.approx(expected, rel=1e-4), (row["se"], expected)
+    assert row["df"] == 11
+    half = stats.t.ppf(0.975, 11) * row["se"]
+    assert row["ci_high"] - row["estimate"] == pytest.approx(half, rel=1e-9)
+    said = " ".join(table.concerns)
+    assert "the CR1 sandwich with the G/(G − 1) correction on t(11)" in said, said
+    assert "can still be too narrow" in said and "Only 12" in said, said
+    assert "CR2" not in said and "Bell–McCaffrey" not in said, said
+
+
 def test_an_ordinal_table_over_sixty_units_says_nothing_of_narrow_intervals():
     """Sixty units are above the thirty the table reads as few, and above Cameron & Miller's
     (2015, §VI) range for clusters of equal size, from under twenty to under fifty (they allow
@@ -374,27 +461,33 @@ def _orders_every_risk_set(frame: pd.DataFrame, column: str) -> str | None:
     return "lowest" if lowest and some_more else "highest" if highest and some_less else None
 
 
-def test_a_cox_group_with_no_events_is_refused_naming_it_alone_as_the_lowest():
+@pytest.mark.parametrize("flipped", [False, True], ids=["g", "1-g"])
+def test_a_cox_group_with_no_events_is_refused_naming_it_alone_as_the_lowest_or_highest(flipped):
     """Claims backtest B-435. With no event among `g`'s rows, at every event time the row with the
     event has g = 0, the lowest value at risk, so the partial likelihood rises without end as g's
-    log hazard ratio runs to −∞; age and the noise columns order no risk set (both read off the
-    rows here). Beside age, and beside age and three noise columns, at 60, 300 and 1,000 rows,
-    each table is refused with no standard error, interval or p-value, and the refusal says the
-    rows with the event have the lowest `g` and names no other column."""
+    log hazard ratio runs to −∞; coded the other way (1 − g) the row with the event has the
+    highest value at risk, and it runs to +∞. Age and the noise columns order no risk set (each
+    read off the rows here). Beside age, and beside age and three noise columns, at 60, 300 and
+    1,000 rows, each table is refused with no standard error, interval or p-value, and the
+    refusal says the rows with the event have the lowest (or the highest) `g` and names no other
+    column."""
     from turbotab.core.models.inference import Clusters
     from turbotab.core.models.survival import cox_table, survival_outcome
 
     for n in (60, 300, 1000):
         for noise in (0, 3):
             frame = _group_without_events(n + noise, n, noise)
+            if flipped:
+                frame["g"] = 1.0 - frame["g"]
+            side = "highest" if flipped else "lowest"
             columns = ["g", "age", *[f"z{k}" for k in range(noise)]]
             assert frame["event"].sum() > 5
             assert [_orders_every_risk_set(frame, c) for c in columns] == \
-                ["lowest"] + [None] * (len(columns) - 1)
+                [side] + [None] * (len(columns) - 1)
             table = cox_table(frame[columns], survival_outcome(frame["event"], frame["time"]),
                               Clusters())
             said = table.info["refused"]
-            assert said and "the rows with the event have the lowest `g` of the rows at risk" in \
+            assert said and f"the rows with the event have the {side} `g` of the rows at risk" in \
                 said, (n, noise, said)
             assert not any(f"`{c}`" in said for c in columns[1:]), (n, noise, said)
             for row in table.rows:
@@ -485,6 +578,25 @@ def test_each_predicate_holds_in_its_regime_and_not_outside_it():
         (drawn_by_outcome, {"design": "case_control"}, {"design": "parallel_trial"}),
         (numeric_exposure, {"exposure_kind": "continuous"}, {"exposure_kind": "binary"}),
         (cox_partial_likelihood, {"model": "cox"}, {"model": "proportional_odds"}),
+        (estimating_equations, {"method": "gee"}, {"method": "mixed"}),
+        (zero_one_outcome, {"outcome_values": np.array([1.0, 1.0])},
+         {"outcome_values": [0.0, 1.0, 2.5]}),
+        (zero_one_outcome, {"outcome_values": [0, 1]}, {"outcome_values": []}),
+        (beyond_li_redden, {"trial_design": "cluster_randomized_trial", "method": "mixed",
+                            "outcome_values": [0.0, 1.0]},
+         {"trial_design": "cluster_randomized_trial", "method": "gee",
+          "outcome_values": [0.0, 1.0]}),
+        (beyond_li_redden, {"trial_design": "cluster_randomized_trial", "method": "gee",
+                            "outcome_values": [0.2, 1.7]},
+         {"trial_design": "parallel_trial", "method": "gee", "outcome_values": [0.2, 1.7]}),
+        (least_squares_with_a_cut_off, {"estimator": "least_squares", "cut_off": 126, "tail":
+                                        "above"},
+         {"estimator": "least_squares", "cut_off": float("nan"), "tail": "above"}),
+        (least_squares_with_a_cut_off, {"estimator": "least_squares", "cut_off": 7.0, "tail":
+                                        "below"},
+         {"estimator": "logistic", "cut_off": 7.0, "tail": "below"}),
+        (primary_interval_excludes_zero, {"primary_interval": (-2.0, -0.1)},
+         {"primary_interval": (-0.1, 2.0)}),
     ]
     for predicate, inside, outside in cases:
         assert predicate(inside) is True, predicate.__name__

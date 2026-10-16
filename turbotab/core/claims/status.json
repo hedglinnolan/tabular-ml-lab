@@ -1,7 +1,7 @@
 {
   "claims": [
     {
-      "hash": "9a39e57f77ef3bcab841e371315f0febe87128ee8b8b7d40a1a085febd87b9d0",
+      "hash": "2c56ce9bb85ca5d26764226e5f287b294b9cd931be637e99ab12e730a43f3d7b",
       "id": "causal.numeric_exposure_r2",
       "status": "built"
     },
@@ -16,32 +16,37 @@
       "status": "built"
     },
     {
-      "hash": "02412e47e74c4d12d5c23ca83dac425b74875e4f1c5feebed655e97e17a5aee3",
+      "hash": "360cbafdf778881f83257d1c599959334b711f95ef1e99c6fbc6927fdec27388",
       "id": "inference.few_clusters",
       "status": "built"
     },
     {
-      "hash": "9d5dc9526fe7868a3351ee4b667c120b93d42e9f2c9c4625bc0ea0cf2229ea09",
+      "hash": "c554bd4afeaf23a9fe27963cf650aebdc7109786218a2a568a3d029b1e86e702",
       "id": "ordinal.cluster_robust_intervals",
       "status": "built"
     },
     {
-      "hash": "2b2d7f8d7094dc64b175e3c7ae4dde589c94491bb0351446cad159f33d4dbdc0",
+      "hash": "20b2542961dc56ad12c9a86cd31e6790f7c96f6f97c64a30e36db7e8d2916913",
       "id": "results.tail_share",
       "status": "proposed"
     },
     {
-      "hash": "9d47e99b4616b6e4ac5f55fa060cf26e56aea68972d61daedd3031acd410da36",
+      "hash": "0728e6d01185e8f211154677655043dea8d0cfc301be0e87344e366cb713a78c",
       "id": "survival.monotone_likelihood",
       "status": "built"
     },
     {
-      "hash": "bdfe87fab00ac86083ce60b6019df73a56ba97a236de13a2793cbb429739e085",
+      "hash": "5e482772a184569f7ed7b82a8f3db45294e309859cf499522708348e361e1eb8",
       "id": "trials.few_clusters",
       "status": "built"
     },
     {
-      "hash": "8f502687b1482680f32fba3db44a09c5807d475e542495d3a85a92626d5197a8",
+      "hash": "e07f896e8e994e26979bb2b3b9a684dde1af2896cf5363f10d0325df0b022135",
+      "id": "trials.few_clusters_extended",
+      "status": "built"
+    },
+    {
+      "hash": "5cf50d4342217a7c70debb8c3a199c98227e73ddc97f33a5deb7814b6d2c7f0a",
       "id": "trials.separation",
       "status": "built"
     }

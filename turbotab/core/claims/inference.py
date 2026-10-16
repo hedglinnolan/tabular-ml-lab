@@ -5,9 +5,11 @@ R² read as precision (B-416), the Cox fit's monotone likelihood (B-435), and th
 tail share (D-086, ruled and not built).
 
 ``FEW_CLUSTERS`` is two numbers under one name: ten clusters, the fewest Li & Redden (2015)
-simulated, in the trial core (``trials.few_clusters``), and thirty, inside Cameron & Miller's
-(2015) few-clusters range, for the model families' cluster-robust intervals
-(``inference.few_clusters``). Each module constant reads its own claim with ``claims.value``.
+simulated, in the trial core (``trials.few_clusters`` for the corrected sandwich on a yes/no
+outcome they simulated, ``trials.few_clusters_extended`` for the analyses they did not), and
+thirty, inside Cameron & Miller's (2015) few-clusters range, for the model families'
+cluster-robust intervals (``inference.few_clusters``). Each module constant reads its own claim
+with ``claims.value``.
 
 The regime predicates below read only the context the engine passes (a mapping, or an object
 with those attributes) and recompute what they check from it; none calls the code it guards
@@ -58,6 +60,28 @@ def cluster_randomized_trial(ctx: Any) -> bool:
     return _get(ctx, "trial_design") == "cluster_randomized_trial"
 
 
+def estimating_equations(ctx: Any) -> bool:
+    """The trial is analyzed by the estimating equations. The trial core gives them a
+    small-sample corrected sandwich always (Kauermann–Carroll, Fay–Graubard or Mancl–DeRouen)."""
+    return _get(ctx, "method") == "gee"
+
+
+def zero_one_outcome(ctx: Any) -> bool:
+    """A yes/no outcome: some outcome value is seen, and every one is 0 or 1."""
+    values = _get(ctx, "outcome_values")
+    if values is None:
+        return False
+    seen = {float(v) for v in values}
+    return bool(seen) and seen <= {0.0, 1.0}
+
+
+def beyond_li_redden(ctx: Any) -> bool:
+    """A cluster-randomized trial analyzed otherwise than Li & Redden (2015) simulated: by the
+    mixed model, or by the estimating equations on an outcome that is not yes/no."""
+    return cluster_randomized_trial(ctx) and not (estimating_equations(ctx)
+                                                  and zero_one_outcome(ctx))
+
+
 def randomized_trial(ctx: Any) -> bool:
     return _get(ctx, "trial_design") in ("parallel_trial", "cluster_randomized_trial")
 
@@ -92,8 +116,29 @@ def cox_partial_likelihood(ctx: Any) -> bool:
     return _get(ctx, "model") == "cox"
 
 
+def least_squares_with_a_cut_off(ctx: Any) -> bool:
+    """A least-squares estimate (ordinary or weighted) on an outcome whose lens names a finite
+    cut-off and which side of it is the tail: the hypotheses of the tail split's identity."""
+    cut = _get(ctx, "cut_off")
+    finite = (isinstance(cut, (int, float)) and not isinstance(cut, bool)
+              and cut == cut and abs(cut) != float("inf"))
+    return (_get(ctx, "estimator") == "least_squares" and finite
+            and _get(ctx, "tail") in ("above", "below"))
+
+
+def primary_interval_excludes_zero(ctx: Any) -> bool:
+    """The primary estimate's interval, ``(low, high)``, lies wholly above or wholly below zero."""
+    interval = _get(ctx, "primary_interval")
+    if interval is None or len(interval) != 2:
+        return False
+    low, high = (float(v) for v in interval)
+    return low > 0 or high < 0
+
+
 # ── the parameters shared by more than one claim ─────────────────────────────
 
+# Ten clusters: the trial core's one number, which both its few-clusters rules state.
+TEN_CLUSTERS = Param(10, unit="clusters", constant="turbotab.core.methods.trials:FEW_CLUSTERS")
 # Thirty clusters: one number, held here once, which the proportional-odds rule states too.
 THIRTY_CLUSTERS = Param(30, unit="clusters", constant="turbotab.core.models.inference:FEW_CLUSTERS")
 
@@ -109,7 +154,9 @@ INFERENCE_FEW_CLUSTERS = register(Claim(
              "are of equal size, and more when they are not."),
     goal=("inference",),
     regime=Regime("rows that repeat within units, under an interval that rests on unit-level sums "
-                  "(a cluster sandwich)",
+                  "(a cluster sandwich: the linear family's CR2, the proportional-odds family's "
+                  "CR1, the Cox model's Lin–Wei), and, read by judgment, the mixed model's "
+                  "between-unit variance and its ranking above the estimating equations",
                   requires=(f"{HERE}:rows_repeat",)),
     params={"few_clusters": THIRTY_CLUSTERS},
     parts=(
@@ -147,15 +194,15 @@ TRIALS_FEW_CLUSTERS = register(Claim(
              "Redden 2015 studied), beside the missing-outcome notice, neither displacing the "
              "other"),
     goal=("inference",),
-    regime=Regime("a cluster-randomized trial whose intervals rest on a small-sample correction: "
-                  "the estimating equations' corrected sandwich (what Li & Redden simulated, for a "
-                  "yes/no outcome) or the mixed model's Kenward–Roger intervals",
-                  requires=(f"{HERE}:cluster_randomized_trial",)),
+    regime=Regime("a cluster-randomized trial analyzed by the estimating equations with a "
+                  "small-sample corrected sandwich, on a yes/no outcome: what Li & Redden "
+                  "simulated",
+                  requires=(f"{HERE}:cluster_randomized_trial", f"{HERE}:estimating_equations",
+                            f"{HERE}:zero_one_outcome")),
     decision="trial_effect.few_clusters",
-    options=("gee_corrected", "mixed_kr"),
+    options=("gee_corrected",),
     verdict="noted",
-    params={"few_clusters": Param(10, unit="clusters",
-                                  constant="turbotab.core.methods.trials:FEW_CLUSTERS")},
+    params={"few_clusters": TEN_CLUSTERS},
     parts=(
         Part("value", grade="sourced", graded_by=VERIFIER, basis=Basis(
             cites=("li2015gee",),
@@ -169,22 +216,69 @@ TRIALS_FEW_CLUSTERS = register(Claim(
                 "evidence for the corrected sandwich's coverage does not reach. It marks where "
                 "their evidence ends, not a count at which coverage is known to fail."))),
         Part("scope", grade="judgment", basis=Basis(reason=(
-            "Li & Redden simulated the estimating equations with a yes/no outcome. We name the "
-            "same concern for the mixed model's Kenward–Roger intervals on a numeric outcome, "
-            "which their study does not cover."))),
+            "The regime is what Li & Redden simulated: the estimating equations' corrected "
+            "sandwich with a yes/no outcome. The trial core names the same concern, in the same "
+            "words, for the mixed model's Kenward–Roger intervals and for the estimating "
+            "equations on a numeric outcome, which their study does not cover; that is its own "
+            "claim, by judgment (trials.few_clusters_extended)."))),
     ),
     tests=(
-        Fires(f"{ACCEPTANCE}/test_e2_trials.py::"
-              "test_a_few_clusters_concern_never_displaces_the_missing_outcome_notice",
-              truth="construction"),
         Fires(f"{TESTS}::test_a_cluster_trial_of_eight_clusters_names_the_few_clusters",
               truth="construction"),
         Silent(f"{TESTS}::test_a_cluster_trial_of_twelve_clusters_names_no_few_clusters",
                truth="construction"),
     ),
     enforced_by=("turbotab.core.methods.trials:estimate",),
+    fallback="trials.few_clusters_extended",
     author=AUTHOR,
 ))
+
+TRIALS_FEW_CLUSTERS_EXTENDED = register(Claim(
+    id="trials.few_clusters_extended",
+    kind="rule",
+    card=("the intervals rest on the small-sample correction, and the fewest clusters Li & "
+          "Redden (2015) studied was {few_clusters}."),
+    methods=("for the mixed model's Kenward–Roger intervals, and for the estimating equations on "
+             "a numeric outcome, fewer than {few_clusters} clusters are named among the concerns "
+             "as well, by judgment: Li & Redden (2015) studied the corrected sandwich with a "
+             "yes/no outcome"),
+    goal=("inference",),
+    regime=Regime("a cluster-randomized trial analyzed otherwise than Li & Redden simulated: by "
+                  "the mixed model's Kenward–Roger intervals, or by the estimating equations' "
+                  "corrected sandwich on a numeric outcome",
+                  requires=(f"{HERE}:beyond_li_redden",),
+                  disjoint_from=("trials.few_clusters",)),
+    decision="trial_effect.few_clusters",
+    options=("mixed_kr", "gee_corrected"),
+    verdict="noted",
+    params={"few_clusters": TEN_CLUSTERS},
+    parts=(
+        Part("value", grade="judgment", basis=Basis(reason=(
+            "We carry Li & Redden's fewest clusters, 10, to analyses they did not simulate. "
+            "Their study says nothing of where the mixed model's Kenward–Roger intervals, or the "
+            "corrected sandwich on a numeric outcome, begin to undercover; the line marks the "
+            "same edge of evidence, not a count at which coverage is known to fail."))),
+        Part("wording", grade="judgment", basis=Basis(reason=(
+            "The concern's words are the trial core's one sentence for both claims: they say the "
+            "intervals rest on the small-sample correction (Kenward–Roger's, or the corrected "
+            "sandwich's) and name the fewest clusters Li & Redden studied, which is true of "
+            "their study whatever the analysis, without saying that it covers this one."))),
+    ),
+    tests=(
+        Fires(f"{ACCEPTANCE}/test_e2_trials.py::"
+              "test_a_few_clusters_concern_never_displaces_the_missing_outcome_notice",
+              truth="construction"),
+        Fires(f"{TESTS}::test_a_numeric_cluster_trial_of_eight_clusters_names_the_few_clusters",
+              truth="construction"),
+        Silent(f"{TESTS}::test_a_numeric_cluster_trial_of_twelve_clusters_names_no_few_clusters",
+               truth="construction"),
+    ),
+    enforced_by=("turbotab.core.methods.trials:estimate",),
+    author=AUTHOR,
+))
+
+ORDINAL_STATSMODELS_CR1 = (f"{TESTS}::test_an_ordinal_table_over_twelve_units_computes_"
+                           "statsmodels_cr1_and_says_it_can_be_narrow")
 
 ORDINAL_CLUSTER_ROBUST_INTERVALS = register(Claim(
     id="ordinal.cluster_robust_intervals",
@@ -206,13 +300,18 @@ ORDINAL_CLUSTER_ROBUST_INTERVALS = register(Claim(
         Part("method", grade="certified", graded_by=VERIFIER, basis=Basis(reason=(
             "The concern names the method the table computes, CR1 with G/(G − 1) on t(G − 1), "
             "where it had borrowed the linear family's CR2 with Bell–McCaffrey degrees of "
-            "freedom (claims backtest A-102). The Fires test asserts the table's covariance is "
-            "CR1, its caption says t(11) and neither it nor the concerns name CR2 or "
-            "Bell–McCaffrey, and fails when the linear family's concerns are put back. "
-            "test_2_cluster_robust_intervals_match_statsmodels_sandwich_on_t_g_minus_1 checks the "
-            "computation against statsmodels' cluster sandwich on t(G − 1)."),
-            tests=(f"{ACCEPTANCE}/test_wp12a_ordinal.py::test_2_clustered_intervals_say_cr1_on_t_"
-                   "g_minus_1_and_that_few_units_can_make_them_narrow",))),
+            "freedom (claims backtest A-102). Over 12 units the Fires test against statsmodels "
+            "finds the table's standard errors statsmodels' OrderedModel cluster sandwich, "
+            "rescaled to G/(G − 1) alone, its intervals on t(11), and the line it names saying "
+            "CR1 on t(11), not CR2 or Bell–McCaffrey; it fails when the table computes another "
+            "sandwich under the CR1 label. The stage-1 Fires test holds the labels: the table's "
+            "covariance is CR1 and its caption says t(11), and it fails when the linear family's "
+            "concerns are put back. test_2_cluster_robust_intervals_match_statsmodels_sandwich_"
+            "on_t_g_minus_1 checks the same computation over 150 units, where nothing is said of "
+            "few units."),
+            tests=(ORDINAL_STATSMODELS_CR1,
+                   f"{ACCEPTANCE}/test_wp12a_ordinal.py::test_2_clustered_intervals_say_cr1_on_t_"
+                   "g_minus_1_and_that_few_units_can_make_them_narrow"))),
         Part("direction", grade="certified", graded_by=VERIFIER, basis=Basis(reason=(
             "t(G − 1) is the least allowance Cameron & Miller (2015, §VI) ask for; it lessens "
             "but does not remove the sandwich's downward bias, the more so for units of unequal "
@@ -232,6 +331,7 @@ ORDINAL_CLUSTER_ROBUST_INTERVALS = register(Claim(
     tests=(
         Fires(f"{ACCEPTANCE}/test_wp12a_ordinal.py::test_2_clustered_intervals_say_cr1_on_t_g_"
               "minus_1_and_that_few_units_can_make_them_narrow", truth="construction"),
+        Fires(ORDINAL_STATSMODELS_CR1, truth="independent:statsmodels"),
         Silent(f"{TESTS}::test_an_ordinal_table_over_sixty_units_says_nothing_of_narrow_intervals",
                truth="construction"),
     ),
@@ -294,13 +394,17 @@ TRIALS_SEPARATION = register(Claim(
             "that all had the event refuses there because Newton's method does not converge."))),
         Part("coefficient_bound", grade="judgment", basis=Basis(reason=(
             "A coefficient past the bound, in log odds per unit of its column, is a sign of "
-            "separation, not a proof of it, and is not scale-free: a covariate on a narrow "
-            "scale passes it with no one separated, as a pH of 7.4 ± 0.02 with a log odds ratio "
-            "of 60 per unit (about 1.2 per SD) does. A parallel trial then asks the linear "
-            "program, which rules separation out, and reports the fit (the Silent test on such a "
-            "pH, against statsmodels); with no bound the same fit is reported straight from "
-            "Newton's method, so no test holds the bound itself. The estimating equations refuse "
-            "on it (the scope part). The value is a convention, not tuned."))),
+            "separation, not a proof of it. It is not scale-free, and it is read on the intercept "
+            "too: a covariate far from its zero (a calendar year, a body temperature) or on a "
+            "narrow scale (a pH of 7.4 ± 0.02 with a log odds ratio of 60 per unit, about 1.2 per "
+            "SD) puts a coefficient past it with no one separated. A parallel trial then asks the "
+            "linear program, which rules separation out, and reports the fit (the Silent test on "
+            "that pH, against statsmodels); with no bound the same fit is reported straight from "
+            "Newton's method, so no test holds the bound itself there. The estimating equations "
+            "run no program and refuse on it at their independence start, where it misfires (the "
+            "scope part), and no Fires test holds it there either: their Fires test refuses "
+            "because Newton's method does not converge, and with the bound removed it still "
+            "passes. The value is a convention, not tuned."))),
         Part("risk_floor", grade="judgment", basis=Basis(reason=(
             "A fitted risk within the floor of 0 or 1 is read as a sign of separation. For a "
             "parallel trial it sends a converged fit to the linear program, and, no one "
@@ -308,24 +412,32 @@ TRIALS_SEPARATION = register(Claim(
             "resolve: the Fires test spies on the program for a fit whose only extreme risk is "
             "one person's at an outlying dose, and the Silent test finds it not asked where no "
             "risk is near 0 or 1; the reported effect is statsmodels' either way. For the "
-            "estimating equations the floor refuses in their independence start, as the bound "
-            "does, and again at their own fit, a backstop no test reaches. The value is a "
-            "float64 convention, not tuned."),
+            "estimating equations the floor refuses at their independence start, with no "
+            "program, and misfires there: one person's outlying covariate value can put their "
+            "fitted risk within it with no one separated (the scope part). No Fires test holds "
+            "it on that path, and its second check, at the estimating equations' own fit, is a "
+            "backstop no test reaches. The value is a float64 convention, not tuned."),
             tests=(f"{TESTS}::test_a_converged_fit_with_a_risk_at_float64_s_edge_is_checked_by_"
                    "the_linear_program",
                    f"{TESTS}::test_a_fit_with_no_risk_near_0_or_1_is_reported_without_the_linear_"
                    "program"))),
         Part("scope", grade="judgment", basis=Basis(reason=(
-            "The estimating equations' refusal runs no linear program, so it can refuse a "
-            "cluster trial no one is separated in, and its reason then says, wrongly, that some "
-            "group's risk runs to 0% or 100%. On 16 clusters with a pH of 7.4 ± 0.02 and a log "
-            "odds ratio of 60 per unit, every one of 10 seeds was refused at the independence "
-            "start's coefficient bound, where statsmodels' Logit and its exchangeable GEE give "
-            "finite fits with fitted risks from 0.005 to 0.991 (the package's verifier, "
-            "2026-10-16). Giving the start the parallel trial's linear program, or a reason that "
-            "is true, turns a refusal into a report or changes what the person reads, and is "
-            "the orchestrator's to rule; until then the claim covers that case as a refusal "
-            "whose stated cause can be wrong."))),
+            "The estimating equations' refusal at their independence start runs no linear "
+            "program, and the bound is read on the intercept, so a cluster trial with a yes/no "
+            "outcome is refused for any covariate far from its zero, whatever its effect, and for "
+            "one outlying covariate value at the floor; its reason then says, wrongly, that some "
+            "group's risk runs to 0% or 100%. The package's verifier (2026-10-16), 16 clusters of "
+            "10 to 29 people, 10 seeds each: a calendar year of 2021 ± 1.5 with no effect was "
+            "refused 10 of 10, where statsmodels' exchangeable GEE fits each with fitted risks "
+            "from 0.272 to 0.710, and none of 10 with the bound removed; a body temperature of "
+            "37 ± 0.5 °C, 0 of 10 with no effect, 8 of 10 at 0.8 log odds per °C and 10 of 10 at "
+            "1.2; a pH of 7.4 ± 0.02 at 60 per unit, 10 of 10; one dose of 18 among doses of SD "
+            "1, 10 of 10 at the floor, where statsmodels' Logit converges with coefficients of "
+            "1.7 or less. Stage 1 fixed this pattern for the parallel trial only. Giving the start "
+            "the parallel trial's treatment, or a reason that is true, turns a refusal into a "
+            "report or changes what the person reads, and is the orchestrator's to rule; until "
+            "then the start's bound and floor have no Fires test, and the claim covers these "
+            "cases as a refusal whose stated cause can be wrong."))),
     ),
     tests=(
         Fires(f"{ACCEPTANCE}/test_e2_trials.py::test_a_group_with_every_event_is_refused_naming_"
@@ -448,18 +560,19 @@ CAUSAL_NUMERIC_EXPOSURE_R2 = register(Claim(
              "outcome and of the exposure that misfit; the exposure's positivity is a stated "
              "assumption."),
     goal=("inference",),
-    regime=Regime("a numeric exposure under Estimate an effect, by the partially linear model "
-                  "with cross-fitted models of the outcome and of the exposure given the "
-                  "covariates", requires=(f"{HERE}:numeric_exposure",)),
+    regime=Regime("a numeric exposure (what you study) under Estimate an effect, by the "
+                  "partially linear model with cross-fitted models of the outcome and of what you "
+                  "study given the covariates", requires=(f"{HERE}:numeric_exposure",)),
     decision="set_causal.positivity",
     verdict="noted",
-    params={"r2_line": Param(0.9, unit="share of the exposure's variance",
+    params={"r2_line": Param(0.9, unit="share of the variance of what you study",
                              constant="turbotab.core.models.causal:CONTINUOUS_R2_LINE")},
     parts=(
         Part("direction", grade="judgment", basis=Basis(reason=(
-            "By Frisch–Waugh the partially linear model rests on the exposure's variance left "
-            "once the covariates are known, so its standard error is about √(1/(1 − R²)) times "
-            "what it would be were the exposure unrelated to them, and its interval counts that. "
+            "By Frisch–Waugh the partially linear model rests on the variance of what you study "
+            "left once the covariates are known, so its standard error is about √(1/(1 − R²)) "
+            "times what it would be were what you study unrelated to them, and its interval "
+            "counts that. "
             "A high R² is precision, not a positivity violation: the backtest's simulation "
             "(claims backtest B-416) covered at 0.94–0.95 with R² 0.95–0.99 and correctly "
             "specified models."),
@@ -470,7 +583,7 @@ CAUSAL_NUMERIC_EXPOSURE_R2 = register(Claim(
             "§10.5) collinearity rule of thumb, used only as where the widening is worth naming. "
             "It says nothing of positivity, and nothing turns on it but a sentence."))),
         Part("scope", grade="judgment", basis=Basis(reason=(
-            "No R² guards the bias a misfit in the models of the outcome and of the exposure "
+            "No R² guards the bias a misfit in the models of the outcome and of what you study "
             "brings, which a small remainder magnifies; with random-forest models that bias "
             "showed at R² 0.86–0.88, below the line (B-416). The sentence says the interval does "
             "not count it."))),
@@ -492,6 +605,11 @@ CAUSAL_NUMERIC_EXPOSURE_R2 = register(Claim(
     enforced_by=("turbotab.core.causal:assumption_card", "turbotab.core.models.causal:variation"),
     author=AUTHOR,
 ))
+
+COX_TEST_3 = (f"{ACCEPTANCE}/test_wp12b_cox_mixed_gee.py::test_3_a_group_with_no_events_is_"
+              "refused_and_one_with_only_events_is_not")
+COX_NO_EVENTS = (f"{TESTS}::test_a_cox_group_with_no_events_is_refused_naming_it_alone_as_the_"
+                 "lowest_or_highest")
 
 SURVIVAL_MONOTONE_LIKELIHOOD = register(Claim(
     id="survival.monotone_likelihood",
@@ -525,8 +643,7 @@ SURVIVAL_MONOTONE_LIKELIHOOD = register(Claim(
             "b_g = −10, −20 and −40, and asserts each table refused with no standard error, "
             "interval or p-value; it fails when both the ordering check and the singular "
             "trigger are removed."),
-            tests=(f"{ACCEPTANCE}/test_wp12b_cox_mixed_gee.py::test_3_a_group_with_no_events_is_"
-                   "refused_and_one_with_only_events_is_not",))),
+            tests=(COX_TEST_3,))),
         Part("detection", grade="judgment", basis=Basis(reason=(
             "Newton's decrement can pass its tolerance before any coefficient reaches the "
             "divergence bound, since the information decays along an ordering as fast as the "
@@ -534,31 +651,31 @@ SURVIVAL_MONOTONE_LIKELIHOOD = register(Claim(
             "has an eigenvalue at or below the flat share of its largest, or that did not "
             "converge, is checked for a column or a flat direction that orders the risk sets. "
             "The Fires test on a group with no events beside age and noise columns holds that "
-            "check and the flat share: with either removed, the refusal names age too. Two "
-            "triggers are backstops no test reaches: a coefficient past the divergence bound, "
-            "which stops the iterations, and an information below the singular share at the "
-            "estimate. On the fixtures the ordering is found first, and a matrix whose columns "
-            "nearly copy each other is refused before the fit, as nearly singular; removing "
-            "either trigger changes no refusal there. The three numbers are numerical "
-            "conventions, not tuned against a reference."),
-            tests=(f"{TESTS}::test_a_cox_group_with_no_events_is_refused_naming_it_alone_as_the_"
-                   "lowest",))),
-        Part("wording", grade="judgment", basis=Basis(reason=(
-            "The refusal says the rows with the event have the lowest or highest value of the "
+            "check and the flat share: with either removed, the refusal names age too. An "
+            "information whose smallest eigenvalue is at or below the singular share of its "
+            "largest, at the estimate, refuses the fit even where no ordering is found: it is "
+            "the ordering check's backstop. On the fixtures the ordering is found first, so "
+            "removing the singular share alone changes no refusal, and test_3 fails when both it "
+            "and the ordering check are removed. The divergence bound, which stops the "
+            "iterations, is a backstop no test reaches, and a matrix whose columns nearly copy "
+            "each other is refused before the fit, as nearly singular. The three numbers are "
+            "numerical conventions, not tuned against a reference."),
+            tests=(COX_NO_EVENTS,))),
+        Part("wording", grade="certified", graded_by=VERIFIER, basis=Basis(reason=(
+            "The refusal says the rows with the event have the lowest or the highest value of the "
             "column at every event time, and names that column alone: the Fires test on a group "
-            "with no events finds `g` named as the lowest, and age and the noise columns not "
-            "named. A group in which every row has the event is no monotone likelihood when its "
-            "events fall among others', and is estimated: the stage-1 Fires test matches "
-            "statsmodels' PHReg (Efron ties) there, its estimates to 1e-8 relative and its "
-            "standard errors to 1e-6."),
-            tests=(f"{TESTS}::test_a_cox_group_with_no_events_is_refused_naming_it_alone_as_the_"
-                   "lowest",))),
+            "with no events, coded g and 1 − g on the same six fixtures, reads the ordering off "
+            "the rows and finds `g` named as the lowest, and as the highest, with age and the "
+            "noise columns not named; it fails with the ordering check removed. A group in which "
+            "every row has the event is no monotone likelihood when its events fall among "
+            "others', and is estimated: the stage-1 Fires test matches statsmodels' PHReg "
+            "(Efron ties) there, its estimates to 1e-8 relative and its standard errors to 1e-6, "
+            "and fails when every Cox fit is refused."),
+            tests=(COX_NO_EVENTS, COX_TEST_3))),
     ),
     tests=(
-        Fires(f"{ACCEPTANCE}/test_wp12b_cox_mixed_gee.py::test_3_a_group_with_no_events_is_refused_"
-              "and_one_with_only_events_is_not", truth="construction"),
-        Fires(f"{TESTS}::test_a_cox_group_with_no_events_is_refused_naming_it_alone_as_the_lowest",
-              truth="construction"),
+        Fires(COX_TEST_3, truth="construction"),
+        Fires(COX_NO_EVENTS, truth="construction"),
         Silent(f"{TESTS}::test_a_cox_group_with_two_events_is_estimated_as_lifelines_fits_it",
                truth="independent:lifelines"),
     ),
@@ -584,13 +701,21 @@ RESULTS_TAIL_SHARE = register(Claim(
     goal=("inference",),
     regime=Regime("a least-squares estimate under Estimate an effect, on an outcome whose lens "
                   "names a cut-off and which side of it is the tail, the primary's own interval "
-                  "excluding zero"),
+                  "excluding zero",
+                  requires=(f"{HERE}:least_squares_with_a_cut_off",
+                            f"{HERE}:primary_interval_excludes_zero")),
     decision="results.tail_share",
     verdict="noted",
     parts=(
-        Part("identity", grade="judgment", basis=Basis(reason=(
-            "y = min(y, c) + max(y − c, 0), and least squares is linear in y, so the two parts' "
-            "coefficients add up to the primary's exactly; the build's test holds the sum."))),
+        Part("identity", grade="proved", graded_by=VERIFIER, basis=Basis(
+            theorem=("The least-squares estimator β̂(y) = (XᵀX)⁻¹Xᵀy, or (XᵀWX)⁻¹XᵀWy with fixed "
+                     "weights W, is linear in y for a fixed design X (the 'linear' of the "
+                     "Gauss–Markov theorem's best linear unbiased estimator). Pointwise, y ≤ c "
+                     "gives min(y, c) = y and max(y − c, 0) = 0, and y > c gives c and y − c, so "
+                     "y = min(y, c) + max(y − c, 0), and β̂(y) = β̂(min(y, c)) + β̂(max(y − c, 0)) "
+                     "exactly, in exact arithmetic."),
+            reason=("The three fits share the design, the weights and the rows; the build's test "
+                    "holds the sum to float64 rounding."))),
         Part("baseline", grade="judgment", basis=Basis(reason=(
             "Shifting every value by δ moves the tail part by δ times the share of values on the "
             "tail's side, so a uniform shift gives a tail share of about p; one half is no test "
@@ -610,7 +735,8 @@ RESULTS_TAIL_SHARE = register(Claim(
 ))
 
 CLAIMS: tuple[Claim, ...] = (
-    INFERENCE_FEW_CLUSTERS, TRIALS_FEW_CLUSTERS, ORDINAL_CLUSTER_ROBUST_INTERVALS,
+    INFERENCE_FEW_CLUSTERS, TRIALS_FEW_CLUSTERS, TRIALS_FEW_CLUSTERS_EXTENDED,
+    ORDINAL_CLUSTER_ROBUST_INTERVALS,
     TRIALS_SEPARATION, DESIGNS_OBSERVATIONAL_DEFAULT, DESIGNS_SAMPLED_BY_OUTCOME,
     CAUSAL_NUMERIC_EXPOSURE_R2, SURVIVAL_MONOTONE_LIKELIHOOD, RESULTS_TAIL_SHARE,
 )

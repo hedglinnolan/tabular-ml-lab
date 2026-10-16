@@ -138,8 +138,9 @@ CORRECTIONS: tuple[str, ...] = ("auto", "kc", "fg", "md")
 GOALS: tuple[str, ...] = ("inference", "prediction", "describe")
 FG_BOUND = 0.75  # Fay & Graubard's b, geesmv's default
 CV_RULE = 0.6  # Li & Redden 2015: KC below this coefficient of variation of cluster sizes, FG above
-# The fewest clusters Li & Redden 2015 simulated: its claim's (``trials.few_clusters``), not the
-# model families' thirty (``inference.few_clusters``).
+# The fewest clusters Li & Redden 2015 simulated: its claim's (``trials.few_clusters``, which
+# ``trials.few_clusters_extended`` carries past their simulation by judgment), not the model
+# families' thirty (``inference.few_clusters``).
 FEW_CLUSTERS = claims.value("trials.few_clusters", "few_clusters")
 # Signs of separation in a converged logistic fit (``trials.separation``): a coefficient past
 # this on its column's own scale, or a fitted risk this near 0 or 1. :func:`_logistic` refuses on
@@ -1623,8 +1624,14 @@ def estimate(frame: pd.DataFrame, spec: TrialSpec, *, analysis_set: str = "itt",
                 f"same for everyone in a cluster; the comparison needs more clusters than those "
                 f"terms.", exits, term="too few clusters")
         if K < FEW_CLUSTERS:
-            few = claims.card("trials.few_clusters", {"trial_design": spec.trial_design,
-                                                      "n_clusters": K})
+            # Li & Redden simulated the corrected sandwich on a yes/no outcome
+            # (``trials.few_clusters``); the mixed model and a numeric outcome carry their ten by
+            # judgment (``trials.few_clusters_extended``), in the same words.
+            simulated = method == "gee" and pr.kind == "binary"
+            few = claims.card("trials.few_clusters" if simulated else
+                              "trials.few_clusters_extended",
+                              {"trial_design": spec.trial_design, "method": method,
+                               "outcome_values": y, "n_clusters": K})
             concerns.append(f"Only {K} clusters were randomized; {few}")
         if method == "mixed":
             if pr.kind == "binary":
