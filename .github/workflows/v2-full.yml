@@ -63,8 +63,10 @@ jobs:
         # The R reference tests skip without Rscript (turbotab/server/requirements-dev-R.txt).
         # The NHANES tests run: they read the tracked turbotab/core/tests/fixtures/nhanes.csv.gz.
         # On failure, the failing tests become annotations, which anyone can read (logs need admin).
+        # A test still running after 20 minutes fails by name; without the cap a hang ran out the
+        # job's 120 minutes with no annotation (f1d96341, 2026-10-16).
         run: |
-          python -m pytest turbotab/core turbotab/server -q -n 2 -rfE --junitxml=pytest-report.xml || {
+          python -m pytest turbotab/core turbotab/server -q -n 2 -rfE --timeout=1200 --junitxml=pytest-report.xml || {
             python .github/scripts/annotate_failures.py pytest-report.xml
             exit 1
           }

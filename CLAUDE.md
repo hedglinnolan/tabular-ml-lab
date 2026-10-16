@@ -52,7 +52,7 @@ turn, so it holds only the rules any agent can break.
 - Python is `scripts/py`: the main checkout's `venv-next`, pinned as CI is (a worktree has no venv;
   `venv/` is Classic's; `.venv` lacks pytest). Run from your worktree's root so `turbotab` imports
   from your tree, and prefix every command with `OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2`.
-- A targeted run: `OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2 scripts/py -m pytest <paths> -m "not slow" -q -n 2 -p no:cacheprovider --timeout=600 2>&1 | tail -15`
+- A targeted run: `OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2 scripts/py -m pytest <paths> -m "not slow" -q -n 2 -p no:cacheprovider 2>&1 | tail -15`
 - A test you name on purpose: drop `-m "not slow"` and check that the summary counts it, not as
   deselected. Find the tests that reach your code with `git grep -l <name> -- 'turbotab/*test_*.py'`;
   run an acceptance or legacy file only by name, and only when it reaches your code.

@@ -21,7 +21,7 @@ like the right one.
 ```
 git worktree add --detach <scratchpad>/base <base>
 cp <the new test file> <scratchpad>/base/<its path>
-cd <scratchpad>/base && OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2 <builder worktree>/scripts/py -m pytest <its path> -q -n 2 -p no:cacheprovider --timeout=600 2>&1 | tail -15
+cd <scratchpad>/base && OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2 <builder worktree>/scripts/py -m pytest <its path> -q -n 2 -p no:cacheprovider 2>&1 | tail -15
 git worktree remove --force <scratchpad>/base
 ```
 It must fail there. To test a mutation instead, add the scratch worktree at the builder's head and

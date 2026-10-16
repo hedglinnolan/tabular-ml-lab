@@ -6,3 +6,4 @@ pmsampsize  # Riley et al.'s sample-size criteria, the authors' Python port (WP8
 rnanorm==2.2.0
 shap  # the SHAP reference the explainability acceptance tests check against (acceptance/test_explain.py)
 pytest-xdist  # pytest -n 2
+pytest-timeout  # CI fails a hung test by name instead of running out the job's clock (2026-10-16)
