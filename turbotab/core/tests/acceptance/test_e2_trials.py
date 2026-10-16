@@ -1558,26 +1558,37 @@ def test_a_fit_float64_cannot_resolve_is_refused_or_read_exactly():
     On the code before this round (6c08230e) the three were reported, where the base (e6e58809)
     refused them: seed 76 at a risk difference of −0.0061451 (SE 0.0066068) where the fit gives
     −0.0060474 (SE 0.0065954), 1.48e-2 standard errors off, its intercept and arm coefficient
-    0.11 off and opposite; seed 77 1.28e-3 off; seed 8 9.0e-4 off."""
+    0.11 off and opposite; seed 77 1.28e-3 off; seed 8 9.0e-4 off.
+
+    Which refusal such a trial gets depends on float64's summation order (the rows' order, the
+    memory layout, the BLAS): where Newton's method on the standardized columns does not
+    converge, the trial gets the separation refusal, and where it converges, the nearly singular
+    one. Both are refusals, and the claim is about the number, so each trial is run in 20 row
+    orders (the fitted risks do not depend on the order) and every report is graded against the
+    one certified fit; the term is either refusal's (its seventh review's re-review)."""
     spec = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
                        covariates=("x",))
     for eps, seed in ((5e-6, 76), (1.5e-6, 77), (1e-6, 8)):
-        df = _discordant_pair(eps, seed)
-        X, y = _x_design(df, "x"), df.event.to_numpy()
-        b = _exact_fit(X, y)
+        df0 = _discordant_pair(eps, seed)
+        b = _exact_fit(_x_design(df0, "x"), df0.event.to_numpy())
         assert b is not None, (eps, seed, "no finite fit certified in 60 digits")
-        try:
-            r = T.estimate(df, spec)
-        except T.TrialRefused as e:
-            assert e.term == "nearly singular information in the logistic model", str(e)
-            assert "the rounding of the numbers, not by the data" in str(e), str(e)
-            assert [x.get("covariates") for x in e.exits] == [[], None]
-            assert e.exits[-1]["describe"] is True
-            continue
-        rd, se = _exact_effect(X, y, b, pd.factorize(df.site)[0])
-        got = r.contrast(measure="risk_difference")
-        assert abs(got.estimate - rd) <= 1e-3 * se, (eps, seed, got.estimate, rd, se)
-        assert got.se == pytest.approx(se, rel=1e-3), (eps, seed, got.se, se)
+        for order in range(20):
+            df = df0 if order == 0 else df0.sample(frac=1, random_state=order).reset_index(drop=True)
+            try:
+                r = T.estimate(df, spec)
+            except T.TrialRefused as e:
+                assert e.term in ("nearly singular information in the logistic model",
+                                  "separation in the logistic model"), str(e)
+                if e.term.startswith("nearly singular"):
+                    assert "the rounding of the numbers, not by the data" in str(e), str(e)
+                assert [x.get("covariates") for x in e.exits] == [[], None]
+                assert e.exits[-1]["describe"] is True
+                continue
+            X, y = _x_design(df, "x"), df.event.to_numpy()
+            rd, se = _exact_effect(X, y, b, pd.factorize(df.site)[0])
+            got = r.contrast(measure="risk_difference")
+            assert abs(got.estimate - rd) <= 1e-3 * se, (eps, seed, order, got.estimate, rd, se)
+            assert got.se == pytest.approx(se, rel=1e-3), (eps, seed, order, got.se, se)
 
 
 def _three_arms(seed: int = 2065, n: int = 45) -> pd.DataFrame:
