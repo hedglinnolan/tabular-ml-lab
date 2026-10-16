@@ -1439,7 +1439,7 @@ def test_a_trial_the_program_finds_anyone_separated_in_is_refused_never_reported
     trials; the BMI trials, at two sites and at one; the tied and noisy-tie trials; the plane
     trials; the one-ulp plane and its control on the plane; and the summed score. A refusal
     that counts the people the program names counts them as the program does. The program names
-    people in every trial of six of these sets, and in most of the rest; the tied trials at
+    people in every trial of five of these sets, and in most of the rest; the tied trials at
     σ = 1e-6 are reported, as no one is separated there.
 
     On the code before this review 156 of the 257 trials in which the program named some people
