@@ -1,7 +1,7 @@
 name: TurboTab v2 full
 
 # TurboTab v2's full tier (audit of 2026-10-09, recommendation 7; the fast tier is v2.yml): the
-# whole core and server suite, acceptance tests included (50 to 58 minutes), the mock browser
+# whole core and server suite, acceptance tests included (in two shards), the mock browser
 # tests, and the light real-server browser journeys. The acceptance suite holds the binding rules: no estimate before the plan lock,
 # nothing served before Fit, an independent reference for every number. So it runs wherever the
 # work lands and before every release, not only at night:
@@ -31,9 +31,21 @@ concurrency:
 
 jobs:
   full-tests:
-    name: full core and server suite
+    name: full core and server suite (${{ matrix.shard }})
+    # Every test, slow and acceptance ones included, in two shards that together run each test
+    # once (turbotab/core/tests/test_ci_tiers.py). Whole, the suite took 60 to 111 minutes between
+    # 2026-10-10 and 10-16 when it finished, and ran past 120 minutes on 10-11, 10-13 and twice
+    # on 10-16, with no annotation.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: acceptance
+            paths: turbotab/core/tests/acceptance
+          - shard: the rest
+            paths: turbotab/core turbotab/server --ignore=turbotab/core/tests/acceptance
     runs-on: ubuntu-latest
-    timeout-minutes: 120   # the acceptance suite fits many models: 50 and 58 minutes on 650126ca and 7eea27c7
+    timeout-minutes: 120
     env:
       TURBOTAB_WORKERS: "2"
       OMP_NUM_THREADS: "2"
@@ -63,13 +75,19 @@ jobs:
         # The R reference tests skip without Rscript (turbotab/server/requirements-dev-R.txt).
         # The NHANES tests run: they read the tracked turbotab/core/tests/fixtures/nhanes.csv.gz.
         # On failure, the failing tests become annotations, which anyone can read (logs need admin).
-        # A test still running after 20 minutes fails by name; without the cap a hang ran out the
-        # job's 120 minutes with no annotation (f1d96341, 2026-10-16).
+        # A test still running after 20 minutes is killed and fails by name, even inside C code
+        # (the thread method). The shard is interrupted at 100 minutes, so pytest still writes the
+        # report the annotations read; GitHub's own job timeout leaves none.
         run: |
-          python -m pytest turbotab/core turbotab/server -q -n 2 -rfE --timeout=1200 --junitxml=pytest-report.xml || {
-            python .github/scripts/annotate_failures.py pytest-report.xml
+          timeout --signal=INT --kill-after=5m 100m python -m pytest ${{ matrix.paths }} -q -n 2 -rfE --timeout=1200 --timeout-method=thread --junitxml=pytest-report.xml || {
+            status=$?
+            python .github/scripts/annotate_failures.py pytest-report.xml "$status"
             exit 1
           }
+
+      - name: Where the time went
+        if: always()
+        run: python .github/scripts/annotate_durations.py pytest-report.xml
 
   e2e:
     name: mock browser tests (Playwright)

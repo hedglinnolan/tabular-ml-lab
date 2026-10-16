@@ -11,6 +11,7 @@ workflows as GitHub does and collect the fast tier's tests as its commands do.
 """
 from __future__ import annotations
 
+import importlib.util
 import os
 import re
 import shlex
@@ -47,7 +48,9 @@ def runs(job: dict) -> list[str]:
 
 
 def collect(args: list[str]) -> set[str]:
-    kept = [a for a in args if a not in ("-q", "-rfE") and not a.startswith("--junitxml")]
+    # Reporting and timeout flags change nothing collected; pytest-timeout is pinned for CI, and
+    # venv-next may lack it.
+    kept = [a for a in args if a not in ("-q", "-rfE") and not a.startswith(("--junitxml", "--timeout"))]
     if "-n" in kept:
         i = kept.index("-n")
         del kept[i:i + 2]
@@ -77,12 +80,74 @@ def test_the_nightly_tests_the_integration_branch_not_the_default_one():
                             ref), (name, ref)
 
 
-def test_the_full_tier_runs_every_test_and_the_browser_tests():
+def shard_commands(job: dict) -> dict[str, str]:
+    """Each matrix shard's ``python -m pytest`` script, with its paths filled in."""
+    (run,) = [r for r in runs(job) if "python -m pytest" in r]
+    found = {}
+    for shard in job["strategy"]["matrix"]["include"]:
+        command = run.replace("${{ matrix.paths }}", shard["paths"])
+        assert "${{" not in " ".join(pytest_args(command)), command
+        found[shard["shard"]] = command
+    return found
+
+
+FULL_SUITE = FULL["jobs"]["full-tests"]
+
+
+def test_the_full_shards_together_run_every_test_once_and_the_browser_tests_run():
+    """The full suite ran past its job's 120 minutes on 2026-10-11, 10-13 and twice on 10-16 (it
+    took 60 to 111 minutes when it finished), so it runs in shards; together they still run
+    every test, slow and acceptance ones included, each once."""
+    shards = {name: collect(pytest_args(run)) for name, run in shard_commands(FULL_SUITE).items()}
+    assert len(shards) >= 2, shards.keys()
+    expected = collect(["turbotab/core", "turbotab/server"])
+    assert len(expected) > 3000, len(expected)  # the positive control
+    union = set().union(*shards.values())
+    assert union == expected, (sorted(expected - union)[:10], sorted(union - expected)[:10])
+    assert sum(map(len, shards.values())) == len(union), {k: len(v) for k, v in shards.items()}
     commands = [run for job in FULL["jobs"].values() for run in runs(job)]
-    suites = [pytest_args(run) for run in commands if "python -m pytest" in run]
-    assert suites == [["turbotab/core", "turbotab/server", "-q", "-n", "2", "-rfE", "--timeout=1200",
-                       "--junitxml=pytest-report.xml"]], suites
     assert any("npx playwright test" in run for run in commands), commands
+
+
+def test_each_full_shard_fails_a_hung_test_by_name_and_reports_before_the_jobs_clock_ends():
+    """A test past 20 minutes is killed by name, even inside C code (the thread method), and the
+    whole run is interrupted at its own deadline, which leaves pytest time to write the report
+    the annotations read; GitHub's job timeout leaves no report at all."""
+    limit = FULL_SUITE["timeout-minutes"]
+    for name, run in shard_commands(FULL_SUITE).items():
+        args = pytest_args(run)
+        for flag in ("-n", "-rfE", "--timeout=1200", "--timeout-method=thread", "--junitxml=pytest-report.xml"):
+            assert flag in args, (name, flag, args)
+        deadline = re.search(r"timeout --signal=INT --kill-after=(\d+)m (\d+)m python -m pytest", run)
+        assert deadline, (name, run)
+        kill_after, minutes = map(int, deadline.groups())
+        assert minutes + kill_after + 10 <= limit, (name, minutes, kill_after, limit)
+    always = [s for s in FULL_SUITE["steps"] if "annotate_durations.py" in s.get("run", "")]
+    assert [s.get("if") for s in always] == ["always()"], always
+
+
+def test_the_durations_annotation_ranks_files_and_tests_by_their_time(tmp_path):
+    spec = importlib.util.spec_from_file_location("annotate_durations",
+                                                  REPO / ".github" / "scripts" / "annotate_durations.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    report = tmp_path / "report.xml"
+    report.write_text(
+        '<testsuites><testsuite tests="4">'
+        '<testcase classname="turbotab.core.tests.acceptance.test_a" name="test_x" time="300"/>'
+        '<testcase classname="turbotab.core.tests.acceptance.test_a" name="test_y" time="240"/>'
+        '<testcase classname="turbotab.server.tests.test_b.TestGroup" name="test_z" time="600"/>'
+        '<testcase classname="turbotab.core.tests.test_c" name="test_w[1]" time="1.5"/>'
+        '<testcase time="0.000"/>'  # what an interrupted xdist run leaves
+        '</testsuite></testsuites>', "utf-8")
+    files, tests, total = module.slowest(report)
+    assert files == [("turbotab/server/tests/test_b.py", 600.0),
+                     ("turbotab/core/tests/acceptance/test_a.py", 540.0),
+                     ("turbotab/core/tests/test_c.py", 1.5)]
+    assert tests[0] == ("turbotab/server/tests/test_b.py::TestGroup::test_z", 600.0)
+    assert tests[-1] == ("turbotab/core/tests/test_c.py::test_w[1]", 1.5)
+    assert total == (4, 1141.5)
+    assert module.slowest(tmp_path / "missing.xml") is None
 
 
 def test_the_full_tiers_timeout_has_its_plugin_installed_at_a_pinned_version():
