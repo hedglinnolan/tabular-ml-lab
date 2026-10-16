@@ -84,6 +84,9 @@ RAW_RANGE = claims.value(RAW_SCALE, "raw_range")
 RAW_SKEW = claims.value(RAW_SCALE, "raw_skew")
 # Estimated counts' zero and thousands, each in this many columns: not one column's.
 ESTIMATED_COLUMNS = claims.value(RAW_SCALE, "estimated_columns")
+# A column of this many distinct values or fewer (a yes/no indicator, a two-level code) is no
+# assay reading, however large its values.
+INDICATOR_LEVELS = claims.value(RAW_SCALE, "indicator_levels")
 CHECK_ALPHA = 0.01  # the library-size check speaks below this p-value
 PRIOR_COUNT = 2.0  # edgeR cpm(log = TRUE)'s default prior.count
 LOGRATIO_TRIM, SUM_TRIM, A_CUTOFF = 0.3, 0.05, -1e10  # edgeR calcNormFactors' TMM defaults
@@ -201,7 +204,8 @@ def scale_reading(frame: pd.DataFrame, lenses: Sequence[str] | None, target: str
     with np.errstate(invalid="ignore"):
         nonneg = np.where(finite, values >= 0, True).all(axis=0)
         whole = np.where(finite, np.equal(np.mod(values, 1), 0), True).all(axis=0)
-        distinct = np.array([np.unique(values[finite[:, j], j]).size > 2 for j in range(len(columns))])
+        distinct = np.array([np.unique(values[finite[:, j], j]).size > INDICATOR_LEVELS
+                             for j in range(len(columns))])
     keep = nonneg & distinct
     if "genomics" in lenses:
         counts = keep & whole

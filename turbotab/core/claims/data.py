@@ -17,7 +17,7 @@ from the code the claim guards (CLAIMS_REGISTRY.md §10: C-123's predicate, had 
 from the engine but the registry itself; a predicate imports pandas only when it is called.
 
 The author grades no part above judgment (CLAIMS_REGISTRY.md §2.4); a grader other than the author
-raises a part with its evidence.
+raises a part with its evidence, as the package's verifier raised two parts to proved.
 """
 from __future__ import annotations
 
@@ -29,6 +29,8 @@ from turbotab.core.claims import Basis, Claim, Fires, Param, Part, Regime, Silen
 
 HERE = "turbotab.core.claims.data"
 AUTHOR = "R0b-data builder"
+# The package's verifier, who raised the parts its evidence proves (repair round 1).
+VERIFIER = "R0b-data verifier, 2026-10-16"
 TESTS = "turbotab/core/tests/test_claims_data.py"
 ACCEPTANCE = "turbotab/core/tests/acceptance"
 # The tail question's tests, which the build of BEATS_MODELS_RESULTS.md's E23 writes (D-086).
@@ -60,12 +62,17 @@ def one_value_on_every_row(ctx: Any) -> bool:
     return len(values) > 0 and int(values.nunique(dropna=False)) == 1
 
 
-# The weights' names as the CDC codebooks spell them: the interview, MEC examination, phlebotomy,
-# dietary-recall, fasting and OGTT samples' (WTINT2YR, WTMEC2YR, WTPH2YR, WTDRD1, WTDR2D,
-# WTSAF2YR, WTSOG2YR, and the pre-pandemic PRP and PP names), and the tutorial's pooled ones
-# (MEC4YR).
-_NHANES_WEIGHT = re.compile(r"^(WT(INT|MEC|PH|DRD1|DR2D|DR|SAF|SOG)[A-Z0-9]*|(INT|MEC|DR|SAF|SOG)"
-                            r"[0-9]+YR)$")
+# The weights' names as the CDC codebooks spell them, each the sample's word and then its cycle
+# or nothing, never any other ending: the interview, MEC examination and fasting samples' (WTINT2YR, WTMEC4YR,
+# WTSAF2YR, the pre-pandemic WTINTPRP, WTMECPRP and WTSAFPRP), the phlebotomy and OGTT samples'
+# (WTPH2YR, WTSOG2YR), the dietary recalls' (WTDRD1, WTDR2D, the pre-pandemic WTDRD1PP and
+# WTDR2DPP, 1999-2002's WTDR4YR), and the other subsamples' ("WTS", the subsample's letters and
+# the cycle, within the eight characters a SAS transport name holds: WTSA2YR, WTSB2YR, WTSVOC2Y);
+# and the weighting tutorial's pooled ones, the sample's word and the years (MEC4YR, WTMEC6YR,
+# DRD14YR, DR2D4YR).
+_NHANES_WEIGHT = re.compile(r"^(WT(INT|MEC|SAF)(\d+YR|PRP)|WT(PH|SOG)\d+YR|WTDR(D1|2D)(PP)?"
+                            r"|WTS(?=[A-Z0-9]{2,5}$)[A-Z]+\d+YR?"
+                            r"|(WT)?(INT|MEC|PH|DRD1|DR2D|DR|SAF|SOG)\d+YR)$")
 
 
 def names_an_nhanes_weight(ctx: Any) -> bool:
@@ -158,10 +165,18 @@ register(Claim(
     options=("excluded", "predictor"),
     verdict="not_offered",
     parts=(
-        Part("constant", grade="judgment", basis=Basis(
-            reason="We leave out, without asking, a column that holds one value on every row: it "
-                   "never varies, so no model can use it (a linear model with an intercept gains "
-                   "nothing from it, and a tree cannot split on it).")),
+        Part("constant", grade="proved", graded_by=VERIFIER, basis=Basis(
+            theorem="A column x that holds one value k on every row i, a blank counting as a "
+                    "value (the predicate one_value_on_every_row), distinguishes no two rows: any "
+                    "model's prediction f(x_i, z_i) equals f(k, z_i), a function of the other "
+                    "columns z alone, on every row, so no split on x separates two rows; and in a "
+                    "design with an intercept, x is k times the intercept column, adding no "
+                    "dimension to the column space (perfect collinearity), so the least-squares "
+                    "fitted values are unchanged.")),
+        Part("without_asking", grade="judgment", basis=Basis(
+            reason="We leave such a column out without asking: it carries nothing a model can "
+                   "use (the constant part), so a question about it would leave the user nothing "
+                   "to decide.")),
         Part("blank", grade="judgment", basis=Basis(
             reason="We count a blank as a value: a checkbox exported as 'yes' or 1 where ticked "
                    "and blank where not varies through its blanks, so it is asked about and kept "
@@ -221,14 +236,22 @@ register(Claim(
             cites=("nhanes_weighting_tutorial",),
             reason="We follow the NHANES weighting tutorial's rule, \"use the weight of the "
                    "smallest subpopulation that includes all the variables you want to include in "
-                   "your analysis\", ordering the samples from the OGTT subsample up to the "
-                   "interview sample as the codebooks nest them.")),
+                   "your analysis\". The codebooks nest most of the samples: the OGTT subsample "
+                   "within the fasting one, the fasting within the phlebotomy sample, both "
+                   "dietary days within the first, the phlebotomy and the dietary-recall samples "
+                   "each within the examination sample, and that within the interview sample. "
+                   "The phlebotomy and the dietary-recall samples do not nest, neither holding the "
+                   "other; ordering the dietary recalls as the smaller is our call, by size "
+                   "(TCHOL_L's 7,316 positive phlebotomy weights against DR1TOT_L's 6,694 "
+                   "reliable day-1 recalls, read 2026-10-15), not by nesting.")),
         Part("phlebotomy", grade="judgment", basis=Basis(
-            cites=("nhanes_weighting_tutorial",),
-            reason="We name the phlebotomy weight for a variable recorded only where it is "
-                   "positive, as the TCHOL_L codebook says for August 2021-August 2023 (\"The "
-                   "phlebotomy weight should be used for analyses that use variables derived from "
-                   "blood analytes\").")),
+            cites=("nhanes_weighting_tutorial", "nhanes_documentation"),
+            reason="We name the phlebotomy weight for a blood analyte, as the weighting "
+                   "tutorial's Example 5 does for serum vitamin D (\"You would use phlebotomy "
+                   "weights (wtph2yr)\") and as the TCHOL_L codebook says for August 2021-August "
+                   "2023 (\"The phlebotomy weight should be used for analyses that use variables "
+                   "derived from blood analytes\"). Reading a blood analyte as a variable recorded "
+                   "only where that weight is positive is our call.")),
         Part("interview", grade="judgment", basis=Basis(
             cites=("nhanes_weighting_tutorial",),
             reason="We name the interview weight where every variable is recorded on interviewed "
@@ -276,22 +299,25 @@ register(Claim(
 register(Claim(
     id="data.omics_raw_scale",
     kind="rule",
-    card="Under the genomics or metabolomics lens, a block of at least {min_features} numeric "
-         "columns (not the outcome, an identifier, a person's characteristic or how the samples "
-         "were acquired) is read as unnormalized: as raw counts under genomics when they are "
-         "non-negative whole numbers reaching {count_max:,.0f}; as raw intensities under "
-         "metabolomics when they are non-negative, span {raw_range:,.0f}-fold, and reach "
-         "{raw_max:,.0f} or have a median skewness of at least {raw_skew}; and under genomics as "
-         "FPKM or estimated counts, which the values cannot tell apart, when they are fractional "
-         "with a zero and a value of {raw_max:,.0f} or more each in {estimated_columns} columns or "
-         "more, and sample totals not all a million. Other values are read as already normalized "
-         "or on a log scale.",
-    methods="Assay values were read as unnormalized from the values alone, never the outcome: "
-            "whole-number counts reaching {count_max:,.0f}, intensities spanning "
-            "{raw_range:,.0f}-fold and reaching {raw_max:,.0f} or right-skewed (median skewness "
-            "at least {raw_skew}), or fractional values with zeros and values of {raw_max:,.0f} or "
-            "more in {estimated_columns} columns or more (FPKM or estimated counts), over a block "
-            "of at least {min_features} columns.",
+    card="Under the genomics or metabolomics lens, assay values are read from the numeric "
+         "columns that are not the outcome, an identifier, a person's characteristic or how the "
+         "samples were acquired, and that are non-negative with more than {indicator_levels} "
+         "distinct values each; a reading takes at least {min_features} such columns and names "
+         "only those. They are read as raw counts under genomics when {min_features} or more of "
+         "them hold whole numbers, the largest reaching {count_max:,.0f}; as raw intensities "
+         "under metabolomics when they span {raw_range:,.0f}-fold and reach {raw_max:,.0f} or "
+         "have a median skewness of at least {raw_skew}; and under genomics as FPKM or estimated "
+         "counts, which the values cannot tell apart, when {min_features} or more of them are "
+         "fractional, with a zero and a value of {raw_max:,.0f} or more each in "
+         "{estimated_columns} columns or more, and sample totals not all a million. Other values "
+         "are read as already normalized or on a log scale.",
+    methods="Assay values were read as unnormalized from the values alone, never the outcome, over "
+            "the columns that were non-negative with more than {indicator_levels} distinct values "
+            "each, at least {min_features} of them: whole-number counts reaching "
+            "{count_max:,.0f}, intensities spanning {raw_range:,.0f}-fold and reaching "
+            "{raw_max:,.0f} or right-skewed (median skewness at least {raw_skew}), or fractional "
+            "values with zeros and values of {raw_max:,.0f} or more in {estimated_columns} columns "
+            "or more (FPKM or estimated counts).",
     regime=Regime("a table under the genomics or metabolomics lens whose assay values are as the "
                   "file holds them; the reading looks at the values alone, never at the outcome",
                   requires=(f"{HERE}:under_an_omics_lens",)),
@@ -310,12 +336,16 @@ register(Claim(
                           constant="turbotab.core.methods.omics:RAW_SKEW"),
         "estimated_columns": Param(2, unit="columns",
                                    constant="turbotab.core.methods.omics:ESTIMATED_COLUMNS"),
+        "indicator_levels": Param(2, unit="distinct values or fewer: an indicator, no assay "
+                                       "reading",
+                                  constant="turbotab.core.methods.omics:INDICATOR_LEVELS"),
     },
     parts=(
         Part("block", grade="judgment", basis=Basis(
             reason="We read 20 assay-like columns or more as a feature block, so a clinical "
-                   "table's handful of laboratory values is never read as one; an unsourced "
-                   "convention.")),
+                   "table's handful of laboratory values is never read as one, and leave out of it "
+                   "a column of two values or fewer, an indicator however large its code; "
+                   "unsourced conventions.")),
         Part("counts", grade="judgment", basis=Basis(
             reason="We read whole numbers reaching 100 as counts: genotype dosages (0, 1 and 2) "
                    "and scores stay below it; an unsourced convention.")),
@@ -349,6 +379,10 @@ register(Claim(
         Silent("turbotab/core/tests/test_omics.py::"
                "test_genotype_dosages_and_two_level_columns_are_not_counts",
                truth="construction"),
+        Fires(f"{TESTS}::test_columns_of_three_values_or_more_are_read_as_counts_and_two_level_"
+              "ones_are_left_out", truth="construction"),
+        Silent(f"{TESTS}::test_a_block_of_two_level_columns_is_never_read_as_raw_counts",
+               truth="construction"),
     ),
     enforced_by=("turbotab.core.methods.omics:scale_reading",
                  "turbotab.core.methods.omics:_estimated_counts"),
@@ -358,8 +392,11 @@ register(Claim(
 
 # ── D-058 · groups above the person ──────────────────────────────────────────────────────────
 # Both sentences are the teaching entry's (``teaching.content.CLUSTERS``), card-facing plain words:
-# the card is its "why", the methods register its "Adjust and cluster" option. The number is
-# ``estimand.FIXED_EFFECTS_LOGIT_ROWS``'s, which the guard reads.
+# the card is its "why", the methods register its "Adjust and cluster" option. The guard keeps its
+# own copy of the number, ``estimand.FIXED_EFFECTS_LOGIT_ROWS``, until estimand.py reads it from
+# here, so ``rows`` names no constant (the reference would say that constant reads it); until then
+# a test holds both sentences to the rows per group at which the guard stops refusing
+# (test_claims_data.py, the grouping entry's rows per group).
 
 register(Claim(
     id="data.clusters_adjust",
@@ -380,8 +417,7 @@ register(Claim(
     decision="set_clusters.adjust",
     options=("fixed_effects", "cluster_only", "none"),
     verdict="refused",
-    params={"rows": Param(16, unit="rows per group",
-                          constant="turbotab.core.estimand:FIXED_EFFECTS_LOGIT_ROWS")},
+    params={"rows": Param(16, unit="rows per group")},
     parts=(
         Part("confounding", grade="judgment", basis=Basis(
             reason="We give each site its own intercept under inference: a site that differs in "
@@ -452,10 +488,13 @@ register(Claim(
     verdict="noted",
     params={"level": Param(0.95, unit="interval coverage")},
     parts=(
-        Part("identity", grade="judgment", basis=Basis(
-            reason="Least squares is linear in the outcome, so the two parts' coefficients add up "
-                   "to the primary's exactly; graded judgment by its author, for a grader to "
-                   "raise.")),
+        Part("identity", grade="proved", graded_by=VERIFIER, basis=Basis(
+            theorem="Least squares is linear in the outcome: for a fixed design X and weights W "
+                    "(W = I for ordinary least squares), the estimate b(v) = (X'WX)^-1 X'Wv is a "
+                    "linear function of v, so b(u + w) = b(u) + b(w). For a cut-off c, "
+                    "min(y, c) + max(y - c, 0) = y for every y (c + (y - c) above c, y + 0 at or "
+                    "below it), so on the same rows and design the coefficients of the part short "
+                    "of the cut-off and of the part past it add up to the primary's exactly.")),
         Part("baseline", grade="judgment", basis=Basis(
             reason="We judge the tail's share against p, the share of rows on the tail's side: "
                    "shifting every value by d moves the tail part by d times that share, a "

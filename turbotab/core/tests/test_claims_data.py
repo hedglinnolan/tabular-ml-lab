@@ -1,12 +1,14 @@
 """The data area's claims (``turbotab/core/claims/data.py``; R0_PLAN.md R0b): the Silent tests
-stage 1 left missing, and the regime predicates tested both ways.
+stage 1 left missing, the omics reading's distinct-values test both ways, the grouping entry's
+number held to its guard, and the regime predicates tested both ways.
 
 A Silent test holds a guard quiet where its evidence says it must be: a UL that covers every
-source, an NHANES table with no variable measured on a subsample alone, a yes/no outcome in groups
-large enough for an intercept each. Each was watched failing on a copy of the base whose guard was
-loosened. Its truth is the construction or an independent library, never the claim it tests: this
-file names no claim and none of the constants the claims set (meta-test 2), and reads no
-threshold, so every case sits far from the cut-off it would cross.
+source, an NHANES table with no variable measured on a subsample alone, a block of two-level
+columns, a yes/no outcome in groups large enough for an intercept each. Each was watched failing
+on a copy of the base whose guard was loosened. Its truth is the construction or an independent
+library, never the claim it tests: this file names no claim and none of the constants the claims
+set (meta-test 2), and reads no threshold, so every case sits far from the cut-off it would cross.
+The one test that crosses a cut-off finds it from the guard's behavior, to hold a sentence to it.
 """
 from __future__ import annotations
 
@@ -126,6 +128,47 @@ def test_an_examination_variable_keeps_the_mec_weight_beside_interview_ones():
     assert least_common_denominator(interview, frame[examined])["use"] == "WTMEC2YR"
 
 
+# ── C-193 · a column of two values is no assay reading ───────────────────────────────────────
+
+
+def _levels(rng: np.random.Generator, values: list[int], n: int = 60) -> np.ndarray:
+    """A column holding each of ``values`` at least once, the rest drawn from them."""
+    return rng.permutation(np.concatenate([values, rng.choice(values, n - len(values))]))
+
+
+def test_columns_of_three_values_or_more_are_read_as_counts_and_two_level_ones_are_left_out():
+    """Claims backtest C-193, the fires side of the distinct-values test: under the genomics lens,
+    whole numbers reaching the hundreds in columns of three values or more (0, 7 and 500) are raw
+    counts, and the reading names those columns alone: beside 30 Poisson(200) gene counts, eight
+    columns of 0 and 500 only (an indicator, however large its code) are outside the block it
+    names."""
+    from turbotab.core.methods import omics
+
+    rng = np.random.default_rng(193)
+    three = pd.DataFrame({f"g{i}": _levels(rng, [0, 7, 500]) for i in range(30)})
+    reading = omics.scale_reading(three, ["genomics"])
+    assert reading is not None and reading.kind == "counts", reading
+    assert reading.columns == tuple(three.columns)
+    genes = {f"g{i}": rng.poisson(200, 60) for i in range(30)}
+    flags = {f"flag{i}": _levels(rng, [0, 500]) for i in range(8)}
+    mixed = pd.DataFrame({**genes, **flags})
+    reading = omics.scale_reading(mixed, ["genomics"])
+    assert reading is not None and reading.kind == "counts", reading
+    assert reading.columns == tuple(genes), reading.columns
+
+
+def test_a_block_of_two_level_columns_is_never_read_as_raw_counts():
+    """Claims backtest C-193, the silent side of the distinct-values test: 30 columns that each
+    hold 0 and 500 only, under the genomics lens. Two values make an indicator, however large the
+    code, so no column is an assay reading and nothing is read as raw counts."""
+    from turbotab.core.methods import omics
+
+    rng = np.random.default_rng(1931)
+    frame = pd.DataFrame({f"g{i}": _levels(rng, [0, 500]) for i in range(30)})
+    assert all(frame[c].nunique() == 2 for c in frame) and frame.to_numpy().max() == 500
+    assert omics.scale_reading(frame, ["genomics"]) is None
+
+
 # ── D-058 · groups large enough for an intercept each ────────────────────────────────────────
 
 
@@ -195,6 +238,39 @@ def test_a_yes_no_outcome_in_groups_of_forty_keeps_an_intercept_per_group():
                                        "binary") is None
 
 
+def test_the_grouping_entry_states_the_rows_per_group_at_which_the_refusal_stops():
+    """Claims backtest D-058, the sentences against the guard: the grouping entry's "why" and its
+    "Adjust and cluster" option state the rows per group below which a yes/no outcome gets no
+    intercept each, and the design stage's backstop keeps its own copy of that number. The number
+    is read from the backstop's behavior, never from either copy: 30 households of m rows each,
+    every household holding both answers, for m from 2 to 40; the smallest m it lets through is
+    the number, every smaller m is refused, and both sentences state it."""
+    from turbotab.core import decisions as d, estimand
+    from turbotab.core.decisions import ProjectState
+    from turbotab.core.teaching import content
+
+    refused = {}
+    for m in range(2, 41):
+        group = np.repeat(np.arange(30), m)
+        frame = pd.DataFrame({"pid": np.arange(len(group)), "household": group,
+                              "x": np.tile(np.linspace(-1, 1, m), 30),
+                              "ill": np.tile(np.arange(m) % 2, 30)})
+        state = ProjectState(lens=["clinical"], target="ill", task="binary", purpose="inference",
+                             grain={"grain": "one_row_per_unit"},
+                             roles={"pid": "identifier", "household": "cluster", "x": "exposure"},
+                             clusters=d.ClusterSpec(column="household", adjust="fixed_effects"))
+        refused[m] = estimand.intercepts_refusal(state, _Store(frame), np.arange(len(frame)),
+                                                 "binary") is not None
+    passed = [m for m, r in refused.items() if not r]
+    assert passed and refused[2], refused
+    rows = passed[0]
+    assert all(refused[m] for m in range(2, rows)) and all(not refused[m] for m in passed), refused
+    why = content.CLUSTERS["why"]
+    adjust = next(o for o in content.CLUSTERS["options"] if o["value"] == "fixed_effects")
+    assert f"groups under {rows} rows" in why, (rows, why)
+    assert f"need {rows} rows per group" in adjust["consequence"], (rows, adjust)
+
+
 # ── the regime predicates, both ways ─────────────────────────────────────────────────────────
 
 
@@ -235,3 +311,26 @@ def test_each_regime_predicate_holds_inside_its_regime_and_fails_outside(predica
     least-squares fit on an outcome with a clinical cut-off."""
     held = getattr(regimes, predicate)
     assert held(inside) is True and held(outside) is False
+
+
+# Weights as NCHS names them: the subsamples' (Subsample A, B and C, the VOC subsample, each "WTS",
+# the subsample's letters and the cycle, cut to the eight characters a SAS transport name holds),
+# the dietary weights pooled as the weighting tutorial pools them (the sample's word and the
+# years: DRD1 and DR2D over four years), and the other samples' with their cycles. Beside them,
+# names that only begin like one: a word that starts with a sample's letters, a body weight, a
+# tissue mass.
+NHANES_WEIGHT_NAMES = ("WTSA2YR", "WTSB2YR", "WTSC2YR", "WTSHM2YR", "WTSVOC2Y", "WTSSBJ2Y",
+                       "DRD14YR", "DR2D4YR", "MEC4YR", "WTMEC6YR", "WTINTPRP", "WTDR4YR",
+                       "WTSOG2YR", "wtph2yr")
+NOT_NHANES_WEIGHTS = ("WTMECHANIC", "WTDRUG", "WTINTERVAL", "WTSAFETY", "WTPHONE", "BMXWT",
+                      "WTKG", "sample_weight_mg")
+
+
+def test_the_nhanes_weight_regime_reads_the_names_nchs_gives_and_no_look_alike():
+    """The C-143 predicate, at its edges: a table carries an NHANES sample weight when a column
+    is named as NCHS names one, a subsample's whose sample the rule does not know included, and
+    not when a column only begins with a sample's letters (a mechanic, a drug, an interval)."""
+    for name in NHANES_WEIGHT_NAMES:
+        assert regimes.names_an_nhanes_weight({"columns": ["LBXTC", name]}) is True, name
+    for name in NOT_NHANES_WEIGHTS:
+        assert regimes.names_an_nhanes_weight({"columns": ["LBXTC", name]}) is False, name
