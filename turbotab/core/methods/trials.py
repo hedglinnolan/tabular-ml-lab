@@ -1624,11 +1624,12 @@ def estimate(frame: pd.DataFrame, spec: TrialSpec, *, analysis_set: str = "itt",
                 f"same for everyone in a cluster; the comparison needs more clusters than those "
                 f"terms.", exits, term="too few clusters")
         if K < FEW_CLUSTERS:
-            # Li & Redden simulated the corrected sandwich on a yes/no outcome
-            # (``trials.few_clusters``); the mixed model and a numeric outcome carry their ten by
-            # judgment (``trials.few_clusters_extended``), in the same words.
-            simulated = method == "gee" and pr.kind == "binary"
-            few = claims.card("trials.few_clusters" if simulated else
+            # Li & Redden studied the corrected sandwich on a 0/1 outcome, simulating two
+            # unadjusted arms (``trials.few_clusters``, which carries their ten to adjusted and
+            # multi-arm analyses by judgment); the mixed model and a numeric outcome carry it by
+            # judgment too (``trials.few_clusters_extended``), in the same words.
+            studied = method == "gee" and pr.kind == "binary"
+            few = claims.card("trials.few_clusters" if studied else
                               "trials.few_clusters_extended",
                               {"trial_design": spec.trial_design, "method": method,
                                "outcome_values": y, "n_clusters": K})

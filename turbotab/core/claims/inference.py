@@ -5,9 +5,10 @@ R² read as precision (B-416), the Cox fit's monotone likelihood (B-435), and th
 tail share (D-086, ruled and not built).
 
 ``FEW_CLUSTERS`` is two numbers under one name: ten clusters, the fewest Li & Redden (2015)
-simulated, in the trial core (``trials.few_clusters`` for the corrected sandwich on a yes/no
-outcome they simulated, ``trials.few_clusters_extended`` for the analyses they did not), and
-thirty, inside Cameron & Miller's (2015) few-clusters range, for the model families'
+simulated, in the trial core (``trials.few_clusters`` for the estimating equations' corrected
+sandwich on a 0/1 outcome, the estimator and outcome they studied, carried by judgment past the
+two unadjusted arms they simulated; ``trials.few_clusters_extended`` for the mixed model and a
+numeric outcome), and thirty, inside Cameron & Miller's (2015) few-clusters range, for the model families'
 cluster-robust intervals (``inference.few_clusters``). Each module constant reads its own claim
 with ``claims.value``.
 
@@ -76,22 +77,14 @@ def zero_one_outcome(ctx: Any) -> bool:
 
 
 def beyond_li_redden(ctx: Any) -> bool:
-    """A cluster-randomized trial analyzed otherwise than Li & Redden (2015) simulated: by the
-    mixed model, or by the estimating equations on an outcome that is not yes/no."""
+    """A cluster-randomized trial analyzed by the mixed model, or by the estimating equations on
+    an outcome that is not 0/1: an estimator or an outcome Li & Redden (2015) did not study."""
     return cluster_randomized_trial(ctx) and not (estimating_equations(ctx)
                                                   and zero_one_outcome(ctx))
 
 
 def randomized_trial(ctx: Any) -> bool:
     return _get(ctx, "trial_design") in ("parallel_trial", "cluster_randomized_trial")
-
-
-def yes_no_outcome(ctx: Any) -> bool:
-    """Exactly two outcome values are seen."""
-    values = _get(ctx, "outcome_values")
-    if values is None:
-        return False
-    return len({float(v) for v in values}) == 2
 
 
 def design_unanswered(ctx: Any) -> bool:
@@ -195,8 +188,7 @@ TRIALS_FEW_CLUSTERS = register(Claim(
              "other"),
     goal=("inference",),
     regime=Regime("a cluster-randomized trial analyzed by the estimating equations with a "
-                  "small-sample corrected sandwich, on a yes/no outcome: what Li & Redden "
-                  "simulated",
+                  "small-sample corrected sandwich, on a 0/1 outcome",
                   requires=(f"{HERE}:cluster_randomized_trial", f"{HERE}:estimating_equations",
                             f"{HERE}:zero_one_outcome")),
     decision="trial_effect.few_clusters",
@@ -206,21 +198,38 @@ TRIALS_FEW_CLUSTERS = register(Claim(
     parts=(
         Part("value", grade="sourced", graded_by=VERIFIER, basis=Basis(
             cites=("li2015gee",),
-            where=("Li & Redden (2015), the simulation study: 'We mimic the CRTs containing 10, "
-                   "20, or 30 clusters (K) with 10, 20, 50, 100, or 150 observations in average "
-                   "per cluster'; the abstract: 'the Kauermann and Carroll (KC)-correction can "
-                   "keep the test size to nominal levels even when the number of clusters is as "
-                   "low as 10'."),
+            where=("Li & Redden (2015), §2.1, the simulation study: 'We mimic the CRTs containing "
+                   "10, 20, or 30 clusters (K) with 10, 20, 50, 100, or 150 observations in "
+                   "average per cluster'; 'For simplicity but without the loss of "
+                   "generalizability, we assume two intervention arms containing equal clusters "
+                   "and no covariates are included'; its ICCs, 'low ICC (0.001, 0.01 and 0.05)'; "
+                   "its cluster sizes, 'In our simulations, cv is at the range of 0 to 1'. The "
+                   "abstract: 'the Kauermann and Carroll (KC)-correction can keep the test size "
+                   "to nominal levels even when the number of clusters is as low as 10'. The "
+                   "discussion: 'Another limitation is that we do not consider covariates other "
+                   "than the treatment, which may be included in the real data analyses.'"),
             reason=(
-                "10 is the fewest clusters Li & Redden (2015) simulated, so below it their "
+                "10 is the fewest clusters Li & Redden (2015) simulated, in the design they "
+                "simulated (two arms of equal cluster counts, no covariates, ICCs from 0.001 to "
+                "0.05, a cluster-size coefficient of variation from 0 to 1), so below it their "
                 "evidence for the corrected sandwich's coverage does not reach. It marks where "
                 "their evidence ends, not a count at which coverage is known to fail."))),
         Part("scope", grade="judgment", basis=Basis(reason=(
-            "The regime is what Li & Redden simulated: the estimating equations' corrected "
-            "sandwich with a yes/no outcome. The trial core names the same concern, in the same "
-            "words, for the mixed model's Kenward–Roger intervals and for the estimating "
-            "equations on a numeric outcome, which their study does not cover; that is its own "
-            "claim, by judgment (trials.few_clusters_extended)."))),
+            "The regime's predicates check the design, the estimator and a 0/1 outcome, not "
+            "what Li & Redden held fixed: the trial core reads the same 10 for a covariate-"
+            "adjusted analysis, for more than two arms or unequal cluster counts per arm, and "
+            "for ICCs and size variations past theirs. We carry it there by judgment, on the "
+            "authors' 'without the loss of generalizability'. Below 10 clusters their evidence "
+            "is absent there as in their design, so the concern holds; from 10 the trial core "
+            "names none, though their discussion warns that 'The addition of covariates will "
+            "change the variance estimation and the degrees of freedom', so their finding that "
+            "the corrected sandwich keeps its size does not cover an adjusted analysis. The "
+            "claim's own Fires and Silent tests are such cases: adjusted for a covariate, with "
+            "a cluster effect of SD 0.48 on the log odds (a latent ICC near 0.065), and 5 and 4 "
+            "clusters per arm at 9. The trial core names the "
+            "same concern, in the same words, for the mixed model's Kenward–Roger intervals and "
+            "for the estimating equations on a numeric outcome, which their study does not "
+            "cover; that is its own claim, by judgment (trials.few_clusters_extended)."))),
     ),
     tests=(
         Fires(f"{TESTS}::test_a_cluster_trial_of_eight_clusters_names_the_few_clusters",
@@ -243,9 +252,9 @@ TRIALS_FEW_CLUSTERS_EXTENDED = register(Claim(
              "as well, by judgment: Li & Redden (2015) studied the corrected sandwich with a "
              "yes/no outcome"),
     goal=("inference",),
-    regime=Regime("a cluster-randomized trial analyzed otherwise than Li & Redden simulated: by "
-                  "the mixed model's Kenward–Roger intervals, or by the estimating equations' "
-                  "corrected sandwich on a numeric outcome",
+    regime=Regime("a cluster-randomized trial analyzed by the mixed model's Kenward–Roger "
+                  "intervals, or by the estimating equations' corrected sandwich on a numeric "
+                  "outcome: an estimator or an outcome Li & Redden did not study",
                   requires=(f"{HERE}:beyond_li_redden",),
                   disjoint_from=("trials.few_clusters",)),
     decision="trial_effect.few_clusters",
@@ -313,16 +322,28 @@ ORDINAL_CLUSTER_ROBUST_INTERVALS = register(Claim(
                    f"{ACCEPTANCE}/test_wp12a_ordinal.py::test_2_clustered_intervals_say_cr1_on_t_"
                    "g_minus_1_and_that_few_units_can_make_them_narrow"))),
         Part("direction", grade="certified", graded_by=VERIFIER, basis=Basis(reason=(
-            "t(G − 1) is the least allowance Cameron & Miller (2015, §VI) ask for; it lessens "
-            "but does not remove the sandwich's downward bias, the more so for units of unequal "
-            "size (MacKinnon & Webb 2017, J Appl Econom 32:233). In the Fires test's known-truth "
-            "simulation (12 units of lognormal size, a column varying only between them, "
-            "β = 0.5 known) the 95% intervals cover β in fewer than 95% of 1,000 data sets by "
-            "more than three Monte Carlo standard errors; statsmodels' OrderedModel with its "
-            "cluster sandwich, rescaled to G/(G − 1) on t(11), covered 0.882 of 400 of the same "
-            "fixtures (the verifier's check)."),
+            "With this few units such intervals can still be too narrow: t(G − 1) is the least "
+            "allowance Cameron & Miller (2015, §VI) ask for, and it lessens but does not remove "
+            "the sandwich's downward bias. In the Fires test's known-truth simulation (12 units "
+            "of lognormal size, a column varying only between them, β = 0.5 known) the 95% "
+            "intervals cover β in fewer than 95% of 1,000 data sets by more than three Monte "
+            "Carlo standard errors; statsmodels' OrderedModel with its cluster sandwich, "
+            "rescaled to G/(G − 1) on t(11), covered 0.882 of 400 of the same fixtures (the "
+            "verifier's check). The test holds the direction in that one design, 12 units "
+            "unequal in size with a column that varies only between them; the card's comparison "
+            "with other designs is the comparison part's."),
             tests=(f"{ACCEPTANCE}/test_wp12a_ordinal.py::test_2_clustered_intervals_say_cr1_on_t_"
                    "g_minus_1_and_that_few_units_can_make_them_narrow",))),
+        Part("comparison", grade="judgment", basis=Basis(reason=(
+            "The card's 'and more so when their sizes differ or a column varies only between "
+            "them' compares designs that no test here compares: the coverage test has one "
+            "design, units unequal in size with a column that varies only between them, and no "
+            "fixture of equal sizes or of a column that varies within units. For unequal sizes "
+            "it rests on MacKinnon & Webb (2017, J Appl Econom 32:233), who find cluster-robust "
+            "tests over-reject more as the clusters' sizes grow more unequal; for a column that "
+            "varies only between units, on our judgment that the sandwich then rests on one "
+            "value of it per unit. MacKinnon & Webb is not in the citation registry, so no part "
+            "citing it can be graded sourced yet."))),
         Part("value", grade="judgment", basis=Basis(reason=(
             "The line is inference.few_clusters' 30, chosen for cluster-robust intervals in "
             "general, not tuned for the proportional-odds model. Above it nothing is said, "
@@ -348,13 +369,15 @@ TRIALS_SEPARATION = register(Claim(
              "everyone (complete separation), or a group a linear program finds or cannot rule "
              "out; a partly separated fit is not read at its limit; the estimating equations run "
              "no such program, and are refused on a sign of separation in their independence "
-             "start (no convergence, a coefficient past {coefficient_bound} on its column's own "
-             "scale, or a fitted risk within {risk_floor} of 0 or 1), which can refuse a trial no "
-             "one is separated in"),
+             "start (no convergence, a singular information matrix, a coefficient past "
+             "{coefficient_bound} on its column's own scale, or a fitted risk within {risk_floor} "
+             "of 0 or 1), which can refuse a trial no one is separated in"),
     goal=("inference",),
-    regime=Regime("a randomized trial with a yes/no outcome: the standardized risks of a logistic "
-                  "model with Ye et al.'s variance, or a cluster trial's estimating equations",
-                  requires=(f"{HERE}:randomized_trial", f"{HERE}:yes_no_outcome")),
+    regime=Regime("a randomized trial whose outcome is yes/no, coded 1 and 0 (some outcome "
+                  "seen and each one 0 or 1, though all may be the same): the standardized risks "
+                  "of a logistic model with Ye et al.'s variance, or a cluster trial's estimating "
+                  "equations",
+                  requires=(f"{HERE}:randomized_trial", f"{HERE}:zero_one_outcome")),
     decision="trial_effect.separation",
     options=("standardized_risk", "gee_corrected"),
     verdict="refused",
@@ -390,8 +413,12 @@ TRIALS_SEPARATION = register(Claim(
             "answer is not decided to the module's tolerances, the effect is refused with the "
             "plain separation reason. The tolerances were measured on the stage-1 reviews' "
             "generators, not derived. The estimating equations run no program: the same signs "
-            "in their independence start refuse them, and the Fires test on treated clusters "
-            "that all had the event refuses there because Newton's method does not converge."))),
+            "in their independence start refuse them, and so does an information matrix that "
+            "cannot be solved at one of its Newton steps. The Fires test on treated clusters "
+            "that all had the event refuses there on that last sign: as the treated people's "
+            "risks run to 1 the information turns singular and the step's solve fails. With the "
+            "iteration cap, the bound and the floor all removed it still passes, so on that path "
+            "no test holds those three."))),
         Part("coefficient_bound", grade="judgment", basis=Basis(reason=(
             "A coefficient past the bound, in log odds per unit of its column, is a sign of "
             "separation, not a proof of it. It is not scale-free, and it is read on the intercept "
@@ -402,9 +429,9 @@ TRIALS_SEPARATION = register(Claim(
             "that pH, against statsmodels); with no bound the same fit is reported straight from "
             "Newton's method, so no test holds the bound itself there. The estimating equations "
             "run no program and refuse on it at their independence start, where it misfires (the "
-            "scope part), and no Fires test holds it there either: their Fires test refuses "
-            "because Newton's method does not converge, and with the bound removed it still "
-            "passes. The value is a convention, not tuned."))),
+            "scope part), and no Fires test holds it there either: their Fires test refuses on "
+            "a singular information matrix at a Newton step, and with the bound removed it "
+            "still passes. The value is a convention, not tuned."))),
         Part("risk_floor", grade="judgment", basis=Basis(reason=(
             "A fitted risk within the floor of 0 or 1 is read as a sign of separation. For a "
             "parallel trial it sends a converged fit to the linear program, and, no one "
@@ -708,12 +735,16 @@ RESULTS_TAIL_SHARE = register(Claim(
     verdict="noted",
     parts=(
         Part("identity", grade="proved", graded_by=VERIFIER, basis=Basis(
-            theorem=("The least-squares estimator β̂(y) = (XᵀX)⁻¹Xᵀy, or (XᵀWX)⁻¹XᵀWy with fixed "
-                     "weights W, is linear in y for a fixed design X (the 'linear' of the "
-                     "Gauss–Markov theorem's best linear unbiased estimator). Pointwise, y ≤ c "
-                     "gives min(y, c) = y and max(y − c, 0) = 0, and y > c gives c and y − c, so "
-                     "y = min(y, c) + max(y − c, 0), and β̂(y) = β̂(min(y, c)) + β̂(max(y − c, 0)) "
-                     "exactly, in exact arithmetic."),
+            theorem=("For a fixed design X of full column rank and fixed weights W, the "
+                     "least-squares estimator β̂(y) = (XᵀX)⁻¹Xᵀy, or (XᵀWX)⁻¹XᵀWy, is linear in y "
+                     "(the 'linear' of the Gauss–Markov theorem's best linear unbiased "
+                     "estimator). So for any pointwise split of the outcome, yᵢ = a(yᵢ) + b(yᵢ) "
+                     "for every row, β̂(y) = β̂(a(y)) + β̂(b(y)) exactly, in exact arithmetic. "
+                     "Both of the lens's splits are pointwise. A tail above c: the tail part "
+                     "max(y − c, 0) with the rest min(y, c), since y ≤ c gives 0 and y, and "
+                     "y > c gives y − c and c. A tail below c: the tail part min(y − c, 0) with "
+                     "the rest max(y, c), since y ≥ c gives 0 and y, and y < c gives y − c and "
+                     "c. Each pair adds to y."),
             reason=("The three fits share the design, the weights and the rows; the build's test "
                     "holds the sum to float64 rounding."))),
         Part("baseline", grade="judgment", basis=Basis(reason=(

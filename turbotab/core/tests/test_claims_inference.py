@@ -31,7 +31,7 @@ from turbotab.core.claims.inference import (beyond_li_redden, cluster_randomized
                                             least_squares_with_a_cut_off, numeric_exposure,
                                             primary_interval_excludes_zero,
                                             proportional_odds_cluster_sandwich, randomized_trial,
-                                            rows_repeat, yes_no_outcome, zero_one_outcome)
+                                            rows_repeat, zero_one_outcome)
 
 # ── the trial core's few clusters (Li & Redden 2015) ─────────────────────────
 
@@ -66,7 +66,8 @@ def _few(concerns) -> list[str]:
 def test_a_cluster_trial_of_eight_clusters_names_the_few_clusters(K):
     """Li & Redden (2015) simulated the corrected sandwich of the estimating equations for a
     yes/no outcome from 10 clusters, so with 8 or 9 the trial's concerns name the count and where
-    the evidence ends, with the estimate still reported."""
+    the evidence ends, with the estimate still reported. The trial is adjusted for a covariate,
+    which their two unadjusted arms do not cover: the claim carries their 10 here by judgment."""
     from turbotab.core.methods import trials as T
 
     r = T.estimate(_cluster_trial(K), _gee_spec())
@@ -78,9 +79,9 @@ def test_a_cluster_trial_of_eight_clusters_names_the_few_clusters(K):
 
 @pytest.mark.parametrize("K", [10, 12])
 def test_a_cluster_trial_of_twelve_clusters_names_no_few_clusters(K):
-    """From 10 clusters, within what Li & Redden (2015) simulated, no concern names the count;
-    and with no group's risk at 0% or 100% the estimating equations are reported, not refused
-    for separation."""
+    """From 10 clusters, the fewest Li & Redden (2015) simulated, no concern names the count
+    (for this covariate-adjusted trial, by the claim's judgment); and with no group's risk at 0%
+    or 100% the estimating equations are reported, not refused for separation."""
     from turbotab.core.methods import trials as T
 
     r = T.estimate(_cluster_trial(K), _gee_spec())
@@ -571,7 +572,6 @@ def test_each_predicate_holds_in_its_regime_and_not_outside_it():
         (cluster_randomized_trial, {"trial_design": "cluster_randomized_trial"},
          {"trial_design": "parallel_trial"}),
         (randomized_trial, {"trial_design": "parallel_trial"}, {"trial_design": "observational"}),
-        (yes_no_outcome, {"outcome_values": [0.0, 1.0, 1.0]}, {"outcome_values": [0.0, 1.0, 2.0]}),
         (design_unanswered, {"design": None}, {"design": "observational"}),
         (drawn_by_outcome, {"design": "observational", "design_declared": "matched_sets"},
          {"design": "observational", "design_declared": "parallel_trial"}),
@@ -582,6 +582,8 @@ def test_each_predicate_holds_in_its_regime_and_not_outside_it():
         (zero_one_outcome, {"outcome_values": np.array([1.0, 1.0])},
          {"outcome_values": [0.0, 1.0, 2.5]}),
         (zero_one_outcome, {"outcome_values": [0, 1]}, {"outcome_values": []}),
+        # Everyone had the event: still 0/1. A numeric outcome of two values is not.
+        (zero_one_outcome, {"outcome_values": np.ones(120)}, {"outcome_values": [1.0, 2.0, 2.0]}),
         (beyond_li_redden, {"trial_design": "cluster_randomized_trial", "method": "mixed",
                             "outcome_values": [0.0, 1.0]},
          {"trial_design": "cluster_randomized_trial", "method": "gee",
@@ -603,6 +605,31 @@ def test_each_predicate_holds_in_its_regime_and_not_outside_it():
         assert predicate(outside) is False, predicate.__name__
         # An empty context names nothing, so only "unanswered" holds there.
         assert predicate({}) is (predicate is design_unanswered), predicate.__name__
+
+
+def test_the_separation_rule_s_regime_is_where_its_refusal_acts():
+    """The trial core reads an outcome whose every value is 0 or 1 as yes/no, and refuses for
+    separation a trial in which everyone had the event; an outcome of 1s and 2s it analyzes by
+    least squares, where no separation rule acts. The separation claim's regime holds, in strict
+    mode, for the first and not for the second."""
+    from turbotab.core.methods import trials as T
+
+    rng = np.random.default_rng(1)
+    df = pd.DataFrame({"arm": rng.choice(["ctl", "trt"], 120), "x": rng.normal(size=120)})
+    df["event"], df["score"] = 1.0, rng.choice([1.0, 2.0], 120)
+    with pytest.raises(T.TrialRefused) as refused:
+        T.estimate(df, T.TrialSpec(arm="arm", control="ctl", outcome="event", covariates=("x",)))
+    assert refused.value.term == "separation in the logistic model", str(refused.value)
+    scored = T.estimate(df, T.TrialSpec(arm="arm", control="ctl", outcome="score",
+                                        covariates=("x",)))
+    assert scored.estimator == "analysis of covariance (least squares)", scored.estimator
+
+    [c] = [c for c in area.CLAIMS if c.decision == "trial_effect.separation"]
+    assert claims.methods(c.id, {"trial_design": "parallel_trial",
+                                 "outcome_values": df.event.to_numpy()}, strict=True)
+    with pytest.raises(claims.OutsideRegime):
+        claims.methods(c.id, {"trial_design": "parallel_trial",
+                              "outcome_values": df.score.to_numpy()}, strict=True)
 
 
 def test_the_proportional_odds_sentence_refuses_a_linear_model_s_context_in_strict_mode():

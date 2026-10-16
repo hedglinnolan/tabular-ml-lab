@@ -406,7 +406,7 @@
       "tag": "guideline item"
     },
     {
-      "text": "refused when the logistic model's risk for any group of people runs to 0% or 100% (the arm and the covariates predict exactly whether they had the event): an arm, everyone (complete separation), or a group a linear program finds or cannot rule out; a partly separated fit is not read at its limit; the estimating equations run no such program, and are refused on a sign of separation in their independence start (no convergence, a coefficient past {coefficient_bound} on its column's own scale, or a fitted risk within {risk_floor} of 0 or 1), which can refuse a trial no one is separated in",
+      "text": "refused when the logistic model's risk for any group of people runs to 0% or 100% (the arm and the covariates predict exactly whether they had the event): an arm, everyone (complete separation), or a group a linear program finds or cannot rule out; a partly separated fit is not read at its limit; the estimating equations run no such program, and are refused on a sign of separation in their independence start (no convergence, a singular information matrix, a coefficient past {coefficient_bound} on its column's own scale, or a fitted risk within {risk_floor} of 0 or 1), which can refuse a trial no one is separated in",
       "tag": "mathematical constant"
     },
     {
