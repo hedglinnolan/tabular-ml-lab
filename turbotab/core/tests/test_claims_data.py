@@ -430,6 +430,35 @@ def test_a_table_with_five_rows_outside_the_examination_keeps_the_mec_weight():
     assert least_common_denominator(interview, frame)["use"] == "WTINT2YR"
 
 
+def test_the_weight_card_states_the_rows_at_which_the_interview_reading_turns():
+    """The verifier's V3 on claims backtest C-143, the card against the guard: the card of each
+    claim the interview reading enforces (``recognizers._interview_only`` among its enforcers)
+    states how many interviewed participants who were not examined a table needs before its
+    variables take the interview weight. The number is read from the rule's behavior, never
+    from the claim: 300 examined participants and k not examined (WTMEC2YR 0), diabetes
+    diagnosed and age recorded on all, for k from 1 to 40; the smallest k that takes WTINT2YR is
+    the number, every smaller k keeps WTMEC2YR, and the card states it."""
+    from turbotab.core import claims as registry
+    from turbotab.core.recognizers import least_common_denominator
+
+    frame = _merge()
+    examined = np.flatnonzero((frame["WTMEC2YR"] > 0).to_numpy())[:300]
+    outside = np.flatnonzero(~(frame["WTMEC2YR"] > 0).to_numpy())
+    interview = ["DIQ010", "RIDAGEYR", "WTINT2YR", "WTMEC2YR"]
+    used = {}
+    for k in range(1, 41):
+        small = frame.iloc[np.concatenate([examined, outside[:k]])].reset_index(drop=True)
+        used[k] = least_common_denominator(interview, small)["use"]
+    turns = [k for k, w in used.items() if w == "WTINT2YR"]
+    assert turns and all(used[k] == "WTMEC2YR" for k in range(1, turns[0])), used
+    enforced = [c.id for c in registry.registry()
+                if "turbotab.core.recognizers:_interview_only" in c.enforced_by]
+    assert enforced
+    for id_ in enforced:
+        card = registry.card(id_, {"columns": list(frame.columns)})
+        assert f"at least {turns[0]} of them" in card, card
+
+
 # ── C-193 · a column of two values is no assay reading ───────────────────────────────────────
 
 

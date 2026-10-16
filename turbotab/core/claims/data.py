@@ -317,7 +317,8 @@ register(Claim(
     card="An NHANES analysis takes the weight of the smallest sample its variables were measured "
          "on: the OGTT, fasting, dietary-recall, phlebotomy or examination sample, or the "
          "interview sample where every variable was recorded on interviewed participants who were "
-         "not examined. A variable recorded only where a subsample's weight is positive (at least "
+         "not examined, at least {min_rows} of them in the table. A variable recorded only where "
+         "a subsample's weight is positive (at least "
          "{min_rows} rows, at most {slack:.0%} of them outside it, and blank on at least "
          "{min_missing:.0%} of the table) is that subsample's, whatever its name. A fasting or "
          "OGTT weight that no variable here reads as measured on, or a phlebotomy weight beside "
@@ -376,7 +377,10 @@ register(Claim(
         Part("tolerance", grade="judgment", basis=Basis(
             reason="Our own tolerance for a merge's stray rows: no source sets 1%, 5% or 10 rows; "
                    "they keep a variable measured outside a subsample from being read as the "
-                   "subsample's.")),
+                   "subsample's. The same 10 rows are the interview reading's floor: a table with "
+                   "fewer interviewed participants who were not examined is read as the "
+                   "examination sample, and keeps its weight, as the card states; no source sets "
+                   "that floor either.")),
     ),
     tests=(
         Fires(f"{ACCEPTANCE}/test_wp13_recognizers.py::"
@@ -409,6 +413,8 @@ register(Claim(
               "subsample_s", truth="construction"),
         Silent(f"{TESTS}::test_a_table_with_five_rows_outside_the_examination_keeps_the_mec_weight",
                truth="construction"),
+        Fires(f"{TESTS}::test_the_weight_card_states_the_rows_at_which_the_interview_reading_turns",
+              truth="construction"),
     ),
     enforced_by=("turbotab.core.recognizers:least_common_denominator",
                  "turbotab.core.recognizers:subsample_variables",
