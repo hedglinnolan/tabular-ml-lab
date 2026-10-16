@@ -758,8 +758,8 @@ def test_a_measure_that_does_not_fit_the_outcome_is_refused_with_the_one_that_do
 
 def test_separation_is_refused_in_plain_words():
     """Re-pinned (claims backtest B-281): this test had everyone at site c have the event and
-    held the effect refused, but a site the data separate leaves the standardized risks finite,
-    and they are now reported (the test after this one). The arm is what still refuses: when
+    held the effect refused with the plain reason; a site the data separate is refused now
+    naming the site and its people (the test after this one). Here the arm separates: when
     everyone in the control arm had the event its risk is 100%, and the refusal says so."""
     df = _parallel(seed=21)
     df.loc[(df.arm == "ctl") & df.event.notna(), "event"] = 1.0
@@ -792,15 +792,30 @@ def _ye_by_hand(y: np.ndarray, arm: np.ndarray, cf: np.ndarray, mu: np.ndarray,
     return V / n
 
 
-def test_a_group_with_every_event_keeps_its_standardized_risks_and_an_empty_arm_says_why():
+def _separated_said(said: T.TrialRefused, terms: str, people: int, n: int) -> None:
+    """The refusal of a trial the data separate partly (claims backtest B-281, its sixth review):
+    it names the terms that separate them and counts the people, with fewer covariates and
+    describing the outcomes as its exits."""
+    assert said.term == "separation in the logistic model", str(said)
+    assert (f"From {terms}, the data predict exactly whether {people} of the {n} people had the "
+            f"event, so the logistic model has no finite fit for them") in str(said), str(said)
+    assert "set by where the fit stopped, not by the data" in str(said), str(said)
+    assert [e.get("covariates") for e in said.exits] == [[], None]
+    assert said.exits[-1]["describe"] is True
+
+
+def test_a_group_with_every_event_is_refused_naming_it_and_an_empty_arm_says_why():
     """Claims backtest B-281. Everyone at site c had the event, so the logistic model separates:
-    site c's coefficient has no finite value. The standardized risks still do. The likelihood's
-    supremum is approached as that coefficient runs to +∞, each site-c person's risk to 1 under
-    either arm, while the other coefficients converge to the maximum-likelihood fit on the other
-    sites' people alone (Lesaffre & Albert 1989, *J R Stat Soc B* 51:109). Reference: statsmodels'
-    ``Logit`` on those people, each arm's counterfactual risks averaged over everyone with site c's
-    at 1, and Ye et al.'s variance (the stratification term too) written out above on those risks.
-    The effect had been refused because "no finite estimate exists".
+    site c's coefficient has no finite value. Known truth: site c's people are the ones
+    separated, and no one else is, since statsmodels' ``Logit`` converges on the other sites'
+    people, which a direction separating anyone there would not allow.
+
+    Re-pinned (its sixth review: the fallback). At the fit's limit the standardized risks are
+    finite (Lesaffre & Albert 1989, *J R Stat Soc B* 51:109), and this test had held them to
+    statsmodels' fit on the other sites with site c's risks at 1; reading that fit is withdrawn,
+    since ties to float rounding made it report wrong numbers elsewhere. The effect is refused,
+    naming site c and counting its people, with fewer covariates and describing the outcomes as
+    its exits. The effect had been refused before B-281 because "no finite estimate exists".
 
     When no one in an arm had the event, its risk is 0% and the risk difference is still finite
     (minus the other arm's risk), but Ye et al.'s variance, built from each arm's spread of
@@ -810,36 +825,20 @@ def test_a_group_with_every_event_keeps_its_standardized_risks_and_an_empty_arm_
 
     df = _parallel(seed=21)
     df.loc[df.site == "c", "event"] = 1.0
-    r = T.estimate(df, BSPEC)
     rand = df.arm.notna()
     data = _filled(df[rand], "age", pd.Series(True, index=df[rand].index))
     data = data[data.event.notna()].reset_index(drop=True)
     y = data.event.to_numpy()
-    arm = (data.arm == "trt").to_numpy(dtype=int)
     at_c = (data.site == "c").to_numpy()
-
-    def design(a: np.ndarray) -> np.ndarray:
-        return np.column_stack([np.ones(len(data)), a, (data.site == "b").to_numpy(float),
-                                data.base, data.age, data.age_miss])
-
+    X = np.column_stack([np.ones(len(data)), data.arm == "trt", data.site == "b", data.base,
+                         data.age, data.age_miss]).astype(float)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        rest = sm.Logit(y[~at_c], design(arm)[~at_c]).fit(method="newton", tol=1e-14,
-                                                           maxiter=100, disp=0)
-    cf = np.ones((len(data), 2))
-    for k in (0, 1):
-        cf[~at_c, k] = rest.predict(design(np.full(len(data), k))[~at_c])
-    mu = np.where(arm == 1, cf[:, 1], cf[:, 0])
-    theta = cf.mean(axis=0)
-    V = _ye_by_hand(y, arm, cf, mu, pd.factorize(data.site)[0])
-    rd, rr = r.contrast(measure="risk_difference"), r.contrast(measure="risk_ratio")
-    assert [m.estimate for m in r.arm_estimates] == pytest.approx(theta, rel=1e-9)
-    assert rd.estimate == pytest.approx(theta[1] - theta[0], rel=1e-8)
-    assert rd.se == pytest.approx(math.sqrt(V[0, 0] + V[1, 1] - 2 * V[0, 1]), rel=1e-6)
-    assert rr.estimate == pytest.approx(theta[1] / theta[0], rel=1e-9)
-    g = np.array([-1 / theta[0], 1 / theta[1]])
-    assert rr.se == pytest.approx(math.sqrt(g @ V @ g), rel=1e-6)
-    assert rd.lower < rd.estimate < rd.upper
+        rest = sm.Logit(y[~at_c], X[~at_c]).fit(method="newton", tol=1e-14, maxiter=100, disp=0)
+    assert rest.mle_retvals["converged"]
+    with pytest.raises(T.TrialRefused) as r:
+        T.estimate(df, BSPEC)
+    _separated_said(r.value, "site[c]", int(at_c.sum()), len(data))
 
     none = _parallel(seed=21)
     none.loc[(none.arm == "trt") & none.event.notna(), "event"] = 0.0
@@ -859,22 +858,25 @@ def test_a_covariate_far_from_zero_leaves_a_separated_trial_as_it_is_centered(co
     risks, difference, ratio and standard errors as the same trial with that column centered by
     hand. The limit fit had scaled its columns without centering them, so a column some 150 SDs
     from zero was nearly the intercept's twin; their near-flat direction loaded on the arm, and
-    the trial was refused as if an arm had separated."""
+    the trial was refused as if an arm had separated.
+
+    Re-pinned (its sixth review: the fallback): a partly separated trial is refused, so the two
+    trials are held to the same refusal, naming site c and counting its people, never the arm,
+    where they had been held to the same standardized risks."""
     df = _parallel(seed=21)
     df.loc[df.site == "c", "event"] = 1.0
     df[column] = mean + np.random.default_rng(5).normal(0, sd, len(df))
     spec = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
                        covariates=("age", column), baseline="base", adherent="adherent")
-    r = T.estimate(df, spec)
-    centered = T.estimate(df.assign(**{column: df[column] - df[column].mean()}), spec)
-    for measure in ("risk_difference", "risk_ratio"):
-        a, b = r.contrast(measure=measure), centered.contrast(measure=measure)
-        assert a.estimate == pytest.approx(b.estimate, rel=1e-8)
-        assert a.se == pytest.approx(b.se, rel=1e-8)
-    assert [m.estimate for m in r.arm_estimates] == pytest.approx(
-        [m.estimate for m in centered.arm_estimates], rel=1e-8)
-    assert any("separate the outcome on site[c]:" in c for c in r.concerns), r.concerns
-    assert not any("arm[" in c for c in r.concerns), r.concerns
+    said = []
+    for frame in (df, df.assign(**{column: df[column] - df[column].mean()})):
+        with pytest.raises(T.TrialRefused) as r:
+            T.estimate(frame, spec)
+        said.append(str(r.value))
+        analyzed = frame[frame.arm.notna() & frame.event.notna()]
+        _separated_said(r.value, "site[c]", int((analyzed.site == "c").sum()), len(analyzed))
+        assert "arm[" not in str(r.value), str(r.value)
+    assert said[0] == said[1]
 
 
 def _small_trial(seed: int, n: int = 30) -> pd.DataFrame:
@@ -918,45 +920,6 @@ def _separated_rows(X: np.ndarray, y: np.ndarray) -> np.ndarray:
     return res.x[p:] > 0.5
 
 
-def _at_the_limit(X: np.ndarray, y: np.ndarray, arm: int, strata: np.ndarray
-                  ) -> tuple[str, tuple[float, float] | None]:
-    """What a logistic fit at its limit gives (Lesaffre & Albert 1989), from the people
-    :func:`_separated_rows` finds and statsmodels: "complete" when everyone is separated;
-    "unsettled" when the people left do not settle the arm's coefficient (its column adds no rank
-    to theirs); otherwise "finite", with the standardized risk difference and its standard error
-    from statsmodels' ``Logit`` on the people left (on the columns that add rank there), each
-    separated person's risk their own outcome under either arm, and Ye et al.'s variance written
-    out above."""
-    import statsmodels.api as sm
-
-    sep = _separated_rows(X, y)
-    if sep.all():
-        return "complete", None
-    rest = X[~sep]
-    big = np.abs(rest).max(axis=0)
-    scaled = rest / np.where(big > 0, big, 1.0)
-    others = [j for j in range(X.shape[1]) if j != arm]
-    if np.linalg.matrix_rank(scaled[:, others]) == np.linalg.matrix_rank(scaled):
-        return "unsettled", None
-    keep: list[int] = []
-    for j in [0, arm] + others[1:]:
-        if np.linalg.matrix_rank(scaled[:, keep + [j]]) > len(keep):
-            keep.append(j)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        fit = sm.Logit(y[~sep], rest[:, keep]).fit(method="newton", tol=1e-14, maxiter=100,
-                                                   disp=0)
-    cf = np.repeat(y[:, None], 2, axis=1)
-    for k in (0, 1):
-        at_k = rest.copy()
-        at_k[:, arm] = k
-        cf[~sep, k] = fit.predict(at_k[:, keep])
-    a = X[:, arm].astype(int)
-    V = _ye_by_hand(y, a, cf, np.where(a == 1, cf[:, 1], cf[:, 0]), strata)
-    theta = cf.mean(axis=0)
-    return "finite", (theta[1] - theta[0], math.sqrt(V[0, 0] + V[1, 1] - 2 * V[0, 1]))
-
-
 def test_complete_separation_is_refused_with_no_fit_left():
     """Claims backtest B-281, its second review. When the arm and the covariates predict every
     outcome exactly (complete separation; Albert & Anderson 1984), every coefficient runs off at
@@ -970,12 +933,24 @@ def test_complete_separation_is_refused_with_no_fit_left():
     On the prior code 12 of the 13 were reported, 11 with no note (seed 6: a risk difference of
     +0.46, SE 0.066, the arm's coefficient +251) and one saying site b separates all 30 people,
     and one was refused as if an arm had separated; three of the four age trials were reported,
-    their risk difference near −0.01 moving when age's origin moved, and one refused as an arm."""
-    complete = []
+    their risk difference near −0.01 moving when age's origin moved, and one refused as an arm.
+
+    Re-pinned (its sixth review: the fallback): of the other trials, the one the program above
+    finds partly separated (seed 9, 9 people at site b) is refused for separation, not complete
+    separation, counting those people, where it had been reported."""
+    complete, partly = [], []
     for seed in range(300):
         df = _small_trial(seed)
-        if not _separated_rows(_small_design(df), df.event.to_numpy()).all():
+        sep = _separated_rows(_small_design(df), df.event.to_numpy())
+        if not sep.any():
             T.estimate(df, SMALL)
+            continue
+        if not sep.all():
+            partly.append(seed)
+            with pytest.raises(T.TrialRefused) as r:
+                T.estimate(df, SMALL)
+            assert r.value.term == "separation in the logistic model", (seed, str(r.value))
+            assert f"exactly whether {int(sep.sum())} of the 30 people" in str(r.value)
             continue
         complete.append(seed)
         with pytest.raises(T.TrialRefused) as r:
@@ -985,6 +960,7 @@ def test_complete_separation_is_refused_with_no_fit_left():
         assert [e.get("covariates") for e in r.value.exits] == [[], None]
         assert r.value.exits[-1]["describe"] is True
     assert 6 in complete and len(complete) == 13, complete
+    assert partly == [9], partly
     T.estimate(_small_trial(6), T.TrialSpec(**{**SMALL.__dict__, "covariates": ()}))
 
     spec = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
@@ -1017,40 +993,41 @@ def _plane_trial(seed: int, n: int = 60, left: int = 12) -> pd.DataFrame:
     return df
 
 
-def test_a_separated_trial_is_read_from_the_people_the_data_do_not_separate():
-    """Claims backtest B-281, its second review. At a separated fit's limit the separated people's
-    risks are 0 or 1 and the rest of the model is the fit to everyone else (Lesaffre & Albert
-    1989), so what the data leave unsettled is read from those people alone, never from the
-    information's relative eigenvalues: as everyone's weight vanishes they lose their scale, and
-    a covariate with little spread among the people left reads as flat. Known truth: the linear
-    program above finds the separated people, and :func:`_at_the_limit` says what statsmodels
-    gives on the rest.
+def test_a_partly_separated_trial_is_refused_counting_the_people_the_data_separate():
+    """Claims backtest B-281, its second review. Known truth: the linear program above finds the
+    separated people.
 
-    1. Sixty trials where everyone but 12 people on a plane is separated: each is refused when
-       everyone is separated, or when the people left do not settle the arm's coefficient, and is
-       otherwise reported with the truth's risk difference and standard error.
+    1. Sixty trials where everyone but 12 people on a plane is separated, or everyone is: each
+       is refused, for complete separation when everyone is separated and otherwise for
+       separation, counting the people the program finds, with fewer covariates as its first
+       exit.
     2. The site-c trial above (everyone there had the event) with a weight site c recorded in
-       grams, the others in kilograms (SD 2 kg), over 40 seeds: each is reported as the truth,
-       with site c's note.
+       grams, the others in kilograms (SD 2 kg), over 40 seeds: the program finds site c's people
+       and only them, and each trial is refused, naming site c and counting them.
 
-    On the prior code the completely separated trials of (1) were reported, refused as an arm, or
-    failed on a negative variance, and 32 of the 40 trials of (2) were refused as if an arm had
-    separated."""
-    tally = {"complete": 0, "unsettled": 0, "finite": 0}
+    On the code before the second review the completely separated trials of (1) were reported,
+    refused as an arm, or failed on a negative variance, and 32 of the 40 trials of (2) were
+    refused as if an arm had separated.
+
+    Re-pinned (its sixth review: the fallback). This test had held each partly separated trial of
+    (1) whose people left settle the arm, and each trial of (2), to statsmodels' fit on the people
+    the program leaves, with the separated people at their own outcome under every arm (Lesaffre &
+    Albert 1989), and the rest of (1) to a refusal. Reading the people left from a fit of their
+    own is withdrawn, since ties to float rounding made it report wrong numbers elsewhere, so
+    every partly separated trial is refused."""
+    tally = {"complete": 0, "partly": 0}
     for seed in range(60):
         df = _plane_trial(seed)
-        kind, truth = _at_the_limit(_small_design(df), df.event.to_numpy(), 1,
-                                    pd.factorize(df.site)[0])
-        tally[kind] += 1
-        if truth is None:
-            with pytest.raises(T.TrialRefused) as r:
-                T.estimate(df, SMALL)
-            assert ("complete " in r.value.term) == (kind == "complete"), (seed, str(r.value))
-            assert r.value.exits[0]["covariates"] == []
-            continue
-        rd = T.estimate(df, SMALL).contrast(measure="risk_difference")
-        assert rd.estimate == pytest.approx(truth[0], rel=1e-8, abs=1e-10), seed
-        assert rd.se == pytest.approx(truth[1], rel=1e-6), seed
+        sep = _separated_rows(_small_design(df), df.event.to_numpy())
+        assert sep.any(), seed
+        tally["complete" if sep.all() else "partly"] += 1
+        with pytest.raises(T.TrialRefused) as r:
+            T.estimate(df, SMALL)
+        assert ("complete " in r.value.term) == sep.all(), (seed, str(r.value))
+        assert r.value.exits[0]["covariates"] == []
+        if not sep.all():
+            assert r.value.term == "separation in the logistic model", (seed, str(r.value))
+            assert f"exactly whether {int(sep.sum())} of the 60 people" in str(r.value), seed
     assert min(tally.values()) >= 5, tally
 
     spec = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
@@ -1060,19 +1037,17 @@ def test_a_separated_trial_is_read_from_the_people_the_data_do_not_separate():
         df.loc[df.site == "c", "event"] = 1.0
         kg = 75 + np.random.default_rng(seed + 7).normal(0, 2, len(df))
         df["weight"] = np.where(df.site == "c", 1000 * kg, kg)
-        r = T.estimate(df, spec)
         rand = df.arm.notna()
         data = _filled(df[rand], "age", pd.Series(True, index=df[rand].index))
         data = data[data.event.notna()].reset_index(drop=True)
         X = np.column_stack([np.ones(len(data)), data.arm == "trt", data.site == "b",
                              data.site == "c", data.base, data.age, data.age_miss,
                              data.weight]).astype(float)
-        kind, truth = _at_the_limit(X, data.event.to_numpy(), 1, pd.factorize(data.site)[0])
-        assert kind == "finite", seed
-        rd = r.contrast(measure="risk_difference")
-        assert rd.estimate == pytest.approx(truth[0], rel=1e-8), seed
-        assert rd.se == pytest.approx(truth[1], rel=1e-6), seed
-        assert any("separate the outcome on site[c]:" in c for c in r.concerns), r.concerns
+        at_c = (data.site == "c").to_numpy()
+        assert (_separated_rows(X, data.event.to_numpy()) == at_c).all(), seed
+        with pytest.raises(T.TrialRefused) as r:
+            T.estimate(df, spec)
+        _separated_said(r.value, "site[c]", int(at_c.sum()), len(data))
 
 
 def _milligrams(seed: int, scale: float, n: int = 240) -> pd.DataFrame:
@@ -1093,64 +1068,46 @@ MG = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
                  covariates=("weight",))
 
 
-def test_a_weight_recorded_a_million_times_larger_where_everyone_had_the_event_is_read_or_refused(
+def test_a_weight_recorded_a_million_times_larger_where_everyone_had_the_event_is_refused(
         monkeypatch):
     """Claims backtest B-281, its fourth review. Everyone at site c had the event, and site c
     recorded weight 1e6 to 1e7 times larger than sites a and b, where it matters (0.1 a
     kilogram). Known truth: site c is separated (its indicator puts everyone there at 1) and no
     one else is, since statsmodels' ``Logit`` converges on sites a and b alone, which a direction
-    separating anyone there would not allow. So site c's risks are 1 under either arm and the rest
-    is statsmodels' fit to sites a and b (Lesaffre & Albert 1989), with Ye et al.'s variance
-    written out above. Of 60 such trials (1e6, 3e6 and 1e7, 20 seeds each), each is reported as
-    that truth (the risk difference to 1e-8, its standard error to 1e-6, the note counting site
-    c's people) or refused, and no more than 2 are refused. When the linear program that finds
-    the separated people fails, the site-c trial above is refused, not read from a fit.
+    separating anyone there would not allow. When the linear program that finds the separated
+    people fails, the site-c trial above is refused, not read from a fit.
 
-    On the prior code 54 of the 60 were reported wrong, the risk difference off by up to 0.02
-    (about 0.4 SE), under a note saying the rest of the model was the fit to everyone else: the
-    limit fit's Newton step, read on the information, squared the weight's small spread among
-    sites a and b into a direction it could not move along, and stopped short. Reading those
-    people from a fit of their own but taking the separated people from fitted risks within 1e-9
-    of 0 or 1 still refused 4 of the 60: in 3 those risks missed a site-c person, and in 1 the
-    limit fit did not converge."""
+    On the code before the fourth review 54 of the 60 were reported wrong, the risk difference
+    off by up to 0.02 (about 0.4 SE), under a note saying the rest of the model was the fit to
+    everyone else: the limit fit's Newton step, read on the information, squared the weight's
+    small spread among sites a and b into a direction it could not move along, and stopped short.
+    Reading those people from a fit of their own but taking the separated people from fitted
+    risks within 1e-9 of 0 or 1 still refused 4 of the 60: in 3 those risks missed a site-c
+    person, and in 1 the limit fit did not converge.
+
+    Re-pinned (its sixth review: the fallback). This test had held each of the 60 trials (1e6,
+    3e6 and 1e7, 20 seeds each) to statsmodels' fit to sites a and b with site c's risks at 1
+    (Lesaffre & Albert 1989), or to a refusal, no more than 2 refused. Reading the people left
+    from a fit of their own is withdrawn, since ties to float rounding made it report wrong
+    numbers elsewhere, so each of the 60 is refused, naming site c and counting its people."""
     import scipy.optimize
     import statsmodels.api as sm
 
-    refused = []
     for scale in (1e6, 3e6, 1e7):
         for seed in range(20):
             df = _milligrams(seed, scale)
             y = df.event.to_numpy()
-            arm = (df.arm == "trt").to_numpy(dtype=int)
             at_c = (df.site == "c").to_numpy()
-
-            def design(a: np.ndarray) -> np.ndarray:
-                return np.column_stack([np.ones(len(df)), a, df.site == "b",
-                                        df.weight]).astype(float)
-
+            X = np.column_stack([np.ones(len(df)), df.arm == "trt", df.site == "b",
+                                 df.weight]).astype(float)
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                rest = sm.Logit(y[~at_c], design(arm)[~at_c]).fit(method="newton", tol=1e-12,
-                                                                   maxiter=100, disp=0)
+                rest = sm.Logit(y[~at_c], X[~at_c]).fit(method="newton", tol=1e-12, maxiter=100,
+                                                         disp=0)
             assert rest.mle_retvals["converged"], (scale, seed)
-            cf = np.ones((len(df), 2))
-            for k in (0, 1):
-                cf[~at_c, k] = rest.predict(design(np.full(len(df), k))[~at_c])
-            V = _ye_by_hand(y, arm, cf, np.where(arm == 1, cf[:, 1], cf[:, 0]),
-                            pd.factorize(df.site)[0])
-            theta = cf.mean(axis=0)
-            try:
-                r = T.estimate(df, MG)
-            except T.TrialRefused as e:
-                refused.append((scale, seed, e.term))
-                continue
-            rd = r.contrast(measure="risk_difference")
-            assert rd.estimate == pytest.approx(theta[1] - theta[0], rel=1e-8), (scale, seed)
-            assert rd.se == pytest.approx(math.sqrt(V[0, 0] + V[1, 1] - 2 * V[0, 1]),
-                                          rel=1e-6), (scale, seed)
-            assert any(f"separate the outcome on site[c]: {int(at_c.sum())} people " in c
-                       for c in r.concerns), r.concerns
-    assert len(refused) <= 2, refused
+            with pytest.raises(T.TrialRefused) as r:
+                T.estimate(df, MG)
+            _separated_said(r.value, "site[c]", int(at_c.sum()), len(df))
 
     def fails(*args, **kwargs):
         return scipy.optimize.OptimizeResult(status=4, x=None, success=False,
@@ -1332,14 +1289,13 @@ def _tied(sigma: float, seed: int, n: int = 160, m: int = 30) -> pd.DataFrame:
     return df
 
 
-def test_a_group_tied_up_to_noise_is_read_as_tied_as_noise_or_refused():
+def test_a_tied_group_is_refused_and_one_tied_up_to_noise_read_as_noise_or_refused():
     """Claims backtest B-281, its fifth review. Everyone's outcome is whether x is above 0, with
     |x| at least 0.05, but for 30 people at x = 0 up to noise of size σ, whose outcomes are mixed.
 
     - σ = 0: x separates the other 130, and the 30 are left, since statsmodels' ``Logit`` on
-      them converges, which a direction separating anyone there would not allow. Known truth:
-      that fit, with the 130 at their own outcomes (Lesaffre & Albert 1989) and Ye et al.'s
-      variance written out above. Each of 10 trials is reported as it, the note counting the 130.
+      them converges, which a direction separating anyone there would not allow. Each of 10
+      trials is refused, naming x and counting the 130.
     - σ = 1e-6: no one is separated, and the truth is the finite maximum-likelihood fit in
       60-digit arithmetic (:func:`_exact_fit`). Each of 10 is reported as it, with no note.
     - σ from 1e-12 to 1e-8, where float arithmetic hardly tells the noise from a tie: the truth
@@ -1347,12 +1303,18 @@ def test_a_group_tied_up_to_noise_is_read_as_tied_as_noise_or_refused():
       30 more with the 30 all at site a, which leaves site b's coefficient free among them.
       Where that fit is not certified, only a refusal passes.
 
-    On the prior code 15 of the 30 at σ from 1e-12 to 1e-8 were reported wrong, by 0.01 to 0.06
-    standard errors, with no note: the linear program had named the 130 separated, and the 30's
-    noise was scaled up to a covariate of unit spread. At one site 17 of the 30 were reported
-    wrong, by 0.001 to 0.06 standard errors, under a note that the data separate the outcome on
-    site b for 130 people, and 9 more where no fit is certified: the 30 left site b free, so only
-    their distance from the program's separating plane tells such a trial apart."""
+    On the code before the fifth review 15 of the 30 at σ from 1e-12 to 1e-8 were reported
+    wrong, by 0.01 to 0.06 standard errors, with no note: the linear program had named the 130
+    separated, and the 30's noise was scaled up to a covariate of unit spread. At one site 17 of
+    the 30 were reported wrong, by 0.001 to 0.06 standard errors, under a note that the data
+    separate the outcome on site b for 130 people, and 9 more where no fit is certified: the 30
+    left site b free, so only their distance from the program's separating plane tells such a
+    trial apart.
+
+    Re-pinned (its sixth review: the fallback). This test had held each trial at σ = 0 to
+    statsmodels' fit on the 30 with the 130 at their own outcomes (Lesaffre & Albert 1989) and Ye
+    et al.'s variance written out above. Reading the people left from a fit of their own is
+    withdrawn, since ties to float rounding made it report wrong numbers, so each is refused."""
     import statsmodels.api as sm
 
     spec = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
@@ -1366,17 +1328,9 @@ def test_a_group_tied_up_to_noise_is_read_as_tied_as_noise_or_refused():
             rest = sm.Logit(y[tied], X[tied, :3]).fit(method="newton", tol=1e-12, maxiter=100,
                                                       disp=0)
         assert rest.mle_retvals["converged"], seed
-        cf = np.repeat(y[:, None], 2, axis=1)
-        for k in (0, 1):
-            cf[tied, k] = rest.predict(np.column_stack([X[tied, 0], np.full(30, k), X[tied, 2]]))
-        arm = X[:, 1].astype(int)
-        V = _ye_by_hand(y, arm, cf, cf[np.arange(len(y)), arm], pd.factorize(df.site)[0])
-        se = math.sqrt(V[0, 0] + V[1, 1] - 2 * V[0, 1])
-        r = T.estimate(df, spec)
-        rd = r.contrast(measure="risk_difference")
-        assert abs(rd.estimate - (cf[:, 1].mean() - cf[:, 0].mean())) <= 1e-6 * se, seed
-        assert rd.se == pytest.approx(se, rel=1e-6), seed
-        assert any("separate the outcome on x: 130 people " in c for c in r.concerns), r.concerns
+        with pytest.raises(T.TrialRefused) as r:
+            T.estimate(df, spec)
+        _separated_said(r.value, "x", 130, 160)
     for seed in range(10):
         assert _refused_or_exact(_tied(1e-6, seed), spec, "x") == "reported", seed
     for one_site in (False, True):
@@ -1388,18 +1342,22 @@ def test_a_group_tied_up_to_noise_is_read_as_tied_as_noise_or_refused():
                 _refused_or_exact(df, spec, "x")
 
 
-def test_people_the_program_names_whom_the_rest_leave_no_direction_to_separate_are_refused(
-        monkeypatch):
-    """Claims backtest B-281, its fifth review. A partly separated fit is reported only where the
-    people the linear program leaves leave some direction free, along which the people it names
-    are separated; where they leave none, the program and the columns disagree. Here no one is
-    separated (statsmodels' ``Logit`` converges on everyone), but the coefficient on a pH of
-    7.4 ± 0.02 is near 55, past :func:`_logistic`'s bound, so the program is asked. Made to name
-    one person who had the event, the trial is refused with the plain separation reason, not
-    reported with that person's risk at 100% under either arm; as the program is, it is reported.
+def test_people_the_program_names_are_refused_whatever_the_rest_leave_free(monkeypatch):
+    """Claims backtest B-281, its fifth review. Here no one is separated (statsmodels' ``Logit``
+    converges on everyone), but the coefficient on a pH of 7.4 ± 0.02 is near 55, past
+    :func:`_logistic`'s bound, so the program is asked; as the program is, the trial is reported.
+    Made to name one person who had the event, the trial is refused, not reported with that
+    person's risk at 100% under either arm.
 
-    On the prior code it was reported with no note, its risk difference 0.0795 where it is
-    0.0828 as the program is."""
+    On the code before the fifth review it was reported with no note, its risk difference 0.0795
+    where it is 0.0828 as the program is.
+
+    Re-pinned (its sixth review: the fallback). The refusal had been the plain separation reason,
+    since the people left leave no direction free to separate that person, so that the program
+    and the columns disagree. Now every trial the program names anyone in is refused for
+    separation, counting the people it names, whatever the people left leave free; the program
+    is made to name the person here in its own solution."""
+    import scipy.optimize
     import statsmodels.api as sm
 
     rng = np.random.default_rng(91000)
@@ -1413,12 +1371,159 @@ def test_people_the_program_names_whom_the_rest_leave_no_direction_to_separate_a
     spec = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
                        covariates=("ph",))
     T.estimate(df, spec)
-    monkeypatch.setattr(T, "_separated_people",
-                        lambda X, y: np.arange(len(y)) == int(np.argmax(y)))
+    solve, who = scipy.optimize.linprog, int(np.argmax(df.event.to_numpy()))
+
+    def one_named(c, *args, **kwargs):
+        res = solve(c, *args, **kwargs)
+        x = res.x.copy()
+        x[np.flatnonzero(np.asarray(c) == -1)[who]] = 1.0
+        return scipy.optimize.OptimizeResult({**res, "x": x})
+
+    monkeypatch.setattr(scipy.optimize, "linprog", one_named)
     with pytest.raises(T.TrialRefused) as r:
         T.estimate(df, spec)
     assert r.value.term == "separation in the logistic model"
-    assert "runs to 0% or 100%" in str(r.value), str(r.value)
+    assert "the data predict exactly whether 1 of the 150 people had the event" in str(r.value), \
+        str(r.value)
+
+
+def _plane_ulp(seed: int, ulp: bool, n: int = 200, m: int = 24) -> pd.DataFrame:
+    """Everyone's outcome is whether x1 + x2 > 0, with |x1 + x2| at least 0.05, but for the first
+    ``m``, on the plane x2 = −x1, whose outcomes are mixed, likelier in the treated arm; with
+    ``ulp``, each of their x2 one unit in the last place off it, so that float arithmetic's
+    x1 + x2 is not 0 (the fifth review's re-review: BMI's tie, spread over two columns)."""
+    rng = np.random.default_rng(78000 + seed)
+    x1 = rng.normal(0, 1, n)
+    s = rng.normal(0, 1, n)
+    s = np.sign(s) * (0.05 + np.abs(s))
+    x2 = s - x1
+    sign = rng.choice([-1.0, 1.0], m)
+    x2[:m] = -x1[:m]
+    if ulp:
+        x2[:m] = np.nextafter(x2[:m], sign * np.inf)
+    df = pd.DataFrame({"arm": rng.choice(["ctl", "trt"], n), "site": rng.choice(["a", "b"], n),
+                       "x1": x1, "x2": x2})
+    df["event"] = (s > 0).astype(float)
+    lp = -0.2 + 1.0 * (df.arm[:m] == "trt")
+    df.loc[:m - 1, "event"] = (rng.random(m) < 1 / (1 + np.exp(-lp))).astype(float)
+    return df
+
+
+def _summed_score(seed: int, m: int, n: int = 200) -> pd.DataFrame:
+    """A diagnosis made from a summed score: two subscores recorded to 0.1 and the diagnosis
+    whether they sum to more than 30, but for the first ``m``, whose subscores sum to 30 in
+    decimal, with mixed diagnoses (the fifth review's re-review)."""
+    rng = np.random.default_rng(77000 + seed)
+    x1 = np.round(rng.uniform(5, 25, n), 1)
+    s = rng.normal(29, 4, n)
+    s = np.where(np.abs(s - 30) < 0.15, 30 + np.sign(s - 30 + 1e-9) * 0.15, s)
+    x2 = np.round(s - x1, 1)
+    x2[:m] = np.round(30 - x1[:m], 1)
+    df = pd.DataFrame({"arm": rng.choice(["ctl", "trt"], n), "site": rng.choice(["a", "b"], n),
+                       "x1": x1, "x2": x2})
+    df["event"] = (np.round(df.x1 + df.x2, 6) > 30).astype(float)
+    lp = -0.2 + 1.0 * (df.arm[:m] == "trt")
+    df.loc[:m - 1, "event"] = (rng.random(m) < 1 / (1 + np.exp(-lp))).astype(float)
+    return df
+
+
+def test_a_trial_the_program_finds_anyone_separated_in_is_refused_never_reported(monkeypatch):
+    """Claims backtest B-281, its sixth review: the fallback. When the linear program that finds
+    the separated people names some of them but not everyone, the effect is refused, never
+    reported: the data predict those people's outcomes exactly, so the logistic model has no
+    finite fit for them, and reading the rest from a fit of their own (Lesaffre & Albert 1989) is
+    withdrawn, since ties to float rounding, on one covariate and then on a combination of them,
+    made it report a wrong risk difference. Every program the trial core solves is watched, its
+    tᵢ read as the solver returns them, across the generators the earlier rounds built: the
+    site-c trial, at pH 7.4, at year 2021 and with weight in grams at site c; the milligram
+    trials; the BMI trials, at two sites and at one; the tied and noisy-tie trials; the plane
+    trials; the one-ulp plane and its control on the plane; and the summed score. A refusal
+    that counts the people the program names counts them as the program does. The program names
+    people in every trial of six of these sets, and in most of the rest; the tied trials at
+    σ = 1e-6 are reported, as no one is separated there.
+
+    On the code before this review 156 of the 257 trials in which the program named some people
+    were reported: the 60 milligram trials, the 13 site-c trials, the 10 tied trials at σ = 0, 35
+    of the 43 plane trials, the 20 one-ulp planes and controls, and 18 of the 19 summed scores.
+    The one-ulp plane at seed 2 was reported 0.098 standard errors from the maximum-likelihood
+    fit in 60-digit arithmetic, and a summed score 0.54."""
+    import scipy.optimize
+
+    solve = scipy.optimize.linprog
+    named: list[tuple[int, int]] = []
+
+    def watched(c, *args, **kwargs):
+        res = solve(c, *args, **kwargs)
+        if res.status == 0:
+            t = res.x[np.asarray(c) == -1]
+            named.append((int(np.sum(t > 0.5)), len(t)))
+        return res
+
+    monkeypatch.setattr(scipy.optimize, "linprog", watched)
+    bmi = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
+                      covariates=("bmi",))
+    x = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",), covariates=("x",))
+    x12 = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
+                      covariates=("x1", "x2"))
+    trials: list[tuple[str, pd.DataFrame, T.TrialSpec]] = []
+    site_c = _parallel(seed=21)
+    site_c.loc[site_c.site == "c", "event"] = 1.0
+    trials.append(("site c", site_c, BSPEC))
+    for column, mean, sd in (("ph", 7.4, 0.05), ("year", 2021.0, 1.5)):
+        far = site_c.assign(**{column: mean + np.random.default_rng(5).normal(0, sd, len(site_c))})
+        trials.append(("site c", far, T.TrialSpec(**{**BSPEC.__dict__,
+                                                     "covariates": ("age", column)})))
+    for seed in range(10):
+        grams = _parallel(seed=seed)
+        grams.loc[grams.site == "c", "event"] = 1.0
+        kg = 75 + np.random.default_rng(seed + 7).normal(0, 2, len(grams))
+        grams["weight"] = np.where(grams.site == "c", 1000 * kg, kg)
+        trials.append(("site c", grams, T.TrialSpec(**{**BSPEC.__dict__,
+                                                       "covariates": ("age", "weight")})))
+    trials += [("milligrams", _milligrams(seed, scale), MG) for scale in (1e6, 3e6, 1e7)
+               for seed in range(20)]
+    for m in (12, 24):
+        for seed in range(10):
+            df = _bmi_trial(seed, m)
+            trials += [("bmi", df, bmi),
+                       ("bmi", df.assign(site=np.where(df.index < m, "a", df.site)), bmi)]
+    trials += [("tied", _tied(0.0, seed), x) for seed in range(10)]
+    trials += [("noise 1e-6", _tied(1e-6, seed), x) for seed in range(10)]
+    for sigma in (1e-12, 1e-10, 1e-8):
+        for seed in range(10):
+            df = _tied(sigma, seed)
+            trials += [("noise", df, x),
+                       ("noise", df.assign(site=np.where(df.index < 30, "a", df.site)), x)]
+    trials += [("plane", _plane_trial(seed), SMALL) for seed in range(60)]
+    trials += [("one-ulp plane", _plane_ulp(seed, ulp), x12) for ulp in (True, False)
+               for seed in range(10)]
+    trials += [("summed score", _summed_score(seed, m), x12) for m in (12, 24)
+               for seed in range(10)]
+
+    tally: dict[str, list[int]] = {}
+    for kind, df, spec in trials:
+        named.clear()
+        try:
+            T.estimate(df, spec)
+            said = None
+        except T.TrialRefused as e:
+            said = e
+        partly = [(k, n) for k, n in named if 0 < k < n]
+        seen = tally.setdefault(kind, [0, 0, 0])  # trials, the program naming people, reported
+        seen[0] += 1
+        seen[1] += bool(partly)
+        seen[2] += said is None
+        if not partly:
+            continue
+        assert said is not None, (kind, partly, "reported, though the program named people")
+        if "the data predict exactly whether" in str(said):
+            k, n = partly[-1]
+            assert f"exactly whether {k} of the {n} people had the event" in str(said), str(said)
+    for kind in ("site c", "milligrams", "bmi", "tied", "one-ulp plane"):
+        assert tally[kind][1] == tally[kind][0], (kind, tally[kind])
+    for kind, least in (("plane", 30), ("noise", 30), ("summed score", 15)):
+        assert tally[kind][1] >= least, (kind, tally[kind])
+    assert tally["noise 1e-6"] == [10, 0, 10], tally["noise 1e-6"]
 
 
 def _three_arms(seed: int = 2065, n: int = 45) -> pd.DataFrame:
