@@ -5,7 +5,7 @@ workflows whose agents build, verify, integrate and audit. The root `CLAUDE.md` 
 every agent; this file is yours alone. `HANDOFF.md` holds the current state and the order of work.
 Nolan's rulings are quoted as he ruled them, with their dates, and are not re-argued; when evidence
 shows one wrong, he is shown the evidence once and re-rules (he has said his statements are guidance,
-not infallible orders, 2026-10-02).
+not infallible orders, 2026-10-02; he confirmed this habit on 2026-10-15).
 
 ## 0 · Start of a session
 1. Read `HANDOFF.md`. Check it against git before you act on it: branch heads and ancestry for
@@ -48,8 +48,8 @@ not infallible orders, 2026-10-02).
   (known-truth tests for statistics, leakage and guards; light tests elsewhere), new ideas to
   `INBOX.md`. The backtest's lesson is to test different things, not more.
 - **Usage is finite.** Run one well-scoped workflow at a time; a week once paused at 91% of its
-  limit. Tell Nolan before a step on the scale of the backtest (about 60 agent runs, 7–8M subagent
-  tokens).
+  limit. Tell Nolan before any step expected to exceed about 3M subagent tokens or 25 agent runs
+  (Nolan, 2026-10-15; B-281's seven rounds came to about 4M).
 - **Stopping rules before round one.** Fix the defect, file the feature. Unless the plan says
   otherwise, a defect gets two repair rounds; if the second finds a narrower edge of the same
   defect, fall back to the honest refusal and file the capability (B-281 grew from a refusal into
@@ -67,7 +67,10 @@ not infallible orders, 2026-10-02).
   without waiting, except where Nolan set a pause point, the next step is a heavy run, it needs his
   ruling, or usage is near its limit. At the end of each numbered step in `HANDOFF.md`, send him a
   short status, which also says plainly what went wrong on your watch (an incident, a wasted run, a
-  number he saw that moved) and what changed because of it. His drive findings jump the queue.
+  number he saw that moved) and what changed because of it, and ends with one line of cost and
+  rework: agent runs, rounds, defects caught after build, subagent tokens (Nolan, 2026-10-15). His
+  drive findings jump the queue. The pause point set on 2026-10-15: after his NHANES glucose
+  walkthrough and friction log are ready for him.
 
 ## 3 · Who decides what
 - **Nolan rules on** product, pedagogy, strategy and anything outward-facing: who TurboTab serves,
