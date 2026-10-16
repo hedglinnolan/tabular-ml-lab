@@ -80,9 +80,18 @@ def test_the_nightly_tests_the_integration_branch_not_the_default_one():
 def test_the_full_tier_runs_every_test_and_the_browser_tests():
     commands = [run for job in FULL["jobs"].values() for run in runs(job)]
     suites = [pytest_args(run) for run in commands if "python -m pytest" in run]
-    assert suites == [["turbotab/core", "turbotab/server", "-q", "-n", "2", "-rfE",
+    assert suites == [["turbotab/core", "turbotab/server", "-q", "-n", "2", "-rfE", "--timeout=1200",
                        "--junitxml=pytest-report.xml"]], suites
     assert any("npx playwright test" in run for run in commands), commands
+
+
+def test_the_full_tiers_timeout_has_its_plugin_installed_at_a_pinned_version():
+    # pytest refuses --timeout before collecting a test unless pytest-timeout is installed.
+    server = REPO / "turbotab" / "server"
+    dev = [line.split("#")[0].strip() for line in (server / "requirements-dev.txt").read_text("utf-8").splitlines()]
+    pins = (server / "constraints.txt").read_text("utf-8").splitlines()
+    assert "pytest-timeout" in dev, dev
+    assert any(re.fullmatch(r"pytest-timeout==\d+(\.\d+)+", line.strip()) for line in pins), pins
 
 
 def test_the_fast_tier_runs_on_every_push_and_pull_request():
