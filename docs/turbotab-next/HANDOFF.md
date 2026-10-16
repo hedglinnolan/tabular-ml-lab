@@ -73,6 +73,15 @@ Send Nolan a short status at the end of each step, ending with one line of cost 
    two with unlanded code are saved as `wip/2026-10-05-*` commits (INBOX, worktree clean-up).
 2. **The claims registry, R0, in one wave** (plans/CLAIMS_REGISTRY.md §7): the registry, its meta-tests and the 15 S1 claims. Why: the claims the walkthrough puts on screen need a home before they are audited. Stop at R0's scope: the S2/S3 wording fixes wait for the walkthrough's pull.
 3. **W1 part 2** (WALKABLE_PLAN §5; the packages are under Leftovers), then your own walkthrough of NHANES glucose under Predict, with a friction log, before Nolan sees it. Every claim that journey puts on screen is audited and registered as R1's first batch. Why: this is the walkable product, and the friction log decides what gets work next. **[Nolan]** He judges the walkthrough on screen. Then pause.
+
+   While W1 part 2 builds, write `plans/SWARM_PLAN.md` yourself, docs only with no subagents
+   (Nolan approved this on 2026-10-16), and bring it to the pause:
+   - It opens with a plain-language TL;DR (his ask).
+   - It settles the driver, the corpus record, dataset intake and the pilot's acceptance.
+   - It asks him two things: where the compute runs, and the token budget.
+
+   Why: W2–W4 build the driver and the run records, so the swarm's needs go into those waves
+   rather than into a retrofit.
 4. **The Sullivan 2021 replication** (Am J Prev Med 61:563). Why: the first end-to-end check of the Estimate lane. It reports the decisions the paper stated, the ones it left unstated, and how far each unstated option moves the published number.
 5. **W2–W4,** each registering the claims it adds. The remaining S2/S3 fixes go in the order the walkthrough and the replication surface them.
 6. **Heavy runs, each at a time Nolan sets** **[Nolan]**:
@@ -83,7 +92,7 @@ Send Nolan a short status at the end of each step, ending with one line of cost 
    - the stage-3 audit, with decoy set v2;
    - the Bang 2009 and Menke 2015 replications;
    - data provenance in ingest (each file's source URL and release date).
-8. **The research swarm,** once its gates (plans/CLAIMS_REGISTRY.md §8) are passed. It writes to a corpus kept apart from the registry.
+8. **The research swarm,** built to plans/SWARM_PLAN.md (step 3) once its gates (plans/CLAIMS_REGISTRY.md §8) are passed. It writes to a corpus kept apart from the registry.
 
 ## Leftovers that still hold (from the state of 2026-10-11)
 
