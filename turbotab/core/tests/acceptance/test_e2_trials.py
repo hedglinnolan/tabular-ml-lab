@@ -1165,6 +1165,212 @@ def test_a_weight_recorded_a_million_times_larger_where_everyone_had_the_event_i
     assert "runs to 0% or 100%" in str(r.value), str(r.value)
 
 
+def _exact_fit(X: np.ndarray, y: np.ndarray) -> list | None:
+    """The logistic model's maximum-likelihood coefficients on the float data X, in 60-digit
+    decimal arithmetic (Python's ``decimal``: exp and ln correctly rounded, the data converted
+    exactly), by Newton's method with step halving from zero; None when it does not converge. The
+    log likelihood is concave, so where Newton's step falls below 1e-30 of the coefficients, with
+    the gradient below 1e-30, the fit is its finite maximum and no one is separated; along a
+    direction that separates someone the step never shrinks so."""
+    from decimal import MAX_EMAX, MIN_EMIN, Context, Decimal, localcontext
+
+    n, p = X.shape
+    with localcontext(Context(prec=60, Emax=MAX_EMAX, Emin=MIN_EMIN)):
+        one, tiny = Decimal(1), Decimal("1e-30")
+        rows = [[Decimal(float(v)) for v in row] for row in X]
+        ys = [Decimal(int(v)) for v in y]
+
+        def etas(b):
+            return [sum(r[j] * b[j] for j in range(p)) for r in rows]
+
+        def loglik(e):
+            return sum(ys[i] * v - (v + (one + (-v).exp()).ln() if v > 0 else (one + v.exp()).ln())
+                       for i, v in enumerate(e))
+
+        b = [Decimal(0)] * p
+        e = etas(b)
+        cur = loglik(e)
+        try:
+            for _ in range(300):
+                m = [one / (one + (-v).exp()) for v in e]
+                g = [sum((ys[i] - m[i]) * rows[i][j] for i in range(n)) for j in range(p)]
+                H = [[sum(m[i] * (one - m[i]) * rows[i][j] * rows[i][k] for i in range(n))
+                      for k in range(p)] + [g[j]] for j in range(p)]
+                for c in range(p):  # Gaussian elimination, partial pivoting
+                    piv = max(range(c, p), key=lambda r: abs(H[r][c]))
+                    H[c], H[piv] = H[piv], H[c]
+                    for r in range(c + 1, p):
+                        f = H[r][c] / H[c][c]
+                        H[r] = [a - f * h for a, h in zip(H[r], H[c])]
+                step = [Decimal(0)] * p
+                for c in reversed(range(p)):
+                    step[c] = (H[c][p] - sum(H[c][k] * step[k] for k in range(c + 1, p))) / H[c][c]
+                if max(abs(v) for v in g) < tiny and all(
+                        abs(s) < tiny * (1 + abs(v)) for s, v in zip(step, b)):
+                    return b
+                t = one
+                while True:
+                    nb = [v + t * s for v, s in zip(b, step)]
+                    ne = etas(nb)
+                    new = loglik(ne)
+                    if new >= cur or t < Decimal("1e-20"):
+                        break
+                    t /= 2
+                b, e, cur = nb, ne, new
+        except ArithmeticError:  # a pivot of zero: the information has lost a direction
+            return None
+    return None
+
+
+def _exact_effect(X: np.ndarray, y: np.ndarray, b: list, strata: np.ndarray
+                  ) -> tuple[float, float]:
+    """The standardized risk difference of arm 1 (column 1 of X) against arm 0 and Ye et al.'s
+    standard error written out above, at the coefficients b of :func:`_exact_fit`, each person's
+    risk under either arm computed in the same arithmetic."""
+    from decimal import MAX_EMAX, MIN_EMIN, Context, Decimal, localcontext
+
+    arm = X[:, 1].astype(int)
+    cf = np.empty((len(y), 2))
+    with localcontext(Context(prec=60, Emax=MAX_EMAX, Emin=MIN_EMIN)):
+        for i, row in enumerate(X):
+            for k in (0, 1):
+                v = sum(Decimal(float(x)) * c for x, c in zip(np.r_[row[0], k, row[2:]], b))
+                cf[i, k] = float(1 / (1 + (-v).exp()))
+    V = _ye_by_hand(y, arm, cf, cf[np.arange(len(y)), arm], strata)
+    return cf[:, 1].mean() - cf[:, 0].mean(), math.sqrt(V[0, 0] + V[1, 1] - 2 * V[0, 1])
+
+
+def _bmi_trial(seed: int, m: int, n: int = 200) -> pd.DataFrame:
+    """Everyone's diagnosis is whether their body-mass index, weight over height squared, is over
+    30, with weight recorded to 0.1 kg and no one within 0.08 of 30, but for the first ``m``, whose
+    weight was recorded as 30·h², so that their computed BMI is 30 give or take one unit in the
+    last place, and whose diagnoses are mixed, likelier in the treated arm."""
+    rng = np.random.default_rng(99500 + seed)
+    h = rng.uniform(1.5, 2.0, n)
+    b = rng.normal(28, 5, n)
+    b = np.where(np.abs(b - 30) < 0.1, 30 + np.sign(b - 30 + 1e-9) * 0.1, b)
+    w = np.round(b * h ** 2, 1)
+    w[:m] = 30 * h[:m] ** 2
+    df = pd.DataFrame({"arm": rng.choice(["ctl", "trt"], n), "site": rng.choice(["a", "b"], n),
+                       "bmi": w / h ** 2})
+    df["event"] = (df.bmi > 30).astype(float)
+    lp = -0.2 + 1.0 * (df.arm[:m] == "trt")
+    df.loc[:m - 1, "event"] = (rng.random(m) < 1 / (1 + np.exp(-lp))).astype(float)
+    return df
+
+
+def _x_design(df: pd.DataFrame, column: str) -> np.ndarray:
+    return np.column_stack([np.ones(len(df)), df.arm == "trt", df.site == "b",
+                            df[column]]).astype(float)
+
+
+def _refused_or_exact(df: pd.DataFrame, spec: T.TrialSpec, column: str) -> str:
+    """The trial refused, or reported as :func:`_exact_fit` with no note that the data separate
+    anyone (a finite fit exists, so no one is), the risk difference within 1e-6 of its standard
+    error and the standard error to 1e-6; which it was."""
+    try:
+        r = T.estimate(df, spec)
+    except T.TrialRefused as e:
+        assert e.term == "separation in the logistic model", str(e)
+        return "refused"
+    X, y = _x_design(df, column), df.event.to_numpy()
+    b = _exact_fit(X, y)
+    assert b is not None, "reported, but no finite fit exists in 60 digits"
+    rd, se = _exact_effect(X, y, b, pd.factorize(df.site)[0])
+    got = r.contrast(measure="risk_difference")
+    assert abs(got.estimate - rd) <= 1e-6 * se, (got.estimate, rd, se)
+    assert got.se == pytest.approx(se, rel=1e-6)
+    assert not any("separate the outcome" in c for c in r.concerns), r.concerns
+    return "reported"
+
+
+def test_a_covariate_the_people_left_share_only_to_rounding_is_refused_or_read_exactly():
+    """Claims backtest B-281, its fifth review. A covariate computed from two others, as a
+    body-mass index is from weight and height, can tie people at a threshold only to float
+    rounding. Here everyone's diagnosis is whether BMI is over 30, but for 12 or 24 people whose
+    computed BMI is 30 give or take one unit in the last place (a spread of 7.1e-15), and whose
+    diagnoses are mixed. Known truth: the maximum-likelihood fit on the float data in 60-digit
+    arithmetic (:func:`_exact_fit`), each arm's risks and Ye et al.'s variance written out above;
+    where that fit does not converge, the rounding itself separates some of them in exact
+    arithmetic, and only a refusal is right. Over 20 trials (10 seeds at each size) each is
+    refused, or reported as that fit with no note that anyone is separated.
+
+    On the prior code 10 of the 20 were reported wrong, by 0.05 to 1.06 standard errors, with no
+    note: the linear program's tolerance accepted the tie as a separation, the people left were
+    centered and scaled on themselves, so that BMI's rounding became a covariate of unit spread,
+    and with no direction left free nothing refused. At 24 people, seed 4, the risk difference was
+    0.000 where the fit gives 0.024 (SE 0.023), the coefficient on BMI −4.3e14."""
+    spec = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
+                       covariates=("bmi",))
+    for m in (12, 24):
+        for seed in range(10):
+            df = _bmi_trial(seed, m)
+            assert 0 < np.ptp(df.bmi[:m]) < 1e-14, (m, seed)
+            _refused_or_exact(df, spec, "bmi")
+
+
+def _tied(sigma: float, seed: int, n: int = 160, m: int = 30) -> pd.DataFrame:
+    """Everyone's outcome is whether x is above 0, with |x| at least 0.05, but for the first ``m``,
+    at x = 0 up to noise of size ``sigma``, whose outcomes are mixed, likelier in the treated
+    arm."""
+    rng = np.random.default_rng(99000 + seed)
+    x = rng.normal(0, 1, n)
+    df = pd.DataFrame({"arm": rng.choice(["ctl", "trt"], n), "site": rng.choice(["a", "b"], n),
+                       "x": np.sign(x) * (0.05 + np.abs(x))})
+    df["event"] = (df.x > 0).astype(float)
+    df.loc[:m - 1, "x"] = sigma * rng.normal(0, 1, m)
+    lp = -0.2 + 1.0 * (df.loc[:m - 1, "arm"] == "trt")
+    df.loc[:m - 1, "event"] = (rng.random(m) < 1 / (1 + np.exp(-lp))).astype(float)
+    return df
+
+
+def test_a_group_tied_up_to_noise_is_read_as_tied_as_noise_or_refused():
+    """Claims backtest B-281, its fifth review. Everyone's outcome is whether x is above 0, with
+    |x| at least 0.05, but for 30 people at x = 0 up to noise of size σ, whose outcomes are mixed.
+
+    - σ = 0: x separates the other 130, and the 30 are left, since statsmodels' ``Logit`` on
+      them converges, which a direction separating anyone there would not allow. Known truth:
+      that fit, with the 130 at their own outcomes (Lesaffre & Albert 1989) and Ye et al.'s
+      variance written out above. Each of 10 trials is reported as it, the note counting the 130.
+    - σ = 1e-6: no one is separated, and the truth is the finite maximum-likelihood fit in
+      60-digit arithmetic (:func:`_exact_fit`). Each of 10 is reported as it, with no note.
+    - σ from 1e-12 to 1e-8, where float arithmetic hardly tells the noise from a tie: the truth
+      is that fit too, and each of 30 is refused or reported as it, with no note.
+
+    On the prior code 15 of the 30 at σ from 1e-12 to 1e-8 were reported wrong, by 0.01 to 0.06
+    standard errors, with no note: the linear program had named the 130 separated, and the 30's
+    noise was scaled up to a covariate of unit spread."""
+    import statsmodels.api as sm
+
+    spec = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
+                       covariates=("x",))
+    for seed in range(10):
+        df = _tied(0.0, seed)
+        y, tied = df.event.to_numpy(), np.arange(len(df)) < 30
+        X = _x_design(df, "x")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            rest = sm.Logit(y[tied], X[tied, :3]).fit(method="newton", tol=1e-12, maxiter=100,
+                                                      disp=0)
+        assert rest.mle_retvals["converged"], seed
+        cf = np.repeat(y[:, None], 2, axis=1)
+        for k in (0, 1):
+            cf[tied, k] = rest.predict(np.column_stack([X[tied, 0], np.full(30, k), X[tied, 2]]))
+        arm = X[:, 1].astype(int)
+        V = _ye_by_hand(y, arm, cf, cf[np.arange(len(y)), arm], pd.factorize(df.site)[0])
+        se = math.sqrt(V[0, 0] + V[1, 1] - 2 * V[0, 1])
+        r = T.estimate(df, spec)
+        rd = r.contrast(measure="risk_difference")
+        assert abs(rd.estimate - (cf[:, 1].mean() - cf[:, 0].mean())) <= 1e-6 * se, seed
+        assert rd.se == pytest.approx(se, rel=1e-6), seed
+        assert any("separate the outcome on x: 130 people " in c for c in r.concerns), r.concerns
+    for seed in range(10):
+        assert _refused_or_exact(_tied(1e-6, seed), spec, "x") == "reported", seed
+    for sigma in (1e-12, 1e-10, 1e-8):
+        for seed in range(10):
+            _refused_or_exact(_tied(sigma, seed), spec, "x")
+
+
 def _three_arms(seed: int = 2065, n: int = 45) -> pd.DataFrame:
     """A small three-arm trial at two sites, with three normal covariates."""
     rng = np.random.default_rng(seed)
