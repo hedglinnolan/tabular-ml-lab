@@ -141,8 +141,11 @@ CV_RULE = 0.6  # Li & Redden 2015: KC below this coefficient of variation of clu
 # The fewest clusters Li & Redden 2015 simulated: its claim's (``trials.few_clusters``), not the
 # model families' thirty (``inference.few_clusters``).
 FEW_CLUSTERS = claims.value("trials.few_clusters", "few_clusters")
-# A fitted risk this near 0 or 1 is a sign of separation (``trials.separation``): in
-# :func:`_logistic` it sends the fit to the linear program, and in :func:`fit_gee` it refuses.
+# Signs of separation in a converged logistic fit (``trials.separation``): a coefficient past
+# this on its column's own scale, or a fitted risk this near 0 or 1. :func:`_logistic` refuses on
+# either; a parallel trial then asks the linear program (:func:`_fit_risks`), and the estimating
+# equations, whose independence start it is, refuse with no program (:func:`fit_gee`).
+COEFFICIENT_BOUND = claims.value("trials.separation", "coefficient_bound")
 RISK_FLOOR = claims.value("trials.separation", "risk_floor")
 GEE_TOL = 1e-12
 GEE_MAXITER = 200
@@ -740,10 +743,10 @@ class _Logit:
 def _logistic(X: np.ndarray, y: np.ndarray, *, offset: np.ndarray | None = None,
               separable: bool = True) -> _Logit:
     """Maximum likelihood by Newton's method to |step| ≤ 1e-12 (R's ``glm`` with a tight
-    ``epsilon``); no convergence, a coefficient past 25 or a fitted risk within 1e-10 of 0 or 1
-    (signs of separation) is refused. Where a linear program has shown that no one is separated
-    (``separable=False``, :func:`_separated_people`), the last two are a finite fit's, and are
-    kept."""
+    ``epsilon``); no convergence, a coefficient past :data:`COEFFICIENT_BOUND` or a fitted risk
+    within :data:`RISK_FLOOR` of 0 or 1 (signs of separation) is refused. Where a linear program
+    has shown that no one is separated (``separable=False``, :func:`_separated_people`), the last
+    two are a finite fit's, and are kept."""
     off = np.zeros(len(y)) if offset is None else offset
     beta = np.zeros(X.shape[1])
     p0 = float(np.clip(y.mean(), 1e-6, 1 - 1e-6))
@@ -763,8 +766,8 @@ def _logistic(X: np.ndarray, y: np.ndarray, *, offset: np.ndarray | None = None,
             else:
                 raise _separation()
             mu = _expit(X @ beta + off)
-            if separable and (np.max(np.abs(beta)) > 25 or np.min(mu) < RISK_FLOOR
-                              or np.max(mu) > 1 - RISK_FLOOR):
+            if separable and (np.max(np.abs(beta)) > COEFFICIENT_BOUND
+                              or np.min(mu) < RISK_FLOOR or np.max(mu) > 1 - RISK_FLOOR):
                 raise _separation()
             w = mu * (1 - mu)
             cov = np.linalg.inv(X.T @ (X * w[:, None]))

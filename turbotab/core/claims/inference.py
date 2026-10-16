@@ -20,6 +20,8 @@ from typing import Any, Mapping
 from turbotab.core.claims import Basis, Claim, Fires, Param, Part, Regime, Silent, register
 
 AUTHOR = "R0b-inference builder"
+# Who graded a part above judgment, on the evidence the package's verifier gave (§2.4).
+VERIFIER = "R0b-inference verifier, 2026-10-16"
 HERE = "turbotab.core.claims.inference"
 TESTS = "turbotab/core/tests/test_claims_inference.py"
 ACCEPTANCE = "turbotab/core/tests/acceptance"
@@ -72,11 +74,14 @@ def design_unanswered(ctx: Any) -> bool:
     return _get(ctx, "design") is None
 
 
-def drawn_by_outcome_analyzed_as_observational(ctx: Any) -> bool:
-    """A case-control sample or matched sets were declared, and the data are analyzed as an
-    observational study (the design refusal's first exit)."""
-    return (_get(ctx, "design") == "observational"
-            and _get(ctx, "design_declared") in ("case_control", "matched_sets"))
+def drawn_by_outcome(ctx: Any) -> bool:
+    """A case-control sample or matched sets were declared: the design answered as one (and
+    refused), or the data analyzed as an observational study with it kept as declared (the design
+    refusal's first exit)."""
+    by_outcome = ("case_control", "matched_sets")
+    design = _get(ctx, "design")
+    return design in by_outcome or (design == "observational"
+                                    and _get(ctx, "design_declared") in by_outcome)
 
 
 def numeric_exposure(ctx: Any) -> bool:
@@ -100,10 +105,11 @@ INFERENCE_FEW_CLUSTERS = register(Claim(
     kind="parameter",
     methods=("Fewer than {few_clusters} clusters are few: an interval that rests on the units' "
              "summed residuals or scores then rests on few of them, inside the range Cameron & "
-             "Miller give for few clusters, from under twenty to under fifty."),
+             "Miller give for few clusters, from under twenty to under fifty when the clusters "
+             "are of equal size, and more when they are not."),
     goal=("inference",),
     regime=Regime("rows that repeat within units, under an interval that rests on unit-level sums "
-                  "(a cluster sandwich) or on the units' own variance (a random intercept)",
+                  "(a cluster sandwich)",
                   requires=(f"{HERE}:rows_repeat",)),
     params={"few_clusters": THIRTY_CLUSTERS},
     parts=(
@@ -117,7 +123,11 @@ INFERENCE_FEW_CLUSTERS = register(Claim(
             "One line serves several rules: the linear family's CR2 concern, the proportional-odds "
             "family's CR1 concern, the mixed model's and the Cox model's concerns, and the ranking "
             "of the mixed model above the estimating equations; each is its own rule, and only "
-            "the proportional-odds one is registered (ordinal.cluster_robust_intervals)."))),
+            "the proportional-odds one is registered (ordinal.cluster_robust_intervals). Cameron "
+            "& Miller's range is for cluster-robust (sandwich) inference. The mixed model's "
+            "concern, that its between-unit variance rests on few units (which cites Luke 2017), "
+            "and the ranking that puts the mixed model first below the line, read the same 30 by "
+            "judgment: their evidence does not cover a random intercept's variance."))),
     ),
     enforced_by=("turbotab.core.models.inference:_cluster_concerns",
                  "turbotab.core.models.ordinal:_cr1_concerns",
@@ -147,10 +157,17 @@ TRIALS_FEW_CLUSTERS = register(Claim(
     params={"few_clusters": Param(10, unit="clusters",
                                   constant="turbotab.core.methods.trials:FEW_CLUSTERS")},
     parts=(
-        Part("value", grade="judgment", basis=Basis(cites=("li2015gee",), reason=(
-            "10 is the fewest clusters Li & Redden (2015) simulated, so below it their evidence "
-            "for the corrected sandwich's coverage does not reach. It marks where their evidence "
-            "ends, not a count at which coverage is known to fail."))),
+        Part("value", grade="sourced", graded_by=VERIFIER, basis=Basis(
+            cites=("li2015gee",),
+            where=("Li & Redden (2015), the simulation study: 'We mimic the CRTs containing 10, "
+                   "20, or 30 clusters (K) with 10, 20, 50, 100, or 150 observations in average "
+                   "per cluster'; the abstract: 'the Kauermann and Carroll (KC)-correction can "
+                   "keep the test size to nominal levels even when the number of clusters is as "
+                   "low as 10'."),
+            reason=(
+                "10 is the fewest clusters Li & Redden (2015) simulated, so below it their "
+                "evidence for the corrected sandwich's coverage does not reach. It marks where "
+                "their evidence ends, not a count at which coverage is known to fail."))),
         Part("scope", grade="judgment", basis=Basis(reason=(
             "Li & Redden simulated the estimating equations with a yes/no outcome. We name the "
             "same concern for the mixed model's Kenward–Roger intervals on a numeric outcome, "
@@ -181,25 +198,30 @@ ORDINAL_CLUSTER_ROBUST_INTERVALS = register(Claim(
     regime=Regime("a proportional-odds model whose rows repeat within units, its intervals the "
                   "cluster sandwich over the units' summed scores with the G/(G − 1) correction, "
                   "on t(G − 1) (CR1)",
-                  requires=(f"{HERE}:proportional_odds_cluster_sandwich",)),
+                  requires=(f"{HERE}:proportional_odds_cluster_sandwich", f"{HERE}:rows_repeat")),
     decision="ordinal_table.intervals",
     verdict="noted",
     params={"few_clusters": THIRTY_CLUSTERS},
     parts=(
-        Part("method", grade="judgment", basis=Basis(reason=(
+        Part("method", grade="certified", graded_by=VERIFIER, basis=Basis(reason=(
             "The concern names the method the table computes, CR1 with G/(G − 1) on t(G − 1), "
             "where it had borrowed the linear family's CR2 with Bell–McCaffrey degrees of "
-            "freedom (claims backtest A-102). "
+            "freedom (claims backtest A-102). The Fires test asserts the table's covariance is "
+            "CR1, its caption says t(11) and neither it nor the concerns name CR2 or "
+            "Bell–McCaffrey, and fails when the linear family's concerns are put back. "
             "test_2_cluster_robust_intervals_match_statsmodels_sandwich_on_t_g_minus_1 checks the "
-            "computation against statsmodels; the Fires test checks the words."),
+            "computation against statsmodels' cluster sandwich on t(G − 1)."),
             tests=(f"{ACCEPTANCE}/test_wp12a_ordinal.py::test_2_clustered_intervals_say_cr1_on_t_"
                    "g_minus_1_and_that_few_units_can_make_them_narrow",))),
-        Part("direction", grade="judgment", basis=Basis(reason=(
+        Part("direction", grade="certified", graded_by=VERIFIER, basis=Basis(reason=(
             "t(G − 1) is the least allowance Cameron & Miller (2015, §VI) ask for; it lessens "
             "but does not remove the sandwich's downward bias, the more so for units of unequal "
             "size (MacKinnon & Webb 2017, J Appl Econom 32:233). In the Fires test's known-truth "
-            "simulation (12 units of lognormal size, a column varying only between them) the 95% "
-            "intervals cover β in well under 95% of 1,000 data sets."),
+            "simulation (12 units of lognormal size, a column varying only between them, "
+            "β = 0.5 known) the 95% intervals cover β in fewer than 95% of 1,000 data sets by "
+            "more than three Monte Carlo standard errors; statsmodels' OrderedModel with its "
+            "cluster sandwich, rescaled to G/(G − 1) on t(11), covered 0.882 of 400 of the same "
+            "fixtures (the verifier's check)."),
             tests=(f"{ACCEPTANCE}/test_wp12a_ordinal.py::test_2_clustered_intervals_say_cr1_on_t_"
                    "g_minus_1_and_that_few_units_can_make_them_narrow",))),
         Part("value", grade="judgment", basis=Basis(reason=(
@@ -224,8 +246,11 @@ TRIALS_SEPARATION = register(Claim(
     methods=("refused when the logistic model's risk for any group of people runs to 0% or 100% "
              "(the arm and the covariates predict exactly whether they had the event): an arm, "
              "everyone (complete separation), or a group a linear program finds or cannot rule "
-             "out (for the estimating equations, any fitted risk within {risk_floor} of either); "
-             "a partly separated fit is not read at its limit"),
+             "out; a partly separated fit is not read at its limit; the estimating equations run "
+             "no such program, and are refused on a sign of separation in their independence "
+             "start (no convergence, a coefficient past {coefficient_bound} on its column's own "
+             "scale, or a fitted risk within {risk_floor} of 0 or 1), which can refuse a trial no "
+             "one is separated in"),
     goal=("inference",),
     regime=Regime("a randomized trial with a yes/no outcome: the standardized risks of a logistic "
                   "model with Ye et al.'s variance, or a cluster trial's estimating equations",
@@ -233,8 +258,12 @@ TRIALS_SEPARATION = register(Claim(
     decision="trial_effect.separation",
     options=("standardized_risk", "gee_corrected"),
     verdict="refused",
-    params={"risk_floor": Param(1e-10, unit="risk from 0 or 1",
-                                constant="turbotab.core.methods.trials:RISK_FLOOR")},
+    params={
+        "coefficient_bound": Param(25, unit="log odds per unit of a column, on its own scale",
+                                   constant="turbotab.core.methods.trials:COEFFICIENT_BOUND"),
+        "risk_floor": Param(1e-10, unit="risk from 0 or 1",
+                            constant="turbotab.core.methods.trials:RISK_FLOOR"),
+    },
     parts=(
         Part("direction", grade="judgment", basis=Basis(reason=(
             "We refuse rather than report. At the fit's limit the standardized risks are finite "
@@ -252,23 +281,63 @@ TRIALS_SEPARATION = register(Claim(
             tests=(f"{ACCEPTANCE}/test_e2_trials.py::test_a_group_with_every_event_is_refused_"
                    "naming_it_and_an_empty_arm_says_why",))),
         Part("detection", grade="judgment", basis=Basis(reason=(
-            "The separated people are found by one linear program (Albert & Anderson 1984, "
-            "Biometrika 71:1; Konis 2007, as R's detectseparation does), solved by HiGHS on an "
-            "orthonormal basis of the standardized columns. Where its answer is not decided to "
-            "the module's tolerances, the effect is refused with the plain separation reason. "
-            "The tolerances were measured on the stage-1 reviews' generators, not derived."))),
+            "For a parallel trial, Newton's method runs on the raw columns first. When it does "
+            "not converge, or converges with a sign of separation (a coefficient past the bound, "
+            "a fitted risk within the floor), the separated people are found by one linear "
+            "program (Albert & Anderson 1984, Biometrika 71:1; Konis 2007, as R's "
+            "detectseparation does), solved by HiGHS on an orthonormal basis of the standardized "
+            "columns; no one separated, the fit is redone on those columns. Where the program's "
+            "answer is not decided to the module's tolerances, the effect is refused with the "
+            "plain separation reason. The tolerances were measured on the stage-1 reviews' "
+            "generators, not derived. The estimating equations run no program: the same signs "
+            "in their independence start refuse them, and the Fires test on treated clusters "
+            "that all had the event refuses there because Newton's method does not converge."))),
+        Part("coefficient_bound", grade="judgment", basis=Basis(reason=(
+            "A coefficient past the bound, in log odds per unit of its column, is a sign of "
+            "separation, not a proof of it, and is not scale-free: a covariate on a narrow "
+            "scale passes it with no one separated, as a pH of 7.4 ± 0.02 with a log odds ratio "
+            "of 60 per unit (about 1.2 per SD) does. A parallel trial then asks the linear "
+            "program, which rules separation out, and reports the fit (the Silent test on such a "
+            "pH, against statsmodels); with no bound the same fit is reported straight from "
+            "Newton's method, so no test holds the bound itself. The estimating equations refuse "
+            "on it (the scope part). The value is a convention, not tuned."))),
         Part("risk_floor", grade="judgment", basis=Basis(reason=(
-            "A fitted risk within 1e-10 of 0 or 1 is read as a sign of separation: for a "
-            "parallel trial it sends the fit to the linear program, and for the estimating "
-            "equations it refuses at once. The value is a float64 convention, not tuned."))),
+            "A fitted risk within the floor of 0 or 1 is read as a sign of separation. For a "
+            "parallel trial it sends a converged fit to the linear program, and, no one "
+            "separated, to the refit on standardized columns, whose information float64 must "
+            "resolve: the Fires test spies on the program for a fit whose only extreme risk is "
+            "one person's at an outlying dose, and the Silent test finds it not asked where no "
+            "risk is near 0 or 1; the reported effect is statsmodels' either way. For the "
+            "estimating equations the floor refuses in their independence start, as the bound "
+            "does, and again at their own fit, a backstop no test reaches. The value is a "
+            "float64 convention, not tuned."),
+            tests=(f"{TESTS}::test_a_converged_fit_with_a_risk_at_float64_s_edge_is_checked_by_"
+                   "the_linear_program",
+                   f"{TESTS}::test_a_fit_with_no_risk_near_0_or_1_is_reported_without_the_linear_"
+                   "program"))),
+        Part("scope", grade="judgment", basis=Basis(reason=(
+            "The estimating equations' refusal runs no linear program, so it can refuse a "
+            "cluster trial no one is separated in, and its reason then says, wrongly, that some "
+            "group's risk runs to 0% or 100%. On 16 clusters with a pH of 7.4 ± 0.02 and a log "
+            "odds ratio of 60 per unit, every one of 10 seeds was refused at the independence "
+            "start's coefficient bound, where statsmodels' Logit and its exchangeable GEE give "
+            "finite fits with fitted risks from 0.005 to 0.991 (the package's verifier, "
+            "2026-10-16). Giving the start the parallel trial's linear program, or a reason that "
+            "is true, turns a refusal into a report or changes what the person reads, and is "
+            "the orchestrator's to rule; until then the claim covers that case as a refusal "
+            "whose stated cause can be wrong."))),
     ),
     tests=(
         Fires(f"{ACCEPTANCE}/test_e2_trials.py::test_a_group_with_every_event_is_refused_naming_"
               "it_and_an_empty_arm_says_why", truth="independent:statsmodels"),
         Fires(f"{TESTS}::test_a_cluster_trial_whose_treated_clusters_all_had_the_event_is_refused",
               truth="construction"),
+        Fires(f"{TESTS}::test_a_converged_fit_with_a_risk_at_float64_s_edge_is_checked_by_the_"
+              "linear_program", truth="independent:statsmodels"),
         Silent(f"{TESTS}::test_a_trial_no_one_is_separated_in_is_reported_as_statsmodels_fits_it",
                truth="independent:statsmodels"),
+        Silent(f"{TESTS}::test_a_fit_with_no_risk_near_0_or_1_is_reported_without_the_linear_"
+               "program", truth="independent:statsmodels"),
         Silent(f"{TESTS}::test_a_cluster_trial_of_twelve_clusters_names_no_few_clusters",
                truth="construction"),
     ),
@@ -298,7 +367,9 @@ DESIGNS_OBSERVATIONAL_DEFAULT = register(Claim(
         Part("default", grade="judgment", basis=Basis(reason=(
             "We read an unanswered design as observational, the design of most tables brought "
             "here, and say so where the person confirms it. It is a default the person owns, "
-            "not a reading of the data."))),
+            "not a reading of the data. The interview's router marks a design that has been "
+            "answered as answered before it reads the design's gate, so an answer, observational "
+            "included, ends the statement (the Silent test)."))),
         Part("scope", grade="judgment", basis=Basis(reason=(
             "It is not safe under every goal: a sample drawn by its outcome that no one declares "
             "is analyzed as observational, since the prevalence and matched-sets detectors do not "
@@ -313,7 +384,7 @@ DESIGNS_OBSERVATIONAL_DEFAULT = register(Claim(
                "test_an_observational_answer_is_recorded_and_answers_the_question",
                truth="construction"),
     ),
-    enforced_by=("turbotab.core.designs:design_of", "turbotab.core.interview:_design_gate"),
+    enforced_by=("turbotab.core.interview:_design_gate", "turbotab.core.interview:route"),
     author=AUTHOR,
 ))
 
@@ -328,18 +399,23 @@ DESIGNS_SAMPLED_BY_OUTCOME = register(Claim(
              "are refused with the odds ratio as the exit, the estimand card reads no prevalence "
              "from the case share, and Predict is refused."),
     goal=("prediction", "inference"),
-    regime=Regime("a case-control sample or matched sets, declared, and analyzed as an "
-                  "observational study through the design refusal's first exit",
-                  requires=(f"{HERE}:drawn_by_outcome_analyzed_as_observational",)),
+    regime=Regime("a case-control sample or matched sets, declared: refused as such (the "
+                  "refusal states what the observational exit keeps out), or analyzed as an "
+                  "observational study through that exit",
+                  requires=(f"{HERE}:drawn_by_outcome",)),
     decision="set_design.declared",
     verdict="refused",
     parts=(
-        Part("direction", grade="judgment", basis=Basis(cites=("prentice1979casecontrol",),
-                                                        reason=(
-            "Drawn by the outcome, the case share is set by the study: the odds ratio is the "
-            "population's (Prentice & Pyke 1979), but the prevalence, the fitted probabilities "
-            "and the standardized risk difference are not. The Fires test's known-truth "
-            "population shows each."),
+        Part("direction", grade="certified", graded_by=VERIFIER, basis=Basis(
+            cites=("prentice1979casecontrol",), reason=(
+                "Drawn by the outcome, the case share is set by the study: the odds ratio is the "
+                "population's (Prentice & Pyke 1979), but the prevalence, the fitted "
+                "probabilities and the standardized risk difference are not. The Fires test's "
+                "known-truth population (200,000 people, a prevalence under 10%, a log odds "
+                "ratio of 0.7; 1,000 cases and 1,000 controls drawn) shows each: statsmodels' "
+                "Logit recovers the log odds ratio within 0.2, while the case share and the mean "
+                "fitted probability are one half and the sample-standardized risk difference is "
+                "more than 2.5 times the population's."),
             tests=("turbotab/core/tests/test_ordering_fixes.py::test_a_sample_drawn_by_its_"
                    "outcome_analyzed_as_observational_keeps_odds_ratios_only",))),
         Part("scope", grade="judgment", basis=Basis(reason=(
@@ -406,6 +482,12 @@ CAUSAL_NUMERIC_EXPOSURE_R2 = register(Claim(
               truth="construction"),
         Silent(f"{TESTS}::test_an_exposure_explained_to_eighty_five_percent_names_no_"
                "widening", truth="construction"),
+        # Nothing is withheld at any R²: the reading marks none violated, and the lane estimates
+        # an exposure the covariates explain to 96%.
+        Silent("turbotab/core/tests/test_causal_lane.py::test_the_positivity_relation_blocks_a_"
+               "propensity_and_states_a_numeric_exposure", truth="construction"),
+        Silent(f"{ACCEPTANCE}/test_causal_lane.py::test_9b_a_numeric_exposure_the_covariates_"
+               "nearly_determine_is_estimated_not_withheld", truth="construction"),
     ),
     enforced_by=("turbotab.core.causal:assumption_card", "turbotab.core.models.causal:variation"),
     author=AUTHOR,
@@ -415,12 +497,11 @@ SURVIVAL_MONOTONE_LIKELIHOOD = register(Claim(
     id="survival.monotone_likelihood",
     kind="rule",
     methods=("A Cox fit whose partial likelihood has no maximum is refused, with no interval or "
-             "p-value: where a column, or a direction along which the information falls below "
-             "{flat} of its largest eigenvalue, orders every risk set (the rows with the event "
-             "have the lowest, or the highest, value at every event time, as when a group has no "
-             "events); where a coefficient runs past {diverged} standard deviations of its "
-             "column; or where the information falls below {singular} of its largest "
-             "eigenvalue at the estimate."),
+             "p-value, where a column, or a direction along which the information has all but "
+             "vanished, orders every risk set: the rows with the event have the lowest, or the "
+             "highest, value at every event time, as when a group has no events. The refusal "
+             "names that column alone, or says that a fixed combination of the columns it names "
+             "does it."),
     goal=("inference",),
     regime=Regime("a Cox proportional-hazards model fit by Newton's method on standardized "
                   "columns, with Efron's ties, unweighted or with case weights",
@@ -428,7 +509,7 @@ SURVIVAL_MONOTONE_LIKELIHOOD = register(Claim(
     decision="cox_table.intervals",
     verdict="refused",
     params={
-        "diverged": Param(20.0, unit="standard deviations of the column",
+        "diverged": Param(20, unit="standard deviations of the column",
                           constant="turbotab.core.models.survival:DIVERGED"),
         "flat": Param(1e-8, unit="share of the information's largest eigenvalue",
                       constant="turbotab.core.models.survival:FLAT"),
@@ -436,29 +517,48 @@ SURVIVAL_MONOTONE_LIKELIHOOD = register(Claim(
                           constant="turbotab.core.models.survival:SINGULAR"),
     },
     parts=(
-        Part("direction", grade="judgment", basis=Basis(reason=(
+        Part("direction", grade="certified", graded_by=VERIFIER, basis=Basis(reason=(
             "Where a column orders every risk set, the partial likelihood rises without end along "
             "it and has no finite maximum (monotone likelihood: Bryson & Johnson 1981, Biometrika "
             "68:703; Heinze & Schemper 2001, Biometrics 57:114). The Fires test shows it for each "
-            "fixture by a profile likelihood written out by hand."),
+            "of its 16 fixtures by a profile likelihood written out by hand, which climbs at "
+            "b_g = −10, −20 and −40, and asserts each table refused with no standard error, "
+            "interval or p-value; it fails when both the ordering check and the singular "
+            "trigger are removed."),
             tests=(f"{ACCEPTANCE}/test_wp12b_cox_mixed_gee.py::test_3_a_group_with_no_events_is_"
                    "refused_and_one_with_only_events_is_not",))),
         Part("detection", grade="judgment", basis=Basis(reason=(
-            "Newton's decrement can pass its tolerance before any coefficient reaches 20 SDs, "
-            "since the information decays along an ordering as fast as the score (B-435: a log "
-            "hazard ratio near −36 with p = 0). So a fit whose information has an eigenvalue "
-            "below 1e-8 of its largest, or that did not converge, is checked for a column or a "
-            "flat direction that orders the risk sets. 20, 1e-8 and 1e-12 are numerical "
-            "conventions, not tuned against a reference."))),
+            "Newton's decrement can pass its tolerance before any coefficient reaches the "
+            "divergence bound, since the information decays along an ordering as fast as the "
+            "score (B-435: a log hazard ratio near −36 with p = 0). So a fit whose information "
+            "has an eigenvalue at or below the flat share of its largest, or that did not "
+            "converge, is checked for a column or a flat direction that orders the risk sets. "
+            "The Fires test on a group with no events beside age and noise columns holds that "
+            "check and the flat share: with either removed, the refusal names age too. Two "
+            "triggers are backstops no test reaches: a coefficient past the divergence bound, "
+            "which stops the iterations, and an information below the singular share at the "
+            "estimate. On the fixtures the ordering is found first, and a matrix whose columns "
+            "nearly copy each other is refused before the fit, as nearly singular; removing "
+            "either trigger changes no refusal there. The three numbers are numerical "
+            "conventions, not tuned against a reference."),
+            tests=(f"{TESTS}::test_a_cox_group_with_no_events_is_refused_naming_it_alone_as_the_"
+                   "lowest",))),
         Part("wording", grade="judgment", basis=Basis(reason=(
-            "The refusal says the rows with the event have the lowest or highest value at every "
-            "event time. A group in which every row has the event is no monotone likelihood when "
-            "its events fall among others', and is estimated: the Fires test matches lifelines "
-            "there."))),
+            "The refusal says the rows with the event have the lowest or highest value of the "
+            "column at every event time, and names that column alone: the Fires test on a group "
+            "with no events finds `g` named as the lowest, and age and the noise columns not "
+            "named. A group in which every row has the event is no monotone likelihood when its "
+            "events fall among others', and is estimated: the stage-1 Fires test matches "
+            "statsmodels' PHReg (Efron ties) there, its estimates to 1e-8 relative and its "
+            "standard errors to 1e-6."),
+            tests=(f"{TESTS}::test_a_cox_group_with_no_events_is_refused_naming_it_alone_as_the_"
+                   "lowest",))),
     ),
     tests=(
         Fires(f"{ACCEPTANCE}/test_wp12b_cox_mixed_gee.py::test_3_a_group_with_no_events_is_refused_"
               "and_one_with_only_events_is_not", truth="construction"),
+        Fires(f"{TESTS}::test_a_cox_group_with_no_events_is_refused_naming_it_alone_as_the_lowest",
+              truth="construction"),
         Silent(f"{TESTS}::test_a_cox_group_with_two_events_is_estimated_as_lifelines_fits_it",
                truth="independent:lifelines"),
     ),

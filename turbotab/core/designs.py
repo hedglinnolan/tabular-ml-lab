@@ -59,7 +59,9 @@ _TRIALS_LATER = ("randomized trials are analyzed in the designed-experiments mil
 # exit), they keep its refusals under every goal (claims backtest B-211; its claim,
 # ``designs.sampled_by_outcome``, holds the words).
 SAMPLED_BY_OUTCOME = ("case_control", "matched_sets")
-_BY_OUTCOME = claims.card("designs.sampled_by_outcome")
+# What the exit keeps out, said in each design's refusal, so rendered for that design.
+_BY_OUTCOME = {key: claims.card("designs.sampled_by_outcome", {"design": key})
+               for key in SAMPLED_BY_OUTCOME}
 
 DESIGNS: dict[str, Design] = {
     "observational": Design("observational", "Observed as they were", True),
@@ -76,13 +78,13 @@ DESIGNS: dict[str, Design] = {
         f"{NOT_YET_LEAD}: a case-control sample is analyzed in the designed-experiments milestone "
         f"(no prevalence or absolute risk, conditional models for matched sets), which is not "
         f"built yet. Until then the data can be analyzed as an observational study with odds "
-        f"ratios only ({_BY_OUTCOME}), and the methods name the design."),
+        f"ratios only ({_BY_OUTCOME['case_control']}), and the methods name the design."),
     "matched_sets": Design(
         "matched_sets", "Matched sets", False, NOT_YET,
         f"{NOT_YET_LEAD}: matched sets are analyzed in the designed-experiments milestone "
         f"(conditional logistic regression within each set), which is not built yet. Until then "
         f"the data can be analyzed as an observational study with odds ratios only "
-        f"({_BY_OUTCOME}), and the methods name the design."),
+        f"({_BY_OUTCOME['matched_sets']}), and the methods name the design."),
     "crossover": Design(
         "crossover", "Crossover trial", False, "crossover_v2x",
         f"{NOT_YET_LEAD}: a crossover trial (each person in several periods and sequences) needs "

@@ -6,9 +6,11 @@ claims say.
 Each expected value comes from the construction, an independent library or the source a claim
 cites, never from the claim or the constant it fills (CLAIMS_REGISTRY.md §2.1; meta-test 2 holds
 this file to it): Li & Redden (2015) simulated from ten clusters; Cameron & Miller (2015, §VI)
-put "few" below fifty in every reading; Kutner, Nachtsheim & Neter's collinearity line is a
-variance inflation factor of ten; a group with events among the others' has a finite Cox
-maximum, which lifelines finds; a logistic fit statsmodels converges on separates no one.
+put "few" below twenty to below fifty when the clusters are of equal size, and more when they are
+not; Kutner, Nachtsheim & Neter's collinearity line is a variance inflation factor of ten; a group
+with events among the others' has a finite Cox maximum, which lifelines finds, and one with no
+events orders every risk set by construction; a logistic fit statsmodels converges on separates
+no one.
 """
 from __future__ import annotations
 
@@ -24,8 +26,7 @@ import pytest
 from turbotab.core import claims
 from turbotab.core.claims import inference as area
 from turbotab.core.claims.inference import (cluster_randomized_trial, cox_partial_likelihood,
-                                            design_unanswered,
-                                            drawn_by_outcome_analyzed_as_observational,
+                                            design_unanswered, drawn_by_outcome,
                                             numeric_exposure, proportional_odds_cluster_sandwich,
                                             randomized_trial, rows_repeat, yes_no_outcome)
 
@@ -136,6 +137,89 @@ def test_a_trial_no_one_is_separated_in_is_reported_as_statsmodels_fits_it():
     assert not any("separate" in c for c in r.concerns), r.concerns
 
 
+def _dosed_trial(outlier: bool) -> pd.DataFrame:
+    """A parallel trial of 200 with a dose (SD 1) whose log odds ratio is 1.5 per unit; with
+    ``outlier``, one treated person is given a dose of 18, far past everyone else's."""
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({"arm": rng.choice(["ctl", "trt"], 200), "dose": rng.normal(0, 1, 200)})
+    if outlier:
+        df.loc[0, ["arm", "dose"]] = ["trt", 18.0]
+    lp = -0.3 + 0.6 * (df.arm == "trt") + 1.5 * df.dose
+    df["event"] = (rng.random(200) < 1 / (1 + np.exp(-lp))).astype(float)
+    return df
+
+
+def _statsmodels_rd(df: pd.DataFrame) -> tuple[float, np.ndarray, np.ndarray]:
+    """statsmodels' converged ``Logit`` on the arm and the dose: the risk difference standardized
+    over everyone (each person's risk with the arm set to each arm, averaged), the coefficients
+    and the fitted risks."""
+    import statsmodels.api as sm
+
+    X = np.column_stack([np.ones(len(df)), df.arm == "trt", df.dose]).astype(float)
+    fit = sm.Logit(df.event.to_numpy(), X).fit(method="newton", tol=1e-12, disp=0)
+    assert fit.mle_retvals["converged"]
+
+    def risk(arm: float) -> np.ndarray:
+        Xa = X.copy()
+        Xa[:, 1] = arm
+        return 1 / (1 + np.exp(-Xa @ fit.params))
+
+    return float(np.mean(risk(1.0)) - np.mean(risk(0.0))), fit.params, fit.predict(X)
+
+
+def _program_calls(monkeypatch) -> list[int]:
+    """Each call of the trial core's linear program for separation, which runs as before."""
+    from turbotab.core.methods import trials as T
+
+    calls: list[int] = []
+    program = T._separated_people
+
+    def spied(X, y):
+        calls.append(len(y))
+        return program(X, y)
+
+    monkeypatch.setattr(T, "_separated_people", spied)
+    return calls
+
+
+def test_a_converged_fit_with_a_risk_at_float64_s_edge_is_checked_by_the_linear_program(
+        monkeypatch):
+    """One person's dose of 18 puts their fitted risk within 10⁻¹² of 1 in statsmodels' converged
+    fit, its coefficients all under 5: a sign of separation, though the others' outcomes overlap
+    on every dose, so no one is separated. The fit is sent to the linear program once, which
+    rules separation out, and the trial is reported, its standardized risk difference
+    statsmodels' to 10⁻⁶ of a standard error, with no note that the data separate anyone."""
+    from turbotab.core.methods import trials as T
+
+    df = _dosed_trial(outlier=True)
+    truth, params, risks = _statsmodels_rd(df)
+    assert np.max(np.abs(params)) < 5 and 1 - risks.max() < 1e-12, (params, risks.max())
+    calls = _program_calls(monkeypatch)
+    r = T.estimate(df, T.TrialSpec(arm="arm", control="ctl", outcome="event",
+                                   covariates=("dose",)))
+    assert calls == [200], calls
+    got = r.contrast(measure="risk_difference")
+    assert abs(got.estimate - truth) <= 1e-6 * got.se, (got.estimate, truth, got.se)
+    assert not any("separate" in c for c in r.concerns), r.concerns
+
+
+def test_a_fit_with_no_risk_near_0_or_1_is_reported_without_the_linear_program(monkeypatch):
+    """The same trial with no outlying dose: statsmodels' fitted risks all lie between 0.001 and
+    0.999 and its coefficients under 5, so nothing signals separation; the linear program is not
+    asked, and the standardized risk difference is statsmodels' to 10⁻⁶ of a standard error."""
+    from turbotab.core.methods import trials as T
+
+    df = _dosed_trial(outlier=False)
+    truth, params, risks = _statsmodels_rd(df)
+    assert np.max(np.abs(params)) < 5 and 0.001 < risks.min() and risks.max() < 0.999
+    calls = _program_calls(monkeypatch)
+    r = T.estimate(df, T.TrialSpec(arm="arm", control="ctl", outcome="event",
+                                   covariates=("dose",)))
+    assert calls == [], calls
+    got = r.contrast(measure="risk_difference")
+    assert abs(got.estimate - truth) <= 1e-6 * got.se, (got.estimate, truth, got.se)
+
+
 # ── the proportional-odds table's cluster sandwich (claims backtest A-102) ───
 
 
@@ -151,9 +235,10 @@ def _units(seed: int, G: int) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
 
 
 def test_an_ordinal_table_over_sixty_units_says_nothing_of_narrow_intervals():
-    """Sixty units are not few in any reading of Cameron & Miller (2015, §VI), who put "few"
-    below twenty to below fifty: the clustered proportional-odds table still says its intervals
-    are CR1 on t(59), and no line says they can be too narrow."""
+    """Sixty units are above the thirty the table reads as few, and above Cameron & Miller's
+    (2015, §VI) range for clusters of equal size, from under twenty to under fifty (they allow
+    more for unequal ones, as these lognormal units are): the clustered proportional-odds table
+    still says its intervals are CR1 on t(59), and no line says they can be too narrow."""
     from turbotab.core.models.linear import as_clusters
     from turbotab.core.models.ordinal import ordinal_table
 
@@ -162,6 +247,22 @@ def test_an_ordinal_table_over_sixty_units_says_nothing_of_narrow_intervals():
     assert table.info["covariance"] == "CR1" and "t(59)" in table.info["caption"]
     assert any("(CR1, G = 60)" in c for c in table.concerns), table.concerns
     assert not any("too narrow" in c or "Only" in c for c in table.concerns), table.concerns
+
+
+def test_the_few_units_line_renders_only_for_the_model_and_covariance_its_table_computed():
+    """Claims backtest A-102 was a family's table showing a line that was not its own. The
+    proportional-odds table passes its model and the covariance it computed: over 12 units it says
+    CR1 on t(11) and that such intervals can be too narrow, and handed a linear model's CR2 the
+    same line is refused in strict mode, as the core tests run."""
+    from turbotab.core.models.linear import as_clusters
+    from turbotab.core.models.ordinal import _cr1_concerns
+
+    _, _, unit = _units(0, 12)
+    clusters = as_clusters(unit)
+    said = " ".join(_cr1_concerns(clusters, "proportional_odds", "CR1"))
+    assert "on t(11)" in said and "can still be too narrow" in said, said
+    with pytest.raises(claims.OutsideRegime):
+        _cr1_concerns(clusters, "linear", "CR2")
 
 
 # ── a sample drawn by its outcome (claims backtest B-211) ────────────────────
@@ -240,6 +341,64 @@ def test_an_exposure_explained_to_eighty_five_percent_names_no_widening():
 
 
 # ── the Cox fit's monotone likelihood (claims backtest B-435) ────────────────
+
+
+def _group_without_events(seed: int, n: int, noise: int) -> pd.DataFrame:
+    """A binary group `g` (30% of rows) none of whose rows has the event, an age that carries the
+    hazard, and ``noise`` normal columns, censored uniformly (stage 1's fixture, with noise)."""
+    rng = np.random.default_rng(seed)
+    g = rng.binomial(1, 0.3, n).astype(float)
+    age = rng.normal(size=n)
+    t = rng.exponential(1 / (0.2 * np.exp(0.3 * age)))
+    censor = rng.uniform(1, 10, n)
+    frame = pd.DataFrame({"g": g, "age": age, "time": np.minimum(t, censor),
+                          "event": np.where(g == 1, 0, (t <= censor).astype(int))})
+    for k in range(noise):
+        frame[f"z{k}"] = rng.normal(size=n)
+    return frame
+
+
+def _orders_every_risk_set(frame: pd.DataFrame, column: str) -> str | None:
+    """Whether at every event time the row with the event has the lowest (or the highest) value
+    of ``column`` among the rows at risk, some row at risk having more (or less): read off the
+    rows directly (continuous times, no late entry)."""
+    time, value = frame["time"].to_numpy(), frame[column].to_numpy()
+    lowest = highest = True
+    some_more = some_less = False
+    for i in np.flatnonzero(frame["event"].to_numpy() == 1):
+        at_risk = value[time >= time[i]]
+        lowest &= value[i] <= at_risk.min()
+        highest &= value[i] >= at_risk.max()
+        some_more |= bool(at_risk.max() > value[i])
+        some_less |= bool(at_risk.min() < value[i])
+    return "lowest" if lowest and some_more else "highest" if highest and some_less else None
+
+
+def test_a_cox_group_with_no_events_is_refused_naming_it_alone_as_the_lowest():
+    """Claims backtest B-435. With no event among `g`'s rows, at every event time the row with the
+    event has g = 0, the lowest value at risk, so the partial likelihood rises without end as g's
+    log hazard ratio runs to −∞; age and the noise columns order no risk set (both read off the
+    rows here). Beside age, and beside age and three noise columns, at 60, 300 and 1,000 rows,
+    each table is refused with no standard error, interval or p-value, and the refusal says the
+    rows with the event have the lowest `g` and names no other column."""
+    from turbotab.core.models.inference import Clusters
+    from turbotab.core.models.survival import cox_table, survival_outcome
+
+    for n in (60, 300, 1000):
+        for noise in (0, 3):
+            frame = _group_without_events(n + noise, n, noise)
+            columns = ["g", "age", *[f"z{k}" for k in range(noise)]]
+            assert frame["event"].sum() > 5
+            assert [_orders_every_risk_set(frame, c) for c in columns] == \
+                ["lowest"] + [None] * (len(columns) - 1)
+            table = cox_table(frame[columns], survival_outcome(frame["event"], frame["time"]),
+                              Clusters())
+            said = table.info["refused"]
+            assert said and "the rows with the event have the lowest `g` of the rows at risk" in \
+                said, (n, noise, said)
+            assert not any(f"`{c}`" in said for c in columns[1:]), (n, noise, said)
+            for row in table.rows:
+                assert row["se"] is None and row["ci_low"] is None and row["p"] is None, row
 
 
 def test_a_cox_group_with_two_events_is_estimated_as_lifelines_fits_it():
@@ -321,9 +480,9 @@ def test_each_predicate_holds_in_its_regime_and_not_outside_it():
         (randomized_trial, {"trial_design": "parallel_trial"}, {"trial_design": "observational"}),
         (yes_no_outcome, {"outcome_values": [0.0, 1.0, 1.0]}, {"outcome_values": [0.0, 1.0, 2.0]}),
         (design_unanswered, {"design": None}, {"design": "observational"}),
-        (drawn_by_outcome_analyzed_as_observational,
-         {"design": "observational", "design_declared": "matched_sets"},
+        (drawn_by_outcome, {"design": "observational", "design_declared": "matched_sets"},
          {"design": "observational", "design_declared": "parallel_trial"}),
+        (drawn_by_outcome, {"design": "case_control"}, {"design": "parallel_trial"}),
         (numeric_exposure, {"exposure_kind": "continuous"}, {"exposure_kind": "binary"}),
         (cox_partial_likelihood, {"model": "cox"}, {"model": "proportional_odds"}),
     ]
@@ -337,10 +496,17 @@ def test_each_predicate_holds_in_its_regime_and_not_outside_it():
 def test_the_proportional_odds_sentence_refuses_a_linear_model_s_context_in_strict_mode():
     """Claims backtest A-102 is the case: the proportional-odds table had shown the linear
     family's concern line. A claim whose regime is the proportional-odds model's cluster sandwich
-    raises in strict mode when the context is a linear model's CR2, and renders in its own."""
+    over rows that repeat raises in strict mode when the context is a linear model's CR2, or rows
+    that do not repeat, and renders in its own."""
     [c] = [c for c in area.CLAIMS
            if f"{area.HERE}:proportional_odds_cluster_sandwich" in c.regime.requires]
+    repeat, single = [0, 0, 1], [0, 1, 2]
     with pytest.raises(claims.OutsideRegime):
-        claims.card(c.id, {"model": "linear", "covariance": "CR2"}, strict=True)
-    said = claims.card(c.id, {"model": "proportional_odds", "covariance": "CR1"}, strict=True)
+        claims.card(c.id, {"model": "linear", "covariance": "CR2", "cluster_codes": repeat},
+                    strict=True)
+    with pytest.raises(claims.OutsideRegime):  # no unit holds two rows
+        claims.card(c.id, {"model": "proportional_odds", "covariance": "CR1",
+                           "cluster_codes": single}, strict=True)
+    said = claims.card(c.id, {"model": "proportional_odds", "covariance": "CR1",
+                              "cluster_codes": repeat}, strict=True)
     assert said.endswith("can still be too narrow"), said

@@ -1,27 +1,27 @@
 {
   "claims": [
     {
-      "hash": "f2cb429ffae09b217f00ad72c1da3fe55db6743e81be823b29cd0df66caeddf1",
+      "hash": "9a39e57f77ef3bcab841e371315f0febe87128ee8b8b7d40a1a085febd87b9d0",
       "id": "causal.numeric_exposure_r2",
       "status": "built"
     },
     {
-      "hash": "c16347e5180c2e81a7bd356ab4fcc9822e9b8efa484ae1fbc8d142c6e50b862a",
+      "hash": "62898b35eb18e42c9e21ed82ca914949e6a1607e2884bf40b74d38421ba3f601",
       "id": "designs.observational_default",
       "status": "built"
     },
     {
-      "hash": "9cb2d2909f0acb1cbf8f673698c9f3f108de6ff453d1209af362d2a091a47c84",
+      "hash": "44de8f0f782ef7532dec3c7e672e4d8cf4459c6fe7cfedb7429e245d24bfe85b",
       "id": "designs.sampled_by_outcome",
       "status": "built"
     },
     {
-      "hash": "2e04441f79d69984f8e911d592fe08f79c47d3fea336fc285835c46465906866",
+      "hash": "02412e47e74c4d12d5c23ca83dac425b74875e4f1c5feebed655e97e17a5aee3",
       "id": "inference.few_clusters",
       "status": "built"
     },
     {
-      "hash": "b4eccfac7c056e51a91a6a01d02a60fd1188428474bbcb3a7a824f92b3f95c2c",
+      "hash": "9d5dc9526fe7868a3351ee4b667c120b93d42e9f2c9c4625bc0ea0cf2229ea09",
       "id": "ordinal.cluster_robust_intervals",
       "status": "built"
     },
@@ -31,17 +31,17 @@
       "status": "proposed"
     },
     {
-      "hash": "0823abfb52e5983fa6f39cad089e97668aa7a053bf9f07c0725519fd6a12594e",
+      "hash": "9d47e99b4616b6e4ac5f55fa060cf26e56aea68972d61daedd3031acd410da36",
       "id": "survival.monotone_likelihood",
       "status": "built"
     },
     {
-      "hash": "d41e898a4ed31b235a14a87ffd9113d187192403fbfc97c0a69c87df64c0d318",
+      "hash": "bdfe87fab00ac86083ce60b6019df73a56ba97a236de13a2793cbb429739e085",
       "id": "trials.few_clusters",
       "status": "built"
     },
     {
-      "hash": "5b997260bbd777186ff55007f3436672bac20bbc4fc582c0ec6e78f997736aea",
+      "hash": "8f502687b1482680f32fba3db44a09c5807d475e542495d3a85a92626d5197a8",
       "id": "trials.separation",
       "status": "built"
     }
