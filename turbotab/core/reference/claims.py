@@ -1,8 +1,9 @@
-"""The claims reference and the claims' history, generated from the claims registry
-(CLAIMS_REGISTRY.md §5, §6).
+"""The claims reference, the claims' history and their frozen status, generated from the claims
+registry (CLAIMS_REGISTRY.md §5, §6).
 
-    python -m turbotab.core.reference.claims          # writes the reference, appends the history
-    python -m turbotab.core.reference.claims --check  # exits 1 when either is stale; writes nothing
+    python -m turbotab.core.reference.claims          # writes the reference and the frozen status,
+                                                      # and appends the history
+    python -m turbotab.core.reference.claims --check  # exits 1 when any is stale; writes nothing
 
 writes ``docs/turbotab-next/reference/CLAIMS_REFERENCE.md``: every claim the registry
 (``turbotab.core.claims``) holds, by status (built; ruled, not built; retracted), each with its
@@ -13,10 +14,17 @@ its tests and their truth, the code that enforces it, its version and its conten
 written, oldest first, one JSON object a line (``id``, ``version``, ``hash``, ``claim``). When a
 claim's content hash changes, its old version stays where it is and the new one is appended after
 it, so an old project's claims-in-force manifest resolves its hash to the words and grade it ran
-under (§5). ``--check`` fails when the reference differs from the registry's, or when the history's
-newest version of a claim is not the one in force. An id the history holds is never dropped (§1: a
-retired id stays, marked retracted), so where the registry no longer registers one, the generator
-writes nothing and it and ``--check`` both exit 1.
+under (§5).
+
+``turbotab/core/claims/status.json``, the frozen status file, holds each claim's id, derived status
+and content hash. The shipped app holds no tests, so a status cannot be derived there: a sentence
+renders from this file (``Registry.frozen_status``), and the generator, which runs where the source
+is complete, is what writes it.
+
+``--check`` fails when the reference or the frozen status file differs from the registry's, or
+when the history's newest version of a claim is not the one in force. An id the history holds is
+never dropped (§1: a retired id stays, marked retracted), so where the registry no longer registers
+one, the generator writes nothing and it and ``--check`` both exit 1.
 
 The text is a pure function of the registry and the files its status is derived from: nothing
 reads the clock, and claims are listed by id. ``turbotab/core/tests/test_claims_reference.py``
@@ -31,12 +39,13 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from turbotab.core import claims as registry_module
-from turbotab.core.claims import GRADES, Claim, Registry, content, content_hash, fill
+from turbotab.core.claims import (FROZEN, GENERATOR, GRADES, Claim, Registry, content,
+                                  content_hash, fill, frozen_records, frozen_text)
 
 REPO = Path(__file__).resolve().parents[3]
 OUT = REPO / "docs" / "turbotab-next" / "reference" / "CLAIMS_REFERENCE.md"
 HISTORY = REPO / "turbotab" / "core" / "claims" / "history.jsonl"
-COMMAND = "python -m turbotab.core.reference.claims"
+COMMAND = GENERATOR
 HASH_SHOWN = 12  # hex digits of a content hash the reference prints
 SECTIONS = (
     ("built", "Built",
@@ -126,7 +135,8 @@ def render(reg: Registry) -> str:
         "CLAIMS_REGISTRY.md). Do not edit it by hand: "
         "`turbotab/core/tests/test_claims_reference.py` regenerates it and fails when this copy "
         "is stale. Every version of every claim is kept in "
-        "`turbotab/core/claims/history.jsonl`.*", "",
+        "`turbotab/core/claims/history.jsonl`, and the status each renders with in "
+        f"`{FROZEN.as_posix()}`.*", "",
     ]
     if not len(reg):
         lines += ["No claim is registered yet.", ""]
@@ -141,8 +151,10 @@ def render(reg: Registry) -> str:
         "- **Grade**: each part of a sentence is graded on its own (" + ", ".join(
             f"*{g}*" for g in GRADES) + ", strongest first), and the sentence shows its weakest "
         "part's. Above judgment, someone other than the author grades.",
-        "- **Status** is derived: *built* once every enforcer resolves and every test exists, "
-        "*ruled, not built* until then; *retracted* is the only status anyone declares.",
+        "- **Status** is derived: *built* once every enforcer resolves and every test exists and "
+        "is not marked to skip or xfail unconditionally, *ruled, not built* until then; "
+        "*retracted* is the only status anyone declares. The app ships without its tests, so it "
+        "renders a claim from the status and hash the generator froze, never from the source.",
         "- **Card** and **Methods**: the sentence in its two registers, filled from its "
         "parameters.",
         f"- **Hash**: the first {HASH_SHOWN} hex digits of the SHA-256 of the claim's content; a "
@@ -178,6 +190,17 @@ def dropped(reg: Registry, history: list[dict[str, Any]]) -> list[str]:
     return sorted({h["id"] for h in history} - {c.id for c in reg})
 
 
+def frozen_differs(reg: Registry, text: str) -> list[str]:
+    """The ids whose frozen status or hash in ``text`` is not the registry's now, sorted (every
+    id, when ``text`` does not read)."""
+    derived = {r["id"]: (r["status"], r["hash"]) for r in frozen_records(reg)}
+    try:
+        held = {r["id"]: (r["status"], r["hash"]) for r in json.loads(text)["claims"]}
+    except (ValueError, KeyError, TypeError):
+        held = {}
+    return sorted(i for i in derived.keys() | held.keys() if derived.get(i) != held.get(i))
+
+
 def line(record: dict[str, Any]) -> str:
     return json.dumps(record, sort_keys=True, ensure_ascii=False, separators=(",", ":")) + "\n"
 
@@ -191,7 +214,8 @@ def main(argv: Sequence[str] | None = None, registry: Registry | None = None) ->
     parser.add_argument("--history", type=Path, default=HISTORY)
     args = parser.parse_args(argv)
     reg = registry_module.registry() if registry is None else registry
-    text = render(reg)
+    frozen_path = reg.frozen_path  # where rendering reads it
+    text, frozen = render(reg), frozen_text(reg)
     history = read_history(args.history)
     todo = pending(reg, history)
     gone = dropped(reg, history)
@@ -209,19 +233,26 @@ def main(argv: Sequence[str] | None = None, registry: Registry | None = None) ->
         if todo:
             stale.append(f"{args.history} lacks the version in force of "
                          f"{', '.join(r['id'] for r in todo)}: run {COMMAND}")
+        frozen_now = frozen_path.read_text(encoding="utf-8") if frozen_path.is_file() else ""
+        if frozen_now != frozen:
+            moved = frozen_differs(reg, frozen_now)
+            stale.append(f"{frozen_path} is stale" + (f" for {', '.join(moved)}" if moved else "")
+                         + f": run {COMMAND}")
         for message in stale:
             print(message, file=sys.stderr)
         if stale or gone:
             return 1
-        print(f"{args.out} and {args.history} are current")
+        print(f"{args.out}, {args.history} and {frozen_path} are current")
         return 0
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(text, encoding="utf-8")
     args.history.parent.mkdir(parents=True, exist_ok=True)
     with args.history.open("a", encoding="utf-8") as f:
         f.writelines(line(r) for r in todo)
-    print(f"wrote {args.out} ({len(text.encode('utf-8')):,} bytes); appended {len(todo)} "
-          f"version(s) to {args.history}")
+    frozen_path.parent.mkdir(parents=True, exist_ok=True)
+    frozen_path.write_text(frozen, encoding="utf-8")
+    print(f"wrote {args.out} ({len(text.encode('utf-8')):,} bytes) and {frozen_path} ({len(reg)} "
+          f"claim(s)); appended {len(todo)} version(s) to {args.history}")
     return 0
 
 

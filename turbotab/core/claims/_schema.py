@@ -2,9 +2,11 @@
 when it registers.
 
 A claim's vocabulary is checked at registration, as a method contract's is: its kind, its parts'
-grades, its verdict, its purposes, each test's declared truth and the form of every name it gives
-as a string. What the vocabulary cannot settle (whether a test exists, whether a citation key
-resolves, whether two claims conflict) is the meta-tests' (``_meta``).
+grades, its verdict, its purposes, each test's declared truth, the form of every name it gives as a
+string (a test's path stays inside the repository), the grader of each part above judgment
+("<who>, YYYY-MM-DD"), and that its parameters fill both its templates. What the vocabulary cannot
+settle (whether a test exists, whether a citation key resolves, whether the grader is the author,
+whether two claims conflict) is the meta-tests' (``_meta``).
 """
 from __future__ import annotations
 
@@ -12,9 +14,11 @@ import dataclasses
 import hashlib
 import json
 import math
+import posixpath
 import re
 import string
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any, ClassVar, Mapping
 
 KINDS: tuple[str, ...] = ("rule", "parameter", "teaching")
@@ -41,6 +45,10 @@ _TARGET = re.compile(rf"^{_DOTTED}:{_DOTTED}$")
 _TEST = re.compile(r"^(?P<path>[\w./-]+\.py)::(?P<name>[A-Za-z_]\w*(?:::[A-Za-z_]\w*)?)"
                    r"(?:\[.*\])?$")
 _RETRACTED = re.compile(r"^\d{4}-\d{2}-\d{2}: \S")
+# Above judgment, a grader is "<who>, YYYY-MM-DD" (§1's "basis audit, 2026-10-15").
+GRADED_FORM = "'<who>, YYYY-MM-DD'"
+_GRADED = re.compile(r"(?P<who>.*\S), (?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})")
+_PARENTHETICAL = re.compile(r"\([^()]*\)")
 
 
 @dataclass(frozen=True)
@@ -94,7 +102,8 @@ class Basis:
 @dataclass(frozen=True)
 class Part:
     """One thing a sentence asserts (a value, a direction, a scope), graded on its own. Its
-    ``graded_by`` overrides the claim's."""
+    ``graded_by`` overrides the claim's; above judgment, the one in force reads
+    "<who>, YYYY-MM-DD"."""
 
     name: str
     grade: str
@@ -133,7 +142,9 @@ class Claim:
     ``card`` and ``methods`` are its sentence in two registers, each a template over ``params``.
     ``fallback`` names the weaker claim that renders outside the regime (§2.2). ``ruled`` points
     to where a ruling was made (§6). ``retracted`` is "YYYY-MM-DD: reason", the only status anyone
-    declares; every other status is derived (``Registry.status``).
+    declares; every other status is derived (``Registry.status``). ``graded_by`` is
+    "<who>, YYYY-MM-DD" (§1's "basis audit, 2026-10-15") for every part above judgment that does
+    not name its own grader.
     """
 
     id: str
@@ -161,6 +172,33 @@ class Claim:
     def grade(self) -> str:
         """The weakest part's grade (§2.4), which the sentence shows."""
         return max((p.grade for p in self.parts), key=GRADES.index, default="unsupported")
+
+
+def grader(graded_by: str) -> str | None:
+    """Who graded, the part of ``graded_by`` before its date, or None when it is not
+    ``'<who>, YYYY-MM-DD'`` with a real date."""
+    m = _GRADED.fullmatch(graded_by)
+    if m is None:
+        return None
+    try:
+        date.fromisoformat(m["date"])
+    except ValueError:
+        return None
+    return m["who"]
+
+
+def same_person(who_graded: str, author: str) -> bool:
+    """Whether ``who_graded`` may be ``author``: each casefolded, its whitespace collapsed, its
+    parentheticals and a leading "the" dropped, the two are equal, either holds the other, or
+    either names no one. In doubt it says yes: a false yes costs a re-grade, a false no lets a
+    claim grade itself."""
+    def who(name: str) -> str:
+        while _PARENTHETICAL.search(name):
+            name = _PARENTHETICAL.sub(" ", name)
+        name = " ".join(name.casefold().split())
+        return "" if name == "the" else name.removeprefix("the ")
+    g, a = who(who_graded), who(author)
+    return not g or not a or g in a or a in g
 
 
 def placeholders(template: str) -> list[str]:
@@ -205,6 +243,10 @@ def check(c: Claim) -> None:
     for p in c.parts:
         if p.grade not in GRADES:
             fail(f"part {p.name!r}: grade {p.grade!r} is not one of {GRADES}")
+        by = p.graded_by or c.graded_by
+        if p.grade in ABOVE_JUDGMENT and grader(by) is None:
+            fail(f"part {p.name!r} is graded {p.grade}, so its grader reads {GRADED_FORM} (§2.4), "
+                 f"not {by!r}")
         for h in p.basis.heldout:
             if not isinstance(h.cases, int) or h.cases < 1 or not 0 <= h.rate <= 1:
                 fail(f"part {p.name!r}: held-out evidence has cases and a rate in [0, 1]")
@@ -230,11 +272,20 @@ def check(c: Claim) -> None:
         for f in fields:
             if f not in c.params:
                 fail(f"the {register} template's {{{f}}} names no parameter")
+        try:
+            fill(template, c.params)
+        except (ValueError, TypeError, KeyError, IndexError, AttributeError) as e:
+            fail(f"the {register} template cannot be filled from its parameters ({e})")
     for t in c.tests:
         if not isinstance(t, (Fires, Silent)):
             fail("a test is Fires or Silent")
-        if not _TEST.match(t.test):
+        named = _TEST.match(t.test)
+        if not named:
             fail(f"test {t.test!r} is named 'path.py::test_name'")
+        path = named["path"]
+        if path.startswith("/") or posixpath.normpath(path).split("/")[0] == "..":
+            fail(f"test {t.test!r} is absolute or leaves the repository root; name it from the "
+                 "root")
         if not _truth_ok(t.truth):
             fail(f"test {t.test!r}: truth {t.truth!r} is 'construction', 'independent:<library>' "
                  "or 'derivation:<path>'")

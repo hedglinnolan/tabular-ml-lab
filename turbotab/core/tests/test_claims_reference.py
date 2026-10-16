@@ -3,7 +3,10 @@
 
 * The committed ``CLAIMS_REFERENCE.md`` is regenerated from the registry and must be identical, and
   ``turbotab/core/claims/history.jsonl`` must hold the version of every claim now in force.
-* ``--check`` exits 1 when either is stale and 0 when both are current, and writes nothing.
+* The committed frozen status file, ``turbotab/core/claims/status.json``, holds each claim's id,
+  derived status and content hash, which is what rendering reads (``test_claims_frozen.py``).
+* ``--check`` exits 1 when any of the three is stale and 0 when all are current, and writes
+  nothing.
 * A claim whose content hash changes keeps its old version in the history: the generator appends
   the new version after it, and an old manifest's hash still resolves to the words it ran under.
 * An id the history holds stays registered (§1: a retired id stays, marked retracted): where the
@@ -29,6 +32,9 @@ def test_the_committed_reference_and_history_are_what_the_registry_generates():
         f"{reference.OUT.relative_to(REPO)} is stale: run `{reference.COMMAND}`")
     assert reference.pending(reg, reference.read_history(reference.HISTORY)) == [], (
         f"{reference.HISTORY.relative_to(REPO)} is stale: run `{reference.COMMAND}`")
+    frozen = reg.frozen_path.read_text(encoding="utf-8") if reg.frozen_path.is_file() else ""
+    assert frozen == claims.frozen_text(reg), (
+        f"{reg.frozen_path.relative_to(REPO)} is stale: run `{reference.COMMAND}`")
     assert reference.main(["--check"]) == 0
 
 
@@ -68,13 +74,54 @@ def _paths(tmp_path):
 def test_check_exits_1_on_a_stale_reference_and_0_on_a_current_one_and_writes_nothing(tmp_path):
     reg = registry(tmp_path, rule())
     out, history, args = _paths(tmp_path)
-    assert reference.main(args, registry=reg) == 0  # writes both
-    before = (out.read_bytes(), history.read_bytes())
+    assert reference.main(args, registry=reg) == 0  # writes all three
+    before = (out.read_bytes(), history.read_bytes(), reg.frozen_path.read_bytes())
     assert reference.main(["--check", *args], registry=reg) == 0
     out.write_text(out.read_text(encoding="utf-8") + "hand edit\n", encoding="utf-8")
     stale = out.read_bytes()
     assert reference.main(["--check", *args], registry=reg) == 1
-    assert (out.read_bytes(), history.read_bytes()) == (stale, before[1])
+    assert (out.read_bytes(), history.read_bytes(), reg.frozen_path.read_bytes()) == (
+        stale, *before[1:])
+
+
+def test_check_exits_1_on_a_frozen_status_the_source_does_not_derive_and_0_on_one_it_does(
+        tmp_path, capsys):
+    reg = registry(tmp_path, rule(), freeze=False)
+    out, history, args = _paths(tmp_path)
+    assert reference.main(args, registry=reg) == 0  # writes the frozen file beside the others
+    frozen = reg.frozen_path
+    written = frozen.read_text(encoding="utf-8")
+    assert reference.main(["--check", *args], registry=reg) == 0
+    tampered = written.replace('"status": "built"', '"status": "proposed"')
+    assert tampered != written
+    frozen.write_text(tampered, encoding="utf-8")
+    before = (out.read_bytes(), history.read_bytes())
+    capsys.readouterr()
+    assert reference.main(["--check", *args], registry=reg) == 1
+    err = capsys.readouterr().err
+    assert str(frozen) in err and "planted.few_clusters" in err
+    assert (out.read_bytes(), history.read_bytes()) == before, "the check writes nothing"
+    assert frozen.read_text(encoding="utf-8") == tampered
+    frozen.unlink()
+    assert reference.main(["--check", *args], registry=reg) == 1
+    assert reference.main(args, registry=reg) == 0
+    assert frozen.read_text(encoding="utf-8") == written
+    assert reference.main(["--check", *args], registry=reg) == 0
+
+
+def test_check_exits_1_when_the_source_moves_a_status_the_frozen_file_holds(tmp_path):
+    """A status change alone (a missing test written) leaves the frozen file stale."""
+    late = Fires("planted/test_late.py::test_written_later", "construction")
+    reg = registry(tmp_path, rule(tests=(*rule().tests, late)), freeze=False)
+    out, history, args = _paths(tmp_path)
+    assert reference.main(args, registry=reg) == 0
+    (reg.root / "planted" / "test_late.py").write_text("def test_written_later():\n    pass\n",
+                                                       encoding="utf-8")
+    out.write_text(reference.render(reg), encoding="utf-8")  # the reference brought up to date
+    assert reference.main(["--check", *args], registry=reg) == 1
+    assert reference.main(args, registry=reg) == 0
+    assert '"status": "built"' in reg.frozen_path.read_text(encoding="utf-8")
+    assert reference.main(["--check", *args], registry=reg) == 0
 
 
 def test_check_exits_1_when_the_history_lacks_a_version_in_force_and_writes_nothing(tmp_path):
@@ -140,12 +187,12 @@ def test_a_claim_deleted_from_the_registry_fails_the_check_and_the_generator(tmp
     it, so the generator writes nothing and both it and ``--check`` exit 1."""
     out, history, args = _paths(tmp_path)
     assert reference.main(args, registry=registry(tmp_path, rule(), teaching())) == 0
-    before = (out.read_bytes(), history.read_bytes())
+    without = registry(tmp_path, rule(), freeze=False)
+    before = (out.read_bytes(), history.read_bytes(), without.frozen_path.read_bytes())
     capsys.readouterr()
-    without = registry(tmp_path, rule())
     assert reference.main(["--check", *args], registry=without) == 1
     assert reference.main(args, registry=without) == 1
-    assert (out.read_bytes(), history.read_bytes()) == before
+    assert (out.read_bytes(), history.read_bytes(), without.frozen_path.read_bytes()) == before
     err = capsys.readouterr().err
     assert "planted.your_call" in err and "retract" in err
     out.write_text(reference.render(without), encoding="utf-8")  # a reference written regardless

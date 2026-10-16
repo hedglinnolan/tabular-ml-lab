@@ -2,11 +2,13 @@
 the default registry (no claim is registered yet, so each must pass), on a planted registry that
 breaks it (it must name the violation) and on a planted registry that keeps it (it must name none).
 
-1. every claim's tests exist and declare their truth;
+1. every claim's tests exist and declare their truth (once its code is live, or at once where it
+   names no code), and none is marked to skip or xfail unconditionally;
 2. no claim test imports or names its own claim's constant, or names its own claim's id (so it
    cannot read the claim's value, sentence or entry, however it spells the call);
 3. every part's grade meets §2.4's requirement (a certified part's test is declared and written),
-   with a grader other than the author above judgment, and regime predicates wherever a part is
+   with a grader other than the author above judgment, however the author's name is written (its
+   case, spacing, a leading "the" or a parenthetical), and regime predicates wherever a part is
    graded above judgment (§2.2);
 4. no proposed claim renders: no built claim falls back to one, and none is shown;
 5. no two live claims conflict on one decision in overlapping regimes;
@@ -30,7 +32,7 @@ from turbotab.core.tests.test_claims_fixtures import (DERIVATION, FIRES, HERE, S
 from turbotab.core.tests.test_claims_digits import relation_says, teaching_strings
 
 ID = "planted.few_clusters"
-OTHER = "a basis audit"
+OTHER = "a basis audit, 2026-10-16"
 REQUIRES = (f"{HERE}:outcome_is_binary",)
 UNWRITTEN = Fires("planted/test_rule.py::test_not_written", truth="construction")
 
@@ -68,6 +70,35 @@ def test_1_fires_where_a_derivation_truth_names_no_file(tmp_path):
     found = claims.tests_exist(registry(tmp_path, rule(
         tests=(Fires(FIRES.test, "derivation:notes/missing.md"), SILENT))))
     assert len(found) == 1 and "notes/missing.md" in found[0]
+
+
+def test_1_names_the_live_code_where_the_claim_s_enforcers_resolve(tmp_path):
+    gone = Silent("planted/test_rule.py::test_never_written", "construction")
+    found = claims.tests_exist(registry(tmp_path, rule(tests=(FIRES, SILENT, gone))))
+    assert found == ["planted.few_clusters: its code is live but its silent test "
+                     "planted/test_rule.py::test_never_written does not exist"]
+
+
+def test_1_says_a_claim_that_names_no_code_must_already_have_its_tests(tmp_path):
+    """With no ``enforced_by`` there is no code to wait for, so a missing test is a violation now;
+    the message says so, not that code is live."""
+    gone = Fires("planted/test_rule.py::test_never_written", "construction")
+    found = claims.tests_exist(registry(tmp_path, teaching(tests=(gone,))))
+    assert found == ["planted.your_call: it names no code, so its fires test "
+                     "planted/test_rule.py::test_never_written must already exist, but it does "
+                     "not exist"]
+
+
+def test_1_says_a_test_marked_to_skip_never_asserts(tmp_path):
+    reg = registry(tmp_path, rule())
+    (reg.root / "planted" / "test_rule.py").write_text(
+        "import pytest\n\n\ndef test_nine_clusters_name_the_concern():\n    assert 9 < 10\n\n\n"
+        "@pytest.mark.skip\ndef test_forty_clusters_say_nothing():\n    assert not 40 < 10\n",
+        encoding="utf-8")
+    assert claims.tests_exist(reg) == [
+        "planted.few_clusters: its code is live but its silent test "
+        "planted/test_rule.py::test_forty_clusters_say_nothing is marked to skip or xfail "
+        "unconditionally, so it never asserts"]
 
 
 def test_1_is_silent_where_every_test_exists_and_its_derivation_does(tmp_path):
@@ -171,14 +202,12 @@ UNMET = {
         Part("value", "sourced", Basis(cites=("nobody1999",), where="p. 3"))),
     "sourced with no passage": _graded(Part("value", "sourced", Basis(cites=("friedman2001",)))),
     "judgment with no reason": _graded(Part("value", "judgment"), graded_by=""),
-    "above judgment with no grader": _graded(
-        Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3")), graded_by=""),
-    "above judgment graded by its author": _graded(
+    "above judgment graded by its author, dated": _graded(
         Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3")),
-        graded_by="the R0a builder"),
+        graded_by="the R0a builder, 2026-10-16"),
     "a part graded by its author over another grader": _graded(
         Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3"),
-             graded_by="the R0a builder")),
+             graded_by="the R0a builder, 2026-10-16")),
     "above judgment with no regime predicate": _graded(
         Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3")), requires=()),
 }
@@ -199,7 +228,7 @@ MET = {
     "unsupported with nothing": _graded(Part("value", "unsupported"), graded_by="", requires=()),
     "a part graded by another over its author's claim-level grade": _graded(
         Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3"), graded_by=OTHER),
-        graded_by="the R0a builder"),
+        graded_by="the R0a builder, 2026-10-16"),
 }
 
 
@@ -212,6 +241,47 @@ def test_3_fires_on_a_grade_its_basis_does_not_meet(tmp_path, case):
 @pytest.mark.parametrize("case", sorted(MET))
 def test_3_is_silent_on_a_grade_its_basis_meets(tmp_path, case):
     assert claims.grades_met(registry(tmp_path, MET[case])) == []
+
+
+# The author is "the R0a builder" (test_claims_fixtures.rule). A grader is the part before its date,
+# compared with the author once each is casefolded, its whitespace collapsed, a leading "the" and
+# any parenthetical dropped; equal, or either inside the other, is the author grading.
+SELF_GRADERS = {
+    "the author, dated": "the R0a builder, 2026-10-16",
+    "the author without its article": "R0a builder, 2026-10-16",
+    "the author in other case and spacing": "The  R0a   BUILDER, 2026-10-16",
+    "the author with a parenthetical": "the R0a builder (self-check), 2026-10-16",
+    "a parenthetical alone": "(self), 2026-10-16",
+    "a name inside the author's": "builder, 2026-10-16",
+    "a name holding the author's": "the R0a builder and a basis audit, 2026-10-16",
+}
+OTHER_GRADERS = {
+    "a basis audit": OTHER,
+    "section 1's own example": "basis audit, 2026-10-15",
+    "a domain reviewer": "a domain reviewer (methods), 2026-10-16",
+    "a referee pair": "a referee pair (A, B), 2026-10-16",
+}
+
+
+def _sourced(grader, level):
+    part = Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3"))
+    if level == "part":
+        return _graded(dataclasses.replace(part, graded_by=grader))
+    return _graded(part, graded_by=grader)
+
+
+@pytest.mark.parametrize("level", ["claim", "part"])
+@pytest.mark.parametrize("case", sorted(SELF_GRADERS))
+def test_3_fires_where_the_author_grades_above_judgment_however_it_is_written(
+        tmp_path, case, level):
+    found = claims.grades_met(registry(tmp_path, _sourced(SELF_GRADERS[case], level)))
+    assert len(found) == 1 and ID in found[0] and "author" in found[0]
+
+
+@pytest.mark.parametrize("level", ["claim", "part"])
+@pytest.mark.parametrize("case", sorted(OTHER_GRADERS))
+def test_3_is_silent_where_someone_else_grades_with_a_date(tmp_path, case, level):
+    assert claims.grades_met(registry(tmp_path, _sourced(OTHER_GRADERS[case], level))) == []
 
 
 def test_3_checks_every_part_on_its_own(tmp_path):

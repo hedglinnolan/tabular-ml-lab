@@ -4,8 +4,17 @@
 Status is derived from the source, read with ``ast`` and never imported, relative to the
 registry's ``root`` (the repository, or a planted one in a test): a claim is **built** when every
 ``enforced_by`` names a function, class or name its module defines at top level and every test it
-names is a function its file defines (at top level, or in a class there); otherwise it is
-**proposed**. **Retracted** is declared.
+names is a function its file defines (at top level, or in a class there) that pytest runs to its
+assertions, so not one marked to skip or xfail unconditionally; otherwise it is **proposed**.
+**Retracted** is declared.
+
+The shipped app holds no tests (the image and the release zip leave them out), so a status is
+derived only where the source is complete: by the generator, ``--check``, the meta-tests, and in
+strict mode. The generator freezes each claim's id, status and content hash in the **frozen status
+file** (:data:`FROZEN` under the root), and a sentence renders from that file alone: a claim it
+lists as built, with the claim's current hash, renders; one it lacks, or lists with another hash,
+does not, and the refusal says to run the generator. Strict mode also derives the status and
+refuses where the frozen one differs, so a stale file fails a test before it ships.
 
 A sentence renders only for a built claim. With a context, every regime predicate is imported and
 called; where one fails, strict mode raises and otherwise the named fallback renders. Without a
@@ -16,15 +25,19 @@ from __future__ import annotations
 
 import ast
 import importlib
+import json
 import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
-from turbotab.core.claims._schema import Claim, check, fill
+from turbotab.core.claims._schema import Claim, check, content_hash, fill
 
 REPO = Path(__file__).resolve().parents[3]
 STRICT_ENV = "TURBOTAB_CLAIMS_STRICT"
+GENERATOR = "python -m turbotab.core.reference.claims"
+# The frozen status file, relative to a registry's root: beside this module in the repository.
+FROZEN = Path("turbotab", "core", "claims", "status.json")
 
 
 class ClaimError(Exception):
@@ -90,6 +103,33 @@ def _bindings(body: list[ast.stmt], name: str) -> Iterator[ast.stmt]:
                 yield node
 
 
+def _never_runs(mark: ast.expr) -> bool:
+    """Whether ``mark`` is ``pytest.mark.skip``, or ``pytest.mark.xfail`` or ``skipif`` with no
+    condition or a literal true one (bare or called, with a reason or not): a mark under which the
+    test never asserts. A condition pytest evaluates (an expression, or a string of one) is a
+    platform guard, and the test it guards counts."""
+    call = mark if isinstance(mark, ast.Call) else None
+    func = call.func if call is not None else mark
+    if not (isinstance(func, ast.Attribute) and func.attr in ("skip", "skipif", "xfail")):
+        return False
+    owner = func.value
+    if not ((isinstance(owner, ast.Attribute) and owner.attr == "mark")
+            or (isinstance(owner, ast.Name) and owner.id == "mark")):
+        return False
+    if func.attr == "skip" or call is None:
+        return True
+    conditions = [*call.args, *(k.value for k in call.keywords if k.arg == "condition")]
+    return not conditions or any(isinstance(c, ast.Constant) and not isinstance(c.value, str)
+                                 and bool(c.value) for c in conditions)
+
+
+def _marked_never_run(node: ast.stmt | None) -> bool:
+    """Whether ``pytestmark``, bound to ``node``, holds a mark under which no test runs."""
+    value = node.value if isinstance(node, (ast.Assign, ast.AnnAssign)) else None
+    marks = value.elts if isinstance(value, (ast.List, ast.Tuple)) else [value]
+    return any(m is not None and _never_runs(m) for m in marks)
+
+
 def _defines(body: list[ast.stmt], name: str) -> ast.stmt | None:
     return next(_bindings(body, name), None)
 
@@ -113,27 +153,47 @@ def _resolve_in(module: ast.Module | None, dotted: str) -> bool:
     return True
 
 
-def _test_in(module: ast.Module | None, dotted: str) -> bool:
+def _test_in(module: ast.Module | None, dotted: str) -> str:
     """Whether ``dotted`` (``name`` or ``Class.name``) is a function ``module`` defines at top
-    level or in a class it defines there: what pytest runs, where an enforcer may be any name."""
+    level or in a class it defines there, what pytest runs, where an enforcer may be any name:
+    ``"runs"``; ``"never runs"`` where the function, a class holding it or a ``pytestmark`` over
+    it is marked to skip or xfail unconditionally; otherwise ``"missing"``."""
     if module is None:
-        return False
+        return "missing"
     *classes, name = dotted.split(".")
     body = module.body
+    never = _marked_never_run(_last_binding(body, "pytestmark"))
     for part in classes:
         node = _last_binding(body, part)
         if not isinstance(node, ast.ClassDef):
-            return False
+            return "missing"
+        never = never or any(_never_runs(d) for d in node.decorator_list) or _marked_never_run(
+            _last_binding(node.body, "pytestmark"))
         body = node.body
-    return isinstance(_last_binding(body, name), (ast.FunctionDef, ast.AsyncFunctionDef))
+    fn = _last_binding(body, name)
+    if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return "missing"
+    return "never runs" if never or any(_never_runs(d) for d in fn.decorator_list) else "runs"
+
+
+@lru_cache(maxsize=8)
+def _frozen(data: bytes) -> dict[str, tuple[str, str]] | None:
+    """The frozen status file's claims, id to (status, hash), or None when they do not read.
+    Cached by the file's bytes, not its timestamp, so a rewrite is never read stale."""
+    try:
+        return {r["id"]: (r["status"], r["hash"]) for r in json.loads(data)["claims"]}
+    except (ValueError, KeyError, TypeError):
+        return None
 
 
 class Registry:
     """Claims by id, checked at registration (``_schema.check``), with the repository they are
     read against."""
 
-    def __init__(self, claims: Iterable[Claim] = (), *, root: Path | None = None) -> None:
+    def __init__(self, claims: Iterable[Claim] = (), *, root: Path | None = None,
+                 frozen: Path | None = None) -> None:
         self.root = Path(root) if root is not None else REPO
+        self.frozen_path = Path(frozen) if frozen is not None else self.root / FROZEN
         self._claims: dict[str, Claim] = {}
         for c in claims:
             self.register(c)
@@ -179,15 +239,22 @@ class Registry:
         path = self.module_file(module)
         return path is not None and _resolve_in(tree(path), name)
 
-    def test_exists(self, test: str) -> bool:
-        """Whether ``"path.py::name"`` (or ``"path.py::Class::name"``) is a function its file
-        defines, the last binding of that name: a variable, an import or a class is no test."""
+    def test_state(self, test: str) -> str:
+        """``"runs"`` where ``"path.py::name"`` (or ``"path.py::Class::name"``) is a function its
+        file defines, the last binding of that name (a variable, an import or a class is no
+        test); ``"never runs"`` where it is marked to skip or xfail unconditionally; otherwise
+        ``"missing"``."""
         path, _, name = test.partition("::")
         name = name.split("[", 1)[0]
         return _test_in(tree(self.root / path), name.replace("::", "."))
 
+    def test_exists(self, test: str) -> bool:
+        """Whether the test is a function its file defines that pytest runs to its assertions."""
+        return self.test_state(test) == "runs"
+
     def status(self, id: str) -> str:
-        """``retracted`` (declared), ``built`` or ``proposed`` (derived, §6)."""
+        """``retracted`` (declared), ``built`` or ``proposed`` (derived from the source, §6).
+        Rendering reads :meth:`frozen_status` instead, except in strict mode."""
         c = self[id]
         if c.retracted:
             return "retracted"
@@ -195,6 +262,28 @@ class Registry:
                 self.test_exists(t.test) for t in c.tests):
             return "built"
         return "proposed"
+
+    def frozen_status(self, id: str) -> str:
+        """The status the generator froze for the claim, which is what renders. A claim the
+        frozen file lacks, or lists with another content hash, or a file that is missing or does
+        not read, is refused (``NotRenderable``) with the command that writes it."""
+        c, path = self[id], self.frozen_path
+        try:
+            data = path.read_bytes()
+        except OSError:
+            raise NotRenderable(f"{id}: there is no frozen status file at {path}: run "
+                                f"{GENERATOR}") from None
+        frozen = _frozen(data)
+        if frozen is None:
+            raise NotRenderable(f"{id}: the frozen status file {path} does not read: run "
+                                f"{GENERATOR}")
+        if id not in frozen:
+            raise NotRenderable(f"{id} is not in the frozen status file {path}: run {GENERATOR}")
+        status, frozen_hash = frozen[id]
+        if frozen_hash != content_hash(c):
+            raise NotRenderable(f"{id} has changed since {path} froze its status: run "
+                                f"{GENERATOR}")
+        return status
 
     # ── the sentences ────────────────────────────────────────────────────────────────────────
 
@@ -221,7 +310,12 @@ class Registry:
         seen: list[str] = []
         while True:
             c = self[id]
-            status = self.status(id)
+            status = self.frozen_status(id)
+            derived = self.status(id) if strict else status
+            if derived != status:
+                raise NotRenderable(f"{id}: {self.frozen_path} froze it as {status}, but the "
+                                    f"source now makes it {derived} (strict mode): run "
+                                    f"{GENERATOR}")
             if status != "built":
                 via = f" (the fallback of {seen[-1]})" if seen else ""
                 raise NotRenderable(f"{id}{via} is {status}: a claim renders only once built")
@@ -256,3 +350,14 @@ class Registry:
         if param not in c.params:
             raise KeyError(f"{id} has no parameter {param!r}")
         return c.params[param].value
+
+
+def frozen_records(reg: Registry) -> list[dict[str, str]]:
+    """Each claim's id, derived status and content hash, in id order: the frozen file's claims."""
+    return [{"id": c.id, "status": reg.status(c.id), "hash": content_hash(c)} for c in reg]
+
+
+def frozen_text(reg: Registry) -> str:
+    """The frozen status file the generator writes for ``reg``."""
+    return json.dumps({"claims": frozen_records(reg), "generated_by": GENERATOR}, indent=2,
+                      sort_keys=True, ensure_ascii=False) + "\n"

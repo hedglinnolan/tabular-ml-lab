@@ -2,8 +2,11 @@
 §2.1, §2.4), as a method contract is (``contracts.register_contract``).
 
 Each guard is tested both ways: the conforming planted claim registers, and the same claim with one
-field broken is refused, naming the field. The registry's copies of the leash rungs and the
-purposes are held to the contracts' own, since the registry may not import them.
+field broken is refused, naming the field. Among them: above judgment, a part's grader reads
+"<who>, YYYY-MM-DD"; both templates fill from the claim's own parameters (Python's ``format`` is
+the truth); and a test's path is neither absolute nor leaves the repository root. The registry's
+copies of the leash rungs and the purposes are held to the contracts' own, since the registry may
+not import them.
 """
 from __future__ import annotations
 
@@ -152,3 +155,83 @@ def test_a_claim_with_its_fields_named_as_the_spec_example_names_them():
         tests=(FIRES, SILENT), enforced_by=("planted.engine:act",), supersedes=(),
         graded_by="basis audit, 2026-10-15", author="the R0a builder", version=1)
     assert Registry([c])["trials.few_clusters_example"].grade == "judgment"
+
+
+# ── above judgment, a grader reads '<who>, YYYY-MM-DD' (§1's example, §2.4) ─────────────────────
+
+SOURCED = Part("value", grade="sourced", basis=Basis(cites=("friedman2001",), where="p. 3"))
+UNDATED = {
+    "no grader": dict(graded_by=""),
+    "a grader with no date": dict(graded_by="a basis audit"),
+    "a date with no grader": dict(graded_by="2026-10-16"),
+    "a comma and a date with no grader": dict(graded_by=" , 2026-10-16"),
+    "a date in another form": dict(graded_by="a basis audit, 16 October 2026"),
+    "a date with no comma before it": dict(graded_by="a basis audit 2026-10-16"),
+    "a date that is no day of the year": dict(graded_by="a basis audit, 2026-13-40"),
+    "a date with a line after it": dict(graded_by="a basis audit, 2026-10-16\n"),
+    "a part's own grader with no date over a dated claim grader": dict(
+        parts=(dataclasses.replace(SOURCED, graded_by="a basis audit"),),
+        graded_by="a basis audit, 2026-10-16"),
+}
+DATED = {
+    "the claim's grader": dict(graded_by="a basis audit, 2026-10-16"),
+    "section 1's own example": dict(graded_by="basis audit, 2026-10-15"),
+    "a part's own grader": dict(
+        parts=(dataclasses.replace(SOURCED, graded_by="a domain reviewer, 2026-10-16"),)),
+    "a grader whose name holds a comma": dict(graded_by="a referee pair (A, B), 2026-10-16"),
+    "an undated grader of a part at judgment": dict(
+        parts=(Part("value", grade="judgment", basis=Basis(reason="r")),),
+        graded_by="the R0a builder"),
+}
+
+
+@pytest.mark.parametrize("case", sorted(UNDATED))
+def test_above_judgment_a_grader_not_written_who_then_date_is_refused_at_registration(case):
+    with pytest.raises(ValueError, match=r"^planted\.few_clusters: part 'value' is graded sourced, "
+                                         r"so its grader reads '<who>, YYYY-MM-DD'"):
+        Registry([rule(**{"parts": (SOURCED,), **UNDATED[case]})])
+
+
+@pytest.mark.parametrize("case", sorted(DATED))
+def test_above_judgment_a_dated_grader_registers_and_at_judgment_no_date_is_needed(case):
+    reg = Registry([rule(**{"parts": (SOURCED,), **DATED[case]})])
+    assert "planted.few_clusters" in reg
+
+
+# ── a template its own parameters cannot fill does not register ──────────────────────────────
+
+@pytest.mark.parametrize("register", ["card", "methods"])
+def test_a_template_its_own_parameters_cannot_fill_is_refused_naming_claim_and_register(register):
+    """Python's format refuses the integer code ``d`` on a float, so ``{cv:d}`` on 0.6 cannot
+    render; registration says so, with the claim and the register, before any sentence is asked
+    for."""
+    templates = {"card": "Below {cv}.", "methods": "Below {cv}.", register: "Below {cv:d}."}
+    with pytest.raises(ValueError, match=rf"^planted\.few_clusters: the {register} template "):
+        Registry([rule(**templates, params={"cv": Param(0.6, unit="ratio")})])
+
+
+@pytest.mark.parametrize("template, value", [("Below {cv:.1f}.", 0.6), ("Below {cv:d}.", 6)])
+def test_a_template_its_own_parameters_fill_registers(template, value):
+    """The same code ``d`` fills an integer, and ``.1f`` fills 0.6."""
+    reg = Registry([rule(card=template, methods=template,
+                         params={"cv": Param(value, unit="ratio")})])
+    assert "planted.few_clusters" in reg
+
+
+# ── a test path stays inside the repository ──────────────────────────────────────────────────
+
+@pytest.mark.parametrize("path", ["../outside_test.py", "planted/../../outside_test.py",
+                                  "./../outside_test.py", "/tmp/outside_test.py",
+                                  "//host/outside_test.py"])
+def test_a_test_path_that_is_absolute_or_leaves_the_root_is_refused(path):
+    with pytest.raises(ValueError, match=r"^planted\.few_clusters: test .* is absolute or leaves "
+                                         r"the repository root"):
+        Registry([rule(tests=(Fires(f"{path}::test_x", "construction"), SILENT))])
+
+
+@pytest.mark.parametrize("path", ["planted/test_rule.py", "./planted/test_rule.py",
+                                  "planted/../planted/test_rule.py"])
+def test_a_test_path_inside_the_root_registers(path):
+    reg = Registry([rule(tests=(Fires(f"{path}::test_nine_clusters_name_the_concern",
+                                      "construction"), SILENT))])
+    assert "planted.few_clusters" in reg

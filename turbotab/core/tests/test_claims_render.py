@@ -8,6 +8,9 @@
 * A sentence is its template filled from the claim's parameters; the expected sentences here are
   the planted templates filled by hand.
 * Predicates are resolved when they are checked, never at registration or without a context.
+
+Each planted registry has its status frozen as the generator freezes it
+(``test_claims_fixtures.registry``); rendering from that file is ``test_claims_frozen.py``'s.
 """
 from __future__ import annotations
 

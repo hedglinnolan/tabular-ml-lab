@@ -4,13 +4,16 @@ each on the default registry and on planted ones that break and keep it.
 
 1. :func:`tests_exist` — every claim's tests exist and declare their truth. A claim whose code is
    not written yet may name tests not written yet (it is proposed, "ruled, not built"); once every
-   enforcer it names resolves, a missing test is a violation: the code acts, untested.
+   enforcer it names resolves, a missing test is a violation: the code acts, untested. A claim
+   that names no code has nothing to wait for, so its tests must exist already. A test marked to
+   skip or xfail unconditionally never asserts, and does not count.
 2. :func:`no_self_pinning` — no claim test's file imports or names its claim's constant, or holds
    its own claim id as a string: through ``value()``, ``card()`` or the registry, however the call
    is spelled, its expected value could be the claim's own (§2.1).
 3. :func:`grades_met` — every part meets §2.4's requirement for its grade (certified, by a declared
-   test its file defines, whether or not the claim is built yet); above judgment it has a grader
-   other than the author, and its claim has regime predicates (§2.2).
+   test its file defines, whether or not the claim is built yet); above judgment its grader (the
+   "<who>" of "<who>, YYYY-MM-DD") is not its author, compared as ``_schema.same_person`` does,
+   which refuses in doubt, and its claim has regime predicates (§2.2).
 4. :func:`none_proposed_renders` — no built claim falls back to one that cannot render, and no
    proposed or retracted claim's sentence is among the strings the app shows.
 5. :func:`no_conflicts` — no two live claims on one decision in overlapping regimes supersede one
@@ -28,7 +31,10 @@ from typing import Iterable, Mapping
 from turbotab.core.claims._digits import (CITATIONS, citation_keys, citation_spans, load_allowlist,
                                           stray_digits)
 from turbotab.core.claims._registry import Registry, tree
-from turbotab.core.claims._schema import ABOVE_JUDGMENT, Claim, fill, literal
+from turbotab.core.claims._schema import (ABOVE_JUDGMENT, GRADED_FORM, Claim, fill, grader,
+                                          literal, same_person)
+
+_NEVER_RUNS = "is marked to skip or xfail unconditionally, so it never asserts"
 
 
 def tests_exist(reg: Registry) -> list[str]:
@@ -39,9 +45,14 @@ def tests_exist(reg: Registry) -> list[str]:
             continue
         live = all(reg.resolves(e) for e in c.enforced_by)
         for t in c.tests:
-            if live and not reg.test_exists(t.test):
-                out.append(f"{c.id}: its code is live but its {t.side} test {t.test} does not "
-                           "exist")
+            state = reg.test_state(t.test) if live else "runs"
+            if state != "runs":
+                gap = "does not exist" if state == "missing" else _NEVER_RUNS
+                if c.enforced_by:
+                    out.append(f"{c.id}: its code is live but its {t.side} test {t.test} {gap}")
+                else:
+                    out.append(f"{c.id}: it names no code, so its {t.side} test {t.test} must "
+                               f"already exist, but it {gap}")
             kind, _, where = t.truth.partition(":")
             if kind == "derivation" and not (reg.root / where).is_file():
                 out.append(f"{c.id}: the derivation {where} that {t.test} declares as its truth "
@@ -106,7 +117,8 @@ def _grade_unmet(reg: Registry, c: Claim, part, keys: frozenset[str]) -> str:
             return "certified by a test the claim does not declare"
         unwritten = [t for t in b.tests if not reg.test_exists(t)]
         if unwritten:
-            return f"certified by a test that is not written ({', '.join(unwritten)})"
+            return ("certified by a test that is not written or never runs "
+                    f"({', '.join(unwritten)})")
     elif grade == "replicated":
         if len({h.fixture for h in b.heldout}) < 2:
             return "replicated needs held-out evidence from at least two fixtures, with rates"
@@ -119,11 +131,13 @@ def _grade_unmet(reg: Registry, c: Claim, part, keys: frozenset[str]) -> str:
         if not b.reason.strip():
             return "judgment needs its reason"
     if grade in ABOVE_JUDGMENT:
-        grader = (part.graded_by or c.graded_by).strip()
-        if not grader:
-            return f"{grade} needs a grader (graded_by)"
-        if grader.casefold() == c.author.strip().casefold():
-            return f"{grade} is graded by its author; above judgment, someone else grades"
+        by = part.graded_by or c.graded_by
+        who = grader(by)
+        if who is None:  # registration refuses it (_schema.check), so only a claim set past it
+            return f"{grade} needs a grader that reads {GRADED_FORM}, not {by!r}"
+        if same_person(who, c.author):
+            return (f"{grade} is graded by {who!r}, which may be its author {c.author!r}; above "
+                    "judgment, someone else grades")
     return ""
 
 

@@ -2,7 +2,9 @@
 
 A planted root is a temporary directory laid out as the repository is: an engine module with an
 enforcer and a constant, a test file whose two functions exist, and a derivation note. A claim
-built against it is ``built``; one that names a missing piece is ``proposed``. The predicates
+built against it is ``built``; one that names a missing piece is ``proposed``. :func:`registry`
+also writes the root's frozen status file, as the generator does where the source is complete, so
+its claims render (``test_claims_frozen.py``). The predicates
 below are real functions, named as ``"module:function"`` strings, so a regime check imports them
 as it would an engine predicate.
 
@@ -14,7 +16,8 @@ import dataclasses
 from pathlib import Path
 from typing import Any
 
-from turbotab.core.claims import Basis, Claim, Fires, Param, Part, Regime, Registry, Silent
+from turbotab.core.claims import (Basis, Claim, Fires, Param, Part, Regime, Registry, Silent,
+                                  frozen_text)
 
 HERE = "turbotab.core.tests.test_claims_fixtures"
 
@@ -117,5 +120,16 @@ def teaching(**over: Any) -> Claim:
     return dataclasses.replace(base, **over)
 
 
-def registry(tmp_path: Path, *claims: Claim) -> Registry:
-    return Registry(claims, root=planted_root(tmp_path))
+def write_frozen(reg: Registry) -> Registry:
+    """Freeze each claim's derived status and hash in the registry's frozen file, as the generator
+    does."""
+    reg.frozen_path.parent.mkdir(parents=True, exist_ok=True)
+    reg.frozen_path.write_text(frozen_text(reg), encoding="utf-8")
+    return reg
+
+
+def registry(tmp_path: Path, *claims: Claim, freeze: bool = True) -> Registry:
+    """A registry of ``claims`` on a planted root, with its status frozen unless ``freeze`` is
+    False."""
+    reg = Registry(claims, root=planted_root(tmp_path))
+    return write_frozen(reg) if freeze else reg
