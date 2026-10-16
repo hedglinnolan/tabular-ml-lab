@@ -1939,7 +1939,10 @@ class SetUsualIntake(_DecisionModel):
     weekend_coding: WeekendCoding = "indicator"
     population: UsualIntakePopulation = "whole"
     consumer_column: str | None = None
-    cutoff: float | None = Field(default=None, gt=0)
+    # A finite positive number: an infinite cut-off, or one that is no number, is refused here
+    # (claims backtest BX-040, the R0b verifier's V2: an infinite UL reached data.ul_share_unread's
+    # card outside its regime and raised there).
+    cutoff: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     cutoff_kind: CutoffKind | None = None
     n_boot: int = Field(default=200, ge=50, le=2000)
     # The EAR cut-point's conditions the recalls cannot show, answered by the user (Institute of

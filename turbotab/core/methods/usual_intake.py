@@ -1340,9 +1340,12 @@ def share_phrase(cutoff: float | None, kind: CutoffKind | None, *, ear_for_all: 
     source, so a share of retinol from foods alone is a lower bound too. Where the component's name
     was read as no nutrient (``nutrient_read`` False) and names no form, what its UL covers is not
     known: the share is a share of the distribution (:data:`UL_SHARE_UNREAD`), and the UL is
-    stated beside it."""
+    stated beside it. A cut-off that is no finite number is refused before any sentence, or any
+    claim's card, is rendered from it; the decision that sets it refuses one too."""
     if cutoff is None:
         return ""
+    if not math.isfinite(cutoff):
+        raise ValueError(f"a share's cut-off is a finite number, not {cutoff!r}")
     value = _number(cutoff)
     if kind == "EAR" and ear_for_all:
         skew = (", and its requirement distribution as symmetric in them (no menstruating women, in "

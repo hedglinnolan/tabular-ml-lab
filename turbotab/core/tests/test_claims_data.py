@@ -93,6 +93,65 @@ def test_a_ul_share_on_a_name_read_as_no_nutrient_is_a_share_of_the_distribution
     unread(nci.share_phrase(350, "UL", nutrient_read=False))
 
 
+def _usual_intake_decision(cutoff) -> dict:
+    return {"kind": "set_usual_intake", "nutrient": "DS1TMAGN", "model": "amount_only",
+            "cutoff": cutoff, "cutoff_kind": "UL"}
+
+
+@pytest.mark.parametrize("cutoff", [float("inf"), float("nan")], ids=["inf", "nan"])
+def test_a_non_finite_cut_off_is_refused_at_the_decision(cutoff):
+    """The verifier's V2 on claims backtest BX-040: a share above an infinite UL reached the
+    unread-name claim's card with a cut-off outside its regime (a finite positive number) and
+    raised there. A UL is a number of milligrams or micrograms, so a cut-off that is no finite
+    number (infinity, or not a number) is refused where it is set, for DS1TMAGN, whether it comes
+    as a value or as JSON's Infinity and NaN."""
+    from pydantic import ValidationError
+
+    from turbotab.core.decisions import SetUsualIntake, parse_decision
+
+    with pytest.raises(ValidationError):
+        parse_decision(_usual_intake_decision(cutoff))
+    text = "Infinity" if cutoff == float("inf") else "NaN"
+    with pytest.raises(ValidationError):
+        SetUsualIntake.model_validate_json(
+            '{"nutrient": "DS1TMAGN", "model": "amount_only", "cutoff": %s, "cutoff_kind": "UL"}'
+            % text)
+
+
+def test_a_finite_cut_off_is_accepted_at_the_decision():
+    """The silent side: magnesium's 350 mg UL for DS1TMAGN is set as given."""
+    from turbotab.core.decisions import parse_decision
+
+    assert parse_decision(_usual_intake_decision(350.0)).cutoff == 350.0
+
+
+def test_a_share_above_an_infinite_ul_never_reaches_the_card(monkeypatch):
+    """share_phrase never hands a cut-off that is no finite number to card(): for DS1TMAGN, a
+    name read as no nutrient, a share above an infinite UL is refused with a plain error before
+    any card is rendered, in the methods sentence and in the share's own; magnesium's 350 mg UL
+    renders the card once, with that cut-off."""
+    from turbotab.core import claims as registry
+    from turbotab.core.claims import ClaimError
+    from turbotab.core.methods import usual_intake as nci
+
+    seen = []
+    card = registry.card
+
+    def spied(id, ctx=None, strict=None):
+        seen.append(dict(ctx or {}).get("cutoff"))
+        return card(id, ctx, strict)
+
+    monkeypatch.setattr(registry, "card", spied)
+    for render in (lambda: _methods("DS1TMAGN", float("inf")),
+                   lambda: nci.share_phrase(float("inf"), "UL", nutrient_read=False)):
+        with pytest.raises(ValueError) as r:
+            render()
+        assert not isinstance(r.value, ClaimError), repr(r.value)
+    assert seen == []
+    assert "350" in _methods("DS1TMAGN", 350.0)
+    assert seen == [350.0]
+
+
 # The share's sentence for a name read as calcium against its 2,500 mg UL, as the base wrote it:
 # the IOM DRI tables' calcium UL covers intake from food, water and supplements.
 CALCIUM_SHARE = (" The share above the UL (2,500) is a share at risk of excess where the recalls "

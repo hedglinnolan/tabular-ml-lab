@@ -242,9 +242,18 @@ register(Claim(
               "distribution", truth="independent:the IOM DRI tables' UL footnotes"),
         Silent(f"{TESTS}::test_a_ul_share_on_a_name_read_as_calcium_keeps_its_sentence",
                truth="independent:the IOM DRI tables' UL footnotes"),
+        # The regime's finite cut-off: the decision refuses any other, and the share's sentence
+        # renders no card from one (the verifier's V2).
+        Fires(f"{TESTS}::test_a_non_finite_cut_off_is_refused_at_the_decision",
+              truth="construction"),
+        Fires(f"{TESTS}::test_a_share_above_an_infinite_ul_never_reaches_the_card",
+              truth="construction"),
+        Silent(f"{TESTS}::test_a_finite_cut_off_is_accepted_at_the_decision",
+               truth="construction"),
     ),
     enforced_by=("turbotab.core.methods.usual_intake:share_phrase",
-                 "turbotab.core.methods.usual_intake:methods_sentence"),
+                 "turbotab.core.methods.usual_intake:methods_sentence",
+                 "turbotab.core.decisions:SetUsualIntake"),
     author=AUTHOR,
 ))
 

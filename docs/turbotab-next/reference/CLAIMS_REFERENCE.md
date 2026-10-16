@@ -156,7 +156,7 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `data.ul_share_unread`
 
-*rule* · weakest part *judgment* · built · version 1 · hash `1c9843b31435`
+*rule* · weakest part *judgment* · built · version 1 · hash `0f1ac86cf4db`
 
 - **Card:** The share above the UL is reported as a share of the distribution: what a UL covers depends on the nutrient (for magnesium, supplements and medicines alone), and the nutrient was not read from this column's name.
 - **Methods:** Where the nutrient was not read from the component's name, the share of usual intake above the UL was reported as a share of the distribution, not as a share at risk of excess, since what a UL covers depends on the nutrient (supplements and medicines alone for magnesium).
@@ -166,8 +166,8 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
   - distribution: *judgment*, graded by not graded (reason: We report the share as a share of the distribution, never as a share at risk of excess: a share above a UL is one only where the intakes are what the UL covers, and without the nutrient that cannot be read.)
   - coverage: *judgment*, graded by not graded (cites `iom1997magnesium`; reason: We say what a UL covers depends on the nutrient, as the IOM DRI tables' footnotes do (magnesium's covers intake from a pharmacological agent only, calcium's every source), read as data.ul_share's forms part reads them, and checked by no one but the author.)
   - unread: *judgment*, graded by not graded (reason: We take a name as naming no nutrient where the name reader reads none; a person may read the nutrient in it (DS1TMAGN is NHANES's supplement-recall magnesium), so the sentence says the nutrient was not read, not that the name names none.)
-- **Tests:** fires `turbotab/core/tests/test_claims_data.py::test_a_ul_share_on_a_name_read_as_no_nutrient_is_a_share_of_the_distribution` (independent:the IOM DRI tables' UL footnotes); silent `turbotab/core/tests/test_claims_data.py::test_a_ul_share_on_a_name_read_as_calcium_keeps_its_sentence` (independent:the IOM DRI tables' UL footnotes)
-- **Enforced by:** `turbotab.core.methods.usual_intake:share_phrase`, `turbotab.core.methods.usual_intake:methods_sentence`
+- **Tests:** fires `turbotab/core/tests/test_claims_data.py::test_a_ul_share_on_a_name_read_as_no_nutrient_is_a_share_of_the_distribution` (independent:the IOM DRI tables' UL footnotes); silent `turbotab/core/tests/test_claims_data.py::test_a_ul_share_on_a_name_read_as_calcium_keeps_its_sentence` (independent:the IOM DRI tables' UL footnotes); fires `turbotab/core/tests/test_claims_data.py::test_a_non_finite_cut_off_is_refused_at_the_decision` (construction); fires `turbotab/core/tests/test_claims_data.py::test_a_share_above_an_infinite_ul_never_reaches_the_card` (construction); silent `turbotab/core/tests/test_claims_data.py::test_a_finite_cut_off_is_accepted_at_the_decision` (construction)
+- **Enforced by:** `turbotab.core.methods.usual_intake:share_phrase`, `turbotab.core.methods.usual_intake:methods_sentence`, `turbotab.core.decisions:SetUsualIntake`
 - **Author:** R0b-data builder
 
 ### `designs.observational_default`
