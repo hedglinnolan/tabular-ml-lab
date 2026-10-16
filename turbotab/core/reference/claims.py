@@ -14,7 +14,9 @@ written, oldest first, one JSON object a line (``id``, ``version``, ``hash``, ``
 claim's content hash changes, its old version stays where it is and the new one is appended after
 it, so an old project's claims-in-force manifest resolves its hash to the words and grade it ran
 under (§5). ``--check`` fails when the reference differs from the registry's, or when the history's
-newest version of a claim is not the one in force.
+newest version of a claim is not the one in force. An id the history holds is never dropped (§1: a
+retired id stays, marked retracted), so where the registry no longer registers one, the generator
+writes nothing and it and ``--check`` both exit 1.
 
 The text is a pure function of the registry and the files its status is derived from: nothing
 reads the clock, and claims are listed by id. ``turbotab/core/tests/test_claims_reference.py``
@@ -171,6 +173,11 @@ def pending(reg: Registry, history: list[dict[str, Any]]) -> list[dict[str, Any]
             for c in reg if newest.get(c.id) != content_hash(c)]
 
 
+def dropped(reg: Registry, history: list[dict[str, Any]]) -> list[str]:
+    """The ids the history holds that the registry no longer registers, sorted."""
+    return sorted({h["id"] for h in history} - {c.id for c in reg})
+
+
 def line(record: dict[str, Any]) -> str:
     return json.dumps(record, sort_keys=True, ensure_ascii=False, separators=(",", ":")) + "\n"
 
@@ -178,13 +185,22 @@ def line(record: dict[str, Any]) -> str:
 def main(argv: Sequence[str] | None = None, registry: Registry | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true",
-                        help="exit 1 when the reference or the history is stale; write nothing")
+                        help="exit 1 when the reference or the history is stale, or the history "
+                             "holds an id the registry dropped; write nothing")
     parser.add_argument("--out", type=Path, default=OUT)
     parser.add_argument("--history", type=Path, default=HISTORY)
     args = parser.parse_args(argv)
     reg = registry_module.registry() if registry is None else registry
     text = render(reg)
-    todo = pending(reg, read_history(args.history))
+    history = read_history(args.history)
+    todo = pending(reg, history)
+    gone = dropped(reg, history)
+    if gone:
+        print(f"{args.history} holds {', '.join(gone)}, which the registry no longer registers: "
+              "an id is never dropped or reused (CLAIMS_REGISTRY.md §1), so restore the claim "
+              "and retract it", file=sys.stderr)
+        if not args.check:
+            return 1
     if args.check:
         current = args.out.read_text(encoding="utf-8") if args.out.is_file() else ""
         stale = []
@@ -195,7 +211,7 @@ def main(argv: Sequence[str] | None = None, registry: Registry | None = None) ->
                          f"{', '.join(r['id'] for r in todo)}: run {COMMAND}")
         for message in stale:
             print(message, file=sys.stderr)
-        if stale:
+        if stale or gone:
             return 1
         print(f"{args.out} and {args.history} are current")
         return 0

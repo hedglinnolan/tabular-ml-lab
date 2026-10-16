@@ -2,7 +2,9 @@
 R0_PLAN.md R0a acceptance 3).
 
 A claim is built when every ``enforced_by`` resolves and every test it names exists; otherwise it
-is proposed. Both are read from the source with ``ast``, never imported: a test file that would
+is proposed. An enforcer resolves to any name its module binds at top level; a test exists only as
+a function (or a method of a class) its file defines. Both are read from the source with ``ast``,
+never imported: a test file that would
 fail on import still defines its functions, and nothing a status check reads is executed. Each
 case is planted in a temporary repository whose files the test writes, so the truth is the
 construction.
@@ -58,6 +60,58 @@ def test_a_test_that_does_not_exist_leaves_the_claim_proposed(tmp_path, test):
 def test_a_parametrized_or_class_test_exists_by_its_function(tmp_path, test):
     reg = registry(tmp_path, rule(tests=(FIRES, Silent(test, "construction"))))
     assert reg.status(ID) == "built"
+
+
+ODD = '''test_var = None
+test_annotated: object = None
+from os import path as test_imported
+
+
+class test_klass:
+    pass
+
+
+class TestGroupedOnly:
+    def test_in_it(self):
+        pass
+
+
+async def test_awaited():
+    pass
+
+
+def test_rebound():
+    pass
+
+
+test_rebound = None
+test_redefined = None
+
+
+def test_redefined():
+    pass
+'''
+
+
+def _odd(tmp_path, test):
+    reg = registry(tmp_path, rule(tests=(FIRES, SILENT, Fires(test, "construction"))))
+    (reg.root / "planted" / "test_odd.py").write_text(ODD, encoding="utf-8")
+    return reg
+
+
+@pytest.mark.parametrize("name", [
+    "test_var", "test_annotated", "test_imported",  # a name bound to a value or an import
+    "test_klass", "TestGroupedOnly",  # a class, which holds tests but is not one
+    "test_rebound",  # a function the file then binds to a value
+])
+def test_a_test_named_by_anything_but_a_function_leaves_the_claim_proposed(tmp_path, name):
+    """pytest runs a function; a variable, an import or a class of that name is not a test."""
+    assert _odd(tmp_path, f"planted/test_odd.py::{name}").status(ID) == "proposed"
+
+
+@pytest.mark.parametrize("name", ["test_awaited", "TestGroupedOnly::test_in_it", "test_redefined"])
+def test_an_async_function_a_method_or_a_function_bound_last_is_a_test(tmp_path, name):
+    assert _odd(tmp_path, f"planted/test_odd.py::{name}").status(ID) == "built"
 
 
 def test_a_test_file_is_read_not_imported(tmp_path):

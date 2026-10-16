@@ -4,7 +4,8 @@
 Status is derived from the source, read with ``ast`` and never imported, relative to the
 registry's ``root`` (the repository, or a planted one in a test): a claim is **built** when every
 ``enforced_by`` names a function, class or name its module defines at top level and every test it
-names is a function its file defines; otherwise it is **proposed**. **Retracted** is declared.
+names is a function its file defines (at top level, or in a class there); otherwise it is
+**proposed**. **Retracted** is declared.
 
 A sentence renders only for a built claim. With a context, every regime predicate is imported and
 called; where one fails, strict mode raises and otherwise the named fallback renders. Without a
@@ -73,19 +74,32 @@ def _top_level(body: list[ast.stmt]) -> Iterator[ast.stmt]:
             yield node
 
 
-def _defines(body: list[ast.stmt], name: str) -> ast.stmt | None:
+def _bindings(body: list[ast.stmt], name: str) -> Iterator[ast.stmt]:
+    """The statements of ``body`` that bind ``name``, in order: a def, a class, an assignment or
+    an import."""
     for node in _top_level(body):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             if node.name == name:
-                return node
+                yield node
         elif isinstance(node, (ast.Assign, ast.AnnAssign)):
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             if any(isinstance(t, ast.Name) and t.id == name for t in targets):
-                return node
+                yield node
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
             if any((a.asname or a.name.split(".")[0]) == name for a in node.names):
-                return node
-    return None
+                yield node
+
+
+def _defines(body: list[ast.stmt], name: str) -> ast.stmt | None:
+    return next(_bindings(body, name), None)
+
+
+def _last_binding(body: list[ast.stmt], name: str) -> ast.stmt | None:
+    """The binding of ``name`` that stands once ``body`` has run."""
+    node = None
+    for node in _bindings(body, name):
+        pass
+    return node
 
 
 def _resolve_in(module: ast.Module | None, dotted: str) -> bool:
@@ -97,6 +111,21 @@ def _resolve_in(module: ast.Module | None, dotted: str) -> bool:
             return False
         body = node.body if isinstance(node, ast.ClassDef) else None
     return True
+
+
+def _test_in(module: ast.Module | None, dotted: str) -> bool:
+    """Whether ``dotted`` (``name`` or ``Class.name``) is a function ``module`` defines at top
+    level or in a class it defines there: what pytest runs, where an enforcer may be any name."""
+    if module is None:
+        return False
+    *classes, name = dotted.split(".")
+    body = module.body
+    for part in classes:
+        node = _last_binding(body, part)
+        if not isinstance(node, ast.ClassDef):
+            return False
+        body = node.body
+    return isinstance(_last_binding(body, name), (ast.FunctionDef, ast.AsyncFunctionDef))
 
 
 class Registry:
@@ -151,10 +180,11 @@ class Registry:
         return path is not None and _resolve_in(tree(path), name)
 
     def test_exists(self, test: str) -> bool:
-        """Whether ``"path.py::name"`` (or ``"path.py::Class::name"``) is defined in its file."""
+        """Whether ``"path.py::name"`` (or ``"path.py::Class::name"``) is a function its file
+        defines, the last binding of that name: a variable, an import or a class is no test."""
         path, _, name = test.partition("::")
         name = name.split("[", 1)[0]
-        return _resolve_in(tree(self.root / path), name.replace("::", "."))
+        return _test_in(tree(self.root / path), name.replace("::", "."))
 
     def status(self, id: str) -> str:
         """``retracted`` (declared), ``built`` or ``proposed`` (derived, §6)."""

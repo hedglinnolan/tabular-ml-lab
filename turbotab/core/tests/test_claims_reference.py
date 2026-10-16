@@ -6,6 +6,8 @@
 * ``--check`` exits 1 when either is stale and 0 when both are current, and writes nothing.
 * A claim whose content hash changes keeps its old version in the history: the generator appends
   the new version after it, and an old manifest's hash still resolves to the words it ran under.
+* An id the history holds stays registered (§1: a retired id stays, marked retracted): where the
+  registry drops one, the generator writes nothing and it and ``--check`` exit 1.
 * Proposed claims are listed under "Ruled, not built" (§6).
 """
 from __future__ import annotations
@@ -131,3 +133,31 @@ def test_each_history_line_is_one_json_object_naming_its_claim(tmp_path):
     record = json.loads(line)
     assert set(record) == {"id", "version", "hash", "claim"}
     assert record["id"] == "planted.few_clusters" and record["claim"]["id"] == record["id"]
+
+
+def test_a_claim_deleted_from_the_registry_fails_the_check_and_the_generator(tmp_path, capsys):
+    """An id is never dropped (§1): once the history holds it, the registry must still register
+    it, so the generator writes nothing and both it and ``--check`` exit 1."""
+    out, history, args = _paths(tmp_path)
+    assert reference.main(args, registry=registry(tmp_path, rule(), teaching())) == 0
+    before = (out.read_bytes(), history.read_bytes())
+    capsys.readouterr()
+    without = registry(tmp_path, rule())
+    assert reference.main(["--check", *args], registry=without) == 1
+    assert reference.main(args, registry=without) == 1
+    assert (out.read_bytes(), history.read_bytes()) == before
+    err = capsys.readouterr().err
+    assert "planted.your_call" in err and "retract" in err
+    out.write_text(reference.render(without), encoding="utf-8")  # a reference written regardless
+    assert reference.main(["--check", *args], registry=without) == 1
+
+
+def test_a_retracted_claim_stays_and_passes_the_check(tmp_path):
+    out, history, args = _paths(tmp_path)
+    assert reference.main(args, registry=registry(tmp_path, rule(), teaching())) == 0
+    retracted = registry(tmp_path, rule(), teaching(retracted="2026-10-16: a planted retraction"))
+    assert reference.main(args, registry=retracted) == 0
+    assert reference.main(["--check", *args], registry=retracted) == 0
+    assert [h["id"] for h in reference.read_history(history)] == [
+        "planted.few_clusters", "planted.your_call", "planted.your_call"]
+    assert "`planted.your_call`" in out.read_text(encoding="utf-8").split("\n## Retracted\n")[1]

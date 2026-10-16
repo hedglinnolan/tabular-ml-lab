@@ -5,7 +5,9 @@ method contracts and every teaching string (the uppercase names of
 ``turbotab.core.teaching.content``, as the citation scanner reads them), one character at a time
 with ``str.isdigit``, so "²" counts. A digit passes when it is a placeholder, sits inside a
 citation the citation registry recognizes (the work, then only its bibliographic tail: years,
-volume and page, section, page or item), or the whole string is allowlisted with its tag in
+volume and page, section, page or item; where the registry finds the work by its author, a bounded
+gap and its year, the author and the year, not the gap), or the whole string is allowlisted with
+its tag in
 ``turbotab/core/claims/digit_allowlist.json``. Today's digit-bearing strings seed the allowlist,
 each tagged; a new one fails, and an entry the app no longer has fails too.
 
@@ -92,8 +94,23 @@ def test_a_number_after_a_citation_inside_its_parenthesis_is_not_part_of_it(text
     assert len(found) == 1 and f"the digits {stray!r} " in found[0]
 
 
+@pytest.mark.parametrize("text, stray", [
+    ("Van Calster et al. recommend at least 10 events per variable (2024).", "10"),
+    ("Bustin et al. require at least 3 replicates per sample (2009).", "3"),
+    ("Sumner et al. ask for 2 orthogonal properties to name a metabolite (2007).", "2"),
+    ("Lachat and colleagues ask that intakes under 500 kcal be reported (2016).", "500"),
+])
+def test_a_number_between_a_citation_s_author_and_its_year_is_not_part_of_it(text, stray):
+    """A citation the registry recognizes by its author, a bounded gap and its year cites the
+    author and the year; a threshold written in the gap is the sentence's own number."""
+    found = claims.digit_gate(claims.Registry(), strings=[("planted:new", text)], allowlist={})
+    assert len(found) == 1 and f"the digits {stray!r} " in found[0]
+
+
 @pytest.mark.parametrize("text", [
     "Boosting fits stagewise (Friedman 2001).",
+    "Van Calster et al. recommend it for small samples (2024).",
+    "Van Calster et al., STRATOS TG6, 2024, list the measures.",
     "Boosting fits stagewise (Friedman 2001, Ann Stat 29:1189); a later work disagrees.",
     "Boosting fits stagewise (Friedman 2001, Ann Stat 29:1189, §10.10, p. 1203).",
     "The arms are described, never tested (Moher et al. 2010, item 15).",

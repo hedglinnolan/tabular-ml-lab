@@ -5,8 +5,9 @@ breaks it (it must name the violation) and on a planted registry that keeps it (
 1. every claim's tests exist and declare their truth;
 2. no claim test imports or names its own claim's constant, or names its own claim's id (so it
    cannot read the claim's value, sentence or entry, however it spells the call);
-3. every part's grade meets §2.4's requirement, with a grader other than the author above
-   judgment, and regime predicates wherever a part is graded above judgment (§2.2);
+3. every part's grade meets §2.4's requirement (a certified part's test is declared and written),
+   with a grader other than the author above judgment, and regime predicates wherever a part is
+   graded above judgment (§2.2);
 4. no proposed claim renders: no built claim falls back to one, and none is shown;
 5. no two live claims conflict on one decision in overlapping regimes;
 6. the digit gate, over every claim's templates outside their placeholders.
@@ -17,6 +18,8 @@ On the default registry, the meta-tests that read the app's strings (4 and 6) re
 Every planted case is built here from files the test writes, so its truth is the construction.
 """
 from __future__ import annotations
+
+import dataclasses
 
 import pytest
 
@@ -29,6 +32,7 @@ from turbotab.core.tests.test_claims_digits import relation_says, teaching_strin
 ID = "planted.few_clusters"
 OTHER = "a basis audit"
 REQUIRES = (f"{HERE}:outcome_is_binary",)
+UNWRITTEN = Fires("planted/test_rule.py::test_not_written", truth="construction")
 
 
 def app_strings(meta):
@@ -157,6 +161,9 @@ UNMET = {
     "certified with no test": _graded(Part("value", "certified")),
     "certified by a test the claim does not declare": _graded(
         Part("value", "certified", Basis(tests=("planted/test_rule.py::test_elsewhere",)))),
+    "certified by a declared test that is not written": dataclasses.replace(
+        _graded(Part("value", "certified", Basis(tests=(UNWRITTEN.test,)))),
+        tests=(UNWRITTEN, SILENT), enforced_by=("planted.engine:not_yet",)),
     "replicated on one fixture": _graded(
         Part("value", "replicated", Basis(heldout=(HeldOut("nhanes", 40, 0.9),
                                                    HeldOut("nhanes", 12, 0.8))))),

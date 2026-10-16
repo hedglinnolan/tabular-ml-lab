@@ -8,8 +8,9 @@ each on the default registry and on planted ones that break and keep it.
 2. :func:`no_self_pinning` — no claim test's file imports or names its claim's constant, or holds
    its own claim id as a string: through ``value()``, ``card()`` or the registry, however the call
    is spelled, its expected value could be the claim's own (§2.1).
-3. :func:`grades_met` — every part meets §2.4's requirement for its grade; above judgment it has a
-   grader other than the author, and its claim has regime predicates (§2.2).
+3. :func:`grades_met` — every part meets §2.4's requirement for its grade (certified, by a declared
+   test its file defines, whether or not the claim is built yet); above judgment it has a grader
+   other than the author, and its claim has regime predicates (§2.2).
 4. :func:`none_proposed_renders` — no built claim falls back to one that cannot render, and no
    proposed or retracted claim's sentence is among the strings the app shows.
 5. :func:`no_conflicts` — no two live claims on one decision in overlapping regimes supersede one
@@ -103,6 +104,9 @@ def _grade_unmet(reg: Registry, c: Claim, part, keys: frozenset[str]) -> str:
             return "certified needs a Fires or Silent test with declared truth"
         if any(t not in declared for t in b.tests):
             return "certified by a test the claim does not declare"
+        unwritten = [t for t in b.tests if not reg.test_exists(t)]
+        if unwritten:
+            return f"certified by a test that is not written ({', '.join(unwritten)})"
     elif grade == "replicated":
         if len({h.fixture for h in b.heldout}) < 2:
             return "replicated needs held-out evidence from at least two fixtures, with rates"

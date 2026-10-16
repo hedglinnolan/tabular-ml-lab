@@ -2,12 +2,14 @@
 allowlist of today's digit-bearing strings.
 
 A digit is any character ``str.isdigit`` accepts, so "²" counts. It passes when it sits inside a
-citation: a span one of the citation registry's ``cited_as`` patterns matches, carried on, when
-the span sits in a parenthesis, over its bibliographic tail and nothing else (:data:`_TAIL`: the
-rest of a token the match ends inside, as in "STROBE 16a", a span of years, a journal's volume and
-page, a section, a page or an item). So "(Friedman 2001, Ann Stat 29:1189, §10.10)" is one
-citation, while "(below 0.6, Friedman 2001)" and "(Friedman 2001, below 0.6)" are each a number
-beside one. The registry is read as a file: the claims package imports no engine module.
+citation: a span one of the citation registry's ``cited_as`` patterns matches, less the bounded gap
+a pattern may allow between a work's author and its year (:data:`_GAP`), and carried on, when the
+span sits in a parenthesis, over its bibliographic tail and nothing else (:data:`_TAIL`: the rest
+of a token the match ends inside, as in "STROBE 16a", a span of years, a journal's volume and page,
+a section, a page or an item). So "(Friedman 2001, Ann Stat 29:1189, §10.10)" is one citation,
+while "(below 0.6, Friedman 2001)", "(Friedman 2001, below 0.6)" and "Van Calster et al. recommend
+at least 10 events per variable (2024)" are each a number beside one. The registry is read as a
+file: the claims package imports no engine module.
 
 Otherwise the whole string must be allowlisted in ``digit_allowlist.json``, tagged with one of
 :data:`TAGS`. The allowlist was seeded from the app's digit-bearing strings on 2026-10-16; a
@@ -18,6 +20,7 @@ from __future__ import annotations
 import json
 import re
 from functools import lru_cache
+from itertools import count
 from pathlib import Path
 from typing import Iterable
 
@@ -39,9 +42,22 @@ def citation_keys(path: Path = CITATIONS) -> frozenset[str]:
     return frozenset(k for k, _ in _records(str(path)))
 
 
+# A bounded gap a ``cited_as`` pattern allows between a work's author and its year: a negated
+# class repeated from zero, such as ``[^;()]{0,90}?``. A digit it matches is not this citation's,
+# though another citation's match may hold it.
+_GAP = re.compile(r"(?<!\\)\[\^[^\]]*\]\{0,\d+\}\??")
+_GAP_GROUP = "_gap"
+
+
+def _grouped(pattern: str) -> str:
+    """``pattern`` with each bounded gap in a named group, so a match reports where its gaps are."""
+    n = count()
+    return _GAP.sub(lambda m: f"(?P<{_GAP_GROUP}{next(n)}>{m.group(0)})", pattern)
+
+
 @lru_cache(maxsize=4)
 def _patterns(path: str) -> tuple[re.Pattern[str], ...]:
-    return tuple(re.compile(p) for _, ps in _records(path) for p in ps)
+    return tuple(re.compile(_grouped(p)) for _, ps in _records(path) for p in ps)
 
 
 def _opening(text: str, start: int) -> int | None:
@@ -81,12 +97,18 @@ def _tail(text: str, end: int) -> int:
 
 
 def citation_spans(text: str, citations: Path = CITATIONS) -> list[tuple[int, int]]:
-    """The spans of ``text`` that cite a work the citation registry holds."""
+    """The spans of ``text`` that cite a work the citation registry holds: each match but its
+    gaps, then its tail."""
     spans = []
     for pattern in _patterns(str(citations)):
+        gaps = [g for g in pattern.groupindex if g.startswith(_GAP_GROUP)]
         for m in pattern.finditer(text):
-            end = _tail(text, m.end()) if _opening(text, m.start()) is not None else m.end()
-            spans.append((m.start(), end))
+            start = m.start()
+            end = _tail(text, m.end()) if _opening(text, start) is not None else m.end()
+            for a, b in sorted(m.span(g) for g in gaps if m.start(g) >= 0):
+                spans.append((start, a))
+                start = b
+            spans.append((start, end))
     return spans
 
 
