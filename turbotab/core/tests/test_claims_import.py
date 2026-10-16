@@ -76,6 +76,7 @@ R0B_IDS = {
     "materiality.collinear_under_prediction", "materiality.rows_smd_floor",
     "materiality.rows_smd_floor_prediction", "tuning.small_sample_standard",
     "tuning.small_sample_standard_classes", "tuning.small_sample_standard_estimate",
+    "tuning.small_sample_no_search",
     # data (turbotab/core/claims/data.py)
     "data.clusters_adjust", "data.constant_column", "data.nhanes_weight", "data.omics_raw_scale",
     "data.tail_share", "data.ul_share", "data.ul_share_unread",

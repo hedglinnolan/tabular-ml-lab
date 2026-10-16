@@ -10,7 +10,10 @@ the engine constant that holds it reads it with ``claims.value``.
   of a yes/no or numeric outcome, and the plan reads neither purpose nor task, so two fallbacks
   record where it applies the same rule as judgments: ``tuning.small_sample_standard_estimate``
   under Estimate, carried from Predict, and ``tuning.small_sample_standard_classes`` for several
-  classes or ordered ones under either purpose, carried from a yes/no outcome.
+  classes or ordered ones under either purpose, carried from a yes/no outcome. A searched family
+  with no small-sample standard of its own (the random forest) draws no search below the same
+  threshold either and is fit once at its standard settings: the judgment
+  ``tuning.small_sample_no_search``, the last fallback.
 * ``boosted_trees.small_rows`` and ``forest.small_rows``: the rows below which the shelf rates
   each family fair, the rows it ranks for (training rows under Predict, every analyzed row under
   Estimate or Describe, as the shelf stage counts them). Both modules named theirs ``SMALL_N``,
@@ -74,6 +77,14 @@ def standard_from_the_study(ctx: Any) -> bool:
     tuning declaration says (``small_standard_source``): the declaration is read, never the
     family's key (MODEL_FAMILY_CONTRACT C1)."""
     return "SMALL_SAMPLE_STANDARD.md" in str(_field(ctx, "small_standard_source") or "")
+
+
+def searched_without_a_small_sample_standard(ctx: Any) -> bool:
+    """The family's tuning declaration is a search (``kind``) and names no small-sample standard
+    notes/SMALL_SAMPLE_STANDARD.md chose (``small_standard_source``): the declaration is read,
+    never the family's key (MODEL_FAMILY_CONTRACT C1)."""
+    return (_field(ctx, "kind") == "search"
+            and "SMALL_SAMPLE_STANDARD.md" not in str(_field(ctx, "small_standard_source") or ""))
 
 
 def yes_no_or_numeric(ctx: Any) -> bool:
@@ -300,7 +311,73 @@ SMALL_SAMPLE_STANDARD_CLASSES = register(Claim(
     enforced_by=("turbotab.core.models.tuning:standard_for",
                  "turbotab.core.models.tuning:searched_size",
                  "turbotab.core.stages.modeling:tuning_plans"),
+    fallback="tuning.small_sample_no_search",
     author=AUTHOR,
+))
+
+SMALL_SAMPLE_NO_SEARCH = register(Claim(
+    id="tuning.small_sample_no_search",
+    kind="rule",
+    card="Below an effective size of {small_n}, a searched family with no small-sample standard of "
+         "its own, as the random forest, is not tuned either: it is fit once at the standard "
+         "settings it starts its search from at {small_n} and above. A judgment: settings chosen "
+         "on so few units vary from sample to sample, and in the simulation behind the boosting "
+         "families' standard, on a yes/no outcome, the forest's standard settings predicted "
+         "about as well as tuning it.",
+    methods="Below an effective size of {small_n} the tuning plan drew no candidate settings for "
+            "a searched family with no small-sample standard of its own (the random forest), "
+            "which was fit once at its standard settings, a judgment, since settings ranked on so "
+            "few units vary from sample to sample; from {small_n} its settings were searched "
+            "inside every training fold, the standard among the candidates.",
+    goal=("prediction", "inference"),
+    regime=Regime(
+        "a searched family whose tuning declaration names no small-sample standard (the random "
+        "forest), under either purpose and on any outcome, at any effective size, since both "
+        "sentences are conditioned on the threshold they state: the plan draws no search below "
+        "it for any searched family, and notes/SMALL_SAMPLE_STANDARD.md checked the forest's "
+        "standard settings on a yes/no outcome under Predict alone",
+        requires=(f"{HERE}:searched_without_a_small_sample_standard",
+                  f"{HERE}:under_either_purpose"),
+        disjoint_from=("tuning.small_sample_standard", "tuning.small_sample_standard_estimate",
+                       "tuning.small_sample_standard_classes")),
+    decision="set_tuning",
+    options=("automatic", "lighter", "standard", "manual"),
+    verdict="recommended",
+    parts=(
+        Part("value", grade="judgment", basis=Basis(
+            reason="The threshold of tuning.small_sample_standard, read here unchanged: RECIPES "
+                   "§4.6 calls 300 a convention, and nothing locates one for the forest.")),
+        Part("direction", grade="judgment", basis=Basis(
+            reason="RECIPES §4.6 opens: \"Below an effective size of 300, searched families use "
+                   "their standard settings by default\", for the variance of settings chosen on "
+                   "few rows, and its 2026-10-11 ruling, which gave boosted trees and XGBoost a "
+                   "small-sample standard, says \"The forest keeps its standard.\" "
+                   "notes/SMALL_SAMPLE_STANDARD.md §2, item 5: \"The forest needs nothing. Its "
+                   "standard settings are within 0.009 nats of the best arm in every cell; nested "
+                   "tuning gains at most 0.008 under the null and nothing with signal.\" Those "
+                   "cells are a yes/no outcome on ten normal predictors, the forest's nested arm "
+                   "run only up to 300 rows, and their constants were read with every cell in "
+                   "view, so none is held out.")),
+        Part("scope", grade="judgment", basis=Basis(
+            reason="The plan reads neither the purpose nor the task, so the forest draws no search "
+                   "below the threshold under Estimate too, and for a number, several classes or "
+                   "ordered ones, which the study checked for the forest on no outcome but a "
+                   "yes/no one: a judgment carried from its yes/no cells.")),
+    ),
+    # The threshold for the boosting families, read from that claim: one number in one place.
+    params={"small_n": Param(SMALL_SAMPLE_STANDARD.params["small_n"].value,
+                             unit=SMALL_SAMPLE_STANDARD.params["small_n"].unit)},
+    tests=(
+        Fires(f"{TESTS}::test_below_an_effective_size_of_300_a_searched_family_is_fit_once_at_its_"
+              "standard", truth="construction"),
+        Silent(f"{TESTS}::test_from_an_effective_size_of_300_the_search_runs_with_the_library_"
+               "defaults_first", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.models.tuning:standard_for",
+                 "turbotab.core.models.tuning:searched_size",
+                 "turbotab.core.models.tuning:make_plan"),
+    author=AUTHOR,
+    ruled="RECIPES_AND_TUNING.md §4.6, ruled 2026-10-11: the forest keeps its standard",
 ))
 
 
@@ -597,12 +674,13 @@ COLLINEAR_UNDER_PREDICTION = register(Claim(
 ))
 
 CLAIMS = (SMALL_SAMPLE_STANDARD, SMALL_SAMPLE_STANDARD_ESTIMATE, SMALL_SAMPLE_STANDARD_CLASSES,
-          BOOSTED_TREES_SMALL_ROWS, FOREST_SMALL_ROWS, BASELINE_FLOOR, ROWS_SMD_FLOOR,
+          SMALL_SAMPLE_NO_SEARCH, BOOSTED_TREES_SMALL_ROWS, FOREST_SMALL_ROWS, BASELINE_FLOOR, ROWS_SMD_FLOOR,
           ROWS_SMD_FLOOR_PREDICTION, COLLINEAR_UNDER_PREDICTION)
 
 __all__ = ["AUTHOR", "BASELINE_FLOOR", "BOOSTED_TREES_SMALL_ROWS", "CLAIMS",
            "COLLINEAR_UNDER_PREDICTION", "FOREST_SMALL_ROWS", "ROWS_SMD_FLOOR",
            "ROWS_SMD_FLOOR_PREDICTION", "SMALL_SAMPLE_STANDARD", "SMALL_SAMPLE_STANDARD_CLASSES",
-           "SMALL_SAMPLE_STANDARD_ESTIMATE", "classes_or_ordered", "rated_before_any_fit",
-           "rows_times_smd", "standard_from_the_study", "under_either_purpose", "under_inference",
+           "SMALL_SAMPLE_STANDARD_ESTIMATE", "SMALL_SAMPLE_NO_SEARCH", "classes_or_ordered",
+           "rated_before_any_fit", "rows_times_smd", "searched_without_a_small_sample_standard",
+           "standard_from_the_study", "under_either_purpose", "under_inference",
            "under_prediction", "verdict_metric", "yes_no_or_numeric"]

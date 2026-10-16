@@ -238,30 +238,35 @@ def test_for_a_class_or_ordered_outcome_from_300_the_plan_searches_after_the_lib
 
 
 def test_a_sentence_renders_for_every_task_and_purpose_the_standard_acts_on():
-    """Every task whose plan at an effective size of 299 holds other settings than at 300, the
-    tasks the small-sample standard acts on (asked of the plan), is regression, yes/no, several
-    classes and ordered ones, for boosted trees and XGBoost alike. For each, under each purpose,
-    with the family's own tuning declaration, the standard's sentence renders, falling back where
-    its regime fails (lenient), and exactly one of the area's tuning claims holds there (strict),
-    so the rule never acts where no claim covers it (CLAIMS_REGISTRY §2.2). The ids are read off
-    the area's claims, never typed here."""
+    """Every task whose plan at an effective size of 299 differs from its plan at 300, in its
+    settings or in how many candidates it holds, the tasks the rule below the threshold acts on
+    (asked of the plan), is regression, yes/no, several classes and ordered ones, for boosted
+    trees and XGBoost (a small-sample standard, and no search) and for the random forest (no
+    search) alike. For each, under each purpose, with the family's own tuning declaration, the
+    standard's sentence renders, falling back where its regime fails (lenient), and exactly one
+    of the area's tuning claims holds there (strict), so the rule never acts where no claim
+    covers it (CLAIMS_REGISTRY §2.2). The ids are read off the area's claims, never typed
+    here."""
     from turbotab.core import claims
 
     tuning = [c for c in area.CLAIMS if c.decision == "set_tuning"]
     # the standard's own claim: the one no other tuning claim falls back to
     (first,) = [c for c in tuning if not any(t.fallback == c.id for t in tuning)]
     acted = {}
-    for key in ("boosted_trees", "xgboost"):
+    for key in ("boosted_trees", "xgboost", "random_forest"):
         family = get_family(key)
         acted[key] = [t for t in family.tasks if tuning_for(family, t) is not None
-                      and plan(key, t, 299).candidates[0].values
-                      != plan(key, t, 300).candidates[0].values]
+                      and (plan(key, t, 299).candidates[0].values
+                           != plan(key, t, 300).candidates[0].values
+                           or len(plan(key, t, 299).candidates)
+                           != len(plan(key, t, 300).candidates))]
     assert acted == {k: ["regression", "binary", "multiclass", "ordinal"] for k in acted}
     for key, tasks in acted.items():
         for task in tasks:
-            source = tuning_for(get_family(key), task).small_standard_source
+            decl = tuning_for(get_family(key), task)
             for purpose in ("prediction", "inference"):
-                ctx = {"task": task, "purpose": purpose, "small_standard_source": source}
+                ctx = {"task": task, "purpose": purpose, "kind": decl.kind,
+                       "small_standard_source": decl.small_standard_source}
                 assert "effective size of" in claims.card(first.id, ctx, strict=False)
                 assert "effective size of" in claims.methods(first.id, ctx, strict=False)
                 held = []
@@ -642,6 +647,13 @@ def test_every_tuning_plans_seeds_and_candidates_are_the_bases():
      {"small_standard_source": "TurboTab's small-sample standard, chosen by simulation "
                                "(notes/SMALL_SAMPLE_STANDARD.md)"},
      {"small_standard_source": "scikit-learn's defaults"}),
+    (area.searched_without_a_small_sample_standard,
+     {"kind": "search", "small_standard_source": ""},
+     {"kind": "search", "small_standard_source": "TurboTab's small-sample standard, chosen by "
+                                                 "simulation (notes/SMALL_SAMPLE_STANDARD.md)"}),
+    (area.searched_without_a_small_sample_standard,
+     {"kind": "search", "small_standard_source": "scikit-learn's defaults"},
+     {"kind": "none", "small_standard_source": ""}),
     (area.yes_no_or_numeric, {"task": "binary"}, {"task": "multiclass"}),
     (area.classes_or_ordered, {"task": "multiclass"}, {"task": "binary"}),
     (area.classes_or_ordered, {"task": "ordinal"}, {"task": "regression"}),
@@ -668,6 +680,10 @@ def test_a_predicate_reads_an_object_as_it_reads_a_mapping():
     studied = {k: area.standard_from_the_study(tuning_for(get_family(k), "binary"))
                for k in ("boosted_trees", "xgboost", "random_forest")}
     assert studied == {"boosted_trees": True, "xgboost": True, "random_forest": False}
+    unstudied = {k: area.searched_without_a_small_sample_standard(tuning_for(get_family(k),
+                                                                             "binary"))
+                 for k in ("boosted_trees", "xgboost", "random_forest")}
+    assert unstudied == {"boosted_trees": False, "xgboost": False, "random_forest": True}
 
 
 def test_every_area_claim_names_its_predicates_from_this_area_module():
