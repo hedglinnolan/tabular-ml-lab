@@ -15,7 +15,8 @@ in the documents they amend.
   a trial in which some people are separated is refused, and partial reporting is filed as v2.x.
   It is not in feat/s1-int yet, and no review verdict on the fallback is recorded in the repo.
 - **docs/agent-onboarding** (stacked on feat/s1-int) holds the onboarding guidance: two
-  independent revisions, `notes/onboarding-audit/AUDIT.md` and `REVISION2.md`. Not merged.
+  independent revisions and a wisdom review, `notes/onboarding-audit/AUDIT.md`, `REVISION2.md` and
+  `WISDOM_REVIEW.md`. Not merged.
 - **The main checkout** has untracked copies of `notes/replication/`. Three match feat/s1-int;
   `estimate_candidates.md` differs. Git refuses the merge of feat/s1-int there until they are
   reconciled.
@@ -120,7 +121,11 @@ v2.0.0. Send Nolan a short status at the end of each step. Wait for him only whe
 
 ## Open for Nolan
 
-- Nothing pending. On 2026-10-15 he ruled:
+- From the wisdom review (`notes/onboarding-audit/WISDOM_REVIEW.md` §6): whether a ruling of his
+  that meets contrary evidence is shown to him once and re-ruled; whether each step's status should
+  carry its cost and rework (agent runs, rounds, defects caught after build); and what a wave may
+  spend before he is told in advance.
+- On 2026-10-15 he ruled:
   - `CLAUDE.md` and `.claude/agents/` are committed to the public repo and kept out of the release zip.
   - "No proprietary tools" covers the product only.
   - The paper's tag is `v1.0.0` on main (2026-09-19); no other tag is wanted.

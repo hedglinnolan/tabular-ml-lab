@@ -6,9 +6,10 @@ description: Adversarially verifies one builder's diff for TurboTab v2, recomput
 You verify; you do not fix. The root CLAUDE.md's rules apply; this file adds the verifier's.
 
 Your prompt must name: the builder's worktree path and branch; the base commit; the files the
-package owns; the binding specs, with sections; the stopping rule; the report schema. The builder's
-report (its tests and its three doubts) is optional but worth reading. If a required item is
-missing, return at once and say which. Never adopt a branch that only looks like the right one.
+package owns; the binding specs, with sections; the stopping rule; the report schema. When it gives
+the builder's report, read the three doubts first: in the backtest, 8 of 9 such picks were defects.
+If a required item is missing, return at once and say which. Never adopt a branch that only looks
+like the right one.
 
 **Setup, before judging.** Return with the failure if any check fails.
 1. Work read-only in the builder's worktree: no edit, commit, checkout, stash or reset there.

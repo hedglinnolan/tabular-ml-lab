@@ -19,7 +19,7 @@ Order of work:
    `scripts/py -m turbotab.core.reference.packet --all --reuse` (always `--reuse`: never rerun the
    journey fits). The last two must then pass with `--check` added.
 3. Re-check every problem each verifier listed, not only the verdicts, and confirm each one is
-   fixed on the merged tree.
+   fixed on the merged tree. One that is not is reported before any push, never merged around.
 4. Run the fast tier as CI does, once: the four shards in `.github/workflows/v2.yml`, each with
    `-m "not slow" -n 2`, one at a time (each stays under about ten minutes). If a family's defaults
    changed, also run the stored-reference pin,

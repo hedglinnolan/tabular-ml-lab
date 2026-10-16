@@ -3,7 +3,9 @@
 One Claude session runs TurboTab v2's build for Nolan Hedglin, the product owner, by writing
 workflows whose agents build, verify, integrate and audit. The root `CLAUDE.md` reaches you and
 every agent; this file is yours alone. `HANDOFF.md` holds the current state and the order of work.
-Nolan's rulings are quoted as he ruled them, with their dates, and are not re-argued.
+Nolan's rulings are quoted as he ruled them, with their dates, and are not re-argued; when evidence
+shows one wrong, he is shown the evidence once and re-rules (he has said his statements are guidance,
+not infallible orders, 2026-10-02).
 
 ## 0 · Start of a session
 1. Read `HANDOFF.md`. Check it against git before you act on it: branch heads and ancestry for
@@ -64,7 +66,8 @@ Nolan's rulings are quoted as he ruled them, with their dates, and are not re-ar
 - **Autonomy** (2026-09-27): when a workflow finishes, review its work and launch the next step
   without waiting, except where Nolan set a pause point, the next step is a heavy run, it needs his
   ruling, or usage is near its limit. At the end of each numbered step in `HANDOFF.md`, send him a
-  short status. His drive findings jump the queue.
+  short status, which also says plainly what went wrong on your watch (an incident, a wasted run, a
+  number he saw that moved) and what changed because of it. His drive findings jump the queue.
 
 ## 3 · Who decides what
 - **Nolan rules on** product, pedagogy, strategy and anything outward-facing: who TurboTab serves,
@@ -111,8 +114,9 @@ Nolan's rulings are quoted as he ruled them, with their dates, and are not re-ar
    exists. Eight verifiers once reviewed an empty diff.
 5. **Build, then verify.** Every package gets a verifier; engine code gets an adversarial Opus one;
    docs-only work gets one reviewer. Any blocker, major or minor sends the package to a repair
-   round, and "approve, but" with a silent wrong number is a blocker. The integrator re-checks
-   every listed problem.
+   round, and "approve, but" with a silent wrong number is a blocker. A problem the builder disputes
+   with evidence is ruled by you or a fresh verifier; a dispute closes nothing by itself. The
+   integrator re-checks every listed problem.
 6. **Integrate** on `feat/<wave>-int`: regenerate, run the fast tier once, push `ci/<wave>-int`,
    and read CI yourself through the public check-runs API (a re-verifier once fabricated a CI
    result). Ask each builder for its three most doubtful claims; in the backtest, 8 of 9 such
@@ -142,3 +146,6 @@ Nolan's rulings are quoted as he ruled them, with their dates, and are not re-ar
   has not.
 - **Rulings start as proposals.** A ruling is not done until its code and its test exist; the
   claims registry makes this mechanical.
+- **An incident becomes a memory first.** It becomes a rule in the root `CLAUDE.md` when it repeats
+  or when the stakes are Nolan's (his machine, his identity, a release, a number a researcher
+  trusts); every line there is paid for by every agent on every turn.

@@ -12,7 +12,8 @@ turn, so it holds only the rules any agent can break.
    lines list what your prompt must name. If any is missing, do not invent it (a branch name, a
    worktree, a scope): return at once and say what is missing.
 3. The task's premise (an INBOX line, a fix list, a spec's account of today's code) is a
-   hypothesis. Check it in the code first, and report where it was wrong.
+   hypothesis. Check it in the code first. Where it is wrong, the fix follows the code, not the
+   diagnosis; a task whose premise fails may not need doing, so say so before you build.
 4. Do the task and stop at the stopping rule. A feature or a neighboring defect goes in your
    report, not into the change.
 
@@ -46,10 +47,9 @@ turn, so it holds only the rules any agent can break.
   value the code uses, never retyped beside the constant that holds it.
 
 ## Environment and tests
-- Python is `scripts/py`: the main checkout's `venv-next`, pinned to
-  `turbotab/server/constraints.txt` as CI is (a worktree has no venv; `venv/` is Classic's; `.venv`
-  lacks pytest). Run from your worktree's root so `turbotab` imports from your tree, and prefix
-  every command with `OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2`.
+- Python is `scripts/py`: the main checkout's `venv-next`, pinned as CI is (a worktree has no venv;
+  `venv/` is Classic's; `.venv` lacks pytest). Run from your worktree's root so `turbotab` imports
+  from your tree, and prefix every command with `OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2`.
 - A targeted run: `OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2 scripts/py -m pytest <paths> -m "not slow" -q -n 2 -p no:cacheprovider --timeout=600 2>&1 | tail -15`
 - A test you name on purpose: drop `-m "not slow"` and check that the summary counts it, not as
   deselected. Find the tests that reach your code with `git grep -l <name> -- 'turbotab/*test_*.py'`;
@@ -57,9 +57,8 @@ turn, so it holds only the rules any agent can break.
 - For frontend work in a worktree, symlink the main checkout's `turbotab/frontend/node_modules`.
   Leave nothing behind: no server, background process, scratch worktree or symlink you made.
 - Read what your prompt names, by section or line range; grep first, keep output short. For what
-  the code does, the code is the truth. The methods documents in `docs/turbotab-next/`
-  (MODELING_SEQUENCE, RECIPES_AND_TUNING, MODEL_FAMILY_CONTRACT, SURFACING_POLICY) give test paths
-  relative to `turbotab/core/`.
+  the code does, the code is the truth. The methods documents in `docs/turbotab-next/` give test
+  paths relative to `turbotab/core/`.
 
 ## Commits and the report
 - A commit message is one or two plain sentences saying what is now true, in the voice of
@@ -69,4 +68,5 @@ turn, so it holds only the rules any agent can break.
   American English. If it prints GATES CANNOT RUN, set `TURBOTAB_PYTHON` to the main checkout's
   `venv-next/bin/python`.
 - Return your report as data in your final response, in the shape your prompt's schema or your
-  role's file gives, with your three most doubtful claims.
+  role's file gives, with your three most doubtful claims and what you did not run or could not
+  check. A short true report beats a green one; a result you did not read is not reported.

@@ -13,7 +13,9 @@ Order of work:
 1. **Base.** `git merge-base --is-ancestor <base> HEAD`. If it fails (the harness creates
    worktrees from `main`), run `git checkout -B <your branch> <base>`.
 2. **Premise.** Reproduce the defect, or check the claim, on the base code. Note where the task's
-   diagnosis is wrong (a threshold, a cause, a count); that goes in your report.
+   diagnosis is wrong (a threshold, a cause, a count); that goes in your report. If there is no
+   defect, or the right fix needs a choice the prompt did not make (which rule to relax, what a
+   sentence should say), return with what you found and the options rather than choose.
 3. **Tests first.** Write each new test and watch it fail on the base, with its truth from
    construction, an independent library or a derivation (CLAUDE.md, the trust bar). A guard gets
    one test where it fires and one where it stays silent. Find the existing tests that pin the
