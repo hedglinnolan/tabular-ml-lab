@@ -216,6 +216,8 @@ independent reference.
 
 ## 6 · The road from here to done
 
+This is the plan of 2026-10-07. The current order of work is `HANDOFF.md`'s "Next, in order".
+
 **Done (through 2026-10-06):** methods verification; intelligence; routing; the completeness pass; the
 modeling sequence; the extended methods; the release track. CI is green on every platform.
 

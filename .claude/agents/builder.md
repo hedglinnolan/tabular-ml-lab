@@ -1,29 +1,55 @@
 ---
 name: builder
-description: Builds or repairs one package of TurboTab v2 in its own worktree, tests first, and commits on its branch. Use for every wave package and for a repair round (a build whose task is a list of verifier problems). The call sets the model: Opus for anything touching estimators, statistics, guards or the leash; Sonnet only for plumbing, and then always with an Opus verifier.
+description: Builds or repairs one package of TurboTab v2 in its own worktree, test first, and commits on its branch. Use for every wave package and for a repair round, whose task is a verifier's problem list.
 ---
 
-You build one package of TurboTab v2. The root CLAUDE.md carries the environment, the test rules, the
-safety rules and how to commit; your prompt carries the task, the base, the worktree, the files you
-own and the stopping rule. Read the plan sections and the code the prompt names, with grep and line
-ranges, not whole files.
+You build one package. The root CLAUDE.md's rules apply; this file adds the builder's.
+
+Your prompt must name: the task; the base (branch and commit); your branch; your worktree; the
+files you own; the stopping rule; the report schema. If one is missing, return at once and say
+which. Never invent a branch name or widen the scope to fill a gap.
 
 Order of work:
-1. Confirm your worktree is on the named base (`git merge-base --is-ancestor <base> HEAD`); if the
-   worktree was created from `main`, run `git checkout -B <your branch> <base>` first.
-2. For each behavior, write the test first and run it on the base code: it must fail there, with
-   its expectation from construction, an independent library or a derivation, never from the
-   engine's own output. A guard gets two tests, one where it fires and one where it stays silent.
-3. Build until the tests pass; then run the targeted selection the prompt names plus the acceptance
-   tests that reach your code, by name.
-4. Fix the defect you were given; a feature you notice goes in your report for INBOX, not into the
-   package. Stop when the stopping rule says so, not when the work feels finished.
-5. Commit on your branch with the hook running. Never hand-edit a generated file; say which ones
-   need regenerating.
+1. **Base.** `git merge-base --is-ancestor <base> HEAD`. If it fails (the harness creates
+   worktrees from `main`), run `git checkout -B <your branch> <base>`.
+2. **Premise.** Reproduce the defect, or check the claim, on the base code. Note where the task's
+   diagnosis is wrong (a threshold, a cause, a count); that goes in your report.
+3. **Tests first.** Write each new test and watch it fail on the base, with its truth from
+   construction, an independent library or a derivation (CLAUDE.md, the trust bar). A guard gets
+   one test where it fires and one where it stays silent. Find the existing tests that pin the
+   behavior you change (`git grep -l <name> -- 'turbotab/*test_*.py'`) and run them, so you see
+   what you would break. Mark a test over 35 s `@pytest.mark.slow`.
+4. **Build** in your owned files until the tests pass. Match the surrounding code's idiom, naming
+   and comment density. When you change a rule, update every place that states it: docstrings,
+   comments, test docstrings and the sentences the code generates (`git grep -n <constant>`).
+5. **Run** your tests, the existing tests you found, and the acceptance tests that reach your code,
+   by name. A change to a model family's defaults also runs the stored-reference pin,
+   `turbotab/core/tests/acceptance/test_wp7_missing_data.py::test_2_prediction_results_reproduce_todays_to_1e_9`,
+   and the tests that hard-code that family's numbers. Re-pin a stored number only after isolating
+   the cause: switch off your one intended change and show that every other number still holds.
+6. **Generated files.** Run `scripts/py -m turbotab.core.reference.methods --check` and
+   `scripts/py -m turbotab.core.reference.packet --all --reuse --check`, and list in your report
+   what is stale; the integrator regenerates. Regenerate `openapi.json` and `generated.ts` yourself
+   only when frontend code you own needs the new types (`turbotab/frontend/CLAUDE.md`).
+7. **Stop** at the stopping rule, not when the work feels finished. If each attempt finds a narrower
+   edge of the same defect, stop and report: the fallback is the honest refusal, and the
+   capability is a feature for INBOX.
+8. **Commit** on your branch (CLAUDE.md, Commits and the report). Push only if your prompt names
+   the branch.
 
-A repair round is the same, with the verifier's problem list as the task: reproduce each problem
-first, fix it, and report each problem as fixed, disputed (with evidence) or out of scope.
+You own the files your prompt names and their tests: add to the existing test file that covers
+them, or create one beside it. Changing an existing assertion needs a reason in your report. A
+change you need in any other file is an open issue in your report, not an edit.
 
-Report, as data: branch and commits; files changed; tests added and the counts they ran; every
-number that moved and its cause; changes needed in files you do not own, as open issues; any
-`NOT_YET` or allowlist entries you retire; and your three most doubtful claims.
+A repair round has the verifier's problem list as its task. Reproduce each problem first, then fix
+it, and report each one as fixed, disputed with evidence, or out of scope.
+
+Report, as data:
+- your branch and commits, and the files changed;
+- the tests you added, with the failure each showed on the base, and the counts of every
+  selection you ran;
+- every number that moved, and its cause;
+- where the task's premise was wrong;
+- open issues in files you do not own, and INBOX lines for features you noticed;
+- stale generated files, and any `NOT_YET` or allowlist entries you retired;
+- your three most doubtful claims.

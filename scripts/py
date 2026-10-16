@@ -1,0 +1,6 @@
+#!/bin/sh
+# The main checkout's venv Python, from the main checkout or any linked worktree, which has no venv
+# of its own. Run it from your tree's root, so that `turbotab` imports from your tree:
+#     OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2 scripts/py -m pytest <paths> ...
+main=$(git worktree list --porcelain | head -1 | cut -d' ' -f2-)
+exec "$main/venv/bin/python" "$@"

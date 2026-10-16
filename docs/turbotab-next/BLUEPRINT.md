@@ -222,7 +222,7 @@ Launch: `venv/bin/python -m turbotab.server --port 8787 [--open] [--mode local|s
 - **Tier B, light:** one TestClient test per route family; component tests only for real logic.
 - **Tier C:** one Playwright journey per milestone, with screenshots for Nolan's review.
 - **Don't:** run the legacy suites (`turbotab/test_*.py`, `tests/`) — they take ~2 h and pin every
-  core on a machine beside Nolan's bed; write a test per UI-polish tweak; add prose rules.
+  core of the development machine; write a test per UI-polish tweak; add prose rules.
 - Fast checks: a targeted `pytest` selection with `-m "not slow"` (CI's fast tier,
   `.github/workflows/v2.yml`, shards the rest) and, in `turbotab/frontend`, `npm run check`
   (tsc + eslint + vitest, under a minute). The whole core and server suite runs on CI's full tier

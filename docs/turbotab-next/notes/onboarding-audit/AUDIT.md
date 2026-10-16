@@ -1,5 +1,8 @@
 # Onboarding audit: the base instructions an agent gets when it joins
 
+A second, independent revision followed (`REVISION2.md`). Where the two differ about the files as
+they now stand, `REVISION2.md` is current; this audit's findings and evidence stand as recorded.
+
 An independent audit (Fable 5.1, 2026-10-15) of what a Claude agent is told when it first joins
 TurboTab, as the orchestrator or as an executor, and the revision that followed on
 `docs/agent-onboarding`. Nolan asked for appropriate guidance with clarity, consistency and
@@ -99,7 +102,7 @@ symlink, the worktree-from-main fact, the report of three doubtful claims.
   style 19, the interpreter path 17, the hook and American spelling 17, "never bypass" 16, "never
   push" 14, the pkill rule 14, `-n 2` targeted tests 14, "Classic must not change" 13, the
   independent-reference rule 11, "do not run the full suite" 11, "tests first" 8, the node_modules
-  symlink 8, the worktree-from-main fix 8, "no estimate before the lock" 8, the bedroom 8, the pip
+  symlink 8, the worktree-from-main fix 8, "no estimate before the lock" 8, the heavy-run rule 8, the pip
   rule 7, `--reuse` 6, context discipline 6. About 13K tokens of preamble were written by hand, and
   most of each one restates the previous one with drift.
 - **N2 · HANDOFF.md** was 434 lines and 30 KB; the current state was about 30 lines.
@@ -156,7 +159,7 @@ symlink, the worktree-from-main fact, the report of three doubtful claims.
   (`INBOX.md:153` had noted the gap). Added.
 - **S4** `plans/WAVE_C6A_PLAN.md:375` tells builders to pip install (C5). Left for the
   orchestrator: plans are the orchestrator's record.
-- **S5** Memory: `heavy-runs-wake-the-bedroom.md` cites `AGENT_ONBOARD.md §06` (archived);
+- **S5** Memory: the heavy-runs memory cites `AGENT_ONBOARD.md §06` (archived);
   `turbotab-rebuild-decisions.md` says the legacy `api.py` "keep[s] running" (retired 2026-10-05)
   and "all 367 noticings ship" (re-ruled 2026-10-09); `ajcn-paper-sprint-state.md` is from August
   and its `v1.0-paper` tag does not exist; the `MEMORY.md` line for the progress log describes an
@@ -168,7 +171,7 @@ symlink, the worktree-from-main fact, the report of three doubtful claims.
 only what every agent can break: what the project is (two sentences); where truth lives (so an
 agent reads the ruling, not a paraphrase); the environment (C1, G1, G2, G6); the test rules (C2, C3,
 G5, G7); the generated files and their commands (6 preambles); the machine and the person (the
-bedroom, pkill, the email, no proprietary tools); branches and commits (L1, C4, C7, the hook); and
+heavy runs, pkill, the email, no proprietary tools); branches and commits (L1, C4, C7, the hook); and
 the report shape (G4). Nothing in it is a ruling about the product; those are pointed at.
 
 **`.claude/agents/{builder,verifier,integrator,auditor}.md`.** The workflow API's `agent()` takes

@@ -1,91 +1,73 @@
-# TurboTab
+# TurboTab: rules for every agent
 
-Tabular ML Lab is a research workbench for nutrition researchers: upload a table, make every
-modeling decision with its consequence shown, and leave with a defensible result and a methods
-section. TurboTab v2, in `turbotab/`, is the rebuild; Classic, the Streamlit app, is `ml/`,
-`pages/`, `utils/` and `app.py`. Many Claude agents build v2 under one orchestrating Claude for the
-product owner, Nolan Hedglin, who judges only what is on screen.
+Claude agents build TurboTab v2 (`turbotab/`) under one orchestrating session. TurboTab teaches a
+researcher to own each modeling decision; it is not AutoML. This file reaches every agent on every
+turn, so it holds only the rules any agent can break.
 
-## Where truth lives
+## First
+1. The orchestrating session, the one the owner talks to, reads `docs/turbotab-next/ORCHESTRATOR.md`;
+   its exceptions to the rules below (landing in the main checkout, pushing `turbotab-next`) win.
+2. Every other agent reads its role's file, `.claude/agents/<role>.md` (builder, verifier,
+   integrator or auditor; with no role named, your prompt and this file are your rules). Its first
+   lines list what your prompt must name. If any is missing, do not invent it (a branch name, a
+   worktree, a scope): return at once and say what is missing.
+3. The task's premise (an INBOX line, a fix list, a spec's account of today's code) is a
+   hypothesis. Check it in the code first, and report where it was wrong.
+4. Do the task and stop at the stopping rule. A feature or a neighboring defect goes in your
+   report, not into the change.
 
-- `docs/turbotab-next/BLUEPRINT.md` is the contract; §0 holds rulings that are not re-litigated.
-- `docs/turbotab-next/V2_DEFINITION_OF_DONE.md` is the finish line. New ideas go to `INBOX.md`
-  there, one line each, never into the work in flight.
-- `docs/turbotab-next/HANDOFF.md` is the current state and the ordered next steps.
-- Presentation: `docs/turbotab-next/calm/FOUNDATION.md` (it amends DESIGN_LANGUAGE §02–§04 and
-  BLUEPRINT §11). Methods: `MODELING_SEQUENCE.md`, `RECIPES_AND_TUNING.md`,
-  `MODEL_FAMILY_CONTRACT.md`, `SURFACING_POLICY.md`. Plans: `docs/turbotab-next/plans/`.
-- The orchestrator's own guide is `docs/turbotab-next/ORCHESTRATOR.md`.
-- Your prompt names your task, branch, worktree, owned files, stopping rule and report shape.
+## Never
+- Install or upgrade anything in the shared environment (`pip`, `npm install`, a browser, an R
+  package outside a scratch library). If something is missing, report it.
+- Start a heavy run: a command over about ten minutes, more than two workers, a sweep, T1, T12, a
+  journey recapture, or a whole suite (core, server, acceptance, the legacy `tests/` and
+  `turbotab/test_*.py`; the integrator's fast-tier shards excepted). Heavy runs are scheduled
+  with the owner, so report the need instead.
+- `pkill`, `killall` or any pattern kill. Kill only the PIDs you started (`$!`).
+- Put the owner's email address, or any personal identifier, in a request to any service: send no
+  email parameter, or `research@example.org`.
+- Edit, commit, check out, stash or reset outside the worktree and branch your prompt names,
+  including the main checkout and every other agent's worktree. A detached scratch worktree you
+  add under your scratchpad, and remove, is yours.
+- Push, or create a tag, unless your prompt names the exact branch. A `v*` tag publishes a release.
+- `git commit --no-verify`.
+- Hand-edit a generated file: `turbotab/server/openapi.json`, `turbotab/frontend/src/api/generated.ts`,
+  `docs/turbotab-next/reference/METHODS_REFERENCE.md`, `docs/turbotab-next/review-packets/*.md`.
+- Edit Classic's app code (`ml/`, `pages/`, `utils/`, `app.py`); Classic's `tests/` may change.
+- Add a proprietary tool or service to the product.
 
-## Environment
+## The trust bar
+- Test first, from known truth: a new behavior's test fails on the base commit, and its expected
+  value comes from construction, an independent library (R, statsmodels, scikit-learn, numpy) or
+  a derivation, never from the engine's own output or constant.
+- Test a guard both ways: it fires where it should and stays silent where it should.
+- A number is right or it is refused. A caveat beside a number the fit cannot certify is no fix.
+- A sentence the user reads says only what the code does, generated from the value the code uses,
+  never written by hand beside it.
 
-- Python is the main checkout's `venv/bin/python`: `/Users/nhedglin/tabular-ml-lab/venv/bin/python`
-  (3.13, with pytest, xdist and pytest-timeout). A linked worktree has no venv of its own, and
-  `.venv` has no pytest. Run from your worktree's root so `turbotab` imports from your tree.
-- Set `OMP_NUM_THREADS=2` and `TURBOTAB_WORKERS=2` for every run.
-- Never `pip install`, `npm install` or upgrade anything: other agents are testing in the same
-  environment. A worktree lacks `turbotab/frontend/node_modules`; symlink the main checkout's for
-  the duration and remove the link before you finish. If a package is missing, stop and report it.
-- The venv is not exactly on `turbotab/server/constraints.txt` (CI is); if a pinned number passes
-  here and fails on CI, suspect versions first.
-- Rscript is available for independent references. Install R packages only into a scratch library.
+## Environment and tests
+- Python is `scripts/py`, the main checkout's venv, from any worktree (a worktree has no venv;
+  `.venv` lacks pytest). Run from your worktree's root so `turbotab` imports from your tree, and
+  prefix every command with `OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2`.
+- A targeted run: `OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2 scripts/py -m pytest <paths> -m "not slow" -q -n 2 -p no:cacheprovider --timeout=600 2>&1 | tail -15`
+- A test you name on purpose: drop `-m "not slow"` and check that the summary counts it, not as
+  deselected. Find the tests that reach your code with `git grep -l <name> -- 'turbotab/*test_*.py'`;
+  run an acceptance or legacy file only by name, and only when it reaches your code.
+- For frontend work in a worktree, symlink the main checkout's `turbotab/frontend/node_modules`.
+  Leave nothing behind: no server, background process, scratch worktree or symlink you made.
+- The venv is slightly off `turbotab/server/constraints.txt` and CI is on it: if a pinned number
+  passes here and fails on CI, suspect the versions first.
+- Read what your prompt names, by section or line range; grep first, keep output short. For what
+  the code does, the code is the truth. The methods documents in `docs/turbotab-next/`
+  (MODELING_SEQUENCE, RECIPES_AND_TUNING, MODEL_FAMILY_CONTRACT, SURFACING_POLICY) give test paths
+  relative to `turbotab/core/`.
 
-## Tests
-
-- Targeted runs only:
-  `OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2 /Users/nhedglin/tabular-ml-lab/venv/bin/python -m pytest <paths> -m "not slow" -q -n 2 -p no:cacheprovider --timeout=900 2>&1 | tail -15`
-- Keep any one local run under about ten minutes. Never run the whole core and server suite, the
-  whole acceptance suite (`turbotab/core/tests/acceptance`) or the legacy suites (`tests/`,
-  `turbotab/test_*.py`) locally: CI's full tier (`.github/workflows/v2-full.yml`) runs them, and the
-  fast tier (`v2.yml`) is `-m "not slow"`. Mark a test over 35 s `slow`. Run acceptance tests by
-  name, choosing those that reach the code you touched; a change to a family's defaults also runs
-  every reproducibility pin.
-- A new behavior starts with a test that fails on the base commit, with its truth from
-  construction, an independent library (R, statsmodels, scikit-learn, numpy) or a derivation, never
-  from the engine's own output. A guard is tested both ways: it fires where it should and stays
-  silent where it should. A reported number is right or refused.
-- Frontend: `npm run check` in `turbotab/frontend`, output through `tail`.
-
-## Generated files
-
-Never hand-edit these; regenerate them, and the integrator regenerates them after every merge:
-`turbotab/server/openapi.json` and `turbotab/frontend/src/api/generated.ts`
-(`/Users/nhedglin/tabular-ml-lab/venv/bin/python -m turbotab.server.openapi --write`, then `npm run gen:api`);
-`docs/turbotab-next/reference/METHODS_REFERENCE.md`
-(`/Users/nhedglin/tabular-ml-lab/venv/bin/python -m turbotab.core.reference.methods --check` says when it is stale);
-`docs/turbotab-next/review-packets/*.md`
-(`/Users/nhedglin/tabular-ml-lab/venv/bin/python -m turbotab.core.reference.packet --all --reuse --check`; always `--reuse`, never rerun the journey fits).
-
-## The machine and the person
-
-- The machine is beside Nolan's bed. No heavy run (T1, T12, a journey recapture, anything over a
-  few minutes of full CPU) without the orchestrator scheduling it with him.
-- Never `pkill`, `killall` or any pattern kill. Record the PIDs you start (`$!`), kill only those,
-  and leave no server or background process running when you finish.
-- Nolan's email address, which you may see in context, identifies him only. Never put it, or any
-  personal identifier, in a request to any service: use no email parameter, or a placeholder such
-  as `research@example.org`.
-- No proprietary tools or services in the product.
-
-## Branches and commits
-
-- Work only in the worktree and on the branch your prompt names. Never edit or commit in the main
-  checkout, never switch to a branch another worktree holds, and never push unless your prompt
-  says which branch (`ci/<name>` branches run CI on GitHub's runners; `turbotab-next` and `main`
-  are the orchestrator's).
-- Classic's app code is not edited; Classic's `tests/` and the README may be.
-- Edit only the files your package owns, plus new test files. A change you need in another file
-  goes in your report as an open issue, not into the file.
-- Commit with `TURBOTAB_PYTHON=/Users/nhedglin/tabular-ml-lab/venv/bin/python` so the pre-commit
-  hook can run; never `--no-verify`. The hook's gates: every `.py` parses, and `.py` and `.md`
-  prose is American English (`tests/test_american_spelling.py`).
+## Commits and the report
 - A commit message is one or two plain sentences saying what is now true, in the voice of
-  `git log`, then a blank line, then the two attribution lines your prompt gives.
-- Match the surrounding code's idiom, naming and comment density.
-
-## Report
-
-Return data, not a message: branch and commits; files changed; the tests you ran and their counts;
-every number that moved and its cause; the changes you needed in files you do not own; and your
-three most doubtful claims.
+  `git log`, then a blank line and the attribution lines from your harness's system reminder
+  (only if it gives none, those your prompt supplies).
+- The pre-commit hook checks that every `.py` file parses and that `.py` and `.md` prose is
+  American English. If it prints GATES CANNOT RUN, set `TURBOTAB_PYTHON` to the main checkout's
+  `venv/bin/python`.
+- Return your report as data in your final response, in the shape your prompt's schema or your
+  role's file gives, with your three most doubtful claims.

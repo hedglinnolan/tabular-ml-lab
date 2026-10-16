@@ -54,7 +54,7 @@ e2e/                  one Playwright journey per milestone (mock or real server)
   Small UI state stays in components. No global mutable singletons.
 - **Network access only through `src/api/client.ts`** (eslint enforces `fetch`).
 - **The contract is generated.** After any server model change run, from the repo root,
-  `/Users/nhedglin/tabular-ml-lab/venv/bin/python -m turbotab.server.openapi --write`, then
+  `scripts/py -m turbotab.server.openapi --write`, then
   `npm run gen:api`. `generated.test.ts` fails when generated.ts drifts from openapi.json; a Python
   test fails when openapi.json drifts from the app. Import types from `schema.ts`, never from
   generated.ts.
@@ -87,7 +87,8 @@ npm run build      # typecheck + bundle to dist/ (served by turbotab/server)
 npm run gen:api    # openapi-typescript ../../turbotab/server/openapi.json -> src/api/generated.ts
 ```
 
-First e2e run on a machine: `npx playwright install chromium`. Screenshots are written to
+Playwright's browser is installed on this machine; if it is missing, stop and report it rather
+than installing it. Screenshots are written to
 `docs/turbotab-next/m<N>/screens/<prefix>-*.png`; keep each under 300 KB, and restore any the mock
 run rewrote before committing. The M1 journey against the real server: start it with
 `TURBOTAB_WORKERS=2 TURBOTAB_HOME=$(mktemp -d)` on port 8812, then

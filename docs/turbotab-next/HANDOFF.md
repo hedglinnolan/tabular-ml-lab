@@ -1,21 +1,41 @@
 # Handoff
 
-The current state only. When a new state replaces this one, the replaced body is appended, dated and
-verbatim, to `HANDOFF_HISTORY.md`, which holds every earlier state and the rulings recorded in them.
-Rules live in the root `CLAUDE.md` and in `ORCHESTRATOR.md`; rulings live in the documents they amend.
+The current state only. When a new state replaces this one, the replaced body goes, verbatim and
+under a dated heading, to the top of `HANDOFF_HISTORY.md`, which holds every earlier state and the
+rulings recorded in them. Rules live in the root `CLAUDE.md` and in `ORCHESTRATOR.md`; rulings live
+in the documents they amend.
 
-## State on 2026-10-15
+## State on 2026-10-15, checked against git
 
-turbotab-next = the stage-1 merge (feat/s1-int).
+- **turbotab-next** is e6e58809 (the claims backtest), not yet pushed; origin has 914a054a.
+- **feat/s1-int** (54fe6a95, worktree `.worktrees/s1-int`) holds three of stage 1's four fix
+  branches (fix/s1-prediction, fix/s1-routing, fix/s1-data), the claims registry spec, the
+  replication data checks and this order of work. It is not on turbotab-next yet.
+- **fix/s1-inference** (6c08230e) holds B-281's fallback round (1234a7c5, eafb47c7, 6c08230e):
+  a trial in which some people are separated is refused, and partial reporting is filed as v2.x.
+  It is not in feat/s1-int yet, and no review verdict on the fallback is recorded in the repo.
+- **docs/agent-onboarding** (stacked on feat/s1-int) holds the onboarding guidance: two
+  independent revisions, `notes/onboarding-audit/AUDIT.md` and `REVISION2.md`. Not merged.
+- **The main checkout** has untracked copies of `notes/replication/`. Three match feat/s1-int;
+  `estimate_candidates.md` differs. Git refuses the merge of feat/s1-int there until they are
+  reconciled.
 
-## Landed since 2026-10-11
+## Done since 2026-10-11
 
-- **Stratification optimism in Lean 4** (914a054a): the exact decomposition and the stratification sandwich are proved, and the general law is stated — notes/lean-strat/.
-- **The claims backtest** (e6e58809): about 970 decision-setting claims inventoried, a seeded sample of 117 refereed blind and audited against the code. 14.5% (5.7–23.3%) carry an S1 defect, and 44% none. The plan, the sealed key, every verdict and the fix list are in notes/claims-backtest/; the lessons are in its README.
-- **Stage 1, the 15 S1 defects** (this merge of fix/s1-prediction, fix/s1-inference, fix/s1-routing and fix/s1-data). Each fix starts with a test that fails on the old code, and each was re-reviewed by a fresh agent until approved: three rounds of fix-ups, four for B-281. The reviewers' follow-ups are in INBOX under "From the claims backtest".
-  - The known-red stability-selection bug is fixed (S0): exact copies and full codings are found before the lasso path, a coding's spare level is left off only where the coding ties, and the result no longer depends on level order in the reviewer's known-truth test.
-- **Replication data checks** (notes/replication/): Bang 2009 and Menke 2015 can be replicated approximately from public data. Yang 2014 cannot (its mortality-file version is gone), so Nolan chose to replace it with a continuous-NHANES Estimate paper; the candidates are in estimate_candidates.md.
-- **The onboarding audit** (branch docs/agent-onboarding): a root `CLAUDE.md` for every agent, four agent definitions in `.claude/agents/`, `ORCHESTRATOR.md`, this file split from `HANDOFF_HISTORY.md`, and the audit in notes/onboarding-audit/.
+- **Stratification optimism in Lean 4** (914a054a, pushed): the exact decomposition and the
+  stratification sandwich are proved, and the general law is stated (notes/lean-strat/).
+- **The claims backtest** (e6e58809): about 970 decision-setting claims inventoried, and a seeded
+  sample of 117 refereed blind and audited against the code. 14.5% (5.7–23.3%) carry an S1 defect,
+  and 44% none. The plan, the sealed key, every verdict and the fix list are in
+  notes/claims-backtest/; the lessons are in its README.
+- **Stage 1, the 15 S1 defects,** each fixed test first against the old code and re-reviewed by a
+  fresh agent: three rounds of fix-ups, six for B-281. The reviewers' follow-ups are in INBOX under
+  "From the claims backtest". The stability-selection bug that was known red is fixed (S0). Waiting
+  to land: step 1.
+- **Replication data checks** (notes/replication/): Bang 2009 and Menke 2015 can be replicated
+  approximately from public data. Yang 2014 cannot (its mortality-file version is gone), so Nolan
+  replaced it with Sullivan 2021.
+- **The onboarding guidance:** see step 2.
 
 ## Known red
 
@@ -23,22 +43,61 @@ turbotab-next = the stage-1 merge (feat/s1-int).
 
 ## Next, in order
 
-Re-ordered 2026-10-15 at Nolan's direction: the product walkable sooner.
+The goal, re-ordered 2026-10-15 at Nolan's direction so that the product is walkable sooner: Nolan
+walks his own project, NHANES fasting glucose under Predict, end to end in the app (step 4); the
+Estimate lane passes its first real replication (step 5); then W2–W4 finish the lanes toward
+v2.0.0. Send Nolan a short status at the end of each step. Wait for him only where a step says
+**[Nolan]**.
 
-1. **Land stage 1:** B-281's fallback round, then merge fix/s1-inference and push turbotab-next.
-2. **The onboarding audit:** an independent Fable audit and revision of the base instructions agents get when they join the project, as orchestrator or executor. Done on docs/agent-onboarding; merge it, then apply notes/onboarding-audit's memory recommendations.
-3. **The claims registry, R0, in one wave** (plans/CLAIMS_REGISTRY.md; Nolan ruled its three questions on 2026-10-15): the registry, its meta-tests and the 15 S1 claims.
-4. **W1 part 2** (WALKABLE_PLAN §5; the package list is under Leftovers below), then my walkthrough of NHANES glucose under Predict, with a friction log, before Nolan sees it. Every claim that journey puts on screen is audited and registered as R1's first batch.
-5. **The Sullivan 2021 replication** (Am J Prev Med 61:563, chosen by Nolan on 2026-10-15), as the first end-to-end check of the Estimate lane. It reports the decisions the paper stated, the ones it left unstated, and how far each unstated option moves the published number.
-6. **W2–W4,** each registering the claims it adds. The remaining S2/S3 fixes go in the order the walkthrough and the replication surface them. At each wave's end, the builder names its three most doubtful claims.
-7. **Heavy runs, scheduled with Nolan:** the T1 rerun at 600 datasets (the small-sample standard is now in code, A-001); the reference-journey recapture, then the materiality calibration on it.
-8. **The Lean pilot** on about a dozen invariance and exactness claims; **the stage-3 audit** with decoy set v2 (sealed outside the repo, never shown to an agent with its key, and fork agents are never referees); the Bang 2009 and Menke 2015 replications; **data provenance in ingest** (each file's source URL and release date).
-9. Then the research swarm, once its gates are passed. It writes to a corpus apart from the registry (ruled 2026-10-15).
+1. **Land stage 1.** Why: R0 registers the 15 S1 claims and needs their tests on the base.
+   - Confirm that a fresh reviewer approved B-281's fallback round; the verdict is in the stage-1
+     workflow's journal, not in the repo. Give it one review if none ran. A defect in the refusal
+     itself gets fixed; a new edge of partial reporting goes to INBOX as v2.x.
+   - The integrator merges fix/s1-inference into feat/s1-int, regenerates, runs the fast tier,
+     pushes ci/s1-int, and you read CI.
+   - Reconcile the main checkout's untracked notes/replication/, then merge feat/s1-int into
+     turbotab-next and push it.
+2. **Land the onboarding guidance** (docs/agent-onboarding). Why: every later wave's agents start
+   from it.
+   - **[Nolan]** Before the merge, he answers whether `CLAUDE.md` and `.claude/agents/` may be
+     public (Open for Nolan).
+   - After the merge, start a fresh session if the agent registry does not list the four roles. In
+     one agent call with `agentType: 'builder'`, worktree isolation and no `model`, check three
+     things: it quotes builder.md's first step; it sees one copy of CLAUDE.md, not two; and its
+     system reminder gives it attribution lines. If it gets none, keep PREAMBLE_TEMPLATE's
+     ATTRIBUTION field.
+   - Apply the memory recommendations (the onboarding bundle in this session's scratchpad; if it is
+     lost, AUDIT.md §2 S5). Strike `plans/WAVE_C6A_PLAN.md:375`, which tells builders to pip install.
+     Schedule the venv's alignment with `turbotab/server/constraints.txt` (an install, so not beside
+     a wave), then delete CLAUDE.md's sentence about the drift.
+3. **The claims registry, R0, in one wave** (plans/CLAIMS_REGISTRY.md §7; Nolan ruled its three
+   questions on 2026-10-15): the registry, its meta-tests and the 15 S1 claims. Why: the claims the
+   walkthrough puts on screen need a home before they are audited. Stop at R0's scope: the S2/S3
+   wording fixes wait for the walkthrough's pull.
+4. **W1 part 2** (WALKABLE_PLAN §5; the packages are under Leftovers), then your own walkthrough of
+   NHANES glucose under Predict, with a friction log, before Nolan sees it. Every claim that
+   journey puts on screen is audited and registered as R1's first batch. Why: this is the walkable
+   product, and the friction log decides what gets work next. **[Nolan]** He judges the walkthrough
+   on screen.
+5. **The Sullivan 2021 replication** (Am J Prev Med 61:563, chosen by Nolan on 2026-10-15). Why: the
+   first end-to-end check of the Estimate lane. It reports the decisions the paper stated, the ones
+   it left unstated, and how far each unstated option moves the published number.
+6. **W2–W4,** each registering the claims it adds. The remaining S2/S3 fixes go in the order the
+   walkthrough and the replication surface them.
+7. **Heavy runs,** each at a time Nolan sets **[Nolan]**: the T1 rerun at 600 datasets (the
+   small-sample standard is in code, A-001); the reference-journey recapture, then the materiality
+   calibration on it.
+8. **The Lean pilot** on about a dozen invariance and exactness claims; **the stage-3 audit** with
+   decoy set v2; the Bang 2009 and Menke 2015 replications; **data provenance in ingest** (each
+   file's source URL and release date).
+9. **The research swarm,** once its gates (plans/CLAIMS_REGISTRY.md §8) are passed. It writes to a
+   corpus kept apart from the registry (ruled 2026-10-15).
 
 ## Leftovers that still hold (from the state of 2026-10-11)
 
 - **W1 part 2** (WALKABLE_PLAN §5):
-  - W1-E: the quest-log shell on live /quest;
+  - W1-E: the quest-log shell on live /quest (it owns `turbotab/frontend/CLAUDE.md`, which step 2
+    rewrites; land step 2 first or brief its builder);
   - W1-F: the Predict cards;
   - W1-G: Predict Results v0;
   - e2e quest-nhanes-predict and quest-own-csv.
@@ -53,24 +112,42 @@ Re-ordered 2026-10-15 at Nolan's direction: the product walkable sooner.
   - mock handlers for the new hooks;
   - the seal card's chain of refusals;
   - the engine serving the held-out no-predictor baseline;
-  - a ruling on the calibration intercept;
+  - the calibration intercept (a methods ruling, yours);
   - Cancel beside a held Fit;
   - recapture dietary-prediction.
-- **After W1:** W2a/W2b, Predict built to BEATS_PREDICT, then W3/W4 Estimate built to BEATS_MODELS_RESULTS.
+- **After W1:** W2a/W2b, Predict built to BEATS_PREDICT, then W3/W4 Estimate built to
+  BEATS_MODELS_RESULTS.
 
 ## Open for Nolan
 
-- Nothing is pending from the quest-log design: the two rulings listed on 2026-10-10 (the card's word budget against a question's own options; the Recommended wording for observational designs) were superseded by FOUNDATION §0 on 2026-10-10 (WALKABLE_PLAN §6).
-- A ruling on the calibration intercept (W1 part 1 leftovers).
-- From the onboarding audit (notes/onboarding-audit/AUDIT.md §6): whether a root `CLAUDE.md` and `.claude/agents/` may ship in the public repository and its release zip, and whether the `v1.0-paper` tag is still wanted.
+- **May `CLAUDE.md` and `.claude/agents/` be public?** The `.gitignore` kept `CLAUDE.md` out of the
+  public repo in 2025; `turbotab/frontend/CLAUDE.md` has been public since 2026-10-05; and
+  `release.yml` would ship both in the release zip. After this revision they hold rules and repo
+  paths, but no personal detail. Either:
+  - **A, public:** merge as they are; the rules are versioned, reviewed and spell-checked with
+    the code.
+  - **B, local only:** restore the `.gitignore` lines, and keep the files untracked in the main
+    checkout, where the orchestrator and every workflow agent still read them; they are then not
+    versioned, and a fresh clone lacks them.
+- **Is the `v1.0-paper` tag on `main` still wanted** for the AJCN availability statement? None
+  exists; a `v*` tag publishes a release, so none is made without his word.
+- **"No proprietary tools"** (2026-10-10): the product only, or also the tools agents use while
+  building? CLAUDE.md states the product reading.
+- Nothing is pending from the quest-log design: FOUNDATION §0 superseded the two rulings listed on
+  2026-10-10 (WALKABLE_PLAN §6).
 
 ## Nolan's context
 
-- **His real project is NHANES fasting glucose under Predict,** used at a fasting-draw visit; on the medication answers, the app recommends. The light walk gave R² 0.155 (cycle CV) and 0.18 on the sealed 2017–18 cycle; DIQ is not in the fixture.
+- **His real project is NHANES fasting glucose under Predict,** used at a fasting-draw visit; on the
+  medication answers, the app recommends. The light walk gave R² 0.155 (cycle CV) and 0.18 on the
+  sealed 2017–18 cycle; DIQ is not in the fixture.
 - **Direction A is accepted provisionally.** He wants to judge it on a real project.
-- **Strategy homework he may bring back:** whether researchers' pain is doing or defending; his stance on recommendations and the lock; the anchor paper; a classroom pilot.
+- **Strategy homework he may bring back:** whether researchers' pain is doing or defending; his
+  stance on recommendations and the lock; the anchor paper; a classroom pilot.
 
 ## Heavy runs to schedule with Nolan
 
-- The T1 rerun at 600 datasets (about 60 minutes at 4 jobs; approved on 2026-10-11, to run after the stage-1 merge).
-- The reference-journey recapture (the drivers now press Fit), then the materiality calibration on it.
+- The T1 rerun at 600 datasets: about 60 minutes at 4 jobs. Approved on 2026-10-11 to run after
+  stage 1 lands; it still needs a time from him.
+- The reference-journey recapture (the drivers now press Fit), then the materiality calibration on
+  it.

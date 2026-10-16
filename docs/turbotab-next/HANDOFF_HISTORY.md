@@ -1,6 +1,6 @@
 # Handoff history
 
-Every earlier state of `HANDOFF.md`, verbatim and newest first, with the rulings each one recorded. `HANDOFF.md` holds the current state only; when it is replaced, the replaced block is appended here under a dated heading. Documents that cite a ruling by the heading it had in HANDOFF ("UI and scope discussion", "The orchestrator's methods floor", "Engine follow-ups found") find it here.
+Every earlier state of `HANDOFF.md`, verbatim and newest first, with the rulings each one recorded. `HANDOFF.md` holds the current state only; when it is replaced, the replaced block is added here, at the top, under a dated heading. Documents that cite a ruling by the heading it had in HANDOFF ("UI and scope discussion", "The orchestrator's methods floor", "Engine follow-ups found") find it here.
 
 ## 2026-10-11 · paused to save usage
 
