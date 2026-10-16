@@ -1,14 +1,17 @@
 """The data area's claims (``turbotab/core/claims/data.py``; R0_PLAN.md R0b): the Silent tests
-stage 1 left missing, the omics reading's distinct-values test both ways, the grouping entry's
-number held to its guard, and the regime predicates tested both ways.
+stage 1 left missing, the Subsample C weight read by where its variable is recorded, the omics
+reading's distinct-values and per-million tests both ways, the grouping entry's number held to its
+guard, and the regime predicates tested both ways.
 
 A Silent test holds a guard quiet where its evidence says it must be: a UL that covers every
 source, an NHANES table with no variable measured on a subsample alone, a block of two-level
-columns, a yes/no outcome in groups large enough for an intercept each. Each was watched failing
-on a copy of the base whose guard was loosened. Its truth is the construction or an independent
-library, never the claim it tests: this file names no claim and none of the constants the claims
-set (meta-test 2), and reads no threshold, so every case sits far from the cut-off it would cross.
-The one test that crosses a cut-off finds it from the guard's behavior, to hold a sentence to it.
+columns, sample totals near a million, a yes/no outcome in groups large enough for an intercept
+each. Each was watched failing on a copy of the base whose guard was loosened. Its truth is the
+construction or an independent library, never the claim it tests: this file names no claim and
+none of the constants the claims set (meta-test 2), and reads no threshold of TurboTab's own, so
+every case sits far from the cut-off it would cross. The per-million tests read the genomics
+pack's tolerance, a copy the claim does not set, and sit a tenth of it to either side; the one
+test that crosses a cut-off finds it from the guard's behavior, to hold a sentence to it.
 """
 from __future__ import annotations
 
@@ -128,6 +131,32 @@ def test_an_examination_variable_keeps_the_mec_weight_beside_interview_ones():
     assert least_common_denominator(interview, frame[examined])["use"] == "WTMEC2YR"
 
 
+def test_a_variable_recorded_only_where_the_subsample_c_weight_is_positive_names_it():
+    """Claims backtest C-143, the fires side for a subsample the names cannot place: NCHS's
+    Subsample C weight, WTSC2YR (``survey.NHANES_WEIGHTS`` lists it), positive on a third of the
+    examined, 0 on the other examined rows and blank off the examination, as a subsample file's
+    weight is. A urinary analyte recorded by construction on exactly those rows is that
+    subsample's whatever its name, so the rule names WTSC2YR for it, never the examination weight
+    as settled; and beside BMI alone, which nothing restricts to its rows, the subsample weight is
+    one whose analytes TurboTab cannot tell, so the choice is the user's."""
+    from turbotab.core.recognizers import least_common_denominator
+
+    frame = _merge()
+    rng = np.random.default_rng(1432)
+    examined = frame["WTMEC2YR"] > 0
+    subsample = examined & (rng.random(len(frame)) < 1 / 3)
+    frame["WTSC2YR"] = np.where(subsample, rng.uniform(5000, 150000, len(frame)),
+                                np.where(examined, 0.0, np.nan))
+    frame["urinary_analyte"] = np.where(subsample, rng.lognormal(1.0, 0.8, len(frame)), np.nan)
+    assert (frame["urinary_analyte"].notna() == (frame["WTSC2YR"] > 0)).all()
+    assert subsample.sum() >= 100 and (examined & ~subsample).sum() >= 100
+    lcd = least_common_denominator(["urinary_analyte", "RIDAGEYR", "WTINT2YR", "WTMEC2YR",
+                                    "WTSC2YR"], frame)
+    assert lcd["use"] == "WTSC2YR" and lcd["because"] == ["urinary_analyte"], lcd
+    alone = least_common_denominator(["BMXBMI", "RIDAGEYR", "WTMEC2YR", "WTSC2YR"], frame)
+    assert alone["other_subsamples"] == ["WTSC2YR"] and not alone["settled"], alone
+
+
 # ── C-193 · a column of two values is no assay reading ───────────────────────────────────────
 
 
@@ -167,6 +196,57 @@ def test_a_block_of_two_level_columns_is_never_read_as_raw_counts():
     frame = pd.DataFrame({f"g{i}": _levels(rng, [0, 500]) for i in range(30)})
     assert all(frame[c].nunique() == 2 for c in frame) and frame.to_numpy().max() == 500
     assert omics.scale_reading(frame, ["genomics"]) is None
+
+
+def _estimated_block(share_of_a_million: float, seed: int = 1932) -> pd.DataFrame:
+    """Fractional values as a transcript quantifier writes them, 30 genes on 40 samples, each
+    gene with a zero and the first gene reaching the tens of thousands, every sample's total then
+    scaled to ``share_of_a_million`` of a million."""
+    rng = np.random.default_rng(seed)
+    values = rng.gamma(0.8, 400.0, (40, 30)) + 0.37
+    values[rng.integers(0, 40, 30), np.arange(30)] = 0.0
+    values[:, 0] *= 40.0
+    values *= share_of_a_million * 1e6 / values.sum(axis=1, keepdims=True)
+    return pd.DataFrame(values, columns=[f"gene{j}" for j in range(30)])
+
+
+def _per_million_tolerance() -> float:
+    """The genomics pack's tolerance for a CPM's or TPM's sample totals around a million
+    (GENOMICS_PACK §02 row 4, ``packs._LIBRARY_NEAR``), which its data-type card reads."""
+    from turbotab import packs
+
+    return float(packs._LIBRARY_NEAR)
+
+
+def test_fractional_values_whose_totals_leave_the_packs_tolerance_of_a_million_are_asked_about():
+    """Claims backtest C-193, the fires side of the per-million test: fractional values with zeros
+    and the thousands in many columns, every sample's total a tenth beyond the genomics pack's
+    tolerance of a million (above it and below it), are estimated counts or FPKM, which the
+    values cannot tell apart, so the reading asks."""
+    from turbotab.core.methods import omics
+
+    near = _per_million_tolerance()
+    for share in (1 + 1.1 * near, 1 - 1.1 * near):
+        frame = _estimated_block(share)
+        totals = frame.sum(axis=1).to_numpy()
+        assert np.allclose(totals, share * 1e6) and (frame == 0).any().sum() >= 25
+        assert (frame.to_numpy() % 1 != 0).any() and frame.to_numpy().max() >= 10_000
+        reading = omics.scale_reading(frame, ["genomics"])
+        assert reading is not None and reading.estimated, (share, reading)
+
+
+def test_fractional_values_whose_totals_sit_within_the_packs_tolerance_of_a_million_are_normal():
+    """Claims backtest C-193, the silent side of the per-million test: the same fractional block
+    with every sample's total within nine tenths of the genomics pack's tolerance of a million
+    (TMM-scaled CPM, whose totals are near a million but not exactly one) is normalized, so
+    nothing is asked."""
+    from turbotab.core.methods import omics
+
+    near = _per_million_tolerance()
+    for share in (1 + 0.9 * near, 1 - 0.9 * near, 1.0):
+        frame = _estimated_block(share)
+        assert np.allclose(frame.sum(axis=1).to_numpy(), share * 1e6)
+        assert omics.scale_reading(frame, ["genomics"]) is None, share
 
 
 # ── D-058 · groups large enough for an intercept each ────────────────────────────────────────
@@ -293,6 +373,15 @@ def test_the_constant_column_regime_counts_a_blank_as_a_value():
      {"cutoff": 350, "cutoff_kind": "EAR"}),
     ("a_share_above_a_ul", {"cutoff": 2500.0, "cutoff_kind": "UL"},
      {"cutoff": None, "cutoff_kind": "UL"}),
+    ("a_nutrient_the_iom_sets_a_ul_for", {"nutrient": "magnesium"}, {"nutrient": None}),
+    ("a_nutrient_the_iom_sets_a_ul_for", {"nutrient": "Vitamin D"}, {"nutrient": "vitamin K"}),
+    ("a_nutrient_the_iom_sets_a_ul_for", {"nutrient": "calcium"}, {"nutrient": "potassium"}),
+    ("an_outcome_its_evidence_covers", {"task": "binary", "purpose": "inference"},
+     {"task": "ordinal", "purpose": "inference"}),
+    ("an_outcome_its_evidence_covers", {"task": "regression", "purpose": "inference"},
+     {"task": "multiclass", "purpose": "inference"}),
+    ("an_outcome_its_evidence_covers", {"task": "ordinal", "purpose": "prediction"},
+     {"task": "time_to_event", "purpose": "inference"}),
     ("names_an_nhanes_weight", {"columns": ["LBXTC", "WTPH2YR"]},
      {"columns": ["LBXTC", "sample_weight_mg"]}),
     ("names_an_nhanes_weight", {"columns": ["DR1TKCAL", "wtdrd1pp"]},
@@ -306,8 +395,12 @@ def test_the_constant_column_regime_counts_a_blank_as_a_value():
 def test_each_regime_predicate_holds_inside_its_regime_and_fails_outside(predicate, inside,
                                                                          outside):
     """Each predicate reads its context as the claim's evidence words it, written apart from the
-    code the claim guards: a UL cut-off, a weight named as the CDC codebooks name it (a tissue
-    mass and a body weight are no sampling weight), an omics lens, a grouping column, a
+    code the claim guards: a UL cut-off; a nutrient the IOM DRI tables set a UL for (vitamin K and
+    potassium have none, and a name the reader does not read, NHANES's supplement-recall total
+    DS1TMAGN among them, names no nutrient); a weight named as the CDC codebooks name it (a tissue
+    mass and a body weight are no sampling weight); an omics lens; a grouping column; under
+    inference a numeric or a yes/no outcome, the two the incidental-parameter evidence covers
+    (an ordinal, multiclass or time-to-event outcome is outside it), and under prediction any; a
     least-squares fit on an outcome with a clinical cut-off."""
     held = getattr(regimes, predicate)
     assert held(inside) is True and held(outside) is False

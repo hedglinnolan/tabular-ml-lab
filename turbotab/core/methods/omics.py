@@ -87,6 +87,10 @@ ESTIMATED_COLUMNS = claims.value(RAW_SCALE, "estimated_columns")
 # A column of this many distinct values or fewer (a yes/no indicator, a two-level code) is no
 # assay reading, however large its values.
 INDICATOR_LEVELS = claims.value(RAW_SCALE, "indicator_levels")
+# Sample totals within this share of a million are CPM, TPM or TMM-scaled CPM, normalized: the
+# genomics pack's own tolerance (``packs._LIBRARY_NEAR``, §02 row 4), which a test holds the
+# estimated-counts reading to.
+PER_MILLION_NEAR = claims.value(RAW_SCALE, "per_million_near")
 CHECK_ALPHA = 0.01  # the library-size check speaks below this p-value
 PRIOR_COUNT = 2.0  # edgeR cpm(log = TRUE)'s default prior.count
 LOGRATIO_TRIM, SUM_TRIM, A_CUTOFF = 0.3, 0.05, -1e10  # edgeR calcNormFactors' TMM defaults
@@ -235,17 +239,17 @@ def _estimated_counts(values: np.ndarray, columns: Sequence[str],
     TPM and FPKM alike), so LC-MS peak areas under a genomics lens stay unread. The zero and the
     thousands each sit in :data:`ESTIMATED_COLUMNS` columns or more, as a quantification's do in
     many genes, so one clinical column beside a normalized block (serum ferritin, with a 0 and a
-    4,452) does not make it estimated counts. Totals within the card's tolerance of a million on
-    every sample are CPM, TPM or TMM-scaled CPM (§02 rows 3 and 4), normalized. Every other block
-    is asked about whatever its library-size spread: estimated counts from evenly sequenced samples
-    spread as little as FPKM does."""
+    4,452) does not make it estimated counts. Totals within the card's tolerance of a million
+    (:data:`PER_MILLION_NEAR`) on every sample are CPM, TPM or TMM-scaled CPM (§02 rows 3 and 4),
+    normalized. Every other block is asked about whatever its library-size spread: estimated
+    counts from evenly sequenced samples spread as little as FPKM does."""
     from turbotab import packs
 
     if estimated.sum() < MIN_FEATURES:
         return None
     block = values[:, estimated]
     totals = np.nansum(block, axis=1)
-    per_million = np.abs(totals / packs._LIBRARY_TOTAL - 1) <= packs._LIBRARY_NEAR
+    per_million = np.abs(totals / packs._LIBRARY_TOTAL - 1) <= PER_MILLION_NEAR
     reaching = int(np.sum(np.nanmax(block, axis=0) >= RAW_MAX))
     zeroed = int(np.sum((np.isfinite(block) & (block == 0)).any(axis=0)))
     if min(reaching, zeroed) < ESTIMATED_COLUMNS or per_million.all():

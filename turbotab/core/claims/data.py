@@ -17,7 +17,8 @@ from the code the claim guards (CLAIMS_REGISTRY.md §10: C-123's predicate, had 
 from the engine but the registry itself; a predicate imports pandas only when it is called.
 
 The author grades no part above judgment (CLAIMS_REGISTRY.md §2.4); a grader other than the author
-raises a part with its evidence, as the package's verifier raised two parts to proved.
+raises a part with its evidence, as the package's verifier raised three parts to proved (repair
+rounds 1 and 2).
 """
 from __future__ import annotations
 
@@ -29,7 +30,7 @@ from turbotab.core.claims import Basis, Claim, Fires, Param, Part, Regime, Silen
 
 HERE = "turbotab.core.claims.data"
 AUTHOR = "R0b-data builder"
-# The package's verifier, who raised the parts its evidence proves (repair round 1).
+# The package's verifier, who raised the parts its evidence proves (repair rounds 1 and 2).
 VERIFIER = "R0b-data verifier, 2026-10-16"
 TESTS = "turbotab/core/tests/test_claims_data.py"
 ACCEPTANCE = "turbotab/core/tests/acceptance"
@@ -53,6 +54,24 @@ def a_share_above_a_ul(ctx: Any) -> bool:
             and not isinstance(cutoff, bool) and math.isfinite(cutoff) and cutoff > 0)
 
 
+# The nutrients the IOM DRI summary tables set an adult Tolerable Upper Intake Level for, as the
+# author read the tables' elements and vitamins (boron to zinc; vitamin A to choline); vitamin K,
+# potassium, thiamin, riboflavin, vitamin B12, pantothenic acid, biotin, chromium and the
+# carotenoids have none. Folate's is set as folic acid, so either word names it.
+_IOM_UL_NUTRIENTS = frozenset({
+    "boron", "calcium", "chloride", "copper", "fluoride", "iodine", "iron", "magnesium",
+    "manganese", "molybdenum", "nickel", "phosphorus", "selenium", "sodium", "vanadium", "zinc",
+    "vitamin a", "vitamin c", "vitamin d", "vitamin e", "niacin", "vitamin b6", "folate",
+    "folic acid", "choline"})
+
+
+def a_nutrient_the_iom_sets_a_ul_for(ctx: Any) -> bool:
+    """The component's name was read as a nutrient (``nutrient``, in words), and the IOM DRI
+    tables set that nutrient a UL. A name read as no nutrient (None) is outside."""
+    nutrient = _get(ctx, "nutrient")
+    return isinstance(nutrient, str) and nutrient.strip().lower() in _IOM_UL_NUTRIENTS
+
+
 def one_value_on_every_row(ctx: Any) -> bool:
     """Every row of the column holds the same value, a blank counting as a value of its own:
     pandas counts the distinct values with the blanks kept, so 'yes' beside blanks is two."""
@@ -63,13 +82,13 @@ def one_value_on_every_row(ctx: Any) -> bool:
 
 
 # The weights' names as the CDC codebooks spell them, each the sample's word and then its cycle
-# or nothing, never any other ending: the interview, MEC examination and fasting samples' (WTINT2YR, WTMEC4YR,
-# WTSAF2YR, the pre-pandemic WTINTPRP, WTMECPRP and WTSAFPRP), the phlebotomy and OGTT samples'
-# (WTPH2YR, WTSOG2YR), the dietary recalls' (WTDRD1, WTDR2D, the pre-pandemic WTDRD1PP and
-# WTDR2DPP, 1999-2002's WTDR4YR), and the other subsamples' ("WTS", the subsample's letters and
-# the cycle, within the eight characters a SAS transport name holds: WTSA2YR, WTSB2YR, WTSVOC2Y);
-# and the weighting tutorial's pooled ones, the sample's word and the years (MEC4YR, WTMEC6YR,
-# DRD14YR, DR2D4YR).
+# or nothing, never any other ending: the interview, MEC examination and fasting samples'
+# (WTINT2YR, WTMEC4YR, WTSAF2YR, the pre-pandemic WTINTPRP, WTMECPRP and WTSAFPRP), the
+# phlebotomy and OGTT samples' (WTPH2YR, WTSOG2YR), the dietary recalls' (WTDRD1, WTDR2D, the
+# pre-pandemic WTDRD1PP and WTDR2DPP, 1999-2002's WTDR4YR), and the other subsamples' ("WTS", the
+# subsample's letters and the cycle, within the eight characters a SAS transport name holds:
+# WTSA2YR, WTSB2YR, WTSC2YR, WTSVOC2Y); and the weighting tutorial's pooled ones, the sample's
+# word and the years (MEC4YR, WTMEC6YR, DRD14YR, DR2D4YR).
 _NHANES_WEIGHT = re.compile(r"^(WT(INT|MEC|SAF)(\d+YR|PRP)|WT(PH|SOG)\d+YR|WTDR(D1|2D)(PP)?"
                             r"|WTS(?=[A-Z0-9]{2,5}$)[A-Z]+\d+YR?"
                             r"|(WT)?(INT|MEC|PH|DRD1|DR2D|DR|SAF|SOG)\d+YR)$")
@@ -88,6 +107,15 @@ def under_an_omics_lens(ctx: Any) -> bool:
 def names_a_grouping(ctx: Any) -> bool:
     """A column groups the participants (sites, households, clinics)."""
     return bool(_get(ctx, "grouping"))
+
+
+def an_outcome_its_evidence_covers(ctx: Any) -> bool:
+    """Under inference, a numeric outcome (``task`` "regression") or a yes/no one ("binary"), the
+    two outcomes the incidental-parameter evidence speaks to; an ordinal, multiclass or
+    time-to-event outcome is outside. Under prediction, which sets no intercepts, any outcome."""
+    if _get(ctx, "purpose") == "prediction":
+        return True
+    return _get(ctx, "task") in ("regression", "binary")
 
 
 def a_least_squares_fit_with_a_cut_off(ctx: Any) -> bool:
@@ -111,8 +139,11 @@ register(Claim(
             "synthetic form alone for magnesium, folic acid, niacin and vitamin E; and preformed "
             "vitamin A from every source for vitamin A.",
     regime=Regime("a share of usual intake above a UL the IOM DRI tables set, estimated from "
-                  "24-hour recalls by the NCI method, the nutrient read from the component's name",
-                  requires=(f"{HERE}:a_share_above_a_ul",)),
+                  "24-hour recalls by the NCI method, for a component whose name is read as a "
+                  "nutrient the tables set a UL for; a name read as no nutrient (NHANES's "
+                  "supplement-recall totals such as DS1TMAGN, a bare 'Mg') is outside it",
+                  requires=(f"{HERE}:a_share_above_a_ul",
+                            f"{HERE}:a_nutrient_the_iom_sets_a_ul_for")),
     decision="nci_usual_intake",
     verdict="noted",
     parts=(
@@ -123,14 +154,25 @@ register(Claim(
                    "Linus Pauling Institute's and Health Canada's copies, the NCBI and ODS copies "
                    "having refused the fetch); no one but the author has checked them against the "
                    "reports.")),
-        Part("lower_bound", grade="judgment", basis=Basis(
-            reason="We read a share from foods alone as a lower bound wherever the UL covers food "
-                   "too: each person's intake from every source is at least their intake from "
-                   "foods, so supplements can only add to the share above the UL.")),
+        Part("lower_bound", grade="proved", graded_by=VERIFIER, basis=Basis(
+            theorem="Wherever the UL covers the form the food holds, a share of usual intake above "
+                    "the UL from foods alone is a lower bound on the share from every source. For "
+                    "each person i, the usual intake of the covered form from every source is "
+                    "T_i = F_i + S_i, with intake from supplements S_i >= 0, so T_i > u wherever "
+                    "F_i > u, and 1{F_i > u} <= 1{T_i > u} for every i. For any non-negative "
+                    "weights w_i (survey weights included), sum w_i 1{F_i > u} / sum w_i <= "
+                    "sum w_i 1{T_i > u} / sum w_i. Its hypotheses: the UL covers the food form "
+                    "(every UL but magnesium's, folic acid's, niacin's and vitamin E's; vitamin "
+                    "A's covers food retinol), and both shares are over the same population and "
+                    "weights. It bounds the population shares the NCI method estimates, not each "
+                    "estimate.")),
         Part("scope", grade="judgment", basis=Basis(
-            reason="We read the nutrient from the component's name, as the iron rule does; a name "
-                   "the reader does not know is read as a nutrient whose UL covers every "
-                   "source.")),
+            reason="We read the nutrient from the component's name, as the iron rule does, and "
+                   "the claim covers only a name read as a nutrient the IOM tables set a UL for, "
+                   "whose list the author read from the tables. A name the reader does not read "
+                   "is outside it: the code then words the share as a UL covering every source, "
+                   "our default and no reading of the IOM tables, which is false for a magnesium "
+                   "total named DS1TMAGN.")),
     ),
     tests=(
         Fires(f"{ACCEPTANCE}/test_nci_usual_intake.py::"
@@ -212,7 +254,8 @@ register(Claim(
          "{min_missing:.0%} of the table) is that subsample's, whatever its name. A fasting or "
          "OGTT weight that no variable here reads as measured on, or a phlebotomy weight beside "
          "which nothing reads as measured on its sample or a smaller one, leaves the choice to the "
-         "user.",
+         "user, as does another subsample's weight beside which nothing reads as measured on its "
+         "subsample.",
     methods="The survey weight followed NCHS's least-common-denominator rule, the weight of the "
             "smallest sample on which every analysis variable was measured, read from the "
             "variables' names and from where their values are recorded (a variable recorded only "
@@ -280,6 +323,8 @@ register(Claim(
         Fires(f"{ACCEPTANCE}/test_intelligence_gate_repair.py::"
               "test_wp13_6_a_fasting_analyte_is_read_by_where_it_is_recorded",
               truth="construction"),
+        Fires(f"{TESTS}::test_a_variable_recorded_only_where_the_subsample_c_weight_is_positive_"
+              "names_it", truth="construction"),
         Silent(f"{TESTS}::test_no_variable_recorded_only_on_blood_drawn_rows_keeps_the_mec_weight",
                truth="construction"),
         Silent(f"{TESTS}::test_a_variable_measured_outside_a_subsample_is_not_that_subsample_s",
@@ -289,6 +334,7 @@ register(Claim(
     ),
     enforced_by=("turbotab.core.recognizers:least_common_denominator",
                  "turbotab.core.recognizers:subsample_variables",
+                 "turbotab.core.recognizers:other_subsample_weight",
                  "turbotab.core.recognizers:_interview_only"),
     author=AUTHOR,
 ))
@@ -300,26 +346,34 @@ register(Claim(
     id="data.omics_raw_scale",
     kind="rule",
     card="Under the genomics or metabolomics lens, assay values are read from the numeric "
-         "columns that are not the outcome, an identifier, a person's characteristic or how the "
-         "samples were acquired, and that are non-negative with more than {indicator_levels} "
-         "distinct values each; a reading takes at least {min_features} such columns and names "
-         "only those. They are read as raw counts under genomics when {min_features} or more of "
-         "them hold whole numbers, the largest reaching {count_max:,.0f}; as raw intensities "
-         "under metabolomics when they span {raw_range:,.0f}-fold and reach {raw_max:,.0f} or "
-         "have a median skewness of at least {raw_skew}; and under genomics as FPKM or estimated "
-         "counts, which the values cannot tell apart, when {min_features} or more of them are "
-         "fractional, with a zero and a value of {raw_max:,.0f} or more each in "
-         "{estimated_columns} columns or more, and sample totals not all a million. Other values "
-         "are read as already normalized or on a log scale.",
+         "columns that are not the outcome, a yes/no column, a column named for how the samples "
+         "were acquired (a batch, plate, well, run, run order, plex or polarity) or a numbering of "
+         "the rows, and that are non-negative with more than {indicator_levels} distinct values "
+         "each; a numeric identifier or a person's characteristic is not left out by its name. A "
+         "reading takes at least {min_features} such columns and names only those. They are read "
+         "as raw counts under genomics when {min_features} or more of them hold whole numbers, "
+         "the largest reaching {count_max:,.0f}; as raw intensities under metabolomics when they "
+         "span {raw_range:,.0f}-fold and either reach {raw_max:,.0f} or have a median skewness of "
+         "at least {raw_skew}; and under genomics as FPKM or estimated counts, which the values "
+         "cannot tell apart, when {min_features} or more of them are fractional, with a zero and "
+         "a value of {raw_max:,.0f} or more each in {estimated_columns} columns or more, and "
+         "sample totals not all within {per_million_near:.0%} of a million. Other values are read "
+         "as already normalized or on a log scale.",
     methods="Assay values were read as unnormalized from the values alone, never the outcome, over "
-            "the columns that were non-negative with more than {indicator_levels} distinct values "
-            "each, at least {min_features} of them: whole-number counts reaching "
-            "{count_max:,.0f}, intensities spanning {raw_range:,.0f}-fold and reaching "
-            "{raw_max:,.0f} or right-skewed (median skewness at least {raw_skew}), or fractional "
-            "values with zeros and values of {raw_max:,.0f} or more in {estimated_columns} columns "
-            "or more (FPKM or estimated counts).",
+            "the numeric columns other than yes/no columns, those named for how the samples were "
+            "acquired and a numbering of the rows, that were non-negative with more than "
+            "{indicator_levels} distinct values each, at least {min_features} of them: "
+            "whole-number counts reaching {count_max:,.0f}, intensities spanning "
+            "{raw_range:,.0f}-fold and either reaching {raw_max:,.0f} or right-skewed (median "
+            "skewness at least {raw_skew}), or fractional values with zeros and values of "
+            "{raw_max:,.0f} or more in {estimated_columns} columns or more whose sample totals "
+            "were not all within {per_million_near:.0%} of a million (FPKM or estimated counts).",
     regime=Regime("a table under the genomics or metabolomics lens whose assay values are as the "
-                  "file holds them; the reading looks at the values alone, never at the outcome",
+                  "file holds them, and whose numeric columns besides the outcome, the acquisition "
+                  "columns and a row numbering are assay values or columns of two values or fewer; "
+                  "a numeric identifier or a person's characteristic beside them (SEQN, an age) "
+                  "enters the block, so a table that holds one is outside it. The reading looks at "
+                  "the values alone, never at the outcome",
                   requires=(f"{HERE}:under_an_omics_lens",)),
     decision="omics_normalization",
     verdict="noted",
@@ -339,6 +393,9 @@ register(Claim(
         "indicator_levels": Param(2, unit="distinct values or fewer: an indicator, no assay "
                                        "reading",
                                   constant="turbotab.core.methods.omics:INDICATOR_LEVELS"),
+        "per_million_near": Param(0.25, unit="share of a million: sample totals this near it are "
+                                             "CPM or TPM, normalized",
+                                  constant="turbotab.core.methods.omics:PER_MILLION_NEAR"),
     },
     parts=(
         Part("block", grade="judgment", basis=Basis(
@@ -350,15 +407,17 @@ register(Claim(
             reason="We read whole numbers reaching 100 as counts: genotype dosages (0, 1 and 2) "
                    "and scores stay below it; an unsourced convention.")),
         Part("intensities", grade="judgment", basis=Basis(
-            reason="We read values spanning 100-fold that reach 1,000, or that are right-skewed "
-                   "(median skewness 0.5), as unlogged: log2 intensities stay below about 40, a "
+            reason="We read values spanning 100-fold that either reach 1,000 or are right-skewed "
+                   "(median skewness 0.5) as unlogged: log2 intensities stay below about 40, a "
                    "log-normal feature with a 30% CV has skewness (e^s2 + 2)(e^s2 - 1)^0.5, about "
                    "0.93, and a log scale is near-symmetric. The cut-offs are unsourced "
                    "conventions.")),
         Part("estimated", grade="judgment", basis=Basis(
             reason="We ask about fractional values with a zero and the thousands each in two "
-                   "columns or more, as GENOMICS_PACK §02 row 2 says to ask; an internal pack "
-                   "section is no source (CLAIMS_REGISTRY.md §2.4).")),
+                   "columns or more, as GENOMICS_PACK §02 row 2 says to ask, unless every "
+                   "sample's total is within 25% of a million, the pack's own tolerance for "
+                   "TMM-scaled CPM (§02 row 4, measured on its fixtures); an internal pack section "
+                   "is no source (CLAIMS_REGISTRY.md §2.4).")),
     ),
     tests=(
         Fires("turbotab/core/tests/test_omics.py::"
@@ -383,6 +442,10 @@ register(Claim(
               "ones_are_left_out", truth="construction"),
         Silent(f"{TESTS}::test_a_block_of_two_level_columns_is_never_read_as_raw_counts",
                truth="construction"),
+        Fires(f"{TESTS}::test_fractional_values_whose_totals_leave_the_packs_tolerance_of_a_"
+              "million_are_asked_about", truth="construction"),
+        Silent(f"{TESTS}::test_fractional_values_whose_totals_sit_within_the_packs_tolerance_of_a_"
+               "million_are_normal", truth="construction"),
     ),
     enforced_by=("turbotab.core.methods.omics:scale_reading",
                  "turbotab.core.methods.omics:_estimated_counts"),
@@ -409,11 +472,15 @@ register(Claim(
     methods="Each group gets its own intercept and clustered intervals; yes/no outcomes need "
             "{rows} rows per group.",
     goal=("inference", "prediction"),
-    regime=Regime("participants grouped by a column (sites, households, clinics); under inference "
-                  "a yes/no outcome's group size is read as the mean rows per group over the "
-                  "analyzed rows' groups of two or more, and a numeric outcome's linear model has "
-                  "no incidental-parameter bias",
-                  requires=(f"{HERE}:names_a_grouping",)),
+    regime=Regime("participants grouped by a column (sites, households, clinics). Under inference, "
+                  "a numeric outcome's linear model, which has no incidental-parameter bias, or a "
+                  "yes/no outcome, whose group size is read as the mean rows per group over the "
+                  "analyzed rows' groups of two or more. An ordinal, multiclass or time-to-event "
+                  "outcome is outside it: the evidence does not reach them, and the guard gives "
+                  "them an intercept per group however small the groups. Under prediction, any "
+                  "outcome",
+                  requires=(f"{HERE}:names_a_grouping",
+                            f"{HERE}:an_outcome_its_evidence_covers")),
     decision="set_clusters.adjust",
     options=("fixed_effects", "cluster_only", "none"),
     verdict="refused",
