@@ -1526,6 +1526,60 @@ def test_a_trial_the_program_finds_anyone_separated_in_is_refused_never_reported
     assert tally["noise 1e-6"] == [10, 0, 10], tally["noise 1e-6"]
 
 
+def _discordant_pair(eps: float, seed: int, n: int = 200) -> pd.DataFrame:
+    """Everyone's outcome is whether x is above 0, but for two people, both treated at site a,
+    at x = ε without the event and at x = −ε with it: the only two whose outcomes x does not
+    predict, so that they alone keep x from separating everyone (the fifth review's discordant
+    pair, graded by the sixth's re-review)."""
+    rng = np.random.default_rng(96000 + seed)
+    df = pd.DataFrame({"arm": rng.choice(["ctl", "trt"], n), "site": rng.choice(["a", "b"], n),
+                       "x": rng.normal(0, 1, n)})
+    df["event"] = (df.x > 0).astype(float)
+    df.loc[0, ["x", "event", "arm", "site"]] = [eps, 0.0, "trt", "a"]
+    df.loc[1, ["x", "event", "arm", "site"]] = [-eps, 1.0, "trt", "a"]
+    return df
+
+
+def test_a_fit_float64_cannot_resolve_is_refused_or_read_exactly():
+    """Claims backtest B-281, its sixth review's re-review. In a trial whose outcome is whether x
+    is above 0 but for a discordant pair at x = ±ε, both treated at site a, no one is separated,
+    since the pair keeps x from separating the rest, and the maximum-likelihood fit is finite;
+    but x's coefficient is 700 to 1,200, all but 4 or 5 of the 200 have a risk within 1e-10 of 0
+    or 1, and the pair, at risks near ½, fix the intercept and the arm's coefficient nearly only
+    in their sum. On the standardized columns the information's smallest eigenvalue is 1.2e-15 to
+    5.5e-15 of its largest at that fit, so float64 resolves the fit along that combination only
+    to its rounding. Known truth: the maximum-likelihood fit on the float data in 60-digit
+    arithmetic (:func:`_exact_fit`), certified for each, each arm's risks and Ye et al.'s variance
+    written out above. At ε = 5e-6 seed 76, ε = 1.5e-6 seed 77 and ε = 1e-6 seed 8, each trial is
+    refused for its nearly singular information, with fewer covariates and describing the
+    outcomes as its exits, or reported within 1e-3 of a standard error of that fit, its standard
+    error to 1e-3.
+
+    On the code before this round (6c08230e) the three were reported, where the base (e6e58809)
+    refused them: seed 76 at a risk difference of −0.0061451 (SE 0.0066068) where the fit gives
+    −0.0060474 (SE 0.0065954), 1.48e-2 standard errors off, its intercept and arm coefficient
+    0.11 off and opposite; seed 77 1.28e-3 off; seed 8 9.0e-4 off."""
+    spec = T.TrialSpec(arm="arm", control="ctl", outcome="event", strata=("site",),
+                       covariates=("x",))
+    for eps, seed in ((5e-6, 76), (1.5e-6, 77), (1e-6, 8)):
+        df = _discordant_pair(eps, seed)
+        X, y = _x_design(df, "x"), df.event.to_numpy()
+        b = _exact_fit(X, y)
+        assert b is not None, (eps, seed, "no finite fit certified in 60 digits")
+        try:
+            r = T.estimate(df, spec)
+        except T.TrialRefused as e:
+            assert e.term == "nearly singular information in the logistic model", str(e)
+            assert "the rounding of the numbers, not by the data" in str(e), str(e)
+            assert [x.get("covariates") for x in e.exits] == [[], None]
+            assert e.exits[-1]["describe"] is True
+            continue
+        rd, se = _exact_effect(X, y, b, pd.factorize(df.site)[0])
+        got = r.contrast(measure="risk_difference")
+        assert abs(got.estimate - rd) <= 1e-3 * se, (eps, seed, got.estimate, rd, se)
+        assert got.se == pytest.approx(se, rel=1e-3), (eps, seed, got.se, se)
+
+
 def _three_arms(seed: int = 2065, n: int = 45) -> pd.DataFrame:
     """A small three-arm trial at two sites, with three normal covariates."""
     rng = np.random.default_rng(seed)
