@@ -689,9 +689,9 @@ Two layers, so that thousands of journeys run in minutes and a few dozen run end
   route with `interview.route` on mocked stage artifacts (the `Facts` and `artifacts` that
   `quest.quest_log` already takes), and evaluate the surfacing functions on every intermediate
   state. Fixtures: the committed NHANES fixture and `metabolomics_untargeted.csv`, with their
-  `Truth` (`tests/truths.py`) answering readings as the drives do. Target: 2,000 journeys under
+  `Truth` (`turbotab/core/tests/truths.py`) answering readings as the drives do. Target: 2,000 journeys under
   two minutes on the PR tier.
-- **End to end, over the server.** `tests/acceptance/server_drive.py:Drive` on a sample of generated
+- **End to end, over the server.** `turbotab/core/tests/acceptance/server_drive.py:Drive` on a sample of generated
   journeys, nightly, asserting the same properties on served responses (`PreviewResult`, the quest
   endpoint, the artifacts).
 
@@ -880,7 +880,7 @@ work on top of what exists; the shell (P0.7) reads the result through `GET /ques
 | 6 | Post-lock verification: ledger rows written by `stages/sensitivity.py:changes_for`, `stages/calibration.py`, `stages/secondary.py`, and under Predict by the paired fold differences in `stages/evaluation.py`; the exhibit label on a band change | the stages named | C7a (a part), U9 | M |
 | 7 | The ledger and calibration: `materiality_calibration.json` built from the twelve captures; the confusion matrix per instrument; the registry test that caps uncalibrated instruments at band 1 | the captures, `server_drive.Drive` | new U15 | S–M |
 | 8 | The U5 gate: fired Decide count per stage and asked rows per journey against the targets; limitation sentences per journey against the budget | `quest_log`, the captures | U5 | S–M |
-| 9 | The path fuzzer: offline generator over `decisions.fold_onto` and `interview.route` with mocked artifacts; I1–I14; seeds; 2,000 journeys under two minutes; a nightly end-to-end sample over `server_drive` | `tests/acceptance/test_previews_leash*.py` as the pattern | new U16 | M |
+| 9 | The path fuzzer: offline generator over `decisions.fold_onto` and `interview.route` with mocked artifacts; I1–I14; seeds; 2,000 journeys under two minutes; a nightly end-to-end sample over `server_drive` | `turbotab/core/tests/acceptance/test_previews_leash*.py` as the pattern | new U16 | M |
 | 10 | The `shown` sidecar and the metrics script (§7.3) | the log | new | S–M |
 | 11 | `GET /quest` extended with `rank`, `tier`, `band`, `why_here`, `footprint` per line; the shell reads them | `quest.QuestLine` | P0.7 (a part) | S–M |
 | 12 | The coverage test over the fuzzer's states (I2) | U13 | U13 | S |

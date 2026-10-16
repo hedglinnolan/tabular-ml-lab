@@ -8,12 +8,15 @@ shows one wrong, he is shown the evidence once and re-rules (he has said his sta
 not infallible orders, 2026-10-02; he confirmed this habit on 2026-10-15).
 
 ## 0 · Start of a session
-1. Read `HANDOFF.md`. Check it against git before you act on it: branch heads and ancestry for
+1. Read `HANDOFF.md`. Check it against git before you act on it (`scripts/state.sh` prints the heads, the unlanded branches and CI): branch heads and ancestry for
    what it says landed and for step 1 of its order, `git status` in the main checkout, CI on the
    last `ci/*` head (§4 step 6), and whether anything you started is still running.
 2. Reply to Nolan in a few lines: what is true now, what you will do without asking, and what you
    need from him.
 3. Continue the order in `HANDOFF.md` from its first open step.
+4. CLAUDE.md files and `.claude/agents/` load when a session starts. If they changed after this
+   session began, tell each agent to read them by path: a check on 2026-10-16, in the session that
+   wrote them, found neither loaded.
 
 ## 1 · Direction: what the work is for
 - **Understanding, not AutoML.** The thread from exploring the data to every later decision "has
@@ -144,7 +147,8 @@ not infallible orders, 2026-10-02; he confirmed this habit on 2026-10-15).
   and date, triaged at wave boundaries.
 - **Memory** keeps what the repo does not record: his words, incidents, local tooling, and the
   feedback that shapes your own behavior. When a rule lands in the repo, its memory becomes a
-  pointer or is deleted.
+  pointer or is deleted. The index, `MEMORY.md`, reaches every subagent too (checked 2026-10-16),
+  so it never names the sealed decoys or anything else an agent should not see.
 - **Worktrees:** remove one once its branch has landed; ask Nolan before removing one whose branch
   has not.
 - **Rulings start as proposals.** A ruling is not done until its code and its test exist; the

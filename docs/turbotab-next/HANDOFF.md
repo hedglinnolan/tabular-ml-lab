@@ -50,15 +50,26 @@ The goal, re-ordered on 2026-10-15 at Nolan's direction so that the product is w
 
 Send Nolan a short status at the end of each step, ending with one line of cost and rework. Tell him before any step expected to exceed about 3M subagent tokens or 25 agent runs. Wait for him only where a step says **[Nolan]**. **This week's pause is after step 3's walkthrough** (Nolan, 2026-10-15).
 
-1. **Check that the onboarding works,** and clear the cheap debt the wisdom review found. Why: every later wave's agents start from it.
-   - **The roles load.** Start a fresh session if the agent registry does not list the four roles. In one agent call with `agentType: 'builder'`, worktree isolation and no `model`, check three things: it quotes builder.md's first step; it sees one copy of CLAUDE.md, not two; and its system reminder gives it attribution lines. If it gets none, keep PREAMBLE_TEMPLATE's ATTRIBUTION field.
-   - **Memory.** Apply the memory recommendations (in this session's scratchpad onboarding bundle; if it is lost, AUDIT.md §2 S5).
-   - **Stale instructions.**
-     - Strike `plans/WAVE_C6A_PLAN.md:375`, which tells builders to pip install.
-     - Give each landed plan a one-line "landed at <sha>" header.
-     - Fix the methods documents' test paths, so that CLAUDE.md's warning about them can go.
-   - **State checks.** Add the ten-line HANDOFF state-check script (WISDOM_REVIEW.md §5).
-   - **Worktrees.** Remove the worktrees whose branches have landed; ask Nolan about the rest.
+1. **Check, in a fresh session, that the roles load.** Everything else in this step was done on
+   2026-10-16:
+   - the memory trimmed, from 209 KB to 63 KB, with a backup kept beside it;
+   - the pip-install line struck, and WAVE_C6A_PLAN marked landed;
+   - the methods documents' test paths fixed;
+   - `scripts/state.sh` added;
+   - 89 landed or detached worktrees removed.
+
+   A check that same day found that this session's workflow agents get neither the root CLAUDE.md
+   nor the roles, since both load at session start. The harness does give each agent its own
+   attribution lines. So, in the new session:
+   - Make one agent call with `agentType: 'builder'`, worktree isolation and no `model`.
+   - Check that it quotes builder.md's first step.
+   - Check that it sees one copy of CLAUDE.md, not two.
+
+   **[Nolan]** The remaining worktrees need his word:
+   - the builder experiment's `exp/F1-*` and `exp/F2-*`;
+   - `design/quest-meaning-first` and `design/quest-models-stage`;
+   - Classic's `TurboTab-L66-A1` to `-A3`;
+   - four with uncommitted changes.
 2. **The claims registry, R0, in one wave** (plans/CLAIMS_REGISTRY.md §7): the registry, its meta-tests and the 15 S1 claims. Why: the claims the walkthrough puts on screen need a home before they are audited. Stop at R0's scope: the S2/S3 wording fixes wait for the walkthrough's pull.
 3. **W1 part 2** (WALKABLE_PLAN §5; the packages are under Leftovers), then your own walkthrough of NHANES glucose under Predict, with a friction log, before Nolan sees it. Every claim that journey puts on screen is audited and registered as R1's first batch. Why: this is the walkable product, and the friction log decides what gets work next. **[Nolan]** He judges the walkthrough on screen. Then pause.
 4. **The Sullivan 2021 replication** (Am J Prev Med 61:563). Why: the first end-to-end check of the Estimate lane. It reports the decisions the paper stated, the ones it left unstated, and how far each unstated option moves the published number.

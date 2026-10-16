@@ -57,8 +57,7 @@ turn, so it holds only the rules any agent can break.
 - For frontend work in a worktree, symlink the main checkout's `turbotab/frontend/node_modules`.
   Leave nothing behind: no server, background process, scratch worktree or symlink you made.
 - Read what your prompt names, by section or line range; grep first, keep output short. For what
-  the code does, the code is the truth. The methods documents in `docs/turbotab-next/` give test
-  paths relative to `turbotab/core/`.
+  the code does, the code is the truth.
 
 ## Commits and the report
 - A commit message is one or two plain sentences saying what is now true, in the voice of

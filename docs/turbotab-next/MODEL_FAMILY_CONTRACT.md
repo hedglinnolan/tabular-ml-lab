@@ -538,7 +538,7 @@ A single complexity axis shared by all families has been proposed (Allerbo & Sch
 **Why.** V2_DEFINITION_OF_DONE gate 6: "Replaying the record reproduces the model matrix and the estimates."
 
 **How the engine enforces it.**
-- The export replay test (`tests/acceptance/test_export.py`) runs for every registered family, not only `linear` and `linear + elastic_net` as today. RECIPES RT-12 replays versions; MC-11 extends the same test over the registry, and the overlap is netted in §5.
+- The export replay test (`turbotab/core/tests/acceptance/test_export.py`) runs for every registered family, not only `linear` and `linear + elastic_net` as today. RECIPES RT-12 replays versions; MC-11 extends the same test over the registry, and the overlap is netted in §5.
 - RECIPES T13 adds pinned and re-run replay for tuned families.
 
 ### C13 · Reference tests, including the solvable settings
@@ -583,7 +583,7 @@ A single complexity axis shared by all families has been proposed (Allerbo & Sch
 
 ### C14 · The fold-in gate
 
-A family joins the shelf only when every blocking item passes. One parametrized acceptance test, `tests/acceptance/test_family_contract.py` (MC-12), runs the automatic items for every registered family. A family added later fails CI until it passes.
+A family joins the shelf only when every blocking item passes. One parametrized acceptance test, `turbotab/core/tests/acceptance/test_family_contract.py` (MC-12), runs the automatic items for every registered family. A family added later fails CI until it passes.
 
 **It lands early.** MC-12 lands with MC-1, before the four new families. An item whose machinery is not built yet is a declared expected failure (`xfail`) with the package that will make it blocking. It turns blocking the day that package lands, so no family meets eighteen blocking items at once, late.
 
@@ -599,7 +599,7 @@ A family joins the shelf only when every blocking item passes. One parametrized 
 | 8 | Calibration: the generic checks run; a miscalibrated fixture is flagged | Calibration fixture (C9) | yes |
 | 9 | Curves, per declared task: drawn on a fixture, matching a hand-computed ALE, with its declared shape; or a registered reason | Explanation tests (C10) | yes, once MC-7 lands |
 | 10 | Bootstrap soundness as declared | The heavy run's results file for this family version (C11) | yes, once MC-19's first run is recorded |
-| 11 | Export replay reproduces its matrix and estimates at its tolerance | `tests/acceptance/test_export.py` (C12) | yes |
+| 11 | Export replay reproduces its matrix and estimates at its tolerance | `turbotab/core/tests/acceptance/test_export.py` (C12) | yes |
 | 12 | Independent implementation, invariance probes and solvable settings | Reference tests (C13) | yes |
 | 13 | The methods reference regenerates with its contract-shaped entry | `reference/methods.py:family_section` | yes |
 | 14 | Its methods sentence names it and its settings | Voice tests | yes |
@@ -777,7 +777,7 @@ The H statistic's stability across refits is not part of the trigger. It needs t
 - **C4:** no input profile. No `assess` reads collinearity, the spectrum, blanks or the width after encoding.
 - **C5:** plain statements only, with no quiet names, sources or curve shape.
 - **C7:** no declared complexity knobs.
-- **C12:** export replay is tested only with `linear` and `linear + elastic_net` (`tests/acceptance/test_export.py`).
+- **C12:** export replay is tested only with `linear` and `linear + elastic_net` (`turbotab/core/tests/acceptance/test_export.py`).
 - **C13:** no invariance probes, curve-shape tests or solvable settings.
 
 **Where they differ** ("part" means implemented with gaps; "decl" means a flag is set and nothing verifies it):
@@ -796,13 +796,13 @@ The H statistic's stability across refits is not part of the trigger. It needs t
 | C13 independent reference | yes | path only | TreeSHAP only | yes | yes | yes | yes | yes | none |
 
 The inventory behind this table cites each cell, for example `models/linear.py:Linear.assess` and `models/boosted_trees.py:BoostedTrees.assess`. The independent references are:
-- linear: HC3 and CR2 against their definitions, Firth against Haldane, the equation against R (`tests/acceptance/test_wp2_intervals.py`, `tests/acceptance/test_explain.py`);
+- linear: HC3 and CR2 against their definitions, Firth against Haldane, the equation against R (`turbotab/core/tests/acceptance/test_wp2_intervals.py`, `turbotab/core/tests/acceptance/test_explain.py`);
 - elastic net: its path against glmnet only, with the chosen penalty unchecked;
 - boosted trees: TreeSHAP against shap, and stopping by whole unit;
-- featurewise: statsmodels with Benjamini–Hochberg (`tests/acceptance/test_wp11_omics.py`);
-- proportional odds: MASS::polr and statsmodels (`tests/acceptance/test_wp12a_ordinal.py`);
-- mixed, GEE and Cox: REML, sandwiches and lifelines (`tests/acceptance/test_wp12b_cox_mixed_gee.py`);
-- screened elastic net: none; chain tests only (`tests/acceptance/test_ms7_chains.py`).
+- featurewise: statsmodels with Benjamini–Hochberg (`turbotab/core/tests/acceptance/test_wp11_omics.py`);
+- proportional odds: MASS::polr and statsmodels (`turbotab/core/tests/acceptance/test_wp12a_ordinal.py`);
+- mixed, GEE and Cox: REML, sandwiches and lifelines (`turbotab/core/tests/acceptance/test_wp12b_cox_mixed_gee.py`);
+- screened elastic net: none; chain tests only (`turbotab/core/tests/acceptance/test_ms7_chains.py`).
 
 ### 3.2 What the four v2 families must ship with
 
@@ -971,7 +971,7 @@ xRFM combines kernel machines that learn features through the AGOP with a tree p
 | **MC-9** The hypothesis noticing | `late_notices` (deps fit, design, evaluation), registered in `estimand.ESTIMATE_STAGES`; the local-effect matrix on per-SD inputs; the trigger on `interpretable_cost`, the non-additive share and Riley's minimum; the card, the leash rows and the sentences; the held-out test at the opening; "selected among N" on the Estimate secondary, recorded on the modifier decision; fixtures that fire and stay silent (correlated additive, unit change, below Riley). Widens `thread:shared-learned-interaction`, already counted at 0.5 in T2. | MC-7, U1, U2 | L (8) | both | rulings of 2026-10-08 |
 | **MC-10** The phenomena registry | `phenomena.py`; `known_as` and `source` on concerns, curves, cards and thread sentences; one name per phenomenon; teaching-only entries exempt from fire-and-silent; the registry test against X4's citation registry (§7's list until then) | MC-1, MC-18 | M (3) | engine | rulings of 2026-10-08 |
 | **MC-11** Probes and replay for every family | The two-sided invariance probes injected after the family's scaler, in distribution for stochastic families; the curve-shape tests; export replay over the registry | MC-1 | M (3) | engine | DoD §2 |
-| **MC-12** The fold-in gate | `tests/acceptance/test_family_contract.py` over the registry (§1, C14), landing early with declared expected failures that turn blocking as their packages land | MC-1 | M (3) | engine | DoD §2 |
+| **MC-12** The fold-in gate | `turbotab/core/tests/acceptance/test_family_contract.py` over the registry (§1, C14), landing early with declared expected failures that turn blocking as their packages land | MC-1 | M (3) | engine | DoD §2 |
 | **MC-13** The methods reference | `reference/methods.py:family_section` prints the contract: sources, two registers, invariances, inference table, "not applicable" where sound does not apply | MC-1 | S (1) | engine | DoD §2 |
 | **MC-17** The shelf card's two registers | The shared "Looked at" line and per-family differences; "Known as" on focus; "Waiting for" and "Ranked on the defaults now set"; both options of a "Try both" family; the priors and concentration under "More angles" | MC-5, P0.7 | M (3) | interface | rulings of 2026-10-08 |
 | **MC-18** The diagnostics registry | `models/diagnostics.py`, gathering today's diagnostics from `fit_stage`, `effects._Run.diagnostics` and `_concerns`; the forest's out-of-bag and XGBoost's early-stopping checks; a fire and a silent fixture for each | MC-1 | M (3) | engine | DoD §2 |

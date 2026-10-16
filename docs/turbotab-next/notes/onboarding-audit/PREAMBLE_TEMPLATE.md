@@ -19,7 +19,7 @@ returns at once instead of guessing.
 | STOP WHEN | all | set before the first round |
 | PUSH | builder, integrator | authority per wave |
 | WEB | auditor, any agent that may fetch | which hosts, if any |
-| ATTRIBUTION | only if agents get no harness reminder | the session line changes per session |
+| ATTRIBUTION | omit | the harness gives each workflow agent its own attribution lines (checked 2026-10-16) |
 | REPORT: the schema, with a `doubts` field | all | the script reads it |
 
 ## Template
@@ -41,9 +41,6 @@ ALSO RUNNING: <wave or heavy run, or "nothing">.
 STOP WHEN: <the acceptance evidence the plan row names>; at most <2> repair rounds, then report.
 PUSH: <none | ci/<name> only>.
 WEB: <none | allowed for <hosts>; never the user's email or any personal identifier>.
-ATTRIBUTION (only if the harness gives agents none):
-  Co-Authored-By: <model> <noreply@anthropic.com>
-  Claude-Session: <this session's link>
 REPORT (the schema): <fields, ending with doubts: your three most doubtful claims>.
 ```
 

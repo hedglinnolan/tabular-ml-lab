@@ -1,3 +1,5 @@
+**Landed** (C6a phases 1–4, through 37d70847, 2026-10-11). This is a record: where it instructs agents, the root CLAUDE.md and `.claude/agents/` now govern.
+
 Planned 2026-10-10 on turbotab-next @ c49b05f9 with E1c read from feat/wave-e1c-int; line numbers marked E1c refer to that branch.
 
 # Plan for the next engine wave: C6a, MC-2b and the four quest-log items
@@ -372,7 +374,7 @@ Every package waits for **both E1c and E1q** to land.
 - Losses rounded before the argmin.
 - Keep the elastic net's refit exact (through `exact_path`) even though the final estimator class is plain.
 - RT-5f changes elastic-net penalties: each split's own λ_max, n_plan-based K, per-row logistic C. Pinned values (`test_elastic_net_penalty.py`, the WP7 1e-9 pins, the Windows job) must be re-derived. Seeding the selection step and the forms (F15) also changes prediction results with those steps.
-- The local `venv` is not on the constraints: scikit-learn 1.9.0, xgboost 3.3.0, shap 0.52 against pinned 1.9.1, 3.4.1 and 0.53.0. Builders run `pip install -c turbotab/server/constraints.txt`.
+- ~~The local `venv` is not on the constraints: scikit-learn 1.9.0, xgboost 3.3.0, shap 0.52 against pinned 1.9.1, 3.4.1 and 0.53.0. Builders run `pip install -c turbotab/server/constraints.txt`.~~ Struck 2026-10-16: agents install nothing; `venv-next/`, on the constraints, is TurboTab v2's environment (`scripts/py`).
 
 **Dependencies**
 - Making shap a runtime dependency adds numba and llvmlite to Docker and the launchers, and **constraints.txt pins neither**. Re-resolve with `uv pip compile` and run the full tier on a `ci/full-*` branch.
