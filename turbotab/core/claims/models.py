@@ -238,7 +238,7 @@ SMALL_SAMPLE_STANDARD_ESTIMATE = register(Claim(
                    "expected, not measured.")),
         Part("scope", grade="judgment", basis=Basis(
             reason="The same design limits as under Predict (ten normal predictors, a yes/no "
-                   "outcome chosen on and a numeric one checked), and no estimand. Several "
+                   "outcome chosen on and a numeric one checked), and no effect estimated. Several "
                    "classes or ordered ones, to which the plan applies the same rule under "
                    "either purpose, are its fallback's.")),
     ),
@@ -298,7 +298,7 @@ SMALL_SAMPLE_STANDARD_CLASSES = register(Claim(
         Part("scope", grade="judgment", basis=Basis(
             reason="Every limit of the study, with no class or ordered outcome among its cells: "
                    "RECIPES §4.6 names multiclass among the shapes to check before release, and "
-                   "ordered outcomes nowhere; under Estimate there is no estimand either.")),
+                   "ordered outcomes nowhere; under Estimate no effect was estimated either.")),
     ),
     # The threshold for a yes/no or numeric outcome, read from that claim: one number in one place.
     params={"small_n": Param(SMALL_SAMPLE_STANDARD.params["small_n"].value,
@@ -580,9 +580,9 @@ ROWS_SMD_FLOOR_PREDICTION = register(Claim(
     id="materiality.rows_smd_floor_prediction",
     kind="rule",
     card="Under Predict too, the share of rows an energy screen removes, times how far they differ "
-         "on what the model adjusts for (its predictors other than one with the exposure role), "
-         "is a screening convention: it can say the screen could bias the score or that you "
-         "should act on it, never that it doesn't change your numbers here.",
+         "on what the model adjusts for (its predictors other than one column marked as what you "
+         "study), is a screening convention: it can say the screen could bias the score or that "
+         "you should act on it, never that it doesn't change your numbers here.",
     methods="Under Predict, rows changed times the leavers' largest standardized mean difference "
             "on what the model adjusts for (the predictors by role, less the outcome, those left "
             "out and one exposure: the estimand's where one is declared, else the first column "
@@ -595,8 +595,9 @@ ROWS_SMD_FLOOR_PREDICTION = register(Claim(
         "the energy screen's noticing (diet-implausible-reporters) under Predict, before the "
         "lock: the predicted movement of keeping every row, read as rows changed times the "
         "leavers' largest SMD on what the model adjusts for, as under Estimate (its predictors "
-        "by role less the outcome, those left out and one exposure, the estimand's or else the "
-        "first column with the exposure role), whatever its calibration cases",
+        "by role less the outcome, those left out and one column of what you study, the declared "
+        "comparison's or else the first column marked as what you study), whatever its "
+        "calibration cases",
         requires=(f"{HERE}:rows_times_smd", f"{HERE}:under_prediction"),
         disjoint_from=("materiality.rows_smd_floor",)),
     decision="materiality.diet_implausible_reporters",

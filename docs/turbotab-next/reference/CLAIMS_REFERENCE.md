@@ -265,11 +265,11 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `materiality.rows_smd_floor_prediction`
 
-*rule* · weakest part *judgment* · built · version 1 · hash `d40035453bc2`
+*rule* · weakest part *judgment* · built · version 1 · hash `b21b769d80e0`
 
-- **Card:** Under Predict too, the share of rows an energy screen removes, times how far they differ on what the model adjusts for (its predictors other than one with the exposure role), is a screening convention: it can say the screen could bias the score or that you should act on it, never that it doesn't change your numbers here.
+- **Card:** Under Predict too, the share of rows an energy screen removes, times how far they differ on what the model adjusts for (its predictors other than one column marked as what you study), is a screening convention: it can say the screen could bias the score or that you should act on it, never that it doesn't change your numbers here.
 - **Methods:** Under Predict, rows changed times the leavers' largest standardized mean difference on what the model adjusts for (the predictors by role, less the outcome, those left out and one exposure: the estimand's where one is declared, else the first column with the exposure role) served as the same outcome-blind screening convention, floored at could bias: a judgment carried from Estimate, where a constructed case showed the product does not track how far a coefficient moves; whether it tracks how far a cross-validated score moves was not measured.
-- **Regime:** the energy screen's noticing (diet-implausible-reporters) under Predict, before the lock: the predicted movement of keeping every row, read as rows changed times the leavers' largest SMD on what the model adjusts for, as under Estimate (its predictors by role less the outcome, those left out and one exposure, the estimand's or else the first column with the exposure role), whatever its calibration cases; predicates `turbotab.core.claims.models:rows_times_smd`, `turbotab.core.claims.models:under_prediction`; disjoint from `materiality.rows_smd_floor`
+- **Regime:** the energy screen's noticing (diet-implausible-reporters) under Predict, before the lock: the predicted movement of keeping every row, read as rows changed times the leavers' largest SMD on what the model adjusts for, as under Estimate (its predictors by role less the outcome, those left out and one column of what you study, the declared comparison's or else the first column marked as what you study), whatever its calibration cases; predicates `turbotab.core.claims.models:rows_times_smd`, `turbotab.core.claims.models:under_prediction`; disjoint from `materiality.rows_smd_floor`
 - **Decision:** decision `materiality.diet_implausible_reporters`; options `no_change`, `could_bias`, `act_on_it`; verdict *noted*; goal prediction
 - **Parts:**
   - direction: *judgment*, graded by not graded (reason: Carried from Estimate: the certified construction there (four over-reporters out of 10,000) moves a least-squares coefficient, not a cross-validated score. That the product can sit below its cut-off while the score moves is expected from it, with no case of its own.)
@@ -405,7 +405,7 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `tuning.small_sample_standard_classes`
 
-*rule* · weakest part *judgment* · built · version 1 · hash `edaaedd0e7e4`
+*rule* · weakest part *judgment* · built · version 1 · hash `ca57c8afc8f0`
 
 - **Card:** For an outcome of several classes, ordered or not, below an effective size of 300 boosted trees and XGBoost are not tuned either but fit once at the small-sample standard: a judgment, since the simulation that chose it had a yes/no outcome and a numeric one, never several classes or an order.
 - **Methods:** For a multiclass or ordinal outcome, under either purpose, the tuning plan followed the same rule, a judgment carried from the yes/no and numeric outcomes its simulation covered: below an effective size of 300, counted as the rarest class's units, it drew no candidate settings, and boosted trees and XGBoost were fit once at the small-sample standard; from 300 their settings were searched, the defaults among the candidates.
@@ -415,7 +415,7 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 - **Parts:**
   - value: *judgment*, graded by not graded (reason: The threshold for a yes/no or numeric outcome, a convention (RECIPES §4.6, ruled 2026-10-11), read here unchanged on the rarest class's units: nothing locates one for several classes or an order.)
   - direction: *judgment*, graded by not graded (reason: Carried from a yes/no outcome: docs/turbotab-next/notes/SMALL_SAMPLE_STANDARD.md chose the standard on yes/no cells and checked it on a numeric outcome (its §2 and §4), and simulated neither several classes nor ordered ones. That it also predicts about as well as tuning and stays calibrated where the defaults do not, when the rarest of several classes is small, is expected, not measured.)
-  - scope: *judgment*, graded by not graded (reason: Every limit of the study, with no class or ordered outcome among its cells: RECIPES §4.6 names multiclass among the shapes to check before release, and ordered outcomes nowhere; under Estimate there is no estimand either.)
+  - scope: *judgment*, graded by not graded (reason: Every limit of the study, with no class or ordered outcome among its cells: RECIPES §4.6 names multiclass among the shapes to check before release, and ordered outcomes nowhere; under Estimate no effect was estimated either.)
 - **Tests:** fires `turbotab/core/tests/test_claims_models.py::test_for_a_class_or_ordered_outcome_below_300_the_plan_is_one_fit_at_the_standard` (construction); silent `turbotab/core/tests/test_claims_models.py::test_for_a_class_or_ordered_outcome_from_300_the_plan_searches_after_the_library_defaults` (independent:scikit-learn)
 - **Enforced by:** `turbotab.core.models.tuning:standard_for`, `turbotab.core.models.tuning:searched_size`, `turbotab.core.stages.modeling:tuning_plans`
 - **Falls back to:** `tuning.small_sample_no_search`
@@ -423,7 +423,7 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `tuning.small_sample_standard_estimate`
 
-*rule* · weakest part *judgment* · built · version 1 · hash `affca61e6311`
+*rule* · weakest part *judgment* · built · version 1 · hash `6c1234c9b49b`
 
 - **Card:** Under Estimate too, below an effective size of 300 boosted trees and XGBoost are not tuned but fit once at the small-sample standard chosen for Predict: a judgment, since the simulation that chose it scored predictions and their calibration, not the curves an estimate is read from.
 - **Methods:** Under Estimate or Describe the tuning plan followed the same rule as under Predict, a judgment carried from it: below an effective size of 300 it drew no candidate settings, and boosted trees and XGBoost were fit once at the small-sample standard, which its simulation chose on predictive loss and calibration, not on the effect curves these families describe under Estimate; from 300 their settings were searched as under Predict, the defaults among the candidates.
@@ -433,7 +433,7 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 - **Parts:**
   - value: *judgment*, graded by not graded (reason: The threshold under Predict, a convention (RECIPES §4.6, ruled 2026-10-11), read here unchanged: nothing locates one for an estimate.)
   - direction: *judgment*, graded by not graded (reason: Carried from Predict: notes/SMALL_SAMPLE_STANDARD.md §1 scored each arm by its excess log loss and calibration slope on fresh rows, never an effect curve's bias or coverage. That a calibrated fit which predicts as well as tuning also draws a better curve than the overconfident defaults is expected, not measured.)
-  - scope: *judgment*, graded by not graded (reason: The same design limits as under Predict (ten normal predictors, a yes/no outcome chosen on and a numeric one checked), and no estimand. Several classes or ordered ones, to which the plan applies the same rule under either purpose, are its fallback's.)
+  - scope: *judgment*, graded by not graded (reason: The same design limits as under Predict (ten normal predictors, a yes/no outcome chosen on and a numeric one checked), and no effect estimated. Several classes or ordered ones, to which the plan applies the same rule under either purpose, are its fallback's.)
 - **Tests:** fires `turbotab/core/tests/test_claims_models.py::test_under_estimate_below_300_the_plan_is_one_fit_at_the_small_sample_standard` (construction); silent `turbotab/core/tests/test_claims_models.py::test_under_estimate_from_300_the_plan_searches_after_the_library_defaults` (independent:scikit-learn)
 - **Enforced by:** `turbotab.core.models.tuning:standard_for`, `turbotab.core.models.tuning:searched_size`, `turbotab.core.stages.modeling:tuning_plans`
 - **Falls back to:** `tuning.small_sample_standard_classes`
