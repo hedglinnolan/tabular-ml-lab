@@ -16,7 +16,10 @@ in the documents they amend.
   - `venv-next/` in the main checkout is TurboTab v2's environment, built with uv from `turbotab/server/constraints.txt` (CI's pins); `scripts/py` runs it from any worktree.
   - `venv/` is Classic's, untouched.
   - The fast tiers pass under `venv-next`: server 189, core 3,012, models 34, plus the trials and missing-data acceptance files.
-- **CI:** read it on turbotab-next's head through the public check-runs API before you rely on it. The last full tier, on ci/full-s1-int before the inference branch merged, failed only test_wp7's boosted-trees pin, which has since been re-pinned and passes under CI's versions.
+- **CI:** read it on turbotab-next's head through the public check-runs API before you rely on it.
+  - The full tier runs in three shards. Each stops at its own 100-minute deadline, names a test hung past 20 minutes, and posts its slowest files and tests as annotations (2026-10-16). The cause was four runs that ran out the job's 120 minutes with no report.
+  - On c2f07562 every job passed except the known-red e2e-real.
+  - One server test is intermittent on Linux (INBOX, "W1, intermittent test").
 
 ## Done since 2026-10-11
 
@@ -71,7 +74,9 @@ Send Nolan a short status at the end of each step, ending with one line of cost 
    **[Nolan]** The remaining 15 worktrees: Nolan approved their removal on 2026-10-16, branches
    kept, and removes them himself at the shell. No agent removes them: auto mode refused it. The
    two with unlanded code are saved as `wip/2026-10-05-*` commits (INBOX, worktree clean-up).
-2. **The claims registry, R0, in one wave** (plans/CLAIMS_REGISTRY.md §7): the registry, its meta-tests and the 15 S1 claims. Why: the claims the walkthrough puts on screen need a home before they are audited. Stop at R0's scope: the S2/S3 wording fixes wait for the walkthrough's pull.
+2. **The claims registry, R0** (plans/CLAIMS_REGISTRY.md §7, plans/R0_PLAN.md): the registry, its meta-tests and the 15 S1 claims. Why: the claims the walkthrough puts on screen need a home before they are audited. Stop at R0's scope: the S2/S3 wording fixes wait for the walkthrough's pull.
+   - **R0a, the scaffold, landed on 2026-10-16:** 8 agent runs and 1.74M fresh tokens. What it hands R0b is in R0_PLAN, "Carried from R0a".
+   - **R0b, the 15 claims and the splits, is next:** three packages and an integrator, about 3M to 3.5M. Nolan was told it crosses the 3M line, on 2026-10-16.
 3. **W1 part 2** (WALKABLE_PLAN §5; the packages are under Leftovers), then your own walkthrough of NHANES glucose under Predict, with a friction log, before Nolan sees it. Every claim that journey puts on screen is audited and registered as R1's first batch. Why: this is the walkable product, and the friction log decides what gets work next. **[Nolan]** He judges the walkthrough on screen. Then pause.
 
    While W1 part 2 builds, write `plans/SWARM_PLAN.md` yourself, docs only with no subagents

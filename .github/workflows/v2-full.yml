@@ -32,16 +32,20 @@ concurrency:
 jobs:
   full-tests:
     name: full core and server suite (${{ matrix.shard }})
-    # Every test, slow and acceptance ones included, in two shards that together run each test
-    # once (turbotab/core/tests/test_ci_tiers.py). Whole, the suite took 60 to 111 minutes between
+    # Every test, slow and acceptance ones included, in shards that together run each test once
+    # (turbotab/core/tests/test_ci_tiers.py). Whole, the suite took 60 to 111 minutes between
     # 2026-10-10 and 10-16 when it finished, and ran past 120 minutes on 10-11, 10-13 and twice
-    # on 10-16, with no annotation.
+    # on 10-16, with no annotation. Split in two on 10-16, the acceptance shard took 66 and 96
+    # minutes on two runners (126 and 185 test-minutes) and the rest 21 and 39, so the acceptance
+    # suite's seven longest files by those runs' annotations (about 88 of 185) run on their own.
     strategy:
       fail-fast: false
       matrix:
         include:
-          - shard: acceptance
-            paths: turbotab/core/tests/acceptance
+          - shard: acceptance, the seven longest files
+            paths: turbotab/core/tests/acceptance/test_nci_usual_intake.py turbotab/core/tests/acceptance/test_explain.py turbotab/core/tests/acceptance/test_ms6_prediction_validation.py turbotab/core/tests/acceptance/test_wp7_missing_data.py turbotab/core/tests/acceptance/test_wp11_omics.py turbotab/core/tests/acceptance/test_export.py turbotab/core/tests/acceptance/test_ms5_regression_calibration.py
+          - shard: acceptance, the rest
+            paths: turbotab/core/tests/acceptance --ignore=turbotab/core/tests/acceptance/test_nci_usual_intake.py --ignore=turbotab/core/tests/acceptance/test_explain.py --ignore=turbotab/core/tests/acceptance/test_ms6_prediction_validation.py --ignore=turbotab/core/tests/acceptance/test_wp7_missing_data.py --ignore=turbotab/core/tests/acceptance/test_wp11_omics.py --ignore=turbotab/core/tests/acceptance/test_export.py --ignore=turbotab/core/tests/acceptance/test_ms5_regression_calibration.py
           - shard: the rest
             paths: turbotab/core turbotab/server --ignore=turbotab/core/tests/acceptance
     runs-on: ubuntu-latest
