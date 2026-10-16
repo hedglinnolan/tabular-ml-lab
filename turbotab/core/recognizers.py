@@ -63,6 +63,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Literal, Mapping, Sequence
 
+from turbotab.core import claims
+
 # ── words ─────────────────────────────────────────────────────────────────────
 
 _CASE = re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
@@ -1713,6 +1715,25 @@ _BODY_WORDS = {"birth", "body", "bw", "baby", "infant", "newborn", "fetal", "ges
                "brain", "muscle", "fresh", "net", "gross"}
 NHANES_WEIGHT_PREFIX = ("WTDR", "WTMEC", "WTINT", "WTSA", "WTSB", "WTSOG", "WTSAF", "WTSH",
                         "WTSCD", "WTSPO", "WTSVOC", "WTSHM", "WTFSM", "WTSSB", "WTPH")
+# A subsample's weight as NCHS names one, whether or not its letters are among the prefixes above:
+# ``WTS``, the subsample's letters and the cycle, within the eight characters a SAS transport name
+# holds (Subsample A, B and C's WTSA2YR, WTSB2YR and WTSC2YR; the VOC subsample's WTSVOC2Y). The
+# claim data.nhanes_weight's verifier found WTSC2YR read as no weight at all, so a variable recorded
+# only on its rows took the examination weight, settled (claims backtest C-143). WTSC2YR is read
+# through this name alone, never through a bare ``WTSC`` prefix, which would read a body weight
+# named ``wtscale`` or a ``wtscore`` as a sampling weight in any table (audit IN-10).
+SUBSAMPLE_WEIGHT_NAME = re.compile(r"WTS(?=[A-Z0-9]{2,5}$)[A-Z]+\d+YR?")
+
+
+def _nhanes_weight_name(raw: str) -> bool:
+    """An NHANES weight by its name alone: a published prefix, or a subsample's weight named as
+    NCHS names one (:data:`SUBSAMPLE_WEIGHT_NAME`)."""
+    upper = raw.upper()
+    return bool(re.fullmatch(r"[A-Z0-9]+", upper)) and (
+        upper.startswith(NHANES_WEIGHT_PREFIX)
+        or SUBSAMPLE_WEIGHT_NAME.fullmatch(upper) is not None)
+
+
 # Multi-cycle weights as the NHANES tutorial builds them (Weighting Module, read 2026-10-03): "if
 # sddsrvyr in (2,3) then MEC4YR = 1/2 * WTMEC2YR;", "if sddsrvyr in (2,3,4) then MEC6YR = 1/3 *
 # WTMEC2YR;", "… MEC8YR = 1/4 * WTMEC2YR;". The same rule names a pooled interview, dietary,
@@ -1726,7 +1747,8 @@ def reads_as_survey_weight(name: Any, *, median: float | None = None,
     """A sampling weight, never a body or birth weight (audit IN-10). The one weight reader every
     stage shares (the roles proposal and the survey question alike).
 
-    An NHANES weight by its exact prefix (``WTDRD1``, ``WTMEC2YR``, ``WTSAF2YR``); a word that is a
+    An NHANES weight by its exact prefix (``WTDRD1``, ``WTMEC2YR``, ``WTSAF2YR``) or a subsample's
+    weight named as NCHS names one (``WTSC2YR``, :data:`SUBSAMPLE_WEIGHT_NAME`); a word that is a
     sampling weight on its own (``pweight``, ``finalwgt``, ``PERWT``) or a weight word beside the
     survey's vocabulary (``survey_weight``, ``sampling_wt``, ``final_weight``). Read only beside a
     survey design the table names (strata or primary sampling units, ``design_in_table``): a weight
@@ -1734,7 +1756,7 @@ def reads_as_survey_weight(name: Any, *, median: float | None = None,
     ``_LLCPWT``), or a bare ``weight``/``wt`` whose values are far above any body weight. A birth,
     body or gain word, a mass unit or a specimen is never a sampling weight."""
     raw = str(name)
-    if re.fullmatch(r"[A-Za-z0-9]+", raw) and raw.upper().startswith(NHANES_WEIGHT_PREFIX):
+    if _nhanes_weight_name(raw):
         return True
     if design_in_table and MULTI_CYCLE_WEIGHT.fullmatch(raw):
         return True  # the NHANES tutorial's own ``MEC6YR = 1/3 * WTMEC2YR``, beside the design
@@ -1841,10 +1863,10 @@ def weight_tier(name: Any) -> tuple[str, int] | None:
 
 def other_subsample_weight(name: Any) -> bool:
     """An NHANES subsample weight whose sample TurboTab does not know (``WTSA2YR``, ``WTSB2YR``,
-    ``WTSH2YR``, ``WTSVOC2Y``…): the weight of whichever analytes that file holds."""
+    ``WTSC2YR``, ``WTSH2YR``, ``WTSVOC2Y``…, any subsample's named as NCHS names one): the weight of
+    whichever analytes that file holds."""
     raw = str(name).upper()
-    return (bool(re.fullmatch(r"[A-Z0-9]+", raw)) and raw.startswith(NHANES_WEIGHT_PREFIX)
-            and weight_tier(raw) is None)
+    return _nhanes_weight_name(raw) and weight_tier(raw) is None
 
 
 def _expected(rank: int, prepandemic: bool, years: str | None = None) -> str:
@@ -1890,12 +1912,15 @@ def rank_weights(weights: Sequence[str], lcd: Mapping[str, Any] | None) -> list[
 # present exactly where WTSAF2YR is positive, whatever the variable is called (``LBDLDNSI``,
 # ``LBDLDMSI`` from TRIGLY_J, a glucose renamed ``fasting_glucose`` on import). The values
 # corroborate where the name list cannot (audit WP13 gate repair: those names were absent from
-# FASTING_ANALYTES, and the dietary weight was named, SETTLED). TurboTab's own tolerance: at most
-# 1% of a variable's recorded rows may lie outside the subsample (a merge's stray rows), and the
-# variable must be missing on at least 5% of the table, or it is no subsample's.
-SUBSAMPLE_SLACK = 0.01
-SUBSAMPLE_MIN_MISSING = 0.05
-SUBSAMPLE_MIN_ROWS = 10
+# FASTING_ANALYTES, and the dietary weight was named, SETTLED). TurboTab's own tolerance, the
+# parameters of the claim :data:`NHANES_WEIGHT` (``turbotab/core/claims/data.py``, claims backtest
+# C-143): at most ``slack`` of a variable's recorded rows may lie outside the subsample (a merge's
+# stray rows), the variable must be missing on at least ``min_missing`` of the table, and it must
+# hold ``min_rows`` rows, or it is no subsample's.
+NHANES_WEIGHT = "data.nhanes_weight"
+SUBSAMPLE_SLACK = claims.value(NHANES_WEIGHT, "slack")
+SUBSAMPLE_MIN_MISSING = claims.value(NHANES_WEIGHT, "min_missing")
+SUBSAMPLE_MIN_ROWS = claims.value(NHANES_WEIGHT, "min_rows")
 
 
 def subsample_variables(frame: Any, weight: str, *, skip: Iterable[str] = ()) -> list[str]:

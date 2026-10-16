@@ -16,6 +16,41 @@
       "status": "built"
     },
     {
+      "hash": "e7b182d46a141ee6b428c64d228fd692411aed96ddd14abca865ec738b48a17f",
+      "id": "data.clusters_adjust",
+      "status": "built"
+    },
+    {
+      "hash": "9b7306091382cdf705419e34ef577f73e12e321b72afdf47d3f38c2b47a4bd65",
+      "id": "data.constant_column",
+      "status": "built"
+    },
+    {
+      "hash": "202362758be6a1ea1e5ff4b23be3c6fbfdf15a7c51d22fd53115c078482839eb",
+      "id": "data.nhanes_weight",
+      "status": "built"
+    },
+    {
+      "hash": "fa485f5cafe21e2453446fc5d4191fd976d7fbf366ae0ecc1e288390446ecbde",
+      "id": "data.omics_raw_scale",
+      "status": "built"
+    },
+    {
+      "hash": "15ca79508d483955349e2cf1dcc9016b03f6dfbcdb60513f3e2eb6559aa4143f",
+      "id": "data.tail_share",
+      "status": "proposed"
+    },
+    {
+      "hash": "e23b5ea15e9bfda89c5f00f0502d1aba720e90b6744a01d9da9d97b0e49a276a",
+      "id": "data.ul_share",
+      "status": "built"
+    },
+    {
+      "hash": "1c9843b31435407a87674e1885c51af3f3cf932b7fed3aa9dfd4607443211f95",
+      "id": "data.ul_share_unread",
+      "status": "built"
+    },
+    {
       "hash": "62898b35eb18e42c9e21ed82ca914949e6a1607e2884bf40b74d38421ba3f601",
       "id": "designs.observational_default",
       "status": "built"
