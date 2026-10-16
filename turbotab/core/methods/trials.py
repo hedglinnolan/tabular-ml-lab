@@ -76,7 +76,14 @@ The cluster is the unit of randomization, so every cluster has one arm (refused 
   (Li & Redden's K − 2 for two arms and no cluster-level covariate). A yes/no outcome's risks are
   standardized as in a parallel trial, by the delta method on the corrected covariance (the
   covariates' own sampling variation is not added); the intraclass correlation reported is the
-  GEE's exchangeable working correlation.
+  GEE's exchangeable working correlation. Their start is the logistic model fitted without the
+  clustering, on the raw columns, and no other. Where that start shows a sign of separation (no
+  convergence, a singular information matrix, a coefficient or a fitted risk past the bounds
+  above), or their own fit puts a risk within the same floor of 0 or 1, the linear program only
+  decides which refusal is given: the separation, as above, where it finds anyone separated;
+  otherwise a refusal saying that the start did not settle, or that the fit reached the floor,
+  never that some group's risk runs to 0% or 100%. So a covariate far from its zero (a calendar
+  year, a body temperature), whose intercept passes the bound, is refused, not reported.
 
 **Missing outcomes.** The primary analysis analyzes the outcomes observed, which is valid when they
 are missing at random given the arm and the covariates (White, Horton, Carpenter & Pocock 2011).
@@ -144,8 +151,10 @@ CV_RULE = 0.6  # Li & Redden 2015: KC below this coefficient of variation of clu
 FEW_CLUSTERS = claims.value("trials.few_clusters", "few_clusters")
 # Signs of separation in a converged logistic fit (``trials.separation``): a coefficient past
 # this on its column's own scale, or a fitted risk this near 0 or 1. :func:`_logistic` refuses on
-# either; a parallel trial then asks the linear program (:func:`_fit_risks`), and the estimating
-# equations, whose independence start it is, refuse with no program (:func:`fit_gee`).
+# either; a parallel trial then asks the linear program (:func:`_fit_risks`), and so do the
+# estimating equations, whose independence start it is, and whose own fit's risks are checked
+# against the same floor (:func:`fit_gee`): there the program only decides which refusal is
+# given, separation or a start (or a fit) that did not settle within these bounds.
 COEFFICIENT_BOUND = claims.value("trials.separation", "coefficient_bound")
 RISK_FLOOR = claims.value("trials.separation", "risk_floor")
 GEE_TOL = 1e-12
@@ -921,12 +930,21 @@ def _nearly_singular() -> TrialRefused:
         term="nearly singular information in the logistic model")
 
 
+# What counts no uncertainty in an arm whose outcomes are all the same, in the refusal for it.
+YE_VARIANCE = ("Ye et al.'s variance, built from each arm's spread of outcomes around its fitted "
+               "risks")
+GEE_SANDWICH = ("the corrected sandwich, built from each cluster's residuals around its fitted "
+                "risks")
+
+
 def _separated_refusal(d: _Design, y: np.ndarray, arms: list[str], people: np.ndarray,
-                       columns: list[int]) -> TrialRefused:
+                       columns: list[int], variance: str = YE_VARIANCE) -> TrialRefused:
     """The refusal when the data separate some people (:func:`_separated_people`). An arm with no
-    events, or only events: its risk is 0% or 100%, and Ye et al.'s variance, made of each arm's
-    spread of outcomes around its fitted risks, is zero there. Everyone separated: no fit is
-    left. Otherwise the terms ``columns`` predict those people's outcomes exactly, and the
+    events, or only events: its risk is 0% or 100%, and the effect's ``variance`` (Ye et al.'s,
+    made of each arm's spread of outcomes around its fitted risks, or the estimating equations'
+    corrected sandwich, :data:`GEE_SANDWICH`) counts no uncertainty from that arm. Everyone
+    separated: no fit is left. Otherwise the terms ``columns`` predict those people's outcomes
+    exactly, and the
     logistic model has no finite fit for them. At its limit the standardized risks are finite
     (Lesaffre & Albert 1989, *J R Stat Soc B* 51:109), those people at their own outcome under
     every arm and the rest the fit to the people left, but reading that fit is withdrawn (claims
@@ -940,9 +958,8 @@ def _separated_refusal(d: _Design, y: np.ndarray, arms: list[str], people: np.nd
                 f"{'No one' if events == 0 else 'Everyone'} in {a} had the event ({events} of "
                 f"{m}), so the arm's risk is {'0%' if events == 0 else '100%'} and the logistic "
                 f"model's coefficient for the arm has no finite value. The risk difference is "
-                f"still finite, but Ye et al.'s variance, built from each arm's spread of outcomes "
-                f"around its fitted risks, counts no uncertainty where every outcome is the same, "
-                f"so no interval is given for it here.", (DESCRIBE_OUTCOMES_EXIT,),
+                f"still finite, but {variance}, counts no uncertainty where every outcome is the "
+                f"same, so no interval is given for it here.", (DESCRIBE_OUTCOMES_EXIT,),
                 term="separation in the logistic model")
     exits = (FEWER_COVARIATES_EXIT, DESCRIBE_OUTCOMES_EXIT)
     if people.all():
@@ -1340,16 +1357,69 @@ class GEEResult:
     iterations: int
 
 
-def fit_gee(X: np.ndarray, y: np.ndarray, codes: np.ndarray, family: str) -> GEEResult:
+def _start_unsettled() -> TrialRefused:
+    """The refusal when the estimating equations' independence start, :func:`_logistic` on the
+    raw columns, refuses and the linear program does not show anyone separated: it found no one,
+    or could not decide. A covariate far from its zero (a calendar year, a body temperature)
+    puts the intercept past :data:`COEFFICIENT_BOUND` with no one separated, so the reason is
+    that the start did not settle within its bounds, never that some risk runs to 0% or 100%."""
+    return TrialRefused(
+        "The estimating equations start from the logistic model fitted without the clustering, "
+        "and that fit did not settle within its bounds here, so no estimate is given; this does "
+        "not show that anyone's risk runs to 0% or 100%.", (FEWER_COVARIATES_EXIT,),
+        term="the estimating equations' start did not settle")
+
+
+def _fit_at_the_floor() -> TrialRefused:
+    """The refusal when the estimating equations' own fit puts a risk within :data:`RISK_FLOOR` of
+    0 or 1 and the linear program does not show anyone separated (it found no one, or could not
+    decide): one person's outlying covariate value can put their risk there with the others'
+    outcomes overlapping on every value."""
+    return TrialRefused(
+        f"The estimating equations' fit puts someone's risk within {RISK_FLOOR:g} of 0 or 1 (0% "
+        f"or 100%), the edge at which its risks are not read, though no one was found separated "
+        f"(no group whose outcomes the arm and the covariates predict exactly), so no estimate "
+        f"is given at that edge.", (FEWER_COVARIATES_EXIT, DESCRIBE_OUTCOMES_EXIT),
+        term="the estimating equations' fit at the risk floor")
+
+
+def _gee_refusal(X: np.ndarray, y: np.ndarray,
+                 separated: Callable[[np.ndarray, list[int]], TrialRefused] | None,
+                 otherwise: Callable[[], TrialRefused]) -> TrialRefused:
+    """Which true refusal the estimating equations give when their start, or their own fit, does
+    not settle within the separation signs' bounds: the linear program (:func:`_separated_people`)
+    decides. Anyone separated: the separation refusal, naming them as ``separated`` does where
+    the caller has the trial's design (:func:`_separated_refusal`), the plain one
+    (:func:`_separation`) where it does not. No one separated, or the program could not decide:
+    ``otherwise``."""
+    found = _separated_people(X, y)
+    if found is not None and found[0].any():
+        return separated(*found) if separated is not None else _separation()
+    return otherwise()
+
+
+def fit_gee(X: np.ndarray, y: np.ndarray, codes: np.ndarray, family: str, *,
+            separated: Callable[[np.ndarray, list[int]], TrialRefused] | None = None
+            ) -> GEEResult:
     """GEE with an exchangeable working correlation as R's ``gee`` (4.13) fits it: start from the
     independence fit (``glm``); then, until β stops moving, compute the Pearson residuals r at the
     current β, the scale φ = Σ r²/(N − p) and
     α = Σ_g Σ_{j≠k} r_gj r_gk / (φ(Σ_g m_g(m_g − 1) − 2p)), and take one Fisher-scoring step
-    with R_g = (1 − α)I + αJ."""
+    with R_g = (1 − α)I + αJ. A yes/no outcome's start is :func:`_logistic` on the raw columns,
+    and no other: where it refuses, and where the fit puts a risk within :data:`RISK_FLOOR` of 0
+    or 1, the linear program decides which refusal is given (:func:`_gee_refusal`), separation
+    (``separated`` names the people, from the trial's design) or :func:`_start_unsettled` and
+    :func:`_fit_at_the_floor`."""
     from turbotab.core.models.repeated import gee_working
 
     task = "regression" if family == "gaussian" else "binary"
-    beta = _ols(X, y).beta if family == "gaussian" else _logistic(X, y).beta
+    if family == "gaussian":
+        beta = _ols(X, y).beta
+    else:
+        try:
+            beta = _logistic(X, y).beta
+        except TrialRefused:
+            raise _gee_refusal(X, y, separated, _start_unsettled) from None
     G = int(codes.max()) + 1
     m = np.bincount(codes, minlength=G).astype(float)
     N, p = X.shape
@@ -1373,7 +1443,7 @@ def fit_gee(X: np.ndarray, y: np.ndarray, codes: np.ndarray, family: str) -> GEE
                            (GEE_EXIT,), term="GEE did not converge")
     mu = X @ beta if family == "gaussian" else _expit(X @ beta)
     if family == "binary" and (np.min(mu) < RISK_FLOOR or np.max(mu) > 1 - RISK_FLOOR):
-        raise _separation()
+        raise _gee_refusal(X, y, separated, _fit_at_the_floor)
     return GEEResult(beta=beta, alpha=alpha, phi=phi, mu=mu, iterations=it)
 
 
@@ -1445,7 +1515,9 @@ def size_cv(codes: np.ndarray) -> float:
 def _gee(d: _Design, y: np.ndarray, codes: np.ndarray, arms: list[str], family: str,
          correction: str, df: int) -> tuple[list[Contrast], list[ArmEstimate], GEEResult,
                                             np.ndarray]:
-    fit = fit_gee(d.X, y, codes, family)
+    fit = fit_gee(d.X, y, codes, family,
+                  separated=lambda people, columns: _separated_refusal(d, y, arms, people, columns,
+                                                                       GEE_SANDWICH))
     V = gee_covariance(d.X, y, codes, fit.beta, fit.alpha, family, correction)
     contrasts: list[Contrast] = []
     estimates: list[ArmEstimate] = []

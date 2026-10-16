@@ -142,18 +142,214 @@ def test_a_numeric_cluster_trial_of_twelve_clusters_names_no_few_clusters(K, met
 # ── the trial's separation (claims backtest B-281) ───────────────────────────
 
 
-def test_a_cluster_trial_whose_treated_clusters_all_had_the_event_is_refused():
+def test_a_cluster_trial_whose_treated_clusters_all_had_the_event_is_refused(monkeypatch):
     """Everyone in the treated clusters had the event, so the arm predicts it exactly and the
-    logistic model's risk there runs to 100%: the estimating equations are refused for
-    separation, with no risk difference reported."""
+    logistic model's risk there runs to 100%: the estimating equations' start does not settle,
+    the linear program finds the treated people separated, and the estimating equations are
+    refused for that separation, the refusal naming the arm and its count of events and the
+    corrected sandwich (not a parallel trial's variance), with no risk difference reported."""
     from turbotab.core.methods import trials as T
 
     df = _cluster_trial(12)
     df.loc[df.arm == "trt", "event"] = 1
+    treated = int((df.arm == "trt").sum())
+    calls = _program_calls(monkeypatch)
     with pytest.raises(T.TrialRefused) as r:
         T.estimate(df, _gee_spec())
-    assert r.value.term == "separation in the logistic model", str(r.value)
-    assert "no finite estimate exists" not in str(r.value)
+    said = str(r.value)
+    assert r.value.term == "separation in the logistic model", said
+    assert f"Everyone in trt had the event ({treated} of {treated})" in said, said
+    assert "corrected sandwich" in said and "Ye et al." not in said, said
+    assert "no finite estimate exists" not in said
+    assert calls == [len(df)], calls
+
+
+def test_a_cluster_trial_whose_smokers_all_had_the_event_is_refused_naming_smoking(monkeypatch):
+    """Every smoker had the event, the others' outcomes mixed: a direction along the smoking
+    column puts each smoker's risk at 100% and leaves everyone else's fit, so the data separate
+    the smokers (Albert & Anderson 1984) and the logistic model has no finite fit for them. The
+    estimating equations' start does not settle, and they are refused for that separation, the
+    refusal naming the column and how many people it predicts."""
+    from turbotab.core.methods import trials as T
+
+    df = _cluster_trial(12)
+    rng = np.random.default_rng(5)
+    df["smoker"] = (rng.random(len(df)) < 0.2).astype(float)
+    df.loc[df.smoker == 1, "event"] = 1
+    smokers = int(df.smoker.sum())
+    assert 0 < df.loc[df.smoker == 0, "event"].mean() < 1
+    spec = T.TrialSpec(arm="arm", control="ctl", outcome="event",
+                       trial_design="cluster_randomized_trial", cluster="cluster",
+                       covariates=("x", "smoker"))
+    calls = _program_calls(monkeypatch)
+    with pytest.raises(T.TrialRefused) as r:
+        T.estimate(df, spec)
+    said = str(r.value)
+    assert r.value.term == "separation in the logistic model", said
+    assert said.startswith("From smoker, the data predict exactly whether "
+                           f"{smokers} of the {len(df)} people had the event"), said
+    assert calls == [len(df)], calls
+
+
+def _far_covariate_trial(seed: int, name: str, centre: float, sd: float,
+                         slope: float) -> pd.DataFrame:
+    """Sixteen clusters of 10 to 29 people, alternate clusters treated (a log odds ratio of 0.5),
+    a cluster effect of SD 0.5 on the log odds, and a covariate ``name`` of mean ``centre`` and
+    SD ``sd`` whose log odds ratio is ``slope`` per unit; a yes/no outcome."""
+    rng = np.random.default_rng(seed)
+    m = rng.integers(10, 30, 16)
+    df = pd.DataFrame({"cluster": np.repeat(np.arange(1, 17), m)})
+    df["arm"] = df.cluster.map({c: ("ctl" if c % 2 else "trt") for c in range(1, 17)})
+    u = rng.normal(0, 0.5, 17)
+    df[name] = centre + rng.normal(0, sd, len(df))
+    lp = u[df.cluster] + 0.5 * (df.arm == "trt") + slope * (df[name] - centre) - 0.2
+    df["event"] = (rng.random(len(df)) < 1 / (1 + np.exp(-lp))).astype(float)
+    return df
+
+
+def _statsmodels_fits(df: pd.DataFrame, name: str):
+    """statsmodels on the arm and ``name``: the logistic model fitted without the clustering
+    (``Logit`` by Newton's method, on ``name`` centered, which leaves its fitted risks and who is
+    separated as they are), which converges only where no one is separated (Albert & Anderson
+    1984), and the GEE with an exchangeable working correlation, as the model family's
+    estimating equations are checked against it (to 10⁻¹⁰): the Logit's convergence and fitted
+    risks, and the GEE's coefficients, working correlation and fitted risks."""
+    import warnings
+
+    import statsmodels.api as sm
+
+    X = np.column_stack([np.ones(len(df)), df.arm == "trt", df[name]]).astype(float)
+    centered = np.column_stack([X[:, :2], X[:, 2] - X[:, 2].mean()])
+    y = df.event.to_numpy()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        logit = sm.Logit(y, centered).fit(method="newton", tol=1e-12, maxiter=200, disp=0)
+        gee = sm.GEE(y, X, groups=pd.factorize(df.cluster)[0], family=sm.families.Binomial(),
+                     cov_struct=sm.cov_struct.Exchangeable()).fit(maxiter=200, ctol=1e-10)
+    return (bool(logit.mle_retvals["converged"]), np.asarray(logit.predict(centered)), gee.params,
+            float(gee.cov_struct.dep_params), np.asarray(gee.fittedvalues))
+
+
+UNSETTLED = ("The estimating equations start from the logistic model fitted without the "
+             "clustering, and that fit did not settle within its bounds here, so no estimate is "
+             "given; this does not show that anyone's risk runs to 0% or 100%.")
+
+
+def _refused_as_unsettled(df: pd.DataFrame, name: str, monkeypatch) -> None:
+    """The cluster trial adjusted for ``name`` is refused because the estimating equations'
+    start did not settle, in the ruled words, with fewer covariates as its exit, after one call
+    of the linear program for separation."""
+    from turbotab.core.methods import trials as T
+
+    calls = _program_calls(monkeypatch)
+    with pytest.raises(T.TrialRefused) as r:
+        T.estimate(df, T.TrialSpec(arm="arm", control="ctl", outcome="event",
+                                   trial_design="cluster_randomized_trial", cluster="cluster",
+                                   covariates=(name,)))
+    assert r.value.term == "the estimating equations' start did not settle", str(r.value)
+    assert str(r.value) == UNSETTLED
+    assert r.value.exits == [{"label": "Adjust for fewer covariates", "covariates": []}]
+    assert calls == [len(df)], calls
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_a_cluster_trial_adjusted_for_a_calendar_year_is_refused_as_unsettled_not_separated(
+        seed, monkeypatch):
+    """A calendar year of 2021 ± 1.5 that has no effect, over 16 clusters: the year's
+    coefficient is near zero, so the intercept, read at year 0, runs past 25, though no one is
+    separated: statsmodels' Logit converges on everyone, and its GEE fits the trial with every
+    fitted risk between 0.2 and 0.8. The estimating equations' start, on the raw columns, does
+    not settle within its bounds, the linear program finds no one separated, and the trial is
+    refused as unsettled, never for a separation the data do not have."""
+    df = _far_covariate_trial(seed, "year", 2021.0, 1.5, 0.0)
+    converged, _, params, _, risks = _statsmodels_fits(df, "year")
+    assert converged and abs(params[0]) > 25 and abs(params[2]) < 1, params
+    assert 0.2 < risks.min() and risks.max() < 0.8, (risks.min(), risks.max())
+    _refused_as_unsettled(df, "year", monkeypatch)
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_a_cluster_trial_adjusted_for_a_body_temperature_is_refused_as_unsettled_not_separated(
+        seed, monkeypatch):
+    """A body temperature of 37 ± 0.5 °C with a log odds ratio of 1.2 per °C, over 16 clusters:
+    the intercept, read at 0 °C, runs past 25, though no one is separated: statsmodels' Logit
+    converges on everyone, and its GEE fits the trial with every fitted risk between 0.05 and
+    0.95. The trial is refused as unsettled, never for separation."""
+    df = _far_covariate_trial(seed, "temp", 37.0, 0.5, 1.2)
+    converged, _, params, _, risks = _statsmodels_fits(df, "temp")
+    assert converged and abs(params[0]) > 25, params
+    assert 0.05 < risks.min() and risks.max() < 0.95, (risks.min(), risks.max())
+    _refused_as_unsettled(df, "temp", monkeypatch)
+
+
+def test_a_cluster_trial_whose_start_reaches_the_floor_at_one_dose_is_refused_as_unsettled(
+        monkeypatch):
+    """Doses of SD 1 with a log odds ratio of 1.5 per unit, and one treated person's dose of 18
+    with the event: statsmodels' Logit converges on everyone, so no one is separated, but puts
+    that person's fitted risk within 10⁻¹⁰ of 1, with every GEE coefficient under 5. The
+    estimating equations' start reaches the floor, the linear program finds no one separated,
+    and the trial is refused as unsettled, never for separation."""
+    df = _far_covariate_trial(3, "dose", 0.0, 1.0, 1.5)
+    first = df.index[df.arm == "trt"][0]
+    df.loc[first, ["dose", "event"]] = [18.0, 1.0]
+    converged, start, params, _, _ = _statsmodels_fits(df, "dose")
+    assert converged and np.max(np.abs(params)) < 5, params
+    assert 1 - start.max() < 1e-10, 1 - start.max()
+    _refused_as_unsettled(df, "dose", monkeypatch)
+
+
+def _outlying_dose_trial(dose: float) -> pd.DataFrame:
+    """Doses of SD 1 with a log odds ratio of 1.5 per unit over 16 clusters, and the first
+    treated person's dose set to ``dose``, far past everyone else's, with the event."""
+    df = _far_covariate_trial(86, "dose", 0.0, 1.0, 1.5)
+    first = df.index[df.arm == "trt"][0]
+    df.loc[first, ["dose", "event"]] = [dose, 1.0]
+    return df
+
+
+def test_a_cluster_trial_whose_own_fit_reaches_the_floor_with_no_one_separated_is_refused(
+        monkeypatch):
+    """One treated person's dose of 15.7: statsmodels' Logit converges on everyone, its
+    coefficients under 5 and every fitted risk more than 1.5 × 10⁻¹⁰ from 0 and 1, so no one is
+    separated and the estimating equations' start settles; statsmodels' GEE then puts that
+    person's fitted risk within 7 × 10⁻¹¹ of 1. The estimating equations' own fit reaches the
+    floor there, the linear program finds no one separated, and the trial is refused at that
+    edge, never for separation."""
+    from turbotab.core.methods import trials as T
+
+    df = _outlying_dose_trial(15.7)
+    converged, start, params, _, risks = _statsmodels_fits(df, "dose")
+    assert converged and np.max(np.abs(params)) < 5, params
+    assert min(start.min(), 1 - start.max()) > 1.5e-10, (start.min(), 1 - start.max())
+    assert 1 - risks.max() < 7e-11, 1 - risks.max()
+    calls = _program_calls(monkeypatch)
+    with pytest.raises(T.TrialRefused) as r:
+        T.estimate(df, T.TrialSpec(arm="arm", control="ctl", outcome="event",
+                                   trial_design="cluster_randomized_trial", cluster="cluster",
+                                   covariates=("dose",)))
+    said = str(r.value)
+    assert r.value.term == "the estimating equations' fit at the risk floor", said
+    assert "no one was found separated" in said and "runs to 0% or 100%" not in said, said
+    assert calls == [len(df)], calls
+
+
+def test_the_same_trial_with_a_nearer_dose_is_reported_as_statsmodels_fits_it(monkeypatch):
+    """The same trial with that person's dose at 12: statsmodels' GEE keeps every fitted risk more
+    than 10⁻⁸ from 0 and 1, so the floor is not reached; the estimating equations are reported,
+    their coefficients and working correlation statsmodels' to the GEE tests' 10⁻⁹ relative, and
+    the linear program is not asked."""
+    from turbotab.core.methods import trials as T
+
+    df = _outlying_dose_trial(12.0)
+    converged, _, params, alpha, risks = _statsmodels_fits(df, "dose")
+    assert converged and min(risks.min(), 1 - risks.max()) > 1e-8, (risks.min(), risks.max())
+    calls = _program_calls(monkeypatch)
+    r = T.estimate(df, T.TrialSpec(arm="arm", control="ctl", outcome="event",
+                                   trial_design="cluster_randomized_trial", cluster="cluster",
+                                   covariates=("dose",)))
+    assert r.coefficients == pytest.approx(list(params), rel=1e-9)
+    assert r.icc == pytest.approx(alpha, rel=1e-8)
+    assert calls == [], calls
 
 
 def test_a_trial_no_one_is_separated_in_is_reported_as_statsmodels_fits_it():
