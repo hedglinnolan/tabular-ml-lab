@@ -58,6 +58,7 @@ states it as a concern on every family while the values are not normalized.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
@@ -139,28 +140,39 @@ class ScaleReading:
         return float(t.max() / t.min()) if t.size else float("nan")
 
 
-def _excluded_by_name(name: str) -> bool:
-    """Identifiers, a person's characteristics and covariates, and times are never assay features:
-    the roles stage's own name rules (its identifier reader and covariate words, and the
-    recognizers' time words), read as whole words, so the block and the roles agree. A name its
-    words do not read (NHANES's RIDAGEYR) is not left out. The time words moved to the
-    recognizers (ffaf2d0f) and the import that read them here failed silently, so until the claim
-    data.omics_raw_scale was registered (claims backtest C-193) nothing was left out by its name
-    and a numeric SEQN entered the block."""
-    from turbotab.core.recognizers import _TIME_WORDS
-    from turbotab.core.stages.rows import _COVARIATE_TOKENS, _id_like, _tokens
+# The names that are never an assay feature (``data.omics_raw_scale``, claims backtest C-193):
+# omics' own list, not the roles stage's word lists, whose covariate and identifier words name
+# real features too (methionine's Met and Met-SO in Biocrates panels; the genes MET, IDS and PIR).
+# Lower case; a column leaves the block when its whole name, or one whole word of it, is one.
+NOT_FEATURE_IDENTIFIERS = frozenset({"seqn", "id", "sample_id", "subject_id", "patient_id"})
+NOT_FEATURE_CHARACTERISTICS = frozenset({"age", "sex", "gender", "bmi", "ridageyr", "riagendr",
+                                         "ridreth1", "bmxbmi", "indfmpir"})
+NOT_FEATURE_TIMES = frozenset({"visit", "time", "timepoint", "date", "day", "days", "hour",
+                               "hours", "year", "years", "session"})
+NOT_FEATURE_NAMES = NOT_FEATURE_IDENTIFIERS | NOT_FEATURE_CHARACTERISTICS | NOT_FEATURE_TIMES
+_WORD = re.compile(r"[a-z0-9]+")
 
-    tokens = set(_tokens(str(name)))
-    return _id_like(str(name)) or bool(tokens & _COVARIATE_TOKENS) or bool(tokens & _TIME_WORDS)
+
+def _excluded_by_name(name: str) -> bool:
+    """An identifier, a person's characteristic or a time is never an assay feature: the column
+    leaves the block when its whole name, or one whole word of it (a run of letters and digits),
+    in any case, is in :data:`NOT_FEATURE_NAMES`, or the name ends ``_id``. Only a whole name or
+    word counts, so Met, MET, IDS and PIR stay in, and so do AGER and TIMELESS. Until the claim
+    data.omics_raw_scale was registered, nothing was left out by its name (an import of the roles
+    stage's rules failed silently), and a numeric SEQN entered the block."""
+    low = str(name).strip().lower()
+    return (low in NOT_FEATURE_NAMES or low.endswith("_id")
+            or not NOT_FEATURE_NAMES.isdisjoint(_WORD.findall(low)))
 
 
 def candidate_columns(frame: pd.DataFrame, target: str | None = None,
                       only: Sequence[str] | None = None) -> list[str]:
-    """Numeric columns that could be assay features: not the outcome, not an identifier or a
-    person's characteristic by name, not two-valued, and not how the samples were acquired: a
-    column named as a run order, batch, plate or well, or one that numbers the rows once each (a
-    run order read name-blind) is never an intensity (MS7 repair: a `run_order` column was counted
-    among the intensities). ``only`` limits them (the exposures)."""
+    """Numeric columns that could be assay features: not the outcome, not an identifier, a
+    person's characteristic or a time by name (:func:`_excluded_by_name`), not two-valued, and not
+    how the samples were acquired: a column named as a run order, batch, plate or well, or one
+    that numbers the rows once each (a run order read name-blind) is never an intensity (MS7
+    repair: a `run_order` column was counted among the intensities). ``only`` limits them (the
+    exposures)."""
     from turbotab.core.recognizers import acquisition_kind
 
     allowed = None if only is None else set(only)

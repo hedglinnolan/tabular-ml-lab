@@ -419,20 +419,22 @@ def _panel(draw, k: int = 25, n: int = 60) -> pd.DataFrame:
 
 def test_an_identifier_and_an_age_beside_the_assay_columns_stay_out_of_the_block():
     """Claims backtest C-193, the fires side of the names the block leaves out: an NHANES
-    participant number (SEQN, whole numbers from 130,000) and an age in years (18 to 80) are
-    numeric, non-negative and take many values, so only their names keep them out of the assay
-    block. Beside 25 gene counts (Poisson(200), 60 samples) under the genomics lens, the reading
-    names the 25 genes alone, and each sample's total is the sum of its gene counts (numpy). Beside
-    25 log2 intensities (normal, mean 20 and standard deviation 2) under the metabolomics lens,
-    nothing is read as raw intensities, as the block alone reads: the participant numbers' size
-    is no intensity's."""
+    participant number (SEQN, whole numbers from 130,000), an age in years (18 to 80) under its
+    plain name and under NHANES's (RIDAGEYR), and a sample number (sample_id, from 5,001 in steps
+    of 3, so no numbering of the rows) are numeric, non-negative and take many values, so only
+    their names keep them out of the assay block. Beside 25 gene counts (Poisson(200), 60 samples)
+    under the genomics lens, the reading names the 25 genes alone, and each sample's total is the
+    sum of its gene counts (numpy). Beside 25 log2 intensities (normal, mean 20 and standard
+    deviation 2) under the metabolomics lens, nothing is read as raw intensities, as the block
+    alone reads: the participant numbers' size is no intensity's."""
     from turbotab.core.methods import omics
 
     rng = np.random.default_rng(1937)
     n = 60
     genes = pd.DataFrame({f"g{j}": rng.poisson(200, n) for j in range(25)})
     person = pd.DataFrame({"SEQN": np.arange(130000, 130000 + 7 * n, 7),
-                           "age": rng.integers(18, 81, n)})
+                           "age": rng.integers(18, 81, n), "RIDAGEYR": rng.integers(18, 81, n),
+                           "sample_id": np.arange(5001, 5001 + 3 * n, 3)})
     reading = omics.scale_reading(pd.concat([person, genes], axis=1), ["genomics"])
     assert reading is not None and reading.kind == "counts", reading
     assert reading.columns == tuple(genes.columns), reading.columns
@@ -441,6 +443,60 @@ def test_an_identifier_and_an_age_beside_the_assay_columns_stay_out_of_the_block
     assert omics.scale_reading(logged, ["metabolomics"]) is None
     beside = pd.concat([person[["SEQN"]], logged], axis=1)
     assert omics.scale_reading(beside, ["metabolomics"]) is None
+
+
+# The names the omics reading leaves out of the block (the orchestrator's ruling on claims
+# backtest C-193, round 3): an identifier, a person's characteristic or a time, as the whole name
+# or one whole word of it, in any case.
+NOT_ASSAY_NAMES = ("SEQN", "seqn", "id", "ID", "sample_id", "subject_id", "patient_id", "visit_id",
+                   "Specimen_ID", "Age", "sex", "GENDER", "bmi", "RIDAGEYR", "riagendr", "RIDRETH1",
+                   "BMXBMI", "INDFMPIR", "visit", "Time", "timepoint", "date", "day", "days",
+                   "hour", "hours", "year", "years", "session", "age_at_draw", "Visit number",
+                   "draw.date", "hours-fasted", "BMI (kg/m2)")
+
+
+@pytest.mark.parametrize("name", NOT_ASSAY_NAMES)
+def test_each_name_the_reading_leaves_out_leaves_the_block_and_its_totals(name):
+    """Each name of the ruling's list, as the whole name or one whole word of it, in any case: a
+    column so named, numeric with many values (whole numbers 18 to 1,000), stays out of the block
+    beside 25 gene counts (Poisson(200), 60 samples) under the genomics lens, and each sample's
+    total is the sum of its gene counts alone (numpy)."""
+    from turbotab.core.methods import omics
+
+    rng = np.random.default_rng(1939)
+    n = 60
+    genes = pd.DataFrame({f"g{j}": rng.poisson(200, n) for j in range(25)})
+    frame = pd.concat([pd.DataFrame({name: rng.integers(18, 1001, n)}), genes], axis=1)
+    reading = omics.scale_reading(frame, ["genomics"])
+    assert reading is not None and reading.kind == "counts", reading
+    assert reading.columns == tuple(genes.columns), reading.columns
+    assert np.array_equal(reading.totals, genes.to_numpy().sum(axis=1))
+
+
+# Assay features whose names the roles stage's word lists read as a covariate or an identifier:
+# methionine and its sulfoxide as Biocrates panels name them (Met, Met-SO), and the genes MET (the
+# hepatocyte growth factor receptor), IDS (iduronate 2-sulfatase) and PIR (pirin).
+FEATURES_NAMED_LIKE_COVARIATES = ("Met", "Met-SO", "MET", "IDS", "PIR")
+
+
+def test_methionine_and_the_genes_met_ids_and_pir_stay_in_the_block():
+    """The silent side of the names the reading leaves out: Met, Met-SO, MET, IDS and PIR are
+    assay features, none of them a whole name or a whole word of the ruling's list. Beside 20
+    other assay columns, each of the 25 Poisson(200) counts by construction (60 samples) under
+    the genomics lens and log-normal intensities in the thousands (median 5,000, log SD 1)
+    under the metabolomics lens, every one stays in the block the reading names."""
+    from turbotab.core.methods import omics
+
+    rng = np.random.default_rng(1940)
+    names = FEATURES_NAMED_LIKE_COVARIATES + tuple(f"f{j}" for j in range(20))
+    counts = pd.DataFrame({name: rng.poisson(200, 60) for name in names})
+    reading = omics.scale_reading(counts, ["genomics"])
+    assert reading is not None and reading.kind == "counts", reading
+    assert reading.columns == names, set(names) - set(reading.columns)
+    intensities = pd.DataFrame({name: rng.lognormal(np.log(5000.0), 1.0, 60) for name in names})
+    reading = omics.scale_reading(intensities, ["metabolomics"])
+    assert reading is not None and reading.kind == "intensities", reading
+    assert reading.columns == names, set(names) - set(reading.columns)
 
 
 # Assay columns named as laboratories name them, among them gene symbols that begin with a
