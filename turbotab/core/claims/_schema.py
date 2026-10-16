@@ -49,6 +49,8 @@ _RETRACTED = re.compile(r"^\d{4}-\d{2}-\d{2}: \S")
 GRADED_FORM = "'<who>, YYYY-MM-DD'"
 _GRADED = re.compile(r"(?P<who>.*\S), (?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})")
 _PARENTHETICAL = re.compile(r"\([^()]*\)")
+_NAME_PUNCTUATION = re.compile(r"[-_.'\u2019]")
+_SELF_REFERENCES = frozenset({"self", "myself", "me", "author", "same", "same author", "same person"})
 
 
 @dataclass(frozen=True)
@@ -188,17 +190,22 @@ def grader(graded_by: str) -> str | None:
 
 
 def same_person(who_graded: str, author: str) -> bool:
-    """Whether ``who_graded`` may be ``author``: each casefolded, its whitespace collapsed, its
-    parentheticals and a leading "the" dropped, the two are equal, either holds the other, or
-    either names no one. In doubt it says yes: a false yes costs a re-grade, a false no lets a
-    claim grade itself."""
+    """Whether ``who_graded`` may be ``author``. Each is casefolded, its parentheticals dropped, its
+    hyphens, underscores, periods and apostrophes read as spaces, its whitespace collapsed and a
+    leading "the" dropped. Then they may be one person when the two are equal, either holds the
+    other (with or without its spaces), the grader is a self-reference such as "self" or "the
+    author", or either names no one. In doubt it says yes: a false yes costs a re-grade, a false
+    no lets a claim grade itself."""
     def who(name: str) -> str:
         while _PARENTHETICAL.search(name):
             name = _PARENTHETICAL.sub(" ", name)
-        name = " ".join(name.casefold().split())
+        name = " ".join(_NAME_PUNCTUATION.sub(" ", name).casefold().split())
         return "" if name == "the" else name.removeprefix("the ")
     g, a = who(who_graded), who(author)
-    return not g or not a or g in a or a in g
+    if not g or not a or g in _SELF_REFERENCES:
+        return True
+    g_run, a_run = g.replace(" ", ""), a.replace(" ", "")
+    return g in a or a in g or g_run in a_run or a_run in g_run
 
 
 def placeholders(template: str) -> list[str]:

@@ -254,6 +254,11 @@ SELF_GRADERS = {
     "a parenthetical alone": "(self), 2026-10-16",
     "a name inside the author's": "builder, 2026-10-16",
     "a name holding the author's": "the R0a builder and a basis audit, 2026-10-16",
+    "a name that holds the author's only once its article is dropped": "the builder, 2026-10-16",
+    "a bare self-reference": "self, 2026-10-16",
+    "the author named as the author": "the author, 2026-10-16",
+    "the author hyphenated": "R0a-builder, 2026-10-16",
+    "the author run together": "R0abuilder, 2026-10-16",
 }
 OTHER_GRADERS = {
     "a basis audit": OTHER,
