@@ -51,6 +51,13 @@ def test_a_proposed_claim_is_listed_as_ruled_not_built_and_a_built_one_as_built(
     assert "Fewer than 10 clusters: intervals can still be too narrow." in built
 
 
+def test_the_count_agrees_in_number_with_the_claims_it_counts(tmp_path):
+    one = reference.render(registry(tmp_path, rule()))
+    assert "It holds 1 claim: 1 built, 0 ruled and not built, 0 retracted." in one
+    two = reference.render(registry(tmp_path, rule(), teaching()))
+    assert "It holds 2 claims: 2 built, 0 ruled and not built, 0 retracted." in two
+
+
 def _paths(tmp_path):
     out, history = tmp_path / "CLAIMS_REFERENCE.md", tmp_path / "history.jsonl"
     return out, history, ["--out", str(out), "--history", str(history)]

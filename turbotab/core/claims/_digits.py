@@ -2,10 +2,12 @@
 allowlist of today's digit-bearing strings.
 
 A digit is any character ``str.isdigit`` accepts, so "²" counts. It passes when it sits inside a
-citation: a span one of the citation registry's ``cited_as`` patterns matches, carried on to the
-close of the parenthesis it sits in (or the next "; " inside it), so "(Friedman 2001, Ann Stat
-29:1189)" is one citation and "(below 0.6, Friedman 2001)" is a number beside one.
-The registry is read as a file: the claims package imports no engine module.
+citation: a span one of the citation registry's ``cited_as`` patterns matches, carried on, when
+the span sits in a parenthesis, over its bibliographic tail and nothing else (:data:`_TAIL`: the
+rest of a token the match ends inside, as in "STROBE 16a", a span of years, a journal's volume and
+page, a section, a page or an item). So "(Friedman 2001, Ann Stat 29:1189, §10.10)" is one
+citation, while "(below 0.6, Friedman 2001)" and "(Friedman 2001, below 0.6)" are each a number
+beside one. The registry is read as a file: the claims package imports no engine module.
 
 Otherwise the whole string must be allowlisted in ``digit_allowlist.json``, tagged with one of
 :data:`TAGS`. The allowlist was seeded from the app's digit-bearing strings on 2026-10-16; a
@@ -55,19 +57,27 @@ def _opening(text: str, start: int) -> int | None:
     return None
 
 
-def _close(text: str, end: int) -> int:
-    """The end of a citation inside a parenthesis: its close, or the next "; " before it."""
-    depth = 0
-    for j in range(end, len(text)):
-        if text[j] == "(":
-            depth += 1
-        elif text[j] == ")":
-            if depth == 0:
-                return j + 1
-            depth -= 1
-        elif text[j] == ";" and depth == 0:
-            return j
-    return len(text)
+# One piece of a citation's bibliographic tail, read from where the work's match ends: a span of
+# years ("2011–2016"), then, each after a comma or a space, a journal's volume and page
+# (", Ann Stat 29:1189"), a section ("§3.2.3"), a page ("p. 1203") or an item ("item 15").
+_TAIL = re.compile(
+    r"[–-]\d{4}\b"
+    r"|(?:,\s*|\s+)(?:"
+    r"[A-Z][A-Za-z.&]*(?:\s[A-Z][A-Za-z.&]*)*\s\d+(?:\(\d+\))?:\d+(?:[–-]\d+)?"
+    r"|§\s?\d+(?:\.\d+)*"
+    r"|pp?\.\s?\d+(?:[–-]\d+)?"
+    r"|items?\s\d+[a-z]?(?:(?:,\s*|\s+and\s+)\d+[a-z]?)*"
+    r")\b")
+_TOKEN = re.compile(r"\w+")
+
+
+def _tail(text: str, end: int) -> int:
+    """Where a citation whose work's match ends at ``end`` ends: past its bibliographic tail."""
+    if 0 < end < len(text) and text[end - 1].isalnum() and text[end].isalnum():
+        end = _TOKEN.match(text, end).end()
+    while m := _TAIL.match(text, end):
+        end = m.end()
+    return end
 
 
 def citation_spans(text: str, citations: Path = CITATIONS) -> list[tuple[int, int]]:
@@ -75,7 +85,7 @@ def citation_spans(text: str, citations: Path = CITATIONS) -> list[tuple[int, in
     spans = []
     for pattern in _patterns(str(citations)):
         for m in pattern.finditer(text):
-            end = _close(text, m.end()) if _opening(text, m.start()) is not None else m.end()
+            end = _tail(text, m.end()) if _opening(text, m.start()) is not None else m.end()
             spans.append((m.start(), end))
     return spans
 

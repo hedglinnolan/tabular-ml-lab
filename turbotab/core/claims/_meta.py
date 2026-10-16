@@ -5,8 +5,9 @@ each on the default registry and on planted ones that break and keep it.
 1. :func:`tests_exist` — every claim's tests exist and declare their truth. A claim whose code is
    not written yet may name tests not written yet (it is proposed, "ruled, not built"); once every
    enforcer it names resolves, a missing test is a violation: the code acts, untested.
-2. :func:`no_self_pinning` — no claim test's file imports or names its claim's constant, or calls
-   ``value()`` on its own claim id: its expected value would be the engine's own (§2.1).
+2. :func:`no_self_pinning` — no claim test's file imports or names its claim's constant, or holds
+   its own claim id as a string: through ``value()``, ``card()`` or the registry, however the call
+   is spelled, its expected value could be the claim's own (§2.1).
 3. :func:`grades_met` — every part meets §2.4's requirement for its grade; above judgment it has a
    grader other than the author, and its claim has regime predicates (§2.2).
 4. :func:`none_proposed_renders` — no built claim falls back to one that cannot render, and no
@@ -48,7 +49,11 @@ def tests_exist(reg: Registry) -> list[str]:
 
 
 def _pins(module: ast.Module, c: Claim) -> list[str]:
-    """How the test file ``module`` pins claim ``c`` to itself."""
+    """How the test file ``module`` pins claim ``c`` to itself.
+
+    A string equal to the claim's id counts wherever it stands (an argument, a variable, a
+    subscript), so ``value(ID, …)``, an alias of ``value``, ``card(ID)`` and ``registry()[ID]`` are
+    caught alike; an id built at run time is not seen."""
     constants = {p.constant.partition(":")[2]: p.constant.partition(":")[0]
                  for p in c.params.values() if p.constant}
     found = []
@@ -63,17 +68,11 @@ def _pins(module: ast.Module, c: Claim) -> list[str]:
             found.append(f"names {node.id}")
         elif isinstance(node, ast.Attribute) and node.attr in constants:
             found.append(f"names {node.attr}")
-        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and (
-                node.value in constants):
-            found.append(f"names {node.value!r}")
-        elif isinstance(node, ast.Call):
-            fn = node.func
-            called = fn.id if isinstance(fn, ast.Name) else (
-                fn.attr if isinstance(fn, ast.Attribute) else "")
-            first = node.args[0] if node.args else next(
-                (k.value for k in node.keywords if k.arg == "id"), None)
-            if called == "value" and isinstance(first, ast.Constant) and first.value == c.id:
-                found.append(f"reads value({c.id!r})")
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if node.value in constants:
+                found.append(f"names {node.value!r}")
+            elif node.value == c.id:
+                found.append(f"names its own claim id {c.id!r}")
     return sorted(set(found))
 
 
@@ -86,8 +85,8 @@ def no_self_pinning(reg: Registry) -> list[str]:
             if module is None:
                 continue
             for how in _pins(module, c):
-                out.append(f"{c.id}: its test file {path} {how}, so its expected value is the "
-                           "engine's own")
+                out.append(f"{c.id}: its test file {path} {how}, so it can take its expected "
+                           "value from the claim it tests, not from known truth")
     return out
 
 

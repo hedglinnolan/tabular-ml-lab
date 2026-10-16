@@ -3,12 +3,16 @@ the default registry (no claim is registered yet, so each must pass), on a plant
 breaks it (it must name the violation) and on a planted registry that keeps it (it must name none).
 
 1. every claim's tests exist and declare their truth;
-2. no claim test imports or names its own claim's constant, or reads its own claim's value;
+2. no claim test imports or names its own claim's constant, or names its own claim's id (so it
+   cannot read the claim's value, sentence or entry, however it spells the call);
 3. every part's grade meets §2.4's requirement, with a grader other than the author above
    judgment, and regime predicates wherever a part is graded above judgment (§2.2);
 4. no proposed claim renders: no built claim falls back to one, and none is shown;
 5. no two live claims conflict on one decision in overlapping regimes;
 6. the digit gate, over every claim's templates outside their placeholders.
+
+On the default registry, the meta-tests that read the app's strings (4 and 6) read every
+``Relation.says`` and teaching string, as ``test_claims_digits.py`` collects them.
 
 Every planted case is built here from files the test writes, so its truth is the construction.
 """
@@ -20,15 +24,26 @@ from turbotab.core import claims
 from turbotab.core.claims import Basis, Fires, HeldOut, Param, Part, Regime, Silent
 from turbotab.core.tests.test_claims_fixtures import (DERIVATION, FIRES, HERE, SILENT, registry,
                                                        rule, teaching)
+from turbotab.core.tests.test_claims_digits import relation_says, teaching_strings
 
 ID = "planted.few_clusters"
 OTHER = "a basis audit"
 REQUIRES = (f"{HERE}:outcome_is_binary",)
 
 
+def app_strings(meta):
+    """What the default run passes ``meta`` beside the registry: the app's strings, where it reads
+    them."""
+    if meta is claims.none_proposed_renders:
+        return {"shown": [text for _, text in relation_says() + teaching_strings()]}
+    if meta is claims.digit_gate:
+        return {"strings": relation_says() + teaching_strings()}
+    return {}
+
+
 @pytest.mark.parametrize("meta", claims.META_TESTS, ids=lambda m: m.__name__)
 def test_each_meta_test_passes_on_the_default_registry(meta):
-    assert meta(claims.registry()) == []
+    assert meta(claims.registry(), **app_strings(meta)) == []
 
 
 def test_there_are_six_meta_tests_in_the_order_section_6_gives():
@@ -75,12 +90,28 @@ PINNED = {
                                    "N = claims.value('planted.few_clusters', 'few')\n",
     "reads its value by the bare function": "from turbotab.core.claims import value\n"
                                             "N = value(id='planted.few_clusters', param='few')\n",
+    "reads its value through a variable": "from turbotab.core import claims\n"
+                                          "ID = 'planted.few_clusters'\n"
+                                          "N = claims.value(ID, 'few')\n",
+    "reads its value through the registry": "from turbotab.core import claims\n"
+                                            "N = claims.registry()['planted.few_clusters']"
+                                            ".params['few'].value\n",
+    "reads its value through an alias": "from turbotab.core.claims import value as v\n"
+                                        "N = v('planted.few_clusters', 'few')\n",
+    "renders its own sentence": "from turbotab.core import claims\n"
+                                "SAYS = claims.card('planted.few_clusters', {'outcome': 'binary'})"
+                                "\n",
 }
 CLEAN = {
     "states the number from the construction": "N = 10\n",
     "reads another claim's value": "from turbotab.core import claims\n"
                                    "N = claims.value('planted.other', 'few')\n",
     "imports the module but not the constant": "import planted.engine\nACT = planted.engine.act\n",
+    "reads another claim's value through a variable": "from turbotab.core import claims\n"
+                                                      "OTHER = 'planted.other'\n"
+                                                      "N = claims.value(OTHER, 'few')\n",
+    "names its claim inside its docstring": '"""The known-truth tests behind planted.few_clusters'
+                                            '."""\n',
 }
 BODY = ("\n\ndef test_nine_clusters_name_the_concern():\n    assert 9 < 10\n\n\n"
         "def test_forty_clusters_say_nothing():\n    assert not 40 < 10\n")
@@ -219,6 +250,14 @@ def test_4_fires_where_a_proposed_claim_s_sentence_is_shown(tmp_path):
     reg = registry(tmp_path, _proposed())
     shown = ["Because you chose X: Your call: here is what each choice does."]
     found = claims.none_proposed_renders(reg, shown=shown)
+    assert len(found) == 1 and "planted.your_call" in found[0] and "shown" in found[0]
+
+
+def test_4_reads_the_app_s_own_sentences_on_the_default_run(tmp_path):
+    """A proposed claim worded as a real ``Relation.says`` is caught by the default run's call."""
+    says = next(t for _, t in relation_says() if "{" not in t and "}" not in t)
+    found = claims.none_proposed_renders(registry(tmp_path, _proposed(card=says)),
+                                         **app_strings(claims.none_proposed_renders))
     assert len(found) == 1 and "planted.your_call" in found[0] and "shown" in found[0]
 
 

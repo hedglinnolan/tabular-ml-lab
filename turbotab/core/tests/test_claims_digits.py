@@ -4,7 +4,8 @@ The gate reads every claim template outside its placeholders, every ``Relation.s
 method contracts and every teaching string (the uppercase names of
 ``turbotab.core.teaching.content``, as the citation scanner reads them), one character at a time
 with ``str.isdigit``, so "²" counts. A digit passes when it is a placeholder, sits inside a
-citation the citation registry recognizes, or the whole string is allowlisted with its tag in
+citation the citation registry recognizes (the work, then only its bibliographic tail: years,
+volume and page, section, page or item), or the whole string is allowlisted with its tag in
 ``turbotab/core/claims/digit_allowlist.json``. Today's digit-bearing strings seed the allowlist,
 each tagged; a new one fails, and an entry the app no longer has fails too.
 
@@ -77,9 +78,27 @@ def test_a_new_digit_bearing_string_fails_the_gate(text):
     assert len(found) == 1 and "planted:new" in found[0]
 
 
+@pytest.mark.parametrize("text, stray", [
+    ("It is named (Friedman 2001, below 0.6).", "06"),
+    ("It is named (Li & Redden 2015: fewer than 10 clusters).", "10"),
+    ("(Friedman 2001 recommends a shrinkage of 0.1 and 500 trees)", "01500"),
+    ("It is named (Friedman 2001, Ann Stat 29:1189, below 0.6).", "06"),
+    ("It is named (Friedman 2001, §10.10, 500 trees).", "500"),
+])
+def test_a_number_after_a_citation_inside_its_parenthesis_is_not_part_of_it(text, stray):
+    """A citation runs on only over its bibliographic tail (years, volume and page, section, page,
+    item); the threshold after it is the sentence's own number."""
+    found = claims.digit_gate(claims.Registry(), strings=[("planted:new", text)], allowlist={})
+    assert len(found) == 1 and f"the digits {stray!r} " in found[0]
+
+
 @pytest.mark.parametrize("text", [
     "Boosting fits stagewise (Friedman 2001).",
     "Boosting fits stagewise (Friedman 2001, Ann Stat 29:1189); a later work disagrees.",
+    "Boosting fits stagewise (Friedman 2001, Ann Stat 29:1189, §10.10, p. 1203).",
+    "The arms are described, never tested (Moher et al. 2010, item 15).",
+    "The unadjusted estimate is shown (STROBE 16a).",
+    "The subgroup's degrees of freedom (NHANES Analytic Guidelines 2011–2016 §3.2.3).",
     "A sentence with no number in it.",
 ])
 def test_a_digit_inside_a_citation_or_no_digit_passes(text):

@@ -129,7 +129,8 @@ def render(reg: Registry) -> str:
     if not len(reg):
         lines += ["No claim is registered yet.", ""]
     else:
-        lines += [f"It holds {len(reg)} claims: {counts['built']} built, {counts['proposed']} "
+        noun = "claim" if len(reg) == 1 else "claims"
+        lines += [f"It holds {len(reg)} {noun}: {counts['built']} built, {counts['proposed']} "
                   f"ruled and not built, {counts['retracted']} retracted.", ""]
     lines += [
         "## How to read an entry", "",

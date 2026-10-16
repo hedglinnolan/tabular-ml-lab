@@ -155,7 +155,7 @@
     },
     {
       "text": "Each completed copy is analyzed design-based, and Rubin's rules take the design's degrees of freedom as the complete-data degrees of freedom (MS2).",
-      "tag": "name"
+      "tag": "citation"
     },
     {
       "text": "Each group gets its own intercept and clustered intervals; yes/no outcomes need 16 rows per group.",
@@ -224,6 +224,10 @@
     {
       "text": "Plausibility bounds flag values no living patient could have; a reference interval holds the central 95% of healthy people and is for annotation only. The bounds themselves are institution-specific.",
       "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "Refused under inference: A formative index (a diet-quality score, an FFQ-derived score) is defined by its components, not caused by one construct: its internal consistency is not the error that dilutes the regression, so dividing by α or ω over-corrects (Reedy et al. 2018: the HEI-2015's components showed “at least four dimensions”). Its reliability comes from a test–retest ICC of a repeat administration or from a calibration substudy.",
+      "tag": "name"
     },
     {
       "text": "Restricted cubic spline of outcome vs energy-adjusted intake: 3–5 knots at conventional percentiles (3 knots at 10/50/90, or 4 at 5/35/65/95), and a reported p for non-linearity; quintiles remain expected alongside.",
@@ -342,6 +346,10 @@
       "tag": "name"
     },
     {
+      "text": "data quality is compared across sociodemographic groups (TRIPOD+AI 7)",
+      "tag": "guideline item"
+    },
+    {
       "text": "each cycle's weight is multiplied by its years over the stacked years: 1 ÷ k for k two-year cycles, and 3.2 over the stacked years for the 3.2-year prepandemic file",
       "tag": "threshold-pending-claim"
     },
@@ -368,6 +376,14 @@
     {
       "text": "every estimate shown is pooled: the coefficient table, the form tests (D1) and the substitution curve",
       "tag": "name"
+    },
+    {
+      "text": "every family is also validated internal–externally by the grouping, each level scored by models fit on the others, with the random-effects summary and the spread (TRIPOD+AI 12d, 23b)",
+      "tag": "guideline item"
+    },
+    {
+      "text": "every imbalance correction is followed by recalibration within the training fold (TRIPOD+AI 13)",
+      "tag": "guideline item"
     },
     {
       "text": "every other model is fit on every analyzed row (Model 2 is the fit's primary); Model 3 alone on the rows where they are recorded, the primary's adjustment refit on those rows beside it",
