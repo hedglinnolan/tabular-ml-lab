@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from turbotab.core.jobs import JobRunner
+
+# The claims registry's strict mode (CLAIMS_REGISTRY.md §2.2), on for every test: a claim rendered
+# outside its regime raises instead of falling back. Set at import, so each xdist worker has it.
+os.environ["TURBOTAB_CLAIMS_STRICT"] = "1"
 
 
 def pytest_configure(config) -> None:

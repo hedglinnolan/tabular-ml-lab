@@ -1,0 +1,553 @@
+{
+  "about": "The digit gate's allowlist (CLAIMS_REGISTRY.md §3; turbotab/core/claims/_digits.py). A digit in a claim template, a Relation.says or a teaching string passes when it is a placeholder, sits inside a citation the citation registry recognizes, or the whole string is listed here with its tag. Seeded on 2026-10-16 from every digit-bearing string the app had then; a new string fails the gate, and an entry the app no longer has fails test_claims_digits.py. Edit a string and its entry goes stale: re-tag it, or fill its number from a claim.",
+  "tags": {
+    "name": "the digits are part of a name: a statistic (R², I², D1, CR2), a standard (SHA-256), a variable (WTDRD1), a survey cycle (1999–2000), a model (Model 3), a version (v2), or an answer's key or label that names the option itself",
+    "guideline item": "a reporting guideline's item (TRIPOD+AI 13, PROBAST item 4.6)",
+    "example": "an illustration that sets nothing (a 1–5 rating, 9 for don't know)",
+    "mathematical constant": "a number fixed by the mathematics (a probability between 0 and 1, shares summing to 100%, d − q + 1)",
+    "citation": "a pointer to a source the citation registry does not hold: a design doc's section or ruling (MODELING_SEQUENCE §2, ruling 7) or a research pack's section",
+    "threshold-pending-claim": "a number the app asserts as fact or acts on (a threshold, a parameter, a domain or study figure) that a claim should own; R0b and later register them, and each entry leaves when its sentence is filled from its claim"
+  },
+  "strings": [
+    {
+      "text": "0",
+      "tag": "name"
+    },
+    {
+      "text": "0.1",
+      "tag": "name"
+    },
+    {
+      "text": "0.2",
+      "tag": "name"
+    },
+    {
+      "text": "0.3",
+      "tag": "name"
+    },
+    {
+      "text": "1 kcal = 4.184 kJ, and a column ending `_pct_kcal` is a share of energy, not an amount. Every implausibility screen, energy adjustment and substitution is a function of total energy, so a unit error there reaches every result.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "100",
+      "tag": "name"
+    },
+    {
+      "text": "100 kcal steps",
+      "tag": "name"
+    },
+    {
+      "text": "1999–2000 stacked with another cycle needs the four-year weight on the 1999–2002 rows",
+      "tag": "name"
+    },
+    {
+      "text": "200",
+      "tag": "name"
+    },
+    {
+      "text": "200 kcal steps",
+      "tag": "name"
+    },
+    {
+      "text": "50",
+      "tag": "name"
+    },
+    {
+      "text": "50 kcal steps",
+      "tag": "name"
+    },
+    {
+      "text": "500–3,500 kcal a day",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "500–5,000 kcal a day",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "A category is refused for k-means and a mixture, never coded as 0/1 columns silently (Huang 1998, Data Min Knowl Discov 2:283).",
+      "tag": "name"
+    },
+    {
+      "text": "A column of a few whole-number values (race coded 1 to 5) is asked about, never read as amounts until its reading is settled.",
+      "tag": "example"
+    },
+    {
+      "text": "A design-based estimator, or block and record with the sample-only attestation as its exit (MODELING_SEQUENCE §2).",
+      "tag": "citation"
+    },
+    {
+      "text": "A linear model assumes straight-line, additive effects and gives coefficients you can report. An elastic net shrinks correlated nutrients together, which suits diets where nutrients travel in foods. Boosted trees find curves and interactions but give no coefficients. In one comparison of 30,000 models, the algorithm mattered less than the endpoint and the analyst.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "A number standing for an answer that is not a value, such as 9 for don't know or 999 for not measured.",
+      "tag": "example"
+    },
+    {
+      "text": "A nutrient's amount per unit of energy, such as grams per 1,000 kcal.",
+      "tag": "example"
+    },
+    {
+      "text": "A quantity is regression, scored by R², RMSE and MAE. Two classes are binary, scored by AUC, Brier score and log loss. Several unordered classes are multiclass. An ordered score, such as a 1–5 rating, is ordinal: regression would assume equal gaps, and classification would discard the order. An event whose follow-up varies is time to event.",
+      "tag": "example"
+    },
+    {
+      "text": "A reference interval holds the central 95% of healthy people by construction and is for annotation only. Plausibility bounds flag values no living patient could have. The two are different categories, and no generic outlier rule tells them apart; the bounds themselves are institution-specific.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "A review of 100 substitution studies (Louie & Bhowmik 2026) found 53% used unvalidated food-frequency variables; where validation was reported, correlations with reference methods ranged from 0.12 to 0.77.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "A sentinel code such as 9 on a 1–5 item is a missing answer, not a strong opinion; a value impossible in a living patient is an entry error. Repairs that look only at their own row run on the table now. Anything learned from many rows waits for the training folds.",
+      "tag": "example"
+    },
+    {
+      "text": "A single 24-hour recall measures one day, not usual diet. Two or more non-consecutive recalls separate day-to-day variation from real differences between people; with one recall that separation is impossible.",
+      "tag": "name"
+    },
+    {
+      "text": "A spline's overall and nonlinear tests are adjusted Wald F tests on (q, d − q + 1) degrees of freedom (Korn & Graubard 1990).",
+      "tag": "mathematical constant"
+    },
+    {
+      "text": "A stratum with a single PSU is drawn twice or not at all, each with chance 1/2, so its PSU total varies about zero as R survey's lonely.psu \"adjust\" centers it, so the calibrated interval treats it as the primary's design-based table does, never as a stratum with no variance.",
+      "tag": "mathematical constant"
+    },
+    {
+      "text": "A two-level outcome needs one level coded 1, and nothing in the file says which: alive or dead has no correct default. The event fixes the meaning of every predicted probability, odds ratio and calibration curve, and the methods section names it.",
+      "tag": "name"
+    },
+    {
+      "text": "A unit's rows are not independent: the weighted model's variance is clustered by unit (CR2, with Bell–McCaffrey degrees of freedom), the g-formula's interval resamples whole units, and with fewer units than the floor no interval is reported.",
+      "tag": "name"
+    },
+    {
+      "text": "A zero on a 24-hour recall is a zero for that day, not a person who never eats the food.",
+      "tag": "name"
+    },
+    {
+      "text": "Anyone outside 500–3,500 kcal a day is excluded; stricter, so it removes more.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "Anyone outside 500–5,000 kcal a day is excluded, whatever their sex.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "Classes with an order but no fixed spacing, such as a 1–5 rating; best modeled by a cumulative link model.",
+      "tag": "example"
+    },
+    {
+      "text": "Coarser steps; the curve's labeled effect is a 200 kcal swap.",
+      "tag": "name"
+    },
+    {
+      "text": "Combining NHANES cycles from 2001–2002 on means dividing the two-year weights by the number of cycles combined. 1999–2000 is the exception: its two-year weights and 2001–2002's rest on different censuses, so the 1999–2002 rows take the four-year weight, doubled, before the division (NHANES Analytic Guidelines 2011–2016 §3.1.3–3.1.4). Confirm the same dietary method applies across cycles.",
+      "tag": "name"
+    },
+    {
+      "text": "Duplicate participant identifiers mean repeated measures; look for the occasion too, such as a day, visit or recall number, or a date. Twin columns such as `DR1TKCAL` and `DR2TKCAL` are the same structure in wide form.",
+      "tag": "name"
+    },
+    {
+      "text": "Each completed copy is analyzed design-based, and Rubin's rules take the design's degrees of freedom as the complete-data degrees of freedom (MS2).",
+      "tag": "name"
+    },
+    {
+      "text": "Each group gets its own intercept and clustered intervals; yes/no outcomes need 16 rows per group.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "Finds shared response scales and codes outside them, such as 9 for no answer.",
+      "tag": "example"
+    },
+    {
+      "text": "Finer steps; the curve's labeled effect is a 50 kcal swap.",
+      "tag": "name"
+    },
+    {
+      "text": "Hold out 10%",
+      "tag": "name"
+    },
+    {
+      "text": "Hold out 20%",
+      "tag": "name"
+    },
+    {
+      "text": "Hold out 30%",
+      "tag": "name"
+    },
+    {
+      "text": "In MAQC-II, across more than 30,000 models from 36 teams, performance depended mainly on the endpoint and the team's proficiency, and different algorithms performed similarly. Whether tree ensembles beat penalized linear models is disputed.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "In a 1–5 item, a 9 is not extremely agree; it is don't know or refused. Sentinels must be recoded, never automatically: some legitimate scales do run 0–9.",
+      "tag": "example"
+    },
+    {
+      "text": "In a cohort people enter at different times, move away, or the study ends before their event could happen. A yes/no model treats them as event-free and can manufacture an association; a time-to-event model keeps each person for the time they were followed (PROBAST, item 4.6).",
+      "tag": "guideline item"
+    },
+    {
+      "text": "In one simulation built on a biomarker study, Goldberg cut-offs reduced but did not remove bias in 14 of 24 nutrient–outcome associations and did not reduce it in the other 10; fixed kcal screens were not evaluated (Yamamoto et al. 2023). Whether to exclude at all is disputed: decide by the research purpose, not a general rule.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "Kauermann–Carroll when the cluster sizes' coefficient of variation is below 0.6, Fay–Graubard otherwise (Li & Redden 2015)",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "Model 1 is declared again, never silently kept",
+      "tag": "name"
+    },
+    {
+      "text": "Model 3 adds them, labeled as not a total effect",
+      "tag": "name"
+    },
+    {
+      "text": "Multiple imputation implies pooling every estimate; the causal lane is not pooled over imputations in v2, so incomplete rows are blocked and recorded.",
+      "tag": "name"
+    },
+    {
+      "text": "NHANES oversamples some age, race and income groups on purpose. Without its weights, means are biased toward the oversampled groups; without strata and PSUs, standard errors are too small. Dietary analyses use `WTDRD1` for day 1 or `WTDR2D` for both days, not the examination weight `WTMEC2YR`. Under inference the survey question then asks whether the estimates describe the surveyed population (weighted, with design-based intervals) or these participants.",
+      "tag": "name"
+    },
+    {
+      "text": "Ordered levels, such as a 1–5 rating; a proportional-odds model keeps their order.",
+      "tag": "example"
+    },
+    {
+      "text": "Plausibility bounds flag values no living patient could have; a reference interval holds the central 95% of healthy people and is for annotation only. The bounds themselves are institution-specific.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "Restricted cubic spline of outcome vs energy-adjusted intake: 3–5 knots at conventional percentiles (3 knots at 10/50/90, or 4 at 5/35/65/95), and a reported p for non-linearity; quintiles remain expected alongside.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "Rows grouped by a unit or cluster keep it in both intervals: the uncorrected one is the coefficient table's CR2 interval, and the correction's bootstrap resamples whole clusters (ruling 7); too few clusters block the correction with the table's own exits.",
+      "tag": "citation"
+    },
+    {
+      "text": "TNTC, too numerous to count, means a plate held more colonies than its countable range, 15–300 per plate in FDA's Bacteriological Analytical Manual (2026 edition), which reads such a plate as a lower bound: the count is above that limit, right-censored like a result above the upper limit of quantitation, not missing. QNS, quantity not sufficient, and a hemolyzed specimen are measurement failures with no value: treat those as missing.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "Table 2 shows the exposure's rows only; every other coefficient is in the appendix of adjustment terms, not effect estimates.",
+      "tag": "name"
+    },
+    {
+      "text": "The E-value states how strong an unmeasured common cause would have to be to explain the estimate away (MODELING_SEQUENCE §0 ruling 10).",
+      "tag": "citation"
+    },
+    {
+      "text": "The all-components model's energy sources are calibrated jointly, so the calibration and the all-components substitution coexist (MODELING_SEQUENCE §0 ruling 7).",
+      "tag": "citation"
+    },
+    {
+      "text": "The analysis plan is exported with its timestamp and SHA-256, and never called prespecified or preregistered.",
+      "tag": "name"
+    },
+    {
+      "text": "The calibration regresses a substudy's reference measure on the score, so its code-or-amount reading is settled (by its values or the user) and it holds no missing-value code before it is read (BLUEPRINT §14.3).",
+      "tag": "citation"
+    },
+    {
+      "text": "The comparison you want names the probability scale, the isocaloric move and the population the curves average over; each class's label is the change in its probability at the stated k, an average over that population, since a multinomial model's change depends on k and on each person's intake (MODELING_SEQUENCE §2).",
+      "tag": "citation"
+    },
+    {
+      "text": "The curve's labeled effect is swapping 100 kcal from donor to recipient.",
+      "tag": "name"
+    },
+    {
+      "text": "The data's own imputed copies (NHANES DXA) are pooled by Rubin's rules in the fit's table; the causal lane is not pooled over imputations in v2, and on the copies stacked each participant would count once per copy, so it is not offered.",
+      "tag": "name"
+    },
+    {
+      "text": "The outcome is a quantity; models predict its value, ranked by the MSE, R² beside it.",
+      "tag": "name"
+    },
+    {
+      "text": "The outcome level a binary model predicts the probability of, coded 1.",
+      "tag": "name"
+    },
+    {
+      "text": "The outcome level coded 0; odds ratios compare the event against it.",
+      "tag": "name"
+    },
+    {
+      "text": "The probability of a unit's study-factor history given baseline covariates, over that also given what could explain the link; the mean should be near 1.",
+      "tag": "mathematical constant"
+    },
+    {
+      "text": "Total energy is a strong determinant of every nutrient's intake, so adjusting for it changes what a nutrient's coefficient means: with energy fixed, more of one source is less of another (Tomova et al. 2022). Energy adjustment is the field's methodological signature. The dietary pack also checks energy units by the Atwater reconstruction (4·protein + 4·carbohydrate + 9·fat + 7·alcohol) and offers the implausible-intake screens.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "Two or more corrected scores in one model are calibrated jointly (Rosner, Spiegelman & Willett 1990; MODELING_SEQUENCE §0 ruling 7): each one's calibration conditions on the others.",
+      "tag": "citation"
+    },
+    {
+      "text": "Under inference a site that differs in both what you study and the outcome confounds the estimate, and intervals treating its participants as independent can be too narrow: each site gets its own intercept and clustered intervals, except a yes/no outcome in groups under 16 rows. Under prediction, validation keeps a group together and can hold out whole groups.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "Under inference no cross-validated score is shown (MODELING_SEQUENCE ruling 13): the fit's unweighted scores, about the fitting procedure on these rows, are withheld from a client; under prediction the population's are design-based cross-validation (EXPLORE).",
+      "tag": "citation"
+    },
+    {
+      "text": "Under inference: each blank imputed 20 times with the outcome; results pooled by Rubin's rules.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "When shares of energy sum to 100%, one part is determined by the others, and a coefficient on percent energy from fat has no meaning until you say what the fat replaced.",
+      "tag": "mathematical constant"
+    },
+    {
+      "text": "Willett's textbook (2013) gives 500–3,500 kcal a day for women and 800–4,000 for men. The Nurses' Health Study (women) and the Health Professionals Follow-up Study (men) use 500–3,500 and 800–4,200. Variants use 5,000 as men's upper bound, or a sex-neutral 500–5,000 or 500–3,500. The conventions genuinely differ across literatures, so show how N moves with the choice.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "Women outside 500–3,500 (NHS) and men outside 800–4,200 (HPFS) kcal a day are excluded.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "Women outside 500–3,500 and men outside 800–4,000 kcal a day are excluded.",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "a scale's items are imputed before it is scored in each copy, never the score itself (MODELING_SEQUENCE §1.1)",
+      "tag": "citation"
+    },
+    {
+      "text": "a site with one outcome class only, or too few rows, or a C statistic of exactly 0 or 1, is listed with its reason and left out of that measure's pooling, the pooled note naming it",
+      "tag": "mathematical constant"
+    },
+    {
+      "text": "a straight-line trend in a prevalence that runs below 0 or above 1 is refused",
+      "tag": "mathematical constant"
+    },
+    {
+      "text": "above 1,000 combinations the curve holds the primary, every one-choice departure and a seeded random draw of the rest, and says so",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "cycles covering the same years (2017–2018 and the prepandemic file, which holds its participants) are refused: the same participants would count twice",
+      "tag": "name"
+    },
+    {
+      "text": "each cycle's weight is multiplied by its years over the stacked years: 1 ÷ k for k two-year cycles, and 3.2 over the stacked years for the 3.2-year prepandemic file",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "each incomplete column whose recorded values agree within every unit is asked: one value per unit, or one that can change between its rows (the values cannot tell; BLUEPRINT §14.3)",
+      "tag": "citation"
+    },
+    {
+      "text": "each pooled measure carries a 95% prediction interval for a new site, said before I²",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "each specification's interval is CR2 by the unit, as the primary's",
+      "tag": "name"
+    },
+    {
+      "text": "every combination is reported against one reference category (a0 in the modifier's reference stratum)",
+      "tag": "name"
+    },
+    {
+      "text": "every estimate is pooled over the copies (MODELING_SEQUENCE §2)",
+      "tag": "citation"
+    },
+    {
+      "text": "every estimate shown is pooled: the coefficient table, the form tests (D1) and the substitution curve",
+      "tag": "name"
+    },
+    {
+      "text": "every other model is fit on every analyzed row (Model 2 is the fit's primary); Model 3 alone on the rows where they are recorded, the primary's adjustment refit on those rows beside it",
+      "tag": "name"
+    },
+    {
+      "text": "fewer than 10 clusters are named among the concerns (the fewest Li & Redden 2015 studied), beside the missing-outcome notice, neither displacing the other",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "filters run before selection (MODELING_SEQUENCE §1.1)",
+      "tag": "citation"
+    },
+    {
+      "text": "non-consumers as their own category beside a spline among consumers, or the consumers-only domain as an estimand change (nut-14)",
+      "tag": "citation"
+    },
+    {
+      "text": "paired comparisons and the baseline verdict on at least 10 × K folds, with rK − 1 degrees of freedom",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "performance with intervals in each named sociodemographic subgroup (TRIPOD+AI 23a), the fairness approach recorded (item 14)",
+      "tag": "guideline item"
+    },
+    {
+      "text": "refused when the logistic model's risk for any group of people runs to 0% or 100% (the arm and the covariates predict exactly whether they had the event): an arm, everyone (complete separation), or a group a linear program finds or cannot rule out (for the estimating equations, any fitted risk within 1e-10 of either); a partly separated fit is not read at its limit",
+      "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "refused: compositional models go to v2.x",
+      "tag": "name"
+    },
+    {
+      "text": "research/CLINICAL_SURVEY_PACK.md#A1.2 · Reference ranges vs physiological plausibility",
+      "tag": "citation"
+    },
+    {
+      "text": "research/CLINICAL_SURVEY_PACK.md#A1.3 · Lab value formats and censored values",
+      "tag": "citation"
+    },
+    {
+      "text": "research/CLINICAL_SURVEY_PACK.md#A2 · Missing data",
+      "tag": "citation"
+    },
+    {
+      "text": "research/CLINICAL_SURVEY_PACK.md#A4.1 · Participant flow diagram",
+      "tag": "citation"
+    },
+    {
+      "text": "research/CLINICAL_SURVEY_PACK.md#A4.6 · Kaplan–Meier and time-to-event",
+      "tag": "citation"
+    },
+    {
+      "text": "research/CLINICAL_SURVEY_PACK.md#A5.1 · Calibration first",
+      "tag": "citation"
+    },
+    {
+      "text": "research/CLINICAL_SURVEY_PACK.md#A5.2 · Class imbalance",
+      "tag": "citation"
+    },
+    {
+      "text": "research/CLINICAL_SURVEY_PACK.md#A5.3 · Discrimination vs calibration",
+      "tag": "citation"
+    },
+    {
+      "text": "research/CLINICAL_SURVEY_PACK.md#A5.5 · Modeling practice",
+      "tag": "citation"
+    },
+    {
+      "text": "research/CLINICAL_SURVEY_PACK.md#B1.1 · Detecting Likert blocks",
+      "tag": "citation"
+    },
+    {
+      "text": "research/CLINICAL_SURVEY_PACK.md#B4 · Ordinal vs interval",
+      "tag": "citation"
+    },
+    {
+      "text": "research/CLINICAL_SURVEY_PACK.md#B6 · Modeling",
+      "tag": "citation"
+    },
+    {
+      "text": "research/GENOMICS_PACK.md#01 · Import and structure",
+      "tag": "citation"
+    },
+    {
+      "text": "research/GENOMICS_PACK.md#08 · Modeling at p >> n",
+      "tag": "citation"
+    },
+    {
+      "text": "research/METABOLOMICS_PACK.md#01 · Import and structure",
+      "tag": "citation"
+    },
+    {
+      "text": "research/METABOLOMICS_PACK.md#03 · Missing data",
+      "tag": "citation"
+    },
+    {
+      "text": "research/NUTRITION_PACK.md#01 · Import and structural recognition",
+      "tag": "citation"
+    },
+    {
+      "text": "research/NUTRITION_PACK.md#02 · Implausible intake exclusions",
+      "tag": "citation"
+    },
+    {
+      "text": "research/NUTRITION_PACK.md#03 · Repeated recalls and measurement error",
+      "tag": "citation"
+    },
+    {
+      "text": "research/NUTRITION_PACK.md#04 · Energy adjustment — the methodological signature",
+      "tag": "citation"
+    },
+    {
+      "text": "research/NUTRITION_PACK.md#05 · Compositional structure and substitution modeling",
+      "tag": "citation"
+    },
+    {
+      "text": "research/NUTRITION_PACK.md#06 · Missing data",
+      "tag": "citation"
+    },
+    {
+      "text": "research/NUTRITION_PACK.md#07 · EDA and presentation",
+      "tag": "citation"
+    },
+    {
+      "text": "research/NUTRITION_PACK.md#08 · Feature selection and modeling",
+      "tag": "citation"
+    },
+    {
+      "text": "research/NUTRITION_PACK.md#09 · Reporting standards",
+      "tag": "citation"
+    },
+    {
+      "text": "sex_neutral_500_3500",
+      "tag": "name"
+    },
+    {
+      "text": "sex_neutral_500_5000",
+      "tag": "name"
+    },
+    {
+      "text": "the 2021–2023 cycle (release 12) stacked with any other cycle is refused, as the NHANES weighting tutorial advises: a year and a half of unobserved pandemic months lies between it and the prepandemic file",
+      "tag": "name"
+    },
+    {
+      "text": "the fit serves no cross-validated R², RMSE or MAE, nor any other score",
+      "tag": "name"
+    },
+    {
+      "text": "the imputation model holds the products; every scalar is pooled by Rubin's rules and the heterogeneity test by D1",
+      "tag": "name"
+    },
+    {
+      "text": "the intervals are CR2 by it with Bell–McCaffrey degrees of freedom",
+      "tag": "name"
+    },
+    {
+      "text": "the overall, nonlinearity and global tests are pooled by D1 at knots fixed on the observed values",
+      "tag": "name"
+    },
+    {
+      "text": "the primary leaves it out and the declared secondary adds it (Model 3)",
+      "tag": "name"
+    },
+    {
+      "text": "the sensitivity analysis's Wald tests are pooled across the imputed copies by Rubin's rules (D1 for several coefficients)",
+      "tag": "name"
+    },
+    {
+      "text": "the strata, PSU and weight in every covariate model and, under SMC-FCS, in the outcome model beside the analysis model's terms, and ν_com = the design df in Rubin's rules and D1",
+      "tag": "name"
+    },
+    {
+      "text": "weights of different samples (examination and interview) are refused, the four-year weight of the 1999–2002 rows among them; a weight whose kind is not known is stacked with a concern that it could not be checked",
+      "tag": "name"
+    },
+    {
+      "text": "willett_2013_by_sex",
+      "tag": "name"
+    }
+  ]
+}
