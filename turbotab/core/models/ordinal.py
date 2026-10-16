@@ -324,13 +324,16 @@ def cut_names(levels: Sequence[Any]) -> list[str]:
     return [f"(cut-point {levels[j]} | {levels[j + 1]})" for j in range(len(levels) - 1)]
 
 
-def _cr1_concerns(clusters: Any) -> list[str]:
+def _cr1_concerns(clusters: Any, model: str, covariance: str) -> list[str]:
     """What the clustered table says of its intervals: the CR1 sandwich on t(G − 1) it computes,
     and below :data:`~turbotab.core.models.inference.FEW_CLUSTERS` units that such intervals can
     still be too narrow. Cameron & Miller (2015, §VI) give t(G − 1) as the least allowance, which
     lessens but does not remove the sandwich's downward bias, the more so for units of unequal
     size (MacKinnon & Webb 2017, *J Appl Econom* 32:233); a known-truth simulation in the tests
-    (12 units of lognormal size) covers β in well under 95%."""
+    (12 units of lognormal size) covers β in well under 95%. What it says of them is its claim's
+    (``ordinal.cluster_robust_intervals``), rendered for the ``model`` and the ``covariance``
+    the table computed, and its units."""
+    from turbotab.core import claims
     from turbotab.core.models.inference import FEW_CLUSTERS
 
     out = [clusters.note] if clusters.note else []
@@ -339,12 +342,13 @@ def _cr1_concerns(clusters: Any) -> list[str]:
         out.append(f"Intervals are cluster-robust by `{clusters.column}` (CR1, G = {G:,}), because "
                    f"its rows repeat.")
     if G < FEW_CLUSTERS:
+        narrow = claims.card("ordinal.cluster_robust_intervals",
+                             {"model": model, "covariance": covariance,
+                              "cluster_codes": clusters.codes})
         out.append(f"Only {G} `{clusters.column}` clusters: the intervals use the CR1 sandwich "
                    f"with the G/(G − 1) correction on t({G - 1}), the least allowance Cameron & "
-                   f"Miller (2015) ask for. With this few clusters, and more so when their sizes "
-                   f"differ or a column varies only between them, such intervals can still be too "
-                   f"narrow (MacKinnon & Webb 2017), so a p-value near 0.05 may overstate the "
-                   f"evidence.")
+                   f"Miller (2015) ask for. {narrow} (MacKinnon & Webb 2017), so a p-value near "
+                   f"0.05 may overstate the evidence.")
     return out
 
 
@@ -400,7 +404,7 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
                    f"units with the G/(G − 1) correction, Stata's vce(cluster)), on t({G - 1:,}). "
                    f"{scale}")
         info = _info(estimator, "CR1", caption, clusters)
-        concerns = _cr1_concerns(clusters) + concerns
+        concerns = _cr1_concerns(clusters, ProportionalOdds.key, info["covariance"]) + concerns
         concerns.append("The proportional-odds check (Brant) is not computed when rows repeat: it "
                         "assumes independent rows.")
         return InferenceTable(rows, info, concerns, cov=V)

@@ -39,6 +39,7 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator
 
+from turbotab.core import claims
 from turbotab.core.decisions import Purpose, Task
 from turbotab.core.models.base import (
     Assessment,
@@ -56,15 +57,18 @@ MAX_ITER = 60
 # within about √TOL of the maximum. Rounding in U is far below this even at 10⁵ events.
 TOL = 1e-18
 LOOSE_TOL = 1e-10  # after MAX_ITER steps, still accepted as converged below this
-DIVERGED = 20.0  # |β_j| · SD(x_j) beyond this: a log hazard ratio of 20 per SD is an infinite one
+# The monotone-likelihood refusal's three numbers are its claim's
+# (``survival.monotone_likelihood``). |β_j| · SD(x_j) beyond this: a log hazard ratio this large per
+# SD is an infinite one.
+DIVERGED = claims.value("survival.monotone_likelihood", "diverged")
 # An eigenvalue of the information (on standardized columns) below this share of its largest is
 # where a monotone likelihood shows itself: far out along a direction that orders the risk sets the
 # information there decays like exp(−|β|), and the Newton decrement can fall below TOL before any
 # coefficient passes DIVERGED. Such a fit is checked for an ordering (:func:`_ordering`).
-FLAT = 1e-8
+FLAT = claims.value("survival.monotone_likelihood", "flat")
 # Below this share the information is numerically singular at the estimate, so its pseudo-inverse is
 # no variance: the fit is not converged even when no ordering is found.
-SINGULAR = 1e-12
+SINGULAR = claims.value("survival.monotone_likelihood", "singular")
 PH_ALPHA = 0.01  # the proportional-hazards check speaks below this, shared over the columns
 EPV_RULE = 10  # events per predictor, a rule of thumb for Cox models (Peduzzi et al. 1995)
 

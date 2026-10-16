@@ -73,6 +73,8 @@ import numpy as np
 from scipy import stats
 from sklearn.base import BaseEstimator, ClassifierMixin
 
+from turbotab.core import claims
+
 # The recorded keys (``decisions.CausalLearner``). The flexible two are named for this lane, never
 # by a model family's key; their former keys, ``random_forest`` and ``boosted_trees``, are
 # tombstones (``decisions.TOMBSTONES``) that build nothing.
@@ -1164,8 +1166,8 @@ def overlap(propensity: np.ndarray, exposure: np.ndarray, bound: float,
 # small remainder magnifies); positivity asks for a positive density of the exposure at every
 # covariate pattern, which no global R² shows. From R² ≥ 0.9, a variance inflation factor of 10
 # (the collinearity line of Kutner, Nachtsheim & Neter 2004, *Applied Linear Regression Models*
-# §10.5), the card names the widening.
-CONTINUOUS_R2_LINE = 0.9
+# §10.5), the card names the widening. The line is its claim's (``causal.numeric_exposure_r2``).
+CONTINUOUS_R2_LINE = claims.value("causal.numeric_exposure_r2", "r2_line")
 
 
 @dataclass
