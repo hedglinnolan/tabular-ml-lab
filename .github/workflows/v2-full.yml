@@ -65,11 +65,17 @@ jobs:
         # On failure, the failing tests become annotations, which anyone can read (logs need admin).
         # A test still running after 20 minutes fails by name; without the cap a hang ran out the
         # job's 120 minutes with no annotation (f1d96341, 2026-10-16).
+        # DIAGNOSTIC BRANCH ONLY (never merged): the trials file alone, each test capped at 5
+        # minutes, with its nine slowest tests as warnings, to find the hang on f1d96341.
         run: |
-          python -m pytest turbotab/core turbotab/server -q -n 2 -rfE --timeout=1200 --junitxml=pytest-report.xml || {
-            python .github/scripts/annotate_failures.py pytest-report.xml
-            exit 1
-          }
+          python -m pytest turbotab/core/tests/acceptance/test_e2_trials.py -q -n 2 -rfE --timeout=300 --junitxml=pytest-report.xml; status=$?
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          cases = sorted(ET.parse("pytest-report.xml").getroot().iter("testcase"), key=lambda c: -float(c.get("time", 0)))
+          for c in cases[:9]:
+              print(f"::warning title=slow {float(c.get('time', 0)):.0f}s::{c.get('name')}")
+          PY
+          if [ $status -ne 0 ]; then python .github/scripts/annotate_failures.py pytest-report.xml; exit 1; fi
 
   e2e:
     name: mock browser tests (Playwright)
