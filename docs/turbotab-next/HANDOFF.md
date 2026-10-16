@@ -78,7 +78,16 @@ Send Nolan a short status at the end of each step, ending with one line of cost 
    (Nolan approved this on 2026-10-16), and bring it to the pause:
    - It opens with a plain-language TL;DR (his ask).
    - It settles the driver, the corpus record, dataset intake and the pilot's acceptance.
-   - It asks him two things: where the compute runs, and the token budget.
+   - He answered its two questions on 2026-10-16:
+     - The compute runs on his machine, under the heavy-run rules.
+     - Analysts are Haiku or Sonnet agents with no cap like the build agents' (spend is still
+       measured and reported).
+   - Still open: whether Haiku may go below his Sonnet floor for analysts. Until he answers,
+     no Haiku.
+   - It requires real exploration before the lock: each attempt and its reason are logged, and
+     its effect on the result is measured. A one-pass run is flagged. Nothing is searched after
+     the seal.
+   - It settles the analysts' model and effort by a pilot comparison.
 
    Why: W2–W4 build the driver and the run records, so the swarm's needs go into those waves
    rather than into a retrofit.
