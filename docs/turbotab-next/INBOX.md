@@ -426,3 +426,7 @@ SURFACING_POLICY recommendation 1 (`core/materiality.py`, `materiality_calibrati
   - the parse cache's timestamp tick.
 
   Take each when a real claim reaches it, test first.
+- [W1, intermittent test] `turbotab/server/tests/test_quest_api.py::test_reopen_reasons_follow_real_changes_on_the_nhanes_journey` failed once on CI's Linux runner (246a09c7, ci/full-r0a, 2026-10-16), at line 180: the participant flow's out-of-date results were `['seal_plan', 'split']`, without `cohort`.
+  - It passed on c2f07562's CI run the same hour, and three times locally on both trees. R0a changes no code it runs.
+  - The likely cause is a race: `at_the_change` reads the stage statuses in the decision's response, and `cohort` may already be recomputed, or not yet marked, when the response is built.
+  - Reproduce it on Linux before fixing it. The reopen reasons are on the quest page Nolan walks.
