@@ -158,10 +158,6 @@
       "tag": "citation"
     },
     {
-      "text": "Each group gets its own intercept and clustered intervals; yes/no outcomes need 16 rows per group.",
-      "tag": "threshold-pending-claim"
-    },
-    {
       "text": "Finds shared response scales and codes outside them, such as 9 for no answer.",
       "tag": "example"
     },
@@ -296,10 +292,6 @@
     {
       "text": "Two or more corrected scores in one model are calibrated jointly (Rosner, Spiegelman & Willett 1990; MODELING_SEQUENCE §0 ruling 7): each one's calibration conditions on the others.",
       "tag": "citation"
-    },
-    {
-      "text": "Under inference a site that differs in both what you study and the outcome confounds the estimate, and intervals treating its participants as independent can be too narrow: each site gets its own intercept and clustered intervals, except a yes/no outcome in groups under 16 rows. Under prediction, validation keeps a group together and can hold out whole groups.",
-      "tag": "threshold-pending-claim"
     },
     {
       "text": "Under inference no cross-validated score is shown (MODELING_SEQUENCE ruling 13): the fit's unweighted scores, about the fitting procedure on these rows, are withheld from a client; under prediction the population's are design-based cross-validation (EXPLORE).",

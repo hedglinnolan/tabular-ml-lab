@@ -63,6 +63,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Literal, Mapping, Sequence
 
+from turbotab.core import claims
+
 # ── words ─────────────────────────────────────────────────────────────────────
 
 _CASE = re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
@@ -1890,12 +1892,15 @@ def rank_weights(weights: Sequence[str], lcd: Mapping[str, Any] | None) -> list[
 # present exactly where WTSAF2YR is positive, whatever the variable is called (``LBDLDNSI``,
 # ``LBDLDMSI`` from TRIGLY_J, a glucose renamed ``fasting_glucose`` on import). The values
 # corroborate where the name list cannot (audit WP13 gate repair: those names were absent from
-# FASTING_ANALYTES, and the dietary weight was named, SETTLED). TurboTab's own tolerance: at most
-# 1% of a variable's recorded rows may lie outside the subsample (a merge's stray rows), and the
-# variable must be missing on at least 5% of the table, or it is no subsample's.
-SUBSAMPLE_SLACK = 0.01
-SUBSAMPLE_MIN_MISSING = 0.05
-SUBSAMPLE_MIN_ROWS = 10
+# FASTING_ANALYTES, and the dietary weight was named, SETTLED). TurboTab's own tolerance, the
+# parameters of the claim :data:`NHANES_WEIGHT` (``turbotab/core/claims/data.py``, claims backtest
+# C-143): at most ``slack`` of a variable's recorded rows may lie outside the subsample (a merge's
+# stray rows), the variable must be missing on at least ``min_missing`` of the table, and it must
+# hold ``min_rows`` rows, or it is no subsample's.
+NHANES_WEIGHT = "data.nhanes_weight"
+SUBSAMPLE_SLACK = claims.value(NHANES_WEIGHT, "slack")
+SUBSAMPLE_MIN_MISSING = claims.value(NHANES_WEIGHT, "min_missing")
+SUBSAMPLE_MIN_ROWS = claims.value(NHANES_WEIGHT, "min_rows")
 
 
 def subsample_variables(frame: Any, weight: str, *, skip: Iterable[str] = ()) -> list[str]:

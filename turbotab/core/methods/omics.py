@@ -65,14 +65,25 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
+from turbotab.core import claims
+
 OMICS_LENSES = ("genomics", "metabolomics")
 FINDING = "omics_scale"
-MIN_FEATURES = 20  # fewer assay-like columns than this is not a feature block
-COUNT_MAX = 100.0  # whole numbers whose largest value is below this are not read as counts
-RAW_MAX = 1_000.0  # raw intensities reach thousands; log2 intensities stay below ~40
-RAW_RANGE = 100.0  # ... and span two orders of magnitude (largest over smallest positive value)
-RAW_SKEW = 0.5  # or, below RAW_MAX (a targeted panel in µM), are right-skewed feature by feature
-ESTIMATED_COLUMNS = 2  # estimated counts' zero and thousands, each in this many columns: not one's
+# The reading's cut-offs are the parameters of the claim RAW_SCALE
+# (``turbotab/core/claims/data.py``, claims backtest C-193), each graded there with its reason.
+RAW_SCALE = "data.omics_raw_scale"
+# Fewer assay-like columns than this is not a feature block.
+MIN_FEATURES = claims.value(RAW_SCALE, "min_features")
+# Whole numbers whose largest value is below this are not read as counts.
+COUNT_MAX = claims.value(RAW_SCALE, "count_max")
+# Raw intensities reach thousands; log2 intensities stay below ~40 ...
+RAW_MAX = claims.value(RAW_SCALE, "raw_max")
+# ... and span two orders of magnitude (largest over smallest positive value) ...
+RAW_RANGE = claims.value(RAW_SCALE, "raw_range")
+# ... or, below RAW_MAX (a targeted panel in µM), are right-skewed feature by feature.
+RAW_SKEW = claims.value(RAW_SCALE, "raw_skew")
+# Estimated counts' zero and thousands, each in this many columns: not one column's.
+ESTIMATED_COLUMNS = claims.value(RAW_SCALE, "estimated_columns")
 CHECK_ALPHA = 0.01  # the library-size check speaks below this p-value
 PRIOR_COUNT = 2.0  # edgeR cpm(log = TRUE)'s default prior.count
 LOGRATIO_TRIM, SUM_TRIM, A_CUTOFF = 0.3, 0.05, -1e10  # edgeR calcNormFactors' TMM defaults

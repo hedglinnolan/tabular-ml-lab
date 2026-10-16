@@ -1297,7 +1297,9 @@ DRI_GROUP = "DRI life-stage group (age band, sex, pregnancy and lactation status
 # foods), so the nutrient as food holds it counts toward none of them; vitamin A's limits the form
 # only, retinol from food counting as retinol from supplements does. Every other UL covers intake
 # from food, water and supplements (Institute of Medicine 2000a, the report on dietary assessment
-# cited above).
+# cited above). The claim ``data.ul_share`` (``turbotab/core/claims/data.py``) states this rule and
+# names the tests that hold :func:`share_phrase` to it; the sentences here carry the share's own
+# cut-off, so they are worded here.
 UL_FORMS = {
     "magnesium": ("magnesium from supplements and medicines only, not from food or water",
                   "Institute of Medicine 1997"),
