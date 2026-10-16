@@ -25,6 +25,8 @@ turn, so it holds only the rules any agent can break.
   `turbotab/test_*.py`; the integrator's fast-tier shards excepted). Heavy runs are scheduled
   with the owner, so report the need instead.
 - `pkill`, `killall` or any pattern kill. Kill only the PIDs you started (`$!`).
+- `rm` with a glob, or of anything you did not create: the scratchpad is shared. Delete what you
+  made by its full name.
 - Put the owner's email address, or any personal identifier, in a request to any service: send no
   email parameter, or `research@example.org`.
 - Edit, commit, check out, stash or reset outside the worktree and branch your prompt names,
