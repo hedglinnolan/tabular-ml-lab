@@ -1,4 +1,35 @@
 {
-  "claims": [],
+  "claims": [
+    {
+      "hash": "c63ec74e4f437a0c809db7253fb70c9a90228b94df0cd816438edd17ce61e3f8",
+      "id": "data.clusters_adjust",
+      "status": "built"
+    },
+    {
+      "hash": "276c654f2509d84fc672c411a1aad9a6b05ab2a8058622a4a6e684ac49311943",
+      "id": "data.constant_column",
+      "status": "built"
+    },
+    {
+      "hash": "284209a07dbfbb1f25982cdafe46aa2e121364f9712f0a19022640c0e264ad0f",
+      "id": "data.nhanes_weight",
+      "status": "built"
+    },
+    {
+      "hash": "daae535b5626ee45b7596693c04b4de81499fd7039bbba432c5a52a112661a02",
+      "id": "data.omics_raw_scale",
+      "status": "built"
+    },
+    {
+      "hash": "e3a7237fa1fdffa2a60eb508fea00478d1e083da4bc268ccf1f74933c0834104",
+      "id": "data.tail_share",
+      "status": "proposed"
+    },
+    {
+      "hash": "1f407baf5929baf2641e7ccf5a79738936dc63e63e29a8b1298b5dc191d4c25a",
+      "id": "data.ul_share",
+      "status": "built"
+    }
+  ],
   "generated_by": "python -m turbotab.core.reference.claims"
 }
