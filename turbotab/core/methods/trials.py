@@ -43,7 +43,9 @@ covariate chosen after the data were seen is refused from the primary analysis
   al.'s variance counts no uncertainty in it, and the effect is refused. So it is when the arm
   and the covariates predict every outcome exactly (complete separation), since no fit is left,
   when the people the data do not separate leave the arm's coefficient unsettled, and when the
-  program cannot tell who is separated or the fit to the people left does not converge. Ye et
+  program cannot tell who is separated or the fit to the people left does not converge: a
+  partly separated fit is reported only where the program's margin is exact, the people left
+  share no covariate only to float rounding, and they leave some direction free. Ye et
   al.'s variance is a sum of covariances, and where it comes out below zero (in a small arm
   fitted with many terms) the effect is refused too, as is a sensitivity analysis whose completed
   data sets break down so.
@@ -771,6 +773,18 @@ def _separation() -> TrialRefused:
 
 FREE = 1e-10  # a singular value below this share of the largest: a direction the columns leave free
 FEWER_COVARIATES_EXIT = {"label": "Adjust for fewer covariates", "covariates": []}
+# A partly separated fit is reported only on a certificate (claims backtest B-281, its fifth
+# review): the program's tᵢ each 0 or 1 to within FRACTIONAL, the people it leaves on its
+# separating plane, no column those people share only to rounding, and a direction they leave
+# free, which moves a column by more than LOADS. Measured on the review's generators, the people
+# left sit within 9.2e-15 of the separating direction's norm off its plane where the data
+# separate the rest, and 2.4e-13 or more where the solver's tolerance did (a group tied at x = 0
+# up to noise of 1e-12 or more); a computed BMI of 30 give or take one unit in the last place
+# spreads 1.7e-16 of its value.
+FRACTIONAL = 1e-6  # a tᵢ further than this from 0 and from 1: the program did not decide them
+ON_PLANE = 1e-13  # the people left off the plane by more than this share of the direction's norm
+ROUNDING = 1e-12  # a spread among the people left at most this share of the column's largest value
+LOADS = 1e-6  # a unit free direction moves a column whose share of it is above this
 
 
 def _centered(X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -797,8 +811,10 @@ def _separated_people(X: np.ndarray, y: np.ndarray) -> np.ndarray | None:
     columns' span (singular values below :data:`FREE` of the largest dropped), which separates
     the people X separates and keeps a covariate recorded at very different scales in different
     groups (milligrams at one site, kilograms at the others) from spreading too little within a
-    group for the solver's tolerance. None when the program fails, or leaves a tᵢ neither 0
-    nor 1."""
+    group for the solver's tolerance. None when the program fails, leaves a tᵢ neither 0 nor 1
+    (:data:`FRACTIONAL`), or leaves the people it does not separate off its separating plane by
+    more than :data:`ON_PLANE` of the direction's norm: the solver's tolerance, not the data,
+    separated the rest, as it does for a group tied up to noise."""
     from scipy import sparse
     from scipy.optimize import linprog
 
@@ -810,10 +826,14 @@ def _separated_people(X: np.ndarray, y: np.ndarray) -> np.ndarray | None:
                   bounds=[(None, None)] * r + [(0, 1)] * n, method="highs")
     if res.status != 0:
         return None
-    t = res.x[r:]
-    if np.any((t > 1e-6) & (t < 1 - 1e-6)):
+    d, t = res.x[:r], res.x[r:]
+    if np.any((t > FRACTIONAL) & (t < 1 - FRACTIONAL)):
         return None
-    return t > 0.5
+    on = t < 0.5
+    if on.any() and not on.all() and (np.max(np.abs(q[on] @ d))
+                                      > ON_PLANE * np.linalg.norm(d)):
+        return None
+    return ~on
 
 
 def _logistic_standardized(X: np.ndarray, y: np.ndarray) -> _Logit:
@@ -870,15 +890,24 @@ def _people_left(d: _Design, y: np.ndarray, arms: list[str], separated: np.ndarr
     so each separated person's risk is their outcome under either arm, and the people left are
     fitted on a basis of their columns (the intercept and the arms first) by
     :func:`_logistic_standardized`; when that fit refuses, so does the effect. A coefficient the
-    data separate has no finite value, and is NaN."""
+    data separate has no finite value, and is NaN. The effect is refused with the plain
+    separation reason when the people left share a column only to rounding (a spread above zero
+    but at most :data:`ROUNDING` of its largest value), which centering and scaling would make a
+    covariate of unit spread, and when they leave no direction free, so the program and their
+    columns disagree about whether anyone is separated."""
     left = ~separated
     p = d.X.shape[1]
+    spread = np.ptp(d.X[left], axis=0)
+    if np.any((spread > 0) & (spread <= ROUNDING * np.abs(d.X).max(axis=0))):
+        raise _separation()
     Z, _ = _centered(d.X[left])
     _, s, vt = np.linalg.svd(Z, full_matrices=Z.shape[0] < Z.shape[1])
     tol = FREE * s[0]
     free = vt[int(np.sum(s > tol)):].T
     load = np.linalg.norm(free, axis=1) if free.size else np.zeros(p)
-    columns = [j for j in range(p) if load[j] > 1e-6]
+    columns = [j for j in range(p) if load[j] > LOADS]
+    if not columns:
+        raise _separation()
     keep: list[int] = []
     for j in [0, *d.arm_columns, *(j for j in range(1, p) if j not in d.arm_columns)]:
         if np.linalg.matrix_rank(Z[:, keep + [j]], tol=tol) > len(keep):
