@@ -7,8 +7,9 @@ the engine constant that holds it reads it with ``claims.value``.
   search, and boosted trees and XGBoost are fit once at a small-sample standard (RECIPES §4.6,
   ruled 2026-10-11). ``tuning.SMALL_N`` reads it, and so do the four family sentences that state
   it, boosted trees' and XGBoost's tuning reasons and descriptions.
-* ``boosted_trees.small_rows`` and ``forest.small_rows``: the training rows below which the shelf
-  rates each family fair. Both modules named theirs ``SMALL_N``, beside the tuning's threshold of
+* ``boosted_trees.small_rows`` and ``forest.small_rows``: the rows below which the shelf rates
+  each family fair, the rows it ranks for (training rows under Predict, every analyzed row under
+  Estimate or Describe, as the shelf stage counts them). Both modules named theirs ``SMALL_N``, beside the tuning's threshold of
   the same name, and their values are equal, but they are two claims, not one read by both:
   RECIPES §2.6 gives each family its own row of base scores, all conventions; it states the
   forest's rows and not boosted trees', which come from draft 2's shelf with a second, poor step
@@ -68,8 +69,9 @@ def yes_no_or_numeric(ctx: Any) -> bool:
 
 
 def rated_before_any_fit(ctx: Any) -> bool:
-    """The shelf's situation: the training rows and columns counted, as whole numbers, before any
-    model is fit. Which family is rated is its own ``assess``'s, the claim's enforcer."""
+    """The shelf's situation: the rows it ranks for and the columns counted, as whole numbers,
+    before any model is fit. Which family is rated is its own ``assess``'s, the claim's
+    enforcer."""
     rows, columns = _field(ctx, "n_rows"), _field(ctx, "n_features")
     return isinstance(rows, int) and isinstance(columns, int) and rows >= 0 and columns >= 0
 
@@ -102,10 +104,11 @@ SMALL_SAMPLE_STANDARD = register(Claim(
             "the defaults among the candidates.",
     goal=("prediction",),
     regime=Regime(
-        "boosted trees or XGBoost under Predict on a yes/no or numeric outcome, the plan's "
-        "effective size below the threshold: the regime of notes/SMALL_SAMPLE_STANDARD.md's "
-        "simulation (ten normal predictors, 100 to 1,000 rows, a yes/no outcome chosen on and a "
-        "numeric one checked)",
+        "boosted trees or XGBoost under Predict on a yes/no or numeric outcome, at any effective "
+        "size, since both sentences are conditioned on the threshold they state; the standard "
+        "below it rests on notes/SMALL_SAMPLE_STANDARD.md's simulation (ten normal "
+        "predictors, 100 to 1,000 rows, a yes/no outcome chosen on and a numeric one checked), "
+        "whose other limits the scope part names",
         requires=(f"{HERE}:standard_from_the_study", f"{HERE}:yes_no_or_numeric",
                   f"{HERE}:under_prediction")),
     decision="set_tuning",
@@ -170,14 +173,16 @@ SMALL_SAMPLE_STANDARD = register(Claim(
 BOOSTED_TREES_SMALL_ROWS = register(Claim(
     id="boosted_trees.small_rows",
     kind="rule",
-    card="Below {small_rows} training rows the shelf rates boosted trees fair, and poor below "
+    card="Below {small_rows} rows the shelf rates boosted trees fair, and poor below "
          "{tiny_rows}: they overfit easily and their cross-validated score is noisy.",
     methods="On the shelf, boosted trees (and XGBoost, read through them) were rated fair below "
-            "{small_rows} training rows and poor below {tiny_rows}, a convention.",
+            "{small_rows} rows and poor below {tiny_rows}, a convention, counting the training "
+            "rows under Predict and every analyzed row under Estimate or Describe.",
     goal=("prediction", "inference"),
     regime=Regime(
-        "the shelf's pre-fit rating of boosted trees, and of XGBoost through it, read on the "
-        "training rows under either purpose",
+        "the shelf's pre-fit rating of boosted trees, and of XGBoost through it, under either "
+        "purpose, read on the rows the shelf ranks for: the training rows under Predict, every "
+        "analyzed row under Estimate or Describe",
         requires=(f"{HERE}:rated_before_any_fit",)),
     decision="models.families",
     options=("good", "fair", "poor"),
@@ -192,14 +197,14 @@ BOOSTED_TREES_SMALL_ROWS = register(Claim(
                    "noisier, a general expectation the shelf orders by, not a measured "
                    "threshold.")),
     ),
-    params={"small_rows": Param(500, unit="training rows",
+    params={"small_rows": Param(500, unit="rows the shelf ranks for",
                                 constant="turbotab.core.models.boosted_trees:SMALL_N"),
-            "tiny_rows": Param(200, unit="training rows",
+            "tiny_rows": Param(200, unit="rows the shelf ranks for",
                                constant="turbotab.core.models.boosted_trees:TINY_N")},
     tests=(
-        Fires(f"{TESTS}::test_below_500_training_rows_the_shelf_rates_boosted_trees_fair_and_"
-              "below_200_poor", truth="construction"),
-        Silent(f"{TESTS}::test_from_500_training_rows_boosted_trees_carry_no_small_table_concern",
+        Fires(f"{TESTS}::test_below_500_rows_the_shelf_rates_boosted_trees_fair_and_below_200_"
+              "poor", truth="construction"),
+        Silent(f"{TESTS}::test_from_500_rows_boosted_trees_carry_no_small_table_concern",
                truth="construction"),
     ),
     enforced_by=("turbotab.core.models.boosted_trees:BoostedTrees.assess",),
@@ -209,14 +214,16 @@ BOOSTED_TREES_SMALL_ROWS = register(Claim(
 FOREST_SMALL_ROWS = register(Claim(
     id="forest.small_rows",
     kind="rule",
-    card="Below {small_rows} training rows the shelf rates a random forest fair: its "
-         "cross-validated score is noisy.",
-    methods="On the shelf, the random forest was rated fair below {small_rows} training rows, a "
-            "convention.",
+    card="Below {small_rows} rows the shelf rates a random forest fair: its cross-validated "
+         "score is noisy.",
+    methods="On the shelf, the random forest was rated fair below {small_rows} rows, a "
+            "convention, counting the training rows under Predict and every analyzed row under "
+            "Estimate or Describe.",
     goal=("prediction", "inference"),
     regime=Regime(
-        "the shelf's pre-fit rating of the random forest, read on the training rows under either "
-        "purpose",
+        "the shelf's pre-fit rating of the random forest under either purpose, read on the rows "
+        "the shelf ranks for: the training rows under Predict, every analyzed row under Estimate "
+        "or Describe",
         requires=(f"{HERE}:rated_before_any_fit",)),
     decision="models.families",
     options=("good", "fair"),
@@ -231,13 +238,13 @@ FOREST_SMALL_ROWS = register(Claim(
                    "shelf orders by, not a measured threshold; the forest's rating has no poor "
                    "step below it, as boosted trees' does.")),
     ),
-    params={"small_rows": Param(500, unit="training rows",
+    params={"small_rows": Param(500, unit="rows the shelf ranks for",
                                 constant="turbotab.core.models.forest:SMALL_N")},
     tests=(
-        Fires(f"{TESTS}::test_below_500_training_rows_the_shelf_rates_a_random_forest_fair",
+        Fires(f"{TESTS}::test_below_500_rows_the_shelf_rates_a_random_forest_fair",
               truth="construction"),
-        Silent(f"{TESTS}::test_from_500_training_rows_a_random_forest_carries_no_small_table_"
-               "concern", truth="construction"),
+        Silent(f"{TESTS}::test_from_500_rows_a_random_forest_carries_no_small_table_concern",
+               truth="construction"),
     ),
     enforced_by=("turbotab.core.models.forest:RandomForest.assess",),
     author=AUTHOR,
@@ -257,13 +264,13 @@ BASELINE_FLOOR = register(Claim(
             "{min_gain} on a score better when higher, and on a loss {min_gain:.0%} of the "
             "baseline's own cross-validated loss (a McFadden pseudo R squared, a ranked "
             "probability skill score or a scaled Brier score of {min_gain}).",
-    goal=("prediction",),
+    goal=("prediction", "inference"),
     regime=Regime(
-        "a family's cross-validated primary against its no-predictor baseline under Predict, "
-        "paired over the same folds: R² for a numeric outcome, log loss for a yes/no or class "
-        "outcome, the ranked probability score for an ordered one, the Brier score at the horizon "
-        "for time to event",
-        requires=(f"{HERE}:under_prediction", f"{HERE}:verdict_metric")),
+        "a family's cross-validated primary against its no-predictor baseline under either "
+        "purpose, paired over the same folds: R² for a numeric outcome, log loss for a yes/no or "
+        "class outcome, the ranked probability score for an ordered one, the Brier score at the "
+        "horizon for time to event",
+        requires=(f"{HERE}:verdict_metric",)),
     decision="baseline.verdict",
     options=("better", "no_better", "worse"),
     verdict="noted",
@@ -321,11 +328,18 @@ ROWS_SMD_FLOOR = register(Claim(
     options=("no_change", "could_bias", "act_on_it"),
     verdict="noted",
     parts=(
-        Part("direction", grade="judgment", basis=Basis(
-            reason="Both backtest referees and the adjudicator found the product does not track "
-                   "the coefficient's movement (claims backtest A-124), and the fires test "
-                   "constructs a screen below the committed cut-off that moves the estimate by "
-                   "most of its half-width; its nine calibration cases come from one fixture.")),
+        Part("direction", grade="certified", basis=Basis(
+            tests=("turbotab/core/tests/test_materiality.py::test_a_narrow_screen_whose_leavers_"
+                   "misreport_what_you_study_is_never_called_below_noise",),
+            reason="Known truth against the proxy: four over-reporters out of 10,000 put rows "
+                   "times SMD below the committed cut-off, yet keeping them moves sugar's "
+                   "least-squares coefficient by more than half its t-interval half-width, an "
+                   "assertion that would fail if the product tracked the movement. The verifier "
+                   "rebuilt the construction (statsmodels OLS, pooled-SD SMD by hand) on seeds 0 "
+                   "to 5: the proxy stayed below the cut-off and the coefficient moved more than "
+                   "half a half-width in each, so it is not one seed's artifact (claims backtest "
+                   "A-124)."),
+            graded_by="R0b-models verifier, 2026-10-16"),
         Part("scope", grade="judgment", basis=Basis(
             reason="The floor is the convention's own (its floored reason in "
                    "materiality_calibration.json): a proxy without it may still be calibrated, "

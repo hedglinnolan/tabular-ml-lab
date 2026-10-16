@@ -51,8 +51,8 @@ from turbotab.core.models.base import (
 from turbotab.core.models.tuning import SMALL_N as SEARCHED_FROM
 from turbotab.core.models.tuning import Dimension, TuningDecl
 
-# The shelf rates boosted trees fair below SMALL_N training rows and poor below TINY_N, its
-# claim's values; not the tuning's SEARCHED_FROM, the effective size from which a search runs.
+# The shelf rates boosted trees fair below SMALL_N of the rows it ranks for and poor below TINY_N,
+# its claim's values; not the tuning's SEARCHED_FROM, the effective size from which a search runs.
 SMALL_N = claims.value("boosted_trees.small_rows", "small_rows")
 TINY_N = claims.value("boosted_trees.small_rows", "tiny_rows")
 

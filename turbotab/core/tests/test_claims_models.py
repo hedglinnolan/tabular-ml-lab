@@ -7,7 +7,8 @@ known-truth tests both ways, and the split of the two rules once named ``SMALL_N
   candidates (§4.2) after the libraries' defaults (scikit-learn's own ``get_params``; XGBoost's
   documented defaults, written out).
 * **The shelf's rows** (RECIPES §2.6, and draft 2's shelf for boosted trees): fair below 500
-  training rows, boosted trees poor below 200, on the boundary both ways.
+  rows, boosted trees poor below 200, on the boundary both ways (the rows the shelf ranks for,
+  training rows under Predict and every analyzed row under Estimate, as its stage passes them).
 * **The baseline verdict's floor** (A-029): the true risks of known logistic models, scored here
   by hand, so no model can beat them: a rare outcome's gain of 6% to 12% of the baseline's loss is
   better, a real gain of 0.3% of it is too little to matter; on a score better when higher, fold
@@ -117,7 +118,7 @@ def judged(key: str, rows: int):
     return a.score, a.fit, a.concerns
 
 
-def test_below_500_training_rows_the_shelf_rates_boosted_trees_fair_and_below_200_poor():
+def test_below_500_rows_the_shelf_rates_boosted_trees_fair_and_below_200_poor():
     """499 rows: fair at 1.0, with the small-table concern; 199: poor at 0.5. XGBoost reads boosted
     trees' rating less 1.0, at least 0.5, with the same concerns (RECIPES §2.6)."""
     score, fit, concerns = judged("boosted_trees", 499)
@@ -129,7 +130,7 @@ def test_below_500_training_rows_the_shelf_rates_boosted_trees_fair_and_below_20
     assert judged("xgboost", 499) == (0.5, "fair", judged("boosted_trees", 499)[2])
 
 
-def test_from_500_training_rows_boosted_trees_carry_no_small_table_concern():
+def test_from_500_rows_boosted_trees_carry_no_small_table_concern():
     """500 rows: good at 2.0 and no concern; 200: fair at 1.0, not poor; 2,000: 3.0."""
     assert judged("boosted_trees", 500) == (2.0, "good", ())
     assert judged("boosted_trees", 200)[:2] == (1.0, "fair")
@@ -137,13 +138,13 @@ def test_from_500_training_rows_boosted_trees_carry_no_small_table_concern():
     assert judged("xgboost", 500) == (1.0, "good", ())
 
 
-def test_below_500_training_rows_the_shelf_rates_a_random_forest_fair():
+def test_below_500_rows_the_shelf_rates_a_random_forest_fair():
     """RECIPES §2.6: "fair" at 1.0 below 500, with the small-table concern."""
     assert judged("random_forest", 499) == (1.0, "fair", (
         "499 rows is small for a random forest: its cross-validated score is noisy.",))
 
 
-def test_from_500_training_rows_a_random_forest_carries_no_small_table_concern():
+def test_from_500_rows_a_random_forest_carries_no_small_table_concern():
     """RECIPES §2.6: 1.5 from 500 training rows, 2.0 from 2,000, good and with no concern."""
     assert judged("random_forest", 500) == (1.5, "good", ())
     assert judged("random_forest", 2000) == (2.0, "good", ())

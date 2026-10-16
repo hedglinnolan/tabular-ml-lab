@@ -18,13 +18,13 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `baseline.min_gain`
 
-*rule* · weakest part *judgment* · built · version 1 · hash `e8d933341b9e`
+*rule* · weakest part *judgment* · built · version 1 · hash `cb33a93eface`
 
 - **Card:** A model is called better than predicting without its predictors only when its gain's interval lies above zero and the gain exceeds 0.01 on a score where higher is better, or 1% of the baseline's own loss on a loss such as log loss.
 - **Methods:** A family was called better than its no-predictor baseline only when the gain's corrected interval lay above zero and the gain exceeded a floor, a convention: 0.01 on a score better when higher, and on a loss 1% of the baseline's own cross-validated loss (a McFadden pseudo R squared, a ranked probability skill score or a scaled Brier score of 0.01).
 - **Parameters:** `min_gain` = 0.01 on a score better when higher, its own scale; on a loss, a share of the baseline's loss, read by `turbotab.core.models.baseline:MIN_GAIN`
-- **Regime:** a family's cross-validated primary against its no-predictor baseline under Predict, paired over the same folds: R² for a numeric outcome, log loss for a yes/no or class outcome, the ranked probability score for an ordered one, the Brier score at the horizon for time to event; predicates `turbotab.core.claims.models:under_prediction`, `turbotab.core.claims.models:verdict_metric`
-- **Decision:** decision `baseline.verdict`; options `better`, `no_better`, `worse`; verdict *noted*; goal prediction
+- **Regime:** a family's cross-validated primary against its no-predictor baseline under either purpose, paired over the same folds: R² for a numeric outcome, log loss for a yes/no or class outcome, the ranked probability score for an ordered one, the Brier score at the horizon for time to event; predicates `turbotab.core.claims.models:verdict_metric`
+- **Decision:** decision `baseline.verdict`; options `better`, `no_better`, `worse`; verdict *noted*; goal prediction, inference
 - **Parts:**
   - value: *judgment*, graded by not graded (reason: A convention, not a cited rule (baseline.py): no source sets one smallest gain that matters for every outcome.)
   - scale: *judgment*, graded by not graded (reason: R² is already the MSE's gain as a share of the baseline's, and a McFadden R², a ranked probability skill score and a scaled Brier score are the same share of log loss, the RPS and the Brier score at the horizon, so one share reads alike across them. A fixed 0.01 on a loss's own scale called a rare outcome's true risks, gaining 6% to 12% of the baseline's loss, better by too little to matter (claims backtest A-029; the silent test's construction).)
@@ -34,33 +34,33 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `boosted_trees.small_rows`
 
-*rule* · weakest part *judgment* · built · version 1 · hash `73cae90b307d`
+*rule* · weakest part *judgment* · built · version 1 · hash `0ad8bc341d73`
 
-- **Card:** Below 500 training rows the shelf rates boosted trees fair, and poor below 200: they overfit easily and their cross-validated score is noisy.
-- **Methods:** On the shelf, boosted trees (and XGBoost, read through them) were rated fair below 500 training rows and poor below 200, a convention.
-- **Parameters:** `small_rows` = 500 training rows, read by `turbotab.core.models.boosted_trees:SMALL_N`; `tiny_rows` = 200 training rows, read by `turbotab.core.models.boosted_trees:TINY_N`
-- **Regime:** the shelf's pre-fit rating of boosted trees, and of XGBoost through it, read on the training rows under either purpose; predicates `turbotab.core.claims.models:rated_before_any_fit`
+- **Card:** Below 500 rows the shelf rates boosted trees fair, and poor below 200: they overfit easily and their cross-validated score is noisy.
+- **Methods:** On the shelf, boosted trees (and XGBoost, read through them) were rated fair below 500 rows and poor below 200, a convention, counting the training rows under Predict and every analyzed row under Estimate or Describe.
+- **Parameters:** `small_rows` = 500 rows the shelf ranks for, read by `turbotab.core.models.boosted_trees:SMALL_N`; `tiny_rows` = 200 rows the shelf ranks for, read by `turbotab.core.models.boosted_trees:TINY_N`
+- **Regime:** the shelf's pre-fit rating of boosted trees, and of XGBoost through it, under either purpose, read on the rows the shelf ranks for: the training rows under Predict, every analyzed row under Estimate or Describe; predicates `turbotab.core.claims.models:rated_before_any_fit`
 - **Decision:** decision `models.families`; options `good`, `fair`, `poor`; verdict *rank_lower*; goal prediction, inference
 - **Parts:**
   - value: *judgment*, graded by not graded (reason: A convention carried from draft 2's shelf scores: RECIPES §2.6 says no validated rule predicts which family will perform best, and states boosted trees' rows nowhere.)
   - direction: *judgment*, graded by not graded (reason: Fewer rows let a boosted ensemble fit noise and make a cross-validated score noisier, a general expectation the shelf orders by, not a measured threshold.)
-- **Tests:** fires `turbotab/core/tests/test_claims_models.py::test_below_500_training_rows_the_shelf_rates_boosted_trees_fair_and_below_200_poor` (construction); silent `turbotab/core/tests/test_claims_models.py::test_from_500_training_rows_boosted_trees_carry_no_small_table_concern` (construction)
+- **Tests:** fires `turbotab/core/tests/test_claims_models.py::test_below_500_rows_the_shelf_rates_boosted_trees_fair_and_below_200_poor` (construction); silent `turbotab/core/tests/test_claims_models.py::test_from_500_rows_boosted_trees_carry_no_small_table_concern` (construction)
 - **Enforced by:** `turbotab.core.models.boosted_trees:BoostedTrees.assess`
 - **Author:** R0b-models builder
 
 ### `forest.small_rows`
 
-*rule* · weakest part *judgment* · built · version 1 · hash `7f42aa44776c`
+*rule* · weakest part *judgment* · built · version 1 · hash `c4b227b07dd6`
 
-- **Card:** Below 500 training rows the shelf rates a random forest fair: its cross-validated score is noisy.
-- **Methods:** On the shelf, the random forest was rated fair below 500 training rows, a convention.
-- **Parameters:** `small_rows` = 500 training rows, read by `turbotab.core.models.forest:SMALL_N`
-- **Regime:** the shelf's pre-fit rating of the random forest, read on the training rows under either purpose; predicates `turbotab.core.claims.models:rated_before_any_fit`
+- **Card:** Below 500 rows the shelf rates a random forest fair: its cross-validated score is noisy.
+- **Methods:** On the shelf, the random forest was rated fair below 500 rows, a convention, counting the training rows under Predict and every analyzed row under Estimate or Describe.
+- **Parameters:** `small_rows` = 500 rows the shelf ranks for, read by `turbotab.core.models.forest:SMALL_N`
+- **Regime:** the shelf's pre-fit rating of the random forest under either purpose, read on the rows the shelf ranks for: the training rows under Predict, every analyzed row under Estimate or Describe; predicates `turbotab.core.claims.models:rated_before_any_fit`
 - **Decision:** decision `models.families`; options `good`, `fair`; verdict *rank_lower*; goal prediction, inference
 - **Parts:**
   - value: *judgment*, graded by not graded (reason: RECIPES §2.6's table: 2.0 from 2,000 training rows, 1.5 from 500, fair at 1.0 below 500, a convention, since no validated rule predicts which family will perform best.)
   - direction: *judgment*, graded by not graded (reason: Fewer rows make a cross-validated score noisier, a general expectation the shelf orders by, not a measured threshold; the forest's rating has no poor step below it, as boosted trees' does.)
-- **Tests:** fires `turbotab/core/tests/test_claims_models.py::test_below_500_training_rows_the_shelf_rates_a_random_forest_fair` (construction); silent `turbotab/core/tests/test_claims_models.py::test_from_500_training_rows_a_random_forest_carries_no_small_table_concern` (construction)
+- **Tests:** fires `turbotab/core/tests/test_claims_models.py::test_below_500_rows_the_shelf_rates_a_random_forest_fair` (construction); silent `turbotab/core/tests/test_claims_models.py::test_from_500_rows_a_random_forest_carries_no_small_table_concern` (construction)
 - **Enforced by:** `turbotab.core.models.forest:RandomForest.assess`
 - **Author:** R0b-models builder
 
@@ -82,14 +82,14 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `materiality.rows_smd_floor`
 
-*rule* · weakest part *judgment* · built · version 1 · hash `0496947eca2c`
+*rule* · weakest part *judgment* · built · version 1 · hash `a3a981e971d2`
 
 - **Card:** The share of rows an energy screen removes, times how far they differ on what the model adjusts for, is a screening convention: it can say the screen could bias the estimate or that you should act on it, never that it doesn't change your numbers here.
 - **Methods:** Rows changed times the leavers' largest standardized mean difference on the adjustment set served as an outcome-blind screening convention floored at could bias, not as a predictor of how far the estimate moves: what moves a correctly specified coefficient is what the leavers report of the exposure, not their imbalance on what is adjusted for.
 - **Regime:** the energy screen's noticing (diet-implausible-reporters) under Estimate, before the lock: the predicted movement of keeping every row, read as rows changed times the leavers' largest SMD on the adjustment set, whatever its calibration cases; predicates `turbotab.core.claims.models:rows_times_smd`, `turbotab.core.claims.models:under_inference`
 - **Decision:** decision `materiality.diet_implausible_reporters`; options `no_change`, `could_bias`, `act_on_it`; verdict *noted*; goal inference
 - **Parts:**
-  - direction: *judgment*, graded by not graded (reason: Both backtest referees and the adjudicator found the product does not track the coefficient's movement (claims backtest A-124), and the fires test constructs a screen below the committed cut-off that moves the estimate by most of its half-width; its nine calibration cases come from one fixture.)
+  - direction: *certified*, graded by R0b-models verifier, 2026-10-16 (reason: Known truth against the proxy: four over-reporters out of 10,000 put rows times SMD below the committed cut-off, yet keeping them moves sugar's least-squares coefficient by more than half its t-interval half-width, an assertion that would fail if the product tracked the movement. The verifier rebuilt the construction (statsmodels OLS, pooled-SD SMD by hand) on seeds 0 to 5: the proxy stayed below the cut-off and the coefficient moved more than half a half-width in each, so it is not one seed's artifact (claims backtest A-124).; test `turbotab/core/tests/test_materiality.py::test_a_narrow_screen_whose_leavers_misreport_what_you_study_is_never_called_below_noise`)
   - scope: *judgment*, graded by not graded (reason: The floor is the convention's own (its floored reason in materiality_calibration.json): a proxy without it may still be calibrated, and band 2 stays band 2.)
 - **Tests:** fires `turbotab/core/tests/test_materiality.py::test_a_narrow_screen_whose_leavers_misreport_what_you_study_is_never_called_below_noise` (independent:numpy); fires `turbotab/core/tests/test_claims_models.py::test_rows_times_smd_is_never_calibrated_and_never_below_could_bias` (construction); silent `turbotab/core/tests/test_claims_models.py::test_rows_times_smd_past_its_band_two_convention_is_act_on_it` (construction); silent `turbotab/core/tests/test_claims_models.py::test_a_proxy_whose_convention_is_not_floored_may_say_below_noise` (construction)
 - **Enforced by:** `turbotab.core.materiality:band_of`, `turbotab.core.materiality:calibrate`, `turbotab.core.materiality:recommend`
@@ -97,12 +97,12 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `tuning.small_sample_standard`
 
-*rule* · weakest part *judgment* · built · version 1 · hash `ca8dd42687e8`
+*rule* · weakest part *judgment* · built · version 1 · hash `6fa6dac7a7e8`
 
 - **Card:** Below an effective size of 300, boosted trees and XGBoost are not tuned: each is fit once at a small-sample standard, which in simulation predicted about as well as tuning and stayed calibrated, where the libraries' defaults did not.
 - **Methods:** Below an effective size of 300 (units for a numeric outcome; events, or the rarest class's count, for a yes/no or class outcome) the tuning plan drew no candidate settings for a searched family, and boosted trees and XGBoost were fit once at a small-sample standard chosen by simulation in place of the libraries' defaults; from 300 their settings were searched inside every training fold, the defaults among the candidates.
 - **Parameters:** `small_n` = 300 units of effective size (units, events or the rarest class's count, in one outer training fold), read by `turbotab.core.models.tuning:SMALL_N`
-- **Regime:** boosted trees or XGBoost under Predict on a yes/no or numeric outcome, the plan's effective size below the threshold: the regime of notes/SMALL_SAMPLE_STANDARD.md's simulation (ten normal predictors, 100 to 1,000 rows, a yes/no outcome chosen on and a numeric one checked); predicates `turbotab.core.claims.models:standard_from_the_study`, `turbotab.core.claims.models:yes_no_or_numeric`, `turbotab.core.claims.models:under_prediction`
+- **Regime:** boosted trees or XGBoost under Predict on a yes/no or numeric outcome, at any effective size, since both sentences are conditioned on the threshold they state; the standard below it rests on notes/SMALL_SAMPLE_STANDARD.md's simulation (ten normal predictors, 100 to 1,000 rows, a yes/no outcome chosen on and a numeric one checked), whose other limits the scope part names; predicates `turbotab.core.claims.models:standard_from_the_study`, `turbotab.core.claims.models:yes_no_or_numeric`, `turbotab.core.claims.models:under_prediction`
 - **Decision:** decision `set_tuning`; options `automatic`, `lighter`, `standard`, `manual`; verdict *recommended*; goal prediction
 - **Parts:**
   - value: *judgment*, graded by not graded (reason: RECIPES §4.6 calls 300 a convention, and the 2026-10-11 ruling kept it: the small-sample study's cells all sat below it (at or above 300 in 1 of 680 datasets), so the study does not locate the threshold.)
