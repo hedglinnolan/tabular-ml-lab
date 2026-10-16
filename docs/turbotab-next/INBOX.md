@@ -412,3 +412,17 @@ SURFACING_POLICY recommendation 1 (`core/materiality.py`, `materiality_calibrati
 ## From Nolan's question on predicting glucose (2026-10-16)
 
 - [walkthrough] Nolan re-ran NHANES glucose under Predict "several times over" and never passed R² of about 0.25, and that only after trimming glucose's top and bottom 5% before analysis. Measured the same day on the fixture (5-fold, scratchpad glucose_r2.py): all rows, linear 0.155 and boosted trees 0.169; trimmed, 0.251 and 0.262 on a glucose SD of 14.5 instead of 35.6; diet alone 0.007; the model fit on trimmed rows predicts at most 132 mg/dL, and 111 on average for the top 5% (mean 233). The Oct 10 capture's cross-validated R² was 0.15. Results should say when the ceiling is the variables, not the models (a re-run cannot pass it), and what an R² on a trimmed outcome measures. RO-01 refuses a rule on the outcome, but not a trim made in the file before upload. For the friction log and BEATS_PREDICT's yardstick for a skewed outcome — calm/BEATS_PREDICT.md (orchestrator, 2026-10-16)
+
+## From R0a, the claims registry's scaffold (2026-10-16)
+
+- [claims, R1] R0a's verifiers left eight edges of the registry's checks, none needed by R0b's 15 claims. They are listed under "Filed in INBOX, not in R0b" in plans/R0_PLAN.md:
+  - skips the status check misses;
+  - derivation paths that leave the root;
+  - history integrity and version bumps;
+  - rules with no decision;
+  - meta-test 2's concatenated ids;
+  - three digit-gate edges;
+  - grader dates and parentheticals;
+  - the parse cache's timestamp tick.
+
+  Take each when a real claim reaches it, test first.

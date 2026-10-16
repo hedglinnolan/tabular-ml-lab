@@ -43,6 +43,51 @@ It touches no engine module, so no fitted number and no sentence a user reads ca
 - Grades: a builder grades only judgment or unsupported. Its verifier, who did not write the claim, proposes each higher part's grade with its evidence, and the repair round records it with `graded_by`.
 - Probably two packages split by area, so no two own one engine file: inference, trials, causal, survival and designs in one; tuning, baseline, materiality, data recognizers, omics and usual intake in the other. Then one integrator, who regenerates METHODS_REFERENCE and the packets.
 
+### Carried from R0a (landed 2026-10-16)
+
+R0a took 8 agent runs and three repair rounds, against two planned. The orchestrator ruled the
+third, on five items, and fixed the last two minors itself. It cost 1.74M fresh tokens (71M cached
+re-reads), against about 1.2M planned. Each of its four verifier passes found new defects (5, 4,
+4 and 2), none of them a narrower edge of an earlier one. At that rate R0b is about 3M to 3.5M,
+over the 3M line, so Nolan is told before it starts.
+
+**R0b does these, since its real claims need them:**
+- Pass `ctx` wherever the data exists. With `ctx=None` a regime's predicates are skipped, even
+  in strict mode.
+- Engine code renders through `card()` and `methods()`. It never calls `claims.status(id)` at run
+  time: that derives from the source, so in the shipped app, which holds no tests, it reads every
+  tested claim as proposed.
+- Add a test that the image and the release zip keep `turbotab/core/claims/status.json`. Both
+  keep it today, which was checked by simulating them with rsync.
+- Turn strict mode on for `turbotab/server/tests` too. Today only `turbotab/core/tests` has it.
+- Re-tag the allowlist entries that a registered claim now covers. For example, "9 for don't know
+  or 999 for not measured" (`scales.py:44` KNOWN_CODES) is tagged *example*, and "Hold out 10%"
+  and "a 200 kcal swap" are tagged *name*.
+
+**Filed in INBOX, not in R0b:**
+- **Unconditional skips the status check misses:** `pytest.skip()` in a test's body,
+  `pytest.param(..., marks=pytest.mark.skip)`, an always-true `skipif` (`skipif('True')`,
+  `skipif(1 == 1)`), and a mark bound to an alias.
+- **Derivation paths:** `truth='derivation:../x.md'` and `Basis.derivation` are not checked for
+  leaving the root.
+- **History integrity:** `--check` passes after an old history line is edited with its hash kept,
+  or deleted. A changed hash does not bump the version, so `(id, version)` is ambiguous without
+  the hash. An un-retracted id given new content reads as a revision, not a reuse.
+- `check()` does not require a rule to name its decision, and meta-test 5 skips `decision=''`.
+- **Meta-test 2:** it misses an id built by concatenation, and a constant imported through a
+  helper module.
+- **Digit gate edges:** "½" passes, since `str.isdigit` is false for it. "(Friedman 2001-5000
+  trees)" passes through the year-span tail. A future `cited_as` pattern with a negated-class gap
+  inside a work's name would be misread, and loudly.
+- **Grader dates and parentheticals:**
+  - Grader dates are not bounded: 2999-01-01 registers.
+  - The author's own parenthetical is dropped, so the author "the R0a builder (Opus)" and the
+    grader "Opus, 2026-10-16" pass. Decide this when real authors are written.
+- **Parsing:**
+  - The parse cache keys on `mtime_ns` and size, so a same-size rewrite within one timestamp
+    tick can be read stale. This affects derivation only.
+  - The test lookup's "last binding" flattens `if` and `try` branches.
+
 ## Rulings
 
 None needed from Nolan: the registry's three questions were ruled on 2026-10-15, and the rest is methods and architecture, which he delegated.
