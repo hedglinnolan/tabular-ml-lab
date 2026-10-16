@@ -47,9 +47,12 @@ covariate chosen after the data were seen is refused from the primary analysis
   rounding, on one covariate or on a combination of them, made it report a wrong risk difference.
   The effect is refused too when the program cannot tell who is separated. When no one is, a fit
   that only looked separated (a coefficient past 25, or a risk within 1e-10 of 0 or 1) is the
-  finite maximum-likelihood fit, taken on standardized columns. Ye et al.'s variance is a sum of
-  covariances, and where it comes out below zero (in a small arm fitted with many terms) the
-  effect is refused too, as is a sensitivity analysis whose completed data sets break down so.
+  finite maximum-likelihood fit, taken on standardized columns, and refused where its information
+  there is too nearly singular for float64 to resolve it (the data barely tell some combination
+  of the columns apart, so the rounding of the numbers would set the fit). Ye et al.'s variance
+  is a sum of covariances, and where it comes out below zero (in a small arm fitted with many
+  terms) the effect is refused too, as is a sensitivity analysis whose completed data sets break
+  down so.
 
 **Cluster-randomized trials** (:func:`estimate` with ``trial_design="cluster_randomized_trial"``).
 The cluster is the unit of randomization, so every cluster has one arm (refused otherwise).
@@ -783,6 +786,18 @@ FEWER_COVARIATES_EXIT = {"label": "Adjust for fewer covariates", "covariates": [
 FRACTIONAL = 1e-6  # a tᵢ further than this from 0 and from 1: the program did not decide them
 ON_PLANE = 1e-13  # the people left off the plane by more than this share of the direction's norm
 LOADS = 1e-6  # the program's direction moves a column whose share of it is above this
+# A finite fit is reported only where float64 can resolve it (claims backtest B-281, its sixth
+# review's re-review). A solve's relative error is about the condition number times machine
+# epsilon (2.2e-16), so where the information on the standardized columns, Z'WZ, has its smallest
+# eigenvalue below SINGULAR of its largest (a condition number above 1e14), rounding alone can
+# leave the fit 2% or more off along that eigenvector, and the risks that move with it. It is a
+# heuristic, measured on the review's generators as the tolerances above were: two people at
+# x = ±ε with the outcomes x does not predict, both treated at one site, gave ratios of 1.2e-15
+# and 5.5e-15 at the 60-digit fit (3.8e-16 and 1.3e-15 on the raw columns), and were reported
+# 1.48e-2 and 1.28e-3 standard errors off. On that re-review's sweeps every report it keeps is
+# within 6e-5 of a standard error, and every trial it refuses the base refused too, though the
+# code before it reported 12 of them within 1e-3 of a standard error.
+SINGULAR = 1e-14  # the information's smallest eigenvalue below this share of its largest
 
 
 def _centered(X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -843,11 +858,15 @@ def _logistic_standardized(X: np.ndarray, y: np.ndarray) -> _Logit:
     """The maximum-likelihood fit of people no direction separates (:func:`_separated_people`),
     which is finite, by :func:`_logistic` on their columns centered and scaled
     (:func:`_centered`), the coefficients and covariance mapped back, keeping a large coefficient
-    or a fitted risk near 0 or 1, and refused only when Newton's method does not converge. Its
-    step is solved on the information, not on a pseudo-inverse, which drops a direction whose
-    small spread the information squares and stops short along it."""
+    or a fitted risk near 0 or 1. Its step is solved on the information, not on a pseudo-inverse,
+    which drops a direction whose small spread the information squares and stops short along it.
+    Refused when Newton's method does not converge, and when the information on those columns is
+    too nearly singular for float64 to resolve the fit (:data:`SINGULAR`)."""
     Z, back = _centered(X)
     fit = _logistic(Z, y, separable=False)
+    ev = np.linalg.eigvalsh(Z.T @ (Z * (fit.mu * (1 - fit.mu))[:, None]))
+    if not ev[0] > SINGULAR * ev[-1]:
+        raise _nearly_singular()
     cov = back @ fit.cov @ back.T
     return _Logit(beta=back @ fit.beta, cov=(cov + cov.T) / 2, mu=fit.mu)
 
@@ -858,7 +877,8 @@ def _fit_risks(d: _Design, y: np.ndarray, arms: list[str]) -> tuple[_Logit, np.n
     exactly (:func:`_separated_people`), and the effect is refused with the plain separation
     reason when that cannot be done, and for the separation when anyone is separated
     (:func:`_separated_refusal`). No one separated: the fit is the finite maximum-likelihood one
-    that :func:`_logistic`'s bounds refused (:func:`_logistic_standardized`)."""
+    that :func:`_logistic`'s bounds refused (:func:`_logistic_standardized`), refused where its
+    information is too nearly singular to resolve it (:func:`_nearly_singular`)."""
     try:
         fit = _logistic(d.X, y)
         return fit, _counterfactual(d, fit.beta, arms)
@@ -872,6 +892,22 @@ def _fit_risks(d: _Design, y: np.ndarray, arms: list[str]) -> tuple[_Logit, np.n
         raise _separated_refusal(d, y, arms, people, columns)
     fit = _logistic_standardized(d.X, y)
     return fit, _counterfactual(d, fit.beta, arms)
+
+
+def _nearly_singular() -> TrialRefused:
+    """The refusal when no one is separated but the information is too nearly singular for
+    float64 to resolve the fit (:data:`SINGULAR`): the data barely tell apart some combination of
+    the columns, as two covariates that nearly copy each other do, or a fit resting on a few
+    people nearly alike in every column, its other risks all near 0 or 1."""
+    return TrialRefused(
+        "The data here barely tell apart some combination of the model's terms: two covariates "
+        "nearly copy each other, say, or almost everyone's risk is so near 0% or 100% that the "
+        "fit rests on a few people nearly alike in every term. Along that combination the "
+        "logistic model's coefficients would be set by the rounding of the numbers, not by the "
+        "data, and the standardized risks, their difference and their standard errors could be "
+        "too.",
+        (FEWER_COVARIATES_EXIT, DESCRIBE_OUTCOMES_EXIT),
+        term="nearly singular information in the logistic model")
 
 
 def _separated_refusal(d: _Design, y: np.ndarray, arms: list[str], people: np.ndarray,
