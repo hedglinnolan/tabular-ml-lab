@@ -1,18 +1,20 @@
 """The data area's claims (``turbotab/core/claims/data.py``; R0_PLAN.md R0b): the Silent tests
-stage 1 left missing, the Subsample C weight read by its name and by where its variable is
-recorded (and a word that begins like it read as no weight), the NHANES subsample tolerances both
-ways, the omics reading's floor, span, skewness, distinct-values and per-million tests both ways,
-the grouping entry's number held to its guard, and the regime predicates tested both ways.
+stage 1 left missing, the share above a UL for a name read as no nutrient, the Subsample C
+weight read by its name and by where its variable is recorded (and a word that begins like it
+read as no weight), the NHANES subsample tolerances both ways, the omics reading's floor, span,
+skewness, names, distinct-values and per-million tests both ways, the grouping entry's number
+held to its guard, and the regime predicates tested both ways.
 
 A Silent test holds a guard quiet where its evidence says it must be: a UL that covers every
-source, an NHANES table with no variable measured on a subsample alone, a block of two-level
-columns, sample totals near a million, a yes/no outcome in groups large enough for an intercept
-each. Each was watched failing on a copy of the base whose guard was loosened. Its truth is the
-construction or an independent library, never the claim it tests: this file names no claim and
-none of the constants the claims set (meta-test 2), and reads no threshold of TurboTab's own, so
-every case sits far from the cut-off it would cross. The per-million tests read the genomics
-pack's tolerance, a copy the claim does not set, and sit a tenth of it to either side; the one
-test that crosses a cut-off finds it from the guard's behavior, to hold a sentence to it.
+source, a name read as calcium, an NHANES table with no variable measured on a subsample alone, a
+block of two-level columns, sample totals near a million, a yes/no outcome in groups large enough
+for an intercept each. Each was watched failing on a copy of the base whose guard was loosened.
+Its truth is the construction or an independent library, never the claim it tests: this file
+names no claim and none of the constants the claims set (meta-test 2), and reads no threshold of
+TurboTab's own, so every case sits far from the cut-off it would cross. The per-million tests read
+the genomics pack's tolerance, a copy the claim does not set, and sit a tenth of it to either
+side; the one test that crosses a cut-off finds it from the guard's behavior, to hold a sentence
+to it.
 """
 from __future__ import annotations
 
@@ -51,6 +53,64 @@ def test_a_ul_that_covers_every_source_is_read_as_total_intake():
         assert "food, water and supplements" in sentence, sentence
         assert "lower bound" in sentence, sentence
         assert " only" not in sentence and "that form alone" not in sentence, sentence
+
+
+def _methods(label: str, cutoff: float) -> str:
+    """The usual-intake methods sentence for a share above a UL of ``cutoff`` on the component
+    ``label``, its UL's form read from the name as the stage reads it."""
+    from turbotab.core import usual_intake as ui
+    from turbotab.core.methods import usual_intake as nci
+
+    return nci.methods_sentence(
+        label=label, model="amount_only", names=["intercept"], lam=0.4, n_persons=500,
+        recalls={1: 200, 2: 300}, n_repeat=300, zeros_replaced=0, population="whole",
+        consumer_column=None, weight=None, replication=None, n_ok=0, cutoff=cutoff,
+        cutoff_kind="UL", ul_form=ui.ul_form(label))
+
+
+def test_a_ul_share_on_a_name_read_as_no_nutrient_is_a_share_of_the_distribution():
+    """Claims backtest BX-040, review: the share above a UL was worded as a UL covering food, water
+    and supplements wherever the name read as no nutrient whose UL covers one form. NHANES's
+    supplement-recall magnesium total, DS1TMAGN, is read as no nutrient at all, and the IOM DRI
+    tables' footnote says magnesium's UL ("intake from a pharmacological agent only and do not
+    include intake from food and water") covers no food or water. Expected, for DS1TMAGN and a
+    bare ``Mg`` against magnesium's 350 mg UL: the share is reported as a share of the
+    distribution, and what a UL covers is said to depend on the nutrient, magnesium's covering
+    supplements and medicines; nothing says the UL covers food, water and supplements, or that a
+    share is a lower bound. The UL is stated."""
+    from turbotab.core.methods import usual_intake as nci
+
+    def unread(sentence: str) -> None:
+        assert "share of the distribution" in sentence, sentence
+        assert "depends on the nutrient" in sentence, sentence
+        assert "supplements and medicines" in sentence, sentence
+        assert "350" in sentence, sentence
+        assert "food, water and supplements" not in sentence, sentence
+        assert "lower bound" not in sentence and "at risk of excess where" not in sentence
+
+    for label in ("DS1TMAGN", "Mg"):
+        unread(_methods(label, 350))
+    unread(nci.share_phrase(350, "UL", nutrient_read=False))
+
+
+# The share's sentence for a name read as calcium against its 2,500 mg UL, as the base wrote it:
+# the IOM DRI tables' calcium UL covers intake from food, water and supplements.
+CALCIUM_SHARE = (" The share above the UL (2,500) is a share at risk of excess where the recalls "
+                 "include supplements, the UL covering intake from food, water and supplements "
+                 "(Institute of Medicine 2000a); from foods alone it is a lower bound on that "
+                 "share.")
+
+
+def test_a_ul_share_on_a_name_read_as_calcium_keeps_its_sentence():
+    """Claims backtest BX-040, the silent side of the sentence for a name read as no nutrient: a
+    name read as calcium (``calcium_mg``, NHANES's ``DR1TCALC``), whose UL covers every source and
+    covers no one form, keeps the total-intake sentence byte for byte, in the methods sentence and
+    in the share's own."""
+    from turbotab.core.methods import usual_intake as nci
+
+    for label in ("calcium_mg", "DR1TCALC"):
+        assert _methods(label, 2500).endswith(CALCIUM_SHARE), _methods(label, 2500)
+    assert nci.share_phrase(2500, "UL") == CALCIUM_SHARE
 
 
 # ── C-143 · the NHANES weight's silent sides ─────────────────────────────────────────────────
@@ -666,6 +726,8 @@ def test_the_constant_column_regime_counts_a_blank_as_a_value():
     ("a_nutrient_the_iom_sets_a_ul_for", {"nutrient": "magnesium"}, {"nutrient": None}),
     ("a_nutrient_the_iom_sets_a_ul_for", {"nutrient": "Vitamin D"}, {"nutrient": "vitamin K"}),
     ("a_nutrient_the_iom_sets_a_ul_for", {"nutrient": "calcium"}, {"nutrient": "potassium"}),
+    ("a_name_read_as_no_nutrient", {"nutrient": None}, {"nutrient": "magnesium"}),
+    ("a_name_read_as_no_nutrient", {"nutrient": None, "cutoff": 350}, {"cutoff": 350}),
     ("an_outcome_its_evidence_covers", {"task": "binary", "purpose": "inference"},
      {"task": "ordinal", "purpose": "inference"}),
     ("an_outcome_its_evidence_covers", {"task": "regression", "purpose": "inference"},
@@ -687,7 +749,8 @@ def test_each_regime_predicate_holds_inside_its_regime_and_fails_outside(predica
     """Each predicate reads its context as the claim's evidence words it, written apart from the
     code the claim guards: a UL cut-off; a nutrient the IOM DRI tables set a UL for (vitamin K and
     potassium have none, and a name the reader does not read, NHANES's supplement-recall total
-    DS1TMAGN among them, names no nutrient); a weight named as the CDC codebooks name it (a tissue
+    DS1TMAGN among them, names no nutrient); a name read as no nutrient (a context that does not
+    say how the name was read is outside); a weight named as the CDC codebooks name it (a tissue
     mass and a body weight are no sampling weight); an omics lens; a grouping column; under
     inference a numeric or a yes/no outcome, the two the incidental-parameter evidence covers
     (an ordinal, multiclass or time-to-event outcome is outside it), and under prediction any; a

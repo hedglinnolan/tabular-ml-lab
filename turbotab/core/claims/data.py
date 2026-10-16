@@ -2,7 +2,8 @@
 backtest that the data stages, the readings, the recognizers and the teaching make
 (docs/turbotab-next/notes/claims-backtest/FIXES.md, S1), each as stage 1 corrected it.
 
-* ``data.ul_share`` (BX-040): what a share of usual intake above a UL is a share of.
+* ``data.ul_share`` (BX-040): what a share of usual intake above a UL is a share of, and its
+  fallback ``data.ul_share_unread`` for a component whose name is read as no nutrient.
 * ``data.constant_column`` (C-123): a column is left out without asking only when every row holds
   one value, a blank counting as a value.
 * ``data.nhanes_weight`` (C-143): the NHANES weight the least-common-denominator rule names.
@@ -70,6 +71,15 @@ def a_nutrient_the_iom_sets_a_ul_for(ctx: Any) -> bool:
     tables set that nutrient a UL. A name read as no nutrient (None) is outside."""
     nutrient = _get(ctx, "nutrient")
     return isinstance(nutrient, str) and nutrient.strip().lower() in _IOM_UL_NUTRIENTS
+
+
+_ABSENT = object()
+
+
+def a_name_read_as_no_nutrient(ctx: Any) -> bool:
+    """The component's name was read, and read as no nutrient: ``nutrient`` is given, and it is
+    None. A context that does not say how the name was read is outside."""
+    return _get(ctx, "nutrient", _ABSENT) is None
 
 
 def one_value_on_every_row(ctx: Any) -> bool:
@@ -169,10 +179,12 @@ register(Claim(
         Part("scope", grade="judgment", basis=Basis(
             reason="We read the nutrient from the component's name, as the iron rule does, and "
                    "the claim covers only a name read as a nutrient the IOM tables set a UL for, "
-                   "whose list the author read from the tables. A name the reader does not read "
-                   "is outside it: the code then words the share as a UL covering every source, "
-                   "our default and no reading of the IOM tables, which is false for a magnesium "
-                   "total named DS1TMAGN.")),
+                   "whose list the author read from the tables. A name the reader reads as no "
+                   "nutrient (a magnesium total named DS1TMAGN) takes the weaker "
+                   "data.ul_share_unread. A name read as a nutrient the tables set no UL for "
+                   "(potassium, protein), or only as a vitamin (vitamin_d_ug), is outside both: "
+                   "the code words its share as a UL covering every source, our default and no "
+                   "reading of the IOM tables.")),
     ),
     tests=(
         Fires(f"{ACCEPTANCE}/test_nci_usual_intake.py::"
@@ -186,6 +198,53 @@ register(Claim(
     ),
     enforced_by=("turbotab.core.methods.usual_intake:share_phrase",
                  "turbotab.core.usual_intake:ul_form"),
+    fallback="data.ul_share_unread",
+    author=AUTHOR,
+))
+
+
+register(Claim(
+    id="data.ul_share_unread",
+    kind="rule",
+    card="The share above the UL is reported as a share of the distribution: what a UL covers "
+         "depends on the nutrient (for magnesium, supplements and medicines alone), and the "
+         "nutrient was not read from this column's name.",
+    methods="Where the nutrient was not read from the component's name, the share of usual intake "
+            "above the UL was reported as a share of the distribution, not as a share at risk of "
+            "excess, since what a UL covers depends on the nutrient (supplements and medicines "
+            "alone for magnesium).",
+    regime=Regime("a share of usual intake above a UL, estimated from 24-hour recalls by the NCI "
+                  "method, for a component whose name the reader reads as no nutrient (NHANES's "
+                  "supplement-recall totals such as DS1TMAGN, a bare 'Mg')",
+                  requires=(f"{HERE}:a_share_above_a_ul", f"{HERE}:a_name_read_as_no_nutrient"),
+                  disjoint_from=("data.ul_share",)),
+    decision="nci_usual_intake",
+    verdict="noted",
+    parts=(
+        Part("distribution", grade="judgment", basis=Basis(
+            reason="We report the share as a share of the distribution, never as a share at risk "
+                   "of excess: a share above a UL is one only where the intakes are what the UL "
+                   "covers, and without the nutrient that cannot be read.")),
+        Part("coverage", grade="judgment", basis=Basis(
+            cites=("iom1997magnesium",),
+            reason="We say what a UL covers depends on the nutrient, as the IOM DRI tables' "
+                   "footnotes do (magnesium's covers intake from a pharmacological agent only, "
+                   "calcium's every source), read as data.ul_share's forms part reads them, and "
+                   "checked by no one but the author.")),
+        Part("unread", grade="judgment", basis=Basis(
+            reason="We take a name as naming no nutrient where the name reader reads none; a "
+                   "person may read the nutrient in it (DS1TMAGN is NHANES's supplement-recall "
+                   "magnesium), so the sentence says the nutrient was not read, not that the name "
+                   "names none.")),
+    ),
+    tests=(
+        Fires(f"{TESTS}::test_a_ul_share_on_a_name_read_as_no_nutrient_is_a_share_of_the_"
+              "distribution", truth="independent:the IOM DRI tables' UL footnotes"),
+        Silent(f"{TESTS}::test_a_ul_share_on_a_name_read_as_calcium_keeps_its_sentence",
+               truth="independent:the IOM DRI tables' UL footnotes"),
+    ),
+    enforced_by=("turbotab.core.methods.usual_intake:share_phrase",
+                 "turbotab.core.methods.usual_intake:methods_sentence"),
     author=AUTHOR,
 ))
 
