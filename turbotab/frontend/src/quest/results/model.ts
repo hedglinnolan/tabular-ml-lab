@@ -6,6 +6,7 @@
  */
 import type { FitArtifact, FittedModel, SplitArtifact } from "../../api/m1-stage-types";
 import type { EvaluationArtifact, FamilyExplanation, VersusBaseline } from "../../api/m3-types";
+import type { DecisionRecord, ProjectView } from "../../api/schema";
 import { plain } from "../../components/stage/format";
 import { fmtEstimate } from "../../components/views/format";
 import type { Cell, Footnote, TableData, TableRow } from "../../components/views/types";
@@ -152,6 +153,40 @@ export function exploratoryReasons(split: SplitBasis | null | undefined): string
 }
 
 /**
+ * The engine's notes on the held-out result, each once: the final model's (`final_note`) and the
+ * opening's (`at_opening.note`). Once the served scores are not the opening's, the server serves
+ * the opening's note as the final model's too (server/service.py `_served_fit`), so it is said once.
+ */
+export function openingNotes(fit: Pick<FitArtifact, "final_note" | "at_opening">): string[] {
+  const notes = [fit.final_note, fit.at_opening?.note].filter((t): t is string => !!t);
+  return notes.filter((t, i) => notes.indexOf(t) === i);
+}
+
+/**
+ * The record that opened the current seal, read by the engine's rule (turbotab/core/seal.py
+ * `opening`): among the records no revert cancels, the latest opening or re-seal of the current
+ * outcome's seal (or one naming no outcome) — an opening, or null where a re-seal closed it again.
+ * The fit's final model is this opening's (selection.py `declared_family`); after a re-seal and a
+ * second opening it is not the first one (`OpenSeal.openingRecord`).
+ */
+export function currentOpening(view: Pick<ProjectView, "decisions" | "state">): DecisionRecord | null {
+  const ordered = [...view.decisions].sort((a, b) => a.seq - b.seq);
+  // Latest first: a revert counts only while nothing later reverts it (core/decisions.py `reverted`).
+  const cancelled = new Set<string>();
+  for (const r of [...ordered].reverse()) {
+    if (!cancelled.has(r.id) && r.decision.kind === "revert") cancelled.add(r.decision.decision_id);
+  }
+  const target = view.state.target ?? null;
+  for (const r of ordered.reverse()) {
+    const d = r.decision;
+    if (cancelled.has(r.id) || (d.kind !== "open_seal" && d.kind !== "reseal")) continue;
+    if (d.target !== null && d.target !== undefined && d.target !== target) continue;
+    return d.kind === "open_seal" ? r : null;
+  }
+  return null;
+}
+
+/**
  * What the held-out scores are, said in the exhibit's title. "Scored once, by no choice seen" only
  * while the served scores are the opening's: the phase is `opened` and the fit does not say the
  * opening's result is no longer current (`at_opening.current`, turbotab/core/seal.py
@@ -217,8 +252,7 @@ export function heldOutTable(fit: FitArtifact, phase: SealPhase, split: SplitBas
       const v = m.holdout_detail?.versus_baseline;
       return v ? [{ mark: mark(i), text: `${m.label}: ${plain(v.tolerance_basis)}` }] : [];
     }),
-    ...(fit.final_note ? [{ text: plain(fit.final_note) }] : []),
-    ...(fit.at_opening?.note ? [{ text: plain(fit.at_opening.note) }] : []),
+    ...openingNotes(fit).map((text) => ({ text: plain(text) })),
   ];
   return {
     number: "Held-out rows",

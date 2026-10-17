@@ -19,7 +19,7 @@ import type { ProjectView } from "../../api/schema";
 import { SealCard } from "./cards";
 import capture from "./fixtures/nhanes-predict.json";
 import { ResultsCards, ResultsTapestry } from "./index";
-import { cvComparison, heldOutTable, verdictCell } from "./model";
+import { currentOpening, cvComparison, heldOutTable, verdictCell } from "./model";
 
 // ── the capture ──────────────────────────────────────────────────────────────
 
@@ -42,6 +42,13 @@ const explainOf = (s: Snapshot) => s.stages.explain!.artifact as ExplainArtifact
 const evaluationOf = (s: Snapshot) => s.stages.evaluation!.artifact as EvaluationArtifact;
 const splitOf = (s: Snapshot) => s.stages.split!.artifact as SplitArtifact;
 
+// The engine's note once the served scores are not the opening's (turbotab/core/seal.py
+// `reported_result`): its head is the capture's own note, its tail the engine's for each case.
+const HEAD = fitOf(C.opened).at_opening!.note.replace(/\.$/, "");
+const CHANGED_NOTE = `${HEAD}; the held-out scores shown now are from a fit changed after it, so they are post-seal and not an independent test.`;
+const REDRAWN_NOTE = `${HEAD}; the held-out scores shown now are from rows drawn again after it, so they are not an independent test.`;
+const RESEALED_NOTE = `${HEAD}; the held-out rows were drawn again after it, and stay withheld until they are opened in turn, as a test that is not independent.`;
+
 /** The verdict's word for each served verdict, as its rule names it (`tolerance_basis`), written
  *  here rather than read from the module, so a cell showing another verdict's word fails. */
 const WORD: Record<VersusBaseline["verdict"], string> = { better: "Better", no_better: "Not shown to be better", worse: "Worse" };
@@ -61,6 +68,37 @@ const withFit =
     ...s,
     stages: { ...s.stages, fit: { ...s.stages.fit!, artifact: { ...fitOf(s), ...patch(fitOf(s)) } } },
   });
+
+/** The served fit once its scores are not the opening's: the server then serves the note as the
+ *  final model's too (server/service.py `_served_fit`). */
+const notCurrent = (note: string, after: boolean) =>
+  withFit((f) => ({ changed_after_seal: after, at_opening: { ...f.at_opening!, current: false, note }, final_note: note }));
+
+// ── a re-seal, and a second opening (audit WP16, RO-05) ──────────────────────
+// After the opening a changed split is refused (`seal_opened`) with a Reseal exit; the re-seal
+// sets `seal_opened` to null (core/decisions.py), so the seal is closed again over the rows drawn
+// next; opening them records a second `open_seal`, which the fit's final model comes from
+// (selection.py `declared_family` → seal.py `opening`), while `at_opening` stays the first's.
+
+/** The capture's opening record (#22). */
+const FIRST = (C.opened.view.decisions as unknown as ProjectView["decisions"]).find((d) => d.decision.kind === "open_seal")!;
+const record = (seq: number, decision: Json): Json => ({ ...FIRST, id: `rec-${seq}`, seq, sentence: `Record #${seq}.`, post_seal: false, decision });
+const RESEAL = record(FIRST.seq + 1, { kind: "reseal", reason: null, target: "glucose" });
+const SECOND = record(FIRST.seq + 2, { ...FIRST.decision });
+
+/** Sealed again by a re-seal after the opening: the record holds the opening and the re-seal, and
+ *  the fit, sealed, serves the first opening's scores with the engine's note for this case. */
+const resealed = (): Snapshot => ({
+  ...C.sealed,
+  view: { ...C.sealed.view, state: { ...C.sealed.view.state, seal_opened: null }, decisions: [...C.opened.view.decisions, RESEAL] },
+  stages: {
+    ...C.sealed.stages,
+    fit: { ...C.sealed.stages.fit!, artifact: { ...fitOf(C.sealed), at_opening: { ...fitOf(C.opened).at_opening!, current: false, note: RESEALED_NOTE } } },
+  },
+});
+
+/** Opened a second time over the rows drawn again. */
+const reopened = (s: Snapshot): Snapshot => notCurrent(REDRAWN_NOTE, false)({ ...s, view: { ...s.view, decisions: [...C.opened.view.decisions, RESEAL, SECOND] } });
 
 // The bases a split can serve, in the engine's words for each (turbotab/core/seal.py `_basis`).
 const UNDETERMINED: Json = {
@@ -105,6 +143,8 @@ const UNTIMED = {
   earlier: [],
 };
 const unticked = (s: string) => s.replace(/`/g, "");
+/** How many times `part` is said in `text`. */
+const times = (text: string | null | undefined, part: string) => (text ?? "").split(part).length - 1;
 
 // ── reading numbers back off the screen ──────────────────────────────────────
 
@@ -295,13 +335,8 @@ describe("the held-out rows", () => {
 describe("the held-out exhibit's title", () => {
   const caption = async () => (within(await screen.findByTestId("results-held-out")).getByRole("table").querySelector("caption")?.textContent ?? "");
   const n = fitOf(C.opened).n_holdout.toLocaleString("en-US");
-  // The engine's note once the served scores are not the opening's (turbotab/core/seal.py
-  // `reported_result`): its head is the capture's own note, its tail the engine's for each case.
-  const head = fitOf(C.opened).at_opening!.note.replace(/\.$/, "");
-  const changed = `${head}; the held-out scores shown now are from a fit changed after it, so they are post-seal and not an independent test.`;
-  const redrawn = `${head}; the held-out scores shown now are from rows drawn again after it, so they are not an independent test.`;
-  const notCurrent = (note: string, after: boolean) =>
-    withFit((f) => ({ changed_after_seal: after, at_opening: { ...f.at_opening!, current: false, note }, final_note: note }));
+  const changed = CHANGED_NOTE;
+  const redrawn = REDRAWN_NOTE;
 
   it("says the rows were scored once, by no choice seen, while the served scores are the opening's", async () => {
     expect(fitOf(C.opened).at_opening!.current).toBe(true);
@@ -329,6 +364,34 @@ describe("the held-out exhibit's title", () => {
     expect(text).not.toMatch(/scored once|no choice has seen/);
     expect(text).toContain("drawn again after the first opening");
     expect(text).toContain("not an independent test");
+  });
+});
+
+describe("the held-out exhibit's notes", () => {
+  const notes = async () => {
+    await within(await screen.findByTestId("results-held-out")).findByRole("table");
+    return screen.getByTestId("results-held-out").textContent ?? "";
+  };
+
+  for (const [name, note, patch] of [
+    ["from a fit changed after the opening", CHANGED_NOTE, notCurrent(CHANGED_NOTE, true)],
+    ["from rows drawn again and opened in turn", REDRAWN_NOTE, reopened],
+  ] as const) {
+    it(`say the engine's note once when the scores are ${name}`, async () => {
+      serve("opened", patch);
+      mount(<ResultsTapestry pid={PID} />);
+      expect(times(await notes(), unticked(note))).toBe(1);
+    });
+  }
+
+  it("say both the final model's note and the opening's, once each, while the scores are the opening's", async () => {
+    const fit = fitOf(C.opened);
+    expect(fit.final_note).not.toBe(fit.at_opening!.note);
+    serve("opened");
+    mount(<ResultsTapestry pid={PID} />);
+    const text = await notes();
+    expect(times(text, unticked(fit.final_note!))).toBe(1);
+    expect(times(text, unticked(fit.at_opening!.note))).toBe(1);
   });
 });
 
@@ -561,6 +624,43 @@ describe("the triage once settled", () => {
   });
 });
 
+describe("the triage's heading", () => {
+  const heading = async () => within(await screen.findByTestId("results-triage")).getByRole("heading").textContent;
+  const n = C.sealed.triage.items.length;
+
+  it("says the noticings come before the held-out rows open, while they are sealed", async () => {
+    expect(C.sealed.triage.passed).toBe(false);
+    serve("sealed");
+    mount(<ResultsCards pid={PID} />);
+    expect(await heading()).toBe(`${n} noticings before the held-out rows open`);
+  });
+
+  it("says, once the rows are opened, that every noticing was settled before they were", async () => {
+    expect(C.opened.triage.passed).toBe(true);
+    expect((C.opened.triage.items as { recorded: string | null }[]).every((i) => i.recorded !== null)).toBe(true);
+    serve("opened");
+    mount(<ResultsCards pid={PID} />);
+    expect(await heading()).toBe(`${C.opened.triage.items.length} noticings, settled before the held-out rows were opened`);
+    expect(screen.getByTestId("triage-settled")).toBeTruthy();
+  });
+
+  it("claims no settling, once the rows are opened, for a noticing with no disposition standing", async () => {
+    // By construction: a noticing open after the opening (one a later change raised, or one whose
+    // recorded disposition no longer stands). A confirmation is refused once the gate has passed
+    // (core/sweep.py `gate_passed`), so it has no recorded disposition.
+    const raised = (s: Snapshot): Snapshot => ({
+      ...s,
+      triage: { ...s.triage, answered: false, items: s.triage.items.map((i, k) => (k === 0 ? { ...i, recorded: null } : i)) },
+    });
+    serve("opened", raised);
+    mount(<ResultsCards pid={PID} />);
+    expect(await heading()).toBe(`${C.opened.triage.items.length} noticings, 1 open after the held-out rows were opened`);
+    expect(screen.queryByTestId("triage-settled")).toBeNull();
+    // Nor is "Confirm all" offered: the engine refuses it once the gate has passed.
+    expect(within(screen.getByTestId("results-triage")).queryByRole("button")).toBeNull();
+  });
+});
+
 describe("the opening's chain of refusals", () => {
   it("is walked press by press: each exit records, then the opening is tried again, until the rows open", async () => {
     const server = serve("sealed");
@@ -622,6 +722,93 @@ describe("the seal card beside a fit that is not current", () => {
     expect(screen.getByTestId("results-open").textContent).toContain("Nothing is opened until you press it.");
     expect(screen.getByTestId("results-open").textContent).not.toContain("not current");
   });
+});
+
+/** What the first opening's card and line claim, which a re-seal makes untrue. */
+const FIRST_CLAIMS = ["Opened once", "no choice has seen", "It happens once", "fixed in the record"];
+
+describe("the seal card after a re-seal", () => {
+  it("says the engine's note, and none of the first opening's claims, over the rows drawn again", async () => {
+    serve("sealed", resealed);
+    mount(<ResultsCards pid={PID} />);
+    const card = await screen.findByTestId("results-open");
+    await waitFor(() => expect(card.textContent).toContain(unticked(RESEALED_NOTE)));
+    for (const claim of FIRST_CLAIMS) expect(card.textContent, claim).not.toContain(claim);
+    expect(within(card).getByRole("button", { name: "Open the held-out rows" })).toBeTruthy();
+  });
+
+  it("keeps the first opening's words before the first opening, where no earlier one is served", async () => {
+    expect(fitOf(C.sealed).at_opening).toBeNull();
+    serve("sealed");
+    mount(<ResultsCards pid={PID} />);
+    const card = await screen.findByTestId("results-open");
+    for (const claim of FIRST_CLAIMS) expect(card.textContent, claim).toContain(claim);
+    expect(card.textContent).not.toContain("At the opening");
+  });
+});
+
+describe("the opened line", () => {
+  const line = async () => (await screen.findByTestId("results-opened")).textContent ?? "";
+
+  it("names the opening and says the scores are fixed in the record, while they are the opening's", async () => {
+    serve("opened");
+    mount(<ResultsCards pid={PID} />);
+    const text = await line();
+    expect(text).toContain(`The held-out rows were opened once (#${FIRST.seq}), with Linear model as the final model: their scores are fixed in the record.`);
+    expect(text).toContain(unticked(fitOf(C.opened).final_note!));
+  });
+
+  it("names the second opening, not the first, and says nothing of once, after the rows are drawn again and opened", async () => {
+    serve("opened", reopened);
+    mount(<ResultsCards pid={PID} />);
+    const text = await line();
+    expect(text).toContain(`The held-out rows were opened (#${SECOND.seq as number}), with Linear model as the final model.`);
+    expect(text).not.toContain(`(#${FIRST.seq})`);
+    expect(text).not.toMatch(/\bonce\b/);
+    expect(text).not.toContain("fixed in the record");
+    expect(times(text, unticked(REDRAWN_NOTE))).toBe(1);
+  });
+
+  it("says nothing of once after a change refits the opened fit, and says the engine's note once", async () => {
+    serve("opened", notCurrent(CHANGED_NOTE, true));
+    mount(<ResultsCards pid={PID} />);
+    const text = await line();
+    expect(text).toContain(`The held-out rows were opened (#${FIRST.seq}), with Linear model as the final model.`);
+    expect(text).not.toMatch(/\bonce\b/);
+    expect(text).not.toContain("fixed in the record");
+    expect(times(text, unticked(CHANGED_NOTE))).toBe(1);
+  });
+});
+
+describe("the post-seal band after a second opening", () => {
+  it("names the opening the changes came after, the current one (seal.py `post_seal_changes`)", async () => {
+    // After a second opening the engine's note is the rows-drawn-again one, a change or not.
+    const changedAfterSecond = (s: Snapshot): Snapshot => withFit(() => ({ changed_after_seal: true }))(reopened(s));
+    serve("opened", changedAfterSecond);
+    mount(<ResultsTapestry pid={PID} />);
+    const band = await screen.findByTestId("post-seal");
+    expect(band.textContent).toContain(`(#${SECOND.seq as number})`);
+    expect(band.textContent).not.toContain(`(#${FIRST.seq})`);
+  });
+});
+
+describe("the current opening", () => {
+  // The engine's rule (turbotab/core/seal.py `opening`): among the records not reverted, the latest
+  // opening or re-seal about the current outcome (or naming none); an opening opens, a re-seal
+  // closes. Each case's answer is read off its records by that rule.
+  const view = (...extra: Json[]) => ({ ...C.opened.view, decisions: [...C.opened.view.decisions, ...extra] }) as unknown as ProjectView;
+  const seqOf = (v: ProjectView) => currentOpening(v)?.seq ?? null;
+
+  it("is the capture's one opening", () => expect(seqOf(view())).toBe(FIRST.seq));
+  it("is none after a re-seal", () => expect(seqOf(view(RESEAL))).toBeNull());
+  it("is the second opening once the rows drawn again are opened", () => expect(seqOf(view(RESEAL, SECOND))).toBe(SECOND.seq));
+  it("is the first again when the re-seal is reverted", () =>
+    expect(seqOf(view(RESEAL, record(FIRST.seq + 2, { kind: "revert", decision_id: RESEAL.id as string })))).toBe(FIRST.seq));
+  it("is the re-seal's again when the revert is itself reverted", () => {
+    const revert = record(FIRST.seq + 2, { kind: "revert", decision_id: RESEAL.id as string });
+    expect(seqOf(view(RESEAL, revert, record(FIRST.seq + 3, { kind: "revert", decision_id: revert.id as string })))).toBeNull();
+  });
+  it("ignores a re-seal of another outcome's seal", () => expect(seqOf(view(record(FIRST.seq + 1, { kind: "reseal", reason: null, target: "hba1c" })))).toBe(FIRST.seq));
 });
 
 describe("the explain offer, and the Results declarations", () => {

@@ -8,7 +8,7 @@
  * the stage's quiet captions. Every sentence is the engine's, or says only what the code does; no
  * number is computed here.
  */
-import { useId, useState } from "react";
+import { Fragment, useId, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { isRefusalError } from "../../api/client";
 import type { FitArtifact, SplitArtifact } from "../../api/m1-stage-types";
@@ -17,13 +17,13 @@ import type { Decision, ProjectView, QuestLine, Refusal, Triage, TriageItem } fr
 import { useM1Stage } from "../../components/stage/data";
 import { fmtInt } from "../../components/stage/format";
 import r from "../../components/stage/results/results.module.css";
-import { openingRecord, useRefetchOnOpening } from "../../components/stage/seal/OpenSeal";
+import { useRefetchOnOpening } from "../../components/stage/seal/OpenSeal";
 import { glyphOf, sealPhase } from "../../components/stage/seal/phase";
 import { SealGlyph } from "../../components/stage/seal/SealGlyph";
 import seal from "../../components/stage/seal/seal.module.css";
 import { Rich } from "../../components/stage/text";
 import { DECLARATION_CARDS } from "../cards/predict";
-import { exploratoryReasons } from "./model";
+import { currentOpening, exploratoryReasons, openingNotes } from "./model";
 import s from "./results.module.css";
 
 /** The opening's decision with no family named: the engine asks for one where several were fit. */
@@ -81,7 +81,8 @@ const RECORDED: Record<NonNullable<TriageItem["recorded"]>, string> = {
 /**
  * The noticings the held-out rows wait for (`GET /triage`, ruling 4): each with the engine's
  * recommended disposition and its reason; a blocker is decided on its own first. "Confirm all"
- * records each as listed (`confirm_sweep`, stage "results", sweep "noticings").
+ * records each as listed (`confirm_sweep`, stage "results", sweep "noticings"). Once the rows are
+ * opened (`passed`) the card is read, not confirmed, and its heading says so in the past.
  */
 export function TriageCard({ pid, triage, id }: { pid: string; triage: Triage; id?: string }) {
   const confirm = useConfirmSweep(pid);
@@ -90,6 +91,12 @@ export function TriageCard({ pid, triage, id }: { pid: string; triage: Triage; i
   const items = triage.items;
   if (!items.length) return null;
   const blockers = items.filter((i) => i.blocker).length;
+  // Once the gate has passed (under Predict, the held-out rows are open) a confirmation is refused
+  // (core/sweep.py `gate_passed`), so a disposition that stands was recorded before the opening; a
+  // noticing with none is open now, after it.
+  const open = items.filter((i) => i.recorded === null || i.recorded === undefined).length;
+  const settled = triage.passed && open === 0;
+  const counted = items.length === 1 ? "1 noticing" : `${items.length} noticings`;
   const press = () => {
     setRefused(null);
     setFailed(null);
@@ -102,7 +109,11 @@ export function TriageCard({ pid, triage, id }: { pid: string; triage: Triage; i
     <section className={r.section} id={id} tabIndex={-1} aria-labelledby={`${id}-h`} data-testid="results-triage" data-purpose="triage">
       <header className={r.sectionHead}>
         <h3 id={`${id}-h`} className={r.kicker}>
-          {items.length === 1 ? "1 noticing" : `${items.length} noticings`} before the held-out rows open
+          {!triage.passed
+            ? `${counted} before the held-out rows open`
+            : settled
+              ? `${counted}, settled before the held-out rows were opened`
+              : `${counted}, ${open} open after the held-out rows were opened`}
         </h3>
       </header>
       <ul className={s.items}>
@@ -122,11 +133,11 @@ export function TriageCard({ pid, triage, id }: { pid: string; triage: Triage; i
           </li>
         ))}
       </ul>
-      {triage.passed ? (
+      {settled ? (
         <p className={r.said} role="status" data-testid="triage-settled">
           Settled: the held-out rows no longer wait for these noticings.
         </p>
-      ) : !triage.answered ? (
+      ) : !triage.passed && !triage.answered ? (
         <div className={r.bandRow}>
           <button type="button" className={r.bandButton} onClick={press} disabled={confirm.isPending || !triage.confirmable} data-testid="triage-confirm">
             {confirm.isPending ? "Recording…" : `Confirm all ${items.length}`}
@@ -160,7 +171,8 @@ export function TriageCard({ pid, triage, id }: { pid: string; triage: Triage; i
  * (`final_model_needed`). Each refusal's exits are buttons: an exit that is itself the opening (one
  * naming a final model) is the next attempt; any other exit is recorded, and then the last attempt
  * is posted again, so the chain is walked press by press. An exit with no decision says where to
- * act and records nothing.
+ * act and records nothing. Sealed again by a re-seal after an opening, the card says the engine's
+ * note on the first opening's result in place of that opening's claims.
  */
 export function SealCard({ pid, view, fit, fresh, split }: { pid: string; view: ProjectView; fit: FitArtifact; fresh: boolean; split: SplitArtifact | null }) {
   const decide = useDecide(pid);
@@ -183,8 +195,13 @@ export function SealCard({ pid, view, fit, fresh, split }: { pid: string; view: 
 
   const metric = fit.metric_labels[fit.primary_metric] ?? fit.primary_metric;
   const families = fit.models.length;
+  const models = families === 1 ? "model" : `${families} models`;
   const glyph = glyphOf(split?.basis?.state);
   const exploratory = exploratoryReasons(split);
+  // Sealed again after an opening (a re-seal): the first opening's scores stay the reported result,
+  // and the rows drawn since are not an independent test. The engine's note says so
+  // (`at_opening`, turbotab/core/seal.py `reported_result`); the first opening's claims would not.
+  const before = fit.at_opening && !fit.at_opening.current ? fit.at_opening : null;
 
   /** Post one decision; a refusal is kept with its exits, any other failure said as it is. */
   const post = async (d: Decision): Promise<boolean> => {
@@ -220,15 +237,21 @@ export function SealCard({ pid, view, fit, fresh, split }: { pid: string; view: 
       <div className={seal.conRule} aria-hidden="true" />
       <div className={seal.conHead}>
         <SealGlyph state={glyph} recorded size={26} />
-        <span className={seal.conSignal}>Opened once</span>
+        <span className={seal.conSignal}>{before ? "Re-sealed" : "Opened once"}</span>
       </div>
       <h3 id="results-open-title" className={seal.conTitle}>
-        Opening the held-out rows scores the {families === 1 ? "model" : `${families} models`} on {fmtInt(fit.n_holdout)} rows no choice has
-        seen.
+        {before
+          ? `Opening the held-out rows scores the ${models} on ${fmtInt(fit.n_holdout)} rows drawn again after the first opening.`
+          : `Opening the held-out rows scores the ${models} on ${fmtInt(fit.n_holdout)} rows no choice has seen.`}
       </h3>
       <p className={seal.conBody}>
-        It happens once. The held-out {metric} is then fixed in the record; any later change still refits, and is marked as made after the
-        opening in the Results and the Record.
+        {before ? (
+          <>
+            <Rich text={before.note} /> Any change after this opening still refits, and is marked as made after it in the Results and the Record.
+          </>
+        ) : (
+          `It happens once. The held-out ${metric} is then fixed in the record; any later change still refits, and is marked as made after the opening in the Results and the Record.`
+        )}
         {exploratory ? (
           <>
             {" "}
@@ -283,23 +306,27 @@ export function SealCard({ pid, view, fit, fresh, split }: { pid: string; view: 
   );
 }
 
-/** Once opened: the opening's record, and the final model's sentence as the engine serves it; an
- *  exploratory split's label with its reason, in the split's words. */
+/** Once opened: the current opening's record (the fit's final model is its), and the engine's notes;
+ *  an exploratory split's label with its reason, in the split's words. "Once", and the scores fixed
+ *  in the record, only while the served scores are the first opening's (`at_opening.current`);
+ *  otherwise the engine's note says which result stays reported, and why these are not it. */
 function OpenedLine({ view, fit, split }: { view: ProjectView; fit: FitArtifact; split: SplitArtifact | null }) {
-  const opening = openingRecord(view);
+  const opening = currentOpening(view);
   const exploratory = exploratoryReasons(split);
   const label = fit.models.find((m) => m.family === fit.final_model)?.label ?? null;
+  const first = fit.at_opening?.current !== false;
+  const notes = first ? (fit.final_note ? [fit.final_note] : []) : openingNotes(fit);
+  const named = `${opening ? ` (#${opening.seq})` : ""}${label ? `, with ${label} as the final model` : ""}`;
   return (
     <p className={seal.sealRecorded} data-testid="results-opened" data-post={fit.changed_after_seal || undefined}>
       <span>
-        The held-out rows were opened once{opening ? ` (#${opening.seq})` : ""}
-        {label ? `, with ${label} as the final model` : ""}: their scores are fixed in the record.
-        {fit.final_note ? (
-          <>
+        {first ? `The held-out rows were opened once${named}: their scores are fixed in the record.` : `The held-out rows were opened${named}.`}
+        {notes.map((t) => (
+          <Fragment key={t}>
             {" "}
-            <Rich text={fit.final_note} />
-          </>
-        ) : null}
+            <Rich text={t} />
+          </Fragment>
+        ))}
         {exploratory ? (
           <>
             {" "}

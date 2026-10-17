@@ -21,7 +21,7 @@ import { StaleVeil, type VeilState } from "../../motion/StaleVeil";
 import { useM1Stage } from "../../components/stage/data";
 import { fmtInt } from "../../components/stage/format";
 import r from "../../components/stage/results/results.module.css";
-import { openingRecord, PostSealBand, useRefetchOnOpening } from "../../components/stage/seal/OpenSeal";
+import { PostSealBand, useRefetchOnOpening } from "../../components/stage/seal/OpenSeal";
 import { sealPhase, type SealPhase } from "../../components/stage/seal/phase";
 import { Rich } from "../../components/stage/text";
 import { CalibrationView } from "../../components/views/CalibrationView";
@@ -29,7 +29,7 @@ import { calibrationFromEngine, curveFromExplain, pastPalette } from "../../comp
 import { CurveView } from "../../components/views/CurveView";
 import { ExhibitTable } from "../../components/views/ExhibitTable";
 import { OneLine } from "../../components/views/common/parts";
-import { cvComparison, exploratoryReasons, heldOutTable, importanceTable, interpretableCost, type SplitBasis } from "./model";
+import { currentOpening, cvComparison, exploratoryReasons, heldOutTable, importanceTable, interpretableCost, type SplitBasis } from "./model";
 import s from "./results.module.css";
 
 const busy = (status: StageStatus | undefined) => status?.status === "running" || status?.status === "queued";
@@ -62,7 +62,7 @@ export function Tapestry({ pid, view }: { pid: string; view: ProjectView }) {
   const target = view.state.target ?? "the outcome";
   return (
     <div className={s.tapestry} data-testid="results-tapestry" data-seal-phase={phase}>
-      {phase === "post_seal" ? <PostSealBand view={view} fit={art} openedSeq={openingRecord(view)?.seq ?? null} /> : null}
+      {phase === "post_seal" ? <PostSealBand view={view} fit={art} openedSeq={currentOpening(view)?.seq ?? null} /> : null}
       <StaleVeil state={fit.veil} order={0} label="Models compared">
         <section className={s.exhibit} data-purpose="cv_comparison" data-testid="results-cv">
           <ExhibitTable data={cvComparison(art)} gate={null} />
