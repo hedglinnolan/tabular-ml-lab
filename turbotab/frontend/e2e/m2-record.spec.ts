@@ -6,8 +6,9 @@
  *                ("Not asked: every SEQN appears once"; Ask me anyway) → eligibility with the
  *                held finding resurfacing pre-checked, and no outcome distribution → missing values
  *                by mechanism (blanks as a `Missing` level, recommended) → the seal with its basis
- *                and the held-out-size consequence → the fit → open the seal once → a later change
- *                marked post-seal
+ *                and the held-out-size consequence → the models → Fit pressed on the Results (no
+ *                energy or substitution question under prediction) → open the seal once, after
+ *                the triage exit its refusal offers → a later change marked post-seal
  *   dietary      the grain asked (participant_id repeats) → repeats stated → the unit → the
  *                aggregation menu, mean recommended with its reason
  *   metabolomics a table exported features-in-rows: orientation asked, the outcome withheld until
@@ -22,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
 import { toClassic } from "./classic";
+import { fitOnceComputed } from "./fit";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCREENS = resolve(HERE, "../../../docs/turbotab-next/m2/screens");
@@ -188,10 +190,11 @@ test("NHANES: repairs, the grain stated, eligibility, missing by mechanism, and 
   await twenty.click();
   await expect(page.getByTestId("decision-split")).toBeVisible();
 
-  // ── energy, the models, the fit ───────────────────────────────────────────
-  await expect(page.getByTestId("question-energy_adjustment")).toBeVisible({ timeout: 15_000 });
-  await page.getByTestId("option-residual").click();
+  // ── the models, Fit ───────────────────────────────────────────────────────
+  // Under prediction no coefficient is read as an effect: the energy model is not asked, and the
+  // models come right after the seal.
   await expect(page.getByTestId("question-models")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("question-energy_adjustment")).toHaveCount(0);
   // Honest cost: a family's measured fit time is on its option before anything is fit, in the
   // shelf's words, whenever it is long enough to weigh (10 s, the server's NOTEWORTHY_SECONDS).
   const shelf = await page.evaluate(async () => {
@@ -211,13 +214,11 @@ test("NHANES: repairs, the grain stated, eligibility, missing by mechanism, and 
   await page.keyboard.press("Space");
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("decision-models")).toBeVisible();
-  // The substitution, from the stage's matrix; opening the seal comes after it.
-  await expect(page.getByTestId("question-substitution")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("next")).toContainText("Opening the seal");
-  await page.getByRole("button", { name: "Move energy from fat_total to carb" }).click();
-  await expect(page.getByTestId("decision-substitution")).toContainText("fat_total", {
-    timeout: 30_000,
-  });
+  // No substitution is asked either (it compares two imagined diets). Under prediction no score is
+  // served until Fit is pressed on the Results; the opening of the seal comes after it.
+  await expect(page.getByTestId("question-substitution")).toHaveCount(0);
+  expect(await fitOnceComputed(page), "the fit waited for Fit").toBe(true);
+  await expect(page.getByTestId("banner-result-value")).toBeVisible();
 
   // ── open the seal: the Router's last step, and the one CONSEQUENCE card under the Results ──
   const step = page.getByTestId("open-seal-step");
@@ -232,6 +233,14 @@ test("NHANES: repairs, the grain stated, eligibility, missing by mechanism, and 
   await park(page);
   await both(page, "open-seal", step);
   await page.getByTestId("open-seal").click();
+  // The opening waits for the triage of the noticings left open (the engine's triage_open): the
+  // refusal's exit keeps their recommended dispositions, and the opening is pressed again.
+  const refused = card.getByTestId("open-seal-refused");
+  await expect(refused).toContainText("triaged");
+  await refused.getByRole("button", { name: "Keep the recommended dispositions" }).click();
+  await expect(refused).toHaveCount(0);
+  await expect(page.getByTestId("open-seal")).toBeEnabled({ timeout: 20_000 });
+  await page.getByTestId("open-seal").click();
   const opened = page.getByTestId("decision-open_seal");
   await expect(opened).toBeVisible({ timeout: 15_000 });
   // The seal opens once: its sentence has no "change".
@@ -239,12 +248,13 @@ test("NHANES: repairs, the grain stated, eligibility, missing by mechanism, and 
   await expect(page.getByTestId("open-seal-card")).toHaveCount(0);
   await expect(page.getByTestId("open-seal-step")).toHaveCount(0);
 
-  // A later change still recomputes, and is marked post-seal.
-  await page.getByRole("button", { name: "Change the energy adjustment" }).click();
-  await page.getByTestId("option-density").click();
-  const energy = page.getByTestId("decision-energy_adjustment");
-  await expect(energy).toContainText("density");
-  await expect(energy.getByTestId("post-seal-mark")).toBeVisible();
+  // A later change still recomputes, and is marked post-seal. No energy model is asked under
+  // prediction, so the eligibility rule is the earlier answer changed.
+  await page.getByRole("button", { name: /^Change the (eligibility|exclusions)$/ }).click();
+  await page.getByTestId("option-sex_neutral_500_5000").click();
+  const exclusions = page.getByTestId("decision-exclusions");
+  await expect(exclusions).toContainText("outside 500–5000");
+  await expect(exclusions.getByTestId("post-seal-mark")).toBeVisible();
   await park(page);
   await both(page, "post-seal", page.getByTestId("decision-models"));
 });

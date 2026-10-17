@@ -29,9 +29,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
-import { confirmAsk, confirmStageAsk, firstDrawnPair } from "./ask";
+import { confirmAsk, confirmStageAsk } from "./ask";
 import { toClassic } from "./classic";
-import { cheapestFamily, fitOnceComputed, openSealCard, shelfEstimates, visibleWhileComputing } from "./fit";
+import { FIT_CAP, FIT_QUIET, cheapestFamily, fitOnceComputed, openSealCard, shelfEstimates, visibleWhileComputing } from "./fit";
 import { nhanesExport } from "./nhanes";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -251,6 +251,9 @@ async function fit(
   // high confidence are confirmed first, on the ledger's ask card, since the fit reads them.
   const options = models.getByRole("listbox", { name: /Model families/ }).locator(':scope > [role="option"]');
   await visibleWhileComputing(page, options.first(), ["shelf"]);
+  // Every journey here is a prediction: no coefficient is read as an effect, so the energy model
+  // is not asked, and the models come right after the split.
+  await expect(page.getByTestId("question-energy_adjustment")).toHaveCount(0);
   await confirmAsk(page.locator('[data-slot="models"]'));
   await visibleWhileComputing(page, options.first(), ["shelf"]);
   await onShelf?.(options);
@@ -300,9 +303,11 @@ async function fit(
     await choose();
   }
   await expect(recorded).toBeVisible({ timeout: 30_000 });
+  // Fit is pressed on the Results; the wait for the result after it lasts as long as the fit job
+  // runs (fitOnceComputed), so none is kept here.
   return timed(async () => {
     await fitOnceComputed(page);
-    await expect(page.getByTestId("banner-result-value")).toBeVisible({ timeout: 300_000 });
+    await expect(page.getByTestId("banner-result-value")).toBeVisible();
   });
 }
 
@@ -321,14 +326,6 @@ async function seal(page: Page, basis: string, name: string, themes?: ("light" |
   // The live seal waits for the split to compute: on the 500-column genomics table, beside the
   // shelf's ranking, that took over 30 s on a busy server (2 workers).
   await expect(page.getByTestId("live-seal")).toBeVisible({ timeout: 120_000 });
-}
-
-/** The first substitution the stage's matrix draws (a pair refused outright, such as two shares of
- *  energy, which move in percentage points, gives way to the next). */
-async function substitute(page: Page) {
-  await expect(page.getByTestId("question-substitution")).toBeVisible({ timeout: 60_000 });
-  await firstDrawnPair(page, page.getByTestId("substitution-curves"));
-  await expect(page.getByTestId("decision-substitution")).toBeVisible({ timeout: 30_000 });
 }
 
 /**
@@ -509,11 +506,9 @@ test("dietary recalls: the grain asked, repeats stated, one row per person, the 
     .getAttribute("data-key");
   await answer(page, "missing", firstMissing!);
   await seal(page, "grouped", "dietary-seal", ["light", "dark"]);
-  await answer(page, "energy_adjustment", "residual");
   T.fit_s = await fit(page);
   await expect(page.getByTestId("held-out-sealed")).toBeVisible({ timeout: 30_000 });
   await shot(page, "dietary-results-sealed");
-  await substitute(page);
   T.open_seal_s = await openSeal(page, "dietary");
   finish("dietary", run);
 });
@@ -777,8 +772,8 @@ test("survey sentinels: codes set to missing, previewed then applied, and the ev
 test("NHANES: SAS zeros repaired, the grain stated, meds_hbp kept as a Missing level, the seal opened once", async ({
   page,
 }) => {
-  // 1,500 s: the fit 600 s at most, the pair's curves 600 s at most (confirmParts' cap: the
-  // confirmations refit the fit), and the rest of the journey (its post-seal refit has 300 s).
+  // 1,500 s: the fit 900 s at most (fitOnceComputed's cap: a fit held for the press computes only
+  // after it), and the rest of the journey 600 s, its post-seal refit included.
   test.setTimeout(1_500_000);
   const run = await start(page, "nhanes");
   const T = timings.nhanes!;
@@ -839,29 +834,35 @@ test("NHANES: SAS zeros repaired, the grain stated, meds_hbp kept as a Missing l
   await expect(page.getByTestId("decision-missing")).toContainText("Missing", { timeout: 30_000 });
 
   await seal(page, "one_row_per_unit", "nhanes-seal", ["light", "dark"]);
-  await answer(page, "energy_adjustment", "residual");
   T.fit_s = await fit(page);
   await shot(page, "nhanes-results-sealed");
-  T.substitution_s = await timed(() => substitute(page));
   T.open_seal_s = await openSeal(page, "nhanes");
 
-  // A later change still refits, and is marked post-seal in the Record and the Results.
-  await page.getByRole("button", { name: "Change the energy adjustment" }).click();
+  // A later change still refits, and is marked post-seal in the Record and the Results. Under
+  // prediction no coefficient is read as an effect, so there is no energy model to change: the
+  // eligibility rule is the earlier answer a researcher might revisit after seeing the scores.
+  await page.getByRole("button", { name: /^Change the (eligibility|exclusions)$/ }).click();
   // "change" takes the user to the reopened question's heading; the options follow it.
-  await expect(page.getByTestId("question-energy_adjustment").locator("h2")).toBeFocused();
-  const density = page.getByTestId("option-density");
-  await density.focus();
-  await previewed(page, "Density alone");
-  await expect(density, "the option keeps focus while its preview loads").toBeFocused();
+  await expect(page.getByTestId("question-exclusions").locator("h2")).toBeFocused();
+  const keepEveryRow = page.getByTestId("option-none");
+  await keepEveryRow.focus();
+  await previewed(page, "Keep every row");
+  await expect(keepEveryRow, "the option keeps focus while its preview loads").toBeFocused();
   await page.keyboard.press("Enter");
-  const energy = page.getByTestId("decision-energy_adjustment");
-  await expect(energy).toContainText("density", { timeout: 30_000 });
-  await expect(energy.getByTestId("post-seal-mark")).toBeVisible({ timeout: 30_000 });
+  const exclusions = page.getByTestId("decision-exclusions");
+  // (A post-seal sentence opens with when it was made: "After the held-out rows were opened, no …".)
+  await expect(exclusions).toContainText(/no rows were excluded/i, { timeout: 30_000 });
+  await expect(exclusions.getByTestId("post-seal-mark")).toBeVisible({ timeout: 30_000 });
   await page.keyboard.press("Escape");
+  // The refit's wait lasts while the fit job runs (it is not a flat one).
   T.post_seal_refit_s = await timed(() =>
-    expect(page.getByTestId("results")).toHaveAttribute("data-seal-phase", "post_seal", { timeout: 300_000 }),
+    visibleWhileComputing(page, page.locator('[data-testid="results"][data-seal-phase="post_seal"]'), ["fit"], {
+      quiet: FIT_QUIET,
+      cap: FIT_CAP,
+      label: "the refit is post-seal",
+    }),
   );
-  await expect(page.getByTestId("post-seal")).toContainText("energy adjustment");
+  await expect(page.getByTestId("post-seal")).toContainText("eligibility rules");
   await page.getByTestId("post-seal").scrollIntoViewIfNeeded();
   await shot(page, "nhanes-post-seal", { themes: ["light", "dark"] });
   finish("nhanes", run);
