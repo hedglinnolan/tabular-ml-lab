@@ -223,11 +223,52 @@ screenshots and a friction log, and then Nolan's.
 10. **The validation scheme is `set_validation`'s,** and the seal's card sends only the draw. If
     the premise (that SealAsk resets the scheme) fails, the card is left as it is, and the report
     says so.
+11. **A journey fits what it can afford.** A real-server journey fits the cheapest light family by
+    the shelf's estimate, and asserts the costly family's place and cost on the shelf instead of
+    waiting out its fit. Waits are bounded by what the app is doing (a stage still computing), not
+    by a flat timeout.
 
 ## 4 · The real-server journeys (W1-J)
 
-Filled in from the diagnosis of the four journeys that fail on every CI run (m1's journey, m2's
-NHANES and genomics-wide journeys, m3's genomics no-dead-end).
+A read-only diagnosis on 2026-10-17 checked the four journeys that fail on every CI run. It ran
+them locally against a real server, one at a time, and kept traces in the session's scratchpad.
+INBOX's premise that "the waits need tuning" holds for three of the four. It is wrong for NHANES.
+
+1. **NHANES, m2-journeys.spec.ts:746 is a defect in the test helper.** `e2e/ask.ts:98`'s
+   `words()` calls `count()` and then `textContent()`, which waits with no timeout. The app answers
+   the press by removing the card about 260 ms later, so `textContent()` waits forever, and the
+   90-second poll never returns. CI's error text is exactly that of a predicate that never
+   returns. The fix is `(await card.allTextContents())[0] ?? null`, which never waits; with it,
+   8 of 8 presses answered under throttling. `m3-no-dead-end.spec.ts`'s own `confirmAsk` has the
+   same race. Past it, NHANES meets the substitution wait (item 4), so its test timeout rises from
+   900 s.
+2. **Genomics, m2 :643, waits too briefly.** Confirming 497 genes raises the elastic net's
+   estimate to 201–371 s. Locally it fit in 275 s against a 300-second wait, and CI is slower.
+3. **Genomics, m3 :418, is the same fit:** 278 s locally, against the 600 s `settle` allows on CI.
+4. **M1, m1-journey.spec.ts:157, waits too briefly, because of a wasted refit.** The pair's ways
+   forward record `confirm_reading` decisions, which change the cohort's, the split's and the
+   design's inputs, so the fit recomputes (about 95 s). Its artifact is identical apart from
+   `fit_seconds`. Curves came 106.5 s after the pair was chosen, against 180 s allowed.
+
+**W1-J** (Sonnet, 1.5 units; Opus verifier). It owns `e2e/ask.ts`, `e2e/fit.ts`, `e2e/backend.ts`,
+`e2e/m1-journey.spec.ts`, `e2e/m2-journeys.spec.ts` and `e2e/m3-no-dead-end.spec.ts`:
+- the `words()` fix, and the same race in m3's `confirmAsk`;
+- the genomics journeys fit the cheapest light family by the shelf's estimate (ridge), still
+  asserting that the elastic net is first on the shelf with its cost (ruling 11);
+- `confirmParts` keeps waiting while the fit or the substitution stage is computing, up to 600 s,
+  and the NHANES and M1 tests' timeouts rise to fit.
+
+Acceptance is a local run of each journey reach that fits in 10 minutes, then CI's e2e-real job
+on the integration branch. Once that job is green, `continue-on-error` is dropped from
+`v2-full.yml` in the landing commit.
+
+**Filed, not fixed** (INBOX at landing):
+- the wasted refit, where a stage recomputes when its reconfirmed inputs give an identical
+  upstream result (the walkthrough pays it on the substitution pair);
+- the server's GET of a project, which recomputes the models ask card over every column of a wide
+  table (seen as 400% CPU and 30-second timeouts on genomics);
+- `mergeView`, which keeps a newer `state` but takes an older response's `interview`, a possible
+  stale view (`src/api/queries.ts`, about lines 178–193).
 
 ## 5 · Cost and stopping
 
