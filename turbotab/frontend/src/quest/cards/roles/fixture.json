@@ -22,7 +22,7 @@
     "design": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a covariate.",
     "flag": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a covariate.",
     "time": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a covariate.",
-    "excluded": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or keep it in the model.",
+    "excluded": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or put it in the model.",
     "cluster": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a covariate."
   },
   "words": {
@@ -224,7 +224,7 @@
       "counted": true,
       "order": 30.003,
       "decision_id": null,
-      "reason": "`cycle_begin_year` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or keep it in the model.",
+      "reason": "`cycle_begin_year` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or put it in the model.",
       "waiting_for": [],
       "computing": [],
       "reopened_by": null,

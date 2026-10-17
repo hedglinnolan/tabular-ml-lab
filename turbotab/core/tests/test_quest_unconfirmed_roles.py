@@ -167,14 +167,18 @@ EVERY_KIND = {"SEQN": "identifier", "bp_sys": "covariate", "diet": "exposure",
               "cycle": "excluded"}
 
 
-def _kinds_log() -> quest.QuestLog:
+def _kinds_records() -> list:
     waiting = [c for c in EVERY_KIND if c != "SEQN"]
-    records = [
+    return [
         record(1, {"kind": "set_lens", "lenses": ["clinical"]}),
         record(2, {"kind": "set_target", "column": "glucose"}),
         record(3, {"kind": "set_purpose", "purpose": "prediction"}),
         record(4, {"kind": "set_roles", "roles": dict(EVERY_KIND), "unconfirmed": waiting}),
     ]
+
+
+def _kinds_log() -> quest.QuestLog:
+    records = _kinds_records()
     return quest.quest_log(decisions.fold(records), records, steps_until("exclusions"))
 
 
@@ -216,12 +220,15 @@ def test_a_role_lines_reason_names_the_role_its_only_change_records():
             assert words in last, (column, line.reason)
 
 
-def test_an_exclusion_lines_reason_offers_keeping_it_in_the_model():
+def test_an_exclusion_lines_reason_offers_putting_it_in_the_model():
     [line] = [l for l in _role_lines(_kinds_log()) if l.items[0].column == "cycle"]
-    # Every press but the confirmation puts the column in the model as a predictor.
+    # Every press but the confirmation puts the column in the model as a predictor. While it waits
+    # it is in no model (it is no predictor, and unsettled), so the clause names what the press
+    # does, not a model it is already in (W1-R R1's verifier, P4).
     assert _instead(line) and set(_instead(line)) <= set(readings.PREDICTOR_ROLES)
-    assert "leave it out" not in line.reason
-    assert line.reason.endswith("or keep it in the model.")
+    assert "cycle" not in readings.predictor_columns(decisions.fold(_kinds_records()))
+    assert "leave it out" not in line.reason and "keep it" not in line.reason
+    assert line.reason.endswith("or put it in the model.")
 
 
 def test_confirm_all_holds_none_of_them():

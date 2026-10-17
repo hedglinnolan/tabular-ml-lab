@@ -1655,16 +1655,16 @@ def role_line_reason(column: str, role: str) -> str:
     """Why one column's role line waits: the fit's words for one column
     (``readings.unsettled_message``), whose last clause names only what the line's presses do instead
     of confirming (:func:`role_choices`): leaving it out where a press records it as left out of the
-    models; keeping it in the model where it was proposed as left out and every press makes it a
-    predictor; else recording it as each role a press records (a flag, a time, a design column or a
-    cluster changes only to a covariate)."""
+    models; putting it in the model where it was proposed as left out and every press makes it a
+    predictor (while it waits it is in no model); else recording it as each role a press records (a
+    flag, a time, a design column or a cluster changes only to a covariate)."""
     from turbotab.core.readings import PREDICTOR_ROLES, role_words, unsettled_message
 
     choices = role_choices(role)
     if "excluded" in choices:
         return unsettled_message([column], ROLE_WAITS_FOR)
     if role == "excluded" and choices and all(c in PREDICTOR_ROLES for c in choices):
-        instead = ", or keep it in the model"
+        instead = ", or put it in the model"
     elif choices:
         instead = ", or record it as " + " or ".join(role_words(c) for c in choices)
     else:
