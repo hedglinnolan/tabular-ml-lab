@@ -651,7 +651,10 @@ def build_graph() -> Graph:
             # fit 27 (RT-1b, F15): the split's seed and, under the population answer, the design
             # reach every fit; a tuned family searches nested in each, Cancel checked before every
             # candidate fit.
-            Stage("fit", 27, ("working", "design", "split", "target_info", "cohort"),
+            # fit 28 (W1-K): the held-out detail serves the no-predictor baseline's scores and,
+            # for a numeric outcome, the held-out verdict against it, so a fit cached before them
+            # is computed again rather than served without them.
+            Stage("fit", 28, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models", "purpose"),
