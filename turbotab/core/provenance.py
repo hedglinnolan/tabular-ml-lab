@@ -20,7 +20,11 @@ decisions out, but only those superseded before anything was seen:
   estimates were seen and then withdrawn is a fork in Gelman & Loken's (2013) sense, so it is
   stated, not folded away. An answer held when it was recorded and held still (the energy model or
   the substitution posted under prediction; :func:`never_applied`) changed nothing, so it is no
-  fork and writes no sentence, nor does a revert of it.
+  fork and writes no sentence, nor does a revert of it; nor does one recorded after that moment
+  that the goal holds now, whatever the goal was when it was recorded, since the methods never
+  state a held answer as applied (W1-R round 2, ruling R-d). An answer in force at that moment and
+  held by the goal now stays in the plan as declared, which is what the lock fixed, with one added
+  sentence: it is not applied under the goal as it stands (:func:`not_applied_sentence`).
 * **Restated.** An in-force sentence that says what another answer does to it (under the surveyed
   population, each chosen family's estimator or block, the substitution band, the calibration;
   MS4) is restated on the answers as they stand (:func:`restated`; ``voice.restate``), so the
@@ -32,6 +36,7 @@ decisions out, but only those superseded before anything was seen:
 """
 from __future__ import annotations
 
+import typing
 from typing import Any, Callable, Sequence
 
 from pydantic import BaseModel, ConfigDict
@@ -117,13 +122,28 @@ def in_force(records: Sequence[Any]) -> set[str]:
             if (fn := APPLIES.get(by_id[i].decision.kind)) is None or fn(by_id[i].decision, state)}
 
 
+def held_by_goal(decision: Any, slots: dict[str, Any]) -> bool:
+    """Whether the goal holds ``decision``: its condition (``decisions.register_kind(...,
+    holds=)``) fails on ``slots`` and holds under another goal (the energy model and the
+    substitution while the goal is prediction, BEATS_PREDICT §9 ruling 5; a survey answer given for
+    another goal). A condition the goal does not decide (a task answered for an earlier outcome) is
+    not held by it."""
+    holds = decisions._HOLDS.get(decision.kind)
+    if holds is None or holds(decision, slots):
+        return False
+    goals = (*typing.get_args(decisions.Purpose), None)
+    return any(holds(decision, {**slots, "purpose": g}) for g in goals
+               if g != slots.get("purpose"))
+
+
 def never_applied(records: Sequence[Any], since: int) -> set[str]:
-    """Ids of the records after ``since`` (a seq) that applied to nothing: an answer whose
-    condition (``decisions.register_kind(..., holds=)``) failed when it was recorded and fails on
-    the answers as they stand (the energy model or the substitution posted while the goal is
-    prediction, BEATS_PREDICT §9 ruling 5), and a revert of one. Held, such an answer is no change
-    made, so it writes no methods sentence; it does once its condition holds. An opening and a
-    re-seal are events, never one."""
+    """Ids of the records after ``since`` (a seq) that applied to nothing the analysis is now: an
+    answer whose condition (``decisions.register_kind(..., holds=)``) failed when it was recorded
+    and fails on the answers as they stand, an answer the goal holds now (:func:`held_by_goal`)
+    whatever the goal was when it was recorded (W1-R round 2, ruling R-d: the energy model recorded
+    under Estimate after the opening, the goal then prediction again), and a revert of one. Held,
+    such an answer is no change made to the analysis now, so it writes no methods sentence; it
+    does once its condition holds. An opening and a re-seal are events, never one."""
     ordered = sorted(records, key=lambda r: r.seq)
     try:
         now = decisions.fold(ordered).model_dump()
@@ -143,6 +163,9 @@ def never_applied(records: Sequence[Any], since: int) -> set[str]:
         holds = decisions._HOLDS.get(answer.decision.kind)
         if holds is None or holds(answer.decision, now):
             continue
+        if held_by_goal(answer.decision, now):
+            out.add(record.id)
+            continue
         try:
             then = decisions.fold(ordered[:at[answer.id] + 1]).model_dump()
         except Refusal:
@@ -150,6 +173,14 @@ def never_applied(records: Sequence[Any], since: int) -> set[str]:
         if not holds(answer.decision, then):
             out.add(record.id)
     return out
+
+
+def not_applied_sentence(slots: dict[str, Any]) -> str:
+    """What a kept answer the goal holds adds (:func:`methods_text`): the goal it is not applied
+    under, as the purpose answer names it."""
+    from turbotab.core.voice import tick
+
+    return f"It is not applied while the analysis is declared for {tick(slots.get('purpose'))}."
 
 
 def seen_from(records: Sequence[Any]) -> int | None:
@@ -210,17 +241,39 @@ def methods_text(records: Sequence[Any], ctx: Any = None) -> MethodsText:
     now = in_force(ordered)
     seen = seen_from(ordered)
     kept = set(now)
+    declared: set[str] = set()
     if seen is not None:
-        kept |= in_force([r for r in ordered if r.seq <= seen])
+        declared = in_force([r for r in ordered if r.seq <= seen])
+        kept |= declared
         kept |= {r.id for r in ordered if r.seq > seen} - never_applied(ordered, seen)
     again = restated(ordered, now, ctx)
+    # Ruling R-d: an answer in force when the plan was locked (or the held-out rows opened) stays
+    # in the plan as declared, which is what the lock fixed; one the goal holds now says so.
+    held = _held_now(ordered, declared - now)
     lines = [MethodsLine(record_id=r.id, seq=r.seq, kind=r.decision.kind,
-                         sentence=again.get(r.id, r.sentence),
+                         sentence=_with(again.get(r.id, r.sentence), held.get(r.id)),
                          in_force=r.id in now, post_seal=bool(r.post_seal),
                          after_estimates=bool(getattr(r, "after_estimates", False)))
              for r in ordered if r.id in kept and r.sentence]
     return MethodsText(lines=lines, seen_from=seen, text=" ".join(line.sentence for line in lines))
 
 
-__all__ = ["APPLIES", "MethodsLine", "MethodsText", "in_force", "methods_text", "never_applied",
-           "restated", "seen_from"]
+def _held_now(ordered: Sequence[Any], ids: set[str]) -> dict[str, str]:
+    """Of the records ``ids``, each the goal holds now (:func:`held_by_goal`), with the sentence
+    that says so."""
+    if not ids:
+        return {}
+    try:
+        slots = decisions.fold(ordered).model_dump()
+    except Refusal:
+        return {}
+    return {r.id: not_applied_sentence(slots) for r in ordered
+            if r.id in ids and held_by_goal(r.decision, slots)}
+
+
+def _with(sentence: str, added: str | None) -> str:
+    return f"{sentence} {added}" if added and sentence else sentence
+
+
+__all__ = ["APPLIES", "MethodsLine", "MethodsText", "held_by_goal", "in_force", "methods_text",
+           "never_applied", "not_applied_sentence", "restated", "seen_from"]

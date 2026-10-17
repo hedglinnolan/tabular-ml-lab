@@ -446,3 +446,60 @@ def test_an_energy_or_substitution_answer_posted_after_the_opening_under_predict
     said = {line.record_id: (line.sentence, line.in_force)
             for line in methods_text(posted.records()).lines}
     assert said[energy.id] == (energy.sentence, True) and swap.id in said
+
+
+# ── W1-R round 2, ruling R-d: what the lock means, and what a held answer never says ──────────
+#
+# An answer recorded after the opening and held now applied to nothing the analysis is now, so
+# the methods never state it as applied, whatever the goal was when it was recorded: the project
+# is the one with the same answers but those, word for word. An answer in force at the lock (or
+# the opening) and held now stays in the plan as declared, since that is what the lock fixed, and
+# one added sentence says it is not applied under the goal now. The truth is built here: the same
+# log without the held answers, and the goal the state declares.
+
+NOT_APPLIED = "It is not applied while the analysis is declared for `prediction`."
+
+
+def test_an_answer_recorded_under_estimate_after_the_opening_and_held_now_is_never_stated(
+        tmp_path):
+    switched = _project(tmp_path / "switched", PREDICT, OPENED, ESTIMATE, ENERGY, SWAP, PREDICT)
+    never = _project(tmp_path / "never", PREDICT, OPENED, ESTIMATE, PREDICT)
+    state = switched.state()
+    assert state.energy_adjustment is None and state.substitution is None
+    assert _methods(switched) == _methods(never)
+    assert _exported(switched) == _exported(never)
+    for words in ("energy was adjusted", "substitution studied", NOT_APPLIED):
+        assert words not in _exported(switched), words
+    # the methods and the seal's listing agree: neither answer is a change made after the opening
+    held = {r.id for r in switched.records()
+            if r.decision.kind in ("set_energy_adjustment", "set_substitution")}
+    assert not held & set(_changes(switched, "fit")) and not held & set(
+        _changes(switched, "substitution"))
+    # silent: once the goal is Estimate again each applies, so each is stated
+    _say(switched, ESTIMATE)
+    kinds = {line.kind: line for line in methods_text(switched.records()).lines}
+    assert {"set_energy_adjustment", "set_substitution"} <= set(kinds)
+    assert kinds["set_energy_adjustment"].in_force
+    assert NOT_APPLIED not in kinds["set_energy_adjustment"].sentence
+
+
+def test_an_answer_in_force_at_the_lock_and_held_now_stays_with_its_goal_said(tmp_path):
+    from turbotab.core.decisions import LockPlan
+
+    log = _project(tmp_path / "locked", ESTIMATE, ENERGY, LockPlan(), PREDICT)
+    energy = next(r for r in log.records() if r.decision.kind == "set_energy_adjustment")
+    assert log.state().energy_adjustment is None
+    lines = {line.record_id: line for line in methods_text(log.records()).lines}
+    # the plan as declared keeps it, not in force, with one sentence on the goal now
+    assert energy.id in lines and not lines[energy.id].in_force
+    assert lines[energy.id].sentence == f"{energy.sentence} {NOT_APPLIED}"
+    assert lines[energy.id].sentence.count("It is not applied") == 1
+    # silent: still under Estimate, the plan's answer applies and is said as recorded
+    kept = _project(tmp_path / "kept", ESTIMATE, ENERGY, LockPlan())
+    [said] = [line for line in methods_text(kept.records()).lines
+              if line.kind == "set_energy_adjustment"]
+    assert said.in_force and said.sentence == energy.sentence
+    # silent: back under Estimate, the sentence on the goal is gone again
+    _say(log, ESTIMATE)
+    lines = {line.record_id: line for line in methods_text(log.records()).lines}
+    assert lines[energy.id].in_force and lines[energy.id].sentence == energy.sentence
