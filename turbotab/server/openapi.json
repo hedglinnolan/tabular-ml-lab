@@ -22074,7 +22074,7 @@
       },
       "Calibration": {
         "additionalProperties": false,
-        "description": "Calibration of one set of predictions: in the large, its slope, and its smoothed curve.",
+        "description": "Calibration of one set of predictions: in the large, its slope, its smoothed curve, and the\nrows behind each stretch of the curve's x-range (``support``).",
         "properties": {
           "n": {
             "title": "N",
@@ -22100,6 +22100,14 @@
               "$ref": "#/components/schemas/CurvePoint"
             },
             "title": "Curve",
+            "type": "array"
+          },
+          "support": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SupportBin"
+            },
+            "title": "Support",
             "type": "array"
           },
           "eavg": {
@@ -22168,6 +22176,7 @@
           "intercept",
           "slope",
           "curve",
+          "support",
           "eavg",
           "e90",
           "emax",
@@ -40584,6 +40593,31 @@
           "fixed_through"
         ],
         "title": "SubstitutionSupport",
+        "type": "object"
+      },
+      "SupportBin": {
+        "additionalProperties": false,
+        "description": "One of equal-width stretches of the predictions' range, ``[lo, hi)`` (the last one closed),\nand how many rows' predictions fall in it: where the calibration curve rests on few rows.",
+        "properties": {
+          "lo": {
+            "title": "Lo",
+            "type": "number"
+          },
+          "hi": {
+            "title": "Hi",
+            "type": "number"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "lo",
+          "hi",
+          "n"
+        ],
+        "title": "SupportBin",
         "type": "object"
       },
       "SurveyInference": {

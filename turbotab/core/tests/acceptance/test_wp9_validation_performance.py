@@ -270,10 +270,48 @@ def test_1d_the_fit_reports_out_of_fold_and_held_out_calibration(tmp_path):
         want = perf.calibration("binary", yh, proba, classes=[0, 1], where="on the held-out rows")
         assert detail["calibration"]["slope"]["estimate"] == pytest.approx(want.slope.estimate, abs=1e-9)
         assert detail["calibration"]["intercept"]["estimate"] == pytest.approx(want.intercept.estimate, abs=1e-9)
+        # W1-R finding 10: the held-out rows behind each stretch of the curve, served with it.
+        counts, edges = np.histogram(proba[:, 1], bins=perf.SUPPORT_BINS,
+                                     range=(proba[:, 1].min(), proba[:, 1].max()))
+        support = detail["calibration"]["support"]
+        assert [b["n"] for b in support] == counts.tolist() and sum(counts) == len(yh)
+        assert [b["lo"] for b in support] == pytest.approx(edges[:-1].tolist(), abs=1e-12)
         auc, var = ref.delong_by_definition(yh == 1, proba[:, 1])
         assert detail["intervals"]["auc"]["estimate"] == pytest.approx(auc, abs=1e-12)
         assert detail["intervals"]["auc"]["se"] == pytest.approx(math.sqrt(var), rel=1e-9)
         assert m["holdout"]["auc"] == pytest.approx(auc, abs=1e-12)
+
+
+def test_1e_the_calibration_serves_the_rows_behind_each_stretch_of_its_curve():
+    """W1-R finding 10 (the walkthrough of 2026-10-17): above about 150 mg/dL the smoothed curve
+    bent far below the diagonal on few rows, and nothing showed how few. The calibration serves the
+    rows behind each stretch of the curve's x-range: equal-width bins over the predictions' range,
+    counted as ``np.histogram`` counts them (each half-open, the last closed). The truth is numpy's
+    on the same predictions. A right-skewed prediction (the glucose shape) leaves its top stretches
+    thin; predictions that do not vary are one stretch holding every row."""
+    rng = np.random.default_rng(11)
+    yhat = 80.0 + rng.lognormal(3.0, 0.45, size=2000)  # a long right tail, like fasting glucose
+    y = yhat + rng.normal(0.0, 12.0, size=2000)
+    cal = perf.calibration("regression", y, yhat, where="on the held-out rows")
+    counts, edges = np.histogram(yhat, bins=perf.SUPPORT_BINS, range=(yhat.min(), yhat.max()))
+    assert [b.n for b in cal.support] == counts.tolist()
+    assert [(b.lo, b.hi) for b in cal.support] == pytest.approx(
+        list(zip(edges[:-1].tolist(), edges[1:].tolist())), abs=1e-12)
+    assert sum(b.n for b in cal.support) == cal.n == 2000
+    # the strip spans exactly the curve's x-range, so it sits under the curve
+    assert (cal.support[0].lo, cal.support[-1].hi) == (cal.curve[0].x, cal.curve[-1].x)
+    assert cal.support[-1].n < 0.01 * cal.n < cal.support[1].n  # the sparse tail is visible
+
+    p = 1.0 / (1.0 + np.exp(-rng.normal(-1.0, 1.2, size=1500)))
+    event = (rng.random(1500) < p).astype(int)
+    cal = perf.calibration("binary", event, np.column_stack([1 - p, p]), classes=[0, 1])
+    counts, _ = np.histogram(p, bins=perf.SUPPORT_BINS, range=(p.min(), p.max()))
+    assert [b.n for b in cal.support] == counts.tolist()
+
+    with warnings.catch_warnings():  # lowess divides by the zero range of flat predictions
+        warnings.simplefilter("ignore", RuntimeWarning)
+        flat = perf.calibration("regression", y[:50], np.full(50, 104.0))
+    assert [(b.lo, b.hi, b.n) for b in flat.support] == [(104.0, 104.0, 50)]
 
 
 # ── 2 · intervals ────────────────────────────────────────────────────────────

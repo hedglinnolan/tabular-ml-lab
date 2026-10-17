@@ -8191,7 +8191,8 @@ export interface components {
         };
         /**
          * Calibration
-         * @description Calibration of one set of predictions: in the large, its slope, and its smoothed curve.
+         * @description Calibration of one set of predictions: in the large, its slope, its smoothed curve, and the
+         *     rows behind each stretch of the curve's x-range (``support``).
          */
         Calibration: {
             /** N */
@@ -8207,6 +8208,11 @@ export interface components {
              * @default []
              */
             curve: components["schemas"]["CurvePoint"][];
+            /**
+             * Support
+             * @default []
+             */
+            support: components["schemas"]["SupportBin"][];
             /**
              * Eavg
              * @default null
@@ -15674,6 +15680,19 @@ export interface components {
             fixed_rows: number;
             /** Fixed Through */
             fixed_through: number | null;
+        };
+        /**
+         * SupportBin
+         * @description One of equal-width stretches of the predictions' range, ``[lo, hi)`` (the last one closed),
+         *     and how many rows' predictions fall in it: where the calibration curve rests on few rows.
+         */
+        SupportBin: {
+            /** Lo */
+            lo: number;
+            /** Hi */
+            hi: number;
+            /** N */
+            n: number;
         };
         /**
          * SurveyInference

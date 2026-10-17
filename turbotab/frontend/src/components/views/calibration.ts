@@ -3,8 +3,11 @@
  * scale (both axes take the same domain, in a square plot, so the 45° line is drawn at 45°).
  *
  * The engine serves `Calibration` (turbotab/core/models/performance.py): calibration in the large,
- * the slope, and the lowess curve at up to 40 quantiles. The binned points with intervals are not
- * served yet: `bins` is optional and named as an engine contract item.
+ * the slope, the lowess curve at up to 40 quantiles, and the rows behind each stretch of the curve's
+ * x-range (`support`: equal-width stretches of the predictions' range, counted as np.histogram
+ * counts them), drawn as a strip of bars in a band of its own between the plot and the x axis, so a
+ * curve that bends on few rows is seen to (W1-R finding 10). The binned points with intervals are
+ * not served yet: `bins` is optional and named as an engine contract item.
  *
  * The gate: the calibration horizon is chosen in the Results Confirm sweep, before the held-out
  * rows open (FOUNDATION §3), so a held-out calibration is never drawn while a choice it would
@@ -30,6 +33,14 @@ export interface CalibrationBin {
   n: number;
 }
 
+/** One stretch of the predictions' range, `[lo, hi)` (the last closed), and the rows whose prediction
+ *  falls in it, as the engine serves it (`Calibration.support`). */
+export interface SupportBin {
+  lo: number;
+  hi: number;
+  n: number;
+}
+
 export interface CalibrationData {
   /** risk: predicted probabilities of a yes/no outcome; value: predicted values of a number */
   kind: "risk" | "value";
@@ -43,6 +54,9 @@ export interface CalibrationData {
   /** the smoothed curve (the engine's lowess) */
   curve: { x: number; y: number }[];
   bins?: CalibrationBin[] | null;
+  /** the rows behind each stretch of the curve's x-range (the engine's `support`); absent or empty
+   *  in artifacts from before it, and then no strip is drawn */
+  support?: SupportBin[] | null;
   /** how the bins were made, quietly */
   binsMethod?: string | null;
   smoother?: string | null;
@@ -72,7 +86,8 @@ export function calibrationRefusal(d: CalibrationData): string | null {
 export function sharedDomain(d: CalibrationData): Domain | null {
   const pts = d.curve.flatMap((p) => [p.x, p.y]);
   const bins = (d.bins ?? []).flatMap((b) => [b.predicted, b.observed, b.low, b.high]);
-  const e = union(extent(pts), extent(bins));
+  const stretches = (d.support ?? []).flatMap((b) => [b.lo, b.hi]);
+  const e = union(extent(pts), extent(bins), extent(stretches));
   if (!e) return null;
   return d.kind === "risk" ? [Math.max(0, e[0]), Math.min(1, e[1])] : e;
 }
@@ -86,19 +101,59 @@ export interface CalibrationScales {
   ticks: number[];
 }
 
+/** The support strip's band, in px: between the plot and the x axis, below everything the plot
+ *  draws, so no bar crosses the curve; the plot stays square above it. */
+export const STRIP = 20;
+/** The space a bar leaves at the top of the band. */
+const STRIP_GAP = 4;
+
+/** Whether the engine served rows behind the curve to draw. */
+export function hasSupport(d: CalibrationData): boolean {
+  return (d.support ?? []).some((b) => b.n > 0);
+}
+
 export function calibrationScales(d: CalibrationData, width: number, left: number, maxSide = 380): CalibrationScales | null {
   const dom = sharedDomain(d);
   if (!dom) return null;
   const side = Math.max(160, Math.min(maxSide, width - left - 16));
-  const box: Box = { width: Math.max(width, left + side + 16), height: side + 24 + 38, top: 24, right: Math.max(16, width - left - side), bottom: 38, left };
+  const strip = hasSupport(d) ? STRIP : 0;
+  const box: Box = { width: Math.max(width, left + side + 16), height: side + 24 + 38 + strip, top: 24, right: Math.max(16, width - left - side), bottom: 38, left };
   const { x0, x1, y0, y1 } = inner(box);
   return {
     box,
     side,
     x: linear(dom, [x0, x1], PAD),
-    y: linear(dom, [y1, y0], PAD),
+    y: linear(dom, [y1 - strip, y0], PAD),
     ticks: ticksIn(dom, 5),
   };
+}
+
+export interface SupportBar {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  bin: SupportBin;
+}
+
+/**
+ * The strip's bars: one per stretch with rows in it, spanning its stretch on the x scale and rising
+ * from the x axis as tall as its rows' share of the fullest stretch's (one row is never thinner
+ * than a hairline, so a stretch with rows is never drawn as one without). A stretch with no rows
+ * draws nothing; the table alternative lists it.
+ */
+export function supportBars(d: CalibrationData, g: CalibrationScales): SupportBar[] {
+  const bins = d.support ?? [];
+  const top = bins.reduce((m, b) => Math.max(m, b.n), 0);
+  if (top <= 0) return [];
+  const { y1 } = inner(g.box);
+  return bins
+    .filter((b) => b.n > 0)
+    .map((b) => {
+      const height = Math.max(1, ((STRIP - STRIP_GAP) * b.n) / top);
+      const x = g.x(b.lo);
+      return { x, y: y1 - height, width: Math.max(1, g.x(b.hi) - x), height, bin: b };
+    });
 }
 
 export function hasCalibration(d: CalibrationData | null): d is CalibrationData {
