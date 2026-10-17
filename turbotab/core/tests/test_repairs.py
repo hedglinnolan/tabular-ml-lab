@@ -468,3 +468,31 @@ def test_only_an_applied_repair_changes_a_stage_key():
     assert key_value("findings", deferred) is None
     assert key_value("findings", {**deferred, **dismissed}) is None
     assert key_value("findings", {**deferred, **applied_}) == applied_
+
+
+@pytest.mark.parametrize("finding", ["text_numbers__sbp", "below_detection__crp"])
+def test_setting_aside_a_read_numbers_finding_with_no_repair_changes_no_stage_key(finding):
+    """W1-P11c's S3: a dismissal or a deferral of a finding whose repair reads a text column as
+    numbers also writes ``numbers_read[finding] = None`` (``decisions.register_kind``'s confirms),
+    and that entry changed the key of every stage that reads it, though no repair was applied: the
+    fit read as changed after the opening. Only an applied repair's reading changes a key; one set
+    aside after an applied repair withdraws it."""
+    from turbotab.core import decisions
+    from turbotab.core.seal import keys_for
+    from turbotab.core.stages import build_graph
+    from turbotab.core.tests.test_stage_registry import record
+
+    graph = build_graph()
+
+    def key(*later: dict) -> str | None:
+        records = [record(1, {"kind": "set_lens", "lenses": ["clinical"]}),
+                   *(record(2 + i, d) for i, d in enumerate(later))]
+        return keys_for(graph, decisions.fold(records), "f")["findings"]
+
+    applied = {"kind": "apply_repair", "finding_id": finding, "option": "half_limit",
+               "params": {}}
+    for set_aside in ({"kind": "dismiss_finding", "finding_id": finding},
+                      {"kind": "defer_finding", "finding_id": finding, "to": "missing"}):
+        assert key(set_aside) == key()  # silent: nothing applied, nothing changes
+        assert key(applied) != key()  # fires: an applied repair reads the column as numbers
+        assert key(applied, set_aside) == key()  # set aside after it, the reading is withdrawn

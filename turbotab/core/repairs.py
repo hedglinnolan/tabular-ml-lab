@@ -1790,10 +1790,21 @@ def _applied_only(value: Any) -> Any:
     return kept or None
 
 
+def _read_only(value: Any) -> Any:
+    """``numbers_read`` as a key reads it: only the readings an applied repair keeps. A dismissal or
+    a deferral writes its finding's entry as None, which reads no column as numbers, so a finding
+    set aside with no repair changes no key (W1-P11c's S3)."""
+    if not isinstance(value, Mapping):
+        return value
+    kept = {k: v for k, v in value.items() if isinstance(v, Mapping)}
+    return kept or None
+
+
 def _register_key_view() -> None:
     from turbotab.core.graph import register_key_view
 
     register_key_view("findings", _applied_only)
+    register_key_view("numbers_read", _read_only)
 
 
 _register_key_view()
