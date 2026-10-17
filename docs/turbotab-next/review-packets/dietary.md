@@ -1155,18 +1155,7 @@ Their options are labeled customary and sound outside the registry where shown h
 
 #### The energy model (`energy_adjustment`)
 
-Under **prediction**, soundest first. The field reaches for `residual_energy_dropped` first. Tension the coach names: “The residual method is the field's default; in its energy-dropped form it discards total energy's signal, so the methods that keep energy rank first.”
-
-| Rank | Option | Customary (field: text, source) | Sound | Reason |
-|---|---|---|---|---|
-| 1 | `standard`: Standard (multivariate) model | nutritional epidemiology: Yes (NUTRITION_PACK §04; Tomova et al. 2022). (Willett, Nutritional Epidemiology (NUTRITION_PACK §04)) | sound | Good: keeps total energy. |
-| 2 | `residual`: Willett residual model, total energy kept | nutritional epidemiology: Yes (McCullough & Byrd 2023, AJE 192(11):1801-1805). (McCullough & Byrd 2023, AJE 192:1801) | sound | Fine: keeps total energy. |
-| 3 | `density_multivariate`: Multivariate nutrient density model | nutritional epidemiology: Yes (NUTRITION_PACK §04). (NUTRITION_PACK §04) | sound | Fine: keeps total energy. |
-| 4 | `partition`: Energy partition model | nutritional epidemiology: Yes (NUTRITION_PACK §04). (NUTRITION_PACK §04) | sound | Fine: carries total energy in its parts. |
-| 5 | `all_components`: All-components model | nutritional epidemiology: Emerging (Tomova et al. 2022, AJCN 115(1):189-198); disputed (Willett, Stampfer & Tobias 2022, AJCN 116(2):608-609). (Tomova et al. 2022, AJCN 115:189; disputed by Willett, Stampfer & Tobias 2022) | sound | Information-equivalent to keeping total energy. |
-| 6 | `none`: No energy adjustment | nutritional epidemiology: As the unadjusted model beside an adjusted one (NUTRITION_PACK §04). (NUTRITION_PACK §04 and §08 (the crude model beside the adjusted ones)) | conditional | Rarely: it drops total energy, often the strongest predictor. |
-| 7 | `residual_energy_dropped`: Willett residual model, total energy left out | nutritional epidemiology: Yes, the field default (NUTRITION_PACK §04). (Willett, Nutritional Epidemiology (NUTRITION_PACK §04: the field default)) | unsound | Avoid: discards total energy's signal. |
-| 8 | `density`: Nutrient density alone | nutritional epidemiology: Yes, the weakest (NUTRITION_PACK §04). (NUTRITION_PACK §04) | unsound | Rank low: drops total energy. |
+Under **prediction** it is not asked (the Router's gate, `interview.applicability`): “The energy model decides what a nutrient's coefficient means, and under prediction no coefficient is read as an effect.”
 
 Under **inference**, soundest first. The field reaches for `residual_energy_dropped` first. Tension the coach names: “The residual method is the field's default; all components ranks first for substitution, with no composite-variable bias at a precision cost (Tomova et al. 2022, AJCN 115:189).”
 
@@ -1183,7 +1172,6 @@ Under **inference**, soundest first. The field reaches for `residual_energy_drop
 
 **Ranked by the data:** the app offers these options in another order than the rank above where the data decide it; what it offers first under each condition:
 
-- Under prediction, a table with total energy: `standard`: Good: keeps total energy.
 - Under inference, a table with every source of energy as a column (all components needs each): `all_components`: Sound for total and average relative effects, at a precision cost.
 - Under inference, a table without every source, or whose sources nest (a total beside its parts, such as sugar inside carbohydrate: the partition check refuses it, `proposals.partition_check`): `standard`: Acceptable with the omitted energy sources named.
 
@@ -1755,7 +1743,7 @@ The option each method offers first for each purpose, its rung, and the reason i
 
 | Question | Prediction | Inference |
 |---|---|---|
-| the energy model (`energy_adjustment`) | ranked by the data: §3.4 | ranked by the data: §3.4 |
+| the energy model (`energy_adjustment`) | not asked under prediction | ranked by the data: §3.4 |
 | the eligibility screens (`exclusions`) | ranked by the data: §3.4 | ranked by the data: §3.4 |
 | missing values (`missing`) | `impute` (sound): Sound: fit in each training fold without the outcome, it imputes a new row as it was developed (Josse et al. 2019; Sisk et al. 2023). | `multiple_imputation` (sound): Sound: with the outcome and energy in the imputation model it is unbiased under missing at random and its intervals carry the imputation's uncertainty (Moons et al. 2006). |
 | the split and the validation (`split`) | ranked by the data: §3.4 | ranked by the data: §3.4 |
@@ -1821,7 +1809,7 @@ Each condition the app ranks by, and what it offers first under it, computed by 
 |---|---|---|---|
 | Usual-intake distribution (NCI method) (`nci_usual_intake`) | inference | a component with 5% of its recalls at zero or fewer | `amount_only`: consumed nearly every day, so the amount-only model ranks first (Tooze et al. 2010). |
 | Usual-intake distribution (NCI method) (`nci_usual_intake`) | inference | a component with more than 5% of its recalls at zero | `two_part`: an episodically consumed food, so the two-part model ranks first (Tooze et al. 2006). |
-| A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | prediction | an intake on a table with total energy | `standard`, the energy model's first (the energy-adjustment question) |
+| A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | prediction | an intake on a table with total energy | nothing: the energy-adjustment question, which sets an intake's transform, is not asked (“The energy model decides what a nutrient's coefficient means, and under prediction no coefficient is read as an effect.”) |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | prediction | a multi-item scale | `score`: declared with its items and key (`set_scales`), never ranked; no question asks it, so from the app the items enter on their own (the scales contract) |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | prediction | raw counts or intensities | the omics normalization by the data's kind (`log_cpm_tmm` for counts, `pqn_log2` for intensities) |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | inference | an intake on a table with every source of energy as a column (all components needs each) | `all_components`, the energy model's first (the energy-adjustment question) |
@@ -1857,7 +1845,6 @@ Each condition the app ranks by, and what it offers first under it, computed by 
 | The E-value of a difference, standardized by the estimand's SD (`evalue_sd`) | inference | the sample answer (no weights) | `sample`: the analyzed rows' SD |
 | Sensitivity to unmeasured confounding (`unmeasured_confounding`) | inference | a difference from a least-squares fit (a linear outcome's coefficient) | `robustness_value` then `e_value` |
 | Sensitivity to unmeasured confounding (`unmeasured_confounding`) | inference | a ratio (an odds, hazard or risk ratio), or a difference with no least-squares fit | `e_value` |
-| The energy model (`energy_adjustment`) | prediction | a table with total energy | `standard`: Good: keeps total energy. |
 | The energy model (`energy_adjustment`) | inference | a table with every source of energy as a column (all components needs each) | `all_components`: Sound for total and average relative effects, at a precision cost. |
 | The energy model (`energy_adjustment`) | inference | a table without every source, or whose sources nest (a total beside its parts, such as sugar inside carbohydrate: the partition check refuses it, `proposals.partition_check`) | `standard`: Acceptable with the omitted energy sources named. |
 | The eligibility screens (`exclusions`) | prediction | whatever screens can run | `keep_every_row`: The model will be used on everyone, misreporters included, so they stay in its development rows. |
@@ -1889,6 +1876,8 @@ Each journey ran headlessly through the real server (the acceptance harness's dr
 - **Fixture:** `_tt_tmp_nhanes.csv (the NHANES export, tracked gzipped as turbotab/core/tests/fixtures/nhanes.csv.gz)`. V2_DEFINITION_OF_DONE §1: the NHANES export runs the dietary and clinical reference journeys.
 - **Lens declared:** dietary; **outcome:** `glucose`.
 - **Run:** at commit `2ba3c5727a`, with local changes on 2026-10-05, 467 s on 2 workers; engine 2.0.0.dev0.
+
+**This capture predates what the app asks today.** Under prediction the Router does not ask `energy_adjustment` (“The energy model decides what a nutrient's coefficient means, and under prediction no coefficient is read as an effect.”) or `substitution` (“A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.”), but this journey answered them (rows 10, 14 and 16 of the table below), so the methods section below quotes the sentences those answers wrote. Rerun the journey (`python -m turbotab.core.reference.journeys dietary-prediction`) to replace it.
 
 #### How the journey answered
 

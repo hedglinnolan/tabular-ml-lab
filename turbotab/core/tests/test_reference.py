@@ -310,9 +310,17 @@ def test_each_journey_took_what_the_packet_says_the_app_offers_first(name):
         repairs = [b for b, _ in _answers(capture, "apply_repair") if b["finding_id"] == "omics_scale"]
         assert [b["option"] for b in repairs] == [first], (name, repairs)
     # (a screen's rule and the energy model's nutrients make long summaries: read their keys)
-    energy = {c.key for c in defaults.cases("energy_adjustment", purpose)}
-    for summary in _summaries(capture, "set_energy_adjustment", "the app's first-ranked"):
-        assert re.match(r'\{"method": "(\w+)"', summary)[1] in energy, (name, summary)
+    energy = defaults.cases("energy_adjustment", purpose)
+    taken = _summaries(capture, "set_energy_adjustment", "the app's first-ranked")
+    if energy is None:
+        # not asked under this purpose (BEATS_PREDICT §9 ruling 5): a capture that answered it
+        # was run before that, and its packet says so (``packet.stale_note``)
+        flagged = {q for _, q in packet.unasked_answers(spec, capture)}
+        assert not taken or "energy_adjustment" in flagged, name
+    else:
+        keys = {c.key for c in energy}
+        for summary in taken:
+            assert re.match(r'\{"method": "(\w+)"', summary)[1] in keys, (name, summary)
     screens = _case("exclusions", purpose,
                     EXCLUSIONS_WHEN.get(name, "whatever" if purpose == "prediction" else "no screen"))
     for summary in _summaries(capture, "set_exclusions", "the app's first-ranked"):

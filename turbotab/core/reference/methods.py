@@ -368,7 +368,10 @@ def question_first(question: str, purpose: str) -> tuple[str, str, str] | None:
 
         return "none", "stated", f"Stated, not asked: {STATED}"
     from turbotab.core import custom_sound
+    from turbotab.core.reference import defaults
 
+    if defaults.not_asked(question, purpose):
+        return None
     first = custom_sound.labels_for(question, purpose).options[0]
     return first.key, first.sound.verdict, first.sound.reason
 
@@ -404,11 +407,20 @@ def causal_section(title: str, level: int = 3) -> list[str]:
 
 
 def custom_sound_section(question: str, title: str, level: int = 3) -> list[str]:
+    """A ``custom_sound`` question's options under each purpose, soundest first; under a purpose
+    the Router does not ask it in (``defaults.not_asked``: the energy model under prediction), the
+    Router's reason instead of a ranking no question offers."""
     from turbotab.core import custom_sound
+    from turbotab.core.reference import defaults
 
     h = "#" * level
     lines = [f"{h} {title[:1].upper()}{title[1:]} (`{question}`)", ""]
     for p in PURPOSES:
+        unasked = defaults.not_asked(question, p)
+        if unasked:
+            lines += [f"Under **{p}** it is not asked (the Router's gate, "
+                      f"`interview.applicability`): “{unasked}”", ""]
+            continue
         q = custom_sound.labels_for(question, p)
         lines += [f"Under **{p}**, soundest first. The field reaches for `{q.customary_first}` "
                   "first." + (f" Tension the coach names: “{q.tension}”" if q.tension else ""), "",

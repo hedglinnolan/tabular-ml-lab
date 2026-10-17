@@ -1241,7 +1241,7 @@ Each condition the app ranks by, and what it offers first under it, computed by 
 
 | Method | Purpose | When | What the app offers first |
 |---|---|---|---|
-| A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | prediction | an intake on a table with total energy | `standard`, the energy model's first (the energy-adjustment question) |
+| A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | prediction | an intake on a table with total energy | nothing: the energy-adjustment question, which sets an intake's transform, is not asked (“The energy model decides what a nutrient's coefficient means, and under prediction no coefficient is read as an effect.”) |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | prediction | a multi-item scale | `score`: declared with its items and key (`set_scales`), never ranked; no question asks it, so from the app the items enter on their own (the scales contract) |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | prediction | raw counts or intensities | the omics normalization by the data's kind (`log_cpm_tmm` for counts, `pqn_log2` for intensities) |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | inference | an intake on a table with every source of energy as a column (all components needs each) | `all_components`, the energy model's first (the energy-adjustment question) |

@@ -20,6 +20,9 @@ calling the function the app itself ranks with, never a copy of its rule:
 * ``exposure_transform``: the question that sets the transform (the energy model's ranking; a
   scale's scoring; the omics normalization);
 * ``energy_adjustment`` and ``exclusions``: ``custom_sound`` with what can run on the table;
+* under a purpose the Router does not ask a question in (:func:`not_asked`: the energy model and the
+  substitution under prediction, BEATS_PREDICT §9 ruling 5), no case: the reference and the packets
+  say it is not asked, with the Router's reason, and an intake's transform offers nothing there;
 * ``diagnostics``: the failed check's own responses (``estimand.DIAGNOSTIC_ACTIONS``);
 * ``evalue_sd``: ``models.effects.estimand_sd`` with and without the survey weights;
 * ``unmeasured_confounding``: ``models.effects.unmeasured_confounding`` on a least-squares
@@ -63,6 +66,26 @@ class PremiseFailed(AssertionError):
 def _check(ok: bool, what: str) -> None:
     if not ok:
         raise PremiseFailed(f"the app no longer ranks as the methods reference says: {what}")
+
+
+# ── the questions a goal alone leaves unasked ───────────────────────────────
+
+# The Router's questions that a purpose alone leaves unasked, whatever the table (BEATS_PREDICT §9
+# ruling 5: under prediction the energy model and the substitution). Their reason is read from the
+# Router's own gate (``interview.applicability``) on a dietary table whose roles are not yet read,
+# so a gate that asks one again under that purpose shows here.
+PURPOSE_GATED = ("energy_adjustment", "substitution")
+
+
+def not_asked(question: str, purpose: str) -> str | None:
+    """Why the Router does not ask ``question`` under ``purpose`` on any dietary table, in its own
+    words; None where it may ask it (the table's roles then decide)."""
+    if question not in PURPOSE_GATED:
+        return None
+    from turbotab.core.decisions import ProjectState
+    from turbotab.core.interview import applicability
+
+    return applicability(question, ProjectState(lens=["dietary"], purpose=purpose))
 
 
 # ── the effect measure ───────────────────────────────────────────────────────
@@ -255,17 +278,25 @@ def _energy_cases(purpose: str) -> list[Case]:
     return cases
 
 
-def energy_adjustment(purpose: str) -> list[Case]:
-    return _energy_cases(purpose)
+def energy_adjustment(purpose: str) -> list[Case] | None:
+    # Not asked under this purpose (ruling 5): no case, so the packets say "not asked".
+    return None if not_asked("energy_adjustment", purpose) else _energy_cases(purpose)
 
 
 def exposure_transform(purpose: str) -> list[Case]:
-    energy = _energy_cases(purpose)
+    unasked = not_asked("energy_adjustment", purpose)
+    if unasked:
+        intakes = [Case("an intake on a table with total energy",
+                        f"nothing: the energy-adjustment question, which sets an intake's "
+                        f"transform, is not asked (“{unasked}”)", "")]
+    else:
+        intakes = [Case(f"an intake on {c.when}", f"{c.first.split(':', 1)[0]}, the energy "
+                                                  f"model's first (the energy-adjustment "
+                                                  f"question)", c.key)
+                   for c in _energy_cases(purpose)]
     counts, intensities = _normalizations("counts")[0], _normalizations("intensities")[0]
     return [
-        *[Case(f"an intake on {c.when}", f"{c.first.split(':', 1)[0]}, the energy model's first "
-                                         f"(the energy-adjustment question)", c.key)
-          for c in energy],
+        *intakes,
         Case("a multi-item scale", "`score`: declared with its items and key (`set_scales`), "
                                    "never ranked; no question asks it, so from the app the items "
                                    "enter on their own (the scales contract)", "score"),
@@ -472,5 +503,5 @@ def cases(key: str, purpose: str) -> list[Case] | None:
     return fn(purpose) if fn is not None else None
 
 
-__all__ = ["BY_CONDITION", "CAUSAL_EXPOSURES", "CAUSAL_OUTCOMES", "Case", "PremiseFailed", "THROUGH",
-           "causal_rankings", "cases"]
+__all__ = ["BY_CONDITION", "CAUSAL_EXPOSURES", "CAUSAL_OUTCOMES", "Case", "PURPOSE_GATED",
+           "PremiseFailed", "THROUGH", "causal_rankings", "cases", "not_asked"]

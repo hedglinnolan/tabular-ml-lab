@@ -25,7 +25,8 @@ writes ``docs/turbotab-next/review-packets/<lens>.md``:
    checklist's answers item by item, every reading the journey injected, where the bundle
    contradicts itself, and what a stage reports that the bundle does not hold; where a journey
    did not reach the export, what stopped it, and where the lens has no reference fixture, what
-   one would need;
+   one would need; where a capture answered a question its purpose no longer asks
+   (:func:`stale_note`), that it predates the change and how to rerun it;
 5. **the questions the reviewer is asked to answer.**
 
 Everything but the journeys is regenerated in a second from the code, so the reference test can
@@ -398,6 +399,42 @@ def beside_section(capture: dict[str, Any], h: str) -> list[str]:
     return lines + rows + [""]
 
 
+STALE = "This capture predates what the app asks today."
+
+
+def unasked_answers(spec: journeys.Journey, capture: dict[str, Any]) -> list[tuple[int, str]]:
+    """Each answer the capture posted (its row in the journey's table, and its question) to a
+    question the Router does not ask under the journey's purpose (``defaults.not_asked``: under
+    prediction, the energy model and the substitution, BEATS_PREDICT §9 ruling 5): a capture run
+    before that, whose methods section quotes the sentences those answers wrote."""
+    from turbotab.core.decisions import SLOTS
+
+    out = []
+    for i, a in enumerate(capture.get("answers") or [], 1):
+        question = SLOTS.get(str(a.get("kind")))
+        if question in defaults.PURPOSE_GATED and defaults.not_asked(question, spec.purpose):
+            out.append((i, question))
+    return out
+
+
+def stale_note(spec: journeys.Journey, capture: dict[str, Any]) -> list[str]:
+    """The note a capture gets when it answered a question its purpose no longer asks."""
+    unasked = unasked_answers(spec, capture)
+    if not unasked:
+        return []
+    questions = list(dict.fromkeys(q for _, q in unasked))
+    said = [f"`{q}` (“{defaults.not_asked(q, spec.purpose)}”)" for q in questions]
+    rows = [str(i) for i, _ in unasked]
+    return ["", f"**{STALE}** Under {spec.purpose} the Router does not ask "
+                f"{said[0] if len(said) == 1 else ', '.join(said[:-1]) + ' or ' + said[-1]}, "
+                f"but this journey answered {'it' if len(said) == 1 else 'them'} "
+                f"(row{'s' if len(rows) > 1 else ''} "
+                f"{rows[0] if len(rows) == 1 else ', '.join(rows[:-1]) + ' and ' + rows[-1]} of "
+                f"the table below), so the methods section below quotes the sentences those "
+                f"answers wrote. Rerun the journey "
+                f"(`python -m turbotab.core.reference.journeys {spec.name}`) to replace it."]
+
+
 def journey_section(spec: journeys.Journey, capture: dict[str, Any] | None,
                     level: int = 3) -> list[str]:
     h = "#" * level
@@ -416,6 +453,7 @@ def journey_section(spec: journeys.Journey, capture: dict[str, Any] | None,
     lines.append(f"- **Run:** at commit `{cap.get('commit')}`{dirty} on {cap.get('date')}, "
                  f"{cap.get('seconds'):,} s on {cap.get('workers')} workers"
                  + (f"; engine {export.get('engine')}" if export.get("engine") else "") + ".")
+    lines += stale_note(spec, capture)
     lines += ["", f"{h}# How the journey answered", "",
               "Every decision posted, in order, with where its answer came from (the journey's "
               "own research question, the app's first-ranked option, the journey's readings, or "
