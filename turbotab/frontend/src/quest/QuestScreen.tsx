@@ -14,7 +14,7 @@ import { JobChips } from "../components/JobChips";
 import { ManuscriptOverlay, ManuscriptRail, kit as k, newestSeq, useManuscriptRail } from "../kit";
 import { Link, classicPath } from "../router";
 import { StageFocusProvider } from "../state/focus";
-import { fitPosition, heldFor, openStageKey, stageOf } from "./log";
+import { fitPosition, heldFor, landingStageKey, stageOf } from "./log";
 import { StageCard } from "./StageCard";
 import { StageLine } from "./StageLine";
 import { Tapestry } from "./Tapestry";
@@ -61,7 +61,8 @@ export function QuestScreen({ pid, stream }: { pid: string; stream: StreamState 
 
 function Shell({ pid, view, log, stream }: { pid: string; view: ProjectView; log: QuestLog; stream: StreamState }) {
   const [chosen, setChosen] = useState<string | null>(null);
-  const shown = chosen && stageOf(log, chosen) ? chosen : openStageKey(log);
+  const fit = fitPosition(log, view.stages.fit);
+  const shown = chosen && stageOf(log, chosen) ? chosen : landingStageKey(log, fit);
   const stage = stageOf(log, shown)!;
   const methods = useMethods(pid).data;
   const sections = useMethodsSections(pid).data;
@@ -70,13 +71,22 @@ function Shell({ pid, view, log, stream }: { pid: string; view: ProjectView; log
     () => new Map((methods?.lines ?? []).map((l) => [l.record_id, l.sentence])),
     [methods],
   );
-  const fit = fitPosition(log, view.stages.fit);
-  // Pressing Fit opens Results (FOUNDATION §7): the card follows the press.
+  // Pressing Fit opens Results once the fit is computed (FOUNDATION §7): at once for a short fit
+  // computed before the press; a fit that must run keeps the card on Models, whose flowchart shows
+  // its progress and a Cancel where Fit was (ruling 3), and Results opens when it is computed, if
+  // the screen is still there. The press reaches the quest log before the view's fit job does.
   const pressed = log.fit?.pressed ?? false;
+  const computed = view.stages.fit?.status === "fresh";
   const [seenPressed, setSeenPressed] = useState(pressed);
+  const [awaiting, setAwaiting] = useState(pressed && !computed);
   if (seenPressed !== pressed) {
     setSeenPressed(pressed);
-    if (pressed) setChosen("results");
+    setAwaiting(pressed && !computed);
+    if (pressed) setChosen(computed ? "results" : "models");
+  }
+  if (awaiting && pressed && computed) {
+    setAwaiting(false);
+    if (shown === "models") setChosen("results");
   }
 
   // The arrival line: the newest line the manuscript gained since the screen opened.

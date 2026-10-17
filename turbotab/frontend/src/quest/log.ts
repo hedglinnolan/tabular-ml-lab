@@ -131,6 +131,12 @@ export function fitPosition(log: QuestLog, fit: StageStatus | undefined): FitPos
   return { kind: "press", held: lock.held, estimate: lock.held ? heldFor(lock) : null };
 }
 
+/** The stage the shell opens on: Models while the pressed fit runs, since its analysis flowchart
+ *  holds the fit's progress and Cancel where Fit was (FOUNDATION §7; ruling 3); else the open stage. */
+export function landingStageKey(log: QuestLog, fit: FitPosition): string {
+  return fit.kind === "running" && stageOf(log, "models")?.reached ? "models" : openStageKey(log);
+}
+
 /** The card's one primary action (FOUNDATION §1), for the stage it shows. */
 export type Primary =
   | { kind: "continue"; to: string | null; disabled: boolean; hint: string | null }
