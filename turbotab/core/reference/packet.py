@@ -15,7 +15,8 @@ writes ``docs/turbotab-next/review-packets/<lens>.md``:
    exist;
 2. **how they chain**: a Mermaid diagram of every relation the lens's own methods take part in
    (from them, or toward them from any contract), and the relations in a table with the sentence
-   the app states when each fires;
+   the app states when each fires; a relation lists only the purposes its method is offered
+   under, and one that holds only where it is offered not at all is left out;
 3. **the defaults by purpose**, each with its reason: the option each method offers first for
    prediction and for inference, its rung, and the sound label that justifies it; where the app
    ranks by the data, the first option under each condition, computed by the app's own ranking
@@ -167,13 +168,14 @@ def node_label(text: str) -> str:
 
 def chain_relations(lens: str) -> list[tuple[Any, Any]]:
     """``(contract, relation)`` for every relation a lens's own method takes part in: declared by
-    it, or declared by any contract toward it."""
+    it, or declared by any contract toward it; a relation whose declaring method is offered under
+    none of its purposes is left out (``methods.relation_purposes``)."""
     own, _ = lens_contracts(lens)
     keys = {c.key for c in own}
     out = []
     for c in ref.ordered_contracts():
         for r in c.relations:
-            if c.key in keys or r.target in keys:
+            if (c.key in keys or r.target in keys) and ref.relation_purposes(c, r):
                 out.append((c, r))
     return out
 
@@ -229,7 +231,7 @@ def chain_table(lens: str) -> list[str]:
         if r.exits:
             says += " Exits: " + "; ".join(ref.cell(e) for e in r.exits) + "."
         lines.append(f"| `{c.key}` | {r.kind} | `{r.target}` | {fires} | "
-                     f"{', '.join(r.purposes)} | {says} |")
+                     f"{', '.join(ref.relation_purposes(c, r))} | {says} |")
     return lines
 
 
@@ -589,7 +591,9 @@ def render(lens: str, captures: dict[str, dict[str, Any] | None]) -> str:
         lines += ref.question_section(q, QUESTION_TITLES[q], level=4)
     lines += ["## 2 · How they chain", "",
               "Every relation this lens's own methods take part in: declared by them, or declared "
-              "by another method toward them (BLUEPRINT §13). Blue: this lens's methods; grey: "
+              "by another method toward them (BLUEPRINT §13), each with the purposes it fires "
+              "under: a purpose the app does not offer the declaring method under is left out, "
+              "and so is a relation that holds only there. Blue: this lens's methods; grey: "
               "other methods; orange: a named consequence (a state, a concern or a refusal, not "
               "a method). Solid: implies or precedes; dotted: enables, disables or conflicts; "
               "thick: invalidates.", ""]

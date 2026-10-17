@@ -222,3 +222,113 @@ def test_the_dietary_packet_defaults_say_the_substitution_is_not_asked_under_pre
     # the contract section in the packet carries the same cells as the reference's
     section = text[text.index("(`multiclass_substitution`)"):]
     assert "beside the comparison under prediction" not in section[:section.index("**Storyboard")]
+
+
+# ── the relations of a method no question offers under a goal (the repair round's second minor) ─
+#
+# Under Predict the substitution's curves are neither offered nor placed, so none of their
+# relations fires there: each relations table, the reference's and the packet's, drops prediction
+# from every row's purposes and leaves out the row that applies only under prediction. The truth is
+# the contract's own declared relations less the purposes the Router does not ask the substitution
+# under; a contract the Router still offers under Predict keeps every row as declared.
+
+
+def _gated(question: str) -> set[str]:
+    """The purposes under which the Router does not ask ``question`` on the dietary table."""
+    return {p for p in methods.PURPOSES if _router(p)[question].status == "not_applicable"}
+
+
+def _expected(c, gated: set[str]) -> list[tuple[str, str, str]]:
+    """``(kind, id, purposes)`` for each of ``c``'s declared relations that fires under a purpose
+    outside ``gated``, its purposes the declared ones less ``gated``, in declared order."""
+    out = []
+    for r in c.relations:
+        kept = [p for p in r.purposes if p not in gated]
+        if kept:
+            out.append((r.kind, r.id, ", ".join(kept)))
+    return out
+
+
+def _relation_cells(text: str) -> list[list[str]]:
+    """A contract section's relations table: each row's cells (kind, toward, fires for, purposes,
+    what the app says, enforced by)."""
+    body = text[text.index("**Relations:**"):text.index("**Primary sources:**")]
+    rows = [line for line in body.splitlines() if line.startswith("| ")][1:]  # past the header
+    return [[cell.strip() for cell in row.strip("|").split(" | ")] for row in rows]
+
+
+def _reference_rows(c) -> list[tuple[str, str, str]]:
+    cells = _relation_cells("\n".join(methods.contract_section(c)))
+    ids = [r.id for r in c.relations]
+    out = []
+    for row in cells:
+        named = [i for i in ids if f"`{i}`" in row[1]]
+        assert len(named) == 1, row[1]
+        out.append((row[0], named[0], row[3]))
+    return out
+
+
+def test_the_multiclass_substitutions_relations_name_no_purpose_the_router_does_not_ask():
+    gated = _gated("substitution")
+    assert gated == {"prediction"}  # the ruling: the substitution is not asked under Predict
+    c = _contract("multiclass_substitution")
+    assert _reference_rows(c) == _expected(c, gated)
+    # the row that applies only under prediction is left out, its sentence with it
+    stated = c.relation("omitted_stated")
+    assert stated.purposes == ("prediction",)
+    text = "\n".join(methods.contract_section(c))
+    assert stated.says not in text and "(id `omitted_stated`)" not in text
+    assert all("prediction" not in row[2] for row in _reference_rows(c))
+    # every relation that also holds under inference stays, with inference alone
+    assert {r.id for r in c.relations if "inference" in r.purposes} == {
+        row[1] for row in _reference_rows(c)}
+
+
+def test_a_contract_the_router_offers_under_predict_keeps_every_relation_as_declared():
+    # the survey's substitution curve declares inference only, so its rows stand as they are; the
+    # exposure's transform is offered under Predict save its energy residual, and the functional
+    # form is offered whole, so both keep prediction where they declare it
+    for key in ("survey_substitution", "exposure_transform", "functional_form"):
+        c = _contract(key)
+        assert _reference_rows(c) == _expected(c, set()), key
+        assert len(_reference_rows(c)) == len(c.relations), key
+    assert any("prediction" in r.purposes for r in _contract("functional_form").relations)
+    assert any("prediction" in r.purposes for r in _contract("exposure_transform").relations)
+
+
+def _chain_rows(text: str, key: str) -> list[tuple[str, ...]]:
+    """The packet's chain table rows declared by ``key``, sorted: (from, kind, toward, purposes)."""
+    body = text[text.index("## 2 · How they chain"):text.index("## 3 · The defaults")]
+    rows = [line for line in body.splitlines() if line.startswith(f"| `{key}` |")]
+    cells = [[cell.strip() for cell in row.strip("|").split(" | ")] for row in rows]
+    return sorted((f, kind, toward, purposes) for f, kind, toward, _fires, purposes, *_ in cells)
+
+
+def _chain_expected(c, gated: set[str]) -> list[tuple[str, ...]]:
+    """``c``'s declared relations as the chain table's rows would hold them, sorted, each with its
+    purposes less ``gated`` and none whose purposes all lie in it."""
+    return sorted((f"`{c.key}`", r.kind, f"`{r.target}`", ", ".join(kept)) for r in c.relations
+                  if (kept := [p for p in r.purposes if p not in gated]))
+
+
+def test_the_dietary_packets_chain_drops_prediction_from_the_substitution_curves_relations():
+    gated = _gated("substitution")
+    text = packet.render("dietary", packet.captures_for("dietary"))
+    c = _contract("multiclass_substitution")
+    assert _chain_rows(text, c.key) == _chain_expected(c, gated)
+    assert c.relation("omitted_stated").says not in text
+    # the diagram draws the edges the table lists: the implication toward the omitted sources was
+    # the prediction-only row's, while the conflict (inference) stays
+    edges = [line.strip() for line in text.splitlines()
+             if line.startswith(f"  {packet.node_id(c.key)} ")]
+    toward = packet.node_id("omitted_energy_sources")
+    assert f"{packet.node_id(c.key)} -.->|conflicts| {toward}" in edges
+    assert f"{packet.node_id(c.key)} -->|implies| {toward}" not in edges
+    # silent: the lens's methods the Router offers under Predict keep prediction where they
+    # declare it (the shared transform and form are in the reference's chain, not the packet's),
+    # and the survey's substitution curve, gated too, declares inference only
+    for key in ("dietary_patterns", "nci_usual_intake", "survey_substitution"):
+        rows = _chain_rows(text, key)
+        assert rows and rows == _chain_expected(_contract(key), set()), key
+    assert any("prediction" in row[3] for key in ("dietary_patterns", "nci_usual_intake")
+               for row in _chain_rows(text, key))

@@ -25,7 +25,7 @@ import inspect
 import re
 import sys
 from pathlib import Path
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Callable, Sequence
 
 from turbotab.core.reference import catalog
 
@@ -199,6 +199,14 @@ def wholly_unoffered(c: Any, purpose: str) -> bool:
     return found is not None and set(found[2]) == {o.key for o in c.options}
 
 
+def relation_purposes(c: Any, r: Any) -> tuple[str, ...]:
+    """The purposes ``r``, a relation ``c`` declares, can fire under: its declared ones less each
+    under which ``c`` is offered not at all (:func:`wholly_unoffered`: the substitution's curves
+    under prediction). Empty for a relation that applies only there, which the reference and the
+    packets leave out."""
+    return tuple(p for p in r.purposes if not wholly_unoffered(c, p))
+
+
 def _placed(place: str, purposes: Sequence[str]) -> str:
     """A placement without its clauses for ``purposes`` (``…, beside the comparison under
     prediction``), for a contract not offered under them."""
@@ -239,10 +247,15 @@ def option_table(c: Any) -> list[str]:
     return lines
 
 
-def relation_rows(relations: Iterable[Any]) -> list[str]:
+def relation_rows(c: Any) -> list[str]:
+    """``c``'s relations table, each row's purposes those it can fire under
+    (:func:`relation_purposes`)."""
     lines = ["| Kind | Toward | Fires for | Purposes | What the app says | Enforced by |",
              "|---|---|---|---|---|---|"]
-    for r in relations:
+    for r in c.relations:
+        purposes = relation_purposes(c, r)
+        if not purposes:
+            continue
         fires = ", ".join(f"`{w}`" for w in r.when) or "any option"
         if r.condition:
             fires += f"; when {cell(r.condition)}"
@@ -253,7 +266,7 @@ def relation_rows(relations: Iterable[Any]) -> list[str]:
             says += " Exits: " + "; ".join(cell(e) for e in r.exits) + "."
         name = f"`{r.target}`" + (f" (id `{r.id}`)" if r.id and r.id != r.target else "")
         lines.append("| " + " | ".join([
-            r.kind, name, fires, ", ".join(r.purposes), says, code(r.enforced_by)]) + " |")
+            r.kind, name, fires, ", ".join(purposes), says, code(r.enforced_by)]) + " |")
     return lines
 
 
@@ -348,7 +361,7 @@ def contract_section(c: Any, level: int = 3) -> list[str]:
     lines += ["", "**Methods sentence:**", ""]
     lines += [f"- {s}" for s in sentence_words(c)]
     lines += ["", "**Relations:**", ""]
-    lines += relation_rows(c.relations) if c.relations else ["None declared."]
+    lines += relation_rows(c) if c.relations else ["None declared."]
     lines += ["", "**Primary sources:**", ""]
     lines += [f"- {s}" for s in c.sources] or ["None declared."]
     lines.append("")
