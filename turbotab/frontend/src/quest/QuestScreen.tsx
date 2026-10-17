@@ -59,8 +59,22 @@ export function QuestScreen({ pid, stream }: { pid: string; stream: StreamState 
   );
 }
 
+/** The stage chosen, and whether a person's request chose it (the quest line, a link, a lever),
+ *  with the line it names: a request brings that line into view and focuses it (StageCard). */
+interface Nav {
+  stage: string | null;
+  line: string | null;
+  requested: boolean;
+  n: number;
+}
+
 function Shell({ pid, view, log, stream }: { pid: string; view: ProjectView; log: QuestLog; stream: StreamState }) {
-  const [chosen, setChosen] = useState<string | null>(null);
+  const [nav, setNav] = useState<Nav>({ stage: null, line: null, requested: false, n: 0 });
+  const chosen = nav.stage;
+  /** The screen's own move (Fit's press opening Results): no line is asked for. */
+  const setChosen = (stage: string) => setNav((p) => ({ stage, line: null, requested: false, n: p.n }));
+  /** A person's request: the stage, with the line named brought into view. */
+  const openStage = (stage: string, line?: string) => setNav((p) => ({ stage, line: line ?? null, requested: true, n: p.n + 1 }));
   const fit = fitPosition(log, view.stages.fit);
   const shown = chosen && stageOf(log, chosen) ? chosen : landingStageKey(log, fit);
   const stage = stageOf(log, shown)!;
@@ -104,8 +118,9 @@ function Shell({ pid, view, log, stream }: { pid: string; view: ProjectView; log
 
   const openKind = (kind: string) => {
     const at = log.kinds[kind];
-    if (at) setChosen(at);
+    if (at) openStage(at);
   };
+  const request = nav.requested && nav.stage === shown ? { line: nav.line, n: nav.n } : null;
   const fitting = fit.kind === "running" ? (heldFor(log.fit) ? `fitting, ${heldFor(log.fit)}` : "fitting") : null;
 
   return (
@@ -123,7 +138,7 @@ function Shell({ pid, view, log, stream }: { pid: string; view: ProjectView; log
           </span>
         ) : null}
       </Header>
-      <StageLine log={log} shown={shown} onOpen={setChosen} answers={answers} fitting={fitting} />
+      <StageLine log={log} shown={shown} onOpen={openStage} answers={answers} fitting={fitting} />
       <div className={`${k.zones} ${q.zones}`}>
         <div className={k.zoneRail} data-kit>
           <ManuscriptRail count={sections?.count ?? null} open={rail.open} setOpen={rail.setOpen} />
@@ -136,7 +151,8 @@ function Shell({ pid, view, log, stream }: { pid: string; view: ProjectView; log
             stage={stage}
             answers={answers}
             fit={fit}
-            onOpenStage={setChosen}
+            onOpenStage={openStage}
+            request={request}
             arrival={arrival}
             onOpenManuscript={() => rail.setOpen(true)}
           />

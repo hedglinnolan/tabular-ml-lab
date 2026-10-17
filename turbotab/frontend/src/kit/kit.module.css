@@ -95,8 +95,13 @@
     grid-template-areas: "card" "canvas" "manuscript";
     row-gap: 24px;
   }
+  /* The product's one change to the explore copy: a narrow window keeps the Manuscript control in
+     reach (FOUNDATION §3: no lost controls), as a row above the card rather than the far-left rail. */
+  .zones {
+    grid-template-areas: "rail" "card" "canvas" "manuscript";
+  }
   .zoneRail {
-    display: none;
+    position: static;
   }
   .zoneCanvas,
   .zoneManuscript {
@@ -159,8 +164,14 @@
   box-shadow: inset 0 -2px 0 var(--ink);
 }
 @media (max-width: 640px) {
+  /* Hidden from sight only: each stage's button keeps its name for a screen reader. */
   .chain li:not([data-status="current"]) .chainName {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
   .chain li:not([data-status="current"]) .chainBtn::after {
     content: "";
@@ -399,6 +410,14 @@
 .rail[aria-expanded="true"] {
   color: var(--ink);
   border-color: var(--line-strong);
+}
+/* A narrow window: the rail is a row above the card (the zones above), so it reads across. */
+@media (max-width: 900px) {
+  .rail {
+    writing-mode: horizontal-tb;
+    transform: none;
+    padding: 8px 14px;
+  }
 }
 .pinOnly {
   display: none;

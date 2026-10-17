@@ -1,31 +1,51 @@
 /**
  * The card (FOUNDATION §3): the stage shown, its name, why it dropped back, then its lines under
  * their labels. The open Decide line is expanded through the dispatcher (CardFor); answered lines
- * collapse to their answers; lines still to come wait below, quieter, each "Waiting for" what it
- * needs. The stage's Confirm sweep comes after its Decides, each default with its reason and what
- * another choice would change, and any can be opened to change it. Results, once reached, has W1-G's
- * ResultsCards in place of its lines, mounted once (src/quest/contracts.ts). For the record sits
- * collapsed at the foot (GET /record). The one primary action is at the very foot (FOUNDATION §1).
+ * collapse to their answers (a noticing to its answer alone, so its open-tense headline is not left
+ * beside it); lines still to come wait below, quieter, each "Waiting for" what it needs. A line no
+ * card can answer yet is listed after the rest, "Not available yet", and never opened. The stage's
+ * Confirm sweep comes after its Decides, each default with its reason (or, where the engine serves
+ * none, the default itself, from its value) and what another choice would change, and any can be
+ * opened to change it; under Predict, Who's in's draw waits for that sweep (§3, "two departures").
+ * Results, once reached, has W1-G's ResultsCards in place of its lines, mounted once
+ * (src/quest/contracts.ts). First look lists every noticing with the stage that decides it. For
+ * the record sits collapsed at the foot (GET /record). The one primary action is at the very foot
+ * (FOUNDATION §1); a disabled one says why and links to what it waits for.
+ *
+ * A stage opened by a request (the quest line, a "Waiting for" link, a noticing's lever, the foot's
+ * link) brings the line it names, else its open line, into view and gives it focus (§1, the
+ * five-second test).
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { isRefusalError } from "../api/client";
 import {
   useChecklist,
   useConfirmSweep,
   useDecide,
   useExport,
+  useProjectView,
   useRecord,
 } from "../api/queries";
-import type { Decision, QuestLine, QuestLog, QuestStage, Refusal, SweepStage } from "../api/schema";
+import type { Decision, ProjectState, QuestLine, QuestLog, QuestStage, Refusal, SweepStage } from "../api/schema";
 import { Foot, Plain, foot as f, kit as k } from "../kit";
 import { CardFor } from "./cards/CardFor";
-import { columnOf } from "./cards/renderers";
-import { type FitPosition, byLabel, openLine, primaryFor, sweptLines } from "./log";
+import { DECLARATION_CARDS, DECLARATION_DEFAULTS } from "./cards/predict";
+import { columnOf, recordable } from "./cards/renderers";
+import { FootSlot } from "./contracts";
+import { type FitPosition, type Hint, DRAW, byLabel, drawWaitsForSweep, openLine, primaryFor, sweptLines } from "./log";
 import { ResultsCards } from "./results";
 import { said } from "./words";
 import q from "./quest.module.css";
 
 const idOf = (l: QuestLine) => `${l.source}:${l.key}`;
+const canAnswer = (l: QuestLine) => recordable(l, DECLARATION_CARDS);
+
+/** A request to bring a line into view: the line's key (null: the stage's open line), and a count
+ *  that changes with every request, so asking again for the same line still answers. */
+export interface OpenRequest {
+  line: string | null;
+  n: number;
+}
 
 export interface StageCardProps {
   pid: string;
@@ -33,106 +53,143 @@ export interface StageCardProps {
   stage: QuestStage;
   answers: ReadonlyMap<string, string>;
   fit: FitPosition;
-  onOpenStage: (stage: string) => void;
+  /** Open a stage, with the line named (a lever's question, a link's line) brought into view. */
+  onOpenStage: (stage: string, line?: string) => void;
+  /** The request that opened this stage, while it stands; null when the screen opened it itself. */
+  request?: OpenRequest | null;
   /** The newest line the manuscript gained since this screen opened (FOUNDATION §3, the rail). */
   arrival: { text: string; kind: string | null } | null;
   onOpenManuscript: () => void;
 }
 
-export function StageCard({ pid, log, stage, answers, fit, onOpenStage, arrival, onOpenManuscript }: StageCardProps) {
-  const open = openLine(stage);
+/** Scroll an element into view only when it is not already near the top of the window, below the
+ *  sticky header, then focus it. */
+function bringIntoView(el: HTMLElement) {
+  const top = el.getBoundingClientRect().top;
+  const below = document.querySelector("header")?.getBoundingClientRect().bottom ?? 0;
+  const near = top >= below && top <= window.innerHeight * 0.6;
+  if (!near && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "start" });
+  el.focus({ preventScroll: true });
+}
+
+export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request = null, arrival, onOpenManuscript }: StageCardProps) {
+  const open = openLine(stage, canAnswer);
   const openId = open ? idOf(open) : null;
-  const [expanded, setExpanded] = useState<string | null>(openId);
+  /** The line a request names, by key: a question or a declaration before a noticing of the same key. */
+  const targetOf = (r: OpenRequest | null): string | null => {
+    if (!r?.line) return openId;
+    const named = stage.lines.filter((l) => l.key === r.line);
+    const line = named.find((l) => l.source !== "finding") ?? named[0];
+    return line ? idOf(line) : openId;
+  };
+  const [expanded, setExpanded] = useState<string | null>(() => targetOf(request));
   // A new open line (the last one was answered) is the one expanded.
   const [seenOpen, setSeenOpen] = useState(openId);
   if (seenOpen !== openId) {
     setSeenOpen(openId);
     setExpanded(openId);
   }
+  // A new request, in the stage already shown (a lever whose question is here): its line.
+  const [seenRequest, setSeenRequest] = useState(request?.n ?? null);
+  if (request && request.n !== seenRequest) {
+    setSeenRequest(request.n);
+    setExpanded(targetOf(request));
+  }
+  const root = useRef<HTMLElement>(null);
+  const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+  const requested = request?.n ?? null;
+  useEffect(() => {
+    if (requested === null || !root.current) return;
+    const lines = [...root.current.querySelectorAll<HTMLElement>("[data-line]")];
+    const el = lines.find((x) => x.dataset.line === expanded) ?? root.current.querySelector<HTMLElement>("h2");
+    if (el) bringIntoView(el);
+    // Only a request moves the screen; the expanded line changing as answers arrive does not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requested]);
 
+  const state = useProjectView(pid).data?.state ?? null;
   const groups = byLabel(stage);
+  // A line no card can answer yet comes after those that can (FOUNDATION §3, "Not available yet").
+  const decide = [...groups.Decide.filter(canAnswer), ...groups.Decide.filter((l) => !canAnswer(l))];
+  const drawHeld = drawWaitsForSweep(stage);
   // Results, once reached, is W1-G's column whole: it draws every line of the stage itself.
   const results = columnOf(stage) === "results";
-  const back = !results && open && expanded !== openId ? () => setExpanded(openId) : null;
+  const back = !results && expanded !== openId ? () => setExpanded(openId) : null;
   const toggle = (l: QuestLine) => setExpanded((cur) => (cur === idOf(l) ? openId : idOf(l)));
+  const line = (l: QuestLine, confirm = false) => (
+    <Line
+      key={idOf(l)}
+      pid={pid}
+      line={l}
+      expanded={expanded === idOf(l)}
+      onToggle={() => toggle(l)}
+      answers={answers}
+      onOpenStage={onOpenStage}
+      answerable={canAnswer(l)}
+      held={drawHeld && l.key === DRAW}
+      state={state}
+      confirm={confirm}
+    />
+  );
 
   return (
-    <section className={q.card} aria-labelledby={`card-${stage.key}`} data-testid={`card-${stage.key}`}>
-      <div data-kit className={q.cardHead}>
-        <h2 id={`card-${stage.key}`} className={q.cardTitle}>
-          {stage.name}
-        </h2>
-        {stage.reopened.map((r) => (
-          <p key={r.decision_id} className={q.reopened} data-testid="card-reopened">
-            <Plain text={r.sentence} />
-          </p>
-        ))}
-        {!stage.reached ? <p className={q.quietLine}>May change as you answer</p> : null}
-        {stage.reached && stage.lines.length === 0 ? (
-          <p className={q.quietLine} data-testid="nothing-here">
-            Nothing to decide here.
-          </p>
-        ) : null}
-      </div>
-
-      {results ? (
-        <div data-testid="results-column">
-          <ResultsCards pid={pid} />
+    <FootSlot.Provider value={slot}>
+      <section ref={root} className={q.card} aria-labelledby={`card-${stage.key}`} data-testid={`card-${stage.key}`}>
+        <div data-kit className={q.cardHead}>
+          <h2 id={`card-${stage.key}`} className={q.cardTitle} tabIndex={-1}>
+            {stage.name}
+          </h2>
+          {stage.reopened.map((r) => (
+            <p key={r.decision_id} className={q.reopened} data-testid="card-reopened">
+              <Plain text={r.sentence} />
+            </p>
+          ))}
+          {!stage.reached ? <p className={q.quietLine}>May change as you answer</p> : null}
+          {stage.reached && stage.lines.length === 0 ? (
+            <p className={q.quietLine} data-testid="nothing-here">
+              Nothing to decide here.
+            </p>
+          ) : null}
         </div>
-      ) : null}
 
-      {!results && groups.Decide.length ? (
-        <Group label="Decide">
-          {groups.Decide.map((l) => (
-            <Line
-              key={idOf(l)}
-              pid={pid}
-              line={l}
-              expanded={expanded === idOf(l)}
-              onToggle={() => toggle(l)}
-              answers={answers}
-              onOpenStage={onOpenStage}
-            />
-          ))}
-        </Group>
-      ) : null}
+        {stage.key === "first_look" && stage.reached ? (
+          <Noticed log={log} answers={answers} onOpenStage={onOpenStage} />
+        ) : null}
 
-      {!results && groups.Confirm.length ? (
-        <Group label="Confirm" heading={stage.sweep?.heading}>
-          {groups.Confirm.map((l) => (
-            <Line
-              key={idOf(l)}
-              pid={pid}
-              line={l}
-              expanded={expanded === idOf(l)}
-              onToggle={() => toggle(l)}
-              answers={answers}
-              onOpenStage={onOpenStage}
-              confirm
-            />
-          ))}
-        </Group>
-      ) : null}
+        {results ? (
+          <div data-testid="results-column">
+            <ResultsCards pid={pid} />
+          </div>
+        ) : null}
 
-      {stage.reached ? <ForTheRecord pid={pid} stage={stage} /> : null}
-      {stage.key === "writeup" && stage.reached ? <Checklist pid={pid} /> : null}
+        {!results && decide.length ? <Group label="Decide">{decide.map((l) => line(l))}</Group> : null}
 
-      {back ? (
-        <button type="button" className={k.linkish} data-kit onClick={back} data-testid="back-to-stage">
-          Back to {stage.name}
-        </button>
-      ) : null}
+        {!results && groups.Confirm.length ? (
+          <Group label="Confirm" heading={stage.sweep?.heading}>
+            {groups.Confirm.map((l) => line(l, true))}
+          </Group>
+        ) : null}
 
-      <Primary pid={pid} log={log} stage={stage} fit={fit} onOpenStage={onOpenStage} />
-      {arrival ? (
-        <button type="button" className={f.arrival} data-kit onClick={onOpenManuscript} data-testid="arrival">
-          <span className={f.arrivalWhere}>Manuscript</span>
-          <span className={f.arrivalText}>
-            <Plain text={arrival.text} />
-          </span>
-        </button>
-      ) : null}
-    </section>
+        {stage.reached ? <ForTheRecord pid={pid} stage={stage} /> : null}
+        {stage.key === "writeup" && stage.reached ? <Checklist pid={pid} /> : null}
+
+        {back ? (
+          <button type="button" className={k.linkish} data-kit onClick={back} data-testid="back-to-stage">
+            Back to {stage.name}
+          </button>
+        ) : null}
+
+        <Primary pid={pid} log={log} stage={stage} fit={fit} onOpenStage={onOpenStage} slot={setSlot} />
+        {arrival ? (
+          <button type="button" className={f.arrival} data-kit onClick={onOpenManuscript} data-testid="arrival">
+            <span className={f.arrivalWhere}>Manuscript</span>
+            <span className={f.arrivalText}>
+              <Plain text={arrival.text} />
+            </span>
+          </button>
+        ) : null}
+      </section>
+    </FootSlot.Provider>
   );
 }
 
@@ -155,6 +212,9 @@ function Line({
   onToggle,
   answers,
   onOpenStage,
+  answerable,
+  held,
+  state,
   confirm = false,
 }: {
   pid: string;
@@ -162,41 +222,81 @@ function Line({
   expanded: boolean;
   onToggle: () => void;
   answers: ReadonlyMap<string, string>;
-  onOpenStage: (stage: string) => void;
+  onOpenStage: (stage: string, line?: string) => void;
+  /** A card can record this line's answer. */
+  answerable: boolean;
+  /** The draw, waiting for the sweep it reads. */
+  held: boolean;
+  state: ProjectState | null;
   confirm?: boolean;
 }) {
   const answer = line.decision_id ? answers.get(line.decision_id) : undefined;
   const testId = `line-${line.key}`;
-  if (expanded && line.status !== "waiting") {
+  const id = idOf(line);
+  if (expanded && answerable && !held && line.status !== "waiting") {
     return (
-      <li className={q.lineOpen} data-testid={testId} data-status={line.status} data-expanded>
+      <li className={q.lineOpen} data-testid={testId} data-status={line.status} data-line={id} tabIndex={-1} data-expanded>
         <CardFor pid={pid} line={line} onOpenStage={onOpenStage} />
       </li>
     );
   }
+  // An answered noticing reads as its answer: the engine names a noticing by its open-tense
+  // summary ("…is not asked yet"), which its answer settles.
+  const settled = line.source === "finding" && line.status === "answered" && !!answer;
+  const offer = answerable && !held && line.status !== "waiting";
+  // A default the engine states no reason for is said by its value (DECLARATION_DEFAULTS).
+  const reason =
+    line.status === "set_for_you" ? (line.reason ?? (state ? (DECLARATION_DEFAULTS[line.key]?.(state) ?? null) : null)) : null;
   return (
-    <li className={q.line} data-kit data-testid={testId} data-status={line.status}>
+    <li
+      className={q.line}
+      data-kit
+      data-testid={testId}
+      data-status={line.status}
+      data-line={id}
+      data-unavailable={answerable ? undefined : true}
+      data-held={held || undefined}
+      tabIndex={-1}
+    >
       <div className={q.lineRow}>
-        <span className={q.lineName}>{said(line.name)}</span>
-        {line.status === "waiting" ? null : (
+        <span className={q.lineName}>
+          {settled ? <Plain text={answer} /> : said(line.name)}
+        </span>
+        {offer ? (
           <button type="button" className={k.linkish} onClick={onToggle} data-testid={`${testId}-toggle`}>
             {line.status === "answered" || line.status === "set_for_you" ? "Change" : "Answer"}
           </button>
-        )}
+        ) : !answerable ? (
+          <span className={q.lineLabel} data-testid={`${testId}-unavailable`}>
+            Not available yet
+          </span>
+        ) : null}
       </div>
-      {line.status === "answered" && answer ? (
+      {line.status === "answered" && answer && !settled ? (
         <p className={q.lineAnswer}>
           <Plain text={answer} />
         </p>
       ) : null}
-      {line.status === "set_for_you" && line.reason ? (
-        <p className={q.lineReason}>
-          <Plain text={line.reason} />
+      {reason ? (
+        <p className={q.lineReason} data-testid={`${testId}-reason`}>
+          <Plain text={reason} />
         </p>
       ) : null}
       {confirm && line.would_change ? (
         <p className={q.lineQuiet}>
           <Plain text={line.would_change} />
+        </p>
+      ) : null}
+      {!answerable ? (
+        <p className={q.lineQuiet}>
+          {line.status === "answered" || line.status === "set_for_you"
+            ? "This version has no card to change it here yet."
+            : "This version has no card to answer it here yet."}
+        </p>
+      ) : null}
+      {held && line.status !== "waiting" ? (
+        <p className={q.lineQuiet} data-testid={`${testId}-held`}>
+          The rows are drawn once the choice set for you below is confirmed, since the draw reads it.
         </p>
       ) : null}
       {line.status === "waiting" ? (
@@ -206,7 +306,7 @@ function Line({
             ? line.waiting_for.map((w, i) => (
                 <span key={w.key}>
                   {i ? ", " : ""}
-                  <button type="button" className={k.linkish} onClick={() => onOpenStage(w.stage)}>
+                  <button type="button" className={k.linkish} onClick={() => onOpenStage(w.stage, w.key)}>
                     {w.name}
                   </button>
                 </span>
@@ -220,6 +320,44 @@ function Line({
         </p>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * First look's noticings (FOUNDATION §3; WALKABLE_PLAN §2, "lists its noticings by where each is
+ * decided"): First look decides nothing itself; each noticing is decided in the stage whose answer
+ * it changes, and each links there. A settled one reads as its answer, as on its own stage's card.
+ */
+function Noticed({
+  log,
+  answers,
+  onOpenStage,
+}: {
+  log: QuestLog;
+  answers: ReadonlyMap<string, string>;
+  onOpenStage: (stage: string, line?: string) => void;
+}) {
+  const noticed = log.stages.flatMap((s) => s.lines.filter((l) => l.source === "finding").map((l) => ({ s, l })));
+  if (!noticed.length) return null;
+  return (
+    <Group label="Noticed" heading="each is decided where it changes an answer">
+      {noticed.map(({ s, l }) => {
+        const answer = l.status === "answered" && l.decision_id ? answers.get(l.decision_id) : undefined;
+        const where =
+          l.label === "For the record" ? "For the record, in" : l.status === "answered" ? "Settled in" : "Decided in";
+        return (
+          <li key={`${s.key}:${l.key}`} className={q.line} data-kit data-testid={`noticed-${l.key}`} data-status={l.status}>
+            <span className={q.lineName}>{answer ? <Plain text={answer} /> : said(l.name)}</span>
+            <p className={q.lineQuiet}>
+              {where}{" "}
+              <button type="button" className={k.linkish} onClick={() => onOpenStage(s.key, l.key)} data-testid={`noticed-${l.key}-to`}>
+                {s.name}
+              </button>
+            </p>
+          </li>
+        );
+      })}
+    </Group>
   );
 }
 
@@ -267,18 +405,39 @@ function Checklist({ pid }: { pid: string }) {
   );
 }
 
+/** The foot's line beside a waiting action: what it waits for, its name a link to that line. */
+function HintLine({ hint, onOpenStage }: { hint: Hint; onOpenStage: (stage: string, line?: string) => void }) {
+  const to = hint.to;
+  return (
+    <span data-testid="primary-hint">
+      {hint.lead}
+      {hint.name && to ? (
+        <button type="button" className={k.linkish} onClick={() => onOpenStage(to.stage, to.line ?? undefined)} data-testid="primary-hint-link">
+          {hint.name}
+        </button>
+      ) : (
+        hint.name
+      )}
+      {hint.tail}
+    </span>
+  );
+}
+
 function Primary({
   pid,
   log,
   stage,
   fit,
   onOpenStage,
+  slot,
 }: {
   pid: string;
   log: QuestLog;
   stage: QuestStage;
   fit: FitPosition;
-  onOpenStage: (stage: string) => void;
+  onOpenStage: (stage: string, line?: string) => void;
+  /** Where a part draws the primary action itself (FootSlot). */
+  slot: (el: HTMLDivElement | null) => void;
 }) {
   const confirm = useConfirmSweep(pid);
   const decide = useDecide(pid);
@@ -295,6 +454,10 @@ function Primary({
           Fit is at the end of your analysis, beside the card.
         </div>
       );
+      break;
+    case "open":
+      // The opening, with its chain of refusals, is W1-G's column's; it draws its action here.
+      node = <div ref={slot} data-testid="primary-slot" />;
       break;
     case "confirm":
       node = (
@@ -336,9 +499,9 @@ function Primary({
     case "continue":
       node = (
         <Foot
-          label="Continue"
+          label={action.label}
           disabled={action.disabled}
-          left={action.hint}
+          left={action.hint ? <HintLine hint={action.hint} onOpenStage={onOpenStage} /> : null}
           onClick={() => action.to && onOpenStage(action.to)}
         />
       );

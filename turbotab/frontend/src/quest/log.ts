@@ -66,9 +66,33 @@ export function byLabel(stage: QuestStage): Record<Label, QuestLine[]> {
   return out;
 }
 
-/** The line the card shows expanded: the stage's first open Decide, counted ones first. */
-export function openLine(stage: QuestStage): QuestLine | null {
-  const decide = byLabel(stage).Decide.filter((l) => l.status === "open");
+/** Whether a line has a card that can record its answer. The shell passes the dispatcher's rule
+ *  (cards/renderers.ts `recordable`); every line can, where none is given. */
+export type CanAnswer = (line: QuestLine) => boolean;
+const ANY: CanAnswer = () => true;
+
+/** Under Predict, Who's in's draw of the held-out rows: the Decide the stage's sweep comes before. */
+export const DRAW = "split";
+
+/**
+ * Whether the stage's draw waits for its Confirm sweep (FOUNDATION §3, "two departures";
+ * disagreement 6): under a Predict track that holds rows out, Who's in runs its sweep just before
+ * the held-out rows are drawn, so the draw is the stage's last Decide. The draw is a counted Decide
+ * only there (under Estimate the split is For the record), so its line is the test.
+ */
+export function drawWaitsForSweep(stage: QuestStage): boolean {
+  const sweep = stage.sweep;
+  if (!stage.reached || !sweep || sweep.answered || sweep.lines === 0) return false;
+  return byLabel(stage).Decide.some((l) => l.key === DRAW && l.counted && l.status !== "answered");
+}
+
+/** The line the card shows expanded: the stage's first open Decide that a card can answer, counted
+ *  ones first; never the draw while the sweep it reads is unconfirmed. */
+export function openLine(stage: QuestStage, canAnswer: CanAnswer = ANY): QuestLine | null {
+  const held = drawWaitsForSweep(stage);
+  const decide = byLabel(stage).Decide.filter(
+    (l) => l.status === "open" && canAnswer(l) && !(held && l.key === DRAW),
+  );
   return decide.find((l) => l.counted) ?? decide[0] ?? null;
 }
 
@@ -137,33 +161,91 @@ export function landingStageKey(log: QuestLog, fit: FitPosition): string {
   return fit.kind === "running" && stageOf(log, "models")?.reached ? "models" : openStageKey(log);
 }
 
-/** The card's one primary action (FOUNDATION §1), for the stage it shows. */
+/** What a waiting foot says, and where its name leads: "Still to answer: the lens question." or
+ *  "Waiting for the outcome question, in Your question." The `name` links to `to`: the stage, and
+ *  the line in it to bring into view (null: the stage's own open line). */
+export interface Hint {
+  lead: string;
+  name: string;
+  tail: string;
+  to: { stage: string; line: string | null } | null;
+}
+
+/** The card's one primary action (FOUNDATION §1), for the stage it shows. A disabled Continue
+ *  always says why, and links to what it waits for. */
 export type Primary =
-  | { kind: "continue"; to: string | null; disabled: boolean; hint: string | null }
+  | { kind: "continue"; to: string | null; label: string; disabled: boolean; hint: Hint | null }
   | { kind: "confirm"; label: string; heading: string }
   | { kind: "download" }
   /** Models before Fit: the card's foot holds no button; Fit is on the flowchart (§7). */
-  | { kind: "fit" };
+  | { kind: "fit" }
+  /** Results before the opening: the opening is the foot's action, which W1-G's column draws there
+   *  with its chain of refusals (src/quest/contracts.ts `FootSlot`). */
+  | { kind: "open" };
+
+/** A line's name as running text: its backticks dropped and no closing period, so a name that is a
+ *  whole sentence (the engine names a noticing by its summary) is not given a second one. */
+export function runningName(name: string): string {
+  return name.replaceAll("`", "").trim().replace(/\.+$/, "");
+}
+
+const nameOf = (log: QuestLog, key: string) => stageOf(log, key)?.name ?? key;
 
 export function primaryFor(log: QuestLog, stage: QuestStage, fit: FitPosition): Primary {
-  const left = unanswered(stage);
   if (stage.key === "models" && fit.kind === "press") return { kind: "fit" };
   if (stage.key === "writeup" && stage.reached) return { kind: "download" };
-  if (left.length) {
-    const first = left[0]!;
+  // A stage not reached yet is read, not worked on: its foot leads to the stage the analysis is at.
+  if (!stage.reached) {
+    const at = openStageKey(log);
+    if (at === stage.key) return { kind: "continue", to: null, label: "Continue", disabled: true, hint: null };
+    return {
+      kind: "continue",
+      to: at,
+      label: `Go to ${nameOf(log, at)}`,
+      disabled: false,
+      hint: { lead: `${stage.name} is not reached yet; the analysis is at `, name: nameOf(log, at), tail: ".", to: { stage: at, line: null } },
+    };
+  }
+  if (stage.key === "results" && byLabel(stage).Decide.some((l) => l.key === "open_seal" && l.status === "open"))
+    return { kind: "open" };
+
+  const held = drawWaitsForSweep(stage);
+  const left = unanswered(stage).filter((l) => !(held && l.key === DRAW));
+  const next = nextStageKey(log, stage.key);
+  const open = left.find((l) => l.status === "open");
+  if (open) {
     return {
       kind: "continue",
       to: null,
+      label: "Continue",
       disabled: true,
-      hint:
-        first.status === "waiting" && first.waiting_for.length
-          ? `Waiting for ${first.waiting_for.map((w) => w.name).join(", ")}.`
-          : `Still to answer: ${first.name}.`,
+      hint: { lead: "Still to answer: ", name: runningName(open.name), tail: ".", to: { stage: stage.key, line: open.key } },
+    };
+  }
+  if (left.length) {
+    // Every line still to answer waits. Where the first waits on an answer in another stage, the
+    // foot goes there; a wait on this stage, or on a result still computing, holds it.
+    const on = left[0]!.waiting_for[0];
+    if (on && on.stage !== stage.key && stageOf(log, on.stage)) {
+      return {
+        kind: "continue",
+        to: on.stage,
+        label: on.stage === next ? "Continue" : `Go to ${nameOf(log, on.stage)}`,
+        disabled: false,
+        hint: { lead: "Waiting for ", name: runningName(on.name), tail: `, in ${nameOf(log, on.stage)}.`, to: { stage: on.stage, line: on.key } },
+      };
+    }
+    return {
+      kind: "continue",
+      to: null,
+      label: "Continue",
+      disabled: true,
+      hint: on
+        ? { lead: "Waiting for ", name: runningName(on.name), tail: ".", to: { stage: on.stage, line: on.key } }
+        : { lead: "Waiting for a result still computing.", name: "", tail: "", to: null },
     };
   }
   const sweep = stage.sweep;
-  if (stage.reached && sweep && !sweep.answered && sweep.lines > 0)
-    return { kind: "confirm", label: sweep.action, heading: sweep.heading };
-  const to = nextStageKey(log, stage.key);
-  return { kind: "continue", to, disabled: to === null, hint: null };
+  if (sweep && !sweep.answered && sweep.lines > 0) return { kind: "confirm", label: sweep.action, heading: sweep.heading };
+  return { kind: "continue", to: next, label: "Continue", disabled: next === null, hint: null };
 }

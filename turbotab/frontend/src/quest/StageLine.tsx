@@ -17,7 +17,7 @@ export interface StageLineProps {
   log: QuestLog;
   /** The stage shown on the card. */
   shown: string;
-  onOpen: (stage: string) => void;
+  onOpen: (stage: string, line?: string) => void;
   /** Each answered line's answer, by its decision record's id (the methods' sentences). */
   answers: ReadonlyMap<string, string>;
   /** While the fit runs: "fitting", with the engine's estimate when it is known. */
@@ -135,9 +135,9 @@ export function StageLine({ log, shown, onOpen, answers, fitting }: StageLinePro
         <HoverPanel
           stage={panelStage}
           answers={answers}
-          onOpen={(key) => {
+          onOpen={(key, line) => {
             setPointed(null);
-            onOpen(key);
+            onOpen(key, line);
           }}
           keep={() => at(panelStage.key)}
           leave={() => leave(panelStage.key)}
@@ -157,7 +157,7 @@ export function HoverPanel({
 }: {
   stage: QuestStage;
   answers: ReadonlyMap<string, string>;
-  onOpen: (stage: string) => void;
+  onOpen: (stage: string, line?: string) => void;
   keep?: () => void;
   leave?: () => void;
 }) {
@@ -211,14 +211,16 @@ function PanelLine({
 }: {
   line: QuestLine;
   answers: ReadonlyMap<string, string>;
-  onOpen: (stage: string) => void;
+  onOpen: (stage: string, line?: string) => void;
 }) {
   const answer = line.decision_id ? answers.get(line.decision_id) : undefined;
+  // An answered noticing reads as its answer, as on the card: its open-tense name is settled.
+  const settled = line.source === "finding" && line.status === "answered" && !!answer;
   return (
     <li data-testid={`panel-line-${line.key}`} data-status={line.status}>
-      <span className={q.panelName}>{said(line.name)}</span>
+      <span className={q.panelName}>{settled ? <Plain text={answer} /> : said(line.name)}</span>
       {line.status === "answered" ? (
-        answer ? (
+        answer && !settled ? (
           <span className={q.panelAnswer}>
             <Plain text={answer} />
           </span>
@@ -230,7 +232,7 @@ function PanelLine({
             ? line.waiting_for.map((w, i) => (
                 <span key={w.key}>
                   {i ? ", " : ""}
-                  <button type="button" className={k.linkish} onClick={() => onOpen(w.stage)}>
+                  <button type="button" className={k.linkish} onClick={() => onOpen(w.stage, w.key)}>
                     {w.name}
                   </button>
                 </span>

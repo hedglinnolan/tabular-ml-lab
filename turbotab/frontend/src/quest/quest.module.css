@@ -224,6 +224,32 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+/* A line no card can answer yet (FOUNDATION §3, "Not available yet"): quiet, never a control. */
+.line[data-unavailable] .lineName,
+.line[data-held] .lineName {
+  color: var(--muted);
+}
+.lineLabel {
+  flex: 0 0 auto;
+  font-size: 13.5px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+/* A line brought into view by a request clears the sticky header, with a little air. */
+.line,
+.lineOpen,
+.cardTitle {
+  scroll-margin-top: calc(var(--header-h, 54px) + 16px);
+}
+.line:focus,
+.lineOpen:focus {
+  outline: none;
+}
+.line:focus-visible,
+.lineOpen:focus-visible {
+  outline: 2px solid var(--focus, currentColor);
+  outline-offset: 4px;
+}
 .lineAnswer {
   margin: 0;
   font-size: 15px;
@@ -284,6 +310,18 @@
 .stageHost {
   min-width: 0;
   min-height: 420px;
+  /* Wide content scrolls in its own container, never the page (FOUNDATION §3: a narrow window
+     must not break). */
+  overflow-x: auto;
+}
+/* A narrow window: the stage's head (the preview's pill, its title, what is recorded and the record
+   button) wraps onto lines of its own rather than squeezing the title out (today's stage keeps one
+   row; the shell's narrow tapestry is the one place it cannot). */
+@media (max-width: 640px) {
+  .stageHost :global([data-testid="stage"]) div:has(> :global([data-testid="stage-title"])) {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
 }
 .fit {
   display: flex;
