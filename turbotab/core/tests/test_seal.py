@@ -19,6 +19,7 @@ from turbotab.core import seal
 from turbotab.core.decisions import (
     DecisionLog, DecisionRecord, GrainSpec, ProjectState, Refusal, RepeatSpec, SplitSpec, TemporalSpec,
 )
+from turbotab.core.events import EventBus
 from turbotab.core.graph import Bundle
 from turbotab.core.models.baseline import MIN_GAIN, versus_baseline
 from turbotab.core.models.inner_cv import inner_splits, with_grouped_inner_cv
@@ -566,6 +567,102 @@ def test_every_decision_after_the_opening_is_marked_post_seal(tmp_path):
     assert [r.post_seal for r in DecisionLog(log.path).records()] == [False, False, True, True]
     slots = {"models"}
     assert seal.post_seal_changes(log.records(), slots) == [undo.id]  # `after` is reverted
+
+
+def predict_log() -> list[DecisionRecord]:
+    """A Predict project on dietary_recalls.csv up to its opening: one noticing dismissed and one
+    deferred before it, so the ``findings`` slot holds dispositions that repair nothing."""
+    return [
+        record(1, d.SetLens(lenses=["dietary"])),
+        record(2, d.SetTarget(column="hba1c")),
+        record(3, d.SetPurpose(purpose="prediction")),
+        record(4, d.SetRoles(roles=dict(DIETARY_ROLES))),
+        record(5, d.SetMissing(strategy="complete_case")),
+        record(6, d.SetGrain(grain="repeated", id_column="participant_id")),
+        record(7, d.SetUnit(unit="row")),
+        record(8, d.SetSplit(holdout=0.25, seed=0, folds=5)),
+        record(9, d.SelectModels(models=["linear", "elastic_net"])),
+        record(10, d.DismissFinding(finding_id="pack::dietary::compositional")),
+        record(11, d.DeferFinding(finding_id="pack::dietary::implausible_intake", to="exclusions")),
+        record(12, d.OpenSeal(family="elastic_net", target="hba1c", n_holdout=150, metric="mse",
+                              scores={"linear": {"mse": 0.75}, "elastic_net": {"mse": 0.71}}), "open"),
+    ]
+
+
+@pytest.fixture
+def held_engine(runner, tmp_path):
+    """The real stage graph's engine with every stage held, so it keys a state and computes
+    nothing: ``keys(records)`` is the engine's own key for each stage under their fold."""
+    from turbotab.core.graph import Engine, ProjectContext
+
+    states: dict[str, ProjectState] = {}
+    engine = Engine(graph_factory="turbotab.core.stages:build_graph", runner=runner, bus=EventBus(),
+                    project_ctx=lambda pid: ProjectContext(
+                        project_id=pid, state=states[pid], cache_root=tmp_path / pid / "cache",
+                        paths={}, settings={}, fingerprint="fp-1"),
+                    hold=lambda stage, view: "held")
+
+    def keys(records: list[DecisionRecord]) -> dict[str, str | None]:
+        pid = f"p{len(states)}"
+        states[pid] = d.fold(records)
+        engine.on_decision(pid)
+        return engine.keys(pid)
+
+    yield engine, keys
+    engine.shutdown()
+
+
+def test_the_seal_keys_every_stage_as_the_engine_does(held_engine):
+    """The seal compares its keys with the key of the fit the engine serves, so the two are one
+    rule. A dismissed or deferred noticing repairs nothing: the engine keys the ``findings`` slot
+    by its applied repairs alone (``graph.KEY_VIEWS``), and the seal must too."""
+    engine, keys = held_engine
+    for records in (predict_log(), predict_log()[:9]):
+        state = d.fold(records)
+        assert seal.keys_for(engine.graph, state, "fp-1") == keys(records)
+    # The case discriminates: the fit is keyed, and its slot holds dispositions no repair applied.
+    assert keys(predict_log())["fit"] is not None
+    assert set(d.fold(predict_log()).findings) == {"pack::dietary::compositional",
+                                                   "pack::dietary::implausible_intake"}
+
+
+def test_a_noticing_set_aside_is_no_change_to_the_fit_the_seal_opened_on(held_engine):
+    """Both ways (Predict Results' "from a fit changed after the opening" reads it): with the
+    opening the last record, the fit served is by construction the one it opened on, whatever was
+    dismissed or deferred before it; after it, a dismissal changes only a disposition no repair
+    applied, and a triage of the noticings (the server refuses it there; folded here) only the
+    ``sweeps`` slot, which no stage reads. A new exclusion changes the rows the fit reads, and an
+    applied repair the data: each is a changed fit, among the post-seal decisions that changed it."""
+    engine, keys = held_engine
+    graph = engine.graph
+    opened = predict_log()
+    assert seal.changed_after_seal(graph, opened, "fp-1", keys(opened)["fit"]) is False
+
+    set_aside = [*opened,
+                 record(13, d.DismissFinding(finding_id="binary_text__sex"), post_seal=True),
+                 record(14, d.ConfirmSweep(stage="results", sweep="noticings", lines=[
+                     d.SweptLine(id="finding:voice::repeats__participant_id",
+                                 key="voice::repeats__participant_id", value="no_change")]),
+                        post_seal=True)]
+    changed = seal.changed_after_seal(graph, set_aside, "fp-1", keys(set_aside)["fit"])
+    assert changed is False
+    # The served note, composed as the server composes it (``ProjectService._served_fit``).
+    at = seal.reported_result(set_aside, opened=True, changed=changed)
+    assert at["current"] is True and at["note"].endswith(": the reported result.")
+
+    rule = d.ExclusionRule(column="energy_kcal", low=500, high=5000, reason="implausible intake")
+    excluded = [*set_aside, record(15, d.SetExclusions(rules=[rule]), "exclude", post_seal=True)]
+    changed = seal.changed_after_seal(graph, excluded, "fp-1", keys(excluded)["fit"])
+    assert changed is True
+    assert "exclude" in seal.post_seal_changes(excluded, seal.slots_read_by(graph, "fit"))
+    at = seal.reported_result(excluded, opened=True, changed=changed)
+    assert at["current"] is False and "from a fit changed after it" in at["note"]
+    # A repair applied to a noticing does change the data the fit reads, through the same slot.
+    repaired = [*set_aside, record(15, d.ApplyRepair(finding_id="pack::dietary::implausible_intake",
+                                                     option="exclude_implausible"), "repair",
+                                   post_seal=True)]
+    assert seal.changed_after_seal(graph, repaired, "fp-1", keys(repaired)["fit"]) is True
+    assert "repair" in seal.post_seal_changes(repaired, seal.slots_read_by(graph, "fit"))
 
 
 def test_the_post_seal_sentence_keeps_a_data_value_or_an_acronym_as_it_is():

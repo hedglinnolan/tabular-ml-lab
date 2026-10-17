@@ -1045,23 +1045,12 @@ def state_at_opening(records: Sequence[Any]) -> ProjectState | None:
 
 
 def keys_for(graph: Any, state: ProjectState, fingerprint: str) -> dict[str, str | None]:
-    """Every stage's key under ``state``, computed as the engine computes it (``Engine._compute_keys``)."""
-    from turbotab.core.graph import stage_key
+    """Every stage's key under ``state``, by the engine's own rule (``graph.stage_keys``, which
+    ``Engine._compute_keys`` reads): each slot is keyed by its view, so a noticing dismissed or
+    deferred, which repairs nothing, changes no fit here as it changes none there."""
+    from turbotab.core.graph import stage_keys
 
-    values = state.model_dump(mode="json")
-    keys: dict[str, str | None] = {}
-    missing: dict[str, list[str]] = {}
-    for stage in graph.order():
-        miss = [slot for slot in stage.requires if values.get(slot) is None]
-        for dep in stage.deps:
-            miss.extend(missing[dep])
-        missing[stage.name] = miss
-        if miss:
-            keys[stage.name] = None
-            continue
-        keys[stage.name] = stage_key(stage, {d: keys[d] for d in stage.deps},
-                                     {slot: values.get(slot) for slot in stage.reads}, fingerprint)
-    return keys
+    return stage_keys(graph.order(), state.model_dump(mode="json"), fingerprint)
 
 
 def slots_read_by(graph: Any, stage: str) -> set[str]:
