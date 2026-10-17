@@ -76,7 +76,9 @@ export const FIT_CAP = 900_000;
  * the banner. Returns whether Fit was pressed.
  *
  * The waits are bounded by what is computing, not by a flat time: a fit goes on being waited for
- * while the fit job runs (up to 15 minutes), and fails once none has run for ``timeout``. A fit
+ * while the fit job runs (up to ``FIT_CAP``, 15 minutes), and fails once none has run for
+ * ``timeout``. The test's own budget (``test.setTimeout``) has to hold that wait as well, or the
+ * budget ends it first: a journey adds ``FIT_CAP`` to the rest of its time for each fit it waits for. A fit
  * held for the press (its measured estimates sum past two minutes, which a slower runner reaches
  * with the families a journey chose) computes only after the press, so the wait for the result
  * after it covers the whole fit: it ends when the result shows, or when the fit job has not been
@@ -129,9 +131,11 @@ export function pidOf(page: Page): string {
 export const ANY_STAGE = "*";
 
 /**
- * The stages the server says are queued or running, read the way the project's own screen reads
- * them. The quest shell at /p/:pid draws no work chips, so a journey there asks the server (the
- * project's GET, on tables that are not wide: a journey on a wide table walks today's screen).
+ * The stages the server says are queued or running, from the project's GET (on tables that are not
+ * wide: a journey on a wide table walks today's screen). The quest shell draws the work chips too
+ * (QuestScreen's header), but a chip is drawn only for a status that carries a job, and a light
+ * stage, run in the server's thread pool and not as a job (graph.py ``_start``), reads running with
+ * none; a journey that waits on what is computing asks the server, which names every stage that is.
  */
 async function busyOnServer(page: Page): Promise<string[]> {
   const pid = /\/p\/([^/]+)$/.exec(new URL(page.url()).pathname)?.[1];
@@ -151,8 +155,9 @@ async function busyOnServer(page: Page): Promise<string[]> {
  * chip in the header that the app draws for each (``job-<stage>``, from the statuses the server
  * pushes; every stage named here is a heavy one, so it has a job), or any chip for ``ANY_STAGE``:
  * the page is read and the server asked nothing, which matters on a wide table, where the
- * project's GET recomputes the models card. The quest shell draws no chips, so there the server's
- * statuses are read (:func:`busyOnServer`).
+ * project's GET recomputes the models card. On the quest shell (/p/:pid) the server's statuses are
+ * read instead (:func:`busyOnServer`): the shell draws the same chips, but a light stage computing
+ * has none, and ``ANY_STAGE`` there means any stage, not any chip.
  */
 export async function stagesComputing(
   page: Page,
@@ -223,6 +228,23 @@ export async function visibleWhileComputing(
   return { waited: shown.waited, firstBusy: shown.firstBusy };
 }
 
+/**
+ * ``target``'s attribute ``name`` equal to ``value``, waiting while any of the ``stages`` is
+ * computing (up to ``cap``): the counterpart of :func:`visibleWhileComputing` for a state the page
+ * marks. The wait ends once none has computed for ``quiet`` and the mark is still not there.
+ */
+export async function attributeWhileComputing(
+  page: Page,
+  target: Locator,
+  name: string,
+  value: string,
+  stages: readonly string[],
+  { quiet = 60_000, cap = 600_000, label = `${name} is ${value}` }: { quiet?: number; cap?: number; label?: string } = {},
+): Promise<void> {
+  const shown = await waitWhileComputing(page, async () => (await target.getAttribute(name, { timeout: 1_000 })) === value, stages, { quiet, cap });
+  if (!shown.done) await expect(target, `${label} (waited ${shown.waited} s; ${shown.seen})`).toHaveAttribute(name, value, { timeout: 1_000 });
+}
+
 /** A family of the shelf with the fit time the server measured for it (null: none was). */
 export interface ShelfEstimate {
   key: string;
@@ -274,18 +296,33 @@ export async function cheapestFamily(page: Page, among: readonly string[]): Prom
  * noticings kept as recommended, an "act on it" noticing recorded as a limitation), the first is
  * taken; a way forward refused in turn shows its own, taken next. Once nothing is refused, "open
  * the seal" is pressed again. Returns the labels taken, in order.
+ *
+ * A way forward is a decision the stages read (a noticing's disposition, the selection), so what
+ * it changes may recompute before the card moves on: the waits after a press go on while the app
+ * computes (up to the cap) and end once nothing has for ``quiet``, not after a flat time. The
+ * answer to a press (the decisions POST) is one round trip, which no computing bounds.
  */
-export async function openSealCard(page: Page, rounds = 16): Promise<string[]> {
+export async function openSealCard(page: Page, rounds = 16, { quiet = 30_000 }: { quiet?: number } = {}): Promise<string[]> {
   const card = page.getByTestId("open-seal-card");
   const refused = card.getByTestId("open-seal-refused");
   const taken: string[] = [];
   // What the last press left: the card gone (opened), a refusal, or neither (a way forward
   // recorded, the opening still to press).
-  const outcome = async () =>
-    Promise.race([
-      refused.waitFor({ state: "visible", timeout: 30_000 }).then(() => "refused" as const),
-      card.waitFor({ state: "detached", timeout: 30_000 }).then(() => "opened" as const),
-    ]).catch(() => "neither" as const);
+  const outcome = async () => {
+    // Read once: the page can change between two looks, and a refusal seen and then gone is not
+    // an opening.
+    let seen = null as "refused" | "opened" | null;
+    const left = await waitWhileComputing(
+      page,
+      async () => {
+        seen = (await refused.isVisible()) ? "refused" : (await card.count()) === 0 ? "opened" : null;
+        return seen !== null;
+      },
+      [ANY_STAGE],
+      { quiet, cap: 600_000 },
+    );
+    return left.done && seen !== null ? seen : ("neither" as const);
+  };
   await card.getByTestId("open-seal").click();
   for (let i = 0; i < rounds; i++) {
     const now = await outcome();
@@ -305,7 +342,8 @@ export async function openSealCard(page: Page, rounds = 16): Promise<string[]> {
     );
     await exit.click();
     await answered;
-    await expect(card.getByTestId("open-seal"), "the way forward was answered").toBeEnabled({ timeout: 30_000 }).catch(() => {});
+    // The opening can be pressed again once what the answer changed has recomputed.
+    await waitWhileComputing(page, async () => (await card.count()) === 0 || (await card.getByTestId("open-seal").isEnabled()), [ANY_STAGE], { quiet, cap: 600_000 });
     if (!(await card.count())) return taken;
     const again = await refused.waitFor({ state: "visible", timeout: 2_000 }).then(() => true, () => false);
     if (!again && (await card.count())) await card.getByTestId("open-seal").click();

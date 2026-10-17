@@ -31,7 +31,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
 import { confirmAsk, confirmStageAsk } from "./ask";
 import { toClassic } from "./classic";
-import { FIT_CAP, FIT_QUIET, cheapestFamily, fitOnceComputed, openSealCard, shelfEstimates, visibleWhileComputing } from "./fit";
+import { ANY_STAGE, FIT_CAP, FIT_QUIET, attributeWhileComputing, cheapestFamily, fitOnceComputed, openSealCard, shelfEstimates, visibleWhileComputing } from "./fit";
 import { nhanesExport } from "./nhanes";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -42,6 +42,11 @@ const SCREENS = resolve(ROOT, "docs/turbotab-next/m2/screens");
 const RESULTS = resolve(HERE, "../test-results");
 const MAX_SCREEN_BYTES = 300 * 1024;
 const FRAMES = [0, 150, 300, 450, 600, 900];
+
+/** The rest of a journey, apart from the waits for a fit: a journey that waits for a fit gets
+ *  this and that wait's cap (``FIT_CAP``) for each, so the wait that goes on while the fit job
+ *  runs is not cut short by the test's own budget. */
+const REST_OF_JOURNEY = 600_000;
 
 interface StageHook {
   manual: (v: boolean) => void;
@@ -333,14 +338,16 @@ async function seal(page: Page, basis: string, name: string, themes?: ("light" |
  * no held-out score is on screen; after, each family's held-out score is, once.
  */
 async function openSeal(page: Page, journey: string): Promise<number> {
+  // The Results are drawn sealed, and the Record names the opening: the waits for both go on while
+  // the app computes, not for a flat time.
   const results = page.getByTestId("results");
-  await expect(results).toHaveAttribute("data-seal-phase", "sealed", { timeout: 60_000 });
+  await attributeWhileComputing(page, results, "data-seal-phase", "sealed", [ANY_STAGE], { label: "the Results are sealed" });
   const cmp = page.getByTestId("model-comparison");
   await expect(cmp.getByTestId("held-out-cell-sealed").first()).toBeVisible();
   await expect(cmp).not.toContainText(/held out [−\d]/);
   // The Record names the last step and goes to the one card that opens the seal.
   const step = page.getByTestId("open-seal-step");
-  await expect(step).toBeVisible({ timeout: 30_000 });
+  await visibleWhileComputing(page, step, [ANY_STAGE], { label: "the Record names the opening" });
   await step.scrollIntoViewIfNeeded();
   await step.getByTestId("go-open-seal").click();
   const card = page.getByTestId("open-seal-card");
@@ -354,6 +361,9 @@ async function openSeal(page: Page, journey: string): Promise<number> {
     // several families the final model is then named on cross-validation, the card's first way
     // forward (e2e/fit.ts openSealCard).
     await openSealCard(page);
+    // The opening is a record no stage reads (none of the graph's stages reads the seal slot), so
+    // nothing computes after it: the sentence and the opened scores are an answer already served,
+    // and these two waits are for a render, not for work that a computing stage would bound.
     await expect(page.getByTestId("decision-open_seal")).toBeVisible({ timeout: 30_000 });
     await expect(results).toHaveAttribute("data-seal-phase", "opened", { timeout: 60_000 });
   });
@@ -439,7 +449,7 @@ test.describe.configure({ mode: "default" });
 test("dietary recalls: the grain asked, repeats stated, one row per person, the mean, the seal opened once", async ({
   page,
 }) => {
-  test.setTimeout(600_000);
+  test.setTimeout(REST_OF_JOURNEY + FIT_CAP); // the rest, and one fit (held for the press: computed only after it)
   const run = await start(page, "dietary");
   const T = timings.dietary!;
   T.open_s = await timed(() => openPath(page, resolve(SAMPLES, "dietary_recalls.csv")));
@@ -516,7 +526,7 @@ test("dietary recalls: the grain asked, repeats stated, one row per person, the 
 // ── clinical ─────────────────────────────────────────────────────────────────────────────────
 
 test("clinical longitudinal: an impossible value repaired, time points, temporal, a chronological seal", async ({ page }) => {
-  test.setTimeout(600_000);
+  test.setTimeout(REST_OF_JOURNEY + FIT_CAP); // the rest, and one fit (held for the press: computed only after it)
   const run = await start(page, "clinical");
   const T = timings.clinical!;
   T.open_s = await timed(() => openPath(page, resolve(SAMPLES, "clinical_longitudinal.csv")));
@@ -609,7 +619,7 @@ function featureMajorCopy(): string {
 test("metabolomics exported features-in-rows: orientation first, the turn, then diagnosis on the turned table", async ({
   page,
 }) => {
-  test.setTimeout(600_000);
+  test.setTimeout(REST_OF_JOURNEY); // no fit is waited for
   const run = await start(page, "metabolomics");
   const T = timings.metabolomics!;
   const path = featureMajorCopy();
@@ -660,7 +670,7 @@ test("metabolomics exported features-in-rows: orientation first, the turn, then 
 // ── genomics ─────────────────────────────────────────────────────────────────────────────────
 
 test("genomics expression: the wide path, the roles searched, elastic net first with its cost", async ({ page }) => {
-  test.setTimeout(600_000);
+  test.setTimeout(REST_OF_JOURNEY + FIT_CAP); // the rest, and one fit (held for the press: computed only after it)
   const run = await start(page, "genomics");
   const T = timings.genomics!;
   T.open_s = await timed(() => openPath(page, resolve(SAMPLES, "genomics_expression.csv")));
@@ -724,7 +734,7 @@ test("genomics expression: the wide path, the roles searched, elastic net first 
 // ── survey ───────────────────────────────────────────────────────────────────────────────────
 
 test("survey sentinels: codes set to missing, previewed then applied, and the event level asked", async ({ page }) => {
-  test.setTimeout(600_000);
+  test.setTimeout(REST_OF_JOURNEY); // no fit is waited for
   const run = await start(page, "survey");
   const T = timings.survey!;
   T.open_s = await timed(() => openPath(page, resolve(SAMPLES, "survey_sentinels.csv")));
@@ -772,9 +782,10 @@ test("survey sentinels: codes set to missing, previewed then applied, and the ev
 test("NHANES: SAS zeros repaired, the grain stated, meds_hbp kept as a Missing level, the seal opened once", async ({
   page,
 }) => {
-  // 1,500 s: the fit 900 s at most (fitOnceComputed's cap: a fit held for the press computes only
-  // after it), and the rest of the journey 600 s, its post-seal refit included.
-  test.setTimeout(1_500_000);
+  // The rest of the journey, and two waits for a fit, each up to its cap while the fit job runs:
+  // the fit (held for the press, it computes only after it: fitOnceComputed) and the refit after
+  // the post-seal change (a whole fit; it took longer than the first one when this was measured).
+  test.setTimeout(REST_OF_JOURNEY + 2 * FIT_CAP);
   const run = await start(page, "nhanes");
   const T = timings.nhanes!;
   T.open_s = await timed(() => openPath(page, NHANES));
