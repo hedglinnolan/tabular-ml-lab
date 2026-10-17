@@ -166,16 +166,10 @@ def test_a_yes_no_outcome_gets_its_held_out_baseline_and_no_verdict(tmp_path: Pa
     assert detail["versus_baseline"] is None
 
 
-def test_a_class_outcome_and_a_time_to_event_get_their_held_out_baseline_and_no_verdict(
-        tmp_path: Path):
-    """A three-class outcome: the training rows' class prior on every held-out row, by numpy: log
-    loss −mean(log p[class]), accuracy the share of the training rows' most common class, macro-F1
-    that class's F1 (precision its held-out share, recall 1) over the three classes. A time to
-    event: one risk for everyone, Harrell's C ½ (it orders no pair), and a Brier score at the
-    horizon. Neither serves an interval for the gain, so neither gets a verdict."""
-    from turbotab.core.decisions import FollowUpSpec
-    from turbotab.core.tests.stage_harness import Ingested
-
+def _class_and_survival_frame() -> pd.DataFrame:
+    """400 rows, two predictors, a three-class outcome ``mc`` and a time to event (``time``,
+    ``dead``) that both follow ``lp = 0.8·x1 − 0.5·x2``: exponential event times with rate
+    ``exp(lp)/4`` censored by a uniform(0.5, 8) follow-up, so no two times tie."""
     rng = np.random.default_rng(29)
     n = 400
     x = rng.normal(size=(n, 2))
@@ -186,17 +180,30 @@ def test_a_class_outcome_and_a_time_to_event_get_their_held_out_baseline_and_no_
                                                0, 2)]})
     t_event, t_cens = rng.exponential(np.exp(-lp) * 4), rng.uniform(0.5, 8, n)
     frame["time"], frame["dead"] = np.minimum(t_event, t_cens), (t_event <= t_cens).astype(int)
+    return frame
 
-    def run(name: str, columns: list[str], state: Any) -> tuple[Any, dict[str, Any]]:
-        source = tmp_path / f"{name}.csv"
-        frame[columns].to_csv(source, index=False)
-        split, fit = _fit_stages(Ingested(source, tmp_path / name), state)
-        return split, _served(fit, opened=True)["models"][0]
 
-    split, model = run("mc", ["id", "x1", "x2", "mc"], _state("multiclass", "mc", ["linear"]))
+def _run(tmp_path: Path, frame: pd.DataFrame, name: str, state: Any) -> tuple[Any, dict[str, Any]]:
+    """The split and the first family as served after the opening, for ``frame`` under ``state``."""
+    from turbotab.core.tests.stage_harness import Ingested
+
+    source = tmp_path / f"{name}.csv"
+    frame.to_csv(source, index=False)
+    split, fit = _fit_stages(Ingested(source, tmp_path / name), state)
+    return split, _served(fit, opened=True)["models"][0]
+
+
+def test_a_class_outcome_gets_its_held_out_baseline_and_no_verdict(tmp_path: Path):
+    """A three-class outcome: the training rows' class prior on every held-out row, by numpy: log
+    loss −mean(log p[class]), accuracy the share of the training rows' most common class, macro-F1
+    that class's F1 (precision its held-out share, recall 1) over the three classes. No interval
+    is served for the gain, so no verdict."""
+    frame = _class_and_survival_frame()
+    split, model = _run(tmp_path, frame[["id", "x1", "x2", "mc"]], "mc",
+                        _state("multiclass", "mc", ["linear"]))
     train, held = _split_rows(split)
     y_train, y_held = frame["mc"].to_numpy()[train], frame["mc"].to_numpy()[held]
-    prior = {c: float(np.mean(y_train == c)) for c in levels}
+    prior = {c: float(np.mean(y_train == c)) for c in np.unique(y_train)}
     common = max(prior, key=prior.get)
     share = float(np.mean(y_held == common))
     want = {"log_loss": float(-np.mean([np.log(prior[c]) for c in y_held])), "accuracy": share,
@@ -208,12 +215,81 @@ def test_a_class_outcome_and_a_time_to_event_get_their_held_out_baseline_and_no_
         assert detail["baseline"]["scores"][metric] == pytest.approx(value, rel=TOL, abs=TOL), metric
     assert detail["versus_baseline"] is None
 
+
+def test_a_time_to_event_gets_its_held_out_baseline_as_lifelines_scores_it_and_no_verdict(
+        tmp_path: Path):
+    """A time to event, scored at the declared horizon h = 2: one risk for everyone, so Harrell's
+    C is ½ (it orders no pair), and the Brier score at h by lifelines (Graf et al. 1999): the risk
+    1 − exp(−H(h)) from the Nelson–Aalen cumulative hazard of the training rows, and each
+    held-out row's loss weighted by the Kaplan–Meier survival of censoring on the held-out rows,
+    G: an event by h loses (1 − risk)²/G(T−) (the left limit at its time), a row still followed
+    past h loses risk²/G(h), and a row censored before h loses 0. No interval is served for the
+    gain, so no verdict."""
+    from lifelines import KaplanMeierFitter, NelsonAalenFitter
+
+    from turbotab.core.decisions import FollowUpSpec
+
+    frame = _class_and_survival_frame()
+    h = 2.0
     tte = _state("time_to_event", "dead", ["cox"], event="1",
-                 follow_up=FollowUpSpec(time_column="time", prediction_horizon=2.0))
-    _, model = run("tte", ["id", "x1", "x2", "time", "dead"], tte)
+                 follow_up=FollowUpSpec(time_column="time", prediction_horizon=h))
+    split, model = _run(tmp_path, frame[["id", "x1", "x2", "time", "dead"]], "tte", tte)
+    train, held = _split_rows(split)
+    time, dead = frame["time"].to_numpy(), frame["dead"].to_numpy()
+    hazard = NelsonAalenFitter(nelson_aalen_smoothing=False).fit(time[train], dead[train])
+    risk = float(-np.expm1(-hazard.cumulative_hazard_at_times([h]).iloc[0]))
+    censoring = KaplanMeierFitter().fit(time[held], 1 - dead[held])
+
+    def G(t: Any) -> np.ndarray:
+        return censoring.survival_function_at_times(t).to_numpy()
+
+    t_held, d_held = time[held], dead[held]
+    died, alive = (d_held == 1) & (t_held <= h), t_held > h
+    loss = np.zeros(len(held))
+    loss[died] = (1 - risk) ** 2 / G(np.nextafter(t_held[died], -np.inf))
+    loss[alive] = risk ** 2 / G([h])[0]
+    assert died.sum() >= 10 and alive.sum() >= 10 and (~died & ~alive).sum() >= 1
     detail = model["holdout_detail"]
     assert detail["baseline"]["label"] == "one risk for everyone"
     assert set(detail["baseline"]["scores"]) == set(model["holdout"]) == {"c_index", "brier_t"}
     assert detail["baseline"]["scores"]["c_index"] == 0.5
-    assert 0 < detail["baseline"]["scores"]["brier_t"] < 1
+    assert detail["baseline"]["scores"]["brier_t"] == pytest.approx(float(loss.mean()), rel=TOL,
+                                                                    abs=TOL)
+    assert detail["versus_baseline"] is None
+
+
+def test_an_ordered_outcome_gets_its_held_out_baseline_and_no_verdict(tmp_path: Path):
+    """An ordered outcome of four numeric levels: the training rows' level prior p on every
+    held-out row, by numpy with F the cumulative prior: C ½ (one mean level for every row orders
+    no pair), the ranked probability score mean over rows of Σₖ (Fₖ − 1{y ≤ k})²/(K − 1) over the
+    K − 1 cut-points, log loss −mean(log p[y]) (and scikit-learn's), and the absolute error in
+    levels against the predictive median, the lowest level where F reaches ½. No interval is
+    served for the gain, so no verdict."""
+    from sklearn.metrics import log_loss
+
+    rng = np.random.default_rng(31)
+    n = 400
+    x = rng.normal(size=(n, 2))
+    grade = 1 + np.digitize(x @ np.array([0.9, -0.4]) + rng.logistic(size=n), [-1.5, 0.0, 1.5])
+    frame = pd.DataFrame({"id": np.arange(n), "x1": x[:, 0], "x2": x[:, 1], "grade": grade})
+    split, model = _run(tmp_path, frame, "ord", _state("ordinal", "grade", ["proportional_odds"]))
+    train, held = _split_rows(split)
+    K = 4
+    codes_train, codes_held = grade[train] - 1, grade[held] - 1
+    prior = np.bincount(codes_train, minlength=K) / len(codes_train)
+    F = np.cumsum(prior)
+    assert np.all(prior > 0) and np.min(np.abs(F[:-1] - 0.5)) > 1e-6  # the median is unambiguous
+    observed = codes_held[:, None] <= np.arange(K - 1)[None, :]
+    median = int(np.argmax(F >= 0.5))
+    want = {"c_index": 0.5,
+            "rps": float(np.mean(np.sum((F[None, :-1] - observed) ** 2, axis=1) / (K - 1))),
+            "log_loss": float(-np.mean(np.log(prior[codes_held]))),
+            "mae_levels": float(np.mean(np.abs(median - codes_held)))}
+    assert want["log_loss"] == pytest.approx(
+        log_loss(codes_held, np.tile(prior, (len(held), 1)), labels=list(range(K))), rel=1e-12)
+    detail = model["holdout_detail"]
+    assert detail["baseline"]["label"] == "the level prior"
+    assert set(detail["baseline"]["scores"]) == set(model["holdout"]) == set(want)
+    for metric, value in want.items():
+        assert detail["baseline"]["scores"][metric] == pytest.approx(value, rel=TOL, abs=TOL), metric
     assert detail["versus_baseline"] is None

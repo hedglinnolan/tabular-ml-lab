@@ -2,9 +2,11 @@
  * Server-sent events -> the query cache. The server pushes; the client never polls.
  *
  *   decision  append the record to the cached view; refetch the view for the folded state
- *   stage     patch the stage status in place; refetch the view when the status changed
- *             (the Router's interview reads it); when a stage turns fresh with a key the
- *             cached result does not have, refetch that stage (and the table after ingest)
+ *   stage     patch the stage status in place; refetch the view and the quest log when the
+ *             status changed (the Router's interview reads it), and the methods' sections then
+ *             or when it turns fresh with a new key (they read the fresh stages); when a stage
+ *             turns fresh with a key the cached result does not have, refetch that stage (and
+ *             the table after ingest)
  *   job       store the JobView and mirror its progress onto the stage it serves
  *   resync    refetch everything under [pid]
  */
@@ -64,6 +66,12 @@ function applyStage(qc: QueryClient, pid: string, status: StageStatus): void {
     // The quest log counts what is answered and what is computed, and the fit lock says whether
     // the fit is held: a stage changing state (not a progress tick) reads it again.
     if (changedState(current, status)) void qc.invalidateQueries({ queryKey: keys.quest(pid), exact: true });
+    // The methods' sections (P8) are built from the fresh stages as well as the log (the fit's
+    // cross-validation paragraphs, the design's matrix), and pressing Fit records no decision: a
+    // stage changing state, or turning fresh for other answers, reads them again.
+    if (changedState(current, status) || (status.status === "fresh" && current?.key !== status.key)) {
+      void qc.invalidateQueries({ queryKey: keys.methodsSections(pid), exact: true });
+    }
     qc.setQueryData<ProjectView>(keys.view(pid), {
       ...view,
       stages: { ...view.stages, [status.stage]: status },

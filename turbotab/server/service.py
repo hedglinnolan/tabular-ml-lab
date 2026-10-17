@@ -2120,9 +2120,11 @@ class ProjectService:
 
     def methods_sections(self, pid: str) -> Any:
         """The methods in the export bundle's own sections and words (P8; W1 part 2 ruling 9): the
-        methods document the bundle builds (``bundle.contents``) from the project as it stands,
-        without the export's refusal, so the manuscript rail and the downloaded methods never
-        differ. It records nothing: no score is noted as seen and no lock as shown."""
+        methods document the bundle builds (``bundle.contents``) from the project as it stands
+        (the decision log and the fresh stages), without the export's refusal, so a read and a
+        download of the same project hold the same methods. The client reads it again on each
+        decision and on each stage changing state or fresh key (``src/api/events.ts``). It records
+        nothing: no score is noted as seen and no lock as shown."""
         from turbotab.core.export.bundle import contents
         from turbotab.core.export.methods import sections_of
 

@@ -166,8 +166,9 @@ class MethodsDocument(_Model):
 class MethodsSections(_Model):
     """The methods as the manuscript rail reads them (P8; W1 part 2 ruling 9): the export bundle's
     own sections, in its order and its words (TRIPOD+AI's under prediction, STROBE's with
-    STROBE-nut's otherwise), each line with its decision record's id where it has one, so the rail
-    and the downloaded methods never differ. ``count``: the lines in every section."""
+    STROBE-nut's otherwise), each line with its decision record's id where it has one. Built from
+    the decision log and the fresh stages as the bundle's methods are, so a read and a download of
+    the same project hold the same lines. ``count``: the lines in every section."""
 
     guideline: Guideline
     seen_from: int | None

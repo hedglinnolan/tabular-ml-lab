@@ -42,8 +42,9 @@ export const keys = {
   // M3: each is read from the decision log, so a decision event invalidates it (events.ts).
   readings: (pid: string) => [pid, "readings"] as const,
   methods: (pid: string) => [pid, "methods"] as const,
-  // P8: the methods in the bundle's sections, read from the log and the results as the bundle reads
-  // them, so a decision event invalidates it with the other log-derived keys.
+  // P8: the methods in the bundle's sections, read from the log and the fresh stages as the bundle
+  // reads them, so a decision event invalidates it with the other log-derived keys, and a stage
+  // event changing a stage's state or fresh key invalidates it too (events.ts).
   methodsSections: (pid: string) => [pid, "methods", "sections"] as const,
   plan: (pid: string) => [pid, "plan"] as const,
   files: (pid: string) => [pid, "files"] as const,

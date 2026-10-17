@@ -226,8 +226,8 @@ def methods_sections(request: Request, pid: str) -> MethodsSections:
     """The methods in the sections and words of the export bundle's methods (P8): TRIPOD+AI's
     sections under prediction, STROBE's with STROBE-nut's otherwise, each line with its decision
     record's id (null for a paragraph the analysis wrote and for the export's own sentence), and
-    how many lines there are. Built as the bundle builds them, without its refusal; reading it
-    records nothing."""
+    how many lines there are. Built as the bundle builds them, from the decision log and the fresh
+    stages as they stand, without its refusal; reading it records nothing."""
     return get_service(request).methods_sections(pid)
 
 
