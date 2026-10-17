@@ -52,15 +52,36 @@ export async function fitReached(page: Page, pid: string): Promise<boolean> {
 
 /**
  * Once the fit has computed (or is held for Fit), Fit pressed if the fit waits for it (the real
- * server; the mock serves it whole, so nothing is pressed there). Returns whether Fit was pressed.
+ * server; the mock serves it whole, so nothing is pressed there), and the result shown on the
+ * banner. Returns whether Fit was pressed.
+ *
+ * The waits are bounded by what is computing, not by a flat time: a fit goes on being waited for
+ * while the fit job runs (up to 15 minutes), and fails once none has run for ``timeout``. A fit
+ * held for the press (its measured estimates sum past two minutes, which a slower runner reaches
+ * with the families a journey chose) computes only after the press, so the wait for the banner
+ * after it covers the whole fit.
  */
 export async function fitOnceComputed(page: Page, timeout = 300_000): Promise<boolean> {
   const pid = pidOf(page);
-  await expect
-    .poll(async () => fitState(page, pid), { message: "the fit computes", timeout, intervals: [500] })
-    .not.toBe("pending");
+  const cap = Math.max(timeout, 900_000);
+  const start = Date.now();
+  let busyAt = start;
+  while ((await fitState(page, pid)) === "pending") {
+    if ((await stagesComputing(page, ["fit"])).computing) busyAt = Date.now();
+    if (Date.now() - busyAt >= timeout || Date.now() - start >= cap) break;
+    await page.waitForTimeout(500);
+  }
+  expect(await fitState(page, pid), "the fit computes").not.toBe("pending");
   if ((await fitState(page, pid)) === "served") return false;
   await pressFit(page, timeout);
+  // The banner shows the result once the fit is served (today's screen; the shell has no banner).
+  if (await page.getByTestId("banner-result").count()) {
+    await visibleWhileComputing(page, page.getByTestId("banner-result-value"), ["fit"], {
+      quiet: Math.min(timeout, 120_000),
+      cap,
+      label: "the fit's result is shown",
+    });
+  }
   return true;
 }
 

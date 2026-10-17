@@ -28,7 +28,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { confirmAsk, confirmParts } from "./ask";
 import { toClassic } from "./classic";
-import { fitOnceComputed } from "./fit";
+import { ANY_STAGE, fitOnceComputed, visibleWhileComputing } from "./fit";
 import { nhanesExport } from "./nhanes";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -520,9 +520,26 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
     await page.keyboard.press("Space");
   }
   await expect(page.getByTestId("record-models")).toHaveText("Fit these 3 families");
+  // Enter records only while no earlier answer is still being recorded: the card's button is
+  // disabled and its list busy until the server's response to the confirmations just pressed has
+  // come back, and a key pressed meanwhile is dropped (record/Options.tsx). The server records a
+  // confirmation, and the card shows it, a beat before that response arrives, which on a busy CI
+  // server is long enough to press into. So the press waits for the button, as a person's does,
+  // for as long as any stage computes.
+  await visibleWhileComputing(page, page.getByTestId("record-models").and(page.locator(":enabled")), [ANY_STAGE], {
+    quiet: 60_000,
+    cap: 300_000,
+    label: "the families button is enabled",
+  });
   await page.keyboard.press("Enter");
-  // Recorded once the server answers, which may take longer than 10 s on a shared CI runner.
-  await expect(page.getByTestId("decision-models")).toContainText("Three model families", { timeout: 60_000 });
+  // The Record shows the answer once the server's response arrives. A busy server answers late, so
+  // the wait goes on while any stage computes (up to the cap), and ends once none has for a minute.
+  await visibleWhileComputing(page, page.getByTestId("decision-models"), [ANY_STAGE], {
+    quiet: 60_000,
+    cap: 300_000,
+    label: "the families are recorded",
+  });
+  await expect(page.getByTestId("decision-models")).toContainText("Three model families");
 
   // ── the fit, Fit pressed, then the Results (the stage's live view once fitted) ───────────
   measurements.fit_s = await timed(async () => {
