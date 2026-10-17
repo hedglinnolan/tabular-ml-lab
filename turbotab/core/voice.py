@@ -2421,7 +2421,8 @@ def _set_intended_use(d: Any, state: Any, ctx: Any) -> str:
     (``turbotab/core/models/decision_curve.py``)."""
     from turbotab.core.models.decision_curve import intended_use_sentence
 
-    return intended_use_sentence(d, state)
+    task = getattr(state, "task", None) or _get(ctx, "detected_task")  # answered, else detected
+    return intended_use_sentence(d, state, task)
 
 
 @register_sentence("set_updating")

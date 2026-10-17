@@ -295,3 +295,22 @@ def test_4_the_intended_use_sentences_verbatim():
         "The regression's coefficients were shrunk by the calibration slope as model updating, and "
         "its intercept re-estimated with the shrunk linear predictor as an offset (TRIPOD+AI 12f; "
         "Steyerberg 2019).")
+
+
+@pytest.mark.parametrize("given", [{"task": "regression"}, {"detected": "regression"}])
+def test_4_a_numeric_outcome_s_intended_use_names_no_classification_threshold(given):
+    """R-f 17: a numeric outcome is not classified, so its intended use says no decision threshold
+    was set, never a classification threshold; the task answered, or the one the target stage
+    detected where none was. Silent: a yes/no outcome, or one not known, says it as before."""
+    from turbotab.core import voice
+
+    use = d.SetIntendedUse(use="risk_estimation")
+    tail = "; no subgroup was named for performance; no fairness method beyond that report was "\
+           "applied (TRIPOD+AI 14)."
+    numeric = voice.sentence_for(use, d.ProjectState(task=given.get("task")),
+                                 {"detected_task": given.get("detected")})
+    assert numeric == ("The model was declared for estimating each person's outcome: no decision "
+                       "threshold was set" + tail)
+    for task in ("binary", None):
+        assert voice.sentence_for(use, d.ProjectState(task=task)) == (
+            "The model was declared for risk estimation: no classification threshold was set" + tail)
