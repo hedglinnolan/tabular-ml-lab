@@ -2120,9 +2120,11 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     if estimates and frontier >= STAGE_INDEX["writeup"]:
         frontier = STAGE_INDEX["results"]
     # Ruling R-a (W1-R round 2; FOUNDATION §7): under Predict the triage of open noticings is in
-    # Results, before the held-out rows open, so a noticing counts toward that triage, not toward
+    # Results, before the held-out rows open, so an open noticing waits for that triage, not for
     # the stage it is placed in: Models completes once its questions are answered and Fit is
-    # offered. Under Estimate (and with no goal) the triage is Models' own, and nothing changes.
+    # offered. One answered stays counted where it was answered, so no answered count falls when
+    # the goal becomes Predict (the path fuzzer's I11). Under Estimate (and with no goal) the
+    # triage is Models' own, and nothing changes.
     gate = sweeps.gate_stage(state)
     out = []
     for key, name in STAGES:
@@ -2133,7 +2135,8 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
         progress = None
         if reached:
             decide = [l for l in mine if l.label == DECIDE and l.counted
-                      and not (gate == "results" and key != gate and l.source == "finding")]
+                      and not (gate == "results" and key != gate and l.source == "finding"
+                               and l.status == "open")]
             swept = int(sweep is not None and sweep.answered)
             answered = sum(l.status == "answered" for l in decide) + swept
             required = len(decide) + int(sweep is not None)
