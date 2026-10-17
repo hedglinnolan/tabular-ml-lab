@@ -1383,8 +1383,35 @@ _ROLE_WORDS = {
 }
 
 
-def role_words(role: str | None) -> str:
-    return _ROLE_WORDS.get(str(role), str(role))
+# W1-R (the walkthrough of 2026-10-17, finding 3c): under Predict no column is studied and
+# nothing is adjusted for, so an exposure and a covariate are each a predictor (BEATS_PREDICT C1: a
+# predictor is the engine's covariate). The engine's roles stay as they are.
+_ROLE_WORDS_UNDER_PREDICT = {**_ROLE_WORDS, "exposure": "a predictor", "covariate": "a predictor"}
+
+
+def role_words(role: str | None, purpose: str | None = None) -> str:
+    """A role in words, under the declared ``purpose`` (None: unanswered, Estimate's words)."""
+    words = _ROLE_WORDS_UNDER_PREDICT if purpose == "prediction" else _ROLE_WORDS
+    return words.get(str(role), str(role))
+
+
+# The same finding, in a role's evidence: two of the roles stage's high-confidence reasons
+# (``stages.rows.propose_roles``) say why a column reads as its role in Estimate's words, a
+# nutrient "what you study" and a person's characteristic "usually adjusted for rather than
+# studied". Under Predict a reading the values settled keeps what the values showed and leaves the
+# study clause out; the stage's reasons stay as they are. The tests hold these clauses to the
+# stage's own reasons (``tests/test_estimate_words_under_predict.py``), so a reworded reason fails.
+_STUDY_CLAUSES = ((": what you study;", ";"), (", usually adjusted for rather than studied.", "."))
+
+
+def role_evidence(reason: str, purpose: str | None = None) -> str:
+    """The roles stage's ``reason`` for a role, said under the declared ``purpose``: under
+    prediction without its study clause (:data:`_STUDY_CLAUSES`), else as the stage said it."""
+    if purpose != "prediction":
+        return reason
+    for estimate, predict in _STUDY_CLAUSES:
+        reason = reason.replace(estimate, predict)
+    return reason
 
 
 def proposals_of(artifact: Any) -> list[dict[str, Any]]:
@@ -1537,11 +1564,13 @@ def confirm_exits(state: Any, columns: Sequence[str]) -> list[dict[str, Any]]:
     """One exit per unsettled role: its own confirmation, never one for all of them, and beside
     it each alternative the values cannot exclude (:data:`ROLE_ALTERNATIVES`)."""
     roles = getattr(state, "roles", None) or {}
+    purpose = _get(state, "purpose")
     out = []
     for c in columns:
         if c not in roles:
             continue
-        out.append(confirm_exit("role", c, roles[c], f"Confirm `{c}` as {role_words(roles.get(c))}"))
+        out.append(confirm_exit("role", c, roles[c],
+                                f"Confirm `{c}` as {role_words(roles[c], purpose)}"))
         for other, words in ROLE_ALTERNATIVES.get(str(roles[c]), ()):
             out.append(confirm_exit("role", c, other, f"`{c}` is {words}"))
     return out
@@ -2808,15 +2837,23 @@ def read_from_data(state: Any, *, roles: Any = None, target_info: Any = None,
         items.append({"kind": kind, "column": str(column), "value": value, "words": words,
                       "evidence": str(evidence or ""), "change": change})
 
+    purpose = _get(state, "purpose")
     for p in proposals_of(roles):
         column, role = str(p.get("column")), str(p.get("proposed"))
         if p.get("confidence") != "high" or column in own:
             continue
         if recorded and recorded.get(column) != role:
             continue  # the user's own answer, not the values'
-        add("role", column, role, f"is {role_words(role)}", str(p.get("reason") or ""),
-            [confirm_exit("role", column, alt, f"`{column}` is {role_words(alt)}")
-             for alt in ROLE_CHANGES.get(role, ("covariate",))])
+        # A change that reads as the role it changes (under Predict, an exposure and a covariate
+        # are each a predictor) is no change the person can read, so it is not offered.
+        said = role_words(role, purpose)
+        changes: list[tuple[str, str]] = []
+        for alt in ROLE_CHANGES.get(role, ("covariate",)):
+            words = role_words(alt, purpose)
+            if words != said and words not in {w for _, w in changes}:
+                changes.append((alt, words))
+        add("role", column, role, f"is {said}", role_evidence(str(p.get("reason") or ""), purpose),
+            [confirm_exit("role", column, alt, f"`{column}` is {words}") for alt, words in changes])
     ti = getattr(target_info, "data", target_info)
     target = _get(state, "target")
     if isinstance(ti, Mapping) and target and ti.get("column") == target \
@@ -2998,9 +3035,11 @@ _GUESS_WORDS = {"code": "codes for categories", "amount": "an amount", "yes": "r
                 "limit_root2": "below its detection limit, read at the limit over √2"}
 
 
-def guess_words(r: Reading) -> str:
+def guess_words(r: Reading, state: Any = None) -> str:
+    """``r``'s best guess in words; a role's under the goal ``state`` declares (:func:`role_words`;
+    no state: Estimate's words, the strictest case)."""
     if r.kind == "role":
-        return role_words(r.value)
+        return role_words(r.value, _get(state, "purpose"))
     if r.kind == "day_count":
         return f"{r.value} day{'s' if str(r.value) != '1' else ''}" if r.value else "how many days?"
     if r.kind == "sex_coding" and r.value:
@@ -3071,10 +3110,10 @@ def ask_text(readings: Iterable[Reading], state: Any = None) -> str:
     for group in families(readings):
         r = group[0]
         if len(group) > 1:
-            lines.append(f"{len(group):,} columns like `{r.column}`: {guess_words(r)}?")
+            lines.append(f"{len(group):,} columns like `{r.column}`: {guess_words(r, state)}?")
         else:
             why = f" ({r.evidence})" if r.evidence else ""
-            lines.append(f"`{r.column}`: {guess_words(r)}?{why}")
+            lines.append(f"`{r.column}`: {guess_words(r, state)}?{why}")
     return ("Tell me about " + ("this column" if len(lines) == 1 else "these columns") + ": "
             + "; ".join(lines) + ".") if lines else ""
 
@@ -3126,7 +3165,7 @@ def ask_exits(readings: Iterable[Reading], state: Any = None) -> list[dict[str, 
             roles = getattr(state, "roles", None) or {}
             out += confirm_exits(state, [r.column]) if r.column in roles else [
                 confirm_exit("role", r.column, r.value, f"Confirm `{r.column}` as "
-                                                        f"{role_words(r.value)}")]
+                                                        f"{guess_words(r, state)}")]
         elif r.kind == "cluster":
             out += cluster_exits(state, r.column)[:2]
         elif r.kind == "time_invariant":
@@ -3134,7 +3173,7 @@ def ask_exits(readings: Iterable[Reading], state: Any = None) -> list[dict[str, 
         else:
             for value in _alternatives(r, state):
                 out.append(confirm_exit(r.kind, r.column, value,
-                                        f"`{r.column}`: {guess_words(r)}"))
+                                        f"`{r.column}`: {guess_words(r, state)}"))
     return out
 
 
@@ -3518,7 +3557,8 @@ __all__ = [
     "confirmation", "confirmed_codes", "day_count_candidates", "day_count_reading",
     "is_settled", "key", "listing", "names_several_days",
     "outcome_unit_reading", "predictor_columns", "predictors_or_ask", "proposals_of", "reading",
-    "repeat_kind_reading", "rode_along", "stated_reading", "task_reading", "role_reading", "role_words", "settled",
+    "repeat_kind_reading", "rode_along", "stated_reading", "task_reading", "role_evidence",
+    "role_reading", "role_words", "settled",
     "settled_columns", "settled_roles", "stated_outcome_unit", "time_column_reading",
     "unsettled", "unsettled_codes", "unsettled_factors", "unsettled_message", "unsettled_roles",
     "KcalPerUnit", "ROLE_ALTERNATIVES", "energy_plan", "factor_exits", "factor_in_grams",

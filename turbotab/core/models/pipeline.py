@@ -330,6 +330,11 @@ class DesignSpec:
     # wraps a tuned family's pipeline in a ``TunedPipeline`` from it, and refuses without one, so
     # a stage that builds a fresh spec copies these.
     plans: dict[str, dict[str, Any]] | None = None
+    # The declared purpose, for what the design's concerns say as ``lenses`` is for what the steps
+    # say (:func:`warnings_for`; W1-R finding 3b): under prediction no coefficient is interpreted
+    # and nothing is substituted. The steps take the purpose as an argument of their own. None:
+    # unanswered, the strictest case (every concern is said).
+    purpose: str | None = None
 
     def multiple_imputation(self) -> bool:
         return bool(self.missing) and self.missing.get("strategy") == "multiple_imputation"
@@ -476,6 +481,7 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
         energy_factors=_energy_factors(state, adj, frame, energy_factors),
         levers=_explore_answer(state, "levers"),
         selection=_explore_answer(state, "selection"),
+        purpose=getattr(state, "purpose", None),
     )
 
 
@@ -1045,10 +1051,18 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
 
     ``nested``: child -> parent among the predictors (``turbotab.core.methods.nesting``);
     ``rows_word`` names ``frame``'s rows (every analyzed row under inference).
+
+    Under prediction (``spec.purpose``) the concerns about what a coefficient means or what a
+    substitution moves are not said: no coefficient is interpreted and nothing is substituted
+    (W1-R finding 3b; BEATS_PREDICT §9 ruling 5). Those are fiber's energy counted twice beside
+    carbohydrate by difference, a total's coefficient beside its own parts, and columns of one
+    nutrient that may overlap in a swap. Shares that sum to 100% are said under either goal: no
+    linear model can estimate them all.
     """
     from turbotab.core.methods.energy import nutrient_role
     from turbotab.core.methods.nesting import parts_of
 
+    meaning = spec.purpose != "prediction"
     out: list[str] = []
     for c in spec.categorical:
         if c in spec.predictors:
@@ -1062,7 +1076,7 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
     from turbotab.core.methods.energy import fiber_beside_carbohydrate
 
     fiber = fiber_beside_carbohydrate([c for c in spec.predictors if spec.roles.get(c) == "exposure"])
-    if fiber:
+    if fiber and meaning:
         out.append(fiber)
     by_role: dict[str, list[str]] = {}
     for c in spec.predictors:
@@ -1083,7 +1097,7 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
                    f"is fixed by the others, so a linear model cannot estimate them all; leave one "
                    f"out as the reference.")
     nested = dict(nested or {})
-    for parent, parts in parts_of(nested).items():
+    for parent, parts in (parts_of(nested) if meaning else {}).items():
         if parent in spec.predictors:
             verb = "is a part" if len(parts) == 1 else "are parts"
             them = "it" if len(parts) == 1 else "them"
@@ -1092,7 +1106,7 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
                        f"remainder (holding {', '.join(parts)} fixed), not total {parent}; leave "
                        f"{them} out to estimate the total. A substitution through {parent} moves "
                        f"{them} in proportion, and never pairs {parent} with its own part.")
-    for role, cols in by_role.items():
+    for role, cols in (by_role if meaning else {}).items():
         loose = [c for c in cols if c not in nested and c not in parts_of(nested)]
         if len(cols) > 1 and len(loose) > 1:
             out.append(f"{', '.join(loose)} all read as {role}, and none is part of another. If some "
