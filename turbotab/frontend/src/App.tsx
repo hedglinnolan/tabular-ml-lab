@@ -1,14 +1,16 @@
 import { lazy, Suspense, useState, type ComponentType, type LazyExoticComponent } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { useProjectEvents } from "./api/events";
 import { makeQueryClient } from "./api/queries";
 import { Header } from "./components/Header";
 import { MotionPrefsProvider } from "./motion/prefs";
 import { Link, useRoute, type Route } from "./router";
 import { ProjectScreen } from "./screens/ProjectScreen";
+import { QuestScreen } from "./quest/QuestScreen";
 import { StartScreen } from "./screens/StartScreen";
 import { ThemeProvider } from "./theme";
 
-type LabRoute = Exclude<Route["name"], "start" | "project" | "missing">;
+type LabRoute = Exclude<Route["name"], "start" | "project" | "classic" | "missing">;
 
 // The review surfaces under /lab load on demand, and exist only in npm run dev:mock: the
 // condition is the literal env flag, so a production build drops each import, its chunk and its
@@ -72,13 +74,27 @@ function Missing({ path }: { path: string }) {
   );
 }
 
+/**
+ * A project: the quest shell at /p/:pid (plans/W1_PART2_PLAN.md ruling 8), today's screen at
+ * /p/:pid/classic. One event stream serves both, so moving between them keeps it open.
+ */
+function Project({ pid, classic }: { pid: string; classic: boolean }) {
+  const stream = useProjectEvents(pid);
+  return classic ? (
+    <ProjectScreen pid={pid} stream={stream} />
+  ) : (
+    <QuestScreen pid={pid} stream={stream} />
+  );
+}
+
 function Routes() {
   const route = useRoute();
   switch (route.name) {
     case "start":
       return <StartScreen />;
     case "project":
-      return <ProjectScreen key={route.pid} pid={route.pid} />;
+    case "classic":
+      return <Project key={route.pid} pid={route.pid} classic={route.name === "classic"} />;
     case "missing":
       return <Missing path={route.path} />;
     default: {

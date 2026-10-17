@@ -615,14 +615,15 @@ export function m1RecordHandlers(server: MockServer): HttpHandler[] {
       if (isM1(stage)) {
         const result = stageResult(pid, stage);
         if (result && p && stage === "fit" && result.artifact) {
-          // The held-out scores are computed and withheld until the seal is opened (M2 §3).
+          // The held-out scores are computed and withheld until the seal is opened (M2 §3), and
+          // their detail with them: the intervals, calibration, the baseline and its verdict.
           const state = fold(p.records);
           const fit = result.artifact as M1StageArtifacts["fit"];
           if (!state.seal_opened) {
             result.artifact = {
               ...fit,
               holdout_sealed: true,
-              models: fit.models.map((x) => ({ ...x, holdout: null })),
+              models: fit.models.map((x) => ({ ...x, holdout: null, holdout_detail: null })),
             };
           }
         }

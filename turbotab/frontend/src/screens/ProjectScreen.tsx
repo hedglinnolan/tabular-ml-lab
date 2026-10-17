@@ -5,7 +5,7 @@
  */
 import { useRef, type FocusEvent, type KeyboardEvent } from "react";
 import { useProjectView } from "../api/queries";
-import { useProjectEvents } from "../api/events";
+import type { StreamState } from "../api/events";
 import type { ProjectView } from "../api/schema";
 import { Banner } from "../components/banner/Banner";
 import { Header } from "../components/Header";
@@ -18,8 +18,9 @@ import { StageFocusProvider, useStageFocus } from "../state/focus";
 import { readingText } from "../util/format";
 import styles from "./ProjectScreen.module.css";
 
-export function ProjectScreen({ pid }: { pid: string }) {
-  const stream = useProjectEvents(pid);
+/** `stream`: the project's event stream, held by the route above (App.tsx), so the quest shell and
+ *  this screen share one. */
+export function ProjectScreen({ pid, stream }: { pid: string; stream: StreamState }) {
   const viewQ = useProjectView(pid);
 
   if (viewQ.isPending) {

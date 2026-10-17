@@ -1,0 +1,140 @@
+/**
+ * The quest shell v0 (FOUNDATION §3; plans/W1_PART2_PLAN.md §2 "W1-E"), at /p/:pid: the header with
+ * the work chips, the quest line and progress bar, then the manuscript rail, the card and the
+ * tapestry. Every stage and line comes from GET /quest; each line's card goes through CardFor; the
+ * answers come from GET /methods by `decision_id`, the manuscript from GET /methods/sections. Today's
+ * screen stays at /p/:pid/classic until W2 closes (ruling 8), one link away in the header.
+ */
+import { useMemo, useState } from "react";
+import type { StreamState } from "../api/events";
+import { useMethods, useMethodsSections, useProjectView, useQuest } from "../api/queries";
+import type { ProjectView, QuestLog } from "../api/schema";
+import { Header } from "../components/Header";
+import { JobChips } from "../components/JobChips";
+import { ManuscriptOverlay, ManuscriptRail, kit as k, newestSeq, useManuscriptRail } from "../kit";
+import { Link, classicPath } from "../router";
+import { StageFocusProvider } from "../state/focus";
+import { fitPosition, heldFor, openStageKey, stageOf } from "./log";
+import { StageCard } from "./StageCard";
+import { StageLine } from "./StageLine";
+import { Tapestry } from "./Tapestry";
+import q from "./quest.module.css";
+
+/** `stream`: the project's event stream, held by the route above (App.tsx) and shared with
+ *  today's screen. */
+export function QuestScreen({ pid, stream }: { pid: string; stream: StreamState }) {
+  const viewQ = useProjectView(pid);
+  const questQ = useQuest(pid);
+  const header = (
+    <Header>
+      <Link href={classicPath(pid)} className={q.classicLink} data-testid="to-classic">
+        Classic screen
+      </Link>
+    </Header>
+  );
+  if (viewQ.isError || questQ.isError) {
+    const error = viewQ.error ?? questQ.error;
+    return (
+      <>
+        {header}
+        <main className={q.message}>
+          <p>This project could not be opened: {error?.message}</p>
+          <Link href="/">Back to the start</Link>
+        </main>
+      </>
+    );
+  }
+  if (!viewQ.data || !questQ.data) {
+    return (
+      <>
+        {header}
+        <main className={q.message}>Opening the project…</main>
+      </>
+    );
+  }
+  return (
+    <StageFocusProvider key={pid}>
+      <Shell pid={pid} view={viewQ.data} log={questQ.data} stream={stream} />
+    </StageFocusProvider>
+  );
+}
+
+function Shell({ pid, view, log, stream }: { pid: string; view: ProjectView; log: QuestLog; stream: StreamState }) {
+  const [chosen, setChosen] = useState<string | null>(null);
+  const shown = chosen && stageOf(log, chosen) ? chosen : openStageKey(log);
+  const stage = stageOf(log, shown)!;
+  const methods = useMethods(pid).data;
+  const sections = useMethodsSections(pid).data;
+  const rail = useManuscriptRail();
+  const answers = useMemo(
+    () => new Map((methods?.lines ?? []).map((l) => [l.record_id, l.sentence])),
+    [methods],
+  );
+  const fit = fitPosition(log, view.stages.fit);
+  // Pressing Fit opens Results (FOUNDATION §7): the card follows the press.
+  const pressed = log.fit?.pressed ?? false;
+  const [seenPressed, setSeenPressed] = useState(pressed);
+  if (seenPressed !== pressed) {
+    setSeenPressed(pressed);
+    if (pressed) setChosen("results");
+  }
+
+  // The arrival line: the newest line the manuscript gained since the screen opened.
+  const newest = sections ? newestSeq(sections.sections) : null;
+  const [firstSeen, setFirstSeen] = useState<number | null | undefined>(undefined);
+  if (sections && firstSeen === undefined) setFirstSeen(newest);
+  const arrival = ((): { text: string; kind: string | null } | null => {
+    if (!sections || newest === null || firstSeen === undefined) return null;
+    if (firstSeen !== null && newest <= firstSeen) return null;
+    for (const sec of sections.sections)
+      for (const e of sec.entries) if (e.seq === newest) return { text: e.text, kind: e.kind };
+    return null;
+  })();
+
+  const openKind = (kind: string) => {
+    const at = log.kinds[kind];
+    if (at) setChosen(at);
+  };
+  const fitting = fit.kind === "running" ? (heldFor(log.fit) ? `fitting, ${heldFor(log.fit)}` : "fitting") : null;
+
+  return (
+    <div className={q.screen}>
+      <Header jobs={<JobChips pid={pid} stages={view.stages} />}>
+        <span className={q.name} title={view.summary.source_name}>
+          {view.summary.name}
+        </span>
+        <Link href={classicPath(pid)} className={q.classicLink} data-testid="to-classic">
+          Classic screen
+        </Link>
+        {stream === "reconnecting" ? (
+          <span className={q.stream} role="status">
+            reconnecting to the server…
+          </span>
+        ) : null}
+      </Header>
+      <StageLine log={log} shown={shown} onOpen={setChosen} answers={answers} fitting={fitting} />
+      <div className={`${k.zones} ${q.zones}`}>
+        <div className={k.zoneRail} data-kit>
+          <ManuscriptRail count={sections?.count ?? null} open={rail.open} setOpen={rail.setOpen} />
+        </div>
+        <div className={k.zoneCard}>
+          <StageCard
+            key={shown}
+            pid={pid}
+            log={log}
+            stage={stage}
+            answers={answers}
+            fit={fit}
+            onOpenStage={setChosen}
+            arrival={arrival}
+            onOpenManuscript={() => rail.setOpen(true)}
+          />
+          <ManuscriptOverlay methods={sections} open={rail.open} setOpen={rail.setOpen} onOpen={openKind} />
+        </div>
+        <div className={k.zoneCanvas}>
+          <Tapestry pid={pid} view={view} log={log} shown={shown} fit={fit} methods={sections} onOpenKind={openKind} />
+        </div>
+      </div>
+    </div>
+  );
+}

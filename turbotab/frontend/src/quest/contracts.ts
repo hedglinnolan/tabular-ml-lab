@@ -22,3 +22,24 @@ export interface ResultsProps {
   pid: string;
 }
 export type ResultsPart = (props: ResultsProps) => ReactElement | null;
+
+/**
+ * The shell's card dispatcher (src/quest/cards/CardFor.tsx), added by W1-E. How the shell mounts
+ * the parts above:
+ *
+ * - each line the card column expands goes through CardFor, which picks its renderer by the line's
+ *   source and stage (src/quest/cards/renderers.ts);
+ * - a declaration line's card is `DECLARATION_CARDS[line.key]` when W1-F defines one, else
+ *   GenericAsk in the line's own words;
+ * - in Results, the question line (the opening, `open_seal`) is `ResultsCards`, mounted once in the
+ *   card column where that line is expanded (the open line, or a line clicked open), and the stage's
+ *   declarations there (`set_updating`, `set_explain`) are W1-F's cards like any other;
+ * - the tapestry of the Results stage is `ResultsTapestry`, inside the kit's canvas (`data-kit`, so
+ *   the calm tokens and the view kinds' canvas tokens apply).
+ */
+export interface CardForProps extends LineCardProps {
+  /** The stage the line sits in (a QuestStage key). */
+  stage: string;
+  /** Open another stage on the card (a finding's lever, a "Waiting for" link). */
+  onOpenStage?: (stage: string) => void;
+}
