@@ -2255,19 +2255,51 @@
           "teaching"
         ],
         "summary": "Get Teaching",
-        "description": "One entry per question, in asking order: the question, its one line, each option's\nconsequence, the terms it uses, and the pack content behind it with evidence badges.",
+        "description": "One entry per question, in asking order: the question, its one line, each option's\nconsequence, the terms it uses, and the pack content behind it with evidence badges.\n``purpose``: the project's declared goal; under ``prediction`` the roles card says\n\"predictors\" and names no study factor. Without it, the cards as under Estimate.",
         "operationId": "get_teaching_api_teaching_get",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "prediction",
+                    "inference"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Purpose"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/TeachingEntry"
                   },
-                  "type": "array",
                   "title": "Response Get Teaching Api Teaching Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
