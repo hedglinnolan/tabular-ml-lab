@@ -2118,6 +2118,18 @@ class ProjectService:
         target = getattr(source.state, "target", None) or ""
         return live_checklist(source, read_seen(self.workspace.project_dir(pid)).get(target, []))
 
+    def methods_sections(self, pid: str) -> Any:
+        """The methods in the export bundle's own sections and words (P8; W1 part 2 ruling 9): the
+        methods document the bundle builds (``bundle.contents``) from the project as it stands
+        (the decision log and the fresh stages), without the export's refusal, so a read and a
+        download of the same project hold the same methods. The client reads it again on each
+        decision and on each stage changing state or fresh key (``src/api/events.ts``). It records
+        nothing: no score is noted as seen and no lock as shown."""
+        from turbotab.core.export.bundle import contents
+        from turbotab.core.export.methods import sections_of
+
+        return sections_of(contents(self.export_source(pid), gated=False).methods)
+
     def run_stage(self, pid: str, stage: str) -> StageStatus:
         """Compute ``stage`` for the current answers, retrying a failure or a cancel upstream too."""
         self.workspace.get(pid)

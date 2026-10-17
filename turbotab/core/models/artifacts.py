@@ -337,8 +337,20 @@ class Baseline(_Model):
     label: str  # "the outcome's average" | "the class prior"
 
 
+class HoldoutBaseline(_Model):
+    """What predicting without the predictors scores on the held-out rows (W1 part 2 ruling 2):
+    the cross-validated baseline's model (``stages.modeling.baseline_model``: the outcome's
+    training mean, the class prior, one risk for everyone) fit on every training row and scored
+    on the held-out rows as each family's ``holdout`` is, metric for metric. For a numeric outcome
+    its R², measured against the training rows' mean, is 0 by construction."""
+
+    label: str  # "the outcome's average" | "the class prior" | "the level prior" | …
+    scores: dict[str, float | None]  # null: not computed on these rows (as in ``holdout``)
+
+
 class HoldoutDetail(_Model):
-    """What the held-out rows say beyond their scores: an interval on each, and calibration."""
+    """What the held-out rows say beyond their scores: an interval on each, calibration, and the
+    no-predictor baseline beside them."""
 
     intervals: dict[str, Interval]
     calibration: Calibration | None = None
@@ -346,6 +358,15 @@ class HoldoutDetail(_Model):
     calibration_levels: list[LevelCalibration] | None = None
     calibration_horizon: HorizonCalibration | None = None
     calibration_note: str | None = None
+    # W1 part 2 ruling 2: the no-predictor baseline on the same held-out rows. Null only in
+    # artifacts from before it.
+    baseline: HoldoutBaseline | None = None
+    # ... and the verdict against it, by the cross-validated verdict's rule and floor
+    # (``models.baseline.versus_held_out``), read on the held-out gain and its served interval:
+    # for a numeric outcome the held-out R² (``intervals["r2"]``). Null where no interval is
+    # served for the gain: every other task (its intervals are each score's own, not the gain's),
+    # or a gain with no standard error.
+    versus_baseline: VersusBaseline | None = None
 
 
 class FittedModel(_Model):
@@ -703,7 +724,7 @@ MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
 }
 
 __all__ = [
-    "AdjustmentTerm", "AtOpening", "BandEstimate", "Baseline", "BrantCheck", "BrantColumn", "ExposureTest", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel", "HoldoutDetail",
+    "AdjustmentTerm", "AtOpening", "BandEstimate", "Baseline", "BrantCheck", "BrantColumn", "ExposureTest", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel", "HoldoutBaseline", "HoldoutDetail",
     "MODELING_ARTIFACTS", "MatrixShape", "MetricSummary", "MissingData", "OmittedEnergy", "Selection", "ShelfArtifact", "ShelfFamily",
     "SubstitutionArtifact", "SubstitutionModel", "SubstitutionPair", "SubstitutionSupport",
 ]

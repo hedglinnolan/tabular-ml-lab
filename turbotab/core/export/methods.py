@@ -163,6 +163,27 @@ class MethodsDocument(_Model):
     markdown: str
 
 
+class MethodsSections(_Model):
+    """The methods as the manuscript rail reads them (P8; W1 part 2 ruling 9): the export bundle's
+    own sections, in its order and its words (TRIPOD+AI's under prediction, STROBE's with
+    STROBE-nut's otherwise), each line with its decision record's id where it has one. Built from
+    the decision log and the fresh stages as the bundle's methods are, so a read and a download of
+    the same project hold the same lines. ``count``: the lines in every section."""
+
+    guideline: Guideline
+    seen_from: int | None
+    sections: list[MethodsSection]
+    count: int
+
+
+def sections_of(doc: MethodsDocument) -> MethodsSections:
+    """The bundle's methods document without its Markdown: its sections exactly, and their lines
+    counted."""
+    return MethodsSections(guideline=doc.guideline, seen_from=doc.seen_from,
+                           sections=list(doc.sections),
+                           count=sum(len(s.entries) for s in doc.sections))
+
+
 def guideline_of(purpose: str | None) -> Guideline:
     return "TRIPOD+AI" if purpose == "prediction" else "STROBE-nut"
 
@@ -357,7 +378,7 @@ def plain(markdown: str) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
-__all__ = ["EVENTS", "MethodsDocument", "MethodsEntry", "MethodsSection", "NEVER_SAID",
-           "SECTION_OF", "STROBE_SECTIONS", "TRIPOD_SECTIONS", "analysis_paragraphs",
+__all__ = ["EVENTS", "MethodsDocument", "MethodsEntry", "MethodsSection", "MethodsSections",
+           "NEVER_SAID", "SECTION_OF", "STROBE_SECTIONS", "TRIPOD_SECTIONS", "analysis_paragraphs",
            "guideline_of", "methods_section", "plain", "render", "reproducibility_sentence",
-           "section_of"]
+           "section_of", "sections_of"]

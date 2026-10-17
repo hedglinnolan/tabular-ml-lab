@@ -1079,6 +1079,59 @@
         }
       }
     },
+    "/api/projects/{pid}/methods/sections": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Methods Sections",
+        "description": "The methods in the sections and words of the export bundle's methods (P8): TRIPOD+AI's\nsections under prediction, STROBE's with STROBE-nut's otherwise, each line with its decision\nrecord's id (null for a paragraph the analysis wrote and for the export's own sentence), and\nhow many lines there are. Built as the bundle builds them, from the decision log and the fresh\nstages as they stand, without its refusal; reading it records nothing.",
+        "operationId": "methods_sections_api_projects__pid__methods_sections_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MethodsSections"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{pid}/plan": {
       "get": {
         "tags": [
@@ -9304,6 +9357,91 @@
         ],
         "title": "MeasurementErrorSpec"
       },
+      "MethodsEntry": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "record",
+              "analysis",
+              "export"
+            ],
+            "title": "Source"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Id"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "in_force": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Force"
+          },
+          "after_estimates": {
+            "type": "boolean",
+            "title": "After Estimates",
+            "default": false
+          },
+          "post_seal": {
+            "type": "boolean",
+            "title": "Post Seal",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "text",
+          "record_id",
+          "seq",
+          "kind",
+          "in_force",
+          "after_estimates",
+          "post_seal"
+        ],
+        "title": "MethodsEntry",
+        "description": "One sentence or paragraph of the methods: the record's (with its decision), a paragraph the\nanalysis wrote (its stage), or the export's own reproducibility sentence."
+      },
       "MethodsLine": {
         "properties": {
           "record_id": {
@@ -9348,6 +9486,82 @@
         ],
         "title": "MethodsLine",
         "description": "One record's sentence in the methods text."
+      },
+      "MethodsSection": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "item": {
+            "type": "string",
+            "title": "Item"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/MethodsEntry"
+            },
+            "type": "array",
+            "title": "Entries"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "item",
+          "entries"
+        ],
+        "title": "MethodsSection"
+      },
+      "MethodsSections": {
+        "properties": {
+          "guideline": {
+            "type": "string",
+            "enum": [
+              "STROBE-nut",
+              "TRIPOD+AI"
+            ],
+            "title": "Guideline"
+          },
+          "seen_from": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen From"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/MethodsSection"
+            },
+            "type": "array",
+            "title": "Sections"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "guideline",
+          "seen_from",
+          "sections",
+          "count"
+        ],
+        "title": "MethodsSections",
+        "description": "The methods as the manuscript rail reads them (P8; W1 part 2 ruling 9): the export bundle's\nown sections, in its order and its words (TRIPOD+AI's under prediction, STROBE's with\nSTROBE-nut's otherwise), each line with its decision record's id where it has one. Built from\nthe decision log and the fresh stages as the bundle's methods are, so a read and a download of\nthe same project hold the same lines. ``count``: the lines in every section."
       },
       "MethodsText": {
         "properties": {
@@ -29211,9 +29425,39 @@
         "title": "Heterogeneity",
         "type": "object"
       },
+      "HoldoutBaseline": {
+        "additionalProperties": false,
+        "description": "What predicting without the predictors scores on the held-out rows (W1 part 2 ruling 2):\nthe cross-validated baseline's model (``stages.modeling.baseline_model``: the outcome's\ntraining mean, the class prior, one risk for everyone) fit on every training row and scored\non the held-out rows as each family's ``holdout`` is, metric for metric. For a numeric outcome\nits R², measured against the training rows' mean, is 0 by construction.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "scores": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Scores",
+            "type": "object"
+          }
+        },
+        "required": [
+          "label",
+          "scores"
+        ],
+        "title": "HoldoutBaseline",
+        "type": "object"
+      },
       "HoldoutDetail": {
         "additionalProperties": false,
-        "description": "What the held-out rows say beyond their scores: an interval on each, and calibration.",
+        "description": "What the held-out rows say beyond their scores: an interval on each, calibration, and the\nno-predictor baseline beside them.",
         "properties": {
           "intervals": {
             "additionalProperties": {
@@ -29270,6 +29514,28 @@
             ],
             "default": null,
             "title": "Calibration Note"
+          },
+          "baseline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HoldoutBaseline"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "versus_baseline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VersusBaseline"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -29277,7 +29543,9 @@
           "calibration",
           "calibration_levels",
           "calibration_horizon",
-          "calibration_note"
+          "calibration_note",
+          "baseline",
+          "versus_baseline"
         ],
         "title": "HoldoutDetail",
         "type": "object"

@@ -323,6 +323,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/methods/sections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Methods Sections
+         * @description The methods in the sections and words of the export bundle's methods (P8): TRIPOD+AI's
+         *     sections under prediction, STROBE's with STROBE-nut's otherwise, each line with its decision
+         *     record's id (null for a paragraph the analysis wrote and for the export's own sentence), and
+         *     how many lines there are. Built as the bundle builds them, from the decision log and the fresh
+         *     stages as they stand, without its refusal; reading it records nothing.
+         */
+        get: operations["methods_sections_api_projects__pid__methods_sections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/plan": {
         parameters: {
             query?: never;
@@ -3139,6 +3163,38 @@ export interface components {
             adjustment: string[] | null;
         };
         /**
+         * MethodsEntry
+         * @description One sentence or paragraph of the methods: the record's (with its decision), a paragraph the
+         *     analysis wrote (its stage), or the export's own reproducibility sentence.
+         */
+        MethodsEntry: {
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "record" | "analysis" | "export";
+            /** Text */
+            text: string;
+            /** Record Id */
+            record_id: string | null;
+            /** Seq */
+            seq: number | null;
+            /** Kind */
+            kind: string | null;
+            /** In Force */
+            in_force: boolean | null;
+            /**
+             * After Estimates
+             * @default false
+             */
+            after_estimates: boolean;
+            /**
+             * Post Seal
+             * @default false
+             */
+            post_seal: boolean;
+        };
+        /**
          * MethodsLine
          * @description One record's sentence in the methods text.
          */
@@ -3157,6 +3213,38 @@ export interface components {
             post_seal: boolean;
             /** After Estimates */
             after_estimates: boolean;
+        };
+        /** MethodsSection */
+        MethodsSection: {
+            /** Key */
+            key: string;
+            /** Title */
+            title: string;
+            /** Item */
+            item: string;
+            /** Entries */
+            entries: components["schemas"]["MethodsEntry"][];
+        };
+        /**
+         * MethodsSections
+         * @description The methods as the manuscript rail reads them (P8; W1 part 2 ruling 9): the export bundle's
+         *     own sections, in its order and its words (TRIPOD+AI's under prediction, STROBE's with
+         *     STROBE-nut's otherwise), each line with its decision record's id where it has one. Built from
+         *     the decision log and the fresh stages as the bundle's methods are, so a read and a download of
+         *     the same project hold the same lines. ``count``: the lines in every section.
+         */
+        MethodsSections: {
+            /**
+             * Guideline
+             * @enum {string}
+             */
+            guideline: "STROBE-nut" | "TRIPOD+AI";
+            /** Seen From */
+            seen_from: number | null;
+            /** Sections */
+            sections: components["schemas"]["MethodsSection"][];
+            /** Count */
+            count: number;
         };
         /**
          * MethodsText
@@ -10943,8 +11031,25 @@ export interface components {
             caption: string;
         };
         /**
+         * HoldoutBaseline
+         * @description What predicting without the predictors scores on the held-out rows (W1 part 2 ruling 2):
+         *     the cross-validated baseline's model (``stages.modeling.baseline_model``: the outcome's
+         *     training mean, the class prior, one risk for everyone) fit on every training row and scored
+         *     on the held-out rows as each family's ``holdout`` is, metric for metric. For a numeric outcome
+         *     its R², measured against the training rows' mean, is 0 by construction.
+         */
+        HoldoutBaseline: {
+            /** Label */
+            label: string;
+            /** Scores */
+            scores: {
+                [key: string]: number | null;
+            };
+        };
+        /**
          * HoldoutDetail
-         * @description What the held-out rows say beyond their scores: an interval on each, and calibration.
+         * @description What the held-out rows say beyond their scores: an interval on each, calibration, and the
+         *     no-predictor baseline beside them.
          */
         HoldoutDetail: {
             /** Intervals */
@@ -10965,6 +11070,10 @@ export interface components {
              * @default null
              */
             calibration_note: string | null;
+            /** @default null */
+            baseline: components["schemas"]["HoldoutBaseline"] | null;
+            /** @default null */
+            versus_baseline: components["schemas"]["VersusBaseline"] | null;
         };
         /** HoldoutOption */
         HoldoutOption: {
@@ -17106,6 +17215,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MethodsText"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    methods_sections_api_projects__pid__methods_sections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MethodsSections"];
                 };
             };
             /** @description No such project */
