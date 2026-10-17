@@ -245,6 +245,50 @@ describe("a stage opened by a request (P3, P4)", () => {
   });
 });
 
+/**
+ * Findings 6 and 7 through the shell: Who's in as the engine serves it under Predict (its questions
+ * answered, one noticing open) holds Continue no longer; the foot says the noticing waits for the
+ * triage in Results, and Continue opens the next open line a card can answer, Your question's
+ * intended use (open in the engine's log), brought into view and expanded.
+ */
+describe("Continue past an open noticing, to the next open line (findings 6, 7)", () => {
+  beforeEach(() => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ top: 2165, bottom: 2400, left: 0, right: 400, width: 400, height: 235, x: 0, y: 2165, toJSON: () => ({}) });
+    Element.prototype.scrollIntoView = vi.fn() as unknown as Element["scrollIntoView"];
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  it("is enabled beside the noticing, says it waits for the triage in Results, and opens the intended use", () => {
+    const whos = stageIn(REACHED, "whos_in");
+    expect(whos.lines.filter((l) => l.status === "open" && l.counted).map((l) => l.source)).toEqual(["finding"]);
+    const intended = stageIn(REACHED, "question").lines.find((l) => l.key === "set_intended_use")!;
+    expect(intended.status).toBe("open");
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    qc.setQueryData(keys.quest(PID), REACHED);
+    qc.setQueryData(keys.view(PID), VIEW);
+    qc.setQueryData(keys.record(PID), RECORD);
+    render(
+      <QueryClientProvider client={qc}>
+        <QuestScreen pid={PID} stream="open" />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByTestId("stage-whos_in"));
+    const foot = screen.getByTestId("primary");
+    expect(foot).toHaveTextContent("Continue");
+    expect(foot).toBeEnabled();
+    expect(screen.getByTestId("primary-note")).toHaveTextContent(`1 noticing waits for the triage in ${stageIn(REACHED, "results").name}.`);
+    expect(screen.getByTestId("primary-hint")).toHaveTextContent(`Next: ${intended.name}, in ${stageIn(REACHED, "question").name}.`);
+    fireEvent.click(foot);
+    const card = screen.getByTestId("card-question");
+    const line = card.querySelector<HTMLElement>('[data-line="declaration:set_intended_use"]')!;
+    expect(line).toHaveAttribute("data-expanded");
+    expect(document.activeElement).toBe(line);
+  });
+});
+
 describe("a request in the stage already shown (P9)", () => {
   // Who's in as the engine serves it: the implausible-intake noticing open, its questions answered.
   const whos = stageIn(REACHED, "whos_in");

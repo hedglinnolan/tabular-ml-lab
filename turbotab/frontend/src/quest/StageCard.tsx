@@ -12,7 +12,9 @@
  * Results, once reached, has W1-G's ResultsCards in place of its lines, mounted once
  * (src/quest/contracts.ts). First look lists every noticing with the stage that decides it. For
  * the record sits collapsed at the foot (GET /record). The one primary action is at the very foot
- * (FOUNDATION §1); a disabled one says why and links to what it waits for.
+ * (FOUNDATION §1); a disabled one says why and links to what it waits for. Continue goes on to the
+ * next open line a card can answer, naming it where that is not the next stage, and open noticings
+ * hold it in no stage but the triage's own: the foot says how many wait for the triage (log.ts).
  *
  * A stage opened by a request (the quest line, a "Waiting for" link, a noticing's lever, the foot's
  * link) brings the line it names, else its open line, into view and gives it focus (§1, the
@@ -499,7 +501,7 @@ function Primary({
   const decide = useDecide(pid);
   const bundle = useExport(pid);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
-  const action = primaryFor(log, stage, fit);
+  const action = primaryFor(log, stage, fit, canAnswer);
   const onRefused = (err: Error) => setRefusal(isRefusalError(err) ? err.refusal : { error: { code: "failed", message: err.message, exits: [] } });
 
   let node: ReactNode;
@@ -557,8 +559,16 @@ function Primary({
         <Foot
           label={action.label}
           disabled={action.disabled}
-          left={action.hint ? <HintLine hint={action.hint} onOpenStage={onOpenStage} /> : null}
-          onClick={() => action.to && onOpenStage(action.to)}
+          left={
+            action.hint || action.note ? (
+              <>
+                {action.hint ? <HintLine hint={action.hint} onOpenStage={onOpenStage} /> : null}
+                {action.hint && action.note ? " " : null}
+                {action.note ? <span data-testid="primary-note">{action.note}</span> : null}
+              </>
+            ) : null
+          }
+          onClick={() => action.to && onOpenStage(action.to, action.line)}
         />
       );
       break;

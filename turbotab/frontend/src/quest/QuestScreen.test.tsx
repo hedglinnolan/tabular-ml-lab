@@ -207,14 +207,16 @@ describe("a card's recorded answer in the shell", () => {
     return qc;
   }
 
-  /** Keyboard focus on the dietary lens: the tapestry previews it, with the stage's record button. */
+  /** Keyboard focus on the dietary lens: the tapestry previews it, with no record button of its
+   *  own, since the card's is the one action (finding 4; Classic's stage keeps it). */
   async function previewDietary() {
     expect(card()).toBe("card-data");
     const option = await screen.findByTestId("option-dietary");
     fireEvent.focus(option);
-    await waitFor(() => expect(screen.getByTestId("stage-record")).toBeEnabled());
+    await waitFor(() => expect(screen.getByTestId("stage")).toHaveAttribute("data-scene", "preview"));
+    await waitFor(() => expect(screen.getByTestId("stage-loading")).not.toHaveAttribute("data-on"));
     expect(screen.getByTestId("stage")).toHaveAttribute("data-focus", "option");
-    expect(screen.getByTestId("stage")).toHaveAttribute("data-scene", "preview");
+    expect(screen.queryByTestId("stage-record")).toBeNull();
     return option;
   }
 
@@ -222,7 +224,7 @@ describe("a card's recorded answer in the shell", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns the tapestry to live once the card records, with no record button left beside the answer", async () => {
+  it("returns the tapestry to live once the card records", async () => {
     expect(RECORDED.decisions.length).toBe(OPEN.decisions.length + 1);
     lensOpen();
     const option = await previewDietary();
@@ -255,7 +257,7 @@ describe("a card's recorded answer in the shell", () => {
     expect(qc.getQueryData(keys.view(PID))).not.toBe(before);
     expect(screen.getByTestId("stage")).toHaveAttribute("data-focus", "option");
     expect(screen.getByTestId("stage")).toHaveAttribute("data-scene", "preview");
-    expect(screen.getByTestId("stage-record")).toBeInTheDocument();
+    expect(screen.queryByTestId("stage-record")).toBeNull();
   });
 });
 

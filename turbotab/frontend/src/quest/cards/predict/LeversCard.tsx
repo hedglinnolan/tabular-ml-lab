@@ -9,7 +9,7 @@ import { useState } from "react";
 import type { ProjectState } from "../../../api/schema";
 import { Pending } from "../../../components/record/blocks";
 import type { LineCard } from "../../contracts";
-import { Choice, Frame, useCard, type CardWiring, type Offer } from "./card";
+import { Choice, Frame, RecordChosen, useCard, type CardWiring, type Offer } from "./card";
 import c from "./declaration.module.css";
 import { NumberField } from "./fields";
 import {
@@ -36,6 +36,9 @@ const FILTER_NAMES: Record<Levers["variance_filter"], string> = {
   top: "Most variable",
 };
 const KEEP = "Predictors to keep (most variable)";
+/** Where the server's answer to the card's button is said: under it, since that press records
+ *  every list's choice at once and answers at no one option. */
+const RECORD_AT = "levers";
 const IMBALANCE_NAMES: Record<Levers["imbalance"], string> = {
   none: "None",
   weights: "Class weights",
@@ -72,8 +75,17 @@ function Body({
   const set = setForYou ? (state.levers ?? DEFAULTS.set_levers) : null;
   const [keep, setKeep] = useState(rules.keep === null ? "" : String(rules.keep));
   const typed = parseTyped(keep, BOUNDS.set_levers.keep, true);
+  // What each list holds chosen for the card's one button: the rule on record, else the one set
+  // for the person, until another is chosen.
+  const [forms, setForms] = useState<Levers["forms"] | null>(on?.forms ?? set?.forms ?? null);
+  const [filter, setFilter] = useState<Levers["variance_filter"] | null>(
+    on?.variance_filter ?? set?.variance_filter ?? null,
+  );
+  const [imbalance, setImbalance] = useState<Levers["imbalance"] | null>(
+    on?.imbalance ?? set?.imbalance ?? null,
+  );
 
-  /** The levers with one of the three changed, the other two as they stand. */
+  /** The levers with `patch` changed, the others as they stand. */
   const change = (patch: Partial<LeverRules>): Offer => {
     const next = { ...rules, ...patch };
     // The count is read by the "most variable" filter alone.
@@ -81,6 +93,16 @@ function Body({
       return { problems: trouble(KEEP, typed, BOUNDS.set_levers.keep, true) };
     }
     return { decision: levers({ ...next, keep: typed === "invalid" ? null : typed }) };
+  };
+  /** The button: every list's choice at once. A count in the way is said under the filter. */
+  const recordChosen = () => {
+    const offer = change({
+      ...(forms ? { forms } : {}),
+      ...(filter ? { variance_filter: filter } : {}),
+      ...(imbalance ? { imbalance } : {}),
+    });
+    if ("decision" in offer) card.record(offer.decision, RECORD_AT);
+    else card.hold(`variance_filter:${filter ?? rules.variance_filter}`);
   };
 
   return (
@@ -106,6 +128,9 @@ function Body({
         setForYou={set?.forms ?? null}
         testId="options-forms"
         hint={false}
+        chosen={forms}
+        onChoose={setForms}
+        button={false}
       />
       <Choice
         card={card}
@@ -118,6 +143,9 @@ function Body({
         setForYou={set?.variance_filter ?? null}
         testId="options-variance_filter"
         hint={false}
+        chosen={filter}
+        onChoose={setFilter}
+        button={false}
       />
       <Choice
         card={card}
@@ -129,6 +157,15 @@ function Body({
         recorded={on?.imbalance ?? null}
         setForYou={set?.imbalance ?? null}
         testId="options-imbalance"
+        chosen={imbalance}
+        onChoose={setImbalance}
+        button={false}
+      />
+      <RecordChosen
+        label={forms || filter || imbalance ? "Record these rules" : null}
+        card={card}
+        onClick={recordChosen}
+        answer={card.answerAt?.key === RECORD_AT ? card.answerAt.node : null}
       />
     </>
   );

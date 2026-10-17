@@ -11,6 +11,7 @@ import { useMethods, useMethodsSections, useProjectView, useQuest } from "../api
 import type { DecisionRecord, ProjectView, QuestLog } from "../api/schema";
 import { Header } from "../components/Header";
 import { JobChips } from "../components/JobChips";
+import { HeldFamiliesContext, type HeldFamilies } from "../components/record/ask/ChoiceQuestions";
 import { ManuscriptOverlay, ManuscriptRail, kit as k, newestSeq, useManuscriptRail } from "../kit";
 import { Link, classicPath } from "../router";
 import { StageFocusProvider, useStageFocus } from "../state/focus";
@@ -86,6 +87,13 @@ function Shell({ pid, view, log, stream }: { pid: string; view: ProjectView; log
     [methods],
   );
   useResetOnRecord(view.decisions);
+  // The families chosen on the models card and not yet recorded, kept while the card's line waits
+  // for the shelf and the card is drawn anew (finding 12; ChoiceQuestions `HeldFamiliesContext`).
+  const families = useRef<HeldFamilies | null>(null);
+  const heldFamilies = useMemo(
+    () => ({ get: () => families.current, set: (held: HeldFamilies) => void (families.current = held) }),
+    [],
+  );
   // Pressing Fit opens Results once the fit is computed (FOUNDATION §7): at once for a short fit
   // computed before the press; a fit that must run keeps the card on Models, whose flowchart shows
   // its progress and a Cancel where Fit was (ruling 3), and Results opens when it is computed, if
@@ -144,18 +152,20 @@ function Shell({ pid, view, log, stream }: { pid: string; view: ProjectView; log
           <ManuscriptRail count={sections?.count ?? null} open={rail.open} setOpen={rail.setOpen} />
         </div>
         <div className={k.zoneCard}>
-          <StageCard
-            key={shown}
-            pid={pid}
-            log={log}
-            stage={stage}
-            answers={answers}
-            fit={fit}
-            onOpenStage={openStage}
-            request={request}
-            arrival={arrival}
-            onOpenManuscript={() => rail.setOpen(true)}
-          />
+          <HeldFamiliesContext.Provider value={heldFamilies}>
+            <StageCard
+              key={shown}
+              pid={pid}
+              log={log}
+              stage={stage}
+              answers={answers}
+              fit={fit}
+              onOpenStage={openStage}
+              request={request}
+              arrival={arrival}
+              onOpenManuscript={() => rail.setOpen(true)}
+            />
+          </HeldFamiliesContext.Provider>
           <ManuscriptOverlay methods={sections} open={rail.open} setOpen={rail.setOpen} onOpen={openKind} />
         </div>
         <div className={k.zoneCanvas}>

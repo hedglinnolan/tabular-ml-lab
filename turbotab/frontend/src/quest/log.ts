@@ -196,9 +196,11 @@ export interface Hint {
 }
 
 /** The card's one primary action (FOUNDATION §1), for the stage it shows. A disabled Continue
- *  always says why, and links to what it waits for. */
+ *  always says why, and links to what it waits for. An enabled one goes to `to`, with `line` (the
+ *  next open line, finding 7) brought into view there, and `note` says how many open noticings
+ *  wait for the triage (finding 6). */
 export type Primary =
-  | { kind: "continue"; to: string | null; label: string; disabled: boolean; hint: Hint | null }
+  | { kind: "continue"; to: string | null; line?: string; label: string; disabled: boolean; hint: Hint | null; note?: string }
   | { kind: "confirm"; label: string; heading: string }
   | { kind: "download" }
   /** Models before Fit: the card's foot holds no button; Fit is on the flowchart (§7). */
@@ -215,7 +217,35 @@ export function runningName(name: string): string {
 
 const nameOf = (log: QuestLog, key: string) => stageOf(log, key)?.name ?? key;
 
-export function primaryFor(log: QuestLog, stage: QuestStage, fit: FitPosition): Primary {
+/**
+ * Where the triage of the open noticings stands (core/sweep.py `gate_stage`): before the held-out
+ * rows open under Predict, in Results; else before the plan's lock, in Models, an unanswered goal
+ * included (the engine's strictest case). The goal is the one the Fit lock serves.
+ */
+export function triageStage(log: QuestLog): string {
+  return log.fit?.purpose === "prediction" ? "results" : "models";
+}
+
+/**
+ * The next open line a card can answer, outside the stage `from` (finding 7): in the seven stages'
+ * order, each reached stage's first counted Decide that is open, a card can answer and is neither
+ * a noticing (those wait for the triage) nor the draw while it waits for its sweep, else that
+ * stage's Confirm sweep still to confirm (line null). Null when none is left.
+ */
+export function nextOpen(log: QuestLog, from: string, canAnswer: CanAnswer = ANY): { stage: QuestStage; line: QuestLine | null } | null {
+  for (const s of log.stages) {
+    if (s.key === from || !s.reached) continue;
+    const held = drawWaitsForSweep(s);
+    const line = byLabel(s).Decide.find(
+      (l) => l.counted && l.status === "open" && l.source !== "finding" && canAnswer(l) && !(held && l.key === DRAW),
+    );
+    if (line) return { stage: s, line };
+    if (s.sweep && !s.sweep.answered && s.sweep.lines > 0) return { stage: s, line: null };
+  }
+  return null;
+}
+
+export function primaryFor(log: QuestLog, stage: QuestStage, fit: FitPosition, canAnswer: CanAnswer = ANY): Primary {
   if (stage.key === "models" && fit.kind === "press") return { kind: "fit" };
   if (stage.key === "writeup" && stage.reached) return { kind: "download" };
   // A stage not reached yet is read, not worked on: its foot leads to the stage the analysis is at.
@@ -234,7 +264,11 @@ export function primaryFor(log: QuestLog, stage: QuestStage, fit: FitPosition): 
     return { kind: "open" };
 
   const held = drawWaitsForSweep(stage);
-  const left = unanswered(stage).filter((l) => !(held && l.key === DRAW));
+  const rest = unanswered(stage).filter((l) => !(held && l.key === DRAW));
+  // Open noticings travel to the triage (FOUNDATION §7): they hold no stage but the triage's own.
+  const gate = triageStage(log);
+  const travel = stage.key === gate ? [] : rest.filter((l) => l.source === "finding");
+  const left = rest.filter((l) => !travel.includes(l));
   const next = nextStageKey(log, stage.key);
   const open = left.find((l) => l.status === "open");
   if (open) {
@@ -271,5 +305,21 @@ export function primaryFor(log: QuestLog, stage: QuestStage, fit: FitPosition): 
   }
   const sweep = stage.sweep;
   if (sweep && !sweep.answered && sweep.lines > 0) return { kind: "confirm", label: sweep.action, heading: sweep.heading };
-  return { kind: "continue", to: next, label: "Continue", disabled: next === null, hint: null };
+  const n = travel.length;
+  const note = n ? { note: `${n} noticing${n === 1 ? " waits" : "s wait"} for the triage in ${nameOf(log, gate)}.` } : {};
+  // Continue goes on to the next open line a card can answer, else to the next stage (finding 7),
+  // naming where it goes when that is not the next stage.
+  const to = nextOpen(log, stage.key, canAnswer);
+  if (!to) return { kind: "continue", to: next, label: "Continue", disabled: next === null, hint: null, ...note };
+  const where = { stage: to.stage.key, line: to.line?.key ?? null };
+  const what = to.line ? runningName(to.line.name) : `the choice${to.stage.sweep!.lines === 1 ? "" : "s"} set for you`;
+  return {
+    kind: "continue",
+    to: to.stage.key,
+    ...(to.line ? { line: to.line.key } : {}),
+    label: "Continue",
+    disabled: false,
+    hint: to.stage.key === next ? null : { lead: "Next: ", name: what, tail: `, in ${to.stage.name}.`, to: where },
+    ...note,
+  };
 }

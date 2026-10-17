@@ -65,16 +65,8 @@ describe("the primary action", () => {
     });
   });
 
-  it("leaves the card's foot to Fit at Models' end, and is Continue to the next stage otherwise", () => {
+  it("leaves the card's foot to Fit at Models' end", () => {
     expect(primaryFor(LOG, models, { kind: "press", held: true, estimate: null })).toEqual({ kind: "fit" });
-    const firstLook = stageOf(LOG, "first_look")!;
-    expect(primaryFor(LOG, firstLook, { kind: "none" })).toEqual({
-      kind: "continue",
-      to: "whos_in",
-      label: "Continue",
-      disabled: false,
-      hint: null,
-    });
   });
 
   it("is Download in Write-up once it is reached", () => {
@@ -85,19 +77,152 @@ describe("the primary action", () => {
 });
 
 describe("a hint's name (P7)", () => {
-  // The engine names a noticing by its whole sentence, backticks and closing period included.
-  const SENTENCE = "`gender` is two-level text (`female`, `male`); which level counts as 1 is not asked yet.";
-  const { log, stage } = withStage(LOG, "whos_in", (l) => (l.source === "finding" ? { ...l, name: SENTENCE } : answered(l)));
+  // The engine names the readings a refusal waits on by the ledger's whole sentence (core/quest.py
+  // `asks`), backticks and closing period included. Who's in's eligibility is set open by
+  // construction and named so; its noticing is answered, so the question is what waits.
+  const SENTENCE = "Tell me about this column: `gender`: codes for categories? (two values).";
+  const set = (name: (l: QuestLine) => string) =>
+    withStage(LOG, "whos_in", (l) => (l.key === "exclusions" ? { ...l, status: "open", decision_id: null, name: name(l) } : answered(l)));
 
   it("is the line's name as running text: no backticks, and no second period", () => {
+    const { log, stage } = set(() => SENTENCE);
     const hint = (primaryFor(log, stage, { kind: "none" }) as { hint: Hint }).hint;
-    expect(text(hint)).toBe("Still to answer: gender is two-level text (female, male); which level counts as 1 is not asked yet.");
+    expect(text(hint)).toBe("Still to answer: Tell me about this column: gender: codes for categories? (two values).");
   });
 
   it("keeps the closing period of a name that has none", () => {
-    const plain = withStage(LOG, "whos_in", (l) => (l.source === "finding" ? l : answered(l)));
-    const hint = (primaryFor(plain.log, plain.stage, { kind: "none" }) as { hint: Hint }).hint;
-    expect(text(hint)).toBe(`Still to answer: ${plain.stage.lines.find((l) => l.source === "finding")!.name}.`);
+    const { log, stage } = set((l) => l.name);
+    const hint = (primaryFor(log, stage, { kind: "none" }) as { hint: Hint }).hint;
+    expect(text(hint)).toBe(`Still to answer: ${stage.lines.find((l) => l.key === "exclusions")!.name}.`);
+  });
+});
+
+/**
+ * Open noticings do not hold Continue (finding 6; FOUNDATION §7): each travels to the triage of the
+ * open noticings, which stands before the held-out rows open under Predict (Results) and before the
+ * plan's lock otherwise (Models; core/sweep.py `gate_stage`), and the foot says how many wait there.
+ * The triage gates the opening, unchanged, so in the triage's own stage a noticing still holds it.
+ */
+describe("open noticings and Continue (finding 6)", () => {
+  // Who's in as the engine serves it under Predict: its questions answered, one noticing open.
+  const whos = stageOf(LOG, "whos_in")!;
+  const noticings = whos.lines.filter((l) => l.source === "finding" && l.counted && l.status === "open");
+  const results = stageOf(LOG, "results")!.name;
+
+  it("enables Continue once the stage's questions are answered, saying how many noticings wait for the triage in Results", () => {
+    expect(LOG.fit?.purpose).toBe("prediction");
+    expect(noticings.length).toBe(1);
+    expect(whos.lines.filter((l) => l.source !== "finding" && l.label === "Decide" && l.counted).every((l) => l.status === "answered")).toBe(true);
+    const p = primaryFor(LOG, whos, { kind: "none" });
+    expect(p).toMatchObject({ kind: "continue", disabled: false, label: "Continue" });
+    expect((p as { note?: string }).note).toBe(`1 noticing waits for the triage in ${results}.`);
+  });
+
+  it("counts every open noticing, and says so in the plural", () => {
+    const second = { ...noticings[0]!, id: "finding:second", key: "second", order: noticings[0]!.order + 0.1 };
+    const two = { ...whos, lines: [...whos.lines, second] };
+    const p = primaryFor({ ...LOG, stages: LOG.stages.map((s) => (s.key === "whos_in" ? two : s)) }, two, { kind: "none" });
+    expect((p as { note?: string }).note).toBe(`2 noticings wait for the triage in ${results}.`);
+  });
+
+  it("says nothing of the triage where no noticing is open", () => {
+    const { log, stage } = withStage(LOG, "whos_in", answered);
+    const p = primaryFor(log, stage, { kind: "none" });
+    expect(p).toMatchObject({ kind: "continue", disabled: false });
+    expect((p as { note?: string }).note).toBeUndefined();
+  });
+
+  it("still holds Continue on a question left open beside the noticing", () => {
+    const { log, stage } = withStage(LOG, "whos_in", (l) => (l.key === "missing" ? { ...l, status: "open", decision_id: null } : l));
+    expect(primaryFor(log, stage, { kind: "none" })).toMatchObject({
+      kind: "continue",
+      disabled: true,
+      hint: { lead: "Still to answer: ", to: { stage: "whos_in", line: "missing" } },
+    });
+  });
+
+  it("names the plan's lock in Models as the triage's place when the goal is not Predict", () => {
+    const estimate = { ...LOG, fit: { ...LOG.fit!, purpose: "inference" } };
+    const p = primaryFor(estimate, stageOf(estimate, "whos_in")!, { kind: "none" });
+    expect((p as { note?: string }).note).toBe(`1 noticing waits for the triage in ${stageOf(LOG, "models")!.name}.`);
+  });
+
+  it("keeps a noticing holding Continue in the triage's own stage", () => {
+    // Models under Estimate is where the triage stands: its noticing is decided there.
+    const estimate = { ...LOG, fit: { ...LOG.fit!, purpose: "inference" } };
+    const n = { ...noticings[0]!, id: "finding:models-noticing", key: "models-noticing" };
+    const models = stageOf(estimate, "models")!;
+    const decided = { ...models, sweep: null, lines: [...models.lines.map(answered), n] };
+    const log = { ...estimate, stages: estimate.stages.map((s) => (s.key === "models" ? decided : s)) };
+    expect(primaryFor(log, decided, { kind: "none" })).toMatchObject({
+      kind: "continue",
+      disabled: true,
+      hint: { lead: "Still to answer: ", to: { stage: "models", line: n.key } },
+    });
+  });
+});
+
+/**
+ * Continue goes to the next open line a card can answer (finding 7), not merely the next stage: the
+ * first such line in the seven stages' order outside the stage shown (a counted Decide that is not
+ * a noticing, or a stage's Confirm sweep still to confirm), else the next stage. Where that is not
+ * the next stage, the foot names where it goes.
+ */
+describe("where Continue goes (finding 7)", () => {
+  const ROLES = { key: "roles", stage: "data", name: CONTRACT.questions.roles!.name };
+  // Just after the outcome, as the walk met it: Your question answered and confirmed, the roles open
+  // back in Your data, and Who's in's questions waiting on them.
+  const afterOutcome = ((): QuestLog => {
+    const set = (key: string, f: (l: QuestLine) => QuestLine, patch: Partial<QuestStage> = {}) => (log: QuestLog) =>
+      withStage(log, key, f, patch).log;
+    return [
+      set("question", (l) => (l.label === "Decide" ? answered(l) : l), { sweep: { ...stageOf(NOT_REACHED, "question")!.sweep!, answered: true } }),
+      set("data", (l) => (l.key === "roles" ? { ...l, status: "open", decision_id: null } : l)),
+      set("whos_in", (l) => (l.label === "Decide" && l.counted && l.source !== "finding" ? { ...l, status: "waiting", decision_id: null, waiting_for: [ROLES] } : l)),
+    ].reduce((log, f) => f(log), NOT_REACHED);
+  })();
+
+  it("goes back to the roles in Your data once the outcome is answered, naming them", () => {
+    const question = stageOf(afterOutcome, "question")!;
+    expect(primaryFor(afterOutcome, question, { kind: "none" })).toEqual({
+      kind: "continue",
+      to: "data",
+      line: "roles",
+      label: "Continue",
+      disabled: false,
+      hint: { lead: "Next: ", name: ROLES.name, tail: ", in Your data.", to: { stage: "data", line: "roles" } },
+    });
+  });
+
+  it("passes over a line no card can answer, and a noticing, to the next one a card can", () => {
+    // Your question's intended use is open; a card that cannot answer it is passed over.
+    const whos = stageOf(LOG, "whos_in")!;
+    const intended = stageOf(LOG, "question")!.lines.find((l) => l.key === "set_intended_use")!;
+    expect(intended.status).toBe("open");
+    const p = primaryFor(LOG, whos, { kind: "none" });
+    expect(p).toMatchObject({ kind: "continue", to: "question", line: "set_intended_use", disabled: false });
+    expect(text((p as { hint: Hint }).hint)).toBe(`Next: ${intended.name}, in ${stageOf(LOG, "question")!.name}.`);
+    // No card answers the intended use, and Your question's sweep is confirmed: the next is Models'
+    // selection, in the next stage, unnamed.
+    const swept = withStage(LOG, "question", (l) => l, { sweep: { ...stageOf(LOG, "question")!.sweep!, answered: true } }).log;
+    const q = primaryFor(swept, stageOf(swept, "whos_in")!, { kind: "none" }, (l) => l.key !== "set_intended_use");
+    expect(q).toMatchObject({ kind: "continue", to: "models", line: "set_selection", label: "Continue", disabled: false, hint: null });
+  });
+
+  it("goes to a stage's Confirm sweep still to confirm", () => {
+    const { log } = withStage(LOG, "question", (l) => (l.label === "Decide" ? answered(l) : l));
+    const sweep = stageOf(log, "question")!.sweep!;
+    expect(sweep.answered).toBe(false);
+    const p = primaryFor(log, stageOf(log, "whos_in")!, { kind: "none" });
+    expect(p).toMatchObject({ kind: "continue", to: "question", disabled: false });
+    expect((p as { line?: string }).line).toBeUndefined();
+    expect(text((p as { hint: Hint }).hint)).toBe(`Next: the choice set for you, in ${stageOf(log, "question")!.name}.`);
+  });
+
+  it("is Continue to the next stage, unnamed, where no open line is left to answer", () => {
+    const done = LOG.stages.reduce((log, s) => withStage(log, s.key, answered, { sweep: s.sweep ? { ...s.sweep, answered: true } : null }).log, LOG);
+    const p = primaryFor(done, stageOf(done, "first_look")!, { kind: "none" });
+    expect(p).toEqual({ kind: "continue", to: "whos_in", label: "Continue", disabled: false, hint: null });
   });
 });
 
@@ -172,8 +297,10 @@ describe("the opening, in Results (P5)", () => {
   });
 
   it("gives way to Continue once the rows are opened", () => {
-    const { log, stage } = withStage(LOG, "results", answered);
-    expect(primaryFor(log, stage, { kind: "pressed" })).toMatchObject({ kind: "continue", to: "writeup", disabled: false });
+    // Every earlier line answered too, so Continue's next open line is none (finding 7): Write-up.
+    const done = LOG.stages.reduce((log, s) => withStage(log, s.key, answered, { sweep: s.sweep ? { ...s.sweep, answered: true } : null }).log, LOG);
+    const stage = stageOf(done, "results")!;
+    expect(primaryFor(done, stage, { kind: "pressed" })).toMatchObject({ kind: "continue", to: "writeup", disabled: false });
   });
 });
 

@@ -4,7 +4,9 @@
  * the kit's canvas head, and under Predict it shows no fit until Fit is pressed (§7: what waits is
  * what is shown; log.ts `fitWithheld`); at Models' end it is the analysis flowchart (today's
  * lineage view) with Fit at its end (§7); in Results it is W1-G's ResultsTapestry inside the kit's
- * canvas; in Write-up the manuscript at full width, in the export bundle's sections (P8).
+ * canvas; in Write-up the manuscript at full width, in the export bundle's sections (P8). Nothing
+ * is recorded from the tapestry: the card's foot is the one action (FOUNDATION §1), so the stage
+ * draws no record button and no refusal's ways forward (StageProps `recordHere`).
  */
 import type { MethodsSections } from "../api/m3-types";
 import type { ProjectView, QuestLog } from "../api/schema";
@@ -73,6 +75,7 @@ export function Tapestry({
           focus={flowchart ? FLOWCHART : focus}
           onFocus={flowchart ? NOOP : setFocus}
           fitWithheld={fitWithheld(log)}
+          recordHere={false}
         />
       </div>
       {flowchart ? <FitControl pid={pid} log={log} fit={view.stages.fit} /> : null}

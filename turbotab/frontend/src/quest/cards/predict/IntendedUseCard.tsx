@@ -2,10 +2,19 @@
  * `set_intended_use`: how the model will be used. Decision support or risk estimation, with the
  * subgroups whose performance is reported and the approach to fairness. The thresholds belong to
  * decision support alone, so a risk estimate never carries them. The engine refuses decision
- * support for an outcome that is not yes/no, in its own words, at the option.
+ * support for an outcome whose task is known and not yes/no (models/decision_curve.py
+ * `_intended_use_fits`: the task recorded, else the one the target stage detected), so for such an
+ * outcome the card offers neither it nor its thresholds; while no task is known, the engine's
+ * refusal answers at the option, in its own words.
+ *
+ * The subgroups lead with the columns the engine groups by their levels (a categorical, yes/no or
+ * text column, one of two values, one declared categorical or confirmed as codes: models/
+ * decision_curve.py `grouping_of`), then the amounts it groups by thirds, each in the table's
+ * order; the outcome, the identifier and the flags on other columns are not offered.
  */
 import { useState } from "react";
-import type { ProjectState } from "../../../api/schema";
+import type { ColumnSummary, ProjectState } from "../../../api/schema";
+import { takesLevel } from "../../../components/record/ask/ChoiceQuestions";
 import { Pending } from "../../../components/record/blocks";
 import type { LineCard } from "../../contracts";
 import { Choice, Frame, useCard, type CardWiring, type Offer } from "./card";
@@ -38,6 +47,42 @@ const THRESHOLDS = {
 } as const;
 const text = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n));
 
+/** Roles whose columns group no performance: the unit's identifier, and a flag on another column. */
+const NOT_SUBGROUPS = new Set(["identifier", "flag"]);
+
+/** Whether the engine groups a column by its levels rather than its thirds (`grouping_of`): its
+ *  type or its two values say so, or the person declared it categorical or confirmed it codes. */
+function byLevels(
+  column: string,
+  summary: ColumnSummary | undefined,
+  state: ProjectState,
+): boolean {
+  return (
+    takesLevel(summary) ||
+    (state.categorical ?? []).includes(column) ||
+    state.reading_confirmations?.[`code_or_count:${column}`] === "code"
+  );
+}
+
+/** The columns that can group the performance, those grouped by their levels first, each in the
+ *  table's order. */
+export function subgroupColumns(
+  columns: readonly string[],
+  summaries: ReadonlyMap<string, ColumnSummary>,
+  state: ProjectState,
+): string[] {
+  const offered = columns.filter(
+    (col) => col !== state.target && !NOT_SUBGROUPS.has(state.roles?.[col] ?? ""),
+  );
+  const levels = offered.filter((col) => byLevels(col, summaries.get(col), state));
+  return [...levels, ...offered.filter((col) => !levels.includes(col))];
+}
+
+/** Decision support is the engine's for a yes/no outcome, or while the task is not known yet. */
+export function offersDecisionSupport(task: ProjectState["task"] | undefined): boolean {
+  return task === null || task === undefined || task === "binary";
+}
+
 function Body({
   card,
   state,
@@ -56,10 +101,9 @@ function Body({
   const [high, setHigh] = useState(text(on?.threshold_high));
   const [decision, setDecision] = useState(text(on?.threshold));
 
-  // Any column of the table but the outcome and the identifier can group the performance.
-  const groupable = card.columns.filter(
-    (col) => col !== state.target && state.roles?.[col] !== "identifier",
-  );
+  const groupable = subgroupColumns(card.columns, card.summaries, state);
+  const support = offersDecisionSupport(card.task);
+  const uses = support ? USES : USES.filter((u) => u !== "decision_support");
   const bounds = BOUNDS.set_intended_use;
   const typed = {
     threshold_low: parseTyped(low, bounds.threshold_low, false),
@@ -89,7 +133,7 @@ function Body({
         threshold_high: number(typed.threshold_high),
         threshold: number(typed.threshold),
         // the table's order, so the same choice is the same decision
-        subgroups: groupable.filter((col) => subgroups.has(col)),
+        subgroups: card.columns.filter((col) => groupable.includes(col) && subgroups.has(col)),
         fairness,
       }),
     };
@@ -113,37 +157,39 @@ function Body({
         chosen={subgroups}
         onToggle={toggle}
       />
-      <FieldGroup legend="Thresholds, for decision support">
-        <NumberField
-          name="threshold_low"
-          label={THRESHOLDS.threshold_low.label}
-          text={low}
-          onChange={setLow}
-          bounds={bounds.threshold_low}
-          integer={false}
-        />
-        <NumberField
-          name="threshold_high"
-          label={THRESHOLDS.threshold_high.label}
-          text={high}
-          onChange={setHigh}
-          bounds={bounds.threshold_high}
-          integer={false}
-        />
-        <NumberField
-          name="threshold"
-          label={THRESHOLDS.threshold.label}
-          text={decision}
-          onChange={setDecision}
-          bounds={bounds.threshold}
-          integer={false}
-        />
-      </FieldGroup>
+      {support ? (
+        <FieldGroup legend="Thresholds, for decision support">
+          <NumberField
+            name="threshold_low"
+            label={THRESHOLDS.threshold_low.label}
+            text={low}
+            onChange={setLow}
+            bounds={bounds.threshold_low}
+            integer={false}
+          />
+          <NumberField
+            name="threshold_high"
+            label={THRESHOLDS.threshold_high.label}
+            text={high}
+            onChange={setHigh}
+            bounds={bounds.threshold_high}
+            integer={false}
+          />
+          <NumberField
+            name="threshold"
+            label={THRESHOLDS.threshold.label}
+            text={decision}
+            onChange={setDecision}
+            bounds={bounds.threshold}
+            integer={false}
+          />
+        </FieldGroup>
+      ) : null}
       <Choice
         card={card}
         field="use"
         legend="Use"
-        values={USES}
+        values={uses}
         names={USE_NAMES}
         offerOf={offerOf}
         recorded={on?.use ?? null}

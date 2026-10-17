@@ -326,6 +326,8 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* The flow's width sets its rows' layout (the narrow layout below), never the other way. */
+  container-type: inline-size;
 }
 
 .flowRow {
@@ -438,6 +440,37 @@
   font-family: var(--serif);
   font-size: 12.5px;
   color: var(--muted);
+}
+
+/* A flow narrower than its row's four columns need (the grids above: 150 + 70 + 104 px and three
+   12 px gaps, 360 px; compact, 120 + 58 + 100 px and three 10 px gaps, 308 px) puts each step's
+   name on a line of its own over its bar and its counts, so no count is cut at the row's edge
+   (W1-N's leftover V2: "−1,419" read "−1,4" at a 400 px window). A flow wide enough keeps its one
+   line per step, so the desktop layouts are unchanged. */
+@container (max-width: 359px) {
+  .flow .flowLine {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 2px 10px;
+  }
+
+  .flow .flowLabel {
+    grid-column: 1 / -1;
+  }
+
+  .flow .flowDetail {
+    padding-left: 0;
+  }
+}
+
+@container (max-width: 307px) {
+  .flowCompact .flowLine {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 2px 10px;
+  }
+
+  .flowCompact .flowLabel {
+    grid-column: 1 / -1;
+  }
 }
 
 .flowOpen {
