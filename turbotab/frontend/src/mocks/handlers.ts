@@ -12,6 +12,7 @@ import { m1RecordHandlers } from "./m1-record";
 import { m1StageHandlers } from "./m1-stage";
 import { m2StageHandlers } from "./m2-stage";
 import { m3Handlers } from "./m3";
+import { questHandlers } from "./quest";
 import { datasetAt, listDir } from "./fs";
 import { columnSummary, findColumn, histogram, isNumericDtype } from "./stats";
 
@@ -54,6 +55,9 @@ async function datasetFromUpload(file: File): Promise<MockDataset> {
 
 export function makeHandlers(server: MockServer): HttpHandler[] {
   return [
+    // W1 part 2: the quest log and its reads for every project, and Fit (quest.ts). First, so the
+    // mock server's own projects answer their methods from their own records.
+    ...questHandlers(server),
     // M3: the replayed reference journeys (m3~<journey>), and the endpoints no other mock answers
     // (readings, methods, plan, models, files, join preview, codebooks) for every project.
     ...m3Handlers(),

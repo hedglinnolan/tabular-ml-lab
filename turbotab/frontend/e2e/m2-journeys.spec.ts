@@ -30,6 +30,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
 import { confirmAsk, confirmStageAsk, firstDrawnPair } from "./ask";
+import { toClassic } from "./classic";
 import { cheapestFamily, fitOnceComputed, openSealCard, shelfEstimates, visibleWhileComputing } from "./fit";
 import { nhanesExport } from "./nhanes";
 
@@ -174,6 +175,7 @@ async function openPath(page: Page, path: string) {
   await page.getByPlaceholder("/path/to/table.csv").fill(path);
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await expect(page).toHaveURL(/\/p\/[^/]+$/);
+  await toClassic(page);
   await expect(page.getByTestId("question-lens")).toBeVisible({ timeout: 60_000 });
 }
 

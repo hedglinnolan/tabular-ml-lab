@@ -21,6 +21,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
+import { toClassic } from "./classic";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCREENS = resolve(HERE, "../../../docs/turbotab-next/m2/screens");
@@ -54,6 +55,7 @@ async function open(page: Page, name: RegExp) {
   test.skip(!(await onMock(page)), "these journeys run on the mock's tables");
   await page.getByRole("link", { name }).first().click();
   await expect(page).toHaveURL(/\/p\/[^/]+$/);
+  await toClassic(page);
 }
 
 test("NHANES: repairs, the grain stated, eligibility, missing by mechanism, and the seal opened once", async ({
@@ -193,7 +195,7 @@ test("NHANES: repairs, the grain stated, eligibility, missing by mechanism, and 
   // Honest cost: a family's measured fit time is on its option before anything is fit, in the
   // shelf's words, whenever it is long enough to weigh (10 s, the server's NOTEWORTHY_SECONDS).
   const shelf = await page.evaluate(async () => {
-    const pid = location.pathname.split("/").pop();
+    const pid = location.pathname.split("/")[2]; // /p/:pid/classic
     const r = await fetch(`/api/projects/${pid}/stages/shelf`);
     return ((await r.json()) as { artifact: { families: { key: string; estimate_seconds: number | null; estimate: string | null }[] } })
       .artifact.families;

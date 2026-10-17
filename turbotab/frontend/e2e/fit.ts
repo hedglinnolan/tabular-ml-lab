@@ -64,9 +64,9 @@ export async function fitOnceComputed(page: Page, timeout = 300_000): Promise<bo
   return true;
 }
 
-/** The project's id from the page's URL (/p/:pid). */
+/** The project's id from the page's URL (/p/:pid, or today's screen at /p/:pid/classic). */
 export function pidOf(page: Page): string {
-  return decodeURIComponent(/\/p\/([^/]+)$/.exec(page.url())![1]!);
+  return decodeURIComponent(/\/p\/([^/]+)(?:\/classic)?$/.exec(page.url())![1]!);
 }
 
 /** Every stage, for :func:`stagesComputing`: the page shows whatever is computing. */

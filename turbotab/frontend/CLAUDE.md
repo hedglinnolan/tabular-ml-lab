@@ -31,22 +31,45 @@ src/components/stage  the stage: previews with the transform player, evidence, l
                       the Results, save/export (journal-style SVG and PNG)
 src/components/views  the view kinds (FOUNDATION §5 rule 9): one typed input per view, a table
                       alternative for each; /lab/views renders them all in both themes
-src/screens/          Start, Project, Lab (/lab demonstrates every motion primitive; /lab/stage
-                      hosts the stage beside a stand-in Record; /lab/m3 lists the M3 journeys).
-                      Every /lab route exists only in dev:mock; a production build drops them
+src/quest/            the quest shell at /p/:pid (W1_PART2_PLAN §2 "W1-E"): QuestScreen (the header,
+                      the quest line and progress bar, the manuscript rail, the card, the tapestry),
+                      log.ts (pure: the open stage, segments, the one primary action, Confirm all's
+                      lines), StageLine (the line, the bar, the hover panel), StageCard, Tapestry,
+                      Fit; contracts.ts is the interface W1-F and W1-G implement
+src/quest/cards/      CardFor, the dispatcher: every quest line's card by its source, never a blank
+                      (renderers.ts): today's AskFor, W1-F's DECLARATION_CARDS (cards/predict), a
+                      finding's own card, reading rows, else a fallback card in the line's words.
+                      Results, once reached, is not drawn line by line: StageCard mounts W1-G's
+                      ResultsCards (src/quest/results) once as its column (contracts.ts).
+                      CardFor.test.tsx is the renderer contract: every (source, key) in
+                      fixtures/quest-contract.json, which turbotab/core/tests/
+                      test_quest_renderer_contract.py writes from the path fuzzer
+src/kit/              the product's calm kit, copied from src/explore/calm-kit as the shell uses it:
+                      tokens (scoped to [data-kit]: a part carries the attribute; today's cards keep
+                      src/styles/tokens.css), the Source Sans 3 faces, kit.module.css, Why, Foot,
+                      the manuscript rail and overlay (props-driven, over GET /methods/sections)
+src/screens/          Start, Project (today's screen, at /p/:pid/classic until W2 closes), Lab (/lab
+                      demonstrates every motion primitive; /lab/stage hosts the stage beside a
+                      stand-in Record; /lab/m3 lists the M3 journeys). Every /lab route exists only
+                      in dev:mock; a production build drops them
 src/explore/          dev-only prototypes and the calm kit (calm-kit, calm-quest, the methods-* and
                       stage prototypes), built by their own vite configs (build:protos, build:calm)
 src/mocks/            MSW handlers + an in-memory server with a stage graph (dev:mock only);
                       m3.ts replays the real server's captured journeys (fixtures/m3-*.json, from
-                      docs/turbotab-next/m3/capture_fixtures.py) as projects m3~<journey>[~<n>]
-src/styles/tokens.css the palette and the type tokens; base.css global rules
+                      docs/turbotab-next/m3/capture_fixtures.py) as projects m3~<journey>[~<n>];
+                      quest.ts serves the quest log and its reads for every project, and Fit
+src/styles/tokens.css the palette and the type tokens of today's screens; base.css global rules
 e2e/                  one Playwright journey per milestone (mock or real server), review screenshots;
                       M1: m1-journey.spec.ts (the whole journey), m1-record, m1-stage;
                       M2: m2-journeys.spec.ts (every lens and NHANES, real server only), m2-record,
                       m2-stage (the mock lab at /lab/stage/m2);
                       M3: m3-no-dead-end.spec.ts (six journeys, every open question answerable,
-                      real server only)
+                      real server only). Each opens its project in the shell, then drives today's
+                      screen through classic.ts's toClassic
 ```
+
+A project's two routes share one event stream (App.tsx `Project`): `/p/:pid` is the quest shell,
+whose header links to `/p/:pid/classic`, today's screen.
 
 ## Rules
 
@@ -60,10 +83,11 @@ e2e/                  one Playwright journey per milestone (mock or real server)
   generated.ts.
 - **Presentation follows FOUNDATION:** color by role (§4), one type family (§2), plain words on the
   card with the technical name as a quiet label (§2), nothing quietly filled in (§10). Style through
-  tokens (`src/styles/tokens.css`; the kit's `docs/turbotab-next/calm/tokens.css`); never hard-code
-  a color. The M1–M3 components in `record`, `banner` and `stage` were built to DESIGN_LANGUAGE
-  §02–§05 (three voices, chips) before the calm ruling of 2026-10-05; match them when fixing them,
-  and build new screens to FOUNDATION.
+  tokens (`src/styles/tokens.css`; the kit's `docs/turbotab-next/calm/tokens.css`, which
+  `src/kit/tokens.css` holds value for value under `[data-kit]`); never hard-code a color. The
+  M1–M3 components in `record`, `banner` and `stage` were built to DESIGN_LANGUAGE §02–§05 (three
+  voices, chips) before the calm ruling of 2026-10-05, and keep that idiom inside the quest shell
+  until W2; match them when fixing them, and build new screens to FOUNDATION with `src/kit`.
 - **Motion is identity continuity only** (DESIGN_LANGUAGE §05.2): settle, arrive, propagate
   (StaleVeil), the working table under a reshape, and numbers tweening. Nothing else moves;
   disclosure is instant. Durations 150–300 ms, from `DUR` / `useTransitions()`. Reduced motion

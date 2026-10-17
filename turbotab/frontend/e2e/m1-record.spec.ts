@@ -16,6 +16,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
+import { toClassic } from "./classic";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCREENS = resolve(HERE, "../../../docs/turbotab-next/m1/screens");
@@ -61,6 +62,7 @@ async function openNhanes(page: Page) {
     .first()
     .click();
   await expect(page).toHaveURL(/\/p\/[^/]+$/);
+  await toClassic(page);
   await expect(page.getByTestId("question-lens")).toBeVisible({ timeout: 20_000 });
 }
 
@@ -298,6 +300,7 @@ test("a wide table keeps the outcome picker and the roles question responsive", 
     .first()
     .click();
   await expect(page).toHaveURL(/\/p\/[^/]+$/);
+  await toClassic(page);
   // The seeded genomics project already answered its lens; the outcome is next.
   await expect(page.getByTestId("decision-lens")).toBeVisible({ timeout: 20_000 });
   const picker = page.getByRole("combobox");

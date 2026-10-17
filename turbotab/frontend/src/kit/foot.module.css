@@ -1,0 +1,35 @@
+/* Direction A's foot and arrival line (design/quest-meaning-first meaning.module.css, rule for rule):
+   the card's one place to act, and what the last answer added to the paper, beside it. */
+.actRow {
+  padding-top: 10px;
+}
+.arrival {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  margin: 6px 0 0;
+  padding: 2px 0 2px 12px;
+  border: 0;
+  border-left: 3px solid var(--ok);
+  background: none;
+  text-align: left;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.arrivalWhere {
+  white-space: nowrap;
+  color: var(--ok);
+  font-weight: 600;
+}
+.arrivalText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arrival:hover .arrivalText {
+  color: var(--ink);
+}

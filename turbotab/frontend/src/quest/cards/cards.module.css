@@ -1,0 +1,65 @@
+/* The dispatcher's own small cards (a noticing, reading rows, the Results frame), in today's card
+   idiom (src/styles/tokens.css): they sit beside today's question cards in the card column. */
+.lineCard {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  min-width: 0;
+}
+.kicker {
+  margin: 0;
+  font-size: var(--fs-kicker);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.quiet {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-body);
+}
+.note {
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--fs-body);
+}
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.row {
+  display: grid;
+  gap: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+}
+.row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.rowWords {
+  font-size: var(--fs-decision);
+}
+.rowOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.small {
+  justify-self: start;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  font-size: var(--fs-control);
+}
+.small:hover:not(:disabled) {
+  border-color: var(--accent);
+}
