@@ -7,6 +7,9 @@
  * (`reason`, `would_change`, `changes_nothing`), the preview the engine serves for the option
  * pointed at (the caption of its first view, else its note, else its caution), or the refusal the
  * preview meets. A card with nothing served to say about an option names the option and stops.
+ *
+ * A press the card will not send (a number outside what the model takes, a column still to choose)
+ * is answered at the option too, in one sentence for each field in the way, so no press is silent.
  */
 import { useId, useState, type ReactNode } from "react";
 import { isRefusalError } from "../../../api/client";
@@ -48,6 +51,9 @@ export interface CardWiring {
   pending: boolean;
   /** Record a decision; `at` names the option a refusal answers under. */
   record: (decision: Decision, at: string) => void;
+  /** The option last pressed that the card would not send, answered until it can be sent. */
+  held: string | null;
+  hold: (at: string) => void;
   answerAt: { key: string; node: ReactNode } | null;
   words: Words | null;
 }
@@ -59,6 +65,7 @@ export function useCard(pid: string, kind: Decision["kind"]): CardWiring {
   const summaries = useColumnSummaries(pid, view?.stages.ingest?.status === "fresh").data;
   const decide = useDecide(pid);
   const [plain, setPlain] = useState<PlainAnswer | null>(null);
+  const [held, setHeld] = useState<string | null>(null);
   const { focus } = useStageFocus();
   const pointed =
     focus.kind === "option" && focus.decision.kind === kind
@@ -68,6 +75,7 @@ export function useCard(pid: string, kind: Decision["kind"]): CardWiring {
 
   const record = (decision: Decision, at: string) => {
     setPlain(null);
+    setHeld(null);
     decide.mutate(decision, {
       onError: (err) =>
         setPlain(
@@ -76,6 +84,10 @@ export function useCard(pid: string, kind: Decision["kind"]): CardWiring {
             : { at, failure: err instanceof Error ? err.message : String(err) },
         ),
     });
+  };
+  const hold = (at: string) => {
+    setPlain(null);
+    setHeld(at);
   };
   const answerAt: CardWiring["answerAt"] = plain
     ? {
@@ -100,6 +112,8 @@ export function useCard(pid: string, kind: Decision["kind"]): CardWiring {
     columns: (summaries ?? []).map((s) => s.name),
     pending: decide.isPending,
     record,
+    held,
+    hold,
     answerAt,
     words: preview.answer ? wordsOf(preview.answer) : null,
   };
@@ -157,10 +171,24 @@ function wordsNote(words: Words | null, decision: Decision | null): ReactNode {
   );
 }
 
+/** What a card can send for an option: the decision, or what stands in the way (one sentence for
+ *  each field, naming what it takes). */
+export type Offer = { decision: Decision } | { problems: string[] };
+
+/** The sentence a press the card will not send is answered with, under the option pressed. */
+function BlockedNote({ problems }: { problems: string[] }) {
+  return (
+    <p className={c.blocked} role="alert" data-testid="blocked">
+      <span className={c.blockedLabel}>Not recorded</span> {problems.join("; ")}
+    </p>
+  );
+}
+
 /**
  * One choice of a card, as the option list the Record uses: pointing at an option previews what
- * it would record, and pressing it records the whole decision. `decisionOf` gives the decision
- * for a value, or null where the card cannot send it yet (the press then does nothing).
+ * it would record, and pressing it records the whole decision. `offerOf` gives, for a value, the
+ * decision, or what stands in the way of sending it; a press that cannot be sent says so under the
+ * option, until the fields are put right.
  */
 export function Choice<V extends string>({
   card,
@@ -168,27 +196,31 @@ export function Choice<V extends string>({
   legend,
   values,
   names,
-  decisionOf,
+  offerOf,
   recorded,
   hint = true,
   testId,
-  blocked,
 }: {
   card: CardWiring;
   field: string;
   legend: string;
   values: readonly V[];
   names: Record<V, string>;
-  decisionOf: (value: V) => Decision | null;
+  offerOf: (value: V) => Offer;
   /** The value on record, when the line is answered. */
   recorded: V | null;
   hint?: boolean;
   testId: string;
-  /** A press the card could not send: what it still needs. */
-  blocked?: (value: V) => void;
 }) {
+  const decisions = new Map<string, Decision | null>();
+  const problems = new Map<string, string[]>();
+  for (const v of values) {
+    const offer = offerOf(v);
+    decisions.set(`${field}:${v}`, "decision" in offer ? offer.decision : null);
+    if ("problems" in offer) problems.set(`${field}:${v}`, offer.problems);
+  }
   const items: OptionItem[] = values.map((v) => {
-    const decision = decisionOf(v);
+    const decision = decisions.get(`${field}:${v}`) ?? null;
     return {
       key: `${field}:${v}`,
       label: names[v],
@@ -199,12 +231,16 @@ export function Choice<V extends string>({
     };
   });
   const press = (item: OptionItem) => {
-    const value = values.find((v) => `${field}:${v}` === item.key);
-    if (value === undefined) return;
-    const decision = decisionOf(value);
+    const decision = decisions.get(item.key);
     if (decision) card.record(decision, item.key);
-    else blocked?.(value);
+    else if (decision === null) card.hold(item.key);
   };
+  const heldProblems = card.held === null ? undefined : problems.get(card.held);
+  const answerAt =
+    card.answerAt ??
+    (card.held !== null && heldProblems
+      ? { key: card.held, node: <BlockedNote problems={heldProblems} /> }
+      : null);
   return (
     <fieldset className={c.group}>
       <legend className={c.legend}>{legend}</legend>
@@ -214,7 +250,7 @@ export function Choice<V extends string>({
         onRecord={press}
         recordedKey={recorded === null ? null : `${field}:${recorded}`}
         pending={card.pending}
-        answerAt={card.answerAt}
+        answerAt={answerAt}
         label={`${legend} — preview with the arrow keys, Enter to record`}
         testId={testId}
         hint={hint}

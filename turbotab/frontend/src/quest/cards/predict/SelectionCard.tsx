@@ -11,7 +11,7 @@ import { useState } from "react";
 import type { ProjectState } from "../../../api/schema";
 import { Pending } from "../../../components/record/blocks";
 import type { LineCard } from "../../contracts";
-import { Choice, Frame, useCard, type CardWiring } from "./card";
+import { Choice, Frame, useCard, type CardWiring, type Offer } from "./card";
 import c from "./declaration.module.css";
 import { NumberField, SelectField } from "./fields";
 import {
@@ -21,7 +21,9 @@ import {
   SETTINGS_OF,
   parseTyped,
   selection,
+  trouble,
   type Selection,
+  type Setting,
 } from "./payloads";
 
 const NAMES: Record<Selection["method"], string> = {
@@ -38,6 +40,11 @@ const PRE_NAMES: Record<NonNullable<Selection["pre_selected"]>, string> = {
   yes: "Yes",
   other_data: "Yes, from other data",
   unknown: "Unknown",
+};
+const SETTING_LABELS: Record<Setting, string> = {
+  keep: "Predictors to keep (screening)",
+  threshold: "Threshold (stability, univariable)",
+  q: "Predictors per resample, q (stability)",
 };
 const text = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n));
 
@@ -62,17 +69,21 @@ function Body({
     q: parseTyped(q, bounds.q, true),
   };
 
-  const decisionOf = (method: Selection["method"]) => {
+  const offerOf = (method: Selection["method"]): Offer => {
     // Only what the method reads has to be a number the model accepts.
-    const reads = SETTINGS_OF[method];
-    if (reads.some((k) => typed[k] === "invalid")) return null;
+    const problems = SETTINGS_OF[method].flatMap((k) =>
+      trouble(SETTING_LABELS[k], typed[k], bounds[k], k !== "threshold"),
+    );
+    if (problems.length > 0) return { problems };
     const number = (t: (typeof typed)[keyof typeof typed]) => (t === "invalid" ? null : t);
-    return selection(method, {
-      keep: number(typed.keep),
-      threshold: number(typed.threshold),
-      q: number(typed.q),
-      pre_selected: pre === "" ? null : (pre as NonNullable<Selection["pre_selected"]>),
-    });
+    return {
+      decision: selection(method, {
+        keep: number(typed.keep),
+        threshold: number(typed.threshold),
+        q: number(typed.q),
+        pre_selected: pre === "" ? null : (pre as NonNullable<Selection["pre_selected"]>),
+      }),
+    };
   };
 
   return (
@@ -80,7 +91,7 @@ function Body({
       <div className={c.fields}>
         <NumberField
           name="keep"
-          label="Predictors to keep (screening)"
+          label={SETTING_LABELS.keep}
           text={keep}
           onChange={setKeep}
           bounds={bounds.keep}
@@ -88,7 +99,7 @@ function Body({
         />
         <NumberField
           name="threshold"
-          label="Threshold (stability, univariable)"
+          label={SETTING_LABELS.threshold}
           text={threshold}
           onChange={setThreshold}
           bounds={bounds.threshold}
@@ -96,7 +107,7 @@ function Body({
         />
         <NumberField
           name="q"
-          label="Predictors per resample, q (stability)"
+          label={SETTING_LABELS.q}
           text={q}
           onChange={setQ}
           bounds={bounds.q}
@@ -119,7 +130,7 @@ function Body({
         legend="Method"
         values={METHODS}
         names={NAMES}
-        decisionOf={decisionOf}
+        offerOf={offerOf}
         recorded={on?.method ?? null}
         testId="options-method"
       />

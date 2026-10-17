@@ -121,12 +121,30 @@ export const DEFAULTS = {
 } as const;
 
 /** A number field as typed: blank is none, a number inside the bounds is a number, anything else
- *  is `invalid` (the card does not post it; the server would answer 422, which says nothing). */
+ *  is `invalid` (the card does not post it; the server would answer 422, which says nothing). A
+ *  blank in a field the model needs a number for (`required`) is invalid as well. */
 export type Typed = number | null | "invalid";
 
-export function parseTyped(text: string, bounds: Bounds, integer: boolean): Typed {
+export function parseTyped(
+  text: string,
+  bounds: Bounds,
+  integer: boolean,
+  required: true,
+): number | "invalid";
+export function parseTyped(
+  text: string,
+  bounds: Bounds,
+  integer: boolean,
+  required?: boolean,
+): Typed;
+export function parseTyped(
+  text: string,
+  bounds: Bounds,
+  integer: boolean,
+  required = false,
+): Typed {
   const t = text.trim();
-  if (t === "") return null;
+  if (t === "") return required ? "invalid" : null;
   const n = Number(t);
   if (!Number.isFinite(n) || (integer && !Number.isInteger(n))) return "invalid";
   if (bounds.ge !== undefined && n < bounds.ge) return "invalid";
@@ -135,6 +153,27 @@ export function parseTyped(text: string, bounds: Bounds, integer: boolean): Type
   if (bounds.lt !== undefined && n >= bounds.lt) return "invalid";
   return n;
 }
+
+const shown = (n: number) => n.toLocaleString("en-US");
+
+/** The numbers a field takes, in words, from its bounds: "a whole number from 2 to 10", "a number
+ *  above 0 and below 1", "a whole number of at least 1". */
+export function describeRange(b: Bounds, integer: boolean): string {
+  const noun = integer ? "a whole number" : "a number";
+  if (b.ge !== undefined && b.le !== undefined)
+    return `${noun} from ${shown(b.ge)} to ${shown(b.le)}`;
+  const edges = [
+    b.ge !== undefined ? `of at least ${shown(b.ge)}` : null,
+    b.gt !== undefined ? `above ${shown(b.gt)}` : null,
+    b.le !== undefined ? `of at most ${shown(b.le)}` : null,
+    b.lt !== undefined ? `below ${shown(b.lt)}` : null,
+  ].filter((edge) => edge !== null);
+  return [noun, edges.join(" and ")].join(" ").trim();
+}
+
+/** What stands in the way of sending a typed number: the field, then what it takes, or nothing. */
+export const trouble = (name: string, typed: Typed, bounds: Bounds, integer: boolean): string[] =>
+  typed === "invalid" ? [`${name}: ${describeRange(bounds, integer)}`] : [];
 
 // ── the payloads ─────────────────────────────────────────────────────────────
 

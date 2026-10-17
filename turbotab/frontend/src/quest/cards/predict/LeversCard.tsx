@@ -9,7 +9,7 @@ import { useState } from "react";
 import type { ProjectState } from "../../../api/schema";
 import { Pending } from "../../../components/record/blocks";
 import type { LineCard } from "../../contracts";
-import { Choice, Frame, useCard, type CardWiring } from "./card";
+import { Choice, Frame, useCard, type CardWiring, type Offer } from "./card";
 import c from "./declaration.module.css";
 import { NumberField } from "./fields";
 import {
@@ -20,6 +20,7 @@ import {
   VARIANCE_FILTERS,
   levers,
   parseTyped,
+  trouble,
   type LeverRules,
   type Levers,
 } from "./payloads";
@@ -34,6 +35,7 @@ const FILTER_NAMES: Record<Levers["variance_filter"], string> = {
   near_zero: "Near-zero variance",
   top: "Most variable",
 };
+const KEEP = "Predictors to keep (most variable)";
 const IMBALANCE_NAMES: Record<Levers["imbalance"], string> = {
   none: "None",
   weights: "Class weights",
@@ -56,10 +58,13 @@ function Body({
   const typed = parseTyped(keep, BOUNDS.set_levers.keep, true);
 
   /** The levers with one of the three changed, the other two as they stand. */
-  const change = (patch: Partial<LeverRules>): Levers | null => {
+  const change = (patch: Partial<LeverRules>): Offer => {
     const next = { ...rules, ...patch };
-    if (next.variance_filter === "top" && typed === "invalid") return null;
-    return levers({ ...next, keep: typed === "invalid" ? null : typed });
+    // The count is read by the "most variable" filter alone.
+    if (next.variance_filter === "top" && typed === "invalid") {
+      return { problems: trouble(KEEP, typed, BOUNDS.set_levers.keep, true) };
+    }
+    return { decision: levers({ ...next, keep: typed === "invalid" ? null : typed }) };
   };
 
   return (
@@ -67,7 +72,7 @@ function Body({
       <div className={c.fields}>
         <NumberField
           name="keep"
-          label="Predictors to keep (most variable)"
+          label={KEEP}
           text={keep}
           onChange={setKeep}
           bounds={BOUNDS.set_levers.keep}
@@ -80,7 +85,7 @@ function Body({
         legend="Predictor forms"
         values={FORMS}
         names={FORM_NAMES}
-        decisionOf={(v) => change({ forms: v })}
+        offerOf={(v) => change({ forms: v })}
         recorded={on?.forms ?? null}
         testId="options-forms"
         hint={false}
@@ -91,7 +96,7 @@ function Body({
         legend="Variance filter"
         values={VARIANCE_FILTERS}
         names={FILTER_NAMES}
-        decisionOf={(v) => change({ variance_filter: v })}
+        offerOf={(v) => change({ variance_filter: v })}
         recorded={on?.variance_filter ?? null}
         testId="options-variance_filter"
         hint={false}
@@ -102,7 +107,7 @@ function Body({
         legend="Imbalance correction"
         values={IMBALANCES}
         names={IMBALANCE_NAMES}
-        decisionOf={(v) => change({ imbalance: v })}
+        offerOf={(v) => change({ imbalance: v })}
         recorded={on?.imbalance ?? null}
         testId="options-imbalance"
       />

@@ -8,7 +8,7 @@ import { useState } from "react";
 import type { ProjectState } from "../../../api/schema";
 import { Pending } from "../../../components/record/blocks";
 import type { LineCard } from "../../contracts";
-import { Choice, Frame, useCard, type CardWiring } from "./card";
+import { Choice, Frame, useCard, type CardWiring, type Offer } from "./card";
 import c from "./declaration.module.css";
 import { ColumnChecks, FieldGroup, NumberField, SelectField } from "./fields";
 import {
@@ -18,6 +18,7 @@ import {
   USES,
   intendedUse,
   parseTyped,
+  trouble,
   type IntendedUse,
 } from "./payloads";
 
@@ -29,6 +30,12 @@ const FAIRNESS_NAMES: Record<IntendedUse["fairness"], string> = {
   subgroup_performance: "Subgroup performance",
   none: "None",
 };
+// A threshold's field label, and the name the sentence at the option calls it by.
+const THRESHOLDS = {
+  threshold_low: { label: "Lowest", name: "Lowest threshold" },
+  threshold_high: { label: "Highest", name: "Highest threshold" },
+  threshold: { label: "Decision threshold", name: "Decision threshold" },
+} as const;
 const text = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n));
 
 function Body({
@@ -66,17 +73,26 @@ function Body({
       return next;
     });
 
-  const decisionOf = (use: IntendedUse["use"]) => {
-    if (use === "decision_support" && Object.values(typed).includes("invalid")) return null;
+  const offerOf = (use: IntendedUse["use"]): Offer => {
+    // The thresholds are read by decision support alone, so only there do they have to be numbers.
+    const problems =
+      use === "decision_support"
+        ? (Object.keys(THRESHOLDS) as (keyof typeof THRESHOLDS)[]).flatMap((k) =>
+            trouble(THRESHOLDS[k].name, typed[k], bounds[k], false),
+          )
+        : [];
+    if (problems.length > 0) return { problems };
     const number = (t: typeof typed.threshold) => (t === "invalid" ? null : t);
-    return intendedUse(use, {
-      threshold_low: number(typed.threshold_low),
-      threshold_high: number(typed.threshold_high),
-      threshold: number(typed.threshold),
-      // the table's order, so the same choice is the same decision
-      subgroups: groupable.filter((col) => subgroups.has(col)),
-      fairness,
-    });
+    return {
+      decision: intendedUse(use, {
+        threshold_low: number(typed.threshold_low),
+        threshold_high: number(typed.threshold_high),
+        threshold: number(typed.threshold),
+        // the table's order, so the same choice is the same decision
+        subgroups: groupable.filter((col) => subgroups.has(col)),
+        fairness,
+      }),
+    };
   };
 
   return (
@@ -100,7 +116,7 @@ function Body({
       <FieldGroup legend="Thresholds, for decision support">
         <NumberField
           name="threshold_low"
-          label="Lowest"
+          label={THRESHOLDS.threshold_low.label}
           text={low}
           onChange={setLow}
           bounds={bounds.threshold_low}
@@ -108,7 +124,7 @@ function Body({
         />
         <NumberField
           name="threshold_high"
-          label="Highest"
+          label={THRESHOLDS.threshold_high.label}
           text={high}
           onChange={setHigh}
           bounds={bounds.threshold_high}
@@ -116,7 +132,7 @@ function Body({
         />
         <NumberField
           name="threshold"
-          label="Decision threshold"
+          label={THRESHOLDS.threshold.label}
           text={decision}
           onChange={setDecision}
           bounds={bounds.threshold}
@@ -129,7 +145,7 @@ function Body({
         legend="Use"
         values={USES}
         names={USE_NAMES}
-        decisionOf={decisionOf}
+        offerOf={offerOf}
         recorded={on?.use ?? null}
         testId="options-use"
       />

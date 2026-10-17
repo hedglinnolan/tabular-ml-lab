@@ -3,8 +3,9 @@ import { useId, useState, type ReactNode } from "react";
 import { parseTyped, type Bounds } from "./payloads";
 import c from "./declaration.module.css";
 
-/** A number the card takes, typed as text: blank is none; outside the model's bounds it is
- *  invalid, marked so, and the card does not post it. */
+/** A number the card takes, typed as text: blank is none, unless the model needs one (`required`),
+ *  and then it is invalid; outside the model's bounds it is invalid too. An invalid number is
+ *  marked so, and the card does not post it (it says why at the option pressed). */
 export function NumberField({
   name,
   label,
@@ -12,6 +13,7 @@ export function NumberField({
   onChange,
   bounds,
   integer,
+  required = false,
 }: {
   name: string;
   label: string;
@@ -19,8 +21,9 @@ export function NumberField({
   onChange: (text: string) => void;
   bounds: Bounds;
   integer: boolean;
+  required?: boolean;
 }) {
-  const typed = parseTyped(text, bounds, integer);
+  const typed = parseTyped(text, bounds, integer, required);
   return (
     <label className={c.field}>
       <span className={c.fieldLabel}>{label}</span>

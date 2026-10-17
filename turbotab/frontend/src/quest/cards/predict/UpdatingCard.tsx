@@ -27,7 +27,7 @@ export const UpdatingCard: LineCard = ({ pid, line }) => {
           legend="Method"
           values={UPDATING_METHODS}
           names={NAMES}
-          decisionOf={updating}
+          offerOf={(method) => ({ decision: updating(method) })}
           recorded={on?.method ?? null}
           testId="options-updating"
         />

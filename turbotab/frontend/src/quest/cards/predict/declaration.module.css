@@ -104,8 +104,10 @@
   border-color: var(--stop);
 }
 
+/* A select is as wide as its longest option, so no option's name is cut off. */
 .select {
-  min-width: 16em;
+  width: auto;
+  min-width: 9em;
   max-width: 100%;
 }
 
@@ -150,4 +152,24 @@
 .words[data-refused] {
   border-left: 3px solid var(--warn);
   padding-left: 8px;
+}
+
+/* A press the card will not send, answered under the option: it wears the warning mark a refusal
+ * does, and the field's own sentence. */
+.blocked {
+  margin: 0;
+  border-left: 3px solid var(--warn);
+  padding-left: 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.blockedLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--warn);
+  margin-right: 4px;
 }

@@ -4,22 +4,37 @@
  * writes the scheme onto it and keeps the draw. The fields start at the scheme as it stands in the
  * split, or at the model's defaults where no split is recorded yet. Folds, repeats and resamples
  * are sent with every scheme (the model holds all three); a column whose groups are the folds is
- * sent with internal–external validation alone, which needs one, so that option waits for it.
+ * sent with internal–external validation alone, which needs one, and that option, pressed without
+ * one, says so.
  */
 import { useState } from "react";
 import type { ProjectState } from "../../../api/schema";
 import { Pending } from "../../../components/record/blocks";
 import type { LineCard } from "../../contracts";
-import { Choice, Frame, useCard, type CardWiring } from "./card";
+import { Choice, Frame, useCard, type CardWiring, type Offer } from "./card";
 import c from "./declaration.module.css";
 import { CheckField, NumberField, SelectField } from "./fields";
-import { BOUNDS, DEFAULTS, VALIDATIONS, parseTyped, validation, type Validation } from "./payloads";
+import {
+  BOUNDS,
+  DEFAULTS,
+  VALIDATIONS,
+  parseTyped,
+  trouble,
+  validation,
+  type Validation,
+} from "./payloads";
 
 const NAMES: Record<Validation["validation"], string> = {
   kfold: "k-fold",
   repeated_kfold: "Repeated k-fold",
   bootstrap: "Bootstrap optimism correction",
   internal_external: "Internal–external",
+};
+const LABELS = {
+  folds: "Folds",
+  repeats: "Repeats (repeated k-fold)",
+  n_boot: "Resamples (bootstrap)",
+  cluster: "Group column (internal–external)",
 };
 
 function Body({
@@ -38,26 +53,33 @@ function Body({
   const [nBoot, setNBoot] = useState(String(scheme.n_boot));
   const [cluster, setCluster] = useState(scheme.cluster ?? "");
   const [nested, setNested] = useState(scheme.nested_cv);
-  const [needsColumn, setNeedsColumn] = useState(false);
   const bounds = BOUNDS.set_validation;
+  // The model holds all three numbers whatever the scheme, so each has to be a number it accepts.
   const typed = {
-    folds: parseTyped(folds, bounds.folds, true),
-    repeats: parseTyped(repeats, bounds.repeats, true),
-    n_boot: parseTyped(nBoot, bounds.n_boot, true),
+    folds: parseTyped(folds, bounds.folds, true, true),
+    repeats: parseTyped(repeats, bounds.repeats, true, true),
+    n_boot: parseTyped(nBoot, bounds.n_boot, true, true),
   };
 
-  const decisionOf = (kind: Validation["validation"]) => {
-    // The model holds all three numbers whatever the scheme, so each has to be one it accepts.
+  const offerOf = (kind: Validation["validation"]): Offer => {
     const { folds: f, repeats: r, n_boot: b } = typed;
-    if (f === null || f === "invalid" || r === null || r === "invalid") return null;
-    if (b === null || b === "invalid") return null;
-    return validation(kind, {
+    const problems = [
+      ...trouble(LABELS.folds, f, bounds.folds, true),
+      ...trouble(LABELS.repeats, r, bounds.repeats, true),
+      ...trouble(LABELS.n_boot, b, bounds.n_boot, true),
+      ...(kind === "internal_external" && cluster === ""
+        ? [`${LABELS.cluster}: choose a column`]
+        : []),
+    ];
+    if (f === "invalid" || r === "invalid" || b === "invalid") return { problems };
+    const decision = validation(kind, {
       folds: f,
       repeats: r,
       n_boot: b,
       cluster: cluster === "" ? null : cluster,
       nested_cv: nested,
     });
+    return decision ? { decision } : { problems };
   };
 
   const groups = card.columns.filter((col) => col !== state.target);
@@ -66,41 +88,41 @@ function Body({
       <div className={c.fields}>
         <NumberField
           name="folds"
-          label="Folds"
+          label={LABELS.folds}
           text={folds}
           onChange={setFolds}
           bounds={bounds.folds}
           integer
+          required
         />
         <NumberField
           name="repeats"
-          label="Repeats (repeated k-fold)"
+          label={LABELS.repeats}
           text={repeats}
           onChange={setRepeats}
           bounds={bounds.repeats}
           integer
+          required
         />
         <NumberField
           name="n_boot"
-          label="Resamples (bootstrap)"
+          label={LABELS.n_boot}
           text={nBoot}
           onChange={setNBoot}
           bounds={bounds.n_boot}
           integer
+          required
         />
         <SelectField
           name="cluster"
-          label="Group column (internal–external)"
+          label={LABELS.cluster}
           value={cluster}
-          invalid={needsColumn && cluster === ""}
+          invalid={card.held === "validation:internal_external" && cluster === ""}
           options={[
             { value: "", label: "Choose a column" },
             ...groups.map((g) => ({ value: g, label: g })),
           ]}
-          onChange={(v) => {
-            setCluster(v);
-            setNeedsColumn(false);
-          }}
+          onChange={setCluster}
         />
         <CheckField
           name="nested_cv"
@@ -115,11 +137,10 @@ function Body({
         legend="Scheme"
         values={VALIDATIONS}
         names={NAMES}
-        decisionOf={decisionOf}
+        offerOf={offerOf}
         // `set_validation`'s own record only: the scheme rides in the split's record until changed.
         recorded={recorded ? (state.split?.validation ?? null) : null}
         testId="options-validation"
-        blocked={(kind) => setNeedsColumn(kind === "internal_external" && cluster === "")}
       />
     </>
   );

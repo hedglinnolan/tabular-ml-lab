@@ -198,8 +198,40 @@ describe("the Predict declaration cards", () => {
       }
       await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
       expect(decide.mock.calls[0]).toEqual([PID, c.payload]);
+      // A press that is sent has nothing to be told.
+      expect(screen.queryByTestId("blocked")).toBeNull();
     },
   );
+
+  it.each(
+    CASES.filter((c) => c.payload === null).map(
+      (c) => [`${c.card} · ${c.press}${c.note ? ` · ${c.note}` : ""}`, c] as const,
+    ),
+  )("%s: the press is answered at the option, in the field's own words", (_name, c) => {
+    const { decide } = mount(c.card, { recorded: c.recorded, answered: c.answered });
+    for (const [testid, value] of Object.entries(c.fill ?? {})) {
+      fireEvent.change(screen.getByTestId(testid), { target: { value } });
+    }
+    const option = screen.getByTestId(`option-${c.press}`);
+    fireEvent.click(option);
+    expect(decide).not.toHaveBeenCalled();
+    const note = screen.getByTestId("blocked");
+    // right under the option pressed
+    expect(option.nextElementSibling).toContainElement(note);
+    // each field the case filled is named as the card labels it, with the model's bounds
+    const fields = FIXTURE.bounds[c.card as keyof typeof FIXTURE.bounds] as
+      Record<string, Record<string, number>> | undefined;
+    for (const testid of Object.keys(c.fill ?? {})) {
+      const bounds = fields?.[testid.replace("field-", "")];
+      if (!bounds) continue;
+      const label = screen.getByTestId(testid).closest("label")?.textContent ?? "";
+      expect(label).not.toBe("");
+      expect(note).toHaveTextContent(label);
+      for (const n of Object.values(bounds)) {
+        expect(note).toHaveTextContent(n.toLocaleString("en-US"));
+      }
+    }
+  });
 });
 
 describe("what each card offers", () => {
@@ -487,4 +519,199 @@ describe("a press the server does not record answers at the option", () => {
     fireEvent.click(screen.getByTestId("option-method:none"));
     expect(await screen.findByTestId("failure")).toHaveTextContent("The server answered 500.");
   });
+});
+
+const type = (testid: string, value: string) =>
+  fireEvent.change(screen.getByTestId(testid), { target: { value } });
+const press = (option: string) => fireEvent.click(screen.getByTestId(`option-${option}`));
+
+describe("a press the card will not send says why, at the option", () => {
+  const folds = FIXTURE.bounds.set_validation.folds;
+  const threshold = FIXTURE.bounds.set_intended_use.threshold;
+  const keep = FIXTURE.bounds.set_selection.keep;
+
+  it("names the field and its whole-number range, the numbers from the model's bounds", () => {
+    const { decide } = mount("set_validation");
+    type("field-folds", "11");
+    press("validation:kfold");
+    expect(decide).not.toHaveBeenCalled();
+    expect(screen.getByTestId("blocked")).toHaveTextContent(
+      `Folds: a whole number from ${folds.ge} to ${folds.le}`,
+    );
+  });
+
+  it("names the range of a probability, open at both ends", () => {
+    const { decide } = mount("set_intended_use");
+    type("field-threshold", "1");
+    press("use:decision_support");
+    expect(decide).not.toHaveBeenCalled();
+    expect(screen.getByTestId("blocked")).toHaveTextContent(
+      `Decision threshold: a number above ${threshold.gt} and below ${threshold.lt}`,
+    );
+  });
+
+  it("names the range of a count with no top", () => {
+    mount("set_selection");
+    type("field-keep", "0");
+    press("method:screening");
+    expect(screen.getByTestId("blocked")).toHaveTextContent(
+      `Predictors to keep (screening): a whole number of at least ${keep.ge}`,
+    );
+  });
+
+  it("writes a number over a thousand as the page does", () => {
+    mount("set_validation");
+    type("field-n_boot", "19");
+    press("validation:bootstrap");
+    expect(screen.getByTestId("blocked")).toHaveTextContent(
+      `Resamples (bootstrap): a whole number from ${FIXTURE.bounds.set_validation.n_boot.ge} to 2,000`,
+    );
+  });
+
+  it("names a blank number the model needs, and marks the field", () => {
+    const { decide } = mount("set_validation");
+    type("field-folds", "");
+    expect(screen.getByTestId("field-folds")).toHaveAttribute("aria-invalid", "true");
+    press("validation:kfold");
+    expect(decide).not.toHaveBeenCalled();
+    expect(screen.getByTestId("blocked")).toHaveTextContent(
+      `Folds: a whole number from ${folds.ge} to ${folds.le}`,
+    );
+  });
+
+  it.each([
+    ["set_validation", "field-folds", "validation:kfold"],
+    ["set_validation", "field-repeats", "validation:kfold"],
+    ["set_validation", "field-n_boot", "validation:kfold"],
+    ["set_explain", "field-reseeds", "curves:ale"],
+  ] as const)("%s: a blank %s is marked, and a number in range is not", (kind, field, option) => {
+    const { decide } = mount(kind);
+    const input = screen.getByTestId(field);
+    expect(input).not.toHaveAttribute("aria-invalid");
+    type(field, "");
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    press(option);
+    expect(decide).not.toHaveBeenCalled();
+    expect(screen.getByTestId("blocked")).toBeInTheDocument();
+  });
+
+  it("leaves a blank that the model takes as none unmarked, and sends the press", async () => {
+    // The screening count is optional: the model's own default is none, and the engine answers
+    // a screen with no count in its own words.
+    const { decide } = mount("set_selection");
+    expect(screen.getByTestId("field-keep")).toHaveValue(null);
+    expect(screen.getByTestId("field-keep")).not.toHaveAttribute("aria-invalid");
+    press("method:screening");
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("blocked")).toBeNull();
+  });
+
+  it("stays silent where the field is one the option does not read", async () => {
+    // A count out of range matters to screening alone: elastic net reads none of the settings.
+    const { decide } = mount("set_selection");
+    type("field-keep", "0");
+    press("method:elastic_net");
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("blocked")).toBeNull();
+  });
+
+  it("stays silent for risk estimation, which carries no threshold", async () => {
+    const { decide } = mount("set_intended_use");
+    type("field-threshold", "1");
+    press("use:risk_estimation");
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("blocked")).toBeNull();
+  });
+
+  it("names every field in the way, in one note", () => {
+    mount("set_validation");
+    type("field-folds", "11");
+    type("field-repeats", "1");
+    press("validation:kfold");
+    const note = screen.getByTestId("blocked");
+    expect(note).toHaveTextContent("Folds: a whole number from");
+    expect(note).toHaveTextContent("Repeats (repeated k-fold): a whole number from");
+    expect(screen.getAllByTestId("blocked")).toHaveLength(1);
+  });
+
+  it("goes when the field is put right, and when another press is sent", async () => {
+    const { decide } = mount("set_validation");
+    type("field-folds", "11");
+    press("validation:kfold");
+    expect(screen.getByTestId("blocked")).toBeInTheDocument();
+    type("field-folds", "5");
+    expect(screen.queryByTestId("blocked")).toBeNull();
+    press("validation:kfold");
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("blocked")).toBeNull();
+  });
+
+  it("is under the option pressed, and moves with the press", () => {
+    mount("set_validation");
+    type("field-folds", "11");
+    press("validation:kfold");
+    expect(screen.getByTestId("option-validation:kfold").nextElementSibling).toContainElement(
+      screen.getByTestId("blocked"),
+    );
+    type("field-repeats", "1");
+    type("field-folds", "5");
+    press("validation:repeated_kfold");
+    expect(screen.getAllByTestId("blocked")).toHaveLength(1);
+    expect(
+      screen.getByTestId("option-validation:repeated_kfold").nextElementSibling,
+    ).toContainElement(screen.getByTestId("blocked"));
+  });
+
+  it("asks for the group column of internal–external validation, which the card sends with it", () => {
+    const { decide } = mount("set_validation");
+    press("validation:internal_external");
+    expect(decide).not.toHaveBeenCalled();
+    expect(screen.getByTestId("blocked")).toHaveTextContent(
+      "Group column (internal–external): choose a column",
+    );
+    expect(screen.getByTestId("field-cluster")).toHaveAttribute("aria-invalid", "true");
+    fireEvent.change(screen.getByTestId("field-cluster"), {
+      target: { value: "cycle_begin_year" },
+    });
+    expect(screen.queryByTestId("blocked")).toBeNull();
+  });
+
+  it("names the count the most-variable filter keeps, only when that filter would be sent", async () => {
+    const { decide } = mount("set_levers");
+    type("field-keep", "0");
+    press("variance_filter:top");
+    expect(screen.getByTestId("blocked")).toHaveTextContent(
+      `Predictors to keep (most variable): a whole number of at least ${keep.ge}`,
+    );
+    // another lever, with the filter still off, does not carry the count
+    press("forms:rule");
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("blocked")).toBeNull();
+  });
+});
+
+describe("what the explanations card says an empty column list draws", () => {
+  const legend = () => screen.getByRole("group", { name: /^Curves for/ });
+
+  it("is the declared study factor under inference, where the engine draws that", () => {
+    mount("set_explain", { recorded: { purpose: "inference" } });
+    expect(legend()).toHaveTextContent("Curves for (none chosen: the declared study factor)");
+    expect(legend()).not.toHaveTextContent("matter most");
+  });
+
+  it("is the predictors that matter most to the model under prediction", () => {
+    mount("set_explain");
+    expect(legend()).toHaveTextContent(
+      "Curves for (none chosen: the predictors that matter most to the model)",
+    );
+    expect(legend()).not.toHaveTextContent("declared");
+  });
+
+  it.each(["prediction", "inference"])(
+    "keeps exposure a quiet term, never in the card's words (%s)",
+    (purpose) => {
+      mount("set_explain", { recorded: { purpose } });
+      expect(legend().textContent ?? "").not.toMatch(/exposure/i);
+    },
+  );
 });
