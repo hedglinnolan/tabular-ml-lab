@@ -280,6 +280,44 @@ export const updating = (method: Updating["method"]): Updating => ({
   method,
 });
 
+// ── the sensitivity analyses (set_sensitivity) ──
+// Not among the six W1-F cards payloads.fixture.json pins (test_w1_declaration_cards.py holds that
+// fixture to six models): this card came with the design repair, because a Predict project with an
+// exclusion rule meets the line as a counted Decide (core/quest.py DECLARATIONS) and could not
+// reach Fit without it. Its type is the generated model's, so a field the server changes breaks
+// the build here; cards.test.tsx holds its two payloads to the model's own definition.
+
+export type Sensitivity = Of<"set_sensitivity">;
+
+/** The two answers the card offers: the every-row analysis beside the primary, or none. */
+export const SENSITIVITIES = ["every_row", "none"] as const;
+export type SensitivityChoice = (typeof SENSITIVITIES)[number];
+
+/** The every-row analysis's label, as the engine's own cases name it (core/tests/materiality_cases.py
+ *  `EVERY_ROW`): the methods sentence ticks it ("`Every row`, keeping every row", voice.py). */
+export const EVERY_ROW = "Every row";
+
+/**
+ * The every-row analysis is the same model on every row, no exclusion rule applied (an analysis
+ * with no rules keeps every row: decisions.py `SensitivityAnalysis`), as Banna et al. 2017 ask:
+ * "analyses in the total sample without exclusion of participants should also be conducted and
+ * reported". No analysis is the empty list, which the model reads as "no sensitivity analysis".
+ */
+export function sensitivity(choice: SensitivityChoice): Sensitivity {
+  return {
+    kind: "set_sensitivity",
+    analyses: choice === "every_row" ? [{ label: EVERY_ROW, rules: [] }] : [],
+  };
+}
+
+/** Which of the card's answers a recorded list is, or null for any other (analyses set elsewhere,
+ *  on rules of their own). */
+export function sensitivityOf(analyses: readonly { label: string; rules: readonly unknown[] }[] | null | undefined): SensitivityChoice | null {
+  if (!analyses) return null;
+  if (analyses.length === 0) return "none";
+  return analyses.length === 1 && analyses[0]!.rules.length === 0 ? "every_row" : null;
+}
+
 export interface ExplainFields {
   exposures: string[];
   reseeds: number;

@@ -43,17 +43,33 @@ const IMBALANCE_NAMES: Record<Levers["imbalance"], string> = {
   oversample: "Oversampling",
 };
 
+/**
+ * The rules in force, in the card's words, from the engine's own value: the levers recorded, else
+ * the model's defaults (no lever recorded is none of them). The Confirm line states them, since the
+ * engine serves no reason for this default (FOUNDATION §3, the Confirm sweep).
+ */
+export function leversDefault(state: ProjectState): string {
+  const r: LeverRules = state.levers ?? DEFAULTS.set_levers;
+  const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+  const filter = `${lower(FILTER_NAMES[r.variance_filter])}${r.variance_filter === "top" && r.keep !== null ? ` (${r.keep} kept)` : ""}`;
+  return `Predictor forms: ${lower(FORM_NAMES[r.forms])}; variance filter: ${filter}; imbalance correction: ${lower(IMBALANCE_NAMES[r.imbalance])}.`;
+}
+
 function Body({
   card,
   state,
   recorded,
+  setForYou,
 }: {
   card: CardWiring;
   state: ProjectState;
   recorded: boolean;
+  setForYou: boolean;
 }) {
   const on = recorded ? state.levers : null;
   const rules: LeverRules = on ?? DEFAULTS.set_levers;
+  // A default not yet confirmed: the rules in force, each marked on its own list.
+  const set = setForYou ? (state.levers ?? DEFAULTS.set_levers) : null;
   const [keep, setKeep] = useState(rules.keep === null ? "" : String(rules.keep));
   const typed = parseTyped(keep, BOUNDS.set_levers.keep, true);
 
@@ -87,6 +103,7 @@ function Body({
         names={FORM_NAMES}
         offerOf={(v) => change({ forms: v })}
         recorded={on?.forms ?? null}
+        setForYou={set?.forms ?? null}
         testId="options-forms"
         hint={false}
       />
@@ -98,6 +115,7 @@ function Body({
         names={FILTER_NAMES}
         offerOf={(v) => change({ variance_filter: v })}
         recorded={on?.variance_filter ?? null}
+        setForYou={set?.variance_filter ?? null}
         testId="options-variance_filter"
         hint={false}
       />
@@ -109,6 +127,7 @@ function Body({
         names={IMBALANCE_NAMES}
         offerOf={(v) => change({ imbalance: v })}
         recorded={on?.imbalance ?? null}
+        setForYou={set?.imbalance ?? null}
         testId="options-imbalance"
       />
     </>
@@ -125,6 +144,7 @@ export const LeversCard: LineCard = ({ pid, line }) => {
           card={card}
           state={card.state}
           recorded={line.status === "answered"}
+          setForYou={line.status === "set_for_you"}
         />
       ) : (
         <Pending>Loading the project…</Pending>

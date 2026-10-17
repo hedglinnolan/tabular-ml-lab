@@ -18,7 +18,8 @@
  *   finding      one noticing: the findings artifact filtered to it (FindingCard.tsx)
  *   reading      what the values settled, or the readings a refusal waits on: quiet rows (Readings.tsx)
  *   generic      anything else, a declaration without a card included: a card in the line's own
- *                words, the generic question's content (LineGeneric.tsx)
+ *                words, the generic question's content (LineGeneric.tsx). It records nothing, so the
+ *                card column lists such a line as "Not available yet" and never opens it (recordable)
  */
 import { QUESTION_KEYS } from "../../api/m1-types";
 import type { QuestLine, QuestStage } from "../../api/schema";
@@ -33,6 +34,16 @@ export function columnOf(stage: Pick<QuestStage, "key" | "reached">): Column {
 export type Renderer = "ask" | "declaration" | "finding" | "reading" | "generic";
 
 const ROUTER_KEYS: ReadonlySet<string> = new Set(QUESTION_KEYS);
+
+/**
+ * Whether the line's card can record an answer: every renderer's but the fallback's, which says in
+ * the line's own words that this version has no card for it. A line it cannot answer is listed
+ * quietly, "Not available yet", after those it can, and is never the card's open line (FOUNDATION
+ * §3), so no "Answer" leads to a card that cannot answer.
+ */
+export function recordable(line: Pick<QuestLine, "source" | "key">, cards: DeclarationCards): boolean {
+  return rendererOf(line, cards) !== "generic";
+}
 
 export function rendererOf(line: Pick<QuestLine, "source" | "key">, cards: DeclarationCards): Renderer {
   switch (line.source) {

@@ -25,9 +25,10 @@ export function CardFor({ pid, line, onOpenStage, cards = DECLARATION_CARDS }: C
   const view = useProjectView(pid).data;
   const log = useQuest(pid).data;
   const kind = rendererOf(line, cards);
+  // A finding's lever opens the question it routes to, in whichever stage asks it, this one included.
   const routeTo = (question: string) => {
     const at = log?.stages.find((s) => s.lines.some((l) => l.source === "question" && l.key === question));
-    if (at) onOpenStage?.(at.key);
+    if (at) onOpenStage?.(at.key, question);
   };
 
   switch (kind) {

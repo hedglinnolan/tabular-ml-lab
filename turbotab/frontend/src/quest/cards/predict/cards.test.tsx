@@ -10,7 +10,7 @@
  * the refusal it answers with. A card with nothing served to say names the option and stops.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { api, ApiError, RefusalError } from "../../../api/client";
 import { keys } from "../../../api/queries";
 import type { PreviewResult } from "../../../api/m1-stage-types";
@@ -29,6 +29,9 @@ const KINDS = [
   "set_explain",
 ] as const;
 type Kind = (typeof KINDS)[number];
+/** The six W1-F cards the fixture pins, and the sensitivity analyses' card the design repair added
+ *  (its payloads are held to the model below, outside the six-model fixture). */
+type CardKind = Kind | "set_sensitivity";
 
 interface Case {
   card: Kind;
@@ -102,16 +105,17 @@ function viewOf(state: ProjectState): ProjectView {
   } as unknown as ProjectView;
 }
 
-const NAMES: Record<Kind, string> = {
+const NAMES: Record<CardKind, string> = {
   set_intended_use: "the intended-use question",
   set_selection: "the predictor-selection question",
   set_validation: "the validation scheme",
   set_levers: "the rules repeated inside each fold",
   set_updating: "the shrinkage question",
   set_explain: "the explanations",
+  set_sensitivity: "the sensitivity analyses",
 };
 
-function lineOf(kind: Kind, over: Partial<QuestLine> = {}): QuestLine {
+function lineOf(kind: CardKind, over: Partial<QuestLine> = {}): QuestLine {
   return {
     id: `decision:${kind}`,
     key: kind,
@@ -139,7 +143,7 @@ interface Mounted {
 }
 
 function mount(
-  kind: Kind,
+  kind: CardKind,
   opts: { recorded?: Record<string, unknown>; answered?: boolean; line?: Partial<QuestLine> } = {},
 ): Mounted {
   const state = stateWith(opts.recorded);
@@ -178,7 +182,7 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 describe("the Predict declaration cards", () => {
   it("are one per declaration kind, and no other", () => {
-    expect(Object.keys(DECLARATION_CARDS).sort()).toEqual([...KINDS].sort());
+    expect(Object.keys(DECLARATION_CARDS).sort()).toEqual([...KINDS, "set_sensitivity"].sort());
   });
 
   it.each(CASES.map((c) => [`${c.card} · ${c.press}${c.note ? ` · ${c.note}` : ""}`, c] as const))(
@@ -714,4 +718,81 @@ describe("what the explanations card says an empty column list draws", () => {
       expect(legend().textContent ?? "").not.toMatch(/exposure/i);
     },
   );
+});
+
+// ── the design repair (W1 part 2) ────────────────────────────────────────────
+
+describe("the sensitivity analyses' card (P1)", () => {
+  // The model (core/decisions.py `SetSensitivity`, `SensitivityAnalysis`): `analyses`, each a label
+  // and its own exclusion rules; an analysis with no rules keeps every row, and an empty list is the
+  // answer "no sensitivity analysis". The every-row analysis is labeled as the engine's own cases
+  // label it (core/tests/materiality_cases.py `EVERY_ROW`).
+  const EVERY_ROW = { kind: "set_sensitivity", analyses: [{ label: "Every row", rules: [] }] };
+  const NONE = { kind: "set_sensitivity", analyses: [] };
+
+  it("posts the every-row analysis, and no analysis, as the model defines them", async () => {
+    const { decide } = mount("set_sensitivity");
+    expect(Array.from(document.querySelectorAll("[role=option]")).map((o) => o.getAttribute("data-key"))).toEqual([
+      "analyses:every_row",
+      "analyses:none",
+    ]);
+    fireEvent.click(screen.getByTestId("option-analyses:every_row"));
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    expect(decide.mock.calls[0]).toEqual([PID, EVERY_ROW]);
+    fireEvent.click(screen.getByTestId("option-analyses:none"));
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(2));
+    expect(decide.mock.calls[1]).toEqual([PID, NONE]);
+  });
+
+  it("marks the answer on record, and none for analyses set on rules of their own", () => {
+    mount("set_sensitivity", { recorded: { sensitivity: EVERY_ROW.analyses }, answered: true });
+    expect(screen.getByTestId("option-analyses:every_row")).toHaveAttribute("data-recorded");
+    cleanup();
+    mount("set_sensitivity", { recorded: { sensitivity: [] }, answered: true });
+    expect(screen.getByTestId("option-analyses:none")).toHaveAttribute("data-recorded");
+    cleanup();
+    const own = [{ label: "800–4,000 kcal", rules: [{ column: "kcal", low: 800, high: 4000 }] }];
+    mount("set_sensitivity", { recorded: { sensitivity: own }, answered: true });
+    expect(document.querySelectorAll("[data-recorded]")).toHaveLength(0);
+  });
+});
+
+describe("a default set for you (P10)", () => {
+  const TAG = "set for you";
+
+  it("marks the scheme in force as set for you while the line is a default, and not once answered", () => {
+    mount("set_validation", { recorded: { split: { ...DEFAULT_SPLIT, validation: "bootstrap" } }, line: { label: "Confirm", status: "set_for_you" } });
+    const tagged = Array.from(document.querySelectorAll("[role=option]")).filter((o) => o.textContent?.includes(TAG));
+    expect(tagged.map((o) => o.getAttribute("data-key"))).toEqual(["validation:bootstrap"]);
+    cleanup();
+    mount("set_validation", { recorded: { split: { ...DEFAULT_SPLIT, validation: "bootstrap" } }, answered: true });
+    expect(document.body.textContent).not.toContain(TAG);
+  });
+
+  it("marks each lever in force as set for you, the model's defaults where none is recorded", () => {
+    mount("set_levers", { line: { label: "Confirm", status: "set_for_you" } });
+    const tagged = Array.from(document.querySelectorAll("[role=option]")).filter((o) => o.textContent?.includes(TAG));
+    const d = FIXTURE.defaults.set_levers;
+    expect(tagged.map((o) => o.getAttribute("data-key"))).toEqual([`forms:${d.forms}`, `variance_filter:${d.variance_filter}`, `imbalance:${d.imbalance}`]);
+  });
+
+  it("states the scheme in force in the card's words, each number the split's", async () => {
+    const { validationDefault } = await import("./ValidationCard");
+    const split = (over: Record<string, unknown>) => stateWith({ split: { ...DEFAULT_SPLIT, ...over } });
+    expect(validationDefault(split({}))).toBe(`${DEFAULT_SPLIT.folds}-fold cross-validation.`);
+    expect(validationDefault(split({ validation: "repeated_kfold", folds: 8, repeats: 30 }))).toBe("8-fold cross-validation, repeated 30 times.");
+    expect(validationDefault(split({ validation: "bootstrap", n_boot: 700 }))).toBe("Bootstrap optimism correction over 700 resamples.");
+    expect(validationDefault(split({ validation: "internal_external", cluster: "cycle_begin_year" }))).toBe("Internal–external validation by cycle_begin_year.");
+    expect(validationDefault(split({ nested_cv: true }))).toBe(`${DEFAULT_SPLIT.folds}-fold cross-validation, with a nested cross-validation interval.`);
+    // No split recorded: the model's defaults (the fixture's, held to decisions.py).
+    expect(validationDefault(stateWith({ split: null }))).toBe(`${FIXTURE.defaults.set_validation.folds}-fold cross-validation.`);
+  });
+
+  it("states the levers in force in the card's words", async () => {
+    const { leversDefault } = await import("./LeversCard");
+    expect(leversDefault(stateWith({ levers: null }))).toBe("Predictor forms: none; variance filter: none; imbalance correction: none.");
+    expect(leversDefault(stateWith({ levers: { forms: "rule", variance_filter: "top", keep: 50, imbalance: "weights" } }))).toBe(
+      "Predictor forms: spline by rule; variance filter: most variable (50 kept); imbalance correction: class weights.",
+    );
+  });
 });

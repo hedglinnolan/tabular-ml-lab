@@ -37,14 +37,35 @@ const LABELS = {
   cluster: "Group column (internal–external)",
 };
 
+/**
+ * The scheme in force, in the card's words, from the engine's own value: the split's scheme (set
+ * with the draw, or by this card), else the model's defaults. The Confirm line states it, since the
+ * engine serves no reason for this default (FOUNDATION §3, the Confirm sweep).
+ */
+export function validationDefault(state: ProjectState): string {
+  const s = state.split ?? DEFAULTS.set_validation;
+  const scheme =
+    s.validation === "kfold"
+      ? `${s.folds}-fold cross-validation`
+      : s.validation === "repeated_kfold"
+        ? `${s.folds}-fold cross-validation, repeated ${s.repeats} times`
+        : s.validation === "bootstrap"
+          ? `bootstrap optimism correction over ${s.n_boot} resamples`
+          : `internal–external validation${s.cluster ? ` by ${s.cluster}` : ""}`;
+  const text = `${scheme}${s.nested_cv ? ", with a nested cross-validation interval" : ""}.`;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 function Body({
   card,
   state,
   recorded,
+  setForYou,
 }: {
   card: CardWiring;
   state: ProjectState;
   recorded: boolean;
+  setForYou: boolean;
 }) {
   // The scheme as the split holds it, set with the draw or by this card.
   const scheme = state.split ?? DEFAULTS.set_validation;
@@ -140,6 +161,7 @@ function Body({
         offerOf={offerOf}
         // `set_validation`'s own record only: the scheme rides in the split's record until changed.
         recorded={recorded ? (state.split?.validation ?? null) : null}
+        setForYou={setForYou ? scheme.validation : null}
         testId="options-validation"
       />
     </>
@@ -156,6 +178,7 @@ export const ValidationCard: LineCard = ({ pid, line }) => {
           card={card}
           state={card.state}
           recorded={line.status === "answered"}
+          setForYou={line.status === "set_for_you"}
         />
       ) : (
         <Pending>Loading the project…</Pending>

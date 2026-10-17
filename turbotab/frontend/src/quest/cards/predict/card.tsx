@@ -171,6 +171,9 @@ function wordsNote(words: Words | null, decision: Decision | null): ReactNode {
   );
 }
 
+/** The quiet label on the option a default line holds until it is confirmed. */
+export const SET_FOR_YOU = "set for you";
+
 /** What a card can send for an option: the decision, or what stands in the way (one sentence for
  *  each field, naming what it takes). */
 export type Offer = { decision: Decision } | { problems: string[] };
@@ -198,6 +201,7 @@ export function Choice<V extends string>({
   names,
   offerOf,
   recorded,
+  setForYou = null,
   hint = true,
   testId,
 }: {
@@ -209,6 +213,9 @@ export function Choice<V extends string>({
   offerOf: (value: V) => Offer;
   /** The value on record, when the line is answered. */
   recorded: V | null;
+  /** The value the engine set for the person, while the line is a default not yet confirmed: its
+   *  option carries the quiet label "set for you" (FOUNDATION §3, the Confirm sweep). */
+  setForYou?: V | null;
   hint?: boolean;
   testId: string;
 }) {
@@ -226,6 +233,7 @@ export function Choice<V extends string>({
       label: names[v],
       line: "",
       decision,
+      ...(setForYou !== null && v === setForYou ? { tags: [{ text: SET_FOR_YOU, tone: "usual" as const }] } : {}),
       // A refusal answering at the option says it already.
       note: card.answerAt?.key === `${field}:${v}` ? undefined : wordsNote(card.words, decision),
     };

@@ -13,7 +13,7 @@
  * the stages it reads served from the capture, as the generic question's test does.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 import { QUESTION_KEYS, type TeachingEntry } from "../../api/m1-types";
 import { keys } from "../../api/queries";
@@ -24,7 +24,7 @@ import type { DeclarationCards, LineCardProps } from "../contracts";
 import { CONTRACT, type ContractPair } from "../fixtures/contract";
 import { CardFor } from "./CardFor";
 import { DECLARATION_CARDS } from "./predict";
-import { columnOf, rendererOf, type Renderer } from "./renderers";
+import { columnOf, recordable, rendererOf, type Renderer } from "./renderers";
 import { said } from "../words";
 
 const FIXTURES = import.meta.glob<M3Fixture>("../../mocks/fixtures/m3-*.json", { eager: true, import: "default" });
@@ -72,7 +72,7 @@ function lineOf(pair: Pick<ContractPair, "source" | "key">, label: QuestLine["la
   };
 }
 
-function renderLine(line: QuestLine, cards?: DeclarationCards) {
+function renderLine(line: QuestLine, cards?: DeclarationCards, onOpenStage?: (stage: string, line?: string) => void) {
   const { view, f } = viewFor(line.key);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(keys.teaching(), SHARED.teaching);
@@ -93,7 +93,7 @@ function renderLine(line: QuestLine, cards?: DeclarationCards) {
   return render(
     <QueryClientProvider client={qc}>
       <StageFocusProvider>
-        <CardFor pid={PID} line={line} {...(cards ? { cards } : {})} />
+        <CardFor pid={PID} line={line} {...(cards ? { cards } : {})} {...(onOpenStage ? { onOpenStage } : {})} />
       </StageFocusProvider>
     </QueryClientProvider>,
   );
@@ -145,6 +145,58 @@ describe("every (source, key) the engine emits has a renderer", () => {
     expect(generic.length + declared.filter((k) => DECLARATION_CARDS[k]).length).toBe(declared.length);
     // On the base, DECLARATION_CARDS is W1-F's stub: every declaration falls to the generic fallback.
     if (Object.keys(DECLARATION_CARDS).length === 0) expect(generic).toEqual([...declared].sort());
+  });
+});
+
+/**
+ * The counted Decide declarations whose only renderer is still the fallback, which records nothing,
+ * each with where it is met. A counted Decide holds its stage open until it is answered (core/quest.py
+ * `progress`), so any other would leave a walk with no way to Fit (the design review's P1, the
+ * sensitivity analyses under Predict). None is met on v0's walk, NHANES glucose under Predict.
+ */
+const NOT_YET: Record<string, string> = {
+  set_batch: "a batch column's handling, met under the omics lenses",
+  set_measurement_error: "regression calibration, met under Estimate (W3)",
+  set_model_sequence: "the Model 1 question, met under Estimate (W3)",
+  set_scales: "a multi-item scale, met under the survey lens",
+  set_usual_intake: "usual intake from repeated recalls, met under the dietary lens with repeats",
+};
+
+describe("no counted Decide is left with only the fallback card (P1)", () => {
+  const counted = Object.entries(CONTRACT.declarations)
+    .filter(([, p]) => p.label === "Decide" && p.counted)
+    .map(([key]) => key);
+  const seen = (key: string) => CONTRACT.pairs.filter((p) => p.source === "declaration" && p.key === key).flatMap((p) => p.seen);
+  const deadEnds = (cards: DeclarationCards) => counted.filter((key) => !recordable({ source: "declaration", key }, cards)).sort();
+
+  it("has a card for every counted Decide the engine places, but those listed as not yet", () => {
+    expect(counted).toContain("set_sensitivity");
+    expect(deadEnds(DECLARATION_CARDS)).toEqual(Object.keys(NOT_YET).sort());
+  });
+
+  it("meets none of those not yet on v0's walk, NHANES glucose under Predict", () => {
+    for (const key of Object.keys(NOT_YET)) expect(seen(key), key).not.toContain("nhanes/prediction");
+  });
+
+  it("fails where a counted Decide met under Predict has only the fallback (the sensitivity analyses' card taken away)", () => {
+    const { set_sensitivity: _gone, ...without } = DECLARATION_CARDS;
+    expect(seen("set_sensitivity")).toContain("nhanes/prediction");
+    expect(deadEnds(without)).toContain("set_sensitivity");
+    expect(deadEnds(without)).not.toEqual(Object.keys(NOT_YET).sort());
+  });
+});
+
+describe("a noticing's lever (P9)", () => {
+  it("opens the question it routes to by name, in the stage that asks it, so a lever in that stage expands it", async () => {
+    // The capture's blank-medication noticing routes to the missing-values question, which the
+    // engine's log asks in Who's in (by construction of both, not of the card).
+    const LOG = CONTRACT.logs.results_reached.log;
+    const asks = LOG.stages.find((s) => s.lines.some((l) => l.source === "question" && l.key === "missing"))!.key;
+    expect(asks).toBe("whos_in");
+    const open = vi.fn();
+    renderLine({ ...lineOf({ source: "finding", key: "binary_text__meds_hbp" }), name: "Meds_hbp is blank on most rows" }, undefined, open);
+    fireEvent.click(await screen.findByRole("button", { name: /Choose how blanks are handled/ }));
+    expect(open).toHaveBeenCalledWith(asks, "missing");
   });
 });
 
