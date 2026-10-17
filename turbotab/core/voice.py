@@ -328,8 +328,32 @@ def restated_counts(kind: str) -> None:
     _COUNTED.add(kind)
 
 
+# W1-R round 2 (the walkthrough's findings 2 and 3c): the roles answer and each confirmation of a
+# role are recorded in Your data, often before the goal is answered, and the roles answer says
+# which of its columns still wait for their own confirmation. Each is re-authored on the state it
+# was recorded on (so the roles before it read as they did) in the words of the goal as it stands,
+# and the roles answer with the columns that wait as they stand. ``fn(decision, worded, now,
+# ctx)``: the sentence on ``worded`` (the state then, with the goal now) and ``now``; None: the
+# kind's own sentence on ``worded``.
+Restater = Callable[[Any, Any, Any, Any], str]
+_BY_GOAL: dict[str, "Restater | None"] = {}
+
+
+def restated_by_goal(kind: str, fn: "Restater | None" = None) -> None:
+    """Declare that ``kind``'s sentence is restated in the goal's words as it stands (above)."""
+    _BY_GOAL[kind] = fn
+
+
+def _with_goal(then: Any, now: Any) -> Any:
+    purpose = getattr(now, "purpose", None)
+    if then is None or getattr(then, "purpose", None) == purpose or not hasattr(then, "model_copy"):
+        return then
+    return then.model_copy(update={"purpose": purpose})
+
+
 def restates(kind: str) -> bool:
-    return kind in _RESTATED_WHOLE or kind in _STANDING or kind in _COUNTED
+    return (kind in _RESTATED_WHOLE or kind in _STANDING or kind in _COUNTED
+            or kind in _BY_GOAL)
 
 
 def restate(decision: Any, sentence: str, then: Any, now: Any, ctx: Any = None, *,
@@ -345,6 +369,15 @@ def restate(decision: Any, sentence: str, then: Any, now: Any, ctx: Any = None, 
 
     decision = parse_decision(decision)
     kind = decision.kind
+    if kind in _BY_GOAL:
+        worded = _with_goal(then, now)
+        fn = _BY_GOAL[kind]
+        before = sentence_for(decision, then, ctx)
+        after = finish(fn(decision, worded, now, ctx)) if fn is not None else \
+            sentence_for(decision, worded, ctx)
+        if before == after:
+            return sentence
+        return disclose(after, post_seal=post_seal, after_estimates=after_estimates) or sentence
     if kind in _RESTATED_WHOLE:
         # A stage's facts for this kind, when the methods text passes them (``counts[kind]``; the
         # calibration stage's block, REPAIR-RC), are read on the answers as they stand.
@@ -672,15 +705,62 @@ _ROLE_AS = {
     "time": "a time column",
     "excluded": "excluded",
 }
+# W1-R round 2 (the walkthrough's finding 3c; R2's P3c): under Predict nothing is studied and
+# nothing adjusted for, so an exposure and a covariate are each a predictor, one group in the roles
+# answer (``readings.role_words`` says the same). The engine's roles stay as they are.
+_PREDICTORS = ("exposure", "covariate")
+_ROLE_NOUN_UNDER_PREDICT = {**_ROLE_NOUN, "exposure": ("predictor", "predictors")}
+_ROLE_AS_UNDER_PREDICT = {**_ROLE_AS, "exposure": "a predictor", "covariate": "a predictor"}
+
+
+def _under_predict(state: Any) -> bool:
+    return getattr(state, "purpose", None) == "prediction"
+
+
+def role_as(role: Any, state: Any = None) -> str:
+    """A role as a complement ("as a covariate"), under the goal ``state`` declares."""
+    words = _ROLE_AS_UNDER_PREDICT if _under_predict(state) else _ROLE_AS
+    return words.get(str(role), tick(role))
+
+
+def _role_group(role: str, state: Any) -> str:
+    """The group a role is listed in: under Predict an exposure and a covariate are one."""
+    return "exposure" if _under_predict(state) and role in _PREDICTORS else role
 
 
 @register_sentence("set_roles")
 def _set_roles(d: Any, state: Any, ctx: Any) -> str:
-    return _set_roles_body(d, state) + _waiting_clause(list(getattr(d, "unconfirmed", None) or []))
+    return _set_roles_text(d, state, _after(state, d))
 
 
-def _waiting_clause(waiting: list[str]) -> str:
-    """BLUEPRINT §14 rule 2: what a bulk confirm recorded without confirming, said in the record."""
+def _after(state: Any, d: Any) -> Any:
+    """The state recording ``d`` leaves (``decisions.fold_onto``); None where it cannot be told."""
+    from turbotab.core.decisions import fold_onto
+
+    try:
+        return fold_onto(state, d)
+    except Exception:  # noqa: BLE001 - a sentence never fails a decision; it says less
+        return None
+
+
+def _set_roles_text(d: Any, worded: Any, now: Any) -> str:
+    """The roles answer's sentence: its roles in the words of the goal ``worded`` declares, read
+    against the roles before it (``worded`` is the state the answer was recorded on), and which of
+    the columns it recorded below high still wait on the answers ``now``."""
+    return _set_roles_body(d, worded) + _waiting_clause(d, now)
+
+
+def _waiting_clause(d: Any, now: Any) -> str:
+    """BLUEPRINT §14 rule 2: the columns a bulk confirm recorded without confirming that still wait
+    on the answers ``now`` (a confirmation of a column's own since settles it: the walkthrough's
+    finding 2), said in the record; nothing once none waits. ``now`` None: every one listed."""
+    from turbotab.core.readings import role_reading
+
+    def waits(column: str) -> bool:
+        reading = role_reading(now, column) if now is not None else None
+        return reading is None or not reading.settled
+
+    waiting = [c for c in getattr(d, "unconfirmed", None) or [] if waits(c)]
     if not waiting:
         return ""
     one = len(waiting) == 1
@@ -693,18 +773,21 @@ def _set_roles_body(d: Any, state: Any) -> str:
     roles: dict[str, str] = dict(d.roles)
     before: dict[str, str] = dict(state.roles or {})
     if before and set(before) == set(roles):
-        changed = [c for c in roles if roles[c] != before[c]]
+        # Under Predict a move between an exposure and a covariate reads the same: both are
+        # predictors, so it is no change said.
+        changed = [c for c in roles if _role_group(roles[c], state) != _role_group(before[c], state)]
         if not changed:
             return f"The roles of all {count(len(roles))} columns were recorded unchanged"
         if len(changed) <= 3:
-            moves = [f"{tick(c)} became {_ROLE_AS.get(roles[c], tick(roles[c]))}" for c in changed]
+            moves = [f"{tick(c)} became {role_as(roles[c], state)}" for c in changed]
             return f"{listing(moves, ticked=False)}; every other role is unchanged"
+    nouns = _ROLE_NOUN_UNDER_PREDICT if _under_predict(state) else _ROLE_NOUN
     groups = []
     for role in _ROLE_ORDER:
-        cols = [c for c, r in roles.items() if r == role]
+        cols = [c for c, r in roles.items() if _role_group(r, state) == role]
         if not cols:
             continue
-        one, many = _ROLE_NOUN[role]
+        one, many = nouns[role]
         noun = one if len(cols) == 1 else many
         groups.append(f"{noun} {listing(cols)}")
     return f"Column roles were set for {count(len(roles))} columns: " + "; ".join(groups)
@@ -713,8 +796,12 @@ def _set_roles_body(d: Any, state: Any) -> str:
 @register_sentence("confirm_role")
 def _confirm_role(d: Any, state: Any, ctx: Any) -> str:
     """BLUEPRINT §14 rule 2: an individual confirmation, recorded as one."""
-    return (f"{tick(d.column)} was confirmed as {_ROLE_AS.get(d.role, tick(d.role))} on its own, "
+    return (f"{tick(d.column)} was confirmed as {role_as(d.role, state)} on its own, "
             f"after the evidence for its proposal was read")
+
+
+restated_by_goal("set_roles", lambda d, worded, now, ctx: _set_roles_text(d, worded, now))
+restated_by_goal("confirm_role")
 
 
 _UNIT_WORDS = {"kj": "kJ", "pct_energy": "percent of energy", "m": "meters", "in": "inches"}
@@ -723,7 +810,8 @@ _UNIT_WORDS = {"kj": "kJ", "pct_energy": "percent of energy", "m": "meters", "in
 @register_sentence("confirm_reading")
 def _confirm_reading(d: Any, state: Any, ctx: Any) -> str:
     """BLUEPRINT §14.1: one reading of the data, confirmed on its own and recorded as one."""
-    return f"{_confirmed(d.reading, d.column, d.value)}, on its own, after the evidence for its reading was read"
+    return (f"{_confirmed(d.reading, d.column, d.value, state)}, on its own, after the evidence "
+            f"for its reading was read")
 
 
 @register_sentence("confirm_readings")
@@ -736,21 +824,26 @@ def _confirm_readings(d: Any, state: Any, ctx: Any) -> str:
     parts = []
     for (reading, value), columns in groups.items():
         if len(columns) >= 5:
-            parts.append(_confirmed(reading, f"__{len(columns)}__", value).replace(
+            parts.append(_confirmed(reading, f"__{len(columns)}__", value, state).replace(
                 f"`__{len(columns)}__` was", f"{tick(f'{len(columns):,}')} columns (from "
                 f"{tick(columns[0])}) were", 1))
         else:
-            parts.extend(_confirmed(reading, c, value) for c in columns)
+            parts.extend(_confirmed(reading, c, value, state) for c in columns)
     shown = "; ".join(parts[:6]) + (f"; and {len(parts) - 6} more" if len(parts) > 6 else "")
     return f"Confirmed together, each as the question showed it: {shown}"
 
 
-def _confirmed(reading: str, column: str, value: Any) -> str:
+restated_by_goal("confirm_reading")
+restated_by_goal("confirm_readings")
+
+
+def _confirmed(reading: str, column: str, value: Any, state: Any = None) -> str:
+    """One reading's confirmation, a role in the words of the goal ``state`` declares."""
     col = tick(column)
     value = str(value)
     d = SimpleNamespace(reading=reading)
     if d.reading == "role":
-        said = f"{col} was confirmed as {_ROLE_AS.get(value, tick(value))}"
+        said = f"{col} was confirmed as {role_as(value, state)}"
     elif d.reading == "cluster":
         said = (f"{col} was confirmed as marking rows that belong together, so the intervals "
                 f"cluster by it" if value == "yes" else
