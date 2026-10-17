@@ -1135,7 +1135,10 @@ def post_seal_sentence(text: str | None, state_before: Any) -> str | None:
 
 
 def _score_text(value: float | None) -> str:
-    return "not computed" if value is None else f"{value:.3f}"
+    """A held-out score in the reported result's sentence, as the results table prints it."""
+    from turbotab.core.voice import table_number
+
+    return "not computed" if value is None else table_number(value)
 
 
 def reported_result(records: Sequence[Any], *, opened: bool, changed: bool) -> dict[str, Any] | None:

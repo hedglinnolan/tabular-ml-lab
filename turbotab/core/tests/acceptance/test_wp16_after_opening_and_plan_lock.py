@@ -232,8 +232,12 @@ def test_3_the_scores_at_the_opening_are_kept_in_the_record_and_reported(client)
     # MS6: the declared family's held-out score on the strictly proper primary, with the AUC
     # beside it as the customary headline.
     assert opening["decision"]["metric"] == "log_loss" and opening["decision"]["n_holdout"] == 96
-    said = (f"held-out log loss `{at_disk['linear']['log_loss']:.3f}` (AUC `{reference:.3f}`, the "
-            f"customary headline)")
+    # Printed as the results table prints them (R-f 20; the rule written out in
+    # ``test_sentence_precision.table``).
+    from turbotab.core.tests.test_sentence_precision import table
+
+    said = (f"held-out log loss `{table(at_disk['linear']['log_loss'])}` (AUC `{table(reference)}`, "
+            f"the customary headline)")
     assert said in opening["sentence"]
     fit = served_fit(client, pid)
     assert fit["at_opening"]["scores"] == at_disk and fit["at_opening"]["current"] is True

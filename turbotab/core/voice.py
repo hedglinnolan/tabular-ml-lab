@@ -91,6 +91,31 @@ def number(value: Any) -> str:
     return f"{x:.6g}"
 
 
+def table_number(value: Any) -> str:
+    """A number as the results tables print it (``components/stage/format.ts``, ``fmtNum``): three
+    significant digits, a whole number with thousands separators from 1,000, a true minus; "—" for
+    none. A sentence that states a table's number says it this way (W1-R round 2, R-f 20: "CV MSE
+    of 1033.261" beside a table showing 1,033)."""
+    from decimal import ROUND_HALF_UP, Decimal
+
+    try:
+        x = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if not math.isfinite(x):
+        return "—"
+    if x == 0:
+        return "0"
+    if abs(x) >= 1000:
+        text = f"{math.floor(x + 0.5):,}"  # Math.round, then toLocaleString("en-US")
+    else:
+        exact = Decimal(x)  # toPrecision(3): the exact binary value, a tie away from zero
+        rounded = float(exact.quantize(Decimal(1).scaleb(exact.adjusted() - 2),
+                                       rounding=ROUND_HALF_UP))
+        text = str(int(rounded)) if rounded.is_integer() else repr(rounded)
+    return text.replace("-", "−")
+
+
 def count(n: int) -> str:
     """A count, with thousands separators, in backticks."""
     return tick(f"{int(n):,}")
@@ -2313,10 +2338,10 @@ def _scored(d: Any) -> str:
     value = kept.get(metric) if metric else None
     if value is None:
         return ""
-    text = f": held-out {score_words(metric)} {tick(f'{value:.3f}')}"
+    text = f": held-out {score_words(metric)} {tick(table_number(value))}"
     headline = next((h for h in ("auc", "c_index") if h != metric and kept.get(h) is not None), None)
     if headline is not None:
-        text += f" ({LABELS[headline]} {tick(f'{kept[headline]:.3f}')}, the {HEADLINE_LABEL})"
+        text += f" ({LABELS[headline]} {tick(table_number(kept[headline]))}, the {HEADLINE_LABEL})"
     return text
 
 
@@ -2661,6 +2686,6 @@ def kinds() -> list[str]:
 
 __all__ = [
     "count", "exclusion_counts", "finish", "kinds", "listing", "machinery", "number", "plural",
-    "register_repair_sentence", "register_sentence", "sentence_for", "strip_markdown", "tick",
-    "words",
+    "register_repair_sentence", "register_sentence", "role_as", "sentence_for", "strip_markdown",
+    "table_number", "tick", "words",
 ]
