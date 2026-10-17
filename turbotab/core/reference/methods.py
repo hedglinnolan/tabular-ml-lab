@@ -184,11 +184,48 @@ def sentence_words(c: Any) -> list[str]:
     return out
 
 
+def unoffered(c: Any) -> dict[str, tuple[str, str, tuple[str, ...]]]:
+    """Purpose -> (question, the Router's reason, options) where only a question the Router does
+    not ask under that purpose offers some of ``c``'s options (``defaults.not_offered``: the
+    exposure's energy residual and the substitution's curves under prediction)."""
+    from turbotab.core.reference import defaults
+
+    return {p: found for p in PURPOSES if (found := defaults.not_offered(c, p)) is not None}
+
+
+def wholly_unoffered(c: Any, purpose: str) -> bool:
+    """Whether no option of ``c`` is offered under ``purpose`` (:func:`unoffered`)."""
+    found = unoffered(c).get(purpose)
+    return found is not None and set(found[2]) == {o.key for o in c.options}
+
+
+def _placed(place: str, purposes: Sequence[str]) -> str:
+    """A placement without its clauses for ``purposes`` (``…, beside the comparison under
+    prediction``), for a contract not offered under them."""
+    kept = [part for part in place.split(", ")
+            if not any(part.rstrip(".").endswith(f"under {p}") for p in purposes)]
+    return ", ".join(kept)
+
+
 def option_table(c: Any) -> list[str]:
     lines = ["| Option | Customary | Sound for prediction | Rung, rank (prediction) | "
              "Sound for inference | Rung, rank (inference) |",
              "|---|---|---|---|---|---|"]
-    ranks = {p: {o["key"]: i + 1 for i, o in enumerate(c.options_for(p))} for p in PURPOSES}
+    gated = unoffered(c)
+    ranks: dict[str, dict[str, int]] = {}
+    for p in PURPOSES:
+        # an option no question asks under this purpose ranks after every option that is offered
+        off = set(gated[p][2]) if p in gated else set()
+        order = [o["key"] for o in c.options_for(p)]
+        order = [k for k in order if k not in off] + [k for k in order if k in off]
+        ranks[p] = {k: i + 1 for i, k in enumerate(order)}
+
+    def labels(o: Any, p: str) -> list[str]:
+        if p in gated and o.key in gated[p][2]:
+            return [f"Not asked (the Router's gate): “{cell(gated[p][1])}”",
+                    f"{RUNG_WORDS['not_offered']}, {ranks[p][o.key]}"]
+        return [cell(o.sound[p]), f"{RUNG_WORDS[o.rung[p]]}, {ranks[p][o.key]}"]
+
     for o in c.options:
         extra = []
         if o.key in c.option_slots:
@@ -197,11 +234,7 @@ def option_table(c: Any) -> list[str]:
             extra.append(f"scope {c.option_scopes[o.key]}")
         name = f"`{o.key}`: {cell(o.label)}" + (f" ({'; '.join(extra)})" if extra else "")
         lines.append("| " + " | ".join([
-            name, cell(o.customary),
-            cell(o.sound["prediction"]),
-            f"{RUNG_WORDS[o.rung['prediction']]}, {ranks['prediction'][o.key]}",
-            cell(o.sound["inference"]),
-            f"{RUNG_WORDS[o.rung['inference']]}, {ranks['inference'][o.key]}",
+            name, cell(o.customary), *labels(o, "prediction"), *labels(o, "inference"),
         ]) + " |")
     return lines
 
@@ -271,6 +304,11 @@ def contract_section(c: Any, level: int = 3) -> list[str]:
     if c.key in catalog.NOT_ASKED:
         facts.append(f"- **Asked:** never, so never applied from the app. "
                      f"{catalog.NOT_ASKED[c.key]}")
+    # Under a purpose whose Router does not ask the question that offers this method (BEATS_PREDICT
+    # §9 ruling 5: the energy model and the substitution under prediction), the method is neither
+    # offered nor placed there, whatever the registry's rung (``defaults.not_offered``).
+    gated = unoffered(c)
+    whole = [p for p in PURPOSES if wholly_unoffered(c, p)]
     asked = []
     kind = catalog.recorded_by(c)
     if kind:
@@ -278,13 +316,26 @@ def contract_section(c: Any, level: int = 3) -> list[str]:
                      + ("" if c.decision else " (the contract does not name it)"))
     if c.stage:
         asked.append(f"run by the `{c.stage}` stage")
-    if c.place:
-        asked.append(f"placed at {c.place}")
+    place = _placed(c.place, whole) if c.place else ""
+    if place:
+        asked.append(f"placed at {place}")
     if asked:
         facts.append("- **Where:** " + "; ".join(asked).rstrip(".") + ".")
+    from turbotab.core.voice import question_name
+
+    for p, (question, reason, keys) in gated.items():
+        if p in whole:
+            facts.append(f"- **Under {p}:** not asked, so neither offered nor placed (the "
+                         f"Router's gate, `interview.applicability`): “{reason}”")
+        else:
+            said = ", ".join(f"`{k}`" for k in keys)
+            facts.append(f"- **Under {p}:** {said} {'is' if len(keys) == 1 else 'are'} not "
+                         f"offered, since {question_name(question)} (`{question}`) is not asked "
+                         f"there (the Router's gate, `interview.applicability`): “{reason}”")
     if c.leash:
         facts.append("- **The method's own leash:** " + "; ".join(
-            f"{p} {RUNG_WORDS[c.leash[p]]}" for p in PURPOSES if p in c.leash) + ".")
+            f"{p} {RUNG_WORDS['not_offered' if p in whole else c.leash[p]]}"
+            for p in PURPOSES if p in c.leash) + ".")
     facts.append(f"- **Lenses:** {lens_words(catalog.lenses_of_contract(c.key))}."
                  + (f" Declared by the {c.package} package." if c.package else ""))
     lines += facts + ["", "**Options**, each labeled customary and sound for each purpose, with "

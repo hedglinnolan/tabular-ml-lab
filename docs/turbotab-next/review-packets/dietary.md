@@ -790,6 +790,7 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
   - the linear family chosen
 - **Question:** Which energy substitution, in what steps? (the substitution question)
 - **Where:** recorded by `set_substitution`; run by the `substitution` stage; placed at MODELING_SEQUENCE §1 step 11's displays, beside the coefficient table.
+- **Under prediction:** not asked, so neither offered nor placed (the Router's gate, `interview.applicability`): “A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.”
 - **The method's own leash:** prediction not offered; inference recommended.
 - **Lenses:** Dietary assessment. Declared by the SURVEY package.
 
@@ -797,8 +798,8 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
 
 | Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
 |---|---|---|---|---|---|
-| `design_band`: A band by Taylor linearization over the survey design | Predictive margins with survey data (Graubard & Korn 1999) | Not asked: under prediction the scores describe the rows they were computed on, and the weights are noted, not used. | not offered, 2 | Sound for the surveyed population: the band carries both the error of the weighted fit and which people were sampled. | recommended, 1 |
-| `row_bootstrap`: A band from refits on bootstrap resamples of rows | The band this app draws without a survey design | The band prediction draws on its training rows. | recommended, 1 | Not under the population answer: a row bootstrap ignores the strata and PSUs, so the design's band replaces it. | not offered, 2 |
+| `design_band`: A band by Taylor linearization over the survey design | Predictive margins with survey data (Graubard & Korn 1999) | Not asked (the Router's gate): “A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.” | not offered, 2 | Sound for the surveyed population: the band carries both the error of the weighted fit and which people were sampled. | recommended, 1 |
+| `row_bootstrap`: A band from refits on bootstrap resamples of rows | The band this app draws without a survey design | Not asked (the Router's gate): “A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.” | not offered, 1 | Not under the population answer: a row bootstrap ignores the strata and PSUs, so the design's band replaces it. | not offered, 2 |
 
 **Storyboard** (the transform player's real steps):
 
@@ -834,16 +835,17 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
   - a fitted family that predicts each class's probability
   - the substitution answer (donor, recipient and step)
 - **Question:** Which energy substitution, in what steps? (the substitution question; a multiclass outcome draws one curve per class)
-- **Where:** recorded by `set_substitution`; run by the `substitution` stage; placed at MODELING_SEQUENCE §1 step 11's displays: beside the coefficient table under inference, beside the comparison under prediction.
-- **The method's own leash:** prediction recommended; inference recommended.
+- **Where:** recorded by `set_substitution`; run by the `substitution` stage; placed at MODELING_SEQUENCE §1 step 11's displays: beside the coefficient table under inference.
+- **Under prediction:** not asked, so neither offered nor placed (the Router's gate, `interview.applicability`): “A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.”
+- **The method's own leash:** prediction not offered; inference recommended.
 - **Lenses:** Dietary assessment. Declared by the MULTISUB package.
 
 **Options**, each labeled customary and sound for each purpose, with its leash rung and its rank (1 is offered first):
 
 | Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
 |---|---|---|---|---|---|
-| `class_curves`: One curve per class: the average change in each class's predicted probability | Average discrete changes of a multinomial model on each outcome's probability (Long & Freese 2014, ch. 8; Stata margins and R marginaleffects per outcome) | Sound as a model contrast: what the fitted model predicts for each class when k kcal move. | recommended, 1 | Sound: a marginal, isocaloric contrast on the probability scale over the stated population; the curves sum to zero at every k, as each person's probabilities sum to one. | recommended, 1 |
-| `reference_ratios`: Relative-risk ratios against the reference class per kcal swapped | The multinomial coefficients' contrast, as categorical-outcome analyses report them | Not a prediction: the class curves say what the model predicts. | not offered, 2 | Conditional on every covariate and against one reference class: it says how the odds of a class against the reference move, not how any class's probability does, and it is one number only when every energy source is a linear term. The coefficient table reports each class's ratios per unit. | not offered, 2 |
+| `class_curves`: One curve per class: the average change in each class's predicted probability | Average discrete changes of a multinomial model on each outcome's probability (Long & Freese 2014, ch. 8; Stata margins and R marginaleffects per outcome) | Not asked (the Router's gate): “A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.” | not offered, 1 | Sound: a marginal, isocaloric contrast on the probability scale over the stated population; the curves sum to zero at every k, as each person's probabilities sum to one. | recommended, 1 |
+| `reference_ratios`: Relative-risk ratios against the reference class per kcal swapped | The multinomial coefficients' contrast, as categorical-outcome analyses report them | Not asked (the Router's gate): “A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.” | not offered, 2 | Conditional on every covariate and against one reference class: it says how the odds of a class against the reference move, not how any class's probability does, and it is one number only when every energy source is a linear term. The coefficient table reports each class's ratios per unit. | not offered, 2 |
 
 **Storyboard** (the transform player's real steps):
 
@@ -1733,8 +1735,8 @@ The option each method offers first for each purpose, its rung, and the reason i
 | Survey-weighted linear, logistic and multinomial models (`survey_linear`) | `unweighted` (recommended): The fit prediction uses: its scores describe these rows. | `design_based` (recommended): Sound for the surveyed population: weighted estimating equations with a linearized variance (Binder 1983; Lumley 2010). |
 | Survey-weighted proportional-odds model (`survey_ordinal`) | `unweighted` (recommended): The fit prediction uses: its scores describe these rows. | `design_based` (recommended): Sound for the surveyed population: weighted estimating equations with a linearized variance (Binder 1983; Lumley 2010). |
 | The effect of the assigned treatment in a randomized trial (`trial_effect`) | not offered under prediction: Not offered under Predict: the effect of an assigned treatment is an Estimate question | `ancova` (recommended): Sound for a numeric outcome in a parallel trial: adjustment for precision only, the covariates named before the data were seen |
-| The substitution curve over the surveyed population (`survey_substitution`) | `row_bootstrap` (recommended): The band prediction draws on its training rows. | `design_band` (recommended): Sound for the surveyed population: the band carries both the error of the weighted fit and which people were sampled. |
-| Substitution curves for a multiclass outcome, one per class (`multiclass_substitution`) | `class_curves` (recommended): Sound as a model contrast: what the fitted model predicts for each class when k kcal move. | `class_curves` (recommended): Sound: a marginal, isocaloric contrast on the probability scale over the stated population; the curves sum to zero at every k, as each person's probabilities sum to one. |
+| The substitution curve over the surveyed population (`survey_substitution`) | not asked under prediction (the Router's gate): “A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.” | `design_band` (recommended): Sound for the surveyed population: the band carries both the error of the weighted fit and which people were sampled. |
+| Substitution curves for a multiclass outcome, one per class (`multiclass_substitution`) | not asked under prediction (the Router's gate): “A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.” | `class_curves` (recommended): Sound: a marginal, isocaloric contrast on the probability scale over the stated population; the curves sum to zero at every k, as each person's probabilities sum to one. |
 | Design-based cross-validation (`design_based_cv`) | `population` (recommended): Sound for performance in the surveyed population (Wieczorek et al. 2022) | not offered under inference: Not shown: under inference no cross-validated score is reported |
 | Trends across stacked survey cycles (`cycle_trends`) | not offered under prediction: Not offered under Predict: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) | not offered under inference: Not offered under Estimate an effect: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) |
 | How sensitive a trial's result is to its missing outcomes (the tipping point) (`trial_missing_outcomes`) | not offered under prediction: Not offered under Predict: the effect of an assigned treatment is an Estimate question | `delta_tipping_point` (recommended): Sound: says how different the missing would have to be, in the outcome's own units, before the conclusion changes |

@@ -124,8 +124,11 @@ def reviewed_in(lenses: Sequence[str]) -> str:
 
 def default_of(c: Any, purpose: str) -> dict[str, Any]:
     """The option ``c`` ranks first for ``purpose`` in the registry: its key, label, rung and
-    reason (where the app ranks by the data, ``defaults.cases`` says what it offers first)."""
-    return c.options_for(purpose)[0]
+    reason (where the app ranks by the data, ``defaults.cases`` says what it offers first), among
+    the options a question asks under it (``methods.unoffered``)."""
+    found = ref.unoffered(c).get(purpose)
+    off = set(found[2]) if found else set()
+    return next(o for o in c.options_for(purpose) if o["key"] not in off)
 
 
 BY_DATA = "ranked by the data: §3.4"
@@ -135,6 +138,9 @@ def default_cell(c: Any, purpose: str) -> str:
     through = defaults.THROUGH.get(c.key)
     if defaults.cases(c.key, purpose) is not None:
         return BY_DATA + (f" ({QUESTION_TITLES[through]}, `{through}`)" if through else "")
+    if ref.wholly_unoffered(c, purpose):  # BEATS_PREDICT §9 ruling 5: the substitution's curves
+        return (f"not asked under {purpose} (the Router's gate): "
+                f"“{ref.cell(ref.unoffered(c)[purpose][1])}”")
     d = default_of(c, purpose)
     if c.key in catalog.NOT_ASKED and d["rung"] not in ("not_offered", "refused"):
         return (f"never asked, so never applied from the app (§1); posted to the API, the "
