@@ -670,6 +670,25 @@ export async function cvDifferences(page: Page, fit: FitArtifact): Promise<strin
 // ── Fit, at the analysis flowchart's end ─────────────────────────────────────
 
 /**
+ * What the shell shows of Fit, read in one pass of the page's DOM so that nothing can change
+ * between the reads: the stage shown, whether the Fit position is drawn and marked running, its
+ * progress and Cancel, and the refusal it shows, if any.
+ */
+async function readFitPosition(page: Page): Promise<{ stage: string | null; running: boolean; progress: boolean; cancel: boolean; refusal: string | null }> {
+  return page.evaluate(() => {
+    const current = document.querySelector('[data-testid^="stage-"][aria-current="step"]')?.getAttribute("data-testid") ?? null;
+    const position = document.querySelector('[data-testid="fit-position"]');
+    return {
+      stage: current === null ? null : current.replace(/^stage-/, ""),
+      running: position?.hasAttribute("data-running") ?? false,
+      progress: document.querySelector('[data-testid="fit-progress"]') !== null,
+      cancel: document.querySelector('[data-testid="fit-cancel"]') !== null,
+      refusal: position?.querySelector('[role="alert"]')?.textContent?.trim() ?? null,
+    };
+  });
+}
+
+/**
  * Fit pressed where the shell offers it (Models, once its lines are answered), and Results awaited.
  * Before the press the position shows the engine's own reason and no Cancel; while the fit job runs
  * it shows its progress and a Cancel (W1_PART2_PLAN ruling 3), and the page must say so whenever
@@ -683,8 +702,19 @@ export async function cvDifferences(page: Page, fit: FitArtifact): Promise<strin
  * computes only once it is pressed, so the wait for Results covers the whole fit: it goes on
  * while the fit job runs (up to ``cap``) and gives up once none has for ``quiet``, or at once if
  * the press is refused or the fit fails.
+ *
+ * What the server serves is older than the page by the time it is read: the shell opens Results the
+ * moment the fit is computed, and Results has no Fit position. A reading that says the job runs is
+ * therefore not held against a page that has moved on. The page must show the job (the position
+ * marked running) or Results; while Models shows it, its progress and Cancel are read in the same
+ * pass as the mark, and Models that still does not show a job the server serves as running
+ * ``shown`` ms after the reading fails.
  */
-export async function pressFit(page: Page, pid: string, { quiet = FIT_QUIET, cap = FIT_CAP }: { quiet?: number; cap?: number } = {}): Promise<boolean> {
+export async function pressFit(
+  page: Page,
+  pid: string,
+  { quiet = FIT_QUIET, cap = FIT_CAP, shown = 15_000 }: { quiet?: number; cap?: number; shown?: number } = {},
+): Promise<boolean> {
   await openStage(page, "models");
   const position = page.getByTestId("fit-position");
   await expect(position).toBeVisible();
@@ -710,7 +740,8 @@ export async function pressFit(page: Page, pid: string, { quiet = FIT_QUIET, cap
   let firstSeen: number | null = null;
   const secondsIn = () => Math.round((Date.now() - start) / 1_000);
   for (;;) {
-    if ((await shownStage(page)) === "results") {
+    const look = await readFitPosition(page);
+    if (look.stage === "results") {
       // Reported with the run (the report's annotations): whether the press found the fit held, how
       // long after it the fit job was first seen, and how long Results took.
       test.info().annotations.push({
@@ -719,20 +750,37 @@ export async function pressFit(page: Page, pid: string, { quiet = FIT_QUIET, cap
       });
       return sawRunning;
     }
-    const refusal = position.getByRole("alert");
-    if (await refusal.count()) throw new Error(`Fit was refused: ${(await refusal.first().innerText()).trim()}`);
+    if (look.refusal !== null) throw new Error(`Fit was refused: ${look.refusal}`);
     const view = await getJson<{ stages: Record<string, { status: string; error?: string | null }> }>(page, pid);
     const fit = view.stages.fit;
+    let movedOn = false;
     if (["running", "queued"].includes(fit?.status ?? "")) {
-      await expect(position).toHaveAttribute("data-running", "true", { timeout: 15_000 });
-      await expect(page.getByTestId("fit-progress")).toBeVisible();
-      await expect(page.getByTestId("fit-cancel")).toBeVisible();
-      sawRunning = true;
-      busyAt = Date.now();
       firstSeen ??= secondsIn();
+      // The reading may be older than the page by the time it arrives, and a fit that finished
+      // meanwhile has opened Results, which has no position to look at: the page shows the job,
+      // or Results.
+      const until = Date.now() + shown;
+      for (;;) {
+        const now = await readFitPosition(page);
+        if (now.stage === "results") {
+          movedOn = true;
+          break;
+        }
+        if (now.running) {
+          // One pass read the mark, the progress and the Cancel, so a fit that finishes after it
+          // cannot have taken any of them away between the reads.
+          expect(now.progress && now.cancel, `Models shows the fit running without its progress and Cancel (progress ${now.progress}, Cancel ${now.cancel})`).toBe(true);
+          sawRunning = true;
+          break;
+        }
+        expect(Date.now() < until, `the server serves the fit as ${fit!.status} but Models does not show it (the position is not marked running ${shown / 1_000} s after the reading)`).toBe(true);
+        await page.waitForTimeout(250);
+      }
+      busyAt = Date.now();
     } else if (fit?.status === "error") {
       throw new Error(`the fit failed: ${fit.error ?? "no reason was given"}`);
     }
+    if (movedOn) continue;
     const waited = Math.round((Date.now() - start) / 1_000);
     expect(Date.now() - start < cap, `the fit computes and Results opens (waited ${waited} s, to the ${cap / 1_000} s cap; fit ${fit?.status})`).toBe(true);
     expect(Date.now() - busyAt < quiet, `the fit computes and Results opens (waited ${waited} s; the fit job was not seen for ${quiet / 1_000} s; fit ${fit?.status})`).toBe(true);
