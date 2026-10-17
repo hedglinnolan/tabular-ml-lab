@@ -2,7 +2,7 @@
  * From the engine's artifacts to the views' inputs. Pure: nothing is estimated here; every number
  * a view draws is one the engine served, and every sentence is composed from served numbers.
  */
-import type { ModelCalibration, SubstitutionArtifact } from "../../api/m3-types";
+import type { InputCurves, ModelCalibration, SubstitutionArtifact } from "../../api/m3-types";
 import type { CalibrationBin, CalibrationData } from "./calibration";
 import type { CurveData, CurveLine } from "./curve";
 import type { DecisionCurveData, DecisionCurveRow, ScoredWhere } from "./decisionCurve";
@@ -72,6 +72,50 @@ export function curveFromSubstitution(art: SubstitutionArtifact, opts: Substitut
     basis: art.basis,
     band: art.band?.caption ?? null,
     sealed: null,
+  };
+}
+
+/**
+ * One input's curves from the explain artifact (turbotab/core/models/explain.py `InputCurves`):
+ * every drawn family on the input's shared grid, in the comparison palette by its place among the
+ * artifact's families, so a family keeps its color whether or not the others draw. A family the
+ * engine did not draw has no line here; its reason is the artifact's (`curves[].reason`).
+ *
+ * The support mask: the engine serves each family's value at the grid's edges, null at an edge
+ * touching no segment with enough rows. An edge between a supported segment and an unsupported
+ * one keeps its value, so a line through the served points would cross the unsupported segment.
+ * Each such segment gets a break: a null at its left edge's x, right after the value there. The
+ * curve view draws runs of defined points, and reads a value at an x by its first entry, so the
+ * break draws nothing and every served value is still read once, at its own x.
+ */
+export function curveFromExplain(ic: InputCurves, opts: { outcome: string; task: string; sealed?: string | null }): CurveData {
+  const K = ic.grid.length - 1;
+  const lines: CurveLine[] = [];
+  ic.curves.forEach((c, place) => {
+    if (!c.drawn || place >= SLOTS.length) return;
+    const x: number[] = [];
+    const y: (number | null)[] = [];
+    ic.grid.forEach((z, i) => {
+      const v = c.values[i] ?? null;
+      x.push(z);
+      y.push(v);
+      if (i < K && !ic.supported[i] && v !== null && (c.values[i + 1] ?? null) !== null) {
+        x.push(z);
+        y.push(null);
+      }
+    });
+    lines.push({ key: c.family, label: c.label, role: "series", slot: SLOTS[place], x, y });
+  });
+  return {
+    xLabel: ic.unit ? `${ic.input} (${ic.unit})` : ic.input,
+    xName: ic.input,
+    // Under a numeric outcome the model predicts the outcome's value; otherwise its own scale
+    // (the log-odds of the event, for one), which the curve is drawn on.
+    yLabel: opts.task === "regression" ? `Change in predicted ${opts.outcome}` : "Change on the model's own scale",
+    lines,
+    zero: true,
+    basis: ic.method === "ale" ? "Accumulated local effects, centered on their average over the rows." : "Partial dependence, centered on its average over the rows.",
+    sealed: opts.sealed ?? null,
   };
 }
 
