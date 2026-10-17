@@ -19043,7 +19043,7 @@
           "changed"
         ],
         "title": "Sweep",
-        "description": "The stage's one Confirm sweep (P0.5): how many defaults it holds, and whether each is\nanswered, by the person's own answer or by \"Confirm all\" (``confirmed_by``, the\n``confirm_sweep`` record). ``changed``: the lines set for the person anew, or stated otherwise,\nsince that confirmation. ``id`` is the crosswalk's card; ``heading`` and ``action`` are its\nwords (\"Here are the 6 other choices set for you\", \"Confirm all 6\")."
+        "description": "The stage's one Confirm sweep (P0.5): how many defaults it holds, and whether each is\nanswered, by the person's own answer or by \"Confirm all\" (``confirmed_by``, the\n``confirm_sweep`` record). ``changed``: the lines set for the person anew, or stated otherwise,\nsince that confirmation. ``id`` is the crosswalk's card; ``heading`` and ``action`` are its\nwords (\"The 6 choices set for you\", \"Confirm all 6\")."
       },
       "SweepConfirmation": {
         "properties": {
