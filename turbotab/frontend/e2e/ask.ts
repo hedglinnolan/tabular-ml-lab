@@ -1,5 +1,14 @@
 import { expect, type Locator, type Page } from "@playwright/test";
-import { stagesComputing } from "./fit";
+import { ANY_STAGE, stagesComputing, waitWhileComputing } from "./fit";
+
+/** Whether the element ``press`` points at is there and enabled right now. One read that never
+ *  waits: none matching is false, where ``isEnabled()`` would wait for one to appear. */
+export async function enabledNow(press: Locator): Promise<boolean> {
+  const enabled = await press.evaluateAll((els) =>
+    els.map((e) => !(e as HTMLButtonElement).disabled && e.getAttribute("aria-disabled") !== "true"),
+  );
+  return enabled[0] ?? false;
+}
 
 /**
  * A preview the stage holds back until readings it reads are confirmed ("Not available: … Tell me
@@ -113,21 +122,28 @@ export async function firstDrawnPair(page: Page, done: Locator, tries = 12): Pro
  * knows the table does, until the card is gone. Each round takes "Confirm every line as shown"
  * when the card offers it (it does once one line was confirmed by hand), else the first line's
  * Confirm, else the consumer's own way forward (an energy column's unit and days), and waits for
- * the record to answer (the card changes or goes).
+ * the record to answer (the card changes or goes). Returns how many presses it made.
+ *
+ * Every wait is bounded by what the app is computing, not by a flat time: the card's press is
+ * waited for, and then its answer, for as long as any stage computes (up to ten minutes), and the
+ * wait ends once none has for a minute.
  */
-export async function confirmAsk(slot: Locator): Promise<void> {
+export async function confirmAsk(slot: Locator): Promise<number> {
   const card = slot.getByTestId("ask-card");
+  const page = slot.page();
+  const bounds = { quiet: 60_000, cap: 600_000 };
   // One read that never waits: null once the card is gone. (A count() then a textContent() waits,
   // with no timeout, for a card the app removed between the two calls, and the poll never returns.)
   const words = async () => (await card.allTextContents())[0] ?? null;
+  let presses = 0;
   for (let round = 0; round < 40; round++) {
     let before = await words();
     if (before === null) {
       // Gone, or only between two renders (a confirmed line recomputes the card): settled once
       // it stays away.
-      await slot.page().waitForTimeout(5_000);
+      await page.waitForTimeout(5_000);
       before = await words();
-      if (before === null) return;
+      if (before === null) return presses;
     }
     // The press the card offers now; while it recomputes it may offer none for a moment.
     const pick = async (): Promise<Locator | null> => {
@@ -139,22 +155,38 @@ export async function confirmAsk(slot: Locator): Promise<void> {
       return (await exits.count()) ? exits.first() : null;
     };
     let press: Locator | null = null;
-    await expect
-      .poll(
-        async () => {
-          if ((await words()) === null) return "gone";
-          press = await pick();
-          return press ? "ready" : "waiting";
-        },
-        { message: "the ask card offers a press", timeout: 30_000 },
-      )
-      .not.toBe("waiting");
+    const offered = await waitWhileComputing(
+      page,
+      async () => {
+        if ((await words()) === null) return true;
+        press = await pick();
+        return press !== null;
+      },
+      [ANY_STAGE],
+      bounds,
+    );
+    expect(offered.done, `the ask card offers a press (waited ${offered.waited} s; ${offered.seen})`).toBe(true);
     if (press === null) continue; // gone meanwhile: settled once it stays away
     before = await words();
+    // The card's buttons are disabled while the answer before this one is still being recorded
+    // (they wait for the server's response, which a busy server sends late): a person waits for the
+    // button, so the press is clicked only once it is enabled, if the card is still there, and
+    // then with a click's own short timeout.
+    const ready = await waitWhileComputing(
+      page,
+      async () => (await words()) === null || (await enabledNow(press as Locator)),
+      [ANY_STAGE],
+      bounds,
+    );
+    if ((await words()) === null) continue; // answered meanwhile
+    expect(ready.done, `the ask card's press is enabled (waited ${ready.waited} s; ${ready.seen})`).toBe(true);
     await (press as Locator).click({ timeout: 15_000 });
-    // The record answers once the server has recomputed what the line feeds, which may take
-    // longer than 30 s on a shared CI runner.
-    await expect.poll(words, { message: "the ask card answers the press", timeout: 90_000 }).not.toBe(before);
+    presses++;
+    // The record answers once the server has recomputed what the line feeds, which takes longer
+    // than 30 s on a shared CI runner.
+    const answered = await waitWhileComputing(page, async () => (await words()) !== before, [ANY_STAGE], bounds);
+    expect(answered.done, `the ask card answers the press (waited ${answered.waited} s; ${answered.seen})`).toBe(true);
   }
   await expect(card, "the ask card is answered").toHaveCount(0);
+  return presses;
 }

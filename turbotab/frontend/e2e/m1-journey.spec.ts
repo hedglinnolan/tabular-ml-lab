@@ -11,13 +11,15 @@
  *
  * The journey: open the export → lens dietary → outcome glucose → (task not asked) → prediction →
  * roles confirmed (SEQN an identifier) → exclusions (every screen previewed with the arrow keys;
- * Willett's sex-specific cut-offs recorded) → missing values (each previewed; the mostly-blank
- * columns left out, then complete cases) → a 20% holdout → energy adjustment (every method
- * previewed; the residual storyboard flipped and captured frame by frame, and saved as a
- * before/after pair) → residual recorded → all three families → the fit → Fit pressed (SIZING
- * P0.8: the real server serves the fit withheld until then) → the Results → a
- * fat_total → carb substitution → the refit band → a finding's evidence → then the energy method
- * changed to density after fitting, and the banner, the stage and the Results re-flow.
+ * the exclusion preview saved as a before/after pair; Willett's sex-specific cut-offs recorded) →
+ * missing values (each previewed; the mostly-blank columns left out, then complete cases) → a 20%
+ * holdout → (no energy question: under prediction no coefficient is read as an effect, so the
+ * Router says it does not apply) → the three linear families → the fit → Fit pressed on the
+ * Results (SIZING P0.8: the fit is served withheld until then, and a fit held for the press
+ * computes only after it) → the Results → a finding's evidence → then the split changed after
+ * fitting, and the banner, the stage and the Results re-flow; then an earlier answer changed
+ * again, dating the counts of the sentence after it. No substitution is asked either: it compares
+ * two imagined diets.
  *
  * Screens (1440 × 900, each < 300 KB): docs/turbotab-next/m1/screens/real-*.png against the real
  * server (mock-*.png under test-results/ against the mock); the exported figures as saved-*.
@@ -26,9 +28,9 @@ import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { confirmAsk, confirmParts } from "./ask";
+import { confirmAsk } from "./ask";
 import { toClassic } from "./classic";
-import { ANY_STAGE, fitOnceComputed, visibleWhileComputing } from "./fit";
+import { ANY_STAGE, FIT_CAP, FIT_QUIET, fitOnceComputed, visibleWhileComputing, waitWhileComputing } from "./fit";
 import { nhanesExport } from "./nhanes";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -61,13 +63,14 @@ const shots: string[] = [];
 const oversize: string[] = [];
 
 /**
- * Three guarantees the real server's stage breaks today (W1-C, reported for the shell): the M1
- * mock asserts each inline, as before; on the real server the journey measures each and the
- * known-defect tests after it hold them, so they stay visible in every report instead of passing
- * as annotations. A term card or a Save that stops being covered fails its test.fail ("expected
- * to fail") until the marker is removed; a screen over 300 KB is a fixme that names it.
+ * A guarantee the real server's stage breaks today (W1-C, reported for the shell): the M1 mock
+ * asserts it inline, as before; on the real server the journey measures it and the known-defect
+ * test after it holds it, so it stays visible in every report instead of passing as an
+ * annotation: a screen over 300 KB is a fixme that names it. (The two the energy question's
+ * preview showed, a term's card covering an option and the distribution card's Save over the
+ * primary's, are not measured: prediction does not ask that question.)
  */
-const defects: { termCardCovers?: string[]; saveCoveredBy?: string | null; oversize?: string[] } = {};
+const defects: { oversize?: string[] } = {};
 const KNOWN = "known defect on the real server's stage (W1-C open issue; the mock asserts it inline)";
 
 // The known-defect tests read what the journey measured, so they run after it, in one worker.
@@ -157,10 +160,10 @@ async function timed(done: () => Promise<void>): Promise<number> {
 }
 
 test("the M1 journey: every question previewed on the stage, fitted, then re-flowed", async ({ page }) => {
-  // Against the real server the steps allow, at most: the fit 600 s (computed, then its result),
-  // the pair's curves 600 s (confirmParts' cap: the confirmations refit the fit), the band 630 s,
-  // the re-flow 540 s (two veils, then the refit), and 300 s for everything else: 2,670 s.
-  test.setTimeout(REAL ? 2_700_000 : 240_000);
+  // Against the real server the steps allow, at most: the fit 900 s (a fit held for the press
+  // computes only after it; fitOnceComputed's cap), the re-flow 900 s (the refit is a whole fit,
+  // waited for while it runs), and 300 s for everything else: 2,100 s.
+  test.setTimeout(REAL ? 2_100_000 : 240_000);
   await page.addInitScript(() => {
     (window as unknown as Review).__turbotabReview = true;
   });
@@ -283,6 +286,48 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
     await exclusions.evaluate((el) => el.scrollIntoView({ block: "start" }));
     await shot(page, name, key === WILLETT ? { themes: ["light", "dark"] } : {});
   }
+
+  // ── save the primary plot as a before/after pair, SVG and PNG ───────────────────────────
+  // (The energy storyboard it was saved from is not asked under prediction; the exclusion
+  // screens' row flow has the same two sides.)
+  const primary = stage(page).locator("[data-primary]");
+  const primarySave = primary.getByTestId("save-button");
+  // What a pointer press at the primary's Save would land on, as Playwright's own hit check sees it
+  // (a trial click: scrolled into view, every actionability check, no press): null when the Save
+  // itself, else what intercepts it. On the energy question's preview the distribution card's own
+  // Save sat over the primary's (a W1-C open issue); on this one nothing covers it, on either
+  // backend, which this holds.
+  const saveCoveredBy = await primarySave.click({ trial: true, timeout: 5_000 }).then(
+    () => null,
+    (e: Error) =>
+      e.message
+        .split("\n")
+        .find((line) => line.includes("intercepts pointer events"))
+        ?.trim() ?? `not pressable: ${e.message.split("\n")[0]}`,
+  );
+  measurements.save_covered_by = saveCoveredBy;
+  expect(saveCoveredBy, "nothing covers the primary's Save").toBeNull();
+  const openSave = async () => primarySave.click();
+  await openSave();
+  await page.getByRole("radio", { name: "Before and after" }).check();
+  await shot(page, "save-pair");
+  const [svg] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "SVG" }).click()]);
+  const svgText = readFileSync(await svg.path(), "utf-8");
+  expect(svgText).toContain("Preview, not recorded:");
+  expect(svgText).toContain("Your data now");
+  expect(svgText).toContain("With this choice");
+  await openSave();
+  await page.getByRole("radio", { name: "Before and after" }).check();
+  const [png] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "PNG 2×" }).click()]);
+  const pngBytes = readFileSync(await png.path());
+  expect(pngBytes.subarray(1, 4).toString()).toBe("PNG");
+  if (REAL) {
+    copyFileSync(await svg.path(), resolve(SCREENS, "saved-exclusions-pair.svg"));
+    copyFileSync(await png.path(), resolve(SCREENS, "saved-exclusions-pair.png"));
+  }
+  measurements.saved = { svg: svg.suggestedFilename(), png: png.suggestedFilename(), png_width: pngBytes.readUInt32BE(16) };
+  await park(page);
+
   await page.getByTestId(`option-${WILLETT}`).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("decision-exclusions")).toContainText("Willett");
@@ -332,157 +377,21 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   await expect(page.getByTestId("decision-split")).toContainText("20%");
   await expect(page.getByTestId("banner-train")).toBeVisible({ timeout: 30_000 });
 
-  // ── energy adjustment: every method previewed with the arrow keys ───────────────────────
-  const energy = page.getByTestId("question-energy_adjustment");
-  await expect(energy).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByTestId("option-residual")).toContainText("usual");
-  await expect(page.getByTestId("option-residual")).toHaveAttribute("aria-selected", "false");
-  if (REAL) {
-    // Every adjusted nutrient is named — sugar too, carbohydrate at 4 kcal/g.
-    await expect(energy).toContainText("protein, sugar, carb, fat_total, fat_sat, fat_mon, and fat_poly are adjusted together");
-    // A total beside its parts would count fat's energy twice: partition is refused, with the reason.
-    await expect(page.getByTestId("option-partition")).toContainText("not applicable");
-    await expect(page.getByTestId("option-partition")).toContainText("count that energy twice");
-  }
-  const methods = await energy
-    .getByRole("option")
-    .evaluateAll((els) => els.map((e) => e.getAttribute("data-key") ?? ""));
-  measurements.energy_methods = methods;
-  await page.getByTestId(`option-${methods[0]}`).focus();
-  const methodMs: Record<string, number> = {};
-  for (let i = 0; i < methods.length; i++) {
-    const m = methods[i]!;
-    if (i > 0) await page.keyboard.press("ArrowDown");
-    await expect(page.getByTestId(`option-${m}`)).toBeFocused();
-    const t0 = Date.now();
-    await expect(page.getByTestId("stage-loading")).not.toHaveAttribute("data-on", /.*/, { timeout: 15_000 });
-    // A method that does not apply here (partition, under nested nutrients) says why on its
-    // option, above; the others preview on the stage.
-    if ((await page.getByTestId(`option-${m}`).getAttribute("aria-disabled")) !== "true") {
-      await expect(stage(page)).toHaveAttribute("data-group", /set_energy_adjustment/);
-    }
-    methodMs[m] = Date.now() - t0;
-    await settle(page, 700);
-    await park(page);
-    await energy.evaluate((el) => el.scrollIntoView({ block: "start" }));
-    await shot(page, `q-energy-${m.replace(/_/g, "-")}`, m === "residual" ? { themes: ["light", "dark"] } : {});
-  }
-  measurements.energy_preview_on_screen_ms = methodMs;
-
-  // ── the residual storyboard on the flip, frame by frame ──────────────────────────────────
-  await page.getByTestId("option-residual").focus();
-  await previewed(page, /^Residual/); // "Residual, energy kept" on the server; the mock's older title
-  await landed(page, "with");
-  // The basis names the rows the view was computed on: a sample of the training rows.
-  if (REAL) await expect(stage(page)).toContainText(/Values on a sample of 5,000 of the [\d,]+ training rows/);
-  await expect(page.locator("[aria-label^='Step ']")).toHaveCount(4);
-  await expect(page.getByTestId("readout")).toContainText("0.00");
-  await park(page);
-  await page.evaluate(() => (window as unknown as Review).__turbotabStage.manual(true));
-  await page.keyboard.press("Space"); // back to your data now, instantly under the manual clock
-  await page.evaluate(() => (window as unknown as Review).__turbotabStage.advance(2000));
-  await settle(page, 400);
-  await page.keyboard.press("Space"); // and forward: the storyboard plays
-  let t = 0;
-  const positions: number[] = [];
-  for (const ms of [0, 150, 300, 450, 600, 900]) {
-    await page.evaluate((d) => (window as unknown as Review).__turbotabStage.advance(d), ms - t);
-    t = ms;
-    positions.push((await page.evaluate(() => (window as unknown as Review).__turbotabStage.state())).pos);
-    await settle(page, 350); // the lineage and the row flow ease over their own 300 ms
-    await shot(page, `flip-residual-${String(ms).padStart(3, "0")}ms`);
-  }
-  measurements.flip_positions = positions;
-  expect(positions[0]).toBe(0);
-  expect(positions.at(-1)).toBe(3);
-  expect(positions).toEqual([...positions].sort((a, b) => a - b));
-  await page.evaluate(() => (window as unknown as Review).__turbotabStage.manual(false));
-  await landed(page, "with");
-  // A step dot pauses on that step and names it.
-  await page.locator("[aria-label^='Step 2 of 4']").click();
-  await expect(page.getByTestId("step-label")).toHaveText(/Fit/);
-  await page.locator("[aria-label^='Step 4 of 4']").click();
-  await landed(page, "with");
-
-  // ── save the primary plot as a before/after pair, SVG and PNG ───────────────────────────
-  const primary = stage(page).locator("[data-primary]");
-  const primarySave = primary.getByTestId("save-button");
-  // What a pointer press at the primary's Save would land on, as Playwright's own hit check sees it
-  // (a trial click: scrolled into view, every actionability check, no press): null when the Save
-  // itself, else what intercepts it.
-  defects.saveCoveredBy = await primarySave.click({ trial: true, timeout: 5_000 }).then(
-    () => null,
-    (e: Error) =>
-      e.message
-        .split("\n")
-        .find((line) => line.includes("intercepts pointer events"))
-        ?.trim() ?? `not pressable: ${e.message.split("\n")[0]}`,
-  );
-  measurements.save_covered_by = defects.saveCoveredBy;
-  if (!REAL) expect(defects.saveCoveredBy, "nothing covers the primary's Save").toBeNull();
-  // On the mock a pointer press, as before. On the real server the distribution card's own Save
-  // sits over the primary's (the known-defect test below), so it is opened from the keyboard.
-  const openSave = async () => {
-    if (!REAL) return primarySave.click();
-    await primarySave.focus();
-    await page.keyboard.press("Enter");
-  };
-  await openSave();
-  await page.getByRole("radio", { name: "Before and after" }).check();
-  await shot(page, "save-pair");
-  const [svg] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "SVG" }).click()]);
-  const svgText = readFileSync(await svg.path(), "utf-8");
-  expect(svgText).toContain("Preview, not recorded:");
-  expect(svgText).toContain("Your data now");
-  expect(svgText).toContain("With this choice");
-  await openSave();
-  await page.getByRole("radio", { name: "Before and after" }).check();
-  const [png] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "PNG 2×" }).click()]);
-  const pngBytes = readFileSync(await png.path());
-  expect(pngBytes.subarray(1, 4).toString()).toBe("PNG");
-  if (REAL) {
-    copyFileSync(await svg.path(), resolve(SCREENS, "saved-residual-pair.svg"));
-    copyFileSync(await png.path(), resolve(SCREENS, "saved-residual-pair.png"));
-  }
-  measurements.saved = { svg: svg.suggestedFilename(), png: png.suggestedFilename(), png_width: pngBytes.readUInt32BE(16) };
-
-  // A term's card opens in full, inside the window, and covers no option (review: it was clipped
-  // and sat on the Residual option).
-  const term = energy.locator("[data-term]").first();
-  if (await term.count()) {
-    await term.hover();
-    const tip = page.getByRole("tooltip").filter({ visible: true });
-    await expect(tip).toHaveCount(1);
-    const tipBox = (await tip.boundingBox())!;
-    expect(tipBox.x).toBeGreaterThanOrEqual(0);
-    expect(tipBox.x + tipBox.width).toBeLessThanOrEqual(1440);
-    // Which option it covers is listed for the reviewer (the measurements and an annotation): the
-    // server's energy question words its first term inside the options themselves, where the M1
-    // review's layout rule (the card beside the options) no longer holds.
-    const covered: string[] = [];
-    for (const opt of await energy.getByRole("option").all()) {
-      const o = (await opt.boundingBox())!;
-      const overlaps =
-        tipBox.x < o.x + o.width && o.x < tipBox.x + tipBox.width && tipBox.y < o.y + o.height && o.y < tipBox.y + tipBox.height;
-      if (overlaps) covered.push((await opt.getAttribute("data-key")) ?? "?");
-    }
-    measurements.term_card_covers = covered;
-    defects.termCardCovers = covered;
-    if (covered.length) {
-      test.info().annotations.push({ type: "term card covers an option", description: covered.join(", ") });
-    }
-    if (!REAL) expect(covered, "the term card covers an option").toEqual([]);
-    await park(page);
-  }
-
-  // Record the residual method from the Record (Enter on its option).
-  await page.getByTestId("option-residual").focus();
-  await page.keyboard.press("Enter");
-  await expect(page.getByTestId("decision-energy_adjustment")).toContainText("residual");
-
-  // ── the model families: the shelf's first three, with the keyboard ──────────────────────────
+  // ── energy adjustment is not asked under prediction ─────────────────────────────────────────
+  // No coefficient is read as an effect there, so there is no energy model to choose (BEATS_PREDICT
+  // ruling 5, the engine's W1-P11): the Router says so in place, with its reason, and the models
+  // are the next question.
   const models = page.getByTestId("question-models");
   await expect(models).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("question-energy_adjustment")).toHaveCount(0);
+  const notAsked = page.locator('[data-testid="na-energy_adjustment"], [data-testid="na-group"][data-keys~="energy_adjustment"]').first();
+  await expect(notAsked).toContainText("Energy adjustment");
+  await expect(notAsked).toContainText("not applicable");
+  const why = notAsked.getByRole("button", { name: "why?" });
+  if (await why.count()) await why.click();
+  await expect(notAsked).toContainText("Under prediction no coefficient is read as an effect");
+
+  // ── the model families: the shelf's first three, with the keyboard ──────────────────────────
   // The roles proposed below high confidence set the predictors only once confirmed: the ledger's
   // ask card lists them on this question, and they are confirmed as shown first.
   const familyOptions = models.getByRole("listbox", { name: /Model families/ }).locator(':scope > [role="option"]');
@@ -492,20 +401,21 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   const shelf = await familyOptions.evaluateAll((els) => els.map((e) => e.getAttribute("data-key") ?? ""));
   expect(shelf.length, "the shelf offers at least three families").toBeGreaterThanOrEqual(3);
   // The M1 mock's whole shelf; on the server the three linear families (the shelf now ranks a dozen,
-  // and the refit band and the re-flow refit each chosen family hundreds of times: boosted trees
-  // there take most of the journey's time), in the shelf's order.
+  // and the re-flow refits each chosen family: boosted trees there take most of the journey's
+  // time), in the shelf's order.
   const LIGHT = ["linear", "ridge", "elastic_net"];
   const families = REAL ? shelf.filter((k) => LIGHT.includes(k)) : shelf.slice(0, 3);
   expect(families, "three families to fit").toHaveLength(3);
   await page.getByTestId(`option-${families[0]}`).focus();
-  // Never the previous question's preview as a placeholder (review: "PREVIEW Residual method"
-  // flashed for ~250 ms): sample the stage's title while the first family's preview loads.
+  // Never the previous question's preview as a placeholder (review: "PREVIEW Residual method", the
+  // energy answer's, flashed for ~250 ms): sample the stage's title while the first family's
+  // preview loads, and it is not the split's preview, the answer just before it.
   const titles: string[] = [];
   for (let i = 0; i < 20; i++) {
     titles.push((await page.getByTestId("stage-title").textContent().catch(() => "")) ?? "");
     await page.waitForTimeout(25);
   }
-  expect(titles.filter((x) => /Residual/.test(x)), "no foreign preview while loading").toEqual([]);
+  expect(titles.filter((x) => /20%/.test(x)), "no foreign preview while loading").toEqual([]);
   await previewed(page, /./);
   // Nothing chosen yet: the stage's button (and Enter) fit the shown family.
   await expect(page.getByTestId("stage-record")).toHaveText(/^Fit the /);
@@ -542,9 +452,11 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   await expect(page.getByTestId("decision-models")).toContainText("Three model families");
 
   // ── the fit, Fit pressed, then the Results (the stage's live view once fitted) ───────────
+  // The wait for the result after the press lasts as long as the fit job runs (fitOnceComputed),
+  // so none is kept here.
   measurements.fit_s = await timed(async () => {
     measurements.fit_pressed = await fitOnceComputed(page);
-    await expect(page.getByTestId("banner-result-value")).toBeVisible({ timeout: 300_000 });
+    await expect(page.getByTestId("banner-result-value")).toBeVisible();
   });
   await park(page);
   await expect(page.getByTestId("results")).toBeVisible({ timeout: 30_000 });
@@ -552,71 +464,28 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   await expect(comparison.locator("[data-family]")).toHaveCount(3);
   await expect(comparison).toContainText("baseline");
   measurements.result = await page.getByTestId("banner-result").innerText().catch(() => null);
-  // Findings learn they were answered: the energy finding no longer pushes its lever.
+  // Findings learn they were answered. The dietary energy noticing does not fire under prediction
+  // (no coefficient is read as an effect), so it is not among them.
   await expect(page.getByTestId("findings-settled")).toContainText("answered in the record");
   await expect(page.getByTestId("finding-pack::dietary::energy_adjustment")).toHaveCount(0);
+  await expect(page.getByTestId("settled-pack::dietary::energy_adjustment")).toHaveCount(0);
   await settle(page, 600);
   await shot(page, "results", { themes: ["light", "dark"] });
 
-  // ── the substitution: fat_total → carb from the stage's matrix ──────────────────────────
-  const substitution = page.getByTestId("question-substitution");
-  await expect(substitution).toBeVisible({ timeout: 60_000 });
-  const pair = () => page.getByRole("button", { name: "Move energy from fat_total to carb" }).click();
-  await pair();
-  measurements.substitution_s = await timed(async () => {
-    expect(await confirmParts(page, page.getByTestId("substitution-curves"), pair), "fat_total → carb is drawn").toBe("drawn");
-  });
-  await expect(page.getByTestId("decision-substitution")).toContainText("fat_total");
-  const curves = page.getByTestId("substitution-curves");
-  await expect(stage(page)).toContainText("per 100 kcal at k = 100");
-  // §12.5: moving fat_total moves its parts in proportion, and the Results say so.
-  if (REAL) await expect(page.getByTestId("carried")).toContainText("fat_sat");
-  await curves.evaluate((el) => el.scrollIntoView({ block: "start" }));
-  await settle(page, 500);
-  await shot(page, "curves");
-
-  // ── the refit band: offered with its measured time, computed with progress, drawn ─────────
-  const band = page.getByTestId("add-band");
-  const bandLabel = (await band.textContent()) ?? "";
-  measurements.band_offer = bandLabel;
-  expect(bandLabel).toMatch(/Add an uncertainty band \(about .+\)/);
-  await band.click();
-  await expect(page.getByText(/Refitting each family \d+ times/)).toBeVisible({ timeout: 15_000 });
-  // Stop it: the curve veils as stopped with a way to run it again outside the veil, the
-  // Record says so beside the answer, and the band can be asked for again (review blocker).
-  if (REAL) {
-    await page.getByRole("button", { name: "Stop", exact: true }).click();
-    await expect(page.getByTestId("retry-substitution").first()).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("sentence-stopped-substitution")).toBeVisible();
-    await park(page);
-    await shot(page, "band-stopped");
-    await page.getByTestId("add-band").click();
-    await expect(page.getByText(/Refitting each family \d+ times/)).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("sentence-stopped-substitution")).toHaveCount(0);
-  }
-  measurements.band_s = await timed(() =>
-    // "… ± 1.96 bootstrap standard errors from 200 refits …" on the server; the mock says it shorter.
-    expect(page.getByText(/bands: 95% intervals.*from \d+ refits/i)).toBeVisible({ timeout: 600_000 }),
-  );
-  await expect(page.getByTestId("decision-substitution")).toContainText("refits");
-  await page.getByTestId("substitution-curves").evaluate((el) => el.scrollIntoView({ block: "start" }));
-  await settle(page, 500);
-  await shot(page, "band", { themes: ["light", "dark"] });
-
   // ── a finding's evidence: focusing its card puts the evidence on the stage ───────────────
-  // The energy finding is settled by the energy answer: its evidence is a press away there.
+  // A finding an answer settled keeps its evidence a press away.
   await page.getByTestId("findings-settled-toggle").click();
-  const preferred = page.getByTestId("settled-pack::dietary::energy_adjustment");
-  const card = (await preferred.count()) ? preferred : page.getByTestId("finding-cards").locator(":scope > li").first();
+  const settledCard = page.getByTestId("findings-settled").locator('[data-testid^="settled-"]').first();
+  const card = (await settledCard.count()) ? settledCard : page.getByTestId("finding-cards").locator(":scope > li").first();
   await card.scrollIntoViewIfNeeded();
   await card.focus();
   await expect(stage(page)).toHaveAttribute("data-focus", "finding");
   await expect(page.getByTestId("stage-pill")).toHaveText("Evidence", { timeout: 15_000 });
   await expect(page.getByTestId("stage-loading")).not.toHaveAttribute("data-on", /.*/, { timeout: 15_000 });
-  // Each r names its basis: the finding's every row, the evidence's training sample.
+  // The evidence names the rows it was computed on (the engine's basis sentence): every row of the
+  // table, as the finding read them, or a sample of the training rows.
   if (REAL) {
-    await expect(page.getByTestId("stage-title")).toContainText("across all 21,849 rows");
-    await expect(stage(page)).toContainText(/Values on a sample of 5,000 of the [\d,]+ training rows/);
+    await expect(stage(page)).toContainText(/Every one of the 21,849 rows, as the finding read them\.|Values on (?:all|a sample of) [\d,]+ /);
   }
   await park(page);
   await settle(page, 500);
@@ -624,24 +493,22 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   await page.keyboard.press("Escape");
   await expect(stage(page)).toHaveAttribute("data-focus", "live");
 
-  // ── change the energy method after fitting: the banner, the stage and the Results re-flow ──
+  // ── change the split after fitting: the banner, the stage and the Results re-flow ──────────
+  // (The energy method it was once is not asked under prediction.) A 30% holdout leaves fewer
+  // training rows, so the cohort's flow, the models and the result all recompute.
   const banner = page.getByTestId("banner");
   await recordCol(page).evaluate((el) => (el.scrollTop = 0));
   await park(page);
-  await expect(page.getByTestId("banner-columns")).toContainText("residual");
+  await expect(page.getByTestId("banner-train")).toBeVisible();
+  const trainBefore = await page.getByTestId("banner-train").innerText();
   await shot(page, "banner-before", { clip: banner });
   await shot(page, "reflow-before");
-  await page.getByRole("button", { name: "Change the energy adjustment" }).click();
-  await page.getByTestId("option-density").focus();
-  await previewed(page, "Density alone");
+  await page.getByRole("button", { name: "Change the seal" }).click();
+  await page.getByTestId("option-0.3").focus();
+  await previewed(page, /30%/);
   await landed(page, "with");
-  // "Your data now" is the recorded residual result (r 0.00), not the raw nutrient.
-  if (REAL) {
-    await expect(page.getByTestId("readout")).toContainText("0.00");
-    await expect(stage(page)).toContainText("Recorded now");
-  }
   await park(page);
-  await shot(page, "q-energy-change-density");
+  await shot(page, "q-split-change-30");
   // Every veil change from here on, timed: the order the change propagates in.
   await page.evaluate(() => {
     const w = window as unknown as { __veils: { t: number; at: string; veil: string | null }[] };
@@ -660,9 +527,9 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
     }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-veil"] });
   });
   const t0 = Date.now();
-  await page.getByTestId("option-density").focus();
+  await page.getByTestId("option-0.3").focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByTestId("decision-energy_adjustment")).toContainText("density");
+  await expect(page.getByTestId("decision-split")).toContainText("30%");
   await park(page);
   // Three frames while the change propagates, at real speed (no throttling): a quarter second
   // after the record (the veils are in), then about one and two seconds in (the refit lands).
@@ -688,18 +555,23 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
     }
   }
   measurements.reflow_frames = frames;
-  const columnsVeil = page.getByTestId("banner-columns").locator("[data-veil]").first();
-  const resultVeil = page.getByTestId("banner-result").locator("[data-veil]").first();
-  await expect(columnsVeil).toHaveAttribute("data-veil", "fresh", { timeout: 120_000 });
-  await expect(resultVeil).toHaveAttribute("data-veil", "fresh", { timeout: 120_000 });
-  await expect(page.getByTestId("banner-columns")).toContainText("density");
-  measurements.reflow_banner_s = Math.round((Date.now() - t0) / 100) / 10;
-  await expect(page.locator("[data-veil=recomputing]")).toHaveCount(0, { timeout: 300_000 });
+  // The re-flow is waited for while the fit job runs, not for a flat time: the refit is a whole fit.
+  const resultVeils = page.getByTestId("banner-result").locator("[data-veil]");
+  const reflowed = await waitWhileComputing(
+    page,
+    async () =>
+      (await resultVeils.evaluateAll((els) => els.length > 0 && els.every((e) => e.getAttribute("data-veil") === "fresh"))) &&
+      (await page.locator("[data-veil=recomputing]").count()) === 0,
+    ["fit"],
+    { quiet: FIT_QUIET, cap: FIT_CAP },
+  );
+  expect(reflowed.done, `the banner, the stage and the Results are fresh again (waited ${reflowed.waited} s; ${reflowed.seen})`).toBe(true);
   measurements.reflow_all_s = Math.round((Date.now() - t0) / 100) / 10;
+  await expect(page.getByTestId("banner-train")).not.toHaveText(trainBefore);
   const log = await page.evaluate(
     () => (window as unknown as { __veils: { t: number; at: string; veil: string | null }[] }).__veils,
   );
-  // The order the veils lifted in: the columns before the result, the result before the curves.
+  // The order the veils lifted in: the cohort and the models before the result.
   const firstFresh = (at: string) => log.find((e) => e.at === at && e.veil === "fresh")?.t ?? null;
   const firstVeiled = (at: string) => log.find((e) => e.at === at && e.veil !== "fresh")?.t ?? null;
   measurements.reflow_veils = {
@@ -710,14 +582,11 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   };
   expect(firstVeiled("result"), "the result segment veils while the fit recomputes").not.toBeNull();
   await expect(page.getByTestId("results")).toBeVisible();
-  await expect(page.locator('[data-slot="energy_adjustment"]').getByLabel("Earlier answers")).toContainText("residual");
+  await expect(page.locator('[data-slot="split"]').getByLabel("Earlier answers")).toContainText("20%");
   await park(page);
   await settle(page, 600);
   await shot(page, "banner-after", { clip: banner });
   await shot(page, "reflow-after", { themes: ["light", "dark"] });
-  await page.getByTestId("substitution-curves").evaluate((el) => el.scrollIntoView({ block: "start" }));
-  await settle(page, 400);
-  await shot(page, "reflow-after-curves");
 
   // ── the design's concerns are stated under the lineage (review: computed, never shown) ─────
   if (REAL) await concernsAndDatedCounts(page);
@@ -742,18 +611,6 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
 });
 
 // ── the known defects on the real server, kept visible ────────────────────────────────────────
-
-test("a term's card covers no option", () => {
-  test.skip(!REAL || defects.termCardCovers === undefined, "the mock journey asserts it inline");
-  test.fail(true, `${KNOWN}: the energy question's term card covers an option`);
-  expect(defects.termCardCovers, "the options the term card covers").toEqual([]);
-});
-
-test("nothing covers the primary plot's Save", () => {
-  test.skip(!REAL || defects.saveCoveredBy === undefined, "the mock journey asserts it inline");
-  test.fail(true, `${KNOWN}: the distribution card's Save sits over the primary's`);
-  expect(defects.saveCoveredBy, "what a pointer press at the primary's Save lands on").toBeNull();
-});
 
 test("every review screen stays under 300 KB", () => {
   test.skip(!REAL || defects.oversize === undefined, "the mock journey asserts it inline");

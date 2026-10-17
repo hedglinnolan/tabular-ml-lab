@@ -21,11 +21,15 @@
  * independent references for the scores themselves (numpy, scikit-learn, statsmodels) are
  * turbotab/core/tests/test_w1_press_fit_references.py's.
  *
- * The question asked is "How well do age, sex and body measures predict fasting glucose?": the
- * dietary columns are left out of the models through the roles card, because the substitution
- * question the table's nutrients raise is answered on the stage's matrix, which is drawn only
- * once the fit exists, while Fit is offered at Models' end (an open issue in the report). The
- * families are linear and ridge, to keep the fit light (ruling 11).
+ * The question is "How well do the table's measures predict fasting glucose?", asked through the
+ * clinical lens, with the roles the app proposes for every column, as a researcher confirms them:
+ * Predict asks no energy or substitution question (the engine's W1-P11, ruling 5 of
+ * BEATS_PREDICT), so the table's nutrients need none left out. The families are linear and ridge,
+ * to keep the fit light (ruling 11).
+ *
+ * Fit is pressed at the flowchart's end whether or not the scheduler holds it: a fit whose shelf
+ * estimates sum past fit_press.HOLD_SECONDS (a slower runner reaches it with the same families)
+ * computes only after the press, and the position then reads the engine's estimate sentence.
  */
 import { expect, test } from "@playwright/test";
 import { onMock } from "./backend";
@@ -37,6 +41,7 @@ import {
   comparisonsCatchWhatDiffers,
   chooseFamilies,
   confirmAskCard,
+  controlReady,
   cvDifferences,
   describe,
   downloadBundle,
@@ -62,21 +67,22 @@ import {
 
 const REAL = !!process.env.E2E_BASE_URL;
 
-/** The columns left out of the models: the diet (see above), the cycle, the labs drawn with
- *  glucose, and what the body measures repeat (weight and height make BMI; the diastolic pressure
- *  follows the systolic). */
-const LEFT_OUT = [
-  "cycle_begin_year", "bp_di", "weight", "height", "kcal", "protein", "sugar", "carb", "fat_total", "fat_sat",
-  "fat_mon", "fat_poly", "hdl", "triglycerides", "meds_hbp", "meds_chol",
-];
 const FAMILIES = ["linear", "ridge"];
 
-/** What the journey's measurements say about the seal, read by the known-defect test after it. */
-const facts: { served?: { changed_after_seal: boolean; post_seal_decisions: string[]; at_opening_current: boolean | null } } = {};
+/** What the journey's measurements say about the seal, read by the test after it. */
+const facts: {
+  served?: { changed_after_seal: boolean; post_seal_decisions: string[]; at_opening_current: boolean | null };
+  /** The noticings kept as they are (dismissed) before the opening was pressed. */
+  keptAsIsBeforeOpening?: number;
+  /** The held-out exhibit as the page prints it right after the opening. */
+  heldOutText?: string;
+} = {};
 
-// The known-defect test reads what the journey measured, so it runs after it, in one worker.
+// The seal test reads what the journey measured, so it runs after it, in one worker.
 test.describe.configure({ mode: "serial" });
-// A press that finds nothing to press fails in half a minute, not in the length of the test.
+// A press that finds nothing to press fails in half a minute, not in the length of the test. What
+// the app is computing is waited for before a press, bounded by the computing (e2e/quest.ts
+// `walk`, `settled`), so an action finds its target ready.
 test.use({ actionTimeout: 30_000 });
 
 const answers: Answers = {
@@ -95,21 +101,26 @@ const answers: Answers = {
         return pickOption(page, li, "option-clinical", { space: true });
       case "question:target": {
         const box = li.getByRole("combobox");
+        await controlReady(page, box, "the outcome's picker");
         await box.fill("glucose");
         await box.press("Enter");
         await previewSettled(page);
-        return void (await li.getByTestId("record-target").click());
+        const record = li.getByTestId("record-target");
+        await controlReady(page, record, "the outcome's button");
+        return void (await record.click());
       }
       case "question:purpose":
         return pickOption(page, li, "option-prediction");
       case "declaration:set_intended_use":
         return pickOption(page, li, "option-use:risk_estimation");
       case "question:roles":
-        for (const column of LEFT_OUT) {
-          await li.getByTestId(`role-chip-${column}`).click();
-          await li.getByTestId("role-excluded").click();
+        // The roles as the app proposes them: the card leaves out what it suggests (the
+        // identifier), and the researcher confirms the rest as shown.
+        {
+          const record = li.getByTestId("record-roles");
+          await controlReady(page, record, "the roles' button");
+          return void (await record.click());
         }
-        return void (await li.getByTestId("record-roles").click());
       case "question:exclusions":
         await confirmAskCard(page, li);
         return pickOption(page, li, "option-none");
@@ -207,6 +218,12 @@ test("NHANES glucose under Predict, through the quest shell, from the upload to 
     post_seal_decisions: opened.post_seal_decisions ?? [],
     at_opening_current: opened.at_opening ? opened.at_opening.current : null,
   };
+  // What the seal test below reads: a noticing was kept as it is before the opening, and the page's
+  // held-out exhibit says what the served flag says about the scores.
+  const log = await getJson<{ decisions: { seq: number; decision: { kind: string } }[] }>(page, pid);
+  const openedAt = log.decisions.find((d) => d.decision.kind === "open_seal")?.seq ?? Infinity;
+  facts.keptAsIsBeforeOpening = log.decisions.filter((d) => d.decision.kind === "dismiss_finding" && d.seq < openedAt).length;
+  facts.heldOutText = await page.getByTestId("results-held-out").innerText();
   await expect.poll(() => heldOutDifferences(page, opened), { message: "each held-out score, the baseline and the verdict equal the served fields", timeout: 30_000 }).toEqual([]);
   await comparisonsCatchWhatDiffers(page, pid, opened);
   await expect.poll(() => calibrationDifferences(page, opened), { message: "calibration-in-the-large and the slope equal the served fields", timeout: 30_000 }).toEqual([]);
@@ -262,17 +279,16 @@ test("NHANES glucose under Predict, through the quest shell, from the upload to 
   test.info().annotations.push({ type: "walk", description: describe(final) });
 });
 
-// Known defect on the server (reported with this package): the held-out rows are scored once, yet
-// the fit says it changed after the opening whenever a noticing was dismissed or triaged, because
-// the key the opening's state is given leaves out the findings slot's key view the engine applies
-// (turbotab/core/seal.py `keys_for`, :1063, against turbotab/core/graph.py `_compute_keys`, :810;
-// the view is turbotab/core/repairs.py `_applied_only`, :1780).
-// The page follows the served flag, so its title says "from a fit changed after the opening, so
-// not an independent test" of scores nothing has changed. Remove the marker once it is fixed.
-test("known defect: the opening's scores stay the reported result when nothing was changed after it", async () => {
+// The held-out rows are scored once, and the seal keys each stage as the engine does (W1-Q), so a
+// noticing kept as it is, or triaged, before the opening is not a change after it: the fit does not
+// say it changed, and the page's title for the scores does not either. The journey kept one noticing
+// as it is on its own card and confirmed the rest in the triage, both before pressing the opening.
+test("a noticing kept as is before the opening leaves its scores the reported result", async () => {
   test.skip(!facts.served, "the journey did not reach the opening");
-  test.fail(true, "core/seal.py keys_for omits graph.key_value: changed_after_seal is true with no post-seal decision");
+  expect(facts.keptAsIsBeforeOpening, "a noticing was kept as it is before the opening").toBeGreaterThan(0);
   expect(facts.served!.post_seal_decisions, "no decision was recorded after the opening").toEqual([]);
   expect(facts.served!.changed_after_seal).toBe(false);
   expect(facts.served!.at_opening_current).toBe(true);
+  expect(facts.heldOutText, "the Results title says the scores are the opening's").toContain("Scored once");
+  expect(facts.heldOutText, "the Results title does not say the fit changed").not.toContain("changed after the opening");
 });

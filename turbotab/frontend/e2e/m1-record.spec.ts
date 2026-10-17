@@ -3,9 +3,10 @@
  * (src/mocks/m1-record.ts, an NHANES-shaped table). One journey through every M1 question:
  *
  *   the lens → the outcome → (the task, not asked) → the purpose → the roles → exclusions →
- *   missing values → the split → energy adjustment (a refusal and its exit) → the models →
- *   the fit → the substitution, with the banner tracking where you are; then a finding's
- *   lever and a changed answer that veils and re-flows the banner.
+ *   missing values → the split → (energy adjustment, not applicable under prediction) → the
+ *   models → Fit pressed on the Results, which the mock withholds until then → the result, with
+ *   the banner tracking where you are; then a settled finding and a changed answer that veils
+ *   and re-flows the banner.
  *
  * Along the way it checks the M0 review minors: focus moves to the arriving question and the
  * recorded sentence is announced; FACT and CHOICE wear different silhouettes; the findings
@@ -17,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
 import { toClassic } from "./classic";
+import { fitOnceComputed } from "./fit";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCREENS = resolve(HERE, "../../../docs/turbotab-next/m1/screens");
@@ -66,7 +68,7 @@ async function openNhanes(page: Page) {
   await expect(page.getByTestId("question-lens")).toBeVisible({ timeout: 20_000 });
 }
 
-test("the record follows the Router from the lens to the substitution", async ({ page }) => {
+test("the record follows the Router from the lens to the fit", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await openNhanes(page);
 
@@ -176,38 +178,35 @@ test("the record follows the Router from the lens to the substitution", async ({
   await expect(page.getByTestId("banner-rows-2")).toHaveText("2,943");
   await expect(page.getByTestId("banner-train")).toBeVisible({ timeout: 15_000 });
 
-  // Energy adjustment: the usual method tagged, never pre-selected; partition does not apply
-  // here, and pressing it answers at the option with the server's exits.
-  const energy = page.getByTestId("question-energy_adjustment");
-  await expect(energy).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId("option-residual")).toContainText("usual");
-  await expect(page.getByTestId("option-residual")).toHaveAttribute("aria-selected", "false");
-  await expect(page.getByTestId("option-partition")).toHaveAttribute("aria-disabled", "true");
-  await energy.getByTestId("why-energy_adjustment").click();
-  await expect(energy.getByTestId("why-panel-energy_adjustment")).toContainText("estimand");
-  await energy.getByTestId("drawer-energy_adjustment").click();
-  await expect(page.getByTestId("concept-drawer")).toContainText("Fit inside the folds");
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("concept-drawer")).toHaveCount(0);
-  await energy.getByTestId("why-energy_adjustment").click();
-  await page.getByTestId("option-residual").hover();
-  await expect(page.getByTestId("stage-title")).toContainText("Residual method");
-  await both(page, "energy", { at: energy });
-  // aria-disabled, yet still on the shelf: a press (here, Enter) is answered, never ignored.
-  await page.getByTestId("option-partition").focus();
-  await page.keyboard.press("Enter");
-  const refusal = energy.getByTestId("refusal");
-  await expect(refusal).toContainText("cannot run on these columns");
-  await park(page);
-  await shoot(page, "refusal-light");
-  await refusal.getByRole("button", { name: /Willett residual model(, total energy kept)? instead/ }).click();
-  await expect(page.getByTestId("decision-energy_adjustment")).toContainText(
-    "Energy was adjusted by the residual method",
-  );
-
-  // Model families: chosen with the keyboard, none pre-selected, concerns stated.
+  // Energy adjustment is not asked under prediction (BEATS_PREDICT ruling 5, the engine's W1-P11):
+  // no coefficient is read as an effect, so there is no energy model to choose. The Router says so
+  // in place, with its reason, and the models come next.
   const models = page.getByTestId("question-models");
   await expect(models).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("question-energy_adjustment")).toHaveCount(0);
+  const notAsked = page.locator('[data-testid="na-energy_adjustment"], [data-testid="na-group"][data-keys~="energy_adjustment"]').first();
+  await expect(notAsked).toContainText("Energy adjustment");
+  await expect(notAsked).toContainText("not applicable");
+  // (The refusal at an option, answered with the server's exits, belonged to this question alone:
+  // under prediction no option of the questions asked is inapplicable. The opening's refusal and
+  // its exits are walked in m2-record and in the real-server journeys.)
+  // Several questions that do not apply are said once, each reason one press away.
+  const why = notAsked.getByRole("button", { name: "why?" });
+  if (await why.count()) await why.click();
+  await expect(notAsked).toContainText("Under prediction no coefficient is read as an effect, so there is no energy model to choose");
+
+  // The teaching layers stay one press away on a question that is asked under prediction: "why?"
+  // gives the reason, its drawer opens the concept in depth, and Escape closes it.
+  await models.getByTestId("why-models").click();
+  await expect(models.getByTestId("why-panel-models")).toContainText("An elastic net shrinks correlated nutrients together");
+  await models.getByTestId("drawer-models").click();
+  await expect(page.getByTestId("concept-drawer")).toContainText("Collinearity is the biology");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("concept-drawer")).toHaveCount(0);
+  await models.getByTestId("why-models").click();
+  await expect(models.getByTestId("why-panel-models")).toHaveCount(0);
+
+  // Model families: chosen with the keyboard, none pre-selected, concerns stated.
   await expect(page.getByTestId("banner-models")).toHaveAttribute("data-now", "true");
   await page.getByTestId("option-elastic_net").focus();
   await page.keyboard.press("Space");
@@ -221,18 +220,18 @@ test("the record follows the Router from the lens to the substitution", async ({
     "Three model families were chosen",
   );
 
-  // The fit: the banner's result arrives; the substitution opens on the stage's matrix.
-  await expect(page.getByTestId("banner-result-value")).toBeVisible({ timeout: 20_000 });
+  // The fit: under prediction no score is served until Fit is pressed on the Results (SIZING
+  // P0.8), so the banner has no result until then; once it is pressed the result arrives. No
+  // substitution is asked there either: it compares two imagined diets, and no coefficient is read
+  // as an effect.
+  await expect(page.getByTestId("banner-result-value")).toHaveCount(0);
+  expect(await fitOnceComputed(page), "the fit waited for Fit").toBe(true);
+  await expect(page.getByTestId("banner-result-value")).toBeVisible();
   await expect(page.getByTestId("banner-models")).toContainText("elastic net");
   await expect(page.getByTestId("banner-columns-to")).toBeVisible();
-  await expect(page.getByTestId("banner-columns")).toContainText("residual");
-  const substitution = page.getByTestId("question-substitution");
-  await expect(substitution).toBeVisible({ timeout: 20_000 });
-  await expect(substitution).toContainText("matrix on the stage");
-  await expect(page.getByTestId("banner-result-value")).toBeVisible();
+  await expect(page.getByTestId("question-substitution")).toHaveCount(0);
   await park(page);
   await both(page, "journey", { top: true });
-  await both(page, "substitution");
 
   // Findings: at most three pushed, drawn from the ones still open; a finding whose question
   // has been answered is settled — folded into one green line, its evidence still a press away
@@ -246,13 +245,15 @@ test("the record follows the Router from the lens to the substitution", async ({
   const settled = page.getByTestId("findings-settled");
   await expect(settled).toContainText(/\d+ answered in the record — /);
   await page.getByTestId("findings-settled-toggle").click();
-  const energyFinding = settled
+  // The energy noticing does not fire under prediction; the implausible-energy one does, and the
+  // exclusion rule chosen above answers it.
+  const answeredFinding = settled
     .locator('[data-testid^="settled-"]')
-    .filter({ hasText: /Answered by #\d+: Energy was adjusted/ })
+    .filter({ hasText: /Answered by #\d+: .*excluded/ })
     .first();
-  await expect(energyFinding).toBeVisible();
+  await expect(answeredFinding).toBeVisible();
   await expect(settled.getByTestId("lever")).toHaveCount(0);
-  await energyFinding.focus();
+  await answeredFinding.focus();
   await expect(stage(page)).toHaveAttribute("data-focus", "finding");
   await park(page);
   await both(page, "findings");
@@ -263,13 +264,11 @@ test("the record follows the Router from the lens to the substitution", async ({
     await new Promise((r) => setTimeout(r, 900));
     await route.continue();
   });
-  await page.getByRole("button", { name: "Change the energy adjustment" }).click();
-  await page.getByTestId("option-density").click();
-  await expect(page.getByTestId("decision-energy_adjustment")).toContainText(
-    "nutrient density model",
-  );
-  const columnsVeil = page.getByTestId("banner-columns").locator("[data-veil]");
-  await expect(columnsVeil).not.toHaveAttribute("data-veil", "fresh");
+  await page.getByRole("button", { name: /^Change the (eligibility|exclusions)$/ }).click();
+  await page.getByTestId("option-none").click();
+  await expect(page.getByTestId("decision-exclusions")).toContainText("No rows were excluded");
+  const resultVeil = page.getByTestId("banner-result-value").locator("xpath=ancestor::*[@data-veil][1]");
+  await expect(resultVeil).not.toHaveAttribute("data-veil", "fresh");
   await park(page);
   await page.waitForTimeout(300);
   await page.screenshot({
@@ -277,15 +276,11 @@ test("the record follows the Router from the lens to the substitution", async ({
     animations: "disabled",
   });
   await page.unroute("**/api/projects/*/stages/**");
-  await expect(columnsVeil).toHaveAttribute("data-veil", "fresh", { timeout: 20_000 });
-  await expect(
-    page.getByTestId("banner-result-value").locator("xpath=ancestor::*[@data-veil][1]"),
-  ).toHaveAttribute("data-veil", "fresh", { timeout: 20_000 });
-  await expect(page.getByTestId("banner-columns")).toContainText("density");
+  await expect(resultVeil).toHaveAttribute("data-veil", "fresh", { timeout: 20_000 });
   // The earlier answer stays in the record, superseded.
   await expect(
-    page.locator('[data-slot="energy_adjustment"]').getByLabel("Earlier answers"),
-  ).toContainText("residual method");
+    page.locator('[data-slot="exclusions"]').getByLabel("Earlier answers"),
+  ).toContainText("outside 500–5000");
 });
 
 test("a wide table keeps the outcome picker and the roles question responsive", async ({
