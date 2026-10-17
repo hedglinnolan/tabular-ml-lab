@@ -541,9 +541,14 @@ NOT_ASSAY_NAMES = ("SEQN", "seqn", "id", "ID", "sample_id", "subject_id", "patie
                    "BMXBMI", "INDFMPIR", "visit", "Time", "timepoint", "date", "day", "days",
                    "hour", "hours", "year", "years", "session", "age_at_draw", "Visit number",
                    "draw.date", "hours-fasted", "BMI (kg/m2)")
+# And the names the R0b finish ruling (R5) adds: NHANES's other race variable, RIDRETH3 (from the
+# 2011-2012 cycle on), its age in months, RIDAGEMN, and the one-word sample, subject and patient
+# IDs, which the whole word ID does not reach.
+NOT_ASSAY_NAMES_ADDED = ("RIDRETH3", "RIDAGEMN", "SampleID", "SubjectID", "PatientID", "sampleid",
+                         "PATIENTID")
 
 
-@pytest.mark.parametrize("name", NOT_ASSAY_NAMES)
+@pytest.mark.parametrize("name", NOT_ASSAY_NAMES + NOT_ASSAY_NAMES_ADDED)
 def test_each_name_the_reading_leaves_out_leaves_the_block_and_its_totals(name):
     """Each name of the ruling's list, as the whole name or one whole word of it, in any case: a
     column so named, numeric with many values (whole numbers 18 to 1,000), stays out of the block

@@ -67,6 +67,7 @@ import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from turbotab.core import claims
+from turbotab.core.claims.data import OMICS_NHANES_NAMES, OMICS_ONE_WORD_IDS
 
 OMICS_LENSES = ("genomics", "metabolomics")
 FINDING = "omics_scale"
@@ -143,10 +144,13 @@ class ScaleReading:
 # The names that are never an assay feature (``data.omics_raw_scale``, claims backtest C-193):
 # omics' own list, not the roles stage's word lists, whose covariate and identifier words name
 # real features too (methionine's Met and Met-SO in Biocrates panels; the genes MET, IDS and PIR).
-# Lower case; a column leaves the block when its whole name, or one whole word of it, is one.
-NOT_FEATURE_IDENTIFIERS = frozenset({"seqn", "id", "sample_id", "subject_id", "patient_id"})
-NOT_FEATURE_CHARACTERISTICS = frozenset({"age", "sex", "gender", "bmi", "ridageyr", "riagendr",
-                                         "ridreth1", "bmxbmi", "indfmpir"})
+# Lower case; a column leaves the block when its whole name, or one whole word of it, is one. The
+# NHANES variables and the one-word IDs are the claim's own (claims/data.py), so that its card and
+# methods sentence name them as this list holds them.
+NOT_FEATURE_IDENTIFIERS = frozenset({"seqn", "id", "sample_id", "subject_id", "patient_id",
+                                     *(n.lower() for n in OMICS_ONE_WORD_IDS)})
+NOT_FEATURE_CHARACTERISTICS = frozenset({"age", "sex", "gender", "bmi",
+                                         *(n.lower() for n in OMICS_NHANES_NAMES)})
 NOT_FEATURE_TIMES = frozenset({"visit", "time", "timepoint", "date", "day", "days", "hour",
                                "hours", "year", "years", "session"})
 NOT_FEATURE_NAMES = NOT_FEATURE_IDENTIFIERS | NOT_FEATURE_CHARACTERISTICS | NOT_FEATURE_TIMES
@@ -157,9 +161,10 @@ def _excluded_by_name(name: str) -> bool:
     """An identifier, a person's characteristic or a time is never an assay feature: the column
     leaves the block when its whole name, or one whole word of it (a run of letters and digits),
     in any case, is in :data:`NOT_FEATURE_NAMES`, or the name ends ``_id``. Only a whole name or
-    word counts, so Met, MET, IDS and PIR stay in, and so do AGER and TIMELESS. Until the claim
-    data.omics_raw_scale was registered, nothing was left out by its name (an import of the roles
-    stage's rules failed silently), and a numeric SEQN entered the block."""
+    word counts, so Met, MET, IDS and PIR stay in, and so do AGER and TIMELESS; an ID counts as the
+    whole word (a sample ID, Specimen_ID) or as a one-word SampleID, SubjectID or PatientID. Until
+    the claim data.omics_raw_scale was registered, nothing was left out by its name (an import of
+    the roles stage's rules failed silently), and a numeric SEQN entered the block."""
     low = str(name).strip().lower()
     return (low in NOT_FEATURE_NAMES or low.endswith("_id")
             or not NOT_FEATURE_NAMES.isdisjoint(_WORD.findall(low)))

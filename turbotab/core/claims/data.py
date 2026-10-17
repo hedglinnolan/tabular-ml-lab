@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from turbotab.core.claims import Basis, Claim, Fires, Param, Part, Regime, Silent, register
 
@@ -427,14 +427,31 @@ register(Claim(
 
 # ── C-193 · raw omics values ─────────────────────────────────────────────────────────────────
 
+# The NHANES variables on omics' exclusion list, as NHANES names them: age in years and in months,
+# sex, race (RIDRETH1, and RIDRETH3 from the 2011-2012 cycle on), BMI and the income-to-poverty
+# ratio. turbotab.core.methods.omics reads them, and the identifiers it holds as one word, from
+# here, so the card and the methods sentence name the list itself.
+OMICS_NHANES_NAMES = ("RIDAGEYR", "RIDAGEMN", "RIAGENDR", "RIDRETH1", "RIDRETH3", "BMXBMI",
+                      "INDFMPIR")
+# An ID counts as a whole word of a name ("sample ID", "visit_id"), or as one of these whole names.
+OMICS_ONE_WORD_IDS = ("SampleID", "SubjectID", "PatientID")
+
+
+def _listed(names: Sequence[str], last: str = "or") -> str:
+    """``names`` listed, ``last`` before the last of them: "A, B or C"."""
+    names = list(names)
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} {last} {names[-1]}"
+
+
 register(Claim(
     id="data.omics_raw_scale",
     kind="rule",
     card="Under the genomics or metabolomics lens, assay values are read from the numeric "
          "columns that are not the outcome, a column whose name, or a whole word of it, is an "
-         "identifier (SEQN, an ID, a sample, subject or patient ID), a person's age, sex, gender "
-         "or BMI, NHANES's name for one of these or for race or the income-to-poverty ratio, or "
-         "a time (a visit, time point, date, day, hour, year or session), a yes/no column, a "
+         "identifier (SEQN, or an ID, which counts as the whole word ID, as in a sample, subject "
+         f"or patient ID, or as {_listed(OMICS_ONE_WORD_IDS)}), a person's age, sex, gender or "
+         f"BMI, NHANES's {_listed(OMICS_NHANES_NAMES)}, or a time (a visit, time point, date, "
+         "day, hour, year or session), a yes/no column, a "
          "column named for how the samples were acquired (a batch, plate, well, run, run order, "
          "plex or polarity) or a numbering of the rows, and that are non-negative with more than "
          "{indicator_levels} distinct values each. A "
@@ -449,9 +466,10 @@ register(Claim(
          "as already normalized or on a log scale.",
     methods="Assay values were read as unnormalized from the values alone, never the outcome, over "
             "the numeric columns other than those named, wholly or by a whole word, as an "
-            "identifier (SEQN, an ID), a participant's age, sex, gender or BMI, NHANES's name for "
-            "one of these or for race or the income-to-poverty ratio, or a time (a visit, time "
-            "point, date, day, hour, year or session), yes/no columns, those named for "
+            "identifier (SEQN, or an ID, counted as the whole word ID or as "
+            f"{_listed(OMICS_ONE_WORD_IDS)}), a participant's age, sex, gender or BMI, NHANES's "
+            f"{_listed(OMICS_NHANES_NAMES)}, or a time (a visit, time point, date, day, hour, "
+            "year or session), yes/no columns, those named for "
             "how the samples were acquired and a numbering of the rows, that were non-negative "
             "with more than {indicator_levels} distinct values each, at least {min_features} of "
             "them: whole-number counts reaching {count_max:,.0f}, intensities spanning "
@@ -497,10 +515,11 @@ register(Claim(
         Part("names", grade="judgment", basis=Basis(
             reason="We leave out of the block a column whose whole name, or one whole word of "
                    "it, in any case, is on omics' own list: an identifier (SEQN, id, sample_id, "
-                   "subject_id, patient_id, or a name ending _id), a person's characteristic "
-                   "(age, sex, gender, bmi, and NHANES's RIDAGEYR, RIAGENDR, RIDRETH1, BMXBMI and "
-                   "INDFMPIR) or a time (visit, time, timepoint, date, day, days, hour, hours, "
-                   "year, years, session). The list is short on purpose and is not the roles "
+                   f"subject_id, patient_id, {', '.join(n.lower() for n in OMICS_ONE_WORD_IDS)}, "
+                   "or a name ending _id), a person's characteristic (age, sex, gender, bmi, and "
+                   f"NHANES's {_listed(OMICS_NHANES_NAMES, 'and')}) or a time (visit, time, "
+                   "timepoint, date, day, days, hour, hours, year, years, session). The list is "
+                   "short on purpose and is not the roles "
                    "stage's: its covariate and identifier words, reused in round 2, also name "
                    "assay features (Met and Met-SO, methionine in Biocrates panels; the genes MET, "
                    "IDS and PIR), so a characteristic or covariate named otherwise (smoking, race, "

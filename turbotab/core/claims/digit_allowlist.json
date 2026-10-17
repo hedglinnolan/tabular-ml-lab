@@ -138,6 +138,10 @@
       "tag": "threshold-pending-claim"
     },
     {
+      "text": "Assay values were read as unnormalized from the values alone, never the outcome, over the numeric columns other than those named, wholly or by a whole word, as an identifier (SEQN, or an ID, counted as the whole word ID or as SampleID, SubjectID or PatientID), a participant's age, sex, gender or BMI, NHANES's RIDAGEYR, RIDAGEMN, RIAGENDR, RIDRETH1, RIDRETH3, BMXBMI or INDFMPIR, or a time (a visit, time point, date, day, hour, year or session), yes/no columns, those named for how the samples were acquired and a numbering of the rows, that were non-negative with more than {indicator_levels} distinct values each, at least {min_features} of them: whole-number counts reaching {count_max:,.0f}, intensities spanning {raw_range:,.0f}-fold and either reaching {raw_max:,.0f} or right-skewed (median skewness at least {raw_skew}), or fractional values with zeros and values of {raw_max:,.0f} or more in {estimated_columns} columns or more whose sample totals were not all within {per_million_near:.0%} of a million (FPKM or estimated counts).",
+      "tag": "name"
+    },
+    {
       "text": "Classes with an order but no fixed spacing, such as a 1–5 rating; best modeled by a cumulative link model.",
       "tag": "example"
     },
@@ -300,6 +304,10 @@
     {
       "text": "Under inference: each blank imputed 20 times with the outcome; results pooled by Rubin's rules.",
       "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "Under the genomics or metabolomics lens, assay values are read from the numeric columns that are not the outcome, a column whose name, or a whole word of it, is an identifier (SEQN, or an ID, which counts as the whole word ID, as in a sample, subject or patient ID, or as SampleID, SubjectID or PatientID), a person's age, sex, gender or BMI, NHANES's RIDAGEYR, RIDAGEMN, RIAGENDR, RIDRETH1, RIDRETH3, BMXBMI or INDFMPIR, or a time (a visit, time point, date, day, hour, year or session), a yes/no column, a column named for how the samples were acquired (a batch, plate, well, run, run order, plex or polarity) or a numbering of the rows, and that are non-negative with more than {indicator_levels} distinct values each. A reading takes at least {min_features} such columns and names only those. They are read as raw counts under genomics when {min_features} or more of them hold whole numbers, the largest reaching {count_max:,.0f}; as raw intensities under metabolomics when they span {raw_range:,.0f}-fold and either reach {raw_max:,.0f} or have a median skewness of at least {raw_skew}; and under genomics as FPKM or estimated counts, which the values cannot tell apart, when {min_features} or more of them are fractional, with a zero and a value of {raw_max:,.0f} or more each in {estimated_columns} columns or more, and sample totals not all within {per_million_near:.0%} of a million. Other values are read as already normalized or on a log scale.",
+      "tag": "name"
     },
     {
       "text": "When shares of energy sum to 100%, one part is determined by the others, and a coefficient on percent energy from fat has no meaning until you say what the fat replaced.",
