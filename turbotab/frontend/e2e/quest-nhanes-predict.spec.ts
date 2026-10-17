@@ -41,6 +41,7 @@ import {
   comparisonsCatchWhatDiffers,
   chooseFamilies,
   confirmAskCard,
+  controlReady,
   cvDifferences,
   describe,
   downloadBundle,
@@ -100,10 +101,13 @@ const answers: Answers = {
         return pickOption(page, li, "option-clinical", { space: true });
       case "question:target": {
         const box = li.getByRole("combobox");
+        await controlReady(page, box, "the outcome's picker");
         await box.fill("glucose");
         await box.press("Enter");
         await previewSettled(page);
-        return void (await li.getByTestId("record-target").click());
+        const record = li.getByTestId("record-target");
+        await controlReady(page, record, "the outcome's button");
+        return void (await record.click());
       }
       case "question:purpose":
         return pickOption(page, li, "option-prediction");
@@ -112,7 +116,11 @@ const answers: Answers = {
       case "question:roles":
         // The roles as the app proposes them: the card leaves out what it suggests (the
         // identifier), and the researcher confirms the rest as shown.
-        return void (await li.getByTestId("record-roles").click());
+        {
+          const record = li.getByTestId("record-roles");
+          await controlReady(page, record, "the roles' button");
+          return void (await record.click());
+        }
       case "question:exclusions":
         await confirmAskCard(page, li);
         return pickOption(page, li, "option-none");

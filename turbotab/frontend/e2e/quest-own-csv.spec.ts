@@ -28,6 +28,7 @@ import {
   calibrationDifferences,
   chooseFamilies,
   comparisonsCatchWhatDiffers,
+  controlReady,
   cvDifferences,
   describe,
   expectBarEqualsQuest,
@@ -94,10 +95,13 @@ const answers: Answers = {
         return pickOption(page, li, "option-clinical", { space: true });
       case "question:target": {
         const box = li.getByRole("combobox");
+        await controlReady(page, box, "the outcome's picker");
         await box.fill("progressed");
         await box.press("Enter");
         await previewSettled(page);
-        return void (await li.getByTestId("record-target").click());
+        const record = li.getByTestId("record-target");
+        await controlReady(page, record, "the outcome's button");
+        return void (await record.click());
       }
       // A yes/no outcome: which level is the event is asked, never guessed.
       case "question:event":
@@ -110,7 +114,11 @@ const answers: Answers = {
       case "declaration:set_intended_use":
         return pickOption(page, li, "option-use:risk_estimation");
       case "question:roles":
-        return void (await li.getByTestId("record-roles").click());
+        {
+          const record = li.getByTestId("record-roles");
+          await controlReady(page, record, "the roles' button");
+          return void (await record.click());
+        }
       // Subjects repeat: said once, and the rows of one subject stay together.
       case "question:grain":
         return pickOption(page, li, "option-repeated");

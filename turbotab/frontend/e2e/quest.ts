@@ -339,15 +339,15 @@ async function confirmSweepOf(page: Page, pid: string, stage: QuestStage): Promi
 }
 
 /**
- * Until nothing is computing, as a person waits for the spinner before answering a card: the
- * card's controls (the outcome's picker, which lists the columns once the file is read) are there
- * only when what they read has been computed, and an action given thirty seconds for them gives up
- * on a runner that reads the file slower. It ends at the cap with the work still going, and the
- * action that follows then reports what it found.
+ * A card's own control, ready as a person finds it: shown and enabled. The control may be there
+ * only when what it reads has been computed (the outcome's picker lists the columns once the file
+ * is read, the roles' button waits for the proposals), so the wait goes on while the app computes
+ * (up to 15 minutes) and ends once nothing has for a minute, not after a flat thirty seconds. It
+ * waits for this control and no other stage: a card is answered while the rest of the analysis
+ * computes, as a person answers it.
  */
-async function untilIdle(page: Page, cap = 900_000): Promise<void> {
-  const start = Date.now();
-  while ((await stagesComputing(page, [ANY_STAGE])).computing && Date.now() - start < cap) await page.waitForTimeout(2_000);
+export async function controlReady(page: Page, control: Locator, what: string): Promise<void> {
+  await settled(page, `${what} is ready`, async () => (await control.isVisible()) && (await control.isEnabled()));
 }
 
 /**
@@ -382,7 +382,6 @@ export async function walk(
       // A line waits again while what it reads recomputes: it is answered when it is open again.
       if ((await li.getAttribute("data-status")) !== "open") continue;
       if ((await li.getAttribute("data-unavailable")) !== null) throw new Error(`${lineId(next.line)} has no card to answer it`);
-      await untilIdle(page);
       await expandLine(page, next.line);
       await a.answer(page, li, next.line);
       await settled(page, `${lineId(next.line)} is answered through its card`, () => answered(page, pid, next.line));
