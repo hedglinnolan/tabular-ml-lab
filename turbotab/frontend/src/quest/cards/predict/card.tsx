@@ -10,16 +10,21 @@
  *
  * A press the card will not send (a number outside what the model takes, a column still to choose)
  * is answered at the option too, in one sentence for each field in the way, so no press is silent.
+ *
+ * Each card records from its own visible button, as today's cards do (finding 8 of the 2026-10-17
+ * walkthrough): a click on an option chooses it, marked "chosen" until it is recorded, and the
+ * button under the options records the choice; Enter on an option records it at once, as before.
  */
-import { useId, useState, type ReactNode } from "react";
+import { useId, useState, type MouseEvent, type ReactNode } from "react";
 import { isRefusalError } from "../../../api/client";
-import { useColumnSummaries, useDecide, useProjectView } from "../../../api/queries";
-import type { Decision, ProjectState, QuestLine, Refusal } from "../../../api/schema";
-import { Options, type OptionItem } from "../../../components/record/Options";
+import { useColumnSummaries, useDecide, useProjectView, useStageResult } from "../../../api/queries";
+import type { ColumnSummary, Decision, ProjectState, QuestLine, Refusal } from "../../../api/schema";
+import { Actions, RecordButton } from "../../../components/record/ask/common";
+import { Options, type OptionItem, type OptionTag } from "../../../components/record/Options";
 import { FailureNote, RefusalNote } from "../../../components/record/Refusal";
 import { Prose } from "../../../components/Prose";
 import { decisionKey, stateSeq, usePreview, type Answer } from "../../../components/stage/data";
-import { useStageFocus } from "../../../state/focus";
+import { useStageFocus, type StageFocus } from "../../../state/focus";
 import c from "./declaration.module.css";
 
 /** The engine's words for the option pointed at, tagged with the decision they answer. */
@@ -48,6 +53,11 @@ export interface CardWiring {
   state: ProjectState | null;
   /** The table's columns, in the table's order. */
   columns: string[];
+  /** Each column's summary (its type and its count of distinct values), by name. */
+  summaries: ReadonlyMap<string, ColumnSummary>;
+  /** The outcome's task as the engine reads it: the one recorded, else the one the target stage
+   *  detected for the outcome (the engine's `state.task or detected_task`); null while neither is. */
+  task: ProjectState["task"];
   pending: boolean;
   /** Record a decision; `at` names the option a refusal answers under. */
   record: (decision: Decision, at: string) => void;
@@ -63,6 +73,8 @@ export interface CardWiring {
 export function useCard(pid: string, kind: Decision["kind"]): CardWiring {
   const view = useProjectView(pid).data;
   const summaries = useColumnSummaries(pid, view?.stages.ingest?.status === "fresh").data;
+  const targetStatus = view?.stages.target_info?.status;
+  const target = useStageResult(pid, "target_info", targetStatus !== undefined && targetStatus !== "idle" && targetStatus !== "blocked").data?.artifact;
   const decide = useDecide(pid);
   const [plain, setPlain] = useState<PlainAnswer | null>(null);
   const [held, setHeld] = useState<string | null>(null);
@@ -110,6 +122,8 @@ export function useCard(pid: string, kind: Decision["kind"]): CardWiring {
   return {
     state: view?.state ?? null,
     columns: (summaries ?? []).map((s) => s.name),
+    summaries: new Map((summaries ?? []).map((s) => [s.name, s])),
+    task: view?.state.task ?? (target && target.column === view?.state.target ? target.detected_task : null),
     pending: decide.isPending,
     record,
     held,
@@ -187,11 +201,53 @@ function BlockedNote({ problems }: { problems: string[] }) {
   );
 }
 
+/** The quiet label on an option chosen and not yet recorded (FOUNDATION §3: a choice holds in the
+ *  card until the action records it). */
+export const CHOSEN = "chosen";
+
+/** The card's record button (today's cards' RecordButton), what a press records named on it, and
+ *  the answer to its press under it where that press is not answered at an option. */
+export function RecordChosen({
+  label,
+  card,
+  onClick,
+  answer = null,
+}: {
+  /** "Record: …", what a press sends; null while nothing is chosen. */
+  label: string | null;
+  card: CardWiring;
+  onClick: () => void;
+  answer?: ReactNode;
+}) {
+  return (
+    <>
+      <Actions>
+        <RecordButton
+          disabled={label === null || card.pending}
+          onClick={onClick}
+          title="Records the choice above with the fields as they stand."
+          testId="card-record"
+        >
+          {label ?? "Choose an option above"}
+        </RecordButton>
+      </Actions>
+      {answer}
+    </>
+  );
+}
+
 /**
  * One choice of a card, as the option list the Record uses: pointing at an option previews what
- * it would record, and pressing it records the whole decision. `offerOf` gives, for a value, the
- * decision, or what stands in the way of sending it; a press that cannot be sent says so under the
- * option, until the fields are put right.
+ * it would record. A click chooses it (the stage holds its preview) and the card's button records
+ * the whole decision; Enter on it records at once. `offerOf` gives, for a value, the decision, or
+ * what stands in the way of sending it; a press that cannot be sent says so under the option,
+ * until the fields are put right.
+ *
+ * The choice starts at the value on record, else the one set for the person, each only while the
+ * card offers it (a use on record that no longer fits the outcome is not listed, so nothing is
+ * chosen and the button asks for a choice). A card that records several choices with one button
+ * (LeversCard) holds them itself (`chosen`, `onChoose`) and draws that button itself
+ * (`button={false}`).
  */
 export function Choice<V extends string>({
   card,
@@ -204,6 +260,9 @@ export function Choice<V extends string>({
   setForYou = null,
   hint = true,
   testId,
+  chosen: held,
+  onChoose,
+  button = true,
 }: {
   card: CardWiring;
   field: string;
@@ -218,7 +277,21 @@ export function Choice<V extends string>({
   setForYou?: V | null;
   hint?: boolean;
   testId: string;
+  /** The value chosen, where the card holds it. */
+  chosen?: V | null;
+  onChoose?: (value: V) => void;
+  /** Draw the card's record button under the options. */
+  button?: boolean;
 }) {
+  const { setFocus } = useStageFocus();
+  const offered = (v: V | null | undefined): v is V =>
+    v !== null && v !== undefined && values.includes(v);
+  const [own, setOwn] = useState<V | null>(
+    offered(recorded) ? recorded : offered(setForYou) ? setForYou : null,
+  );
+  // A choice the list does not offer is no choice: the button never records an unlisted option.
+  const holding = held !== undefined ? held : own;
+  const chosen = offered(holding) ? holding : null;
   const decisions = new Map<string, Decision | null>();
   const problems = new Map<string, string[]>();
   for (const v of values) {
@@ -226,22 +299,47 @@ export function Choice<V extends string>({
     decisions.set(`${field}:${v}`, "decision" in offer ? offer.decision : null);
     if ("problems" in offer) problems.set(`${field}:${v}`, offer.problems);
   }
+  // At most one quiet label per option (FOUNDATION §2): set for you, else chosen; the recorded one
+  // carries the list's own.
+  const tagOf = (v: V): OptionTag[] | undefined =>
+    setForYou !== null && v === setForYou
+      ? [{ text: SET_FOR_YOU, tone: "usual" }]
+      : v === chosen && v !== recorded
+        ? [{ text: CHOSEN, tone: "usual" }]
+        : undefined;
   const items: OptionItem[] = values.map((v) => {
     const decision = decisions.get(`${field}:${v}`) ?? null;
+    const tags = tagOf(v);
     return {
       key: `${field}:${v}`,
       label: names[v],
       line: "",
       decision,
-      ...(setForYou !== null && v === setForYou ? { tags: [{ text: SET_FOR_YOU, tone: "usual" as const }] } : {}),
+      ...(tags ? { tags } : {}),
       // A refusal answering at the option says it already.
       note: card.answerAt?.key === `${field}:${v}` ? undefined : wordsNote(card.words, decision),
     };
   });
-  const press = (item: OptionItem) => {
-    const decision = decisions.get(item.key);
-    if (decision) card.record(decision, item.key);
-    else if (decision === null) card.hold(item.key);
+  const send = (key: string) => {
+    const decision = decisions.get(key);
+    if (decision) card.record(decision, key);
+    else if (decision === null) card.hold(key);
+  };
+  const choose = (v: V) => {
+    (onChoose ?? setOwn)(v);
+    const decision = decisions.get(`${field}:${v}`);
+    if (decision) setFocus({ kind: "option", decision, label: names[v] } satisfies StageFocus);
+  };
+  // A click on an option chooses it, ahead of the list's own click, which would record it; the
+  // card's button records. Enter is the list's own, and records at once.
+  const onClickCapture = (e: MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("input, select, textarea, button, a")) return;
+    const key = target.closest<HTMLElement>('[role="option"]')?.dataset.key;
+    const v = values.find((x) => `${field}:${x}` === key);
+    if (v === undefined) return;
+    e.stopPropagation();
+    choose(v);
   };
   const heldProblems = card.held === null ? undefined : problems.get(card.held);
   const answerAt =
@@ -252,17 +350,26 @@ export function Choice<V extends string>({
   return (
     <fieldset className={c.group}>
       <legend className={c.legend}>{legend}</legend>
-      <Options
-        items={items}
-        mode="single"
-        onRecord={press}
-        recordedKey={recorded === null ? null : `${field}:${recorded}`}
-        pending={card.pending}
-        answerAt={answerAt}
-        label={`${legend} — preview with the arrow keys, Enter to record`}
-        testId={testId}
-        hint={hint}
-      />
+      <div onClickCapture={onClickCapture}>
+        <Options
+          items={items}
+          mode="single"
+          onRecord={(item) => send(item.key)}
+          recordedKey={recorded === null ? null : `${field}:${recorded}`}
+          pending={card.pending}
+          answerAt={answerAt}
+          label={`${legend} — preview with the arrow keys, Enter to record`}
+          testId={testId}
+          hint={hint}
+        />
+      </div>
+      {button ? (
+        <RecordChosen
+          label={chosen === null ? null : `Record: ${names[chosen]}`}
+          card={card}
+          onClick={() => chosen !== null && send(`${field}:${chosen}`)}
+        />
+      ) : null}
     </fieldset>
   );
 }

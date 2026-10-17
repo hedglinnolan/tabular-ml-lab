@@ -53,15 +53,28 @@ function laneWidths(placed: Placed, compact: boolean) {
   return { fs, rawW, mxLabelW: mxW * cw + 12, adjLabelW: longest("adjusted") * cw + 16 };
 }
 
+/** The raw lane and the matrix lane are never closer than this (the layout in `Lineage`). */
+const MIN_SPAN = 120;
+/** A link's least run between an adjusted pill and the lane dot on either side. */
+const LINK = 40;
+
+/** The adjusted pills' width: the widest label with its padding where the lanes leave a link's
+ *  run on either side of it, else none (the dots alone, as a thumbnail draws them). A pill is
+ *  never drawn narrower than its label. */
+function pillWidth(span: number, adjLabelW: number, compact: boolean): number {
+  return !compact && span - 2 * LINK >= adjLabelW ? adjLabelW : 0;
+}
+
 /**
- * The narrowest width at which the lineage, drawn full size, keeps every label clear of the next:
- * the raw labels, each adjusted pill whole with its links' 20 px on either side, and the matrix
- * labels (the layout in `Lineage`, solved for the pill's full width). A box narrower than this
- * scrolls (the live Columns card, stage/LiveScenes.tsx) rather than drawing labels over each other.
+ * The narrowest width at which the lineage, drawn full size, draws every adjusted pill whole and
+ * keeps every label clear of the next: the raw labels' room, the widest adjusted pill with a
+ * link's run on either side, and the matrix labels' room (the layout in `Lineage`). Narrower, the
+ * adjusted lane draws its dots alone; a box narrower than this scrolls instead (the live Columns
+ * card, stage/LiveScenes.tsx), and from 1280 px windows up the card shows the whole lineage.
  */
 export function lineageMinWidth(lineage: LineageData): number {
   const { rawW, mxLabelW, adjLabelW } = laneWidths(placeLineage(lineage), false);
-  return Math.ceil(rawW + 4 + 2 * (adjLabelW + 40) + mxLabelW);
+  return Math.ceil(rawW + 4 + Math.max(MIN_SPAN, adjLabelW + 2 * LINK) + mxLabelW);
 }
 
 export function Lineage({
@@ -92,14 +105,16 @@ export function Lineage({
 
   const { fs, rawW, mxLabelW, adjLabelW } = laneWidths(placed, compact);
   const cap = compact ? (placed.rows <= 8 ? 21 : 16) : 28;
-  const rowH = Math.max(
-    9,
-    Math.min(cap, (h - HEAD - (openLabel || hidden ? 30 : 6)) / Math.max(placed.rows, 1)),
-  );
+  // The rows never draw below the box: one row per type size at the least, so no label runs into
+  // the next, and where the box is shorter than that, the drawing is as tall as its rows need and
+  // the box scrolls (finding 5 of the 2026-10-17 walkthrough).
+  const foot = openLabel || hidden ? 30 : 6;
+  const drawH = Math.max(h, HEAD + placed.rows * fs + foot);
+  const rowH = Math.max(fs, Math.min(cap, (drawH - HEAD - foot) / Math.max(placed.rows, 1)));
   const x0 = rawW + 4;
-  const x2 = Math.max(x0 + 120, w - mxLabelW);
+  const x2 = Math.max(x0 + MIN_SPAN, w - mxLabelW);
   const x1 = (x0 + x2) / 2;
-  const adjW = compact ? 0 : Math.min(x2 - x1 - 40, adjLabelW);
+  const adjW = pillWidth(x2 - x0, adjLabelW, compact);
   const top = HEAD + (compact ? 2 : 4);
   const yOf = (row: number) => top + row * rowH + rowH / 2;
   const xOf = (lane: string) => (lane === "raw" ? x0 : lane === "adjusted" ? x1 : x2);
@@ -128,11 +143,11 @@ export function Lineage({
   });
 
   return (
-    <div ref={ref} className={s.fill} data-view="lineage">
+    <div ref={ref} className={s.fill} data-view="lineage" style={drawH > h ? { overflowY: "auto" } : undefined}>
       {ready ? (
         <svg
           width={w}
-          height={fullH}
+          height={drawH + band}
           className={s.svg}
           role="img"
           aria-label="Column lineage, raw columns to the model matrix"

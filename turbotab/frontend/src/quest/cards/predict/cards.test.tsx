@@ -142,19 +142,57 @@ interface Mounted {
   decide: ReturnType<typeof vi.spyOn>;
 }
 
+/** An outcome the engine reads as yes/no, the one decision support is offered for (finding 9). */
+const YES_NO = { task: "binary" };
+
 function mount(
   kind: CardKind,
-  opts: { recorded?: Record<string, unknown>; answered?: boolean; line?: Partial<QuestLine> } = {},
+  opts: {
+    recorded?: Record<string, unknown>;
+    answered?: boolean;
+    line?: Partial<QuestLine>;
+    /** The column summaries served, by name (the table's order); its names alone otherwise. */
+    summaries?: Record<string, unknown>[];
+    /** The target stage's reading of an outcome: its column and the task it detected. */
+    detected?: { column: string; detected_task: string };
+    /** The roles stage's proposal for each column (core/stages/rows.py `roles_stage`). */
+    proposed?: Record<string, string>;
+  } = {},
 ): Mounted {
   const state = stateWith(opts.recorded);
-  const view = viewOf(state);
+  const base = viewOf(state);
+  const fresh = (stage: string, key: string) => ({ stage, status: "fresh", key, updated_at: null });
+  const view = {
+    ...base,
+    stages: {
+      ...base.stages,
+      ...(opts.detected ? { target_info: fresh("target_info", "t") } : {}),
+      ...(opts.proposed ? { roles: fresh("roles", "r") } : {}),
+    },
+  } as unknown as ProjectView;
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
   qc.setQueryData(keys.view(PID), view);
+  if (opts.detected) {
+    qc.setQueryData(keys.stage(PID, "target_info"), { stage: "target_info", key: "t", fresh: true, status: "fresh", artifact: opts.detected });
+  }
+  if (opts.proposed) {
+    const columns = Object.entries(opts.proposed).map(([column, proposed]) => ({
+      column,
+      proposed,
+      confidence: "high",
+      reason: "",
+      linked_to: null,
+      unit: null,
+      nested_in: null,
+      kind: null,
+    }));
+    qc.setQueryData(keys.stage(PID, "roles"), { stage: "roles", key: "r", fresh: true, status: "fresh", artifact: { columns, repeats: null, categorical: [] } });
+  }
   qc.setQueryData(
     keys.columns(PID),
-    COLUMNS.map((name) => ({ name })),
+    opts.summaries ?? COLUMNS.map((name) => ({ name })),
   );
   const decide = vi.spyOn(api, "decide").mockResolvedValue(view);
   const Card = DECLARATION_CARDS[kind];
@@ -180,6 +218,17 @@ afterEach(() => {
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
+/** A press as a mouse makes it (finding 8): a click chooses the option, and the card's own button
+ *  records it. */
+const press = (option: string) => {
+  fireEvent.click(screen.getByTestId(`option-${option}`));
+  fireEvent.click(screen.getByTestId("card-record"));
+};
+/** The fixture's cases mount the intended use on a yes/no outcome, where decision support is
+ *  offered; the other cards on the table as it is. */
+const recordedFor = (c: Case) =>
+  c.card === "set_intended_use" ? { ...YES_NO, ...c.recorded } : c.recorded;
+
 describe("the Predict declaration cards", () => {
   it("are one per declaration kind, and no other", () => {
     expect(Object.keys(DECLARATION_CARDS).sort()).toEqual([...KINDS, "set_sensitivity"].sort());
@@ -188,12 +237,12 @@ describe("the Predict declaration cards", () => {
   it.each(CASES.map((c) => [`${c.card} · ${c.press}${c.note ? ` · ${c.note}` : ""}`, c] as const))(
     "%s",
     async (_name, c) => {
-      const { decide } = mount(c.card, { recorded: c.recorded, answered: c.answered });
+      const { decide } = mount(c.card, { recorded: recordedFor(c), answered: c.answered });
       for (const [testid, value] of Object.entries(c.fill ?? {})) {
         fireEvent.change(screen.getByTestId(testid), { target: { value } });
       }
       for (const testid of c.toggle ?? []) fireEvent.click(screen.getByTestId(testid));
-      fireEvent.click(screen.getByTestId(`option-${c.press}`));
+      press(c.press);
       if (c.payload === null) {
         // The model would refuse it (the Python test shows so): the card does not send it.
         await settle();
@@ -212,12 +261,12 @@ describe("the Predict declaration cards", () => {
       (c) => [`${c.card} · ${c.press}${c.note ? ` · ${c.note}` : ""}`, c] as const,
     ),
   )("%s: the press is answered at the option, in the field's own words", (_name, c) => {
-    const { decide } = mount(c.card, { recorded: c.recorded, answered: c.answered });
+    const { decide } = mount(c.card, { recorded: recordedFor(c), answered: c.answered });
     for (const [testid, value] of Object.entries(c.fill ?? {})) {
       fireEvent.change(screen.getByTestId(testid), { target: { value } });
     }
     const option = screen.getByTestId(`option-${c.press}`);
-    fireEvent.click(option);
+    press(c.press);
     expect(decide).not.toHaveBeenCalled();
     const note = screen.getByTestId("blocked");
     // right under the option pressed
@@ -240,7 +289,7 @@ describe("the Predict declaration cards", () => {
 
 describe("what each card offers", () => {
   it.each(KINDS.map((k) => [k] as const))("%s lists exactly the fixture's options", (kind) => {
-    mount(kind);
+    mount(kind, kind === "set_intended_use" ? { recorded: YES_NO } : {});
     const offered = Array.from(document.querySelectorAll("[role=option]")).map((o) =>
       o.getAttribute("data-key"),
     );
@@ -272,7 +321,8 @@ describe("what each card offers", () => {
   it.each(Object.entries(FIXTURE.bounds))(
     "%s takes its numbers within the models' bounds",
     (kind, fields) => {
-      mount(kind as Kind);
+      // The thresholds are decision support's, offered for a yes/no outcome (finding 9).
+      mount(kind as Kind, kind === "set_intended_use" ? { recorded: YES_NO } : {});
       for (const [field, b] of Object.entries(fields) as [string, Record<string, number>][]) {
         const input = screen.getByTestId(`field-${field}`);
         expect(input.getAttribute("min")).toBe(String(b.ge ?? b.gt));
@@ -461,7 +511,8 @@ describe("the words on an option are the engine's", () => {
       },
     };
     vi.spyOn(api, "preview").mockRejectedValue(new RefusalError(refusal));
-    mount("set_intended_use");
+    // The task not known yet: the card offers decision support, and the engine answers it.
+    mount("set_intended_use", { recorded: { task: null } });
     pointAt("use:decision_support");
     const words = await within(screen.getByTestId("option-use:decision_support")).findByTestId(
       "words",
@@ -509,7 +560,7 @@ describe("a press the server does not record answers at the option", () => {
     };
     const { decide } = mount("set_levers");
     decide.mockRejectedValueOnce(new RefusalError(refusal));
-    fireEvent.click(screen.getByTestId("option-variance_filter:top"));
+    press("variance_filter:top");
     const note = await screen.findByTestId("refusal");
     expect(note).toHaveTextContent("Keeping the most variable predictors needs how many to keep.");
     fireEvent.click(within(note).getByTestId("refusal-exit"));
@@ -520,14 +571,13 @@ describe("a press the server does not record answers at the option", () => {
   it("says the server did not record it where the failure is not a refusal", async () => {
     const { decide } = mount("set_updating");
     decide.mockRejectedValueOnce(new ApiError(500, "The server answered 500.", null));
-    fireEvent.click(screen.getByTestId("option-method:none"));
+    press("method:none");
     expect(await screen.findByTestId("failure")).toHaveTextContent("The server answered 500.");
   });
 });
 
 const type = (testid: string, value: string) =>
   fireEvent.change(screen.getByTestId(testid), { target: { value } });
-const press = (option: string) => fireEvent.click(screen.getByTestId(`option-${option}`));
 
 describe("a press the card will not send says why, at the option", () => {
   const folds = FIXTURE.bounds.set_validation.folds;
@@ -545,7 +595,7 @@ describe("a press the card will not send says why, at the option", () => {
   });
 
   it("names the range of a probability, open at both ends", () => {
-    const { decide } = mount("set_intended_use");
+    const { decide } = mount("set_intended_use", { recorded: YES_NO });
     type("field-threshold", "1");
     press("use:decision_support");
     expect(decide).not.toHaveBeenCalled();
@@ -620,7 +670,7 @@ describe("a press the card will not send says why, at the option", () => {
   });
 
   it("stays silent for risk estimation, which carries no threshold", async () => {
-    const { decide } = mount("set_intended_use");
+    const { decide } = mount("set_intended_use", { recorded: YES_NO });
     type("field-threshold", "1");
     press("use:risk_estimation");
     await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
@@ -687,9 +737,11 @@ describe("a press the card will not send says why, at the option", () => {
     expect(screen.getByTestId("blocked")).toHaveTextContent(
       `Predictors to keep (most variable): a whole number of at least ${keep.ge}`,
     );
-    // another lever, with the filter still off, does not carry the count
+    // another lever, with the filter chosen off again, does not carry the count
+    fireEvent.click(screen.getByTestId("option-variance_filter:none"));
     press("forms:rule");
     await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    expect(decide.mock.calls[0]![1]).toMatchObject({ forms: "rule", variance_filter: "none", keep: null });
     expect(screen.queryByTestId("blocked")).toBeNull();
   });
 });
@@ -736,10 +788,10 @@ describe("the sensitivity analyses' card (P1)", () => {
       "analyses:every_row",
       "analyses:none",
     ]);
-    fireEvent.click(screen.getByTestId("option-analyses:every_row"));
+    press("analyses:every_row");
     await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
     expect(decide.mock.calls[0]).toEqual([PID, EVERY_ROW]);
-    fireEvent.click(screen.getByTestId("option-analyses:none"));
+    press("analyses:none");
     await waitFor(() => expect(decide).toHaveBeenCalledTimes(2));
     expect(decide.mock.calls[1]).toEqual([PID, NONE]);
   });
@@ -794,5 +846,247 @@ describe("a default set for you (P10)", () => {
     expect(leversDefault(stateWith({ levers: { forms: "rule", variance_filter: "top", keep: 50, imbalance: "weights" } }))).toBe(
       "Predictor forms: spline by rule; variance filter: most variable (50 kept); imbalance correction: class weights.",
     );
+  });
+});
+
+// ── the walkthrough's fix round (W1-R, 2026-10-17) ───────────────────────────
+
+/**
+ * Finding 8: each card records from its own visible button, as today's cards do, so a mouse user
+ * can finish it. A click on an option chooses it and records nothing; the button, which names the
+ * choice, records it; Enter on an option still records it at once. The first option of each card's
+ * list is the one pressed; what the button posts is what Enter on the same option posts.
+ */
+describe("each card's own record button (finding 8)", () => {
+  const CARDS: CardKind[] = [...KINDS, "set_sensitivity"];
+  const firstOption = () => document.querySelector<HTMLElement>("[role=option]")!;
+  const on = (kind: CardKind) => (kind === "set_intended_use" ? { recorded: YES_NO } : {});
+
+  it.each(CARDS.map((k) => [k] as const))("%s: a click chooses, and the button records it", async (kind) => {
+    const { decide } = mount(kind, on(kind));
+    const button = screen.getByTestId("card-record");
+    expect(button).toBeDisabled();
+    expect(button).toHaveTextContent("Choose an option above");
+    const option = firstOption();
+    fireEvent.click(option);
+    await settle();
+    expect(decide).not.toHaveBeenCalled();
+    expect(option).toHaveTextContent("chosen");
+    expect(button).toBeEnabled();
+    const name = option.querySelector("[class*=label]")!.textContent!;
+    expect(button).toHaveTextContent(kind === "set_levers" ? "Record these rules" : `Record: ${name}`);
+    fireEvent.click(button);
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+  });
+
+  it.each(CARDS.map((k) => [k] as const))("%s: Enter on an option records it at once, as the button does", async (kind) => {
+    const { decide } = mount(kind, on(kind));
+    const option = firstOption();
+    fireEvent.focus(option);
+    fireEvent.keyDown(option, { key: "Enter" });
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    const entered = decide.mock.calls[0]![1];
+    cleanup();
+    vi.restoreAllMocks();
+    const again = mount(kind, on(kind));
+    fireEvent.click(firstOption());
+    fireEvent.click(screen.getByTestId("card-record"));
+    await waitFor(() => expect(again.decide).toHaveBeenCalledTimes(1));
+    expect(again.decide.mock.calls[0]![1]).toEqual(entered);
+  });
+
+  it("starts at the answer on record, which the button records again with the fields as they stand", async () => {
+    const { decide } = mount("set_updating", { recorded: { updating: { method: "shrinkage" } }, answered: true });
+    expect(screen.getByTestId("card-record")).toHaveTextContent("Record: Shrinkage");
+    expect(document.body.textContent).not.toContain("chosen");
+    fireEvent.click(screen.getByTestId("card-record"));
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    expect(decide.mock.calls[0]![1]).toEqual({ kind: "set_updating", method: "shrinkage" });
+  });
+
+  /** Decision support on record from before the outcome read as not yes/no (recorded while the task
+   *  was unknown, or before the outcome changed): the card no longer offers it (finding 9), so its
+   *  button starts at nothing chosen rather than at an option it does not list. */
+  const DECISION_SUPPORT = {
+    use: "decision_support",
+    threshold_low: 0.1,
+    threshold_high: 0.3,
+    threshold: 0.2,
+    subgroups: [],
+    fairness: "none",
+  };
+
+  it("starts at nothing chosen where the answer on record is no longer offered, and a press of an option records it", async () => {
+    const { decide } = mount("set_intended_use", {
+      recorded: { task: "regression", intended_use: DECISION_SUPPORT },
+      answered: true,
+    });
+    expect(Array.from(document.querySelectorAll("[role=option]")).map((o) => o.getAttribute("data-key"))).toEqual(["use:risk_estimation"]);
+    const button = screen.getByTestId("card-record");
+    expect(button).toHaveTextContent("Choose an option above");
+    expect(button).toBeDisabled();
+    expect(document.body.textContent).not.toContain("Decision support");
+    press("use:risk_estimation");
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    expect(decide.mock.calls[0]![1]).toMatchObject({ kind: "set_intended_use", use: "risk_estimation" });
+  });
+
+  it("starts at the answer on record where it is still offered", () => {
+    mount("set_intended_use", { recorded: { task: "binary", intended_use: DECISION_SUPPORT }, answered: true });
+    expect(screen.getByTestId("card-record")).toHaveTextContent("Record: Decision support");
+    expect(screen.getByTestId("card-record")).toBeEnabled();
+  });
+
+  it("records every list's choice of the levers at once, the lists not chosen as they stand", async () => {
+    const { decide } = mount("set_levers");
+    fireEvent.click(screen.getByTestId("option-forms:rule"));
+    fireEvent.click(screen.getByTestId("option-imbalance:weights"));
+    fireEvent.click(screen.getByTestId("card-record"));
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    const d = FIXTURE.defaults.set_levers;
+    expect(decide.mock.calls[0]![1]).toEqual({
+      kind: "set_levers",
+      forms: "rule",
+      variance_filter: d.variance_filter,
+      keep: null,
+      imbalance: "weights",
+    });
+  });
+
+  it("answers the levers' button under it, where no one option was pressed", async () => {
+    const refusal: Refusal = {
+      error: { code: "imbalance_task", message: "A numeric outcome has no classes to balance.", exits: [] },
+    };
+    const { decide } = mount("set_levers");
+    decide.mockRejectedValueOnce(new RefusalError(refusal));
+    press("imbalance:weights");
+    const note = await screen.findByTestId("refusal");
+    expect(note).toHaveTextContent("A numeric outcome has no classes to balance.");
+    expect(screen.getByTestId("card-record").parentElement!.nextElementSibling).toContainElement(note);
+  });
+});
+
+/**
+ * Finding 9: the engine refuses decision support for an outcome whose task is known and is not
+ * yes/no (models/decision_curve.py `_intended_use_fits`), so the card offers it, and its thresholds,
+ * for a yes/no outcome alone (and while the task is not known, where the engine answers at the
+ * option). The subgroups lead with the columns the engine groups by their levels (`grouping_of`:
+ * a categorical, yes/no or text column, one of two values, one declared categorical or confirmed
+ * as codes), then the rest, each in the table's order, and leave out the outcome, the identifier
+ * and the flags. The summaries and the roles are set by construction.
+ */
+describe("the intended use (finding 9)", () => {
+  const uses = () => Array.from(document.querySelectorAll("[role=option]")).map((o) => o.getAttribute("data-key"));
+
+  it.each(["regression", "multiclass"])("offers no decision support, and no thresholds, for a %s outcome", (task) => {
+    mount("set_intended_use", { recorded: { task } });
+    expect(uses()).toEqual(["use:risk_estimation"]);
+    expect(screen.queryByTestId("field-threshold")).toBeNull();
+    expect(screen.queryByRole("group", { name: "Thresholds, for decision support" })).toBeNull();
+  });
+
+  it("offers decision support and its thresholds for a yes/no outcome, and while the task is not known", () => {
+    for (const task of ["binary", null]) {
+      mount("set_intended_use", { recorded: { task } });
+      expect(uses()).toEqual(["use:risk_estimation", "use:decision_support"]);
+      expect(screen.getByTestId("field-threshold")).toBeInTheDocument();
+      cleanup();
+    }
+  });
+
+  it("reads the task the target stage detected for the outcome where none is recorded, as the engine does", () => {
+    // NHANES glucose under Predict as walked: the task stated, never recorded (state.task null).
+    mount("set_intended_use", { recorded: { task: null }, detected: { column: "LBXGLU", detected_task: "regression" } });
+    expect(uses()).toEqual(["use:risk_estimation"]);
+    expect(screen.queryByTestId("field-threshold")).toBeNull();
+    cleanup();
+    mount("set_intended_use", { recorded: { task: null }, detected: { column: "LBXGLU", detected_task: "binary" } });
+    expect(uses()).toEqual(["use:risk_estimation", "use:decision_support"]);
+    cleanup();
+    // A reading of another column (the outcome changed since) says nothing of this one.
+    mount("set_intended_use", { recorded: { task: null }, detected: { column: "RIAGENDR", detected_task: "regression" } });
+    expect(uses()).toEqual(["use:risk_estimation", "use:decision_support"]);
+  });
+
+  it("leads the subgroups with the columns grouped by their levels, and leaves out the identifier and the flags", () => {
+    const summary = (name: string, dtype: string, n_unique: number) => ({ name, dtype, n_unique });
+    const summaries = [
+      summary("SEQN", "integer", 21849), // the identifier: left out
+      summary("RIDAGEYR", "integer", 61), // confirmed an amount below: thirds
+      summary("RIAGENDR", "integer", 2), // two values: levels
+      summary("RIDRETH1", "categorical", 5), // categorical: levels
+      summary("BMXBMI", "numeric", 3201), // an amount: thirds
+      summary("DMDEDUC2", "integer", 5), // confirmed codes below: levels
+      summary("INDFMPIR", "numeric", 501), // declared categorical below: levels
+      summary("imputed_bmi", "boolean", 2), // a flag: left out
+      summary("cycle_begin_year", "integer", 4), // not said: thirds
+      summary("LBXGLU", "numeric", 412), // the outcome: left out
+    ];
+    mount("set_intended_use", {
+      summaries,
+      recorded: {
+        roles: { ...ROLES, imputed_bmi: "flag", DMDEDUC2: "covariate", INDFMPIR: "covariate" },
+        categorical: ["INDFMPIR"],
+        reading_confirmations: { "code_or_count:DMDEDUC2": "code", "code_or_count:RIDAGEYR": "amount" },
+      },
+    });
+    const picks = Array.from(document.querySelectorAll("[data-testid^=pick-subgroups-]")).map((e) =>
+      e.getAttribute("data-testid")!.replace("pick-subgroups-", ""),
+    );
+    expect(picks).toEqual(["RIAGENDR", "RIDRETH1", "DMDEDUC2", "INDFMPIR", "RIDAGEYR", "BMXBMI", "cycle_begin_year"]);
+  });
+
+  /**
+   * The engine opens the intended use once the goal is chosen (core/quest.py: it reads the
+   * purpose alone), before the roles are recorded in Your data, as the walk met it. There the card
+   * reads the roles stage's proposal, so the identifier and a flag on another column are left out
+   * before the roles are recorded as after; a column the person recorded otherwise is offered.
+   */
+  describe("before the roles are recorded", () => {
+    const summary = (name: string, dtype: string, n_unique: number) => ({ name, dtype, n_unique });
+    const SUMMARIES = [
+      summary("SEQN", "integer", 21849),
+      summary("RIDAGEYR", "integer", 61),
+      summary("RIAGENDR", "integer", 2),
+      summary("imputed_bmi", "boolean", 2),
+      summary("LBXGLU", "numeric", 412),
+    ];
+    const PROPOSED = { SEQN: "identifier", RIDAGEYR: "covariate", RIAGENDR: "covariate", imputed_bmi: "flag" };
+    const picks = () =>
+      Array.from(document.querySelectorAll("[data-testid^=pick-subgroups-]")).map((e) =>
+        e.getAttribute("data-testid")!.replace("pick-subgroups-", ""),
+      );
+
+    it("leaves out the identifier and the flags the roles stage proposes, as it does once they are recorded", () => {
+      mount("set_intended_use", { summaries: SUMMARIES, recorded: { roles: null }, proposed: PROPOSED });
+      expect(picks()).toEqual(["RIAGENDR", "RIDAGEYR"]);
+      cleanup();
+      mount("set_intended_use", { summaries: SUMMARIES, recorded: { roles: PROPOSED }, proposed: PROPOSED });
+      expect(picks()).toEqual(["RIAGENDR", "RIDAGEYR"]);
+    });
+
+    it("offers a column the person recorded in another role than the one proposed, and every column while nothing is proposed", () => {
+      mount("set_intended_use", {
+        summaries: SUMMARIES,
+        recorded: { roles: { ...PROPOSED, imputed_bmi: "covariate" } },
+        proposed: PROPOSED,
+      });
+      expect(picks()).toEqual(["RIAGENDR", "imputed_bmi", "RIDAGEYR"]);
+      cleanup();
+      mount("set_intended_use", { summaries: SUMMARIES, recorded: { roles: null } });
+      expect(picks()).toEqual(["RIAGENDR", "imputed_bmi", "SEQN", "RIDAGEYR"]);
+    });
+  });
+
+  it("posts the subgroups in the table's order, whatever order they are listed in", async () => {
+    const summaries = COLUMNS.map((name) => ({ name, dtype: name === "RIDRETH1" ? "categorical" : "numeric", n_unique: 50 }));
+    const { decide } = mount("set_intended_use", { summaries });
+    const listed = Array.from(document.querySelectorAll("[data-testid^=pick-subgroups-]")).map((e) => e.getAttribute("data-testid"));
+    expect(listed[0]).toBe("pick-subgroups-RIDRETH1");
+    fireEvent.click(screen.getByTestId("pick-subgroups-RIDRETH1"));
+    fireEvent.click(screen.getByTestId("pick-subgroups-RIDAGEYR"));
+    press("use:risk_estimation");
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    expect(decide.mock.calls[0]![1]).toMatchObject({ subgroups: ["RIDAGEYR", "RIDRETH1"] });
   });
 });

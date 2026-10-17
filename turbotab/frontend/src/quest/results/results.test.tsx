@@ -852,8 +852,11 @@ describe("the Results declarations, through W1-F's cards", () => {
     mount(<ResultsCards pid={PID} />);
     const card = await screen.findByTestId("declaration-set_explain");
     expect(screen.queryByTestId("explain-offer")).toBeNull();
-    // The engine's default curves, with every other field left as the card starts it.
+    // The engine's default curves, with every other field left as the card starts it, chosen and
+    // recorded with the card's own button (finding 8).
     await userEvent.click(await within(card).findByTestId(`option-curves:${DEFAULTS.set_explain.curves}`));
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+    await userEvent.click(within(card).getByTestId("card-record"));
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
     // The real walk posted the kind alone and the server filled in its model's defaults
     // (payloads.fixture.json `defaults`, held to decisions.py by test_w1_declaration_cards.py): the

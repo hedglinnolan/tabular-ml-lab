@@ -33,6 +33,7 @@ import {
   SurveyAsk,
 } from "./ask/ChoiceQuestions";
 import { AskCard } from "./ask/AskCard";
+import { besideAsk } from "./besideAsk";
 import type { AskProps } from "./ask/common";
 import { LensAsk, PurposeAsk, TargetAsk, TaskAsk } from "./ask/FactQuestions";
 import { RolesAsk } from "./ask/RolesAsk";
@@ -187,10 +188,15 @@ export const AskFor = ({
         ),
     });
   };
-  /** As the Record's: a refusal with its exits, or the failure; `not_yet` leads to the first open question. */
+  /** As the Record's: a refusal with its exits, or the failure; `not_yet` leads to the first open
+   *  question. Beside the ledger's ask card on this question, a press refused for the readings it
+   *  asks says what it waits for, and the readings stay that card's alone (`besideAsk`). */
   const plainAnswerAt = ((): AskProps["answerAt"] => {
     if (wiring || !plainAnswer) return null;
-    const { at, refusal, failure } = plainAnswer;
+    const { at, failure } = plainAnswer;
+    const asking = stepOf(key)?.status === "open" && !!stepOf(key)?.ask && !at.startsWith("ask:");
+    const refusal =
+      plainAnswer.refusal && asking ? besideAsk(plainAnswer.refusal) : plainAnswer.refusal;
     const dismiss = () => setPlainAnswer(null);
     const firstOpen = view.interview.find(
       (st) => st.status === "open" || st.status === "waiting",

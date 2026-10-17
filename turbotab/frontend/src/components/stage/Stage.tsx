@@ -21,6 +21,7 @@ import type { StageFocus } from "../../state/focus";
 import { useDecide } from "../../api/queries";
 import type { Decision, ProjectView, Refusal } from "../../api/schema";
 import { useMotionPrefs, useTransitions } from "../../motion/prefs";
+import { besideAsk } from "../record/besideAsk";
 import { stateSeq, useEvidence, useM1Stage, usePreview, type Answer } from "./data";
 import { ColumnsScene, ModelsScene, NowScene, ResultsScene, RowsScene, type LiveData } from "./LiveScenes";
 import { FitHeld } from "./results/Results";
@@ -47,6 +48,18 @@ export interface StageProps {
    * places Fit itself; the live Results card says this reason. Today's screen passes none.
    */
   fitWithheld?: string | null;
+  /**
+   * Whether a choice can be recorded from the stage (default true, today's screen): the record
+   * button beside a preview, the touch equivalent of Enter in the Record, and a refusal's ways
+   * forward, each of which previews the decision it carries for that button to record. A screen
+   * whose card is the one place a choice is recorded (the quest shell: FOUNDATION §1, the card's
+   * foot is the one action) passes false: the stage draws neither, so no second record button
+   * disagrees with the card's and a refusal's readings are not drawn again beside the card that
+   * asks them: the refusal still says why there is no preview, in the consumer's own words up to
+   * the ledger's question, which the card asks (record/besideAsk.ts, as the card's own answer to a
+   * refused press does).
+   */
+  recordHere?: boolean;
 }
 
 type Scene =
@@ -76,7 +89,7 @@ const LIVE_TITLE: Record<string, [string, string]> = {
   results: ["Results", "what the recorded pipeline fitted"],
 };
 
-export function Stage({ pid, view, focus, onFocus, fitWithheld = null }: StageProps) {
+export function Stage({ pid, view, focus, onFocus, fitWithheld = null, recordHere = true }: StageProps) {
   const seq = stateSeq(view);
   const { reduced } = useMotionPrefs();
   const t = useTransitions();
@@ -301,7 +314,7 @@ export function Stage({ pid, view, focus, onFocus, fitWithheld = null }: StagePr
     [label, aside] = LIVE_TITLE[scene.kind] ?? ["", ""];
   }
   const recordButton =
-    focus.kind === "option" && (scene.kind === "preview" || scene.kind === "refusal") ? (
+    recordHere && focus.kind === "option" && (scene.kind === "preview" || scene.kind === "refusal") ? (
       <button
         type="button"
         className={s.record}
@@ -371,9 +384,11 @@ export function Stage({ pid, view, focus, onFocus, fitWithheld = null }: StagePr
                 {scene.kind === "refusal" ? (
                   <div className={s.refusal} role="alert" data-testid="refusal" data-purpose="refusal">
                     <p className={s.refusalText}>
-                      <Rich text={`Not available: ${scene.refusal.error.message}`} />
+                      <Rich
+                        text={`Not available: ${(recordHere ? scene.refusal : besideAsk(scene.refusal)).error.message}`}
+                      />
                     </p>
-                    {scene.refusal.error.exits.length ? (
+                    {recordHere && scene.refusal.error.exits.length ? (
                       <div className={s.exits}>
                         {scene.refusal.error.exits.map((x, i) =>
                           x.decision ? (
