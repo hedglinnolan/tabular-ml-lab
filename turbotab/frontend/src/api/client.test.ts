@@ -47,6 +47,25 @@ describe("the methods' sections (P8)", () => {
   });
 });
 
+/** W1-R finding 3c: the server words the roles card by the project's goal, asked as a plain query
+ *  parameter; with no goal named it serves the words as they stand. */
+describe("the teaching words, by goal", () => {
+  it("names the project's goal as ?purpose=", async () => {
+    const fetchMock = respond(200, []);
+    await api.teaching("prediction");
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/teaching?purpose=prediction");
+  });
+
+  it("names none where the goal is not chosen", async () => {
+    const fetchMock = respond(200, []);
+    await api.teaching(null);
+    await api.teaching();
+    const urls = fetchMock.mock.calls.map((c) => (c as unknown as [string])[0]);
+    expect(urls).toEqual(["/api/teaching", "/api/teaching"]);
+  });
+});
+
 describe("a decision the server refuses (409)", () => {
   it("is thrown as a RefusalError carrying the typed refusal and its exits", async () => {
     respond(409, refusal);

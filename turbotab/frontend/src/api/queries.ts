@@ -26,7 +26,8 @@ import type { CodebookRequest, JoinPreviewRequest } from "./m3-types";
 
 export const keys = {
   health: () => ["health"] as const,
-  teaching: () => ["teaching"] as const,
+  /** The words for a goal (`purpose`), else the words with no goal named. */
+  teaching: (purpose?: string | null): readonly string[] => (purpose ? ["teaching", purpose] : ["teaching"]),
   projects: () => ["projects"] as const,
   fs: (path: string | null) => ["fs", path ?? ""] as const,
   project: (pid: string) => [pid] as const,
@@ -120,9 +121,11 @@ export function useProjectView(pid: string) {
   });
 }
 
-/** The words every question carries (GET /api/teaching): static, fetched once. */
-export function useTeaching() {
-  return useQuery({ queryKey: keys.teaching(), queryFn: ({ signal }) => api.teaching(signal) });
+/** The words every question carries (GET /api/teaching): static, fetched once per goal. With the
+ *  project's `purpose` the server words the cards it words by goal for that goal (under prediction
+ *  the roles card's predictors, W1-R finding 3c); with none, as they stand with no goal named. */
+export function useTeaching(purpose: string | null = null) {
+  return useQuery({ queryKey: keys.teaching(purpose), queryFn: ({ signal }) => api.teaching(purpose, signal) });
 }
 
 export function useStageResult<S extends AnyStageName>(pid: string, stage: S, enabled = true) {

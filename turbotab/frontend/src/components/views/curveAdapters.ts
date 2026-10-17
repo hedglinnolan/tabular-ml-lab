@@ -135,7 +135,8 @@ export function pastPalette(ic: InputCurves): string | null {
   return `Not drawn here: ${named}. Each curve takes the color of its family's place among the families explained, and there are ${SLOTS.length} colors.`;
 }
 
-/** The engine's calibration of one model's predictions, with the binned points when served. */
+/** The engine's calibration of one model's predictions, with the binned points and the rows behind
+ *  each stretch of its range (the support strip) when served. */
 export function calibrationFromEngine(
   cal: ModelCalibration & { bins?: CalibrationBin[] | null; bins_method?: string | null },
   opts: { kind: "risk" | "value"; outcome: string; where: ScoredWhere; choosing?: string | null; sealed?: string | null },
@@ -151,6 +152,9 @@ export function calibrationFromEngine(
     curve: cal.curve,
     bins: cal.bins ?? null,
     binsMethod: cal.bins_method ?? null,
+    // The rows behind each stretch of the predictions (W1-R finding 10): an artifact from before
+    // the engine served them carries none, and no strip is drawn.
+    support: cal.support ?? null,
     smoother: cal.smoother,
     concern: cal.concern,
     where: opts.where,

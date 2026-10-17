@@ -32,6 +32,19 @@ export function intervalOf(i: Iv): string {
 const avg = (d: CalibrationData, v: number) => (d.kind === "risk" ? `${+(v * 100).toFixed(1)}%` : fmtNum(v));
 
 /**
+ * The slope in plain words: how far the outcomes moved for the predictions' move. A slope that
+ * reads 1 at the precision shown says the outcomes moved as far as the predictions did, never
+ * "1 times as far" (the walkthrough of 2026-10-17, minor 21), and gives the number beside its term.
+ */
+function slopeLine(slope: Iv): string {
+  const said = fmtNum(slope.estimate!);
+  const tail = `1 when they agree, below 1 when predictions are too extreme).`;
+  return said === "1"
+    ? `Outcomes moved as far as the predictions did (calibration slope ${said}${intervalOf(slope)}; ${tail}`
+    : `Outcomes moved ${said} times as far as the predictions did (calibration slope${intervalOf(slope)}; ${tail}`;
+}
+
+/**
  * The one quiet paragraph under the picture. When the engine flags a concern, its verdict is the
  * paragraph (it carries the numbers, in plain words with the term beside them); otherwise the
  * numbers are said plainly, each technical name riding beside its meaning (FOUNDATION §2).
@@ -41,9 +54,7 @@ export function calibrationLine(d: CalibrationData): string {
   if (d.concern) return `${plain(d.concern)} ${rows}`;
   const parts = [
     `Predicted ${avg(d, d.expected)} on average against ${avg(d, d.observed)} observed${d.intercept.estimate !== null ? ` (calibration intercept ${fmtNum(d.intercept.estimate)}${intervalOf(d.intercept)}; 0 when they agree)` : ""}.`,
-    d.slope.estimate !== null
-      ? `Outcomes moved ${fmtNum(d.slope.estimate)} times as far as the predictions did (calibration slope${intervalOf(d.slope)}; 1 when they agree, below 1 when predictions are too extreme).`
-      : null,
+    d.slope.estimate !== null ? slopeLine(d.slope) : null,
     rows,
   ];
   return parts.filter(Boolean).join(" ");

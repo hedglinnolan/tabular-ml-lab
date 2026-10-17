@@ -23,7 +23,7 @@ import type { TeachingEntry } from "../api/m1-types";
 import type { AskCard } from "../api/m3-types";
 import { keys } from "../api/queries";
 import type { Decision, ProjectView, QuestLine, QuestLog, Refusal } from "../api/schema";
-import { besideAsk } from "../components/record/besideAsk";
+import { besideAsk, confirmsRoleInBlock, oneRoleAtATime } from "../components/record/besideAsk";
 import { artifactAt, expandView, viewsOf, type M3Fixture } from "../mocks/m3";
 import { CONTRACT } from "./fixtures/contract";
 import { QuestScreen } from "./QuestScreen";
@@ -263,6 +263,97 @@ describe("a families press refused for the readings the card asks", () => {
     fireEvent.click(screen.getByTestId("record-models"));
     const note = await screen.findByTestId("refusal");
     await waitFor(() => expect(note).toHaveTextContent("Tell me about this column: x."));
+  });
+});
+
+/** An exit's words as its button reads: backticks dropped, " instead" after one that records. */
+const exitText = (x: Refusal["error"]["exits"][number]) => `${x.label.replaceAll("`", "")}${x.decision ? " instead" : ""}`;
+
+/**
+ * AskFor's guard both ways (W1-R R3 P4): a refused press is cut to its own words beside the ledger's
+ * ask card only where the step is open, carries that card, and the press is not the card's own.
+ * Without the card on the step, or for a press from the card, the refusal is answered in full, its
+ * readings and their confirmations with it.
+ */
+describe("a refused press answered in full (W1-R R3 P4)", () => {
+  it("keeps the readings and their confirmations where the families step carries no ask card", async () => {
+    const bare: ProjectView = {
+      ...VIEW,
+      interview: VIEW.interview.map((s) => (s.key === "models" ? { ...s, ask: null } : s)),
+    };
+    shell(bare);
+    expect(screen.queryByTestId("ask-card")).toBeNull();
+    vi.spyOn(api, "decide").mockRejectedValue(new RefusalError(REFUSAL));
+    chooseTwo();
+    fireEvent.click(screen.getByTestId("record-models"));
+    const note = await screen.findByTestId("refusal");
+    expect(note).toHaveTextContent("Tell me about these columns");
+    expect(
+      within(note)
+        .getAllByTestId("refusal-exit")
+        .map((b) => b.textContent),
+    ).toEqual(REFUSAL.error.exits.map(exitText));
+  });
+
+  it("answers a press from the ask card itself in full, at its line", async () => {
+    shell({
+      ...VIEW,
+      interview: VIEW.interview.map((s) => (s.key === "models" ? { ...s, ask: ASK } : s)),
+    });
+    vi.spyOn(api, "decide").mockRejectedValue(new RefusalError(REFUSAL));
+    const line = screen.getAllByTestId("ask-line")[0]!;
+    fireEvent.click(within(line).getByTestId("ask-confirm"));
+    const note = await within(line).findByTestId("refusal");
+    expect(note).toHaveTextContent("Tell me about these columns");
+    expect(
+      within(note)
+        .getAllByTestId("refusal-exit")
+        .map((b) => b.textContent),
+    ).toEqual(REFUSAL.error.exits.map(exitText));
+  });
+});
+
+/**
+ * Ruling R-b (BLUEPRINT §14 rule 2): a role proposed below high confidence is confirmed on its own,
+ * so a refusal's way forward that confirms several roles in one press ("Confirm each of the 7 as
+ * shown", the engine's `_models_read_settled_readings` at W1-R R1's verification) is not offered;
+ * one that confirms a single role, or a block of readings that are not roles, still is.
+ */
+describe("a refusal's ways forward, one role at a time (ruling R-b)", () => {
+  const ROLES = ["bp_sys", "imputed_bp", "imputed_hdl"];
+  const roles = (columns: string[], value: string) =>
+    ({ kind: "confirm_readings", items: columns.map((column) => ({ reading: "role", column, value })) }) as Decision;
+  const SINGLE = { label: "Confirm `bp_sys` as a predictor", decision: roles(["bp_sys"], "covariate") };
+  const ROLE_REFUSAL: Refusal = {
+    error: {
+      code: "reading_unsettled",
+      message: "The fit reads each column's role, and 3 were proposed below high confidence.",
+      exits: [{ label: `Confirm each of the ${ROLES.length} as shown`, decision: roles(ROLES, "flag") }, SINGLE, ROLES_EXIT],
+    },
+  };
+
+  it("offers no exit that confirms several roles together, and keeps the rest", async () => {
+    shell({ ...VIEW, interview: VIEW.interview.map((s) => (s.key === "models" ? { ...s, ask: null } : s)) });
+    vi.spyOn(api, "decide").mockRejectedValue(new RefusalError(ROLE_REFUSAL));
+    chooseTwo();
+    fireEvent.click(screen.getByTestId("record-models"));
+    const note = await screen.findByTestId("refusal");
+    expect(
+      within(note)
+        .getAllByTestId("refusal-exit")
+        .map((b) => b.textContent),
+    ).toEqual([exitText(SINGLE), exitText(ROLES_EXIT)]);
+  });
+
+  it("tells a block of roles from one role alone and from a block of other readings", () => {
+    expect(confirmsRoleInBlock(ROLE_REFUSAL.error.exits[0]!)).toBe(true);
+    expect(confirmsRoleInBlock(SINGLE)).toBe(false);
+    expect(confirmsRoleInBlock(REFUSAL.error.exits[0]!)).toBe(false);
+    expect(confirmsRoleInBlock(ROLES_EXIT)).toBe(false);
+    // A role in a block of other readings rides along all the same.
+    const mixed = { label: "x", decision: { kind: "confirm_readings", items: [{ reading: "role", column: "a", value: "flag" }, { reading: "code_or_count", column: "b", value: "amount" }] } as Decision };
+    expect(confirmsRoleInBlock(mixed)).toBe(true);
+    expect(oneRoleAtATime(REFUSAL)).toBe(REFUSAL);
   });
 });
 

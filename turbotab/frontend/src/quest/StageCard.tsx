@@ -5,16 +5,18 @@
  * beside it, or, where a question's answer settled it, to what it was about and that question, so
  * the answer is printed once); lines still to come wait below, quieter, each "Waiting for" what it
  * needs. A line no card can answer yet is listed after the rest, "Not available yet", and never
- * opened. The stage's Confirm sweep comes after its Decides, each default with its reason (or,
- * where the engine serves none, the default itself, from its value) and what another choice would
- * change, and any can be opened to change it; under Predict, Who's in's draw waits for that sweep
- * (§3, "two departures").
+ * opened; those that count toward nothing are said together in one quiet line. A record on an
+ * expanded line collapses it, and the open line opens. The stage's Confirm sweep comes after its
+ * Decides, each default with its reason (or, where the engine serves none, the default itself,
+ * from its value) and what another choice would change, and any can be opened to change it; under
+ * Predict, Who's in's draw waits for that sweep (§3, "two departures").
  * Results, once reached, has W1-G's ResultsCards in place of its lines, mounted once
  * (src/quest/contracts.ts). First look lists every noticing with the stage that decides it. For
  * the record sits collapsed at the foot (GET /record). The one primary action is at the very foot
  * (FOUNDATION §1); a disabled one says why and links to what it waits for. Continue goes on to the
- * next open line a card can answer, naming it where that is not the next stage, and open noticings
- * hold it in no stage but the triage's own: the foot says how many wait for the triage (log.ts).
+ * next open line a card can answer, naming it where that is not the next stage; under Predict open
+ * noticings hold it in no stage but the triage's own, and the foot, or Fit's beside the flowchart,
+ * says how many wait for the triage in Results (log.ts).
  *
  * A stage opened by a request (the quest line, a "Waiting for" link, a noticing's lever, the foot's
  * link) brings the line it names, else its open line, into view and gives it focus (§1, the
@@ -32,8 +34,9 @@ import {
   useStageResult,
 } from "../api/queries";
 import type { Decision, Finding, ProjectState, QuestLine, QuestLog, QuestStage, Refusal, SweepStage } from "../api/schema";
-import { Foot, Plain, foot as f, kit as k } from "../kit";
+import { Foot, Plain, foot as f, kit as k, plain } from "../kit";
 import { listJoin } from "../util/format";
+import { oneRoleAtATime } from "../components/record/besideAsk";
 import { CardFor } from "./cards/CardFor";
 import { DECLARATION_CARDS, DECLARATION_DEFAULTS } from "./cards/predict";
 import { columnOf, recordable } from "./cards/renderers";
@@ -56,6 +59,9 @@ import q from "./quest.module.css";
 
 const idOf = (l: QuestLine) => `${l.source}:${l.key}`;
 const canAnswer = (l: QuestLine) => recordable(l, DECLARATION_CARDS);
+/** A line no card can answer yet that counts toward nothing and holds no answer to show (joining
+ *  another file, the data dictionary): said once, with the others like it, in one quiet line. */
+const unavailableQuiet = (l: QuestLine) => !canAnswer(l) && !l.counted && (l.status === "open" || l.status === "waiting");
 
 /** The findings artifact's noticings, once the stage has started (as FindingCard reads them). */
 function useNoticings(pid: string): readonly Finding[] | undefined {
@@ -137,6 +143,16 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
     setSeenRequest(request.n);
     setExpanded(targetOf(request));
   }
+  // A record on the expanded line that is not the open one (an answer changed, a later line
+  // answered first) collapses it, and the open line opens (finding 24): the card does not stay
+  // expanded on what was just recorded.
+  const recordOf = (id: string | null) => stage.lines.find((l) => idOf(l) === id)?.decision_id ?? null;
+  const [seenRecord, setSeenRecord] = useState({ id: expanded, record: recordOf(expanded) });
+  const nowRecord = recordOf(expanded);
+  if (seenRecord.id !== expanded || seenRecord.record !== nowRecord) {
+    setSeenRecord({ id: expanded, record: nowRecord });
+    if (seenRecord.id === expanded && nowRecord !== null && expanded !== openId) setExpanded(openId);
+  }
   const root = useRef<HTMLElement>(null);
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
   const requested = request?.n ?? null;
@@ -153,7 +169,12 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
   const noticings = useNoticings(pid);
   const groups = byLabel(stage);
   // A line no card can answer yet comes after those that can (FOUNDATION §3, "Not available yet").
-  const decide = [...groups.Decide.filter(canAnswer), ...groups.Decide.filter((l) => !canAnswer(l))];
+  // Those that count toward nothing and hold no answer to show are one quiet line (finding 15).
+  const quiet = groups.Decide.filter(unavailableQuiet);
+  const decide = [
+    ...groups.Decide.filter(canAnswer),
+    ...groups.Decide.filter((l) => !canAnswer(l) && !unavailableQuiet(l)),
+  ];
   const drawHeld = drawWaitsForSweep(stage);
   // Results, once reached, is W1-G's column whole: it draws every line of the stage itself.
   const results = columnOf(stage) === "results";
@@ -206,7 +227,16 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
           </div>
         ) : null}
 
-        {!results && decide.length ? <Group label="Decide">{decide.map((l) => line(l))}</Group> : null}
+        {!results && (decide.length || quiet.length) ? (
+          <Group label="Decide">
+            {decide.map((l) => line(l))}
+            {quiet.length ? (
+              <li className={q.line} data-kit data-testid="lines-unavailable" data-unavailable>
+                <p className={q.lineQuiet}>Not available in this version yet: {listJoin(quiet.map((l) => plain(l.name)))}.</p>
+              </li>
+            ) : null}
+          </Group>
+        ) : null}
 
         {!results && groups.Confirm.length ? (
           <Group label="Confirm" heading={stage.sweep?.heading}>
@@ -502,7 +532,9 @@ function Primary({
   const bundle = useExport(pid);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const action = primaryFor(log, stage, fit, canAnswer);
-  const onRefused = (err: Error) => setRefusal(isRefusalError(err) ? err.refusal : { error: { code: "failed", message: err.message, exits: [] } });
+  // No exit confirms a role in a block (§14 rule 2; besideAsk.ts `oneRoleAtATime`).
+  const onRefused = (err: Error) =>
+    setRefusal(isRefusalError(err) ? oneRoleAtATime(err.refusal) : { error: { code: "failed", message: err.message, exits: [] } });
 
   let node: ReactNode;
   switch (action.kind) {
@@ -510,6 +542,12 @@ function Primary({
       node = (
         <div className={q.footQuiet} data-kit data-testid="primary-fit">
           Fit is at the end of your analysis, beside the card.
+          {action.note ? (
+            <>
+              {" "}
+              <span data-testid="primary-note">{action.note}</span>
+            </>
+          ) : null}
         </div>
       );
       break;

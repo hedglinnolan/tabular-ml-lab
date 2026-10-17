@@ -1,11 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { substitutionChoice, substitutionCompare, substitutionSealed } from "./lab/curves.fixtures";
-import { curveFromExplain, curveFromSubstitution, pastPalette } from "./curveAdapters";
+import { calibrationFromEngine, curveFromExplain, curveFromSubstitution, pastPalette } from "./curveAdapters";
+import { CalibrationView } from "./CalibrationView";
 import { CurveView } from "./CurveView";
 import type { CurveLine } from "./curve";
 import prediction from "../../mocks/fixtures/m3-nhanes-prediction.json";
-import type { InputCurves, SubstitutionArtifact } from "../../api/m3-types";
+import type { InputCurves, ModelCalibration, SubstitutionArtifact } from "../../api/m3-types";
 
 describe("the substitution artifact as a curve (captured NHANES Predict)", () => {
   it("draws each k's own rows in gray and the same rows at every k in indigo, with the stop said", () => {
@@ -141,5 +142,56 @@ describe("an explain artifact's input curves as a curve, keeping the support mas
 
   it("says the model's own scale where the prediction is not the outcome's value", () => {
     expect(curveFromExplain(ic(), { outcome: "progression", task: "binary" }).yLabel).toBe("Change on the model's own scale");
+  });
+});
+
+// ── the held-out calibration through the adapter (W1-R R1 P3) ────────────────
+
+/**
+ * Finding 10 of the 2026-10-17 walkthrough: the engine serves the rows behind each equal-width
+ * stretch of the predictions (`Calibration.support`), and Results draws them as a strip under the
+ * curve. Results reaches the view only through this adapter, so the strip is drawn only if the
+ * adapter carries the served support across; an artifact from before it serves none, and no strip
+ * is drawn. The calibration is built as the engine serves one, its stretches by construction.
+ */
+describe("a served calibration through the adapter, to the drawn strip", () => {
+  const served: ModelCalibration = {
+    n: 400,
+    observed: 108,
+    expected: 107,
+    intercept: { estimate: 0.667, se: null, ci_low: -0.333, ci_high: 1.67, level: 0.95, method: "wald" },
+    slope: { estimate: 1, se: null, ci_low: 0.936, ci_high: 1.07, level: 0.95, method: "wald" },
+    curve: [
+      { x: 80, y: 82 },
+      { x: 150, y: 148 },
+      { x: 300, y: 210 },
+    ],
+    support: [
+      { lo: 80, hi: 190, n: 390 },
+      { lo: 190, hi: 300, n: 10 },
+      { lo: 300, hi: 310, n: 0 },
+    ],
+    eavg: null,
+    e90: null,
+    emax: null,
+    smoother: "lowess",
+    flagged: false,
+    concern: null,
+  };
+  const opts = { kind: "value" as const, outcome: "glucose", where: "held_out" as const };
+
+  it("carries every served stretch, and the view draws one bar for each stretch with rows", () => {
+    const data = calibrationFromEngine(served, opts);
+    expect(data.support).toEqual(served.support);
+    const { container } = render(<CalibrationView data={data} />);
+    expect(container.querySelectorAll("[data-mark=\"support\"] rect")).toHaveLength(2);
+  });
+
+  it("draws no strip for a calibration served before the stretches were", () => {
+    const { support: _none, ...before } = served;
+    const data = calibrationFromEngine(before as ModelCalibration, opts);
+    expect(data.support ?? null).toBeNull();
+    const { container } = render(<CalibrationView data={data} />);
+    expect(container.querySelector("[data-mark=\"support\"]")).toBeNull();
   });
 });

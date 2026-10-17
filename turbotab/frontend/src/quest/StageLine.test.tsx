@@ -8,7 +8,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { QuestLog } from "../api/schema";
 import { CONTRACT } from "./fixtures/contract";
-import { LABELS, openStageKey } from "./log";
+import { LABELS, openStageKey, stageOf } from "./log";
 import { StageLine } from "./StageLine";
 
 const LOGS = Object.entries(CONTRACT.logs).map(([name, x]) => [name, x.log] as const);
@@ -35,8 +35,15 @@ describe.each(LOGS)("the bar and the panel on %s", (_name, log) => {
       }
       expect(seg).toHaveAttribute("data-answered", String(s.progress!.answered));
       expect(seg).toHaveAttribute("data-required", String(s.progress!.required));
-      if (s.progress!.complete) expect(seg, s.key).toHaveAttribute("data-complete");
-      else {
+      // A stage that asks nothing is done only once the analysis comes to it (finding 25): no
+      // stage before it is the first one still working.
+      const at = log.stages.findIndex((x) => x.key === openStageKey(log));
+      const cameTo = log.stages.indexOf(s) <= at;
+      if (s.progress!.complete && (s.progress!.required > 0 || cameTo)) expect(seg, s.key).toHaveAttribute("data-complete");
+      else if (s.progress!.required === 0) {
+        expect(seg, s.key).not.toHaveAttribute("data-complete");
+        expect(seg.textContent, s.key).toContain("not reached yet");
+      } else {
         expect(seg, s.key).not.toHaveAttribute("data-complete");
         expect(seg.textContent).toContain(`${s.progress!.answered} of ${s.progress!.required} answered`);
       }
@@ -102,5 +109,43 @@ describe("the bar's guard", () => {
     render(<StageLine log={reopened} shown="models" onOpen={() => {}} answers={new Map()} fitting={null} />);
     expect(screen.getByTestId("reopened-note")).toHaveTextContent(sentence);
     expect(screen.getByTestId("segment-data")).toHaveAttribute("data-reopened");
+  });
+});
+
+/**
+ * Finding 25 of the 2026-10-17 walkthrough: under Predict the engine reaches Write-up with Results,
+ * at 0 of 0, so Write-up read as done, its segment full, while the analysis was still before it.
+ */
+describe("a stage that asks nothing, before the analysis comes to it (finding 25)", () => {
+  const log = CONTRACT.logs.results_reached.log;
+  /** Every stage answered, confirmed and complete, as the engine serves it then. */
+  const allDone: QuestLog = {
+    ...log,
+    stages: log.stages.map((s) => ({
+      ...s,
+      sweep: s.sweep ? { ...s.sweep, answered: true } : null,
+      lines: s.lines.map((l) => (l.label === "Decide" ? { ...l, status: "answered" as const, decision_id: `r-${l.key}` } : l)),
+      progress: s.progress ? { answered: s.progress.required, required: s.progress.required, complete: true } : null,
+    })),
+  };
+
+  it("never reads as done on the line or the bar while an earlier stage is still working", () => {
+    const writeup = stageOf(log, "writeup")!;
+    expect(writeup).toMatchObject({ reached: true, progress: { required: 0, complete: true } });
+    expect(stageOf(log, "results")!.progress?.complete).toBe(false);
+    render(<StageLine log={log} shown="results" onOpen={() => {}} answers={new Map()} fitting={null} />);
+    expect(screen.getByTestId("stage-writeup")).toHaveAttribute("data-status", "todo");
+    const seg = screen.getByTestId("segment-writeup");
+    expect(seg).not.toHaveAttribute("data-complete");
+    expect(seg.querySelector("span")!.style.width).toBe("0%");
+    expect(seg.textContent).toContain("not reached yet");
+  });
+
+  it("reads as done once every stage before it is", () => {
+    render(<StageLine log={allDone} shown="results" onOpen={() => {}} answers={new Map()} fitting={null} />);
+    expect(screen.getByTestId("stage-writeup")).toHaveAttribute("data-status", "done");
+    const seg = screen.getByTestId("segment-writeup");
+    expect(seg).toHaveAttribute("data-complete");
+    expect(seg.querySelector("span")!.style.width).toBe("100%");
   });
 });

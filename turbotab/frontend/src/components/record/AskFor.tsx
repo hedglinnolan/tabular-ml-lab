@@ -131,7 +131,10 @@ export const AskFor = ({
   const key = stepKey;
   const { state, decisions, stages } = view;
   const decide = useDecide(pid);
-  const teaching = useTeaching();
+  // The roles card asks for the project's goal (GET /teaching?purpose=): the server words it by
+  // goal, its predictors under prediction (W1-R finding 3c). Every other card reads the words with
+  // no goal named, which the server words alike under every goal.
+  const teaching = useTeaching(key === "roles" ? state.purpose : null);
   const [plainAnswer, setPlainAnswer] = useState<PlainAnswer | null>(null);
   const entry = useMemo(
     () => (teaching.data ?? []).find((e) => e.key === key),
@@ -363,6 +366,7 @@ export const AskFor = ({
           {...p}
           artifact={roles.artifact}
           current={(state.roles as Record<string, Role> | null) ?? null}
+          purpose={state.purpose}
         />
       ) : (
         waitingFor("roles", "Then each column's role is asked.")

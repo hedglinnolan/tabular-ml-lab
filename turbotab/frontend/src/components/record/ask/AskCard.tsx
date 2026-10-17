@@ -8,7 +8,10 @@
  *   readings of the line it confirms, each with the value the line shows — never a reading the
  *   card does not list (§14.1). Each line's value can be changed before it is confirmed. Once the
  *   user has confirmed guesses line by line, one block confirms every line shown (§11.4 rule 4:
- *   a shortcut unlocks with mastery, never with a setting).
+ *   a shortcut unlocks with mastery, never with a setting), but a column's role: a role proposed
+ *   below high confidence needs its own confirmation and never rides along in a block (§14 rule
+ *   2; ruling R-b), so each such column is a line of its own, confirmed alone, and no block
+ *   lists one.
  *
  *   The consumer's own ways forward, where its refusal names them (a value below a detection
  *   limit, an energy column's unit and days), are offered as the server words them.
@@ -101,11 +104,24 @@ export function confirmLine(group: AskGroup, value: string): Decision | null {
   };
 }
 
-/** Every line the card shows, each with the value it shows: one block that lists them all. */
+/**
+ * The card's lines, in the server's order: each group as served, but a role family, one line per
+ * column. The card asks only readings not settled, and a role reading is unsettled while it was
+ * proposed below high confidence and not confirmed: it needs its own confirmation and never rides
+ * along in a block (BLUEPRINT §14 rule 2; ruling R-b).
+ */
+export function linesOf(groups: AskGroup[]): AskGroup[] {
+  return groups.flatMap((g) =>
+    g.kind === "role" && g.columns.length > 1 ? g.columns.map((column) => ({ ...g, columns: [column] })) : [g],
+  );
+}
+
+/** Every line the card shows, each with the value it shows: one block that lists them all, but
+ *  no role, which is confirmed on its own line alone (§14 rule 2; ruling R-b). */
 export function confirmAll(groups: AskGroup[], values: Record<number, string>): Decision | null {
   const items = groups.flatMap((grp, i) => {
     const value = values[i] ?? grp.guess ?? "";
-    if (!confirmLine(grp, value)) return [];
+    if (grp.kind === "role" || !confirmLine(grp, value)) return [];
     return grp.columns.map((column) => ({ reading: grp.kind as ReadingKind, column, value }));
   });
   const seen = new Set<string>();
@@ -139,8 +155,10 @@ export function AskCard({
 }) {
   const titleId = useId();
   const [values, setValues] = useState<Record<number, string>>({});
-  const confirmable = card.groups.filter((grp, i) => confirmLine(grp, values[i] ?? grp.guess ?? ""));
-  const all = useMemo(() => confirmAll(card.groups, values), [card.groups, values]);
+  const lines = useMemo(() => linesOf(card.groups), [card.groups]);
+  // The lines the block may list: never a role (§14 rule 2).
+  const blockable = lines.filter((grp, i) => grp.kind !== "role" && confirmLine(grp, values[i] ?? grp.guess ?? ""));
+  const all = useMemo(() => confirmAll(lines, values), [lines, values]);
   const nReadings = all?.kind === "confirm_readings" ? all.items.length : 0;
   // The consumer's own ways forward: what is not a confirmation (a repair, a unit and its days).
   const own = card.exits.filter((e) => e.decision && !isConfirmation(e.decision));
@@ -150,14 +168,14 @@ export function AskCard({
     <section className={g.ask} aria-labelledby={titleId} data-testid="ask-card">
       <div className={g.askHead}>
         <h3 id={titleId} className={g.askTitle}>
-          {card.groups.length === 1 ? "Tell me about this column" : "Tell me about these columns"}
+          {lines.length === 1 ? "Tell me about this column" : "Tell me about these columns"}
         </h3>
         <span className={g.askConsumer}>
-          <Prose text={card.consumer} /> reads {card.groups.length === 1 ? "it" : "them"}
+          <Prose text={card.consumer} /> reads {lines.length === 1 ? "it" : "them"}
         </span>
       </div>
       <ol className={g.askList}>
-        {card.groups.map((grp, i) => {
+        {lines.map((grp, i) => {
           const value = values[i] ?? grp.guess ?? "";
           const choices = choicesFor(grp);
           const decision = confirmLine(grp, value);
@@ -209,7 +227,7 @@ export function AskCard({
           );
         })}
       </ol>
-      {mastered && confirmable.length > 1 && all ? (
+      {mastered && blockable.length > 1 && all ? (
         <div className={g.askAll}>
           <button
             type="button"
