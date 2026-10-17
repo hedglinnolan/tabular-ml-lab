@@ -25,17 +25,22 @@ import k from "./seal.module.css";
 
 const HOLDOUTS = ["0", "0.1", "0.2", "0.3"];
 
-const splitDecision = (holdout: number): Decision => ({
+/**
+ * The draw, with the validation scheme as it stands. `set_split` replaces the whole split, so
+ * the scheme `set_validation` set is sent back with it (ruling 10 of W1_PART2_PLAN: the scheme is
+ * `set_validation`'s). With no split recorded yet there is no scheme to keep, and the server's
+ * defaults (decisions.py SplitSpec) stand.
+ */
+const splitDecision = (holdout: number, current: ProjectState["split"]): Decision => ({
   kind: "set_split",
   holdout,
   seed: 0,
-  folds: 5,
-  // The server's defaults (decisions.py SplitSpec); the validation choice is not drawn yet (WP9).
-  validation: "kfold",
-  repeats: 10,
-  n_boot: 500,
-  cluster: null,
-  nested_cv: false,
+  folds: current?.folds ?? 5,
+  validation: current?.validation ?? "kfold",
+  repeats: current?.repeats ?? 10,
+  n_boot: current?.n_boot ?? 500,
+  cluster: current?.cluster ?? null,
+  nested_cv: current?.nested_cv ?? false,
 });
 
 /** The seal's basis, said once: the glyph, its label, and the sentence that says how it was drawn. */
@@ -90,7 +95,7 @@ export function SealAsk({
       key: String(o.holdout),
       label: o.label,
       line: o.measures,
-      decision: splitDecision(o.holdout),
+      decision: splitDecision(o.holdout, current),
       // Judgment is order and its reason, never absence: the first option says why it is first.
       note:
         plan.cv_first && o.holdout === 0 ? (
@@ -105,7 +110,7 @@ export function SealAsk({
       key: v,
       label: taught(p.entry, v)?.label ?? v,
       line: taught(p.entry, v)?.consequence ?? "",
-      decision: splitDecision(Number(v)),
+      decision: splitDecision(Number(v), current),
     }));
   }
   const recordedKey = current
