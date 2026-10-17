@@ -482,6 +482,11 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   await expect(stage(page)).toHaveAttribute("data-focus", "finding");
   await expect(page.getByTestId("stage-pill")).toHaveText("Evidence", { timeout: 15_000 });
   await expect(page.getByTestId("stage-loading")).not.toHaveAttribute("data-on", /.*/, { timeout: 15_000 });
+  // The evidence names the rows it was computed on (the engine's basis sentence): every row of the
+  // table, as the finding read them, or a sample of the training rows.
+  if (REAL) {
+    await expect(stage(page)).toContainText(/Every one of the 21,849 rows, as the finding read them\.|Values on (?:all|a sample of) [\d,]+ /);
+  }
   await park(page);
   await settle(page, 500);
   await shot(page, "evidence", { themes: ["light", "dark"] });

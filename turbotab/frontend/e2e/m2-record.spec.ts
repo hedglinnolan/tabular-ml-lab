@@ -223,6 +223,8 @@ test("NHANES: repairs, the grain stated, eligibility, missing by mechanism, and 
   // ── open the seal: the Router's last step, and the one CONSEQUENCE card under the Results ──
   const step = page.getByTestId("open-seal-step");
   await expect(step).toBeVisible({ timeout: 30_000 });
+  // Once Fit is pressed the Record names the opening as the last step.
+  await expect(step).toContainText("Opening the seal");
   await expect(step).toContainText("held-out rows");
   await step.getByTestId("go-open-seal").click();
   const card = page.getByTestId("open-seal-card");

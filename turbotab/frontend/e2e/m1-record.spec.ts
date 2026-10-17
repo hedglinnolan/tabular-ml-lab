@@ -68,7 +68,7 @@ async function openNhanes(page: Page) {
   await expect(page.getByTestId("question-lens")).toBeVisible({ timeout: 20_000 });
 }
 
-test("the record follows the Router from the lens to the substitution", async ({ page }) => {
+test("the record follows the Router from the lens to the fit", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await openNhanes(page);
 
@@ -187,10 +187,24 @@ test("the record follows the Router from the lens to the substitution", async ({
   const notAsked = page.locator('[data-testid="na-energy_adjustment"], [data-testid="na-group"][data-keys~="energy_adjustment"]').first();
   await expect(notAsked).toContainText("Energy adjustment");
   await expect(notAsked).toContainText("not applicable");
+  // (The refusal at an option, answered with the server's exits, belonged to this question alone:
+  // under prediction no option of the questions asked is inapplicable. The opening's refusal and
+  // its exits are walked in m2-record and in the real-server journeys.)
   // Several questions that do not apply are said once, each reason one press away.
   const why = notAsked.getByRole("button", { name: "why?" });
   if (await why.count()) await why.click();
   await expect(notAsked).toContainText("Under prediction no coefficient is read as an effect, so there is no energy model to choose");
+
+  // The teaching layers stay one press away on a question that is asked under prediction: "why?"
+  // gives the reason, its drawer opens the concept in depth, and Escape closes it.
+  await models.getByTestId("why-models").click();
+  await expect(models.getByTestId("why-panel-models")).toContainText("An elastic net shrinks correlated nutrients together");
+  await models.getByTestId("drawer-models").click();
+  await expect(page.getByTestId("concept-drawer")).toContainText("Collinearity is the biology");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("concept-drawer")).toHaveCount(0);
+  await models.getByTestId("why-models").click();
+  await expect(models.getByTestId("why-panel-models")).toHaveCount(0);
 
   // Model families: chosen with the keyboard, none pre-selected, concerns stated.
   await expect(page.getByTestId("banner-models")).toHaveAttribute("data-now", "true");
