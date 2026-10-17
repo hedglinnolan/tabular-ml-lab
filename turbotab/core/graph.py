@@ -308,6 +308,32 @@ def stage_key(
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
+def stage_keys(
+    order: Sequence[Stage],
+    values: Mapping[str, Any],
+    fingerprint: str | None,
+    unmet: Mapping[str, Sequence[str]] | None = None,
+) -> dict[str, str | None]:
+    """Each stage (in topological ``order``) -> its key under ``values`` (a state's JSON dump), each
+    slot it reads keyed by its view (:func:`key_value`); None while it or a stage upstream waits on
+    an unset slot (``unmet``, :func:`unmet_requires` by default). The scheduler's rule
+    (:meth:`Engine._compute_keys`), read by the seal too (``seal.keys_for``), so the fit the seal
+    was opened on and the fit served are keyed alike."""
+    unmet = unmet_requires(order, values) if unmet is None else unmet
+    keys: dict[str, str | None] = {}
+    for stage in order:
+        if unmet[stage.name]:
+            keys[stage.name] = None
+            continue
+        keys[stage.name] = stage_key(
+            stage,
+            {dep: keys[dep] for dep in stage.deps},  # type: ignore[misc]
+            {slot: key_value(slot, values.get(slot)) for slot in stage.reads},
+            fingerprint,
+        )
+    return keys
+
+
 # ── the artifact cache ───────────────────────────────────────────────────────
 
 _FILES: dict[str, str] = {
@@ -791,7 +817,6 @@ class Engine:
         state = p.ctx.state
         fields = type(state).model_fields
         values = state.model_dump(mode="json")
-        unmet = unmet_requires(self._order, values)
         for stage in self._order:
             for slot in (*stage.reads, *stage.requires):
                 if slot not in fields:
@@ -799,17 +824,9 @@ class Engine:
                         f"stage {stage.name!r} reads slot {slot!r}, which "
                         f"{type(state).__name__} does not have"
                     )
-            missing = unmet[stage.name]
-            p.missing[stage.name] = missing
-            if missing:
-                p.keys[stage.name] = None
-                continue
-            p.keys[stage.name] = stage_key(
-                stage,
-                {dep: p.keys[dep] for dep in stage.deps},  # type: ignore[misc]
-                {slot: key_value(slot, values.get(slot)) for slot in stage.reads},
-                p.ctx.fingerprint,
-            )
+        unmet = unmet_requires(self._order, values)
+        p.missing.update(unmet)
+        p.keys.update(stage_keys(self._order, values, p.ctx.fingerprint, unmet))
 
     def _cancel_superseded(self, p: _Project) -> None:
         for name, run in list(p.runs.items()):
