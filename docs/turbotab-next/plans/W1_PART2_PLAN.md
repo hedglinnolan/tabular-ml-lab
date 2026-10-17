@@ -181,6 +181,14 @@ orchestrator rules.
 **The integrator** merges A and B, regenerates, runs the fast tier and the mock browser tests, and
 reports. The orchestrator pushes `ci/full-w1p2-int` and reads CI.
 
+**One design review, on the integrated head** (amended 2026-10-17). On its own branch, each Stage B
+package holds the others only as stubs. On W1-G's branch the shell is a stub, and on W1-E's,
+Results and the declaration cards are. A per-package review would judge half-empty screens. So one
+reviewer walks the merged shell on dev:mock, from upload to Results after the opening, in both
+themes and at 400 px. One builder on the integration branch then repairs what it finds, at most
+once, and the reviewer re-reviews. The integrator also bumped the fit stage to version 28, so that
+a fit cached before Stage A's held-out baseline is computed again, rather than served without it.
+
 **W1-L · the two quest journeys** (Sonnet harness, Opus reference tests; Opus verifier), on the
 integrated head:
 - **`e2e/quest-nhanes-predict.spec.ts`** (parent §5 acceptance 1, with linear and ridge only).
