@@ -23,6 +23,8 @@ calling the function the app itself ranks with, never a copy of its rule:
 * under a purpose the Router does not ask a question in (:func:`not_asked`: the energy model and the
   substitution under prediction, BEATS_PREDICT §9 ruling 5), no case: the reference and the packets
   say it is not asked, with the Router's reason, and an intake's transform offers nothing there;
+  the method contracts only that question offers (:func:`not_offered`: the exposure's energy
+  residual, the substitution's curves) are said not offered there, with the same reason;
 * ``diagnostics``: the failed check's own responses (``estimand.DIAGNOSTIC_ACTIONS``);
 * ``evalue_sd``: ``models.effects.estimand_sd`` with and without the survey weights;
 * ``unmeasured_confounding``: ``models.effects.unmeasured_confounding`` on a least-squares
@@ -86,6 +88,32 @@ def not_asked(question: str, purpose: str) -> str | None:
     from turbotab.core.interview import applicability
 
     return applicability(question, ProjectState(lens=["dietary"], purpose=purpose))
+
+
+def not_offered(contract: Any, purpose: str) -> tuple[str, str, tuple[str, ...]] | None:
+    """Where only a question the Router does not ask under ``purpose`` (:func:`not_asked`) offers
+    a method contract's options: that question, the Router's reason, and those options; None where
+    the registry's rungs stand. Every option of a contract that question's answer records (the
+    substitution's curves: ``set_substitution``, which the decision log also holds under
+    prediction, ``decisions._asked_under_this_goal``); of a contract asked within that question,
+    the options that are the question's own (the exposure's energy residual: the energy model's
+    ``residual``). A log scale or a scale's score is not the energy model's, so it stands."""
+    from turbotab.core import custom_sound
+    from turbotab.core.decisions import SLOTS
+    from turbotab.core.reference import catalog
+
+    kind = catalog.recorded_by(contract)
+    recorded = SLOTS.get(kind) if kind else None
+    if recorded in PURPOSE_GATED:
+        reason = not_asked(recorded, purpose)
+        return (recorded, reason, tuple(o.key for o in contract.options)) if reason else None
+    question = getattr(contract, "question", None)
+    reason = not_asked(question, purpose) if question in PURPOSE_GATED else None
+    if not reason:
+        return None
+    own = {o.key for o in custom_sound.labels_for(question, purpose).options}
+    keys = tuple(o.key for o in contract.options if o.key in own)
+    return (question, reason, keys) if keys else None
 
 
 # ── the effect measure ───────────────────────────────────────────────────────
@@ -504,4 +532,4 @@ def cases(key: str, purpose: str) -> list[Case] | None:
 
 
 __all__ = ["BY_CONDITION", "CAUSAL_EXPOSURES", "CAUSAL_OUTCOMES", "Case", "PURPOSE_GATED",
-           "PremiseFailed", "THROUGH", "causal_rankings", "cases", "not_asked"]
+           "PremiseFailed", "THROUGH", "causal_rankings", "cases", "not_asked", "not_offered"]

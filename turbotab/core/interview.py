@@ -241,21 +241,37 @@ def pending_stages(stages: Mapping[str, Any], deps: Mapping[str, Sequence[str]] 
     return {name for name in stages if pending(name)}
 
 
+def _slots_of(state: Any) -> Mapping[str, Any]:
+    """The state's slots by name, as a conditional write's ``holds`` reads them."""
+    if isinstance(state, Mapping):
+        return state
+    if hasattr(type(state), "model_fields"):
+        return {name: getattr(state, name, None) for name in type(state).model_fields}
+    return dict(vars(state)) if hasattr(state, "__dict__") else {}
+
+
 def _live_writer(records: Sequence[Any], state: Any) -> dict[str, str]:
-    """Slot -> id of the live record that wrote its current value."""
-    from turbotab.core.decisions import SLOTS, Revert, reverted
+    """Slot -> id of the live record that wrote its current value. A conditional write whose
+    condition does not hold on ``state`` (``decisions.register_kind(..., holds=)``: the energy model
+    and the substitution while the goal is prediction, BEATS_PREDICT §9 ruling 5) wrote nothing
+    that stands, so it is never the writer."""
+    from turbotab.core.decisions import _HOLDS, SLOTS, Revert, reverted
 
     ordered = sorted(records, key=lambda r: r.seq)
     try:
         cancelled = reverted(ordered)
     except Exception:
         cancelled = {}
+    slots = _slots_of(state)
     out: dict[str, str] = {}
     for record in ordered:
         decision = record.decision
         if record.id in cancelled or isinstance(decision, Revert) or decision.kind not in SLOTS:
             continue
         if decision.kind == "set_validation":  # the scheme, written onto the draw's record
+            continue
+        holds = _HOLDS.get(decision.kind)
+        if holds is not None and not holds(decision, slots):
             continue
         slot = SLOTS[decision.kind]
         if decision.kind == "set_task" and (

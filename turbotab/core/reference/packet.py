@@ -15,7 +15,8 @@ writes ``docs/turbotab-next/review-packets/<lens>.md``:
    exist;
 2. **how they chain**: a Mermaid diagram of every relation the lens's own methods take part in
    (from them, or toward them from any contract), and the relations in a table with the sentence
-   the app states when each fires;
+   the app states when each fires; a relation lists only the purposes its method is offered
+   under, and one that holds only where it is offered not at all is left out;
 3. **the defaults by purpose**, each with its reason: the option each method offers first for
    prediction and for inference, its rung, and the sound label that justifies it; where the app
    ranks by the data, the first option under each condition, computed by the app's own ranking
@@ -124,8 +125,11 @@ def reviewed_in(lenses: Sequence[str]) -> str:
 
 def default_of(c: Any, purpose: str) -> dict[str, Any]:
     """The option ``c`` ranks first for ``purpose`` in the registry: its key, label, rung and
-    reason (where the app ranks by the data, ``defaults.cases`` says what it offers first)."""
-    return c.options_for(purpose)[0]
+    reason (where the app ranks by the data, ``defaults.cases`` says what it offers first), among
+    the options a question asks under it (``methods.unoffered``)."""
+    found = ref.unoffered(c).get(purpose)
+    off = set(found[2]) if found else set()
+    return next(o for o in c.options_for(purpose) if o["key"] not in off)
 
 
 BY_DATA = "ranked by the data: §3.4"
@@ -135,6 +139,9 @@ def default_cell(c: Any, purpose: str) -> str:
     through = defaults.THROUGH.get(c.key)
     if defaults.cases(c.key, purpose) is not None:
         return BY_DATA + (f" ({QUESTION_TITLES[through]}, `{through}`)" if through else "")
+    if ref.wholly_unoffered(c, purpose):  # BEATS_PREDICT §9 ruling 5: the substitution's curves
+        return (f"not asked under {purpose} (the Router's gate): "
+                f"“{ref.cell(ref.unoffered(c)[purpose][1])}”")
     d = default_of(c, purpose)
     if c.key in catalog.NOT_ASKED and d["rung"] not in ("not_offered", "refused"):
         return (f"never asked, so never applied from the app (§1); posted to the API, the "
@@ -161,13 +168,14 @@ def node_label(text: str) -> str:
 
 def chain_relations(lens: str) -> list[tuple[Any, Any]]:
     """``(contract, relation)`` for every relation a lens's own method takes part in: declared by
-    it, or declared by any contract toward it."""
+    it, or declared by any contract toward it; a relation whose declaring method is offered under
+    none of its purposes is left out (``methods.relation_purposes``)."""
     own, _ = lens_contracts(lens)
     keys = {c.key for c in own}
     out = []
     for c in ref.ordered_contracts():
         for r in c.relations:
-            if c.key in keys or r.target in keys:
+            if (c.key in keys or r.target in keys) and ref.relation_purposes(c, r):
                 out.append((c, r))
     return out
 
@@ -223,7 +231,7 @@ def chain_table(lens: str) -> list[str]:
         if r.exits:
             says += " Exits: " + "; ".join(ref.cell(e) for e in r.exits) + "."
         lines.append(f"| `{c.key}` | {r.kind} | `{r.target}` | {fires} | "
-                     f"{', '.join(r.purposes)} | {says} |")
+                     f"{', '.join(ref.relation_purposes(c, r))} | {says} |")
     return lines
 
 
@@ -583,7 +591,9 @@ def render(lens: str, captures: dict[str, dict[str, Any] | None]) -> str:
         lines += ref.question_section(q, QUESTION_TITLES[q], level=4)
     lines += ["## 2 · How they chain", "",
               "Every relation this lens's own methods take part in: declared by them, or declared "
-              "by another method toward them (BLUEPRINT §13). Blue: this lens's methods; grey: "
+              "by another method toward them (BLUEPRINT §13), each with the purposes it fires "
+              "under: a purpose the app does not offer the declaring method under is left out, "
+              "and so is a relation that holds only there. Blue: this lens's methods; grey: "
               "other methods; orange: a named consequence (a state, a concern or a refusal, not "
               "a method). Solid: implies or precedes; dotted: enables, disables or conflicts; "
               "thick: invalidates.", ""]

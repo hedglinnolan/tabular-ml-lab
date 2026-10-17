@@ -2645,14 +2645,25 @@ register_kind(JoinFiles, "joins", key=lambda d: d.file,
 register_kind(ImportCodebook, "codebooks", value=lambda d: None,
               entries=lambda d: [*(reading_entry(i.reading, i.column, i.value) for i in d.items),
                                  ("codebooks", d.codebook, _codebook_spec(d))])
+# BEATS_PREDICT §9 ruling 5: under prediction neither the energy model nor the substitution is
+# asked (``interview._energy_applicability``), so an answer recorded under another goal, or posted
+# directly, stays in the record and is held while the goal is prediction, as an answer whose
+# premise has lapsed is: it shapes no fit and writes no methods sentence there, and stands again
+# once the goal is not prediction.
+def _asked_under_this_goal(decision: Any, slots: Mapping[str, Any]) -> bool:
+    return slots.get("purpose") != "prediction"
+
+
 register_kind(SetEnergyAdjustment, "energy_adjustment",
-              value=lambda d: EnergyAdjustment(**d.model_dump(exclude={"kind"})))
+              value=lambda d: EnergyAdjustment(**d.model_dump(exclude={"kind"})),
+              holds=_asked_under_this_goal)
 register_kind(SetExclusions, "exclusions")
 register_kind(SetMissing, "missing", value=lambda d: MissingSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetSplit, "split", value=lambda d: SplitSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SelectModels, "models")
 register_kind(SetSubstitution, "substitution",
-              value=lambda d: SubstitutionSpec(**d.model_dump(exclude={"kind"})))
+              value=lambda d: SubstitutionSpec(**d.model_dump(exclude={"kind"})),
+              holds=_asked_under_this_goal)
 register_kind(SetOrientation, "orientation")
 register_kind(SetEvent, "event", value=lambda d: d.level,
               holds=lambda d, slots: slots.get("target") == d.column)

@@ -1692,14 +1692,16 @@ def mixed_table(n: int = 300) -> pd.DataFrame:
 MIXED_TRUTH = {"code_or_count:age": "amount", "code_or_count:dsm_dx": "code",
                "role:alcohol_flag": "covariate", "code_or_count:alcohol": "amount",
                "unit:energy_kcal": "kcal", "day_count:energy_kcal": "1",
-               "sex_coding:sex": "female=2,male=1"}
+               "code_or_count:energy_kcal": "amount", "sex_coding:sex": "female=2,male=1"}
 
 
 def test_e1_every_exit_the_fits_ask_offers_runs_the_fit(tmp_path):
     """The models ask on a table that meets every reading (decimal codes, a skip gate, a whole-
     number age): the block confirmation, each role's guess and its alternatives, each code-or-
-    amount answer. Each runs the design and the fit to the end, and `energy_kcal` (left out by
-    "none") and the 1/2 `sex` (one indicator either way) are not asked."""
+    amount answer. Each runs the design and the fit to the end. Under Predict no energy model is
+    asked (BEATS_PREDICT §9 ruling 5), so total energy enters as recorded and `energy_kcal`'s
+    code-or-amount reading is asked with the others; the 1/2 `sex` (one indicator either way) is
+    not asked."""
     plan = answers("sbp", ["dietary"], purpose={"kind": "set_purpose", "purpose": "prediction"},
                    missing={"kind": "set_missing", "strategy": "impute"})
     with local_server(tmp_path / "home") as client:
@@ -1711,7 +1713,7 @@ def test_e1_every_exit_the_fits_ask_offers_runs_the_fit(tmp_path):
     listed = {(e["decision"].get("reading"), e["decision"].get("column"))
               for e in exits if e["decision"]["kind"] == "confirm_reading"}
     assert ("code_or_count", "dsm_dx") in listed and ("role", "alcohol_flag") in listed, labels
-    assert ("code_or_count", "energy_kcal") not in listed and ("code_or_count", "sex") not in listed
+    assert ("code_or_count", "energy_kcal") in listed and ("code_or_count", "sex") not in listed
     values = {(e["decision"]["column"], e["decision"]["value"]) for e in exits
               if e["decision"]["kind"] == "confirm_reading"}
     assert {("dsm_dx", "code"), ("dsm_dx", "amount"), ("alcohol_flag", "flag"),
