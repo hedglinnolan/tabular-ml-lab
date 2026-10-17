@@ -19,17 +19,39 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from turbotab.core import materiality, quest, surfacing, sweep
-from turbotab.core.decisions import ProjectState
+from turbotab.core import materiality, quest, surfacing, sweep, voice
+from turbotab.core.decisions import (
+    DecisionLog,
+    ProjectState,
+    SelectModels,
+    SetEnergyAdjustment,
+    SetLens,
+    SetMissing,
+    SetPurpose,
+    SetRoles,
+    SetSplit,
+    SetSubstitution,
+    SetTarget,
+    SetTask,
+)
 from turbotab.core.interview import (
     ENERGY_UNDER_PREDICTION,
     NOT_ASKED,
     SUBSTITUTION_UNDER_PREDICTION,
+    _live_writer,
     applicability,
     route,
 )
+from turbotab.core.models.pipeline import (
+    design_spec,
+    predictors_from_roles,
+    shared_steps,
+    transformer,
+)
+from turbotab.core.provenance import methods_text
 from turbotab.core.quest import Facts
 from turbotab.core.repairs import annotate
+from turbotab.core.tests import modeling_fixtures as mf
 
 ONE_ROW = {"grain": "one_row_per_unit"}
 # Total energy beside three nutrients that carry it, as the dietary lens proposes them today
@@ -195,3 +217,145 @@ def test_the_quest_log_and_the_triage_carry_the_energy_finding_only_under_estima
         # triage to act on there, so the held-out rows do not wait on it
         assert ENERGY_FINDING not in lines
         assert ENERGY_FINDING not in triaged
+
+
+# ── an answer recorded under Estimate, then the goal changed to Predict (option a') ──────────
+#
+# A direct post can still record the energy model or the substitution, and an answer recorded
+# under Estimate stays in the record when the goal changes. Under Predict such an answer is held,
+# as an answer whose premise has lapsed is (``decisions.register_kind(..., holds=)``): it stays in
+# the record, shapes no fit and writes no methods sentence, and applies again once the goal is
+# Estimate. The truth is a second project built here with the same answers but that one: under
+# Predict the two are the same project.
+
+PROJECT = (SetLens(lenses=["dietary"]), SetTarget(column="glucose"),
+           SetTask(column="glucose", task="regression"), SetRoles(roles=mf.NHANES_ROLES),
+           SetMissing(strategy="complete_case"), SetSplit(holdout=0.2, seed=0, folds=5),
+           SelectModels(models=["linear"]))
+ENERGY = SetEnergyAdjustment(method="residual", energy_column="kcal",
+                             nutrients=["protein", "carb", "fat_total"])
+SWAP = SetSubstitution(donor="fat_total", recipient="carb", step_kcal=100.0)
+ESTIMATE, PREDICT = SetPurpose(purpose="inference"), SetPurpose(purpose="prediction")
+
+
+def _project(folder, *answers) -> DecisionLog:
+    log = DecisionLog(folder / "decisions.jsonl")
+    for decision in (*PROJECT, *answers):
+        _say(log, decision)
+    return log
+
+
+def _say(log: DecisionLog, decision) -> None:
+    log.append(decision, sentence=lambda d, before: voice.sentence_for(d, before, None))
+
+
+@pytest.fixture(scope="module")
+def nhanes() -> pd.DataFrame:
+    return mf.nhanes_like(300, seed=3)
+
+
+def _matrix(state: ProjectState, frame: pd.DataFrame) -> pd.DataFrame:
+    """The columns the fit's models are given: the design's shared steps (the fill, the energy
+    model, the forms, the levels) on the roles' predictors, as the design stage builds them."""
+    spec = design_spec(state, frame, predictors_from_roles(state.roles, state.target))
+    return transformer(shared_steps(spec)).fit_transform(frame[spec.inputs])
+
+
+def _methods(log: DecisionLog) -> list[tuple[str, str, bool]]:
+    return [(line.kind, line.sentence, line.in_force)
+            for line in methods_text(log.records()).lines]
+
+
+def _routed(log: DecisionLog) -> dict:
+    return {s.key: s for s in route(log.state(), FRESH, records=log.records())}
+
+
+def _writer(log: DecisionLog, slot: str) -> str | None:
+    return _live_writer(log.records(), log.state()).get(slot)
+
+
+def test_an_energy_answer_recorded_under_estimate_is_held_under_predict_and_applies_again(
+        tmp_path, nhanes):
+    switched = _project(tmp_path / "switched", ESTIMATE, ENERGY, PREDICT)
+    never = _project(tmp_path / "never", ESTIMATE, PREDICT)
+    recorded = next(r for r in switched.records() if r.decision.kind == "set_energy_adjustment")
+    # the answer stays in the record, and holds nothing under Predict
+    state = switched.state()
+    assert state.purpose == "prediction" and state.energy_adjustment is None
+    assert _writer(switched, "energy_adjustment") is None
+    step = _routed(switched)["energy_adjustment"]
+    assert (step.status, step.decision_id) == ("not_applicable", None)
+    # the fit's predictors are the roles': total energy beside the nutrients, each as recorded,
+    # as in the project that never had an energy answer
+    predict = _matrix(state, nhanes)
+    pd.testing.assert_frame_equal(predict, _matrix(never.state(), nhanes))
+    for column in ("kcal", "protein", "carb", "fat_total"):
+        np.testing.assert_array_equal(predict[column].to_numpy(), nhanes[column].to_numpy())
+    # the methods are the other project's, word for word: no energy model is stated
+    assert _methods(switched) == _methods(never)
+    assert "set_energy_adjustment" not in {kind for kind, _, _ in _methods(switched)}
+
+    # back under Estimate the answer applies again: as in the project whose goal never changed
+    _say(switched, ESTIMATE)
+    before = _project(tmp_path / "before", ESTIMATE, ENERGY)
+    back = switched.state()
+    assert back.energy_adjustment is not None
+    assert back.energy_adjustment == before.state().energy_adjustment
+    assert _writer(switched, "energy_adjustment") == recorded.id
+    step = _routed(switched)["energy_adjustment"]
+    assert (step.status, step.decision_id) == ("answered", recorded.id)
+    estimate = _matrix(back, nhanes)
+    pd.testing.assert_frame_equal(estimate, _matrix(before.state(), nhanes))
+    # the guard is silent here: each nutrient reaches the models as its energy residual, in
+    # place of its recorded values, with total energy beside it
+    assert {"protein_adj", "carb_adj", "fat_total_adj", "kcal"} <= set(estimate.columns)
+    assert not {"protein", "carb", "fat_total"} & set(estimate.columns)
+    assert not np.allclose(estimate["protein_adj"].to_numpy(), nhanes["protein"].to_numpy())
+    said = [(sentence, in_force) for kind, sentence, in_force in _methods(switched)
+            if kind == "set_energy_adjustment"]
+    assert said == [(recorded.sentence, True)] and recorded.sentence
+    assert said == [(sentence, in_force) for kind, sentence, in_force in _methods(before)
+                    if kind == "set_energy_adjustment"]
+
+
+def test_a_substitution_recorded_under_estimate_is_held_under_predict_and_applies_again(
+        tmp_path, nhanes):
+    switched = _project(tmp_path / "switched", ESTIMATE, SWAP, PREDICT)
+    never = _project(tmp_path / "never", ESTIMATE, PREDICT)
+    recorded = next(r for r in switched.records() if r.decision.kind == "set_substitution")
+    state = switched.state()
+    assert state.purpose == "prediction" and state.substitution is None
+    assert _writer(switched, "substitution") is None
+    # no curve is drawn: the substitution stage waits on its answer, as with none recorded
+    assert surfacing.blocked(state)["substitution"] == ("substitution",)
+    assert surfacing.blocked(state) == surfacing.blocked(never.state())
+    pd.testing.assert_frame_equal(_matrix(state, nhanes), _matrix(never.state(), nhanes))
+    assert _methods(switched) == _methods(never)
+    assert "set_substitution" not in {kind for kind, _, _ in _methods(switched)}
+
+    _say(switched, ESTIMATE)
+    before = _project(tmp_path / "before", ESTIMATE, SWAP)
+    back = switched.state()
+    assert back.substitution is not None and back.substitution == before.state().substitution
+    assert _writer(switched, "substitution") == recorded.id
+    # the guard is silent here: the curve's stage can compute again
+    assert surfacing.blocked(back)["substitution"] == ()
+    said = [(sentence, in_force) for kind, sentence, in_force in _methods(switched)
+            if kind == "set_substitution"]
+    assert said == [(recorded.sentence, True)] and recorded.sentence
+
+
+def test_an_answer_recorded_under_predict_holds_nothing_and_applies_once_the_goal_is_estimate(
+        tmp_path):
+    # a direct post under Predict is recorded, held from the start, and stands under Estimate
+    log = _project(tmp_path, PREDICT, ENERGY, SWAP)
+    assert len(log.records()) == len(PROJECT) + 3
+    state = log.state()
+    assert state.energy_adjustment is None and state.substitution is None
+    _say(log, ESTIMATE)
+    state = log.state()
+    assert state.energy_adjustment.method == "residual" and state.substitution.donor == "fat_total"
+    # with no goal answered yet, an answer stands, as before the ruling
+    bare = _project(tmp_path / "bare", ENERGY, SWAP).state()
+    assert bare.purpose is None
+    assert bare.energy_adjustment is not None and bare.substitution is not None

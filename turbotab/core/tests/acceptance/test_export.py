@@ -984,7 +984,6 @@ def diet(tmp_path_factory) -> dict[str, Any]:
         # prediction: a held-out set drawn, the final model declared and then the rows opened
         drive = _open_diet(client, csv, "prediction")
         drive.answer("split", {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5})
-        drive.answer("energy_adjustment", {"kind": "set_energy_adjustment", "method": "none"})
         drive.answer("models", {"kind": "select_models", "models": ["linear", "elastic_net"]})
         _wait_fresh(drive, ("cohort", "design", "fit"))
         assert drive.press_fit()  # Results opens on Fit (P0.8): the scores, the held-out rows sealed
@@ -1064,7 +1063,7 @@ d <- read.csv(diet_csv, stringsAsFactors = FALSE)
 s <- read.csv(sealed_csv)
 d$y <- as.integer(d$dm == "yes")
 held <- d$pid %in% s$pid
-m <- glm(y ~ age + sex + smoking + activity + bmi + protein_g, family = binomial(),
+m <- glm(y ~ age + sex + smoking + activity + bmi + protein_g + kcal, family = binomial(),
          data = d[!held, ], control = glm.control(epsilon = 1e-14, maxit = 100))
 p <- predict(m, newdata = d[held, ], type = "response")
 y <- d$y[held]
@@ -1079,8 +1078,9 @@ out(list(log_loss = -mean(y * log(p) + (1 - y) * log(1 - p)),
 @needs_r
 def test_diet_the_held_out_result_is_r_s_glm_scored_on_the_sealed_rows(diet, tmp_path):
     """The one row labeled the result under a holdout is the declared family's held-out score: R's
-    ``glm`` (logistic regression, unpenalized, on the predictors the roles declare, energy left
-    out as "no energy adjustment" says) fitted on the rows not held out and scored on the sealed
+    ``glm`` (logistic regression, unpenalized, on the predictors the roles declare, total energy
+    among them as recorded, since under Predict no energy model is asked: BEATS_PREDICT §9 ruling
+    5) fitted on the rows not held out and scored on the sealed
     ones gives the same log loss, and its rank-sum AUC the same AUC, independently of the code
     under test. The held-out rows are the split stage's sealed frame's, by row position."""
     fit = diet["fit"]

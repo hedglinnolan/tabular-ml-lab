@@ -255,3 +255,20 @@ def test_no_step_waits_on_a_fit_that_failed_or_was_stopped():
     substitution = _by_key(route(ProjectState(**{**base, **ESTIMATE}), _stages(fit="error"),
                                  NO_FORMS))["substitution"]
     assert substitution.status == "open" and substitution.waiting_on == []
+
+
+def test_a_conditional_answer_whose_condition_does_not_hold_is_no_questions_writer():
+    """A conditional answer stands only while its condition holds (``register_kind(..., holds=)``),
+    so the record named as a slot's writer is the one whose write stands, as the fold reads the
+    log: a survey answer given for the other goal is not the survey's writer, and becomes it once
+    the goal is the one it was given for. The energy model and the substitution under Predict are
+    in ``test_energy_questions_under_predict.py``."""
+    from turbotab.core.decisions import fold
+    from turbotab.core.interview import _live_writer
+
+    records = [_record(1, {"kind": "set_purpose", "purpose": "prediction"}),
+               _record(2, {"kind": "set_survey", "estimand": "sample", "goal": "prediction"}),
+               _record(3, {"kind": "set_survey", "estimand": "sample", "goal": "inference"})]
+    assert _live_writer(records, fold(records))["survey"] == "r2"
+    records.append(_record(4, {"kind": "set_purpose", "purpose": "inference"}))
+    assert _live_writer(records, fold(records))["survey"] == "r3"
