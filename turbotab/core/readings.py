@@ -1395,6 +1395,25 @@ def role_words(role: str | None, purpose: str | None = None) -> str:
     return words.get(str(role), str(role))
 
 
+# The same finding, in a role's evidence: two of the roles stage's high-confidence reasons
+# (``stages.rows.propose_roles``) say why a column reads as its role in Estimate's words, a
+# nutrient "what you study" and a person's characteristic "usually adjusted for rather than
+# studied". Under Predict a reading the values settled keeps what the values showed and leaves the
+# study clause out; the stage's reasons stay as they are. The tests hold these clauses to the
+# stage's own reasons (``tests/test_estimate_words_under_predict.py``), so a reworded reason fails.
+_STUDY_CLAUSES = ((": what you study;", ";"), (", usually adjusted for rather than studied.", "."))
+
+
+def role_evidence(reason: str, purpose: str | None = None) -> str:
+    """The roles stage's ``reason`` for a role, said under the declared ``purpose``: under
+    prediction without its study clause (:data:`_STUDY_CLAUSES`), else as the stage said it."""
+    if purpose != "prediction":
+        return reason
+    for estimate, predict in _STUDY_CLAUSES:
+        reason = reason.replace(estimate, predict)
+    return reason
+
+
 def proposals_of(artifact: Any) -> list[dict[str, Any]]:
     """The roles stage's proposals from its artifact (a Bundle, a dict, or None)."""
     data = getattr(artifact, "data", artifact)
@@ -2833,7 +2852,7 @@ def read_from_data(state: Any, *, roles: Any = None, target_info: Any = None,
             words = role_words(alt, purpose)
             if words != said and words not in {w for _, w in changes}:
                 changes.append((alt, words))
-        add("role", column, role, f"is {said}", str(p.get("reason") or ""),
+        add("role", column, role, f"is {said}", role_evidence(str(p.get("reason") or ""), purpose),
             [confirm_exit("role", column, alt, f"`{column}` is {words}") for alt, words in changes])
     ti = getattr(target_info, "data", target_info)
     target = _get(state, "target")
@@ -3538,7 +3557,8 @@ __all__ = [
     "confirmation", "confirmed_codes", "day_count_candidates", "day_count_reading",
     "is_settled", "key", "listing", "names_several_days",
     "outcome_unit_reading", "predictor_columns", "predictors_or_ask", "proposals_of", "reading",
-    "repeat_kind_reading", "rode_along", "stated_reading", "task_reading", "role_reading", "role_words", "settled",
+    "repeat_kind_reading", "rode_along", "stated_reading", "task_reading", "role_evidence",
+    "role_reading", "role_words", "settled",
     "settled_columns", "settled_roles", "stated_outcome_unit", "time_column_reading",
     "unsettled", "unsettled_codes", "unsettled_factors", "unsettled_message", "unsettled_roles",
     "KcalPerUnit", "ROLE_ALTERNATIVES", "energy_plan", "factor_exits", "factor_in_grams",

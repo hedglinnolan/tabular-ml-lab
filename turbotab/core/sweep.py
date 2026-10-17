@@ -27,9 +27,10 @@ recorded and visible, in a Confirm sweep or For the record, never quietly.
   every open noticing arrives with the engine's recommended disposition and its reason: "doesn't
   change your numbers here" (a supplement line), "could bias the estimate" (a limitation sentence)
   or "act on it" (its decision). Under Predict, day-to-day noise in a predictor is For the record:
-  the held-out rows carry the noise the model meets in use, so it biases no score
-  (:data:`DILUTION`). Blockers (a critical finding: it blocks or refuses part of the
-  analysis) must be resolved before the triage is confirmed. The person may change any other line;
+  the rows the model is scored on (the held-out rows, or with none held out the cross-validated
+  ones) carry the noise the model meets in use, so it biases no score (:data:`DILUTION`).
+  Blockers (a critical finding: it blocks or refuses part of the analysis) must be resolved before
+  the triage is confirmed. The person may change any other line;
   the one ``confirm_sweep`` record (``sweep="noticings"``) holds every disposition, each with the
   recommendation and reason it was recorded on (``SweptLine.basis``), and a noticing disposed of
   there is answered by it in the quest log while the triage still states them so: one whose
@@ -621,12 +622,16 @@ def _held_noticings(state: Any) -> dict[str, SweptLine]:
 
 
 # W1-R (the walkthrough of 2026-10-17, finding 3a): day-to-day noise in a predictor is no bias in a
-# held-out score. Regression dilution weakens a slope on the noisy measure (the attenuation
-# 1 − λ, Hutcheon et al. 2010), which biases an estimate; a prediction model is fit and scored on
-# that same noisy measure, so the held-out rows carry the noise the model meets in use and the
-# score is honest. The noise limits how much the column can predict, and nothing under Predict
-# corrects for it (the regression calibration serves Estimate alone), so under Predict the
-# triage states it For the record: it changes no number and owes no limitation sentence.
+# prediction model's score. Regression dilution weakens a slope on the noisy measure (the
+# attenuation 1 − λ, Hutcheon et al. 2010), which biases an estimate; a prediction model is fit and
+# scored on that same noisy measure, so the rows it is scored on carry the noise the model meets in
+# use and the score is honest. The sentence names those rows as they stand
+# (:func:`noise_for_the_record`): the held-out rows where the split holds some out, else the rows
+# the model is scored on (cross-validated with none held out, the BBC-CV case; with the split
+# unanswered no row is drawn yet). The noise limits how much the column can predict,
+# and nothing under Predict corrects for it (the regression calibration serves Estimate alone), so
+# under Predict the triage states it For the record: it changes no number and owes no limitation
+# sentence.
 DILUTION = "attenuation"
 
 
@@ -636,14 +641,24 @@ def predicts_through_noise(n: Noticing, state: Any) -> bool:
             and _get(state, "purpose") == "prediction")
 
 
-def noise_for_the_record(n: Noticing) -> str:
+def _rows_held_out(state: Any) -> bool:
+    """Whether the split answer holds rows out (none with the split unanswered: no row is drawn)."""
+    split = _get(state, "split")
+    return split is not None and float(_get(split, "holdout") or 0) > 0
+
+
+def noise_for_the_record(n: Noticing, state: Any = None) -> str:
     """Under Predict, why day-to-day noise in ``n``'s column changes no score (:data:`DILUTION`),
-    with the reliability λ where the replicate recalls measure it (``n.measure``)."""
+    with the reliability λ where the replicate recalls measure it (``n.measure``). The rows that
+    carry it are the held-out rows where ``state``'s split holds some out, else the rows the model
+    is scored on (the cross-validated ones with none held out; with the split unanswered, no row
+    is drawn yet)."""
     column = _tick(n.subject)
     measured = f" (its reliability λ = {n.measure:.2f})" if n.measure is not None else ""
-    return (f"The held-out rows carry the same day-to-day noise in {column}{measured} that the "
-            f"model meets in use, where {column} is measured the same way, so the score is "
-            f"honest; the noise limits how much {column} can predict.")
+    rows = "The held-out rows" if _rows_held_out(state) else "The rows the model is scored on"
+    return (f"{rows} carry the same day-to-day noise in {column}{measured} that the model meets in "
+            f"use, where {column} is measured the same way, so the score is honest; the noise "
+            f"limits how much {column} can predict.")
 
 
 def _noticing_item(n: Noticing, state: Any, held: Mapping[str, SweptLine], changed: list[str]
@@ -652,7 +667,7 @@ def _noticing_item(n: Noticing, state: Any, held: Mapping[str, SweptLine], chang
     of its predicted movement, and the one recorded while it stands. Under Predict, day-to-day
     noise in a predictor is For the record, whatever its band (:data:`DILUTION`)."""
     noise = predicts_through_noise(n, state)
-    disposition, reason, owed = (("no_change", noise_for_the_record(n), False) if noise else
+    disposition, reason, owed = (("no_change", noise_for_the_record(n, state), False) if noise else
                                  recommend_noticing(n, purpose=_get(state, "purpose")))
     stands = _stands(held.get(n.thread), (disposition, n.blocker, reason))
     if n.thread in held and not stands:

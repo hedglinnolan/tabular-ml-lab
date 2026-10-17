@@ -3,10 +3,11 @@ nothing that only an Estimate says, and under Estimate it says what it said befo
 
 * **3a, day-to-day noise.** Regression dilution weakens a slope on a noisy measure by ``1 − λ``
   (Hutcheon et al. 2010), which biases an estimate. A prediction model is fit and scored on that same
-  noisy measure, so the held-out rows carry the noise the model meets in use and the score is
-  honest. The noise limits how much the column can predict. Under Predict the triage therefore
-  records it For the record: it changes no number, and no limitation is drafted. Under Estimate it
-  could bias the estimate, as before.
+  noisy measure, so the rows it is scored on carry the noise the model meets in use and the score is
+  honest. The sentence names them "the held-out rows" where the split holds some out, else "the
+  rows the model is scored on" (cross-validated with none held out). The noise limits how much
+  the column can predict. Under Predict the triage therefore records it For the record: it changes
+  no number, and no limitation is drafted. Under Estimate it could bias the estimate, as before.
 * **3b, the design's concerns.** What a total's coefficient means beside its parts, a substitution
   through it, two columns of one nutrient that may overlap in a swap, and fiber's energy counted
   twice are concerns about coefficients and substitutions. Under Predict no coefficient is
@@ -14,8 +15,9 @@ nothing that only an Estimate says, and under Estimate it says what it said befo
   that sum to 100% stay: no linear model can estimate all of them under either goal.
 * **3c, the role words.** Under Predict no column is studied and nothing is adjusted for, so an
   exposure and a covariate are each "a predictor" (BEATS_PREDICT C1: a predictor is the engine's
-  covariate), and the roles card names no study factor. The engine's roles stay as they are, and
-  the words under Estimate are unchanged.
+  covariate), a reading the values settled carries the roles stage's own evidence without its study
+  clause, and the roles card names no study factor. The engine's roles stay as they are, and the
+  words under Estimate are unchanged.
 
 Every expectation is from construction: the tables, the answers and the nesting are built here. The
 reliability λ is the balanced one-way random-effects estimate (method of moments), written out here.
@@ -29,9 +31,11 @@ import pytest
 
 from turbotab.core import materiality as M
 from turbotab.core import quest, readings, sweep
-from turbotab.core.decisions import ProjectState
+from turbotab.core.decisions import ProjectState, SplitSpec
 from turbotab.core.models.pipeline import design_spec, warnings_for
+from turbotab.core.stages.rows import roles_stage
 from turbotab.core.teaching.content import entries_now
+from turbotab.core.tests.stage_harness import Ingested
 from turbotab.core.tests.test_stage_registry import steps_until
 
 DAYS = "diet-day-to-day-variance"
@@ -87,8 +91,11 @@ def _triaged(state: ProjectState, noticing: M.Noticing) -> sweep.TriageItem:
 # ── 3a · day-to-day noise ────────────────────────────────────────────────────
 
 
+HELD_OUT = SplitSpec(holdout=0.2, seed=0)
+
+
 def test_under_predict_day_to_day_noise_is_for_the_record_and_biases_no_score():
-    state = _state("prediction")
+    state = _state("prediction", split=HELD_OUT)
     noticing = M.variance_noticing(state, _one_recall())
     assert noticing is not None and noticing.predicted.not_measurable  # one recall day
     item = _triaged(state, noticing)
@@ -101,6 +108,23 @@ def test_under_predict_day_to_day_noise_is_for_the_record_and_biases_no_score():
     # no movement of the score is measured: the attenuation bounds a slope, not a score
     assert (item.band, item.measure, item.calibrated) == (None, None, None)
     assert item.summary == "Part of `protein_g`'s spread is day-to-day noise"
+
+
+@pytest.mark.parametrize("split", [SplitSpec(holdout=0.0, seed=0, folds=5), None],
+                         ids=["no rows held out", "the split unanswered"])
+def test_under_predict_with_no_rows_held_out_the_noise_line_names_the_rows_the_model_is_scored_on(
+        split):
+    """With no rows held out the score is cross-validated (the BBC-CV case), and with the split
+    unanswered no row is drawn yet: either way no held-out row exists to carry the noise, so the
+    line names the rows the model is scored on, which carry it under any validation."""
+    state = _state("prediction", split=split)
+    item = _triaged(state, M.variance_noticing(state, _one_recall()))
+    assert (item.recommended, item.label, item.limitation) == ("no_change", "For the record", False)
+    assert item.reason == ("The rows the model is scored on carry the same day-to-day noise in "
+                           "`protein_g` that the model meets in use, where `protein_g` is "
+                           "measured the same way, so the score is honest; the noise limits how "
+                           "much `protein_g` can predict.")
+    assert "held-out" not in item.reason
 
 
 def test_under_predict_measured_noise_says_its_reliability_and_is_never_acted_on():
@@ -256,6 +280,72 @@ def test_under_estimate_a_role_read_from_the_values_says_what_you_study():
             "`protein_g` is a covariate", "`protein_g` is left out of the models"]
         assert [e["label"] for e in items["age"]["change"]] == [
             "`age` is what you study", "`age` is left out of the models"]
+
+
+def _diet_table(tmp_path) -> tuple[pd.DataFrame, object]:
+    """A dietary table built here: three macronutrients whose Atwater energy (FAO: 4/4/9 kcal/g)
+    plus noise is the energy column, an age from 20 to 79 and one identifier a row."""
+    rng = np.random.default_rng(11)
+    n = 300
+    p, c, f = rng.gamma(9, 9, n), rng.gamma(9, 30, n), rng.gamma(9, 8, n)
+    frame = pd.DataFrame({"participant_id": np.arange(1, n + 1), "age": rng.integers(20, 80, n),
+                          "protein_g": p.round(1), "carbohydrate_g": c.round(1),
+                          "fat_g": f.round(1),
+                          "energy_kcal": (4 * p + 4 * c + 9 * f + rng.normal(0, 40, n)).round(0),
+                          "hba1c": rng.normal(5.6, 0.5, n).round(2)})
+    path = tmp_path / "diet.csv"
+    frame.to_csv(path, index=False)
+    return frame, path
+
+
+def _values_readings(tmp_path, purpose: str | None) -> tuple[pd.DataFrame, dict, dict]:
+    """The roles stage's own proposals on :func:`_diet_table` under ``purpose``, recorded as
+    proposed, and the readings the values settled from them: column → proposal, column → item."""
+    frame, path = _diet_table(tmp_path)
+    out = Ingested(path, tmp_path / "work").run(
+        roles_stage, ProjectState(lens=["dietary"], target="hba1c", purpose=purpose))
+    proposals = {p["column"]: p for p in out["columns"]}
+    state = ProjectState(lens=["dietary"], target="hba1c", purpose=purpose,
+                         roles={c: p["proposed"] for c, p in proposals.items()})
+    items = {i["column"]: i for i in readings.read_from_data(state, roles=out)}
+    return frame, proposals, items
+
+
+def test_under_predict_the_values_readings_say_the_roles_stages_evidence_with_no_study_word(
+        tmp_path):
+    """W1-R finding 3c on the engine's own reasons: the roles stage says a nutrient is "what you
+    study" and an age is "usually adjusted for rather than studied". Under Predict the reading
+    keeps what the values showed (the r is numpy's, on the table built here) and leaves the study
+    clause out."""
+    frame, proposals, items = _values_readings(tmp_path, "prediction")
+    assert {c: proposals[c]["confidence"] for c in ("age", "carbohydrate_g", "fat_g")} == \
+        {"age": "high", "carbohydrate_g": "high", "fat_g": "high"}
+    assert items["age"]["evidence"] == "A person's characteristic."
+    for c in ("carbohydrate_g", "fat_g"):
+        r = float(np.corrcoef(frame[c], frame["energy_kcal"])[0, 1])
+        assert items[c]["evidence"] == (f"A nutrient that carries energy; it rises with total "
+                                        f"energy (r = {r:.2f})."), c
+    assert items["protein_g"]["evidence"].startswith("A nutrient that carries energy; its energy "
+                                                     "and the others' add up to `energy_kcal`")
+    for c in ("age", "protein_g", "carbohydrate_g", "fat_g"):
+        assert items[c]["words"] == "is a predictor", c
+    said = readings.read_from_values_sentence(list(items.values())).lower()
+    for word in (*STUDY_WORDS, "studied", "adjusted for", "covariate"):
+        assert word not in said, word
+
+
+@pytest.mark.parametrize("purpose", ["inference", None])
+def test_under_estimate_the_values_readings_say_the_roles_stages_evidence_as_it_is(tmp_path,
+                                                                                   purpose):
+    frame, proposals, items = _values_readings(tmp_path, purpose)
+    for c in ("age", "protein_g", "carbohydrate_g", "fat_g", "energy_kcal", "participant_id"):
+        assert items[c]["evidence"] == proposals[c]["reason"], c
+    # today's words, as the roles stage says them
+    assert items["age"]["evidence"] == "A person's characteristic, usually adjusted for rather " \
+                                       "than studied."
+    r = float(np.corrcoef(frame["fat_g"], frame["energy_kcal"])[0, 1])
+    assert items["fat_g"]["evidence"] == (f"A nutrient that carries energy: what you study; it "
+                                          f"rises with total energy (r = {r:.2f}).")
 
 
 def test_under_predict_a_left_out_column_offers_one_way_into_the_models():
