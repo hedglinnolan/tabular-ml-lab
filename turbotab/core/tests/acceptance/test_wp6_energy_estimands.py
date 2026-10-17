@@ -539,7 +539,8 @@ def test_4b_fiber_beside_carbohydrate_by_difference_is_warned(tmp_path):
     Carbohydrate by difference (USDA's, and NHANES's total) already holds fiber, so fiber's
     energy counts twice in any kcal accounting. Reference: the design warnings of two otherwise
     identical tables, one with a total carbohydrate column beside fiber and one with sugars
-    (which are not carbohydrate by difference) beside fiber.
+    (which are not carbohydrate by difference) beside fiber. Under Predict no kcal is accounted
+    and nothing is substituted, so the same table says nothing of it (W1-R finding 3b).
     """
     rng = np.random.default_rng(19)
     n = 300
@@ -550,14 +551,16 @@ def test_4b_fiber_beside_carbohydrate_by_difference_is_warned(tmp_path):
     roles = {"fiber_g": "exposure", "carb_g": "exposure", "fat_g": "exposure", "energy_kcal": "energy"}
     adjustment = EnergyAdjustment(method="standard", energy_column="energy_kcal",
                                   nutrients=["fiber_g", "carb_g", "fat_g"])
-    warned = _stages(base, tmp_path / "carb", roles, adjustment, purpose="prediction")
+    warned = _stages(base, tmp_path / "carb", roles, adjustment)
     assert any(w.startswith("fiber_g sits beside carb_g") and "fiber's energy counts twice" in w
                for w in warned["design"]["warnings"]), warned["design"]["warnings"]
+    predicted = _stages(base, tmp_path / "carb-predict", roles, adjustment, purpose="prediction")
+    assert not any("counts twice" in w for w in predicted["design"]["warnings"])
 
     sugars = base.rename(columns={"carb_g": "sugar_g"})
     roles2 = {("sugar_g" if c == "carb_g" else c): r for c, r in roles.items()}
     adjustment2 = adjustment.model_copy(update={"nutrients": ["fiber_g", "sugar_g", "fat_g"]})
-    quiet = _stages(sugars, tmp_path / "sugar", roles2, adjustment2, purpose="prediction")
+    quiet = _stages(sugars, tmp_path / "sugar", roles2, adjustment2)
     assert not any("counts twice" in w for w in quiet["design"]["warnings"])
 
 

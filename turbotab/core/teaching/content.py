@@ -759,6 +759,33 @@ ROLES = {
     "evidence": None,
 }
 
+# W1-R (the walkthrough of 2026-10-17, finding 3c; BEATS_PREDICT P3's wording, pulled forward):
+# under Predict no column is studied and nothing is adjusted for, so the roles card says
+# "predictors" and names no study factor, and no energy model reads the roles (BEATS_PREDICT §9
+# ruling 5). The roles themselves stay as they are, each with a label of its own (the card's
+# buttons are named by them).
+_PREDICT_OPTIONS = {
+    "exposure": option("exposure", "Predictor", "A column the model reads to predict the outcome."),
+    "energy": option("energy", "Energy",
+                     "Total energy intake; enters the models as a predictor like any other."),
+    "covariate": option("covariate", "Covariate",
+                        "A predictor such as age or sex; enters the models like any other."),
+}
+ROLES_UNDER_PREDICT = {
+    **ROLES,
+    "one_liner": "Only predictors, covariates and the energy column enter the models; every other "
+                 "role stays out of them.",
+    "consumer": "The participant flow, the split's grouping and the model matrix read it.",
+    "options": [_PREDICT_OPTIONS.get(o["value"], o) for o in ROLES["options"]],
+    "terms": [
+        term("predictor", "A column the model reads to predict the outcome, such as a nutrient "
+                          "intake or age."),
+        term("covariate", "A predictor such as age or sex; under prediction it enters the model "
+                          "like any other."),
+        *(t for t in ROLES["terms"] if t["term"] == "identifier"),
+    ],
+}
+
 SURVEY = {
     "key": "survey",
     "title": "Whose estimate it is",
@@ -1644,6 +1671,10 @@ ENTRIES = [LENS, ORIENTATION, REPAIRS, TARGET, EVENT, TASK, FOLLOW_UP, DESIGN, P
            MODIFICATION, CAUSAL, MODELS, SUBSTITUTION, OPEN_SEAL]
 
 
-def entries_now() -> list[dict[str, Any]]:
-    """:data:`ENTRIES`, with the models card's options read from the registry as it stands now."""
-    return [dict(e, options=family_options()) if e is MODELS else e for e in ENTRIES]
+def entries_now(purpose: str | None = None) -> list[dict[str, Any]]:
+    """:data:`ENTRIES`, with the models card's options read from the registry as it stands now;
+    under prediction (``purpose``) the roles card is :data:`ROLES_UNDER_PREDICT`. None: unanswered,
+    the cards as they stand under Estimate."""
+    roles = ROLES_UNDER_PREDICT if purpose == "prediction" else ROLES
+    return [dict(e, options=family_options()) if e is MODELS else roles if e is ROLES else e
+            for e in ENTRIES]

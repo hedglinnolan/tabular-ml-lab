@@ -26,7 +26,9 @@ recorded and visible, in a Confirm sweep or For the record, never quietly.
   under an unanswered purpose, the strictest case; before the held-out rows open under Predict),
   every open noticing arrives with the engine's recommended disposition and its reason: "doesn't
   change your numbers here" (a supplement line), "could bias the estimate" (a limitation sentence)
-  or "act on it" (its decision). Blockers (a critical finding: it blocks or refuses part of the
+  or "act on it" (its decision). Under Predict, day-to-day noise in a predictor is For the record:
+  the held-out rows carry the noise the model meets in use, so it biases no score
+  (:data:`DILUTION`). Blockers (a critical finding: it blocks or refuses part of the
   analysis) must be resolved before the triage is confirmed. The person may change any other line;
   the one ``confirm_sweep`` record (``sweep="noticings"``) holds every disposition, each with the
   recommendation and reason it was recorded on (``SweptLine.basis``), and a noticing disposed of
@@ -618,11 +620,40 @@ def _held_noticings(state: Any) -> dict[str, SweptLine]:
     return {l.key: l for l in held.lines} if held is not None else {}
 
 
+# W1-R (the walkthrough of 2026-10-17, finding 3a): day-to-day noise in a predictor is no bias in a
+# held-out score. Regression dilution weakens a slope on the noisy measure (the attenuation
+# 1 − λ, Hutcheon et al. 2010), which biases an estimate; a prediction model is fit and scored on
+# that same noisy measure, so the held-out rows carry the noise the model meets in use and the
+# score is honest. The noise limits how much the column can predict, and nothing under Predict
+# corrects for it (the regression calibration serves Estimate alone), so under Predict the
+# triage states it For the record: it changes no number and owes no limitation sentence.
+DILUTION = "attenuation"
+
+
+def predicts_through_noise(n: Noticing, state: Any) -> bool:
+    """Whether ``n`` is day-to-day noise in a predictor under Predict (:data:`DILUTION`)."""
+    return (n.predicted.instrument == DILUTION and not n.blocker
+            and _get(state, "purpose") == "prediction")
+
+
+def noise_for_the_record(n: Noticing) -> str:
+    """Under Predict, why day-to-day noise in ``n``'s column changes no score (:data:`DILUTION`),
+    with the reliability λ where the replicate recalls measure it (``n.measure``)."""
+    column = _tick(n.subject)
+    measured = f" (its reliability λ = {n.measure:.2f})" if n.measure is not None else ""
+    return (f"The held-out rows carry the same day-to-day noise in {column}{measured} that the "
+            f"model meets in use, where {column} is measured the same way, so the score is "
+            f"honest; the noise limits how much {column} can predict.")
+
+
 def _noticing_item(n: Noticing, state: Any, held: Mapping[str, SweptLine], changed: list[str]
                    ) -> TriageItem:
     """A measured noticing at the gate (``materiality.recommend``): its disposition from the band
-    of its predicted movement, and the one recorded while it stands."""
-    disposition, reason, owed = recommend_noticing(n, purpose=_get(state, "purpose"))
+    of its predicted movement, and the one recorded while it stands. Under Predict, day-to-day
+    noise in a predictor is For the record, whatever its band (:data:`DILUTION`)."""
+    noise = predicts_through_noise(n, state)
+    disposition, reason, owed = (("no_change", noise_for_the_record(n), False) if noise else
+                                 recommend_noticing(n, purpose=_get(state, "purpose")))
     stands = _stands(held.get(n.thread), (disposition, n.blocker, reason))
     if n.thread in held and not stands:
         changed.append(n.thread)
@@ -631,14 +662,18 @@ def _noticing_item(n: Noticing, state: Any, held: Mapping[str, SweptLine], chang
         label = "Could bias the score"
     if n.predicted.not_measurable:
         label += " (not measurable here)"
+    # The attenuation bounds a slope, not a score: under Predict no movement of the score is
+    # measured, and how much of the noise is measurable decides nothing.
+    label = RECORD if noise else label
+    moved = None if noise else n.predicted
     return TriageItem(
         id=n.thread, line=f"noticing:{n.thread}", stage=n.stage, summary=n.summary,
         severity="noticing", columns=list(n.subject),
         question=n.question if n.question in QUESTIONS and not n.answered else None,
         recommended=disposition, label=label, reason=reason, blocker=n.blocker,
         recorded=held[n.thread].value if stands else None, family=n.family,
-        band=n.predicted.band, measure=n.predicted.label, calibrated=n.predicted.calibrated,
-        limitation=owed, done=n.done)
+        band=moved.band if moved else None, measure=moved.label if moved else None,
+        calibrated=moved.calibrated if moved else None, limitation=owed, done=n.done)
 
 
 def triage(state: Any, log: QuestLog, findings: Any, records: Sequence[Any] = (),
@@ -962,9 +997,9 @@ def for_the_record(log: QuestLog, steps: Sequence[Any], records: Sequence[Any], 
 
 
 __all__ = [
-    "DISPOSITIONS", "DISPOSITION_WORDS", "ForTheRecord", "GATES", "NOT_ANALYZED_ROLES",
+    "DILUTION", "DISPOSITIONS", "DISPOSITION_WORDS", "ForTheRecord", "GATES", "NOT_ANALYZED_ROLES",
     "RecordLine", "RecordStage", "Triage", "TriageItem", "WHAT_A_COLUMN_IS", "WOULD_CHANGE",
     "analysis_reads", "basis", "cover_noticings", "default_value", "for_the_record", "gate_passed",
-    "gate_stage",
+    "gate_stage", "noise_for_the_record", "predicts_through_noise",
     "reading_changes", "reading_lines", "recommend", "sweep_lines", "sweep_of", "triage", "weigh",
 ]
