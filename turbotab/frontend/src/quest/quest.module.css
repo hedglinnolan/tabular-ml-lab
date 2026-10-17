@@ -5,6 +5,12 @@
 .screen {
   min-height: 100vh;
   background: var(--ground);
+  /* One color for the primary action (FOUNDATION §1, §4; the walkthrough of 2026-10-17, minor
+     22): inside the shell a card's record button, built before the kit, records in the kit's
+     action color, as Continue and Fit do; on the classic screen it keeps today's accent. */
+  --record: var(--action);
+  --record-hover: var(--action-hover);
+  --on-record: var(--action-ink);
 }
 .name {
   font-family: var(--serif);

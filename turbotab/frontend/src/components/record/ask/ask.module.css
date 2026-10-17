@@ -8,14 +8,16 @@
   margin-top: 14px;
 }
 
+/* The record button: inside the quest shell, the shell's one action color (`--record`,
+   quest.module.css); elsewhere today's accent. */
 .primary {
   border-radius: 9px;
   padding: 8px 15px;
   font-size: var(--fs-control);
   font-weight: 650;
-  border: 1.5px solid var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
+  border: 1.5px solid var(--record, var(--accent));
+  background: var(--record, var(--accent));
+  color: var(--on-record, var(--on-accent));
 }
 
 .primary:hover:not(:disabled) {
