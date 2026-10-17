@@ -123,6 +123,32 @@ function withoutColumn(t: { header: string[]; rows: Row[] }, at: number) {
   return { header: t.header.filter((_, i) => i !== at), rows: t.rows.map((r) => ({ ...r, cells: r.cells.filter((_, i) => i !== at) })) };
 }
 
+/** A copy of ``rows`` with the cells of one column emptied. */
+function blankColumn(rows: Row[], column: number): Row[] {
+  return rows.map((r) => ({ ...r, cells: r.cells.map((c, i) => (i === column ? "" : c)) }));
+}
+/** A copy of ``rows`` with one row's label (its ``th scope=row``) replaced. */
+function relabeled(rows: Row[], key: string, label: string): Row[] {
+  return rows.map((r) => (r.key === key ? { ...r, label } : r));
+}
+/** A copy of ``fit`` whose verdict against the baseline is not served for the families named (for
+ *  every family when none is named): the cross-validated verdict, or the held-out one. */
+function withoutVerdict(kind: "cv" | "held-out", families?: readonly string[]): FitArtifact {
+  const copy = structuredClone(fit);
+  for (const m of copy.models) {
+    if (families && !families.includes(m.family)) continue;
+    if (kind === "cv") m.versus_baseline = null;
+    else if (m.holdout_detail) m.holdout_detail.versus_baseline = null;
+  }
+  return copy;
+}
+/** Exactly one difference is reported, and it names ``needle``: the check under test fired, and
+ *  nothing else did. */
+function expectOne(differences: string[], needle: string): void {
+  expect(differences, `one difference, naming "${needle}"`).toHaveLength(1);
+  expect(differences[0]).toContain(needle);
+}
+
 test.describe("the cross-validated comparison", () => {
   test("is silent on a table that prints what is served", async ({ page }) => {
     await showCv(page);
@@ -165,6 +191,55 @@ test.describe("the cross-validated comparison", () => {
     await showCv(page, CV.header, withCell(CV.rows, "baseline", 1, "0.000"));
     expect((await cvDifferences(page, fit)).join("; ")).toContain("baseline");
   });
+
+  test("catches a verdict cell printed for a family that has none served, and is silent when it is blank", async ({ page }) => {
+    const served = withoutVerdict("cv", ["ridge"]); // linear's verdict is still served, ridge's is not
+    await showCv(page); // ridge's cell prints "Worse"
+    expectOne(await cvDifferences(page, served), "ridge: a verdict");
+    await showCv(page, CV.header, withCell(CV.rows, "ridge", 2, ""));
+    expect(await cvDifferences(page, served), "no verdict served for ridge, none printed").toEqual([]);
+  });
+
+  test("catches a verdict column drawn though no verdict is served, and is silent when none is drawn", async ({ page }) => {
+    const none = withoutVerdict("cv");
+    await showCv(page, CV.header, blankColumn(CV.rows, 2)); // the column alone: its cells print nothing
+    expectOne(await cvDifferences(page, none), "the verdict column is drawn though no verdict is served");
+    await showCv(page); // the column and the verdicts in its cells
+    const printed = (await cvDifferences(page, none)).join("; ");
+    for (const part of ["the verdict column is drawn", "linear: a verdict", "ridge: a verdict"]) expect(printed).toContain(part);
+    const t = withoutColumn(CV, 2);
+    await showCv(page, t.header, t.rows);
+    expect(await cvDifferences(page, none), "no verdict served, no column drawn").toEqual([]);
+  });
+
+  test("catches a BBC-CV row labeled for a family other than the one chosen, and is silent when it names it", async ({ page }) => {
+    await showCv(page, CV.header, relabeled(CV.rows, "corrected", "Ridge regression, corrected for choosing it"));
+    const said = await cvDifferences(page, fit); // linear was chosen
+    expectOne(said, 'labeled "Ridge regression, corrected for choosing it"');
+    expect(said[0]).toContain("not for Linear regression");
+    const ridgeChosen = { ...structuredClone(fit), selection: { ...fit.selection!, best: "ridge" } };
+    await showCv(page, CV.header, relabeled(CV.rows, "corrected", "Ridge regression, corrected for choosing it"));
+    expect(await cvDifferences(page, ridgeChosen), "ridge chosen, the row names ridge").toEqual([]);
+    await showCv(page);
+    expectOne(await cvDifferences(page, ridgeChosen), "not for Ridge regression"); // the row still names linear
+  });
+
+  test("catches a missing baseline row, and is silent when no baseline is served", async ({ page }) => {
+    await showCv(page, CV.header, CV.rows.filter((r) => r.key !== "baseline"));
+    expectOne(await cvDifferences(page, fit), "the baseline has no row (cross-validated)");
+    const unscored = structuredClone(fit);
+    for (const m of unscored.models) m.baseline.value = null;
+    expect(await cvDifferences(page, unscored), "no baseline score served, no row drawn").toEqual([]);
+  });
+
+  test("catches a metric served with no label, and names the missing column once it has one", async ({ page }) => {
+    const withMae = structuredClone(fit);
+    withMae.models[0]!.cv.mae = { estimate: 27.1, mean: 27.1, ci_low: 25.2, ci_high: 29 } as unknown as FitArtifact["models"][number]["cv"][string];
+    await showCv(page);
+    expectOne(await cvDifferences(page, withMae), "mae is served on the cross-validated scores with no label");
+    withMae.metric_labels.mae = "MAE"; // labeled now, and the table still has no MAE column
+    expectOne(await cvDifferences(page, withMae), "the cross-validated table has no column for MAE");
+  });
 });
 
 test.describe("the held-out comparison", () => {
@@ -186,5 +261,42 @@ test.describe("the held-out comparison", () => {
     expect((await heldOutDifferences(page, fit)).join("; "), "the wrong gain, served without an interval").toContain("ridge");
     await showHeld(page, HELD.header, withCell(HELD.rows, "ridge", 2, "Better: a gain in R² of 0.0412 (0.01 to 0.07)"));
     expect((await heldOutDifferences(page, fit)).join("; "), "an interval printed that is not served").toContain("ridge");
+  });
+
+  test("catches a baseline score printed where none is served, and is silent on one that is", async ({ page }) => {
+    await showHeld(page, HELD.header, withCell(HELD.rows, "baseline", 1, "0.000")); // the baseline is scored on RMSE only
+    expectOne(await heldOutDifferences(page, fit), "baseline R²");
+    const scoredOnR2 = structuredClone(fit);
+    scoredOnR2.models[0]!.holdout_detail!.baseline!.scores.r2 = -0.0031;
+    await showHeld(page, HELD.header, withCell(HELD.rows, "baseline", 1, "−0.00310"));
+    expect(await heldOutDifferences(page, scoredOnR2), "R² served for the baseline, and printed").toEqual([]);
+    await showHeld(page, HELD.header, withCell(HELD.rows, "baseline", 1, "−0.00410"));
+    expectOne(await heldOutDifferences(page, scoredOnR2), "baseline R²");
+  });
+
+  test("catches a verdict cell printed for a family that has none served, and is silent when it is blank", async ({ page }) => {
+    const served = withoutVerdict("held-out", ["ridge"]);
+    await showHeld(page); // ridge's cell prints "Better: a gain in R² of 0.0412"
+    expectOne(await heldOutDifferences(page, served), "ridge: a verdict");
+    await showHeld(page, HELD.header, withCell(HELD.rows, "ridge", 2, ""));
+    expect(await heldOutDifferences(page, served), "no verdict served for ridge, none printed").toEqual([]);
+  });
+
+  test("catches a verdict column drawn though no verdict is served, and is silent when none is drawn", async ({ page }) => {
+    const none = withoutVerdict("held-out");
+    await showHeld(page, HELD.header, blankColumn(HELD.rows, 2));
+    expectOne(await heldOutDifferences(page, none), "the verdict column is drawn though no verdict is served");
+    const t = withoutColumn(HELD, 2);
+    await showHeld(page, t.header, t.rows);
+    expect(await heldOutDifferences(page, none), "no verdict served, no column drawn").toEqual([]);
+  });
+
+  test("catches a metric served with no label", async ({ page }) => {
+    const withMae = structuredClone(fit);
+    withMae.models[0]!.holdout!.mae = 25.1;
+    await showHeld(page);
+    expectOne(await heldOutDifferences(page, withMae), "mae is served on the held-out scores with no label");
+    withMae.metric_labels.mae = "MAE";
+    expectOne(await heldOutDifferences(page, withMae), "the held-out table has no column for MAE");
   });
 });
