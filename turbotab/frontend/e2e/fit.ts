@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
  * Fit, pressed as the person presses it (SIZING P0.8; calm/FOUNDATION §7). Until it is, no score or
@@ -67,6 +67,100 @@ export async function fitOnceComputed(page: Page, timeout = 300_000): Promise<bo
 /** The project's id from the page's URL (/p/:pid). */
 export function pidOf(page: Page): string {
   return decodeURIComponent(/\/p\/([^/]+)$/.exec(page.url())![1]!);
+}
+
+/** Every stage, for :func:`stagesComputing`: the page shows whatever is computing. */
+export const ANY_STAGE = "*";
+
+/**
+ * Which of the stages the page shows as queued or running: the work chip in the header that the
+ * app draws for each (``job-<stage>``, from the statuses the server pushes; every stage named
+ * here is a heavy one, so it has a job), or any chip for ``ANY_STAGE``. It reads the page and asks
+ * the server nothing, which matters on a wide table, where the project's GET recomputes the
+ * models card.
+ */
+export async function stagesComputing(
+  page: Page,
+  names: readonly string[],
+): Promise<{ computing: boolean; seen: string }> {
+  const working: string[] = [];
+  for (const name of names) {
+    const chips = name === ANY_STAGE ? page.locator('[data-testid^="job-"]') : page.getByTestId(`job-${name}`);
+    const n = await chips.count();
+    if (n) working.push(name === ANY_STAGE ? `${n} stage${n === 1 ? "" : "s"}` : name);
+  }
+  return { computing: working.length > 0, seen: working.length ? `${working.join(", ")} computing` : "none computing" };
+}
+
+/**
+ * ``target`` visible, waiting while any of the ``stages`` it waits on is computing (up to ``cap``),
+ * not for a flat time: the wait ends once none has computed for ``quiet`` and ``target`` is still
+ * not there. ``label`` names the target in the failure.
+ */
+export async function visibleWhileComputing(
+  page: Page,
+  target: Locator,
+  stages: readonly string[],
+  { quiet = 60_000, cap = 600_000, label = "shown" }: { quiet?: number; cap?: number; label?: string } = {},
+): Promise<void> {
+  const start = Date.now();
+  let busyAt = start;
+  let seen: string; // set by the first look, before any exit
+  for (;;) {
+    if (await target.isVisible().catch(() => false)) return;
+    const look = await stagesComputing(page, stages);
+    seen = look.seen;
+    if (look.computing) busyAt = Date.now();
+    if (Date.now() - busyAt >= quiet || Date.now() - start >= cap) break; // after the look
+    await page.waitForTimeout(Math.min(2_000, quiet / 3));
+  }
+  const waited = Math.round((Date.now() - start) / 1_000);
+  await expect(target, `${label} (waited ${waited} s; ${seen})`).toBeVisible();
+}
+
+/** A family of the shelf with the fit time the server measured for it (null: none was). */
+export interface ShelfEstimate {
+  key: string;
+  seconds: number | null;
+}
+
+/**
+ * The shelf's families in its order, each with its measured fit time, as the models card reads
+ * them (``estimate_seconds``). The estimates move as readings are confirmed (confirming 497 genes
+ * raises the elastic net's from seconds to minutes), so a journey reads them when it chooses.
+ */
+export async function shelfEstimates(page: Page, pid: string = pidOf(page)): Promise<ShelfEstimate[]> {
+  return page.evaluate(async (p) => {
+    const res = await fetch(`/api/projects/${p}/stages/shelf`);
+    const body = res.ok
+      ? ((await res.json()) as {
+          artifact?: { families?: { key: string; rank: number; estimate_seconds?: number | null }[] } | null;
+        })
+      : {};
+    return [...(body.artifact?.families ?? [])]
+      .sort((a, b) => a.rank - b.rank)
+      .map((f) => ({ key: f.key, seconds: f.estimate_seconds ?? null }));
+  }, pid);
+}
+
+/**
+ * The family among ``among`` that the shelf estimates cheapest to fit: the smallest measured fit
+ * time, the shelf's order breaking a tie. A family with no measured time says nothing about its
+ * cost, so it is chosen only when none of them has one (then the first on the shelf). Null when
+ * the shelf offers none of ``among``.
+ */
+export function cheapestOf(shelf: readonly ShelfEstimate[], among: readonly string[]): string | null {
+  const offered = shelf.filter((f) => among.includes(f.key));
+  const measured = offered.filter((f) => f.seconds !== null);
+  const pool = measured.length ? measured : offered;
+  let best: ShelfEstimate | null = null;
+  for (const f of pool) if (best === null || (f.seconds ?? 0) < (best.seconds ?? 0)) best = f;
+  return best?.key ?? null;
+}
+
+/** The cheapest of ``among`` by the shelf's estimate now (:func:`cheapestOf`). */
+export async function cheapestFamily(page: Page, among: readonly string[]): Promise<string | null> {
+  return cheapestOf(await shelfEstimates(page), among);
 }
 
 /**

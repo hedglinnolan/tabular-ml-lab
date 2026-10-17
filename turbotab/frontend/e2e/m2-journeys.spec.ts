@@ -30,7 +30,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
 import { confirmAsk, confirmStageAsk, firstDrawnPair } from "./ask";
-import { fitOnceComputed, openSealCard } from "./fit";
+import { cheapestFamily, fitOnceComputed, openSealCard, shelfEstimates, visibleWhileComputing } from "./fit";
 import { nhanesExport } from "./nhanes";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -225,27 +225,49 @@ async function confirmRoles(page: Page) {
   await expect(page.getByTestId("decision-roles")).toBeVisible({ timeout: 30_000 });
 }
 
-/** Fit the families (the first `n` on the shelf, else its first three: the shelf now offers a dozen,
- *  some estimated at most of an hour), press Fit once the fit has
- *  computed (SIZING P0.8: no score is served before it), and wait for the Results. */
-async function fit(page: Page, n?: number): Promise<number> {
+/** The light families: the linear ones, which a journey can afford to fit and refit. */
+const LIGHT = ["linear", "ridge", "elastic_net"];
+
+/** Fit the families (the first `n` on the shelf; "cheapest", the light family the shelf estimates
+ *  cheapest to fit, read when it is chosen, since confirming the readings moves the estimates;
+ *  else the three linear ones, else its first three: the shelf now offers a dozen, some estimated
+ *  at most of an hour), press Fit once the fit has computed (SIZING P0.8: no score is served
+ *  before it), and wait for the Results. `onShelf` checks the shelf once the readings the fit
+ *  reads are confirmed (the estimates and the order can move with them), before a family is
+ *  chosen. */
+async function fit(
+  page: Page,
+  pick?: number | "cheapest",
+  onShelf?: (options: Locator) => Promise<void>,
+): Promise<number> {
+  // The shelf ranks the families again after every reading confirmed (from seconds to nearly two
+  // minutes on the 500-column genomics table, 55 s and 108 s on a throttled machine), and the
+  // options wait for it: each wait lasts while it computes.
   const models = page.getByTestId("question-models");
-  await expect(models).toBeVisible({ timeout: 60_000 });
+  await visibleWhileComputing(page, models, ["shelf"]);
   // The shelf's own options (the ask card's selects hold options too); the roles proposed below
   // high confidence are confirmed first, on the ledger's ask card, since the fit reads them.
   const options = models.getByRole("listbox", { name: /Model families/ }).locator(':scope > [role="option"]');
-  await expect(options.first()).toBeVisible({ timeout: 60_000 });
+  await visibleWhileComputing(page, options.first(), ["shelf"]);
   await confirmAsk(page.locator('[data-slot="models"]'));
-  await expect(options.first()).toBeVisible({ timeout: 60_000 });
+  await visibleWhileComputing(page, options.first(), ["shelf"]);
+  await onShelf?.(options);
   const families = await options.evaluateAll((els) => els.map((e) => e.getAttribute("data-key") ?? ""));
-  // The first `n`; else the three linear families where the shelf has them (the later steps refit
-  // each chosen family), else its first three.
-  const LIGHT = ["linear", "ridge", "elastic_net"];
+  // The first `n`; the cheapest light family by the shelf's estimate (read each time they are
+  // chosen: a refusal's way forward changes the table, and the estimates with it); else the three
+  // linear families where the shelf has them (the later steps refit each chosen family), else its
+  // first three.
   const light = families.filter((k) => LIGHT.includes(k));
-  const chosen = n !== undefined ? families.slice(0, n) : light.length === 3 ? light : families.slice(0, 3);
+  const chosenFamilies = async (): Promise<string[]> => {
+    if (pick === "cheapest") return [(await cheapestFamily(page, LIGHT)) ?? families[0]!];
+    if (pick !== undefined) return families.slice(0, pick);
+    return light.length === 3 ? light : families.slice(0, 3);
+  };
   // Down the list with the arrow keys, Space on each chosen family, Enter to fit them.
   const choose = async () => {
-    await expect(options.first()).toBeVisible({ timeout: 60_000 });
+    await visibleWhileComputing(page, options.first(), ["shelf"]);
+    const chosen = await chosenFamilies();
+    if (pick === "cheapest") console.log("fit:", chosen.join(), "of", JSON.stringify(await shelfEstimates(page)));
     await page.getByTestId(`option-${chosen[0]}`).focus();
     let at = families.indexOf(chosen[0]!);
     for (const key of chosen) {
@@ -685,12 +707,19 @@ test("genomics expression: the wide path, the roles searched, elastic net first 
 
   // Elastic net first on the shelf; a fit long enough to weigh says so before it is chosen.
   const models = page.getByTestId("question-models");
-  await expect(models).toBeVisible({ timeout: 60_000 });
+  await visibleWhileComputing(page, models, ["shelf"]);
   await expect(
     models.getByRole("listbox", { name: /Model families/ }).locator(':scope > [role="option"]').first(),
   ).toHaveAttribute("data-key", "elastic_net", { timeout: 60_000 });
   await shot(page, "genomics-models", { at: models });
-  T.fit_s = await fit(page, 1);
+  // The elastic net, first on this shelf, is estimated at minutes once the 497 genes are confirmed
+  // as predictors (the card says so, in the server's words, before a family is chosen), so the
+  // journey fits the cheapest light family by the shelf's estimate instead of waiting out the
+  // elastic net's fit (the plan's ruling 11).
+  T.fit_s = await fit(page, "cheapest", async (options) => {
+    await expect(options.first()).toHaveAttribute("data-key", "elastic_net");
+    await expect(models.getByTestId("cost-elastic_net")).toContainText(/about \d+ (second|minute|hour)s?/);
+  });
   await expect(page.getByTestId("held-out-sealed")).toBeVisible({ timeout: 30_000 });
   finish("genomics", run);
 });
@@ -746,7 +775,9 @@ test("survey sentinels: codes set to missing, previewed then applied, and the ev
 test("NHANES: SAS zeros repaired, the grain stated, meds_hbp kept as a Missing level, the seal opened once", async ({
   page,
 }) => {
-  test.setTimeout(900_000);
+  // 1,500 s: the fit 600 s at most, the pair's curves 600 s at most (confirmParts' cap: the
+  // confirmations refit the fit), and the rest of the journey (its post-seal refit has 300 s).
+  test.setTimeout(1_500_000);
   const run = await start(page, "nhanes");
   const T = timings.nhanes!;
   T.open_s = await timed(() => openPath(page, NHANES));

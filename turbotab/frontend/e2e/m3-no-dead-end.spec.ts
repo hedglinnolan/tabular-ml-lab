@@ -25,7 +25,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
-import { fitReached, openSealCard, pressFit } from "./fit";
+import { ANY_STAGE, cheapestFamily, fitReached, openSealCard, pressFit, visibleWhileComputing } from "./fit";
 import { nhanesExport } from "./nhanes";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -143,17 +143,18 @@ const roles: Answer = async (_page, slot) => {
   await slot.getByTestId("record-roles").click();
 };
 
-/** The first family on the shelf. */
-/** The shelf's first linear family where it has one (a fit of seconds), else its first: the
- *  journey checks that each question renders, and a family estimated at minutes (boosted trees on
- *  NHANES, about 10) is held for Fit and then takes that long once pressed. */
+/** The cheapest of the linear families on the shelf by its estimate (e2e/fit.ts), else the
+ *  cheapest family on it, else its first: the journey checks that each question renders, and a
+ *  family estimated at minutes (boosted trees on NHANES, about 10; the elastic net on the 497
+ *  genes) is held for Fit and then takes that long once pressed. The elastic net is the shelf's
+ *  first family on the genomics table, so "the first linear one" is not a cheap fit there. */
 const LIGHT = ["linear", "ridge", "elastic_net"];
 const models: Answer = async (page, slot) => {
   const shelf = slot.getByRole("listbox", { name: /Model families/ }).locator(':scope > [role="option"]');
   const options = (await shelf.count()) ? shelf : slot.locator('[role="option"]');
   const keys = await options.evaluateAll((els) => els.map((e) => e.getAttribute("data-key") ?? ""));
-  const light = keys.findIndex((k) => LIGHT.includes(k));
-  const o = options.nth(Math.max(light, 0));
+  const cheapest = (await cheapestFamily(page, LIGHT)) ?? (await cheapestFamily(page, keys));
+  const o = options.nth(Math.max(keys.indexOf(cheapest ?? ""), 0));
   await o.focus();
   await expect(o).toBeFocused();
   await page.keyboard.press("Space");
@@ -195,14 +196,22 @@ const openSeal: Answer = async (page) => {
 };
 
 /** The ledger's ask card on the open question: confirm every line as shown, else each line, then
- *  the consumer's own ways forward (an energy column's unit and days). */
+ *  the consumer's own ways forward (an energy column's unit and days). True when a press was
+ *  made. The app answers a press by removing the card, so one the count saw may be gone by the
+ *  click, which would wait for it with no end: a click gives up after 15 s (as ask.ts's does),
+ *  and a card that left is not pressed (false: the question is answered as if it had none). */
 async function confirmAsk(slot: Locator): Promise<boolean> {
   const card = slot.getByTestId("ask-card");
   if (!(await card.count())) return false;
   const all = card.getByTestId("ask-confirm-all");
-  if (await all.count()) await all.click();
-  else if (await card.getByTestId("ask-confirm").count()) await card.getByTestId("ask-confirm").first().click();
-  else await card.getByTestId("ask-exits").getByRole("button").first().click();
+  const one = card.getByTestId("ask-confirm");
+  const press = (await all.count()) ? all : (await one.count()) ? one : card.getByTestId("ask-exits").getByRole("button");
+  try {
+    await press.first().click({ timeout: 15_000 });
+  } catch (error) {
+    if (await card.count()) throw error; // still there and not pressable: a real failure
+    return false;
+  }
   return true;
 }
 
@@ -437,8 +446,12 @@ for (const journey of JOURNEYS) {
       expect(tries, `${key} stays open after ${tries} answers`).toBeLessThan(6);
       // The open question renders something answerable (the seal's opening is its own card).
       const slot = key === "open_seal" ? page.getByTestId("open-seal-step") : page.locator(`[data-slot="${key}"]`);
-      await expect(slot, `${key} renders`).toBeVisible({ timeout: 60_000 });
-      if (key !== "open_seal") await expect(slot.getByTestId(`question-${key}`), `${key} asks`).toBeVisible({ timeout: 60_000 });
+      // A question's card waits for the stage it reads to compute again after each reading
+      // confirmed (the shelf's ranking took 55 s, then 108 s, on the 500-column genomics table on
+      // a throttled machine): the wait lasts while anything computes, not a flat minute.
+      await visibleWhileComputing(page, slot, [ANY_STAGE], { label: `${key} renders` });
+      if (key !== "open_seal")
+        await visibleWhileComputing(page, slot.getByTestId(`question-${key}`), [ANY_STAGE], { label: `${key} asks` });
       await expect
         .poll(async () => slot.locator(ANSWERABLE).count(), { message: `${key}: nothing to answer`, timeout: 60_000 })
         .toBeGreaterThan(0);

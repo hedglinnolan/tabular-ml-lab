@@ -155,7 +155,10 @@ async function timed(done: () => Promise<void>): Promise<number> {
 }
 
 test("the M1 journey: every question previewed on the stage, fitted, then re-flowed", async ({ page }) => {
-  test.setTimeout(REAL ? 1_500_000 : 240_000);
+  // Against the real server the steps allow, at most: the fit 600 s (computed, then its result),
+  // the pair's curves 600 s (confirmParts' cap: the confirmations refit the fit), the band 630 s,
+  // the re-flow 540 s (two veils, then the refit), and 300 s for everything else: 2,670 s.
+  test.setTimeout(REAL ? 2_700_000 : 240_000);
   await page.addInitScript(() => {
     (window as unknown as Review).__turbotabReview = true;
   });

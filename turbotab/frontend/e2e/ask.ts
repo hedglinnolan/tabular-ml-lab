@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test";
+import { stagesComputing } from "./fit";
 
 /**
  * A preview the stage holds back until readings it reads are confirmed ("Not available: … Tell me
@@ -19,6 +20,10 @@ export async function confirmStageAsk(page: Page): Promise<boolean> {
 // as part of its total, and a nutrient's unit in grams (NHANES reports every macronutrient in g).
 const PAIR_EXITS = /^\S+ is (part of \S+|in grams) instead$/;
 
+// The stages a chosen pair's curves wait on: the fit (the readings confirmed on the way recompute
+// it) and then the substitution itself.
+const PAIR_STAGES = ["fit", "substitution"];
+
 /**
  * A substitution pair refused until the readings it moves are confirmed (a part moves with its
  * total, the values agreeing but not proving it; a nutrient's unit, which a name never says): each
@@ -27,18 +32,33 @@ const PAIR_EXITS = /^\S+ is (part of \S+|in grams) instead$/;
  * (``choose``: "Recorded. Choose the pair again to draw its curve."), until ``done`` shows.
  * Returns "refused" when the pair is refused with no such way forward (a share of energy moves in
  * percentage points, not kcal), so a caller can choose another pair.
+ *
+ * The wait is bounded by what the app is doing: it goes on, up to ``cap``, while the fit or the
+ * substitution is computing (the confirmations recompute the fit, about 95 s on NHANES
+ * unthrottled and longer on a CI runner), and ends once neither has computed for ``quiet``.
  */
 export async function confirmParts(
   page: Page,
   done: Locator,
   choose: () => Promise<void>,
-  timeout = 180_000,
+  quiet = 180_000,
+  cap = 600_000,
 ): Promise<"drawn" | "refused"> {
-  const end = Date.now() + timeout;
+  const start = Date.now();
+  let busyAt = start; // when a stage was last seen computing
+  let lastLook = 0;
+  let seen = "no look taken";
   let took = false;
   let bare = 0;
-  while (Date.now() < end) {
+  for (;;) {
     if (await done.isVisible().catch(() => false)) return "drawn";
+    if (Date.now() - lastLook >= Math.min(2_000, quiet / 3)) {
+      const look = await stagesComputing(page, PAIR_STAGES);
+      lastLook = Date.now();
+      seen = look.seen;
+      if (look.computing) busyAt = lastLook;
+    }
+    if (Date.now() - busyAt >= quiet || Date.now() - start >= cap) break; // after the look
     const exit = page.getByRole("alert").getByRole("button", { name: PAIR_EXITS }).first();
     if (await exit.isVisible().catch(() => false)) {
       await exit.click();
@@ -58,7 +78,9 @@ export async function confirmParts(
     if (bare >= 6) return "refused"; // three seconds refused, with nothing to confirm
     await page.waitForTimeout(500);
   }
-  await expect(done).toBeVisible();
+  const waited = Math.round((Date.now() - start) / 1_000);
+  const why = Date.now() - start >= cap ? `the ${cap / 1_000} s cap` : `${quiet / 1_000} s with no stage computing`;
+  await expect(done, `the pair is drawn (waited ${waited} s, to ${why}; ${seen})`).toBeVisible();
   return "drawn";
 }
 
@@ -95,7 +117,9 @@ export async function firstDrawnPair(page: Page, done: Locator, tries = 12): Pro
  */
 export async function confirmAsk(slot: Locator): Promise<void> {
   const card = slot.getByTestId("ask-card");
-  const words = async () => ((await card.count()) ? ((await card.first().textContent()) ?? "") : null);
+  // One read that never waits: null once the card is gone. (A count() then a textContent() waits,
+  // with no timeout, for a card the app removed between the two calls, and the poll never returns.)
+  const words = async () => (await card.allTextContents())[0] ?? null;
   for (let round = 0; round < 40; round++) {
     let before = await words();
     if (before === null) {
