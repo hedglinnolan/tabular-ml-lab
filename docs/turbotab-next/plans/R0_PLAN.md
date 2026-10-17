@@ -88,6 +88,42 @@ over the 3M line, so Nolan is told before it starts.
     tick can be read stale. This affects derivation only.
   - The test lookup's "last binding" flattens `if` and `try` branches.
 
+### R0b landed (2026-10-16)
+
+R0b registered 27 claims, not 15: the 15 S1 claims, their splits (`trials.few_clusters` and
+`trials.few_clusters_extended`, `inference.few_clusters`, the four tuning claims, the forest's and
+boosted trees' small-rows rules), and the fallbacks their regimes needed. 25 are built; D-086's
+two (`data.tail_share`, `results.tail_share`) stay proposed.
+
+**Cost:** 31 agent runs and 9.76M fresh tokens (about 570M cached re-reads), against about 3M to
+3.5M planned. It ran as three packages (inference, models, data) with a build and three repair
+rounds each, then one finishing builder and verifier, then one repair round. Its 14 verifier
+passes found 10 blockers, 12 majors and 55 minors. Why it ran over:
+- The claims were real engine guards, not wording. Writing a regime's predicates apart from the
+  code it guards found code defects behind the claims: the trial core's estimating equations
+  refused for the wrong reason, omics' name rule silently imported nothing, an infinite cut-off
+  was accepted.
+- One repair overreached: round 3's fix to start the estimating equations from standardized columns gave
+  SEs up to 21% off on ill-conditioned columns. The pre-committed fallback (refuse, with a true
+  reason) applied, and that commit (2806a492) stays on `feat/r0b-inference` for R1.
+- Two of my own rulings were incomplete and cost a round each: the omics name rule (R2, re-ruled
+  as omics' own list) and its NHANES names (RIDRETH3, RIDAGEMN).
+- A package verifier that did not run the core shard missed a failure the integrator found.
+
+**Settled on the way, for R1 and later waves:**
+- A user-read refusal states only what its test shows: where the linear program cannot decide,
+  the refusal says the fit did not settle, never that someone's risk runs to 0% or 100%.
+- A claim's name list lives as a tuple in its claims module, which the engine imports, until a
+  typed name-list parameter exists (INBOX).
+- Any edit to an allowlisted template also changes `digit_allowlist.json`, so a package that
+  rewords a claim owns that file too.
+- Every package verifier runs the core shard once: `test_plain_words` scans the claims modules.
+
+**Handed to R1** (INBOX, "From R0b"): V11, the few-clusters relation the digit gate cannot join;
+the route to reporting trials whose raw-column start fails (2806a492 plus a standardized sandwich);
+the claims the engine does not yet render with ctx; the unregistered readers of
+`inference.few_clusters`; and the S1 engine items the claims surfaced, each for its lane's wave.
+
 ## Rulings
 
 None needed from Nolan: the registry's three questions were ruled on 2026-10-15, and the rest is methods and architecture, which he delegated.
