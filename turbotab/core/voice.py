@@ -2646,11 +2646,12 @@ def _defer_finding(d: Any, state: Any, ctx: Any) -> str:
 
 @register_sentence("dismiss_finding")
 def _dismiss_finding(d: Any, state: Any, ctx: Any) -> str:
+    """A dismissal with its reason; with none, what the shell's "Keep as is" did (R-f 18)."""
     name = _finding_name(d.finding_id, _get(ctx, "finding"))
-    head = f"{name[:1].upper()}{name[1:]} was dismissed"
+    named = f"{name[:1].upper()}{name[1:]}"
     if d.reason and d.reason.strip():
-        return f"{head}: {_as_reason(d.reason)}"
-    return f"{head}, with no reason given; it stays in the record"
+        return f"{named} was dismissed: {_as_reason(d.reason)}"
+    return f"{named} was kept as is, with nothing changed; it stays in the record"
 
 
 def kinds() -> list[str]:

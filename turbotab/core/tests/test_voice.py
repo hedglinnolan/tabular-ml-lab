@@ -268,6 +268,11 @@ def test_findings_answered_name_their_columns_and_timing():
     assert say(d.DismissFinding(finding_id=finding["id"], reason="These are real 9-point items"),
                finding=finding) == (
         "The finding on `item_03` and `item_14` was dismissed: these are real 9-point items.")
+    # R-f 18: the shell's "Keep as is" records a dismissal with no reason, and the record says what
+    # the press did, never that a reason is missing.
+    assert say(d.DismissFinding(finding_id=finding["id"]), finding=finding) == (
+        "The finding on `item_03` and `item_14` was kept as is, with nothing changed; it stays in "
+        "the record.")
 
 
 def test_a_repair_family_may_speak_for_itself():

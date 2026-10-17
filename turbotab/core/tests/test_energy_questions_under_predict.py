@@ -421,7 +421,7 @@ def test_an_energy_or_substitution_answer_posted_after_the_opening_under_predict
     # a noticing dismissed after the opening repairs nothing: stated as dismissed, never listed
     dismissed = _say(posted, DismissFinding(finding_id=ENERGY_FINDING))
     assert dismissed.sentence.startswith("After the held-out rows were opened, ")
-    assert "was dismissed" in dismissed.sentence
+    assert "was kept as is, with nothing changed" in dismissed.sentence  # R-f 18
     assert _changes(posted, "fit") == []
 
     # silent: a missing-values change and a new exclusion after the opening are stated and listed
