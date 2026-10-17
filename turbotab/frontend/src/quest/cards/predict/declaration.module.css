@@ -1,0 +1,153 @@
+/*
+ * The Predict declaration cards, in today's idiom (W1_PART2_PLAN: no Direction A styling yet): a
+ * bordered card like a CHOICE question, the user's controls in the app's one family, tokens only
+ * (FOUNDATION §2, §4). The choice color marks the choice and nothing else.
+ */
+
+.card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 16px 20px 14px 22px;
+  font-family: inherit;
+}
+
+.kicker {
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+
+.title {
+  font-family: inherit;
+  font-size: var(--fs-decision);
+  font-weight: 700;
+  line-height: 1.33;
+  margin: 0 0 6px;
+  color: var(--ink);
+}
+
+/* What the engine says about the line itself: quiet, in its own words. */
+.said {
+  margin: 0 0 6px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 62ch;
+}
+
+.waiting {
+  margin: 4px 0 0;
+  font-size: var(--fs-body);
+  color: var(--muted);
+}
+
+.group {
+  border: 0;
+  margin: 10px 0 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.legend {
+  padding: 0;
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin: 10px 0 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fieldLabel {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.input {
+  width: 9em;
+  max-width: 100%;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 4px 8px;
+  font: inherit;
+  font-size: var(--fs-control);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--stop);
+}
+
+.select {
+  min-width: 16em;
+  max-width: 100%;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--fs-control);
+  color: var(--ink);
+}
+
+.picker {
+  border: 0;
+  margin: 10px 0 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.picks {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 11em;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+
+.more {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* The engine's words beside the option pointed at; a refusal's reason wears the warning mark. */
+.words {
+  display: block;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.words[data-refused] {
+  border-left: 3px solid var(--warn);
+  padding-left: 8px;
+}

@@ -1,0 +1,490 @@
+/**
+ * The Predict declaration cards (W1-F): each option posts the payload core/decisions.py defines.
+ *
+ * payloads.fixture.json lists, for every option of every card, what the card must post when its
+ * fields are filled in as the case says. This file presses each option and asserts the card posts
+ * exactly that, and that the card lists exactly the options the fixture lists;
+ * turbotab/core/tests/test_w1_declaration_cards.py holds the fixture to the server's models
+ * (parse_decision, the Literal values, the bounds, the defaults). The words on a card are the
+ * engine's: a line of the quest log, the preview the engine serves for the option pointed at, or
+ * the refusal it answers with. A card with nothing served to say names the option and stops.
+ */
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { api, ApiError, RefusalError } from "../../../api/client";
+import { keys } from "../../../api/queries";
+import type { PreviewResult } from "../../../api/m1-stage-types";
+import type { Decision, ProjectState, ProjectView, QuestLine, Refusal } from "../../../api/schema";
+import { StageFocusProvider } from "../../../state/focus";
+import FIXTURE from "./payloads.fixture.json";
+import { DECLARATION_CARDS } from "./index";
+
+const PID = "nhanes-glucose";
+const KINDS = [
+  "set_intended_use",
+  "set_selection",
+  "set_validation",
+  "set_levers",
+  "set_updating",
+  "set_explain",
+] as const;
+type Kind = (typeof KINDS)[number];
+
+interface Case {
+  card: Kind;
+  press: string;
+  note: string;
+  fill?: Record<string, string>;
+  toggle?: string[];
+  recorded?: Record<string, unknown>;
+  answered?: boolean;
+  payload: Decision | null;
+}
+const CASES = FIXTURE.cases as unknown as Case[];
+
+// The table the cards read: NHANES glucose under Predict. Subgroups and columns to draw come from
+// it; the outcome is neither.
+const COLUMNS = [
+  "SEQN",
+  "RIDAGEYR",
+  "RIAGENDR",
+  "RIDRETH1",
+  "BMXBMI",
+  "cycle_begin_year",
+  "LBXGLU",
+];
+const ROLES = {
+  SEQN: "identifier",
+  RIDAGEYR: "covariate",
+  RIAGENDR: "covariate",
+  RIDRETH1: "covariate",
+  BMXBMI: "exposure",
+  cycle_begin_year: "cluster",
+  LBXGLU: "covariate",
+};
+const DEFAULT_SPLIT = {
+  holdout: 0.2,
+  seed: 0,
+  folds: 5,
+  validation: "kfold",
+  repeats: 10,
+  n_boot: 500,
+  cluster: null,
+  nested_cv: false,
+};
+
+function stateWith(recorded: Record<string, unknown> = {}): ProjectState {
+  return {
+    lens: ["clinical"],
+    target: "LBXGLU",
+    task: "regression",
+    purpose: "prediction",
+    roles: ROLES,
+    missing: null,
+    split: DEFAULT_SPLIT,
+    models: ["linear", "ridge"],
+    intended_use: null,
+    selection: null,
+    levers: null,
+    updating: null,
+    explain: null,
+    ...recorded,
+  } as unknown as ProjectState;
+}
+
+function viewOf(state: ProjectState): ProjectView {
+  return {
+    state,
+    decisions: [],
+    interview: [],
+    summary: null,
+    stages: { ingest: { stage: "ingest", status: "fresh", key: "k", updated_at: null } },
+  } as unknown as ProjectView;
+}
+
+const NAMES: Record<Kind, string> = {
+  set_intended_use: "the intended-use question",
+  set_selection: "the predictor-selection question",
+  set_validation: "the validation scheme",
+  set_levers: "the rules repeated inside each fold",
+  set_updating: "the shrinkage question",
+  set_explain: "the explanations",
+};
+
+function lineOf(kind: Kind, over: Partial<QuestLine> = {}): QuestLine {
+  return {
+    id: `decision:${kind}`,
+    key: kind,
+    source: "declaration",
+    label: "Decide",
+    name: NAMES[kind],
+    status: "open",
+    counted: true,
+    order: 1,
+    decision_id: null,
+    reason: null,
+    waiting_for: [],
+    computing: [],
+    reopened_by: null,
+    would_change: null,
+    changes_nothing: null,
+    items: [],
+    changed_since: null,
+    ...over,
+  };
+}
+
+interface Mounted {
+  decide: ReturnType<typeof vi.spyOn>;
+}
+
+function mount(
+  kind: Kind,
+  opts: { recorded?: Record<string, unknown>; answered?: boolean; line?: Partial<QuestLine> } = {},
+): Mounted {
+  const state = stateWith(opts.recorded);
+  const view = viewOf(state);
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  qc.setQueryData(keys.view(PID), view);
+  qc.setQueryData(
+    keys.columns(PID),
+    COLUMNS.map((name) => ({ name })),
+  );
+  const decide = vi.spyOn(api, "decide").mockResolvedValue(view);
+  const Card = DECLARATION_CARDS[kind];
+  if (!Card) throw new Error(`no card for ${kind}`);
+  const line = lineOf(kind, {
+    status: opts.answered ? "answered" : "open",
+    decision_id: opts.answered ? "r9" : null,
+    ...opts.line,
+  });
+  render(
+    <QueryClientProvider client={qc}>
+      <StageFocusProvider>
+        <Card pid={PID} line={line} />
+      </StageFocusProvider>
+    </QueryClientProvider>,
+  );
+  return { decide };
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+describe("the Predict declaration cards", () => {
+  it("are one per declaration kind, and no other", () => {
+    expect(Object.keys(DECLARATION_CARDS).sort()).toEqual([...KINDS].sort());
+  });
+
+  it.each(CASES.map((c) => [`${c.card} · ${c.press}${c.note ? ` · ${c.note}` : ""}`, c] as const))(
+    "%s",
+    async (_name, c) => {
+      const { decide } = mount(c.card, { recorded: c.recorded, answered: c.answered });
+      for (const [testid, value] of Object.entries(c.fill ?? {})) {
+        fireEvent.change(screen.getByTestId(testid), { target: { value } });
+      }
+      for (const testid of c.toggle ?? []) fireEvent.click(screen.getByTestId(testid));
+      fireEvent.click(screen.getByTestId(`option-${c.press}`));
+      if (c.payload === null) {
+        // The model would refuse it (the Python test shows so): the card does not send it.
+        await settle();
+        expect(decide).not.toHaveBeenCalled();
+        return;
+      }
+      await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+      expect(decide.mock.calls[0]).toEqual([PID, c.payload]);
+    },
+  );
+});
+
+describe("what each card offers", () => {
+  it.each(KINDS.map((k) => [k] as const))("%s lists exactly the fixture's options", (kind) => {
+    mount(kind);
+    const offered = Array.from(document.querySelectorAll("[role=option]")).map((o) =>
+      o.getAttribute("data-key"),
+    );
+    const expected = Object.entries(FIXTURE.choices[kind]).flatMap(([field, values]) =>
+      (values as string[]).map((v) => `${field}:${v}`),
+    );
+    expect(offered).toEqual(expected);
+  });
+
+  it.each(Object.entries(FIXTURE.selects))(
+    "%s lists exactly the fixture's selects",
+    (kind, selects) => {
+      mount(kind as Kind);
+      for (const [field, spec] of Object.entries(selects)) {
+        const select = screen.getByTestId(`field-${field}`) as HTMLSelectElement;
+        const values = Array.from(select.options).map((o) => o.value);
+        expect(values.filter((v) => v !== "")).toEqual(spec.values);
+        expect(values.includes("")).toBe(spec.blank);
+      }
+    },
+  );
+
+  it("holds its defaults and bounds to the fixture, which the Python test holds to the models", async () => {
+    const { BOUNDS, DEFAULTS } = await import("./payloads");
+    expect(BOUNDS).toEqual(FIXTURE.bounds);
+    expect(DEFAULTS).toEqual(FIXTURE.defaults);
+  });
+
+  it.each(Object.entries(FIXTURE.bounds))(
+    "%s takes its numbers within the models' bounds",
+    (kind, fields) => {
+      mount(kind as Kind);
+      for (const [field, b] of Object.entries(fields) as [string, Record<string, number>][]) {
+        const input = screen.getByTestId(`field-${field}`);
+        expect(input.getAttribute("min")).toBe(String(b.ge ?? b.gt));
+        if (b.le !== undefined || b.lt !== undefined) {
+          expect(input.getAttribute("max")).toBe(String(b.le ?? b.lt));
+        }
+      }
+    },
+  );
+
+  it("starts the validation fields at the model's defaults where no split is recorded", async () => {
+    mount("set_validation", { recorded: { split: null } });
+    expect((screen.getByTestId("field-folds") as HTMLInputElement).value).toBe("5");
+    expect((screen.getByTestId("field-repeats") as HTMLInputElement).value).toBe("10");
+    expect((screen.getByTestId("field-n_boot") as HTMLInputElement).value).toBe("500");
+  });
+
+  it("offers the subgroups the table has, and not its outcome or its identifier", () => {
+    mount("set_intended_use");
+    const picks = Array.from(document.querySelectorAll("[data-testid^=pick-subgroups-]")).map((e) =>
+      e.getAttribute("data-testid"),
+    );
+    expect(picks).toEqual(
+      ["RIDAGEYR", "RIAGENDR", "RIDRETH1", "BMXBMI", "cycle_begin_year"].map(
+        (c) => `pick-subgroups-${c}`,
+      ),
+    );
+  });
+
+  it("offers the predictors the roles give the models, to draw curves for", () => {
+    mount("set_explain");
+    const picks = Array.from(document.querySelectorAll("[data-testid^=pick-exposures-]")).map((e) =>
+      e.getAttribute("data-testid"),
+    );
+    // by role: the identifier, the grouping and the outcome are not predictors
+    expect(picks).toEqual(
+      ["RIDAGEYR", "RIAGENDR", "RIDRETH1", "BMXBMI"].map((c) => `pick-exposures-${c}`),
+    );
+  });
+
+  it("offers the table's columns, the outcome apart, as the groups of internal–external validation", () => {
+    mount("set_validation");
+    const select = screen.getByTestId("field-cluster") as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.value)).toEqual([
+      "",
+      "SEQN",
+      "RIDAGEYR",
+      "RIAGENDR",
+      "RIDRETH1",
+      "BMXBMI",
+      "cycle_begin_year",
+    ]);
+  });
+});
+
+describe("what a card says of what is recorded", () => {
+  it("marks the recorded option when the line is answered, and never when it is not", () => {
+    mount("set_updating", {
+      recorded: { updating: { method: "shrinkage" } },
+      answered: true,
+    });
+    expect(screen.getByTestId("option-method:shrinkage")).toHaveAttribute("data-recorded");
+    expect(screen.getByTestId("option-method:none")).not.toHaveAttribute("data-recorded");
+  });
+
+  it("marks nothing recorded on a line the engine set for the person", () => {
+    // The validation scheme rides in the split's record until it is changed: set for you, not
+    // answered, so "recorded" would say what the log does not.
+    mount("set_validation", { line: { status: "set_for_you", label: "Confirm" } });
+    expect(document.querySelectorAll("[data-recorded]")).toHaveLength(0);
+  });
+
+  it("marks the scheme recorded by set_validation", () => {
+    mount("set_validation", {
+      recorded: { split: { ...DEFAULT_SPLIT, validation: "bootstrap" } },
+      answered: true,
+    });
+    expect(screen.getByTestId("option-validation:bootstrap")).toHaveAttribute("data-recorded");
+  });
+
+  it("marks one option in each of the levers", () => {
+    mount("set_levers", {
+      recorded: { levers: { forms: "rule", variance_filter: "top", keep: 500, imbalance: "none" } },
+      answered: true,
+    });
+    const marked = Array.from(document.querySelectorAll("[data-recorded]")).map((o) =>
+      o.getAttribute("data-key"),
+    );
+    expect(marked).toEqual(["forms:rule", "variance_filter:top", "imbalance:none"]);
+  });
+
+  it("says the engine's reason, what another choice would change, and why none would", () => {
+    mount("set_levers", {
+      line: {
+        label: "Confirm",
+        status: "set_for_you",
+        reason: "Set for you: no rule repeats inside the folds.",
+        would_change: "An in-fold rule changes what each model is fit on.",
+        changes_nothing: "Nothing changes here.",
+      },
+    });
+    expect(screen.getByTestId("line-reason")).toHaveTextContent(
+      "Set for you: no rule repeats inside the folds.",
+    );
+    expect(screen.getByTestId("line-would-change")).toHaveTextContent(
+      "An in-fold rule changes what each model is fit on.",
+    );
+    expect(screen.getByTestId("line-changes-nothing")).toHaveTextContent("Nothing changes here.");
+  });
+
+  it("says none of them when the engine served none", () => {
+    mount("set_levers");
+    expect(screen.queryByTestId("line-reason")).toBeNull();
+    expect(screen.queryByTestId("line-would-change")).toBeNull();
+    expect(screen.queryByTestId("line-changes-nothing")).toBeNull();
+  });
+
+  it("waits, naming what it waits for, and offers no option to press", () => {
+    const { decide } = mount("set_explain", {
+      line: {
+        status: "waiting",
+        waiting_for: [{ key: "models", stage: "models", name: "the models" }],
+      },
+    });
+    expect(screen.getByTestId("waiting")).toHaveTextContent("Waiting for: the models");
+    expect(document.querySelectorAll("[role=option]")).toHaveLength(0);
+    expect(decide).not.toHaveBeenCalled();
+  });
+});
+
+const PREVIEW: PreviewResult = {
+  kind: "set_selection",
+  views: [{ kind: "lineage", title: "Terms kept", caption: "9 of 14 terms stay on this fold." }],
+  basis: "the training rows",
+  note: null,
+  caution: null,
+} as unknown as PreviewResult;
+
+const pointAt = (option: string) => fireEvent.focus(screen.getByTestId(`option-${option}`));
+
+describe("the words on an option are the engine's", () => {
+  it("shows the caption of the preview the engine serves for the option pointed at", async () => {
+    vi.spyOn(api, "preview").mockResolvedValue(PREVIEW);
+    mount("set_selection");
+    pointAt("method:elastic_net");
+    const option = screen.getByTestId("option-method:elastic_net");
+    expect(await within(option).findByTestId("words")).toHaveTextContent(
+      "9 of 14 terms stay on this fold.",
+    );
+    // only the option pointed at
+    expect(within(screen.getByTestId("option-method:vip")).queryByTestId("words")).toBeNull();
+  });
+
+  it("previews the decision the option would record", async () => {
+    const preview = vi.spyOn(api, "preview").mockResolvedValue(PREVIEW);
+    mount("set_selection");
+    fireEvent.change(screen.getByTestId("field-keep"), { target: { value: "25" } });
+    pointAt("method:screening");
+    await waitFor(() => expect(preview).toHaveBeenCalled());
+    expect(preview.mock.calls[0]![1]).toMatchObject({
+      kind: "set_selection",
+      method: "screening",
+      keep: 25,
+    });
+  });
+
+  it("falls back on the note the engine gives when it can draw nothing", async () => {
+    vi.spyOn(api, "preview").mockResolvedValue({
+      ...PREVIEW,
+      views: [],
+      note: "Nothing is drawn before Fit is pressed.",
+    });
+    mount("set_updating");
+    pointAt("method:shrinkage");
+    expect(
+      await within(screen.getByTestId("option-method:shrinkage")).findByTestId("words"),
+    ).toHaveTextContent("Nothing is drawn before Fit is pressed.");
+  });
+
+  it("gives the refusal's reason where the engine would refuse the option", async () => {
+    const refusal: Refusal = {
+      error: {
+        code: "decision_support_task",
+        message: "A decision curve weighs a yes/no outcome.",
+        exits: [],
+      },
+    };
+    vi.spyOn(api, "preview").mockRejectedValue(new RefusalError(refusal));
+    mount("set_intended_use");
+    pointAt("use:decision_support");
+    const words = await within(screen.getByTestId("option-use:decision_support")).findByTestId(
+      "words",
+    );
+    expect(words).toHaveTextContent("A decision curve weighs a yes/no outcome.");
+    expect(words).toHaveAttribute("data-refused");
+  });
+
+  it("names the option and stops where the engine serves nothing to say", async () => {
+    const preview = vi
+      .spyOn(api, "preview")
+      .mockResolvedValue({ ...PREVIEW, views: [], note: null, caution: null });
+    mount("set_explain");
+    pointAt("curves:ale");
+    await waitFor(() => expect(preview).toHaveBeenCalled());
+    await settle();
+    expect(document.querySelectorAll("[data-testid=words]")).toHaveLength(0);
+    expect(screen.getByTestId("option-curves:ale")).toHaveTextContent("Accumulated local effects");
+  });
+
+  it("says nothing of an option before it is pointed at", async () => {
+    const preview = vi.spyOn(api, "preview").mockResolvedValue(PREVIEW);
+    mount("set_selection");
+    await settle();
+    expect(preview).not.toHaveBeenCalled();
+    expect(document.querySelectorAll("[data-testid=words]")).toHaveLength(0);
+  });
+});
+
+describe("a press the server does not record answers at the option", () => {
+  it("shows the refusal and its exits, and an exit records its own decision", async () => {
+    const exit: Decision = {
+      kind: "set_levers",
+      forms: "none",
+      variance_filter: "top",
+      keep: 1000,
+      imbalance: "none",
+    };
+    const refusal: Refusal = {
+      error: {
+        code: "keep_how_many",
+        message: "Keeping the most variable predictors needs how many to keep.",
+        exits: [{ label: "Keep the 1,000 most variable", decision: exit }],
+      },
+    };
+    const { decide } = mount("set_levers");
+    decide.mockRejectedValueOnce(new RefusalError(refusal));
+    fireEvent.click(screen.getByTestId("option-variance_filter:top"));
+    const note = await screen.findByTestId("refusal");
+    expect(note).toHaveTextContent("Keeping the most variable predictors needs how many to keep.");
+    fireEvent.click(within(note).getByTestId("refusal-exit"));
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(2));
+    expect(decide.mock.calls[1]).toEqual([PID, exit]);
+  });
+
+  it("says the server did not record it where the failure is not a refusal", async () => {
+    const { decide } = mount("set_updating");
+    decide.mockRejectedValueOnce(new ApiError(500, "The server answered 500.", null));
+    fireEvent.click(screen.getByTestId("option-method:none"));
+    expect(await screen.findByTestId("failure")).toHaveTextContent("The server answered 500.");
+  });
+});
