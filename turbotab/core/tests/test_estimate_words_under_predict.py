@@ -236,6 +236,61 @@ def test_shares_that_sum_to_one_hundred_are_said_under_either_goal(purpose):
     assert any(w.startswith(", ".join(shares) + " sum to 100% on every row") for w in said), said
 
 
+TOTAL_AS_COVARIATE = (  # audit ME-02's words under Estimate, for the constructed table below
+    "energy_kcal reads as total energy and is in the model as a covariate, so each nutrient's "
+    "coefficient is at fixed total energy (the standard model), not an absolute intake. Give "
+    "energy_kcal the energy role to choose the energy model, or leave it out for the unadjusted "
+    "one.")
+
+
+def _design_warnings(tmp_path, purpose: str | None) -> list[str]:
+    """The design stage's concerns on a table where total energy is a covariate beside four
+    nutrients (W1-R R2's verifier, V2: the design concerns the shell draws)."""
+    from turbotab.core.stages.modeling import design_stage
+    from turbotab.core.tests import modeling_fixtures as mf
+
+    rng = np.random.default_rng(11)
+    n = 160
+    kcal = rng.normal(2000, 400, n)
+    frame = pd.DataFrame({"protein_g": 0.04 * kcal + rng.normal(0, 10, n),
+                          "carb_g": 0.12 * kcal + rng.normal(0, 20, n),
+                          "sugar_g": 0.05 * kcal + rng.normal(0, 8, n),
+                          "fiber_g": rng.normal(18, 4, n), "energy_kcal": kcal,
+                          "age": rng.uniform(20, 80, n), "y": rng.normal(size=n)})
+    roles = {"protein_g": "exposure", "carb_g": "exposure", "sugar_g": "exposure",
+             "fiber_g": "exposure", "energy_kcal": "covariate", "age": "covariate"}
+    paths = mf.ingest_frame(frame, tmp_path / str(purpose))
+    st = mf.state(roles=roles, target="y", task="regression", models=["linear"], purpose=purpose,
+                  split=SplitSpec(holdout=0.0, seed=0, folds=5), shape_confirmations={})
+    design = design_stage(mf.context(st, {"split": mf.split_bundle(np.arange(n), holdout=0.0),
+                                          "target_info": mf.target_info("regression", "y")},
+                                     paths))
+    return list(design.data["warnings"])
+
+
+def test_under_predict_the_design_says_nothing_of_total_energy_as_a_covariate(tmp_path):
+    """Under Predict no coefficient is read and the energy model is never asked (BEATS_PREDICT §9
+    ruling 5), so audit ME-02's concern, what each nutrient's coefficient means beside total energy
+    and how to choose the energy model, is not said."""
+    said = _design_warnings(tmp_path, "prediction")
+    assert not [w for w in said if "reads as total energy" in w], said
+
+
+@pytest.mark.parametrize("purpose", ["inference", None])
+def test_under_estimate_the_design_says_total_energy_is_a_covariate_as_before(tmp_path, purpose):
+    assert TOTAL_AS_COVARIATE in _design_warnings(tmp_path, purpose)
+
+
+def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_before():
+    """Ruling R-e: the design's concerns under Predict changed (3b), and the fit serves the
+    calibration's support (finding 10), so neither stage's cached artifact from before is served:
+    each stage's version is the one after the change."""
+    from turbotab.core.stages import build_graph
+
+    versions = {s.name: s.version for s in build_graph().stages()}
+    assert (versions["design"], versions["fit"]) == (31, 29)
+
+
 def test_the_design_spec_carries_the_goal_its_concerns_read():
     frame = _diet()
     for purpose in ("prediction", "inference", None):

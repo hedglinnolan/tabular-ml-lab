@@ -577,7 +577,11 @@ def build_graph() -> Graph:
             # design 30 (claims backtest D-058): under inference a yes/no outcome's grouping
             # answered "adjust for it" is refused when the rows the design describes hold too few
             # per group for an intercept each (``estimand.intercepts_refusal``).
-            Stage("design", 30, ("working", "split", "target_info"),
+            # design 31 (W1-R, the walkthrough's finding 3b): under prediction the design's concerns
+            # say nothing of a coefficient's meaning or a substitution (``warnings_for``, audit
+            # ME-02's total energy as a covariate), so a design cached before is computed again
+            # rather than served with them.
+            Stage("design", 31, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS, "levers", "selection", "survey"),
@@ -654,7 +658,10 @@ def build_graph() -> Graph:
             # fit 28 (W1-K): the held-out detail serves the no-predictor baseline's scores and,
             # for a numeric outcome, the held-out verdict against it, so a fit cached before them
             # is computed again rather than served without them.
-            Stage("fit", 28, ("working", "design", "split", "target_info", "cohort"),
+            # fit 29 (W1-R, the walkthrough's finding 10): the held-out calibration serves the rows
+            # behind each stretch of its predictions' range (``support``), so a fit cached before
+            # it is computed again rather than served with none.
+            Stage("fit", 29, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models", "purpose"),
