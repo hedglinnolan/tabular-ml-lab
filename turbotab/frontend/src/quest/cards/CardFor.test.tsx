@@ -13,7 +13,7 @@
  * the stages it reads served from the capture, as the generic question's test does.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, vi } from "vitest";
 import { QUESTION_KEYS, type TeachingEntry } from "../../api/m1-types";
@@ -27,6 +27,7 @@ import { CONTRACT, type ContractPair } from "../fixtures/contract";
 import { CardFor } from "./CardFor";
 import { DECLARATION_CARDS } from "./predict";
 import { columnOf, recordable, rendererOf, type Renderer } from "./renderers";
+import ROLE_FIXTURE from "./roles/fixture.json";
 import { said } from "../words";
 
 const FIXTURES = import.meta.glob<M3Fixture>("../../mocks/fixtures/m3-*.json", { eager: true, import: "default" });
@@ -279,6 +280,20 @@ describe("the dispatcher's fallbacks, both ways", () => {
     renderLine(ask);
     expect(screen.getByTestId("reading-ask:models")).toHaveTextContent("kcal is energy in kilocalories");
     expect(screen.getByRole("button", { name: "It is in kilojoules" })).toBeEnabled();
+  });
+
+  it("draws a column's own role line through the role card, recordable, and every other reading line as rows", () => {
+    // W1-R finding 1: the engine's line for a role recorded below high (roles/fixture.json).
+    const role = (ROLE_FIXTURE.lines as unknown as QuestLine[]).find((l) => l.status === "open")!;
+    expect(recordable(role, DECLARATION_CARDS)).toBe(true);
+    renderLine(role);
+    expect(screen.getByTestId(`role-${role.items[0]!.column}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`reading-${role.key}`)).toBeNull();
+    cleanup();
+    const settled: QuestLine = { ...role, id: "default:read-from-data", key: "read_from_data", label: "Confirm", status: "set_for_you", counted: false };
+    renderLine(settled);
+    expect(screen.getByTestId("reading-read_from_data")).toBeInTheDocument();
+    expect(screen.queryByTestId(`role-${role.items[0]!.column}`)).toBeNull();
   });
 });
 

@@ -4,11 +4,12 @@
  * not reached and the opening waits until Fit is pressed, and the families wait for the
  * predictor-selection question. Read on the real server's captured NHANES walk under prediction.
  */
-import type { DecisionRecord, Finding, ProjectView } from "../api/schema";
+import type { DecisionRecord, Finding, ProjectView, QuestLine } from "../api/schema";
+import ROLES from "../quest/cards/roles/fixture.json";
 import { CONTRACT } from "../quest/fixtures/contract";
 import prediction from "./fixtures/m3-nhanes-prediction.json";
 import { expandView, viewsOf, type M3Fixture } from "./m3";
-import { mockQuest, mockSections, openingRefusal, servedFit } from "./quest";
+import { mockQuest, mockRoleLines, mockSections, openingRefusal, servedFit } from "./quest";
 
 const F = prediction as unknown as M3Fixture;
 const VIEWS = viewsOf(F).map((v) => expandView(F, v, "mock-test", "2026-10-17T00:00:00Z"));
@@ -71,6 +72,52 @@ describe("the mock's quest log", () => {
     expect(stage.sweep).toMatchObject({ answered: true, action: CONTRACT.sweep_words[String(confirms.length)]![1] });
     const counted = stage.lines.filter((l) => l.label === "Decide" && l.counted).length;
     expect(stage.progress!.required).toBe(counted + 1);
+  });
+
+  it("lists each role the capture's roles answer recorded below high as the engine's own line, open until it is confirmed", () => {
+    // The capture's roles answer recorded 16 columns unconfirmed (the walkthrough's 16), which its
+    // driver then confirmed in one block; the engine's lines for bp_sys (waiting) and waist
+    // (confirmed) are roles/fixture.json's (core/quest.py `_role_lines`). Its place in the stage
+    // follows the table's order, so `order` is the capture's own.
+    const waitingAt = VIEWS.findIndex((v) => (v.state.roles_unconfirmed ?? []).includes("bp_sys") && !v.state.role_confirmations?.bp_sys);
+    expect(waitingAt).toBeGreaterThan(-1);
+    const view = VIEWS[waitingAt]!;
+    const engine = (column: string) => (ROLES.lines as unknown as QuestLine[]).find((l) => l.items[0]!.column === column)!;
+    const { order: _engineOrder, ...bp } = engine("bp_sys");
+    const reasons = { bp_sys: bp.items[0]!.evidence };
+    const data = (v: ProjectView) => mockQuest(v, null, false, reasons).stages.find((s) => s.key === "data")!;
+    const before = data(view);
+    const roleLines = before.lines.filter((l) => l.id === ROLES.place.id);
+    const unconfirmed = view.state.roles_unconfirmed!;
+    expect(roleLines.map((l) => l.items[0]!.column)).toEqual(Object.keys(view.state.roles!).filter((c) => unconfirmed.includes(c)));
+    expect(roleLines).toHaveLength(16);
+    expect(roleLines.every((l) => l.status === "open" && l.counted)).toBe(true);
+    const { order, ...mockBp } = roleLines.find((l) => l.key === "confirm_role:bp_sys")!;
+    expect(mockBp).toEqual(bp);
+    // Why a line waits names its own presses, so a flag's (the capture's six imputed_* columns)
+    // differs from a covariate's: it is the engine's for a flag.
+    const flag = roleLines.find((l) => l.key === "confirm_role:imputed_waist")!;
+    expect(flag.reason).toBe(engine("imputed_waist").reason);
+    expect(flag.items[0]!.options).toEqual(engine("imputed_waist").items[0]!.options);
+    expect(flag.reason).not.toBe(bp.reason!.replaceAll("bp_sys", "imputed_waist"));
+    expect(order).toBeGreaterThanOrEqual(ROLES.place.order);
+    expect(before.progress?.complete).toBe(false);
+    expect(before.progress!.required - before.progress!.answered).toBeGreaterThanOrEqual(16);
+
+    const settledAt = VIEWS.findIndex((v, i) => i > waitingAt && !!v.state.role_confirmations?.waist);
+    const after = data(VIEWS[settledAt]!).lines.filter((l) => l.id === ROLES.place.id);
+    const { decision_id: _engineRecord, order: _o, items: [engineItem], ...waist } = engine("waist");
+    const { decision_id: recordId, order: _m, items: [mockItem], ...mockWaist } = after.find((l) => l.key === "confirm_role:waist")!;
+    expect(mockWaist).toEqual(waist);
+    expect({ ...mockItem!, evidence: "" }).toEqual({ ...engineItem!, evidence: "" });
+    expect(mockItem!.evidence).toBe(ROLES.unread_evidence);
+    expect(VIEWS[settledAt]!.decisions.find((r) => r.id === recordId)?.decision.kind).toBe("confirm_readings");
+    expect(after.every((l) => l.status === "answered")).toBe(true);
+  });
+
+  it("lists no role line where the roles answer left nothing unconfirmed", () => {
+    const view = { ...AT_OPENING, state: { ...AT_OPENING.state, roles_unconfirmed: [] } };
+    expect(mockRoleLines(view)).toEqual([]);
   });
 
   it("groups the methods' sentences by the stage that records each kind, every recorded one once", () => {

@@ -353,6 +353,9 @@ class HoldoutDetail(_Model):
     no-predictor baseline beside them."""
 
     intervals: dict[str, Interval]
+    # With the held-out rows behind each stretch of its curve's x-range (``Calibration.support``,
+    # W1-R finding 10), so the view shows where the curve rests on few rows. Empty in artifacts from
+    # before it.
     calibration: Calibration | None = None
     # MS6: by level (ordinal, multiclass), at the horizon (time to event), or "not assessed".
     calibration_levels: list[LevelCalibration] | None = None

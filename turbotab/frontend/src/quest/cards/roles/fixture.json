@@ -1,0 +1,271 @@
+{
+  "about": "Written by turbotab/core/tests/test_quest_unconfirmed_roles.py from core/quest.py (_role_lines): never edit by hand.",
+  "place": {
+    "stage": "data",
+    "id": "decision:confirm_role",
+    "order": 30
+  },
+  "key": "confirm_role:{column}",
+  "unread_evidence": "proposed below high confidence and recorded with the other roles",
+  "templates": {
+    "name": "the role of `{column}`",
+    "proposed": "proposed as {role}",
+    "settled": "is {role}",
+    "confirm": "Confirm `{column}` as {role}",
+    "change": "`{column}` is {other}"
+  },
+  "reasons": {
+    "identifier": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+    "exposure": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+    "energy": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+    "covariate": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+    "design": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a covariate.",
+    "flag": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a covariate.",
+    "time": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a covariate.",
+    "excluded": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or keep it in the model.",
+    "cluster": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a covariate."
+  },
+  "words": {
+    "identifier": "the unit's identifier",
+    "exposure": "what you study",
+    "energy": "total energy intake",
+    "covariate": "a covariate",
+    "design": "part of the survey design",
+    "flag": "a flag on another column",
+    "time": "the time of each row",
+    "excluded": "left out of the models",
+    "cluster": "a cluster of units"
+  },
+  "choices": {
+    "identifier": [
+      "covariate",
+      "excluded"
+    ],
+    "exposure": [
+      "covariate",
+      "excluded"
+    ],
+    "energy": [
+      "covariate",
+      "excluded"
+    ],
+    "covariate": [
+      "exposure",
+      "excluded"
+    ],
+    "design": [
+      "covariate"
+    ],
+    "flag": [
+      "covariate"
+    ],
+    "time": [
+      "covariate"
+    ],
+    "excluded": [
+      "covariate",
+      "exposure"
+    ],
+    "cluster": [
+      "covariate"
+    ]
+  },
+  "lines": [
+    {
+      "id": "decision:confirm_role",
+      "key": "confirm_role:bp_sys",
+      "source": "reading",
+      "label": "Decide",
+      "name": "the role of `bp_sys`",
+      "status": "open",
+      "counted": true,
+      "order": 30.0,
+      "decision_id": null,
+      "reason": "`bp_sys` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [
+        {
+          "kind": "role",
+          "column": "bp_sys",
+          "value": "covariate",
+          "words": "proposed as a covariate",
+          "evidence": "the reason the roles stage gives for `bp_sys`",
+          "options": [
+            {
+              "label": "Confirm `bp_sys` as a covariate",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "bp_sys",
+                "role": "covariate"
+              }
+            },
+            {
+              "label": "`bp_sys` is what you study",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "bp_sys",
+                "role": "exposure"
+              }
+            },
+            {
+              "label": "`bp_sys` is left out of the models",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "bp_sys",
+                "role": "excluded"
+              }
+            }
+          ]
+        }
+      ],
+      "changed_since": null
+    },
+    {
+      "id": "decision:confirm_role",
+      "key": "confirm_role:waist",
+      "source": "reading",
+      "label": "Decide",
+      "name": "the role of `waist`",
+      "status": "answered",
+      "counted": true,
+      "order": 30.001,
+      "decision_id": "r5",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [
+        {
+          "kind": "role",
+          "column": "waist",
+          "value": "covariate",
+          "words": "is a covariate",
+          "evidence": "the reason the roles stage gives for `waist`",
+          "options": [
+            {
+              "label": "`waist` is what you study",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "waist",
+                "role": "exposure"
+              }
+            },
+            {
+              "label": "`waist` is left out of the models",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "waist",
+                "role": "excluded"
+              }
+            }
+          ]
+        }
+      ],
+      "changed_since": null
+    },
+    {
+      "id": "decision:confirm_role",
+      "key": "confirm_role:imputed_waist",
+      "source": "reading",
+      "label": "Decide",
+      "name": "the role of `imputed_waist`",
+      "status": "open",
+      "counted": true,
+      "order": 30.002,
+      "decision_id": null,
+      "reason": "`imputed_waist` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a covariate.",
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [
+        {
+          "kind": "role",
+          "column": "imputed_waist",
+          "value": "flag",
+          "words": "proposed as a flag on another column",
+          "evidence": "the reason the roles stage gives for `imputed_waist`",
+          "options": [
+            {
+              "label": "Confirm `imputed_waist` as a flag on another column",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "imputed_waist",
+                "role": "flag"
+              }
+            },
+            {
+              "label": "`imputed_waist` is a covariate",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "imputed_waist",
+                "role": "covariate"
+              }
+            }
+          ]
+        }
+      ],
+      "changed_since": null
+    },
+    {
+      "id": "decision:confirm_role",
+      "key": "confirm_role:cycle_begin_year",
+      "source": "reading",
+      "label": "Decide",
+      "name": "the role of `cycle_begin_year`",
+      "status": "open",
+      "counted": true,
+      "order": 30.003,
+      "decision_id": null,
+      "reason": "`cycle_begin_year` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or keep it in the model.",
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [
+        {
+          "kind": "role",
+          "column": "cycle_begin_year",
+          "value": "excluded",
+          "words": "proposed as left out of the models",
+          "evidence": "the reason the roles stage gives for `cycle_begin_year`",
+          "options": [
+            {
+              "label": "Confirm `cycle_begin_year` as left out of the models",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "cycle_begin_year",
+                "role": "excluded"
+              }
+            },
+            {
+              "label": "`cycle_begin_year` is a covariate",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "cycle_begin_year",
+                "role": "covariate"
+              }
+            },
+            {
+              "label": "`cycle_begin_year` is what you study",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "cycle_begin_year",
+                "role": "exposure"
+              }
+            }
+          ]
+        }
+      ],
+      "changed_since": null
+    }
+  ]
+}

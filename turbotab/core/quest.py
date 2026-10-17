@@ -32,7 +32,9 @@ quest stages" and the audited disagreements); the registry test holds every plac
 Router asks is a Decide; a default it states is a Confirm, or For the record where no other choice
 is offered; FOUNDATION §3; a declaration carries its method contracts' tier, :func:`contract_tier`,
 unless the crosswalk rules otherwise, :data:`TIER_RULINGS`), with "Waiting for" on a line whose
-earlier answers are missing;
+earlier answers are missing; in Your data, each column a roles answer recorded below high confidence
+as proposed is a counted Decide of its own until its role is confirmed on its own (BLUEPRINT §14
+rule 2, :func:`_role_lines`);
 progress as answered over required, each counted Decide one and the stage's Confirm sweep one,
 empty (``None``) for a stage not reached, and ``complete`` once every objective is answered (a
 reached stage that asks nothing, 0 of 0, is complete: its segment is full; except Results under
@@ -1533,7 +1535,9 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
 
 def _ask_items(asked: Asked, state: Any) -> list[ReadItem]:
     """The readings a refusal waits on, each with the refusal's own ways forward for its column
-    (a way forward that names no column, such as changing the energy answer, under each)."""
+    (a way forward that names no column, such as changing the energy answer, under each), except a
+    block confirmation that lists a role: a role below high is confirmed on its own (BLUEPRINT §14
+    rule 2), never in one press with others."""
     from turbotab.core.readings import guess_words
 
     def column_of(exit_: Mapping[str, Any]) -> str | None:
@@ -1549,10 +1553,21 @@ def _ask_items(asked: Asked, state: Any) -> list[ReadItem]:
             decision = decision.model_dump(mode="json")
         return ReadOption(label=str(exit_.get("label")), decision=decision)
 
+    def several_roles(exit_: Mapping[str, Any]) -> bool:
+        # BLUEPRINT §14 rule 2: a role proposed below high never rides along in one press with
+        # other readings. A block confirmation that lists one (``readings.block_exit``) is not
+        # offered; each role keeps its own confirmation, and a block of other readings stays.
+        decision = exit_.get("decision")
+        if decision is not None and hasattr(decision, "model_dump"):
+            decision = decision.model_dump(mode="json")
+        if not isinstance(decision, Mapping) or decision.get("kind") != "confirm_readings":
+            return False
+        return any(_get(i, "reading") == "role" for i in decision.get("items") or ())
+
     items = []
     for r in asked.readings:
         column = str(getattr(r, "column", ""))
-        mine = [e for e in asked.exits if column_of(e) in (column, None)]
+        mine = [e for e in asked.exits if column_of(e) in (column, None) and not several_roles(e)]
         try:
             words = guess_words(r)
         except Exception:  # noqa: BLE001 - a reading the ledger cannot word keeps its value
@@ -1610,6 +1625,130 @@ def _asked_lines(state: Any, steps: Sequence[Any], log: _Log,
             name=asks(asked.message), status="open", counted=True, order=place.order - 0.5,
             reason=asked.message, items=_ask_items(asked, state),
             reopened_by=_since_answered(log, asked.question))))
+    return lines
+
+
+ROLE_LINE = OTHER_KINDS["confirm_role"]
+
+
+def role_line_key(column: str) -> str:
+    """The quest line of one column's own role confirmation (:func:`_role_lines`)."""
+    return f"confirm_role:{column}"
+
+
+# What a role that waits cannot set (``readings.unsettled_message``, as the fit's refusal says it).
+ROLE_WAITS_FOR = "the model's predictors"
+
+
+def role_choices(role: str) -> list[str]:
+    """The roles a column's own confirmation offers instead of ``role``, in the ledger's order: its
+    changes (``readings.ROLE_CHANGES``) and an alternative the values cannot exclude
+    (``readings.ROLE_ALTERNATIVES``), each once."""
+    from turbotab.core.readings import ROLE_ALTERNATIVES, ROLE_CHANGES
+
+    others = [*ROLE_CHANGES.get(str(role), ("covariate",)),
+              *(other for other, _words in ROLE_ALTERNATIVES.get(str(role), ()))]
+    return [o for o in dict.fromkeys(others) if o != role]
+
+
+def role_line_reason(column: str, role: str) -> str:
+    """Why one column's role line waits: the fit's words for one column
+    (``readings.unsettled_message``), whose last clause names only what the line's presses do instead
+    of confirming (:func:`role_choices`): leaving it out where a press records it as left out of the
+    models; keeping it in the model where it was proposed as left out and every press makes it a
+    predictor; else recording it as each role a press records (a flag, a time, a design column or a
+    cluster changes only to a covariate)."""
+    from turbotab.core.readings import PREDICTOR_ROLES, role_words, unsettled_message
+
+    choices = role_choices(role)
+    if "excluded" in choices:
+        return unsettled_message([column], ROLE_WAITS_FOR)
+    if role == "excluded" and choices and all(c in PREDICTOR_ROLES for c in choices):
+        instead = ", or keep it in the model"
+    elif choices:
+        instead = ", or record it as " + " or ".join(role_words(c) for c in choices)
+    else:
+        instead = ""
+    return (f"`{column}` was proposed below high confidence and recorded with the other roles, not "
+            f"confirmed on its own, so it cannot set {ROLE_WAITS_FOR} yet. Confirm it after reading "
+            f"why it was proposed{instead}.")
+
+
+def role_line_text(column: str, role: str, other: str = "") -> dict[str, str]:
+    """The words of one column's role line (:func:`_role_lines`): its name, why it waits
+    (:func:`role_line_reason`), its reading while it waits (``proposed``) and once settled
+    (``settled``), and the labels of its confirmation (``confirm``) and of a change to ``other``
+    (``change``)."""
+    from turbotab.core.readings import role_words
+
+    return {
+        "name": f"the role of `{column}`",
+        "reason": role_line_reason(column, role),
+        "proposed": f"proposed as {role_words(role)}",
+        "settled": f"is {role_words(role)}",
+        "confirm": f"Confirm `{column}` as {role_words(role)}",
+        "change": f"`{column}` is {role_words(other)}",
+    }
+
+
+def _role_option(column: str, role: str, label: str) -> ReadOption:
+    from turbotab.core.decisions import ConfirmRole
+
+    return ReadOption(label=label, decision=ConfirmRole(column=column, role=role)
+                      .model_dump(mode="json"))
+
+
+def _role_lines(state: Any, steps: Sequence[Any], log: _Log,
+                facts: Facts) -> list[tuple[str, QuestLine]]:
+    """BLUEPRINT §14 rule 2 (the walkthrough of 2026-10-17, finding 1): a proposal below high
+    confidence "needs its own confirmation; it never rides along in a bulk 'confirm all'". Each
+    column a roles answer recorded exactly as proposed below high (``roles_unconfirmed``) is a
+    counted Decide of Your data of its own, open until a confirmation of its own role settles it
+    (``readings.unsettled``: ``confirm_role``, or a role ``confirm_reading``), then answered by that
+    record, so Your data is not complete while any waits and the bar moves as each is confirmed.
+    While one waits no number-changing default reads it: it is no predictor
+    (``readings.predictor_columns``) and the fit asks for it. Each line's ways forward are one
+    ``confirm_role`` each: the role as proposed, or another the ledger offers for it
+    (:func:`role_choices`); none confirms another column, and why the line waits names only what
+    those presses do (:func:`role_line_reason`). The evidence is the roles stage's own
+    reason for the proposal, where its artifact is at hand. While the roles question is asked
+    again (its answer no longer holds) the columns wait with it and are not listed."""
+    from turbotab.core.readings import proposals_of, role_reading
+
+    roles = getattr(state, "roles", None) or {}
+    named = set(getattr(state, "roles_unconfirmed", None) or ())
+    if not roles or not named:
+        return []
+    step = next((s for s in steps if _get(s, "key") == "roles"), None)
+    if step is not None and _get(step, "status") in ("open", "waiting") \
+            and not _holding(step, state):
+        return []
+    reasons = {str(p.get("column")): str(p.get("reason") or "")
+               for p in proposals_of(facts.artifacts.get("roles"))}
+    target = getattr(state, "target", None)
+    lines = []
+    for i, (column, role) in enumerate(c for c in roles.items() if c[0] in named):
+        reading = role_reading(state, column) if column != target else None
+        if reading is None:
+            continue
+        role = str(role)
+        text = role_line_text(column, role)
+        options = [_role_option(column, other, role_line_text(column, role, other)["change"])
+                   for other in role_choices(role)]
+        waiting = not reading.settled
+        if waiting:
+            options.insert(0, _role_option(column, role, text["confirm"]))
+        confirmed = None if waiting else _confirmed_at(log, column)
+        lines.append((ROLE_LINE.stage, QuestLine(
+            id=ROLE_LINE.item, key=role_line_key(column), source="reading", label=DECIDE,
+            name=text["name"], status="open" if waiting else "answered", counted=True,
+            order=ROLE_LINE.order + i / 1000,
+            decision_id=confirmed.id if confirmed is not None else None,
+            reason=text["reason"] if waiting else None,
+            items=[ReadItem(kind="role", column=column, value=role,
+                            words=text["proposed" if waiting else "settled"],
+                            evidence=reasons.get(column) or reading.evidence,
+                            options=options)])))
     return lines
 
 
@@ -1966,6 +2105,7 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
                   asked=tuple(asked or ()))
     placed = [*_question_lines(state, steps, log, facts),
               *_asked_lines(state, steps, log, facts),
+              *_role_lines(state, steps, log, facts),
               *_declaration_lines(state, by_key, log, facts),
               *_finding_lines(state, findings, by_key, log),
               *sweeps.reading_lines(state, readings)]
@@ -2017,12 +2157,14 @@ __all__ = [
     "EXPLORE_FINDINGS", "FINDING_ROUTES", "FOLLOWS_ITS_STAGE", "FOLLOWS_WHAT_IT_UNDOES", "Facts",
     "GOAL_PLACES", "LABELS", "NORMALIZATION", "OTHER_KINDS", "Place", "Progress", "QUESTIONS",
     "QUEST_VERSION", "QuestLine", "QuestLog", "QuestStage", "READ_BY_GATE", "ReadItem",
-    "ReadOption", "Reopened", "ReopenedBy", "STAGES", "STAGE_NAMES", "STATED", "SWEEP_ITEMS",
-    "Sweep", "TIER_RULINGS", "Waiting", "answer_holds", "answering_kinds", "contract_tier",
+    "ROLE_LINE", "ROLE_WAITS_FOR", "ReadOption", "Reopened", "ReopenedBy", "STAGES", "STAGE_NAMES", "STATED",
+    "SWEEP_ITEMS", "Sweep", "TIER_RULINGS", "Waiting", "answer_holds", "answering_kinds", "contract_tier",
     "exhibits_waiting",
     "asks", "explore_label", "explore_place", "finding_place", "fit_waits", "goal_of", "kind_place",
     "kind_stages", "noticing_place",
     "noticing_places", "noticing_stage", "noticing_stages", "quest_log", "question_reads",
-    "record_stage", "record_steps", "served_exhibits", "stage_reads", "waits_on_an_answer",
+    "record_stage", "record_steps", "role_choices", "role_line_key", "role_line_reason",
+    "role_line_text",
+    "served_exhibits", "stage_reads", "waits_on_an_answer",
     "written_slots",
 ]

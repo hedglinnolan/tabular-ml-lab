@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { CalibrationView, calibrationLine, curvePoints } from "./CalibrationView";
-import { calibrationRefusal, calibrationScales, sharedDomain, type CalibrationData } from "./calibration";
+import { calibrationRefusal, calibrationScales, sharedDomain, STRIP, supportBars, type CalibrationData } from "./calibration";
+import { inner } from "./common/scale";
 import { calibrationBinned, calibrationChoosing, calibrationClinical, calibrationOnePoint } from "./lab/curves.fixtures";
 
 const d: CalibrationData = {
@@ -37,6 +38,73 @@ describe("calibration's one shared scale", () => {
 
   it("keeps a risk inside [0, 1]", () => {
     expect(sharedDomain({ ...d, bins: [{ predicted: 0.9, observed: 0.95, low: 0.8, high: 1.04, n: 3 }] })).toEqual([0.1, 1]);
+  });
+});
+
+// W1-R finding 10: the engine's `support`, the rows behind each equal-width stretch of the
+// predictions' range (turbotab/core/models/performance.py, as np.histogram counts them).
+const supported: CalibrationData = {
+  ...d,
+  bins: null,
+  curve: [
+    { x: 0.1, y: 0.12 },
+    { x: 0.5, y: 0.45 },
+  ],
+  support: [
+    { lo: 0.1, hi: 0.2, n: 300 },
+    { lo: 0.2, hi: 0.3, n: 75 },
+    { lo: 0.3, hi: 0.4, n: 0 },
+    { lo: 0.4, hi: 0.5, n: 25 },
+  ],
+};
+
+describe("the rows behind the curve", () => {
+  it("draws each stretch's rows as a bar under the plot, as wide as its stretch and as tall as its share of the fullest", () => {
+    const g = calibrationScales(supported, 600, 40)!;
+    const bars = supportBars(supported, g);
+    expect(bars.map((b) => b.bin.n)).toEqual([300, 75, 25]); // a stretch with no rows draws nothing
+    for (const b of bars) {
+      expect(b.x).toBeCloseTo(g.x(b.bin.lo), 9);
+      expect(b.x + b.width).toBeCloseTo(g.x(b.bin.hi), 9);
+    }
+    expect(bars[1]!.height / bars[0]!.height).toBeCloseTo(75 / 300, 9);
+    expect(bars[2]!.height / bars[0]!.height).toBeCloseTo(25 / 300, 9);
+    // on the x axis, in a band of its own below everything the plot draws
+    const { y1 } = inner(g.box);
+    const [lo] = sharedDomain(supported)!;
+    for (const b of bars) {
+      expect(b.y + b.height).toBe(y1);
+      expect(b.y).toBeGreaterThanOrEqual(y1 - STRIP);
+    }
+    expect(g.y(lo)).toBeLessThan(y1 - STRIP);
+  });
+
+  it("keeps the plot square with the strip, and draws none where none is served", () => {
+    const g = calibrationScales(supported, 600, 40)!;
+    const [x0, x1] = g.x.range() as [number, number];
+    const [y1, y0] = g.y.range() as [number, number];
+    expect(x1 - x0).toBe(y1 - y0);
+    const plain = { ...supported, support: undefined };
+    expect(supportBars(plain, calibrationScales(plain, 600, 40)!)).toEqual([]);
+    expect(calibrationScales(plain, 600, 40)!.box.height).toBe(g.box.height - STRIP);
+    const { container } = render(<CalibrationView data={plain} />);
+    expect(container.querySelector('[data-mark="support"]')).toBeNull();
+  });
+
+  it("draws the strip in the view, keys it, and lists each stretch's rows in the table", () => {
+    const { container } = render(<CalibrationView data={supported} />);
+    expect(container.querySelectorAll('[data-mark="support"] rect')).toHaveLength(3);
+    expect(container.textContent).toContain("Rows at each prediction");
+    const rows = [...screen.getByTestId("table-alternative").querySelectorAll("tbody tr")].map((r) => r.textContent);
+    expect(rows.filter((r) => r?.startsWith("Rows predicted"))).toEqual([
+      "Rows predicted0.1 to 0.2——300",
+      "Rows predicted0.2 to 0.3——75",
+      "Rows predicted0.3 to 0.4——0",
+      "Rows predicted0.4 to 0.5——25",
+    ]);
+    expect(screen.getByTestId("table-alternative").querySelector("caption")?.textContent).toContain(
+      "rows counted in 4 equal-width stretches of the predictions",
+    );
   });
 });
 

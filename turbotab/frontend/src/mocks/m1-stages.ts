@@ -1150,6 +1150,17 @@ function holdoutDetail(h: { r2: number; rmse: number; mae: number }, n: number):
     const x = 80 + i * 8;
     return { x, y: x + 0.06 * (x - 104) + 2 * jitter(`cal:${i}`) };
   });
+  // The rows behind each stretch of the curve's x-range (core/models/performance.py `support`:
+  // equal-width stretches of the predictions' range): the mock's own counts, right-skewed as
+  // fasting glucose is, the remainder in the fullest stretch so they sum to the held-out rows.
+  const STRETCHES = 20;
+  const [lo, hi] = [curve[0]!.x, curve[curve.length - 1]!.x];
+  const shape = Array.from({ length: STRETCHES }, (_, j) => ((j + 0.5) / STRETCHES) * Math.exp((-6 * (j + 0.5)) / STRETCHES));
+  const total = shape.reduce((a, b) => a + b, 0);
+  const counts = shape.map((v) => Math.floor((v / total) * n));
+  counts[shape.indexOf(Math.max(...shape))]! += n - counts.reduce((a, b) => a + b, 0);
+  const width = (hi - lo) / STRETCHES;
+  const support = counts.map((c, j) => ({ lo: lo + j * width, hi: lo + (j + 1) * width, n: c }));
   return {
     intervals: { r2, rmse: iv(h.rmse, 1.4), mae: iv(h.mae, 0.9) },
     calibration: {
@@ -1159,6 +1170,7 @@ function holdoutDetail(h: { r2: number; rmse: number; mae: number }, n: number):
       intercept: iv(0.6, 1.1),
       slope: iv(0.94, 0.05),
       curve,
+      support,
       eavg: 1.8,
       e90: 3.6,
       emax: 7.9,
