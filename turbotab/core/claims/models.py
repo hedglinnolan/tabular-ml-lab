@@ -45,6 +45,9 @@ from turbotab.core.claims import Basis, Claim, Fires, Param, Part, Regime, Silen
 
 HERE = "turbotab.core.claims.models"
 AUTHOR = "R0b-models builder"
+# The author of the claim the R0b finish added (tuning.small_sample_no_search), so that its grader
+# above judgment is checked against the right name (CLAIMS_REGISTRY.md §2.4).
+FINISH_AUTHOR = "R0b-finish builder"
 TESTS = "turbotab/core/tests/test_claims_models.py"
 
 
@@ -377,7 +380,7 @@ SMALL_SAMPLE_NO_SEARCH = register(Claim(
     enforced_by=("turbotab.core.models.tuning:standard_for",
                  "turbotab.core.models.tuning:searched_size",
                  "turbotab.core.models.tuning:make_plan"),
-    author=AUTHOR,
+    author=FINISH_AUTHOR,
     ruled="RECIPES_AND_TUNING.md §4.6, ruled 2026-10-11: the forest keeps its standard",
 ))
 
