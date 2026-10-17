@@ -10,9 +10,18 @@ ledger's (``readings.predictor_columns``), the consumer the cohort and the fit r
 """
 from __future__ import annotations
 
+import json
+import typing
+from pathlib import Path
+
 from turbotab.core import decisions, quest, readings, sweep
 from turbotab.core.readings import Reading
 from turbotab.core.tests.test_stage_registry import record, stage, steps_until
+
+# What the shell's role card and the mock read from the engine, so neither retypes its words
+# (``turbotab/frontend/src/quest/cards/roles``; written by the last test here).
+FIXTURE = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "quest" / "cards" / "roles"
+           / "fixture.json")
 
 ROLES = {"SEQN": "identifier", "age": "covariate", "bp_sys": "covariate", "waist": "covariate",
          "cycle": "excluded"}
@@ -181,3 +190,46 @@ def test_the_fits_ask_keeps_a_block_of_several_codes_or_amounts():
     log = quest.quest_log(state, _records([]), steps_until(None), asked=[asked])
     blocks = [d for d in _decisions(_ask_line(log)) if _several(d)]
     assert blocks and {i["column"] for i in blocks[0]["items"]} == {"visits", "children"}
+
+
+# ── the shell's fixture ──────────────────────────────────────────────────────
+
+
+def _fixture() -> dict:
+    """Your data's role lines on the NHANES columns the capture under Predict left waiting (two
+    open, one confirmed since, a flag), and the words and choices they are made of, by role."""
+    roles = {"SEQN": "identifier", "age": "covariate", "bp_sys": "covariate",
+             "waist": "covariate", "imputed_waist": "flag", "cycle_begin_year": "excluded"}
+    waiting = ["bp_sys", "waist", "imputed_waist", "cycle_begin_year"]
+    proposals = {"columns": [
+        {"column": c, "proposed": r, "confidence": "medium" if c in waiting else "high",
+         "reason": f"the reason the roles stage gives for `{c}`"} for c, r in roles.items()]}
+    records = [
+        record(1, {"kind": "set_lens", "lenses": ["clinical"]}),
+        record(2, {"kind": "set_target", "column": "glucose"}),
+        record(3, {"kind": "set_purpose", "purpose": "prediction"}),
+        record(4, {"kind": "set_roles", "roles": roles, "unconfirmed": waiting}),
+        record(5, _confirm("waist", "covariate")),
+    ]
+    log = quest.quest_log(decisions.fold(records), records, steps_until("exclusions"),
+                          artifacts={"roles": proposals})
+    every = typing.get_args(decisions.Role)
+    return {
+        "about": "Written by turbotab/core/tests/test_quest_unconfirmed_roles.py from core/quest.py "
+                 "(_role_lines): never edit by hand.",
+        "place": {"stage": quest.ROLE_LINE.stage, "id": quest.ROLE_LINE.item,
+                  "order": quest.ROLE_LINE.order},
+        "templates": quest.role_line_text("{column}", "{role}", "{other}"),
+        "words": {r: readings.role_words(r) for r in every},
+        "choices": {r: quest.role_choices(r) for r in every},
+        "lines": [l.model_dump(mode="json") for l in _role_lines(log)],
+    }
+
+
+def test_the_shells_role_fixture_is_the_engines():
+    want = _fixture()
+    have = json.loads(FIXTURE.read_text("utf-8")) if FIXTURE.is_file() else None
+    if have != want:
+        FIXTURE.parent.mkdir(parents=True, exist_ok=True)
+        FIXTURE.write_text(json.dumps(want, indent=2, ensure_ascii=False) + "\n", "utf-8")
+    assert have == want, f"{FIXTURE} was out of date and has been written anew: commit it"
