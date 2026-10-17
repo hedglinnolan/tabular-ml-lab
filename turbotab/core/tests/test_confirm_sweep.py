@@ -257,6 +257,36 @@ def test_each_open_noticing_arrives_with_a_recommended_disposition_and_blockers_
     assert sweep.recommend(state, routed, set())[:2] == ("act_on_it", False)
 
 
+# A noticing decided in Models (it routes to the families question) and nothing else open there.
+IN_MODELS = {"findings": [{"id": "counts_p_over_n", "severity": "warning", "summary": "Few rows",
+                           "affected_columns": ["sugar"], "routes_to": "models"}]}
+
+
+@pytest.mark.parametrize("purpose", ["prediction", "inference", None])
+def test_under_predict_a_noticing_waits_for_the_triage_in_results_not_in_its_own_stage(purpose):
+    """W1-R round 2, ruling R-a (FOUNDATION §7): under Predict the open noticings' triage is in
+    Results, before the held-out rows open, so a noticing placed in Models does not hold Models'
+    completeness: Models completes once its questions are answered, and Fit can be pressed. The
+    triage in Results still lists it. Under Estimate, or with no goal, the triage is Models' own:
+    the noticing counts there, as before."""
+    state = planned(purpose=purpose)
+    without = stage(log_of(state), "models")
+    log = log_of(state, findings=IN_MODELS)
+    models = stage(log, "models")
+    [noticing] = [l for l in models.lines if l.source == "finding"]
+    assert (noticing.status, noticing.counted) == ("open", True)
+    t = sweep.triage(state, log, IN_MODELS)
+    assert [i.id for i in t.items] == ["counts_p_over_n"]
+    if purpose == "prediction":
+        assert t.stage == "results"
+        assert models.progress == without.progress
+    else:
+        assert t.stage == "models"
+        assert models.progress.required == without.progress.required + 1
+        assert models.progress.answered == without.progress.answered
+        assert not models.progress.complete
+
+
 def test_the_triage_records_every_disposition_and_the_disposed_noticings_are_answered():
     resolved = {"findings": [f for f in FINDINGS["findings"] if f["severity"] != "critical"]}
     state = planned()
