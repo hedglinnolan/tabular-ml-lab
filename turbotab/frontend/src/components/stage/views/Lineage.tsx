@@ -55,18 +55,26 @@ function laneWidths(placed: Placed, compact: boolean) {
 
 /** The raw lane and the matrix lane are never closer than this (the layout in `Lineage`). */
 const MIN_SPAN = 120;
+/** A link's least run between an adjusted pill and the lane dot on either side. */
+const LINK = 40;
+
+/** The adjusted pills' width: the widest label with its padding where the lanes leave a link's
+ *  run on either side of it, else none (the dots alone, as a thumbnail draws them). A pill is
+ *  never drawn narrower than its label. */
+function pillWidth(span: number, adjLabelW: number, compact: boolean): number {
+  return !compact && span - 2 * LINK >= adjLabelW ? adjLabelW : 0;
+}
 
 /**
- * The narrowest width at which the lineage, drawn full size, keeps every label clear of the next:
- * the raw labels' room, the widest adjusted label with its pill's padding between the two lanes'
- * dots, and the matrix labels' room (the layout in `Lineage`, solved for the adjusted label's
- * text). The pill is free to squeeze narrower than its label, as the layout lets it. A box
- * narrower than this scrolls (the live Columns card, stage/LiveScenes.tsx) rather than drawing
- * labels over each other; from 1280 px windows up, the card shows the whole lineage.
+ * The narrowest width at which the lineage, drawn full size, draws every adjusted pill whole and
+ * keeps every label clear of the next: the raw labels' room, the widest adjusted pill with a
+ * link's run on either side, and the matrix labels' room (the layout in `Lineage`). Narrower, the
+ * adjusted lane draws its dots alone; a box narrower than this scrolls instead (the live Columns
+ * card, stage/LiveScenes.tsx), and from 1280 px windows up the card shows the whole lineage.
  */
 export function lineageMinWidth(lineage: LineageData): number {
   const { rawW, mxLabelW, adjLabelW } = laneWidths(placeLineage(lineage), false);
-  return Math.ceil(rawW + 4 + Math.max(MIN_SPAN, adjLabelW) + mxLabelW);
+  return Math.ceil(rawW + 4 + Math.max(MIN_SPAN, adjLabelW + 2 * LINK) + mxLabelW);
 }
 
 export function Lineage({
@@ -106,7 +114,7 @@ export function Lineage({
   const x0 = rawW + 4;
   const x2 = Math.max(x0 + MIN_SPAN, w - mxLabelW);
   const x1 = (x0 + x2) / 2;
-  const adjW = compact ? 0 : Math.min(x2 - x1 - 40, adjLabelW);
+  const adjW = pillWidth(x2 - x0, adjLabelW, compact);
   const top = HEAD + (compact ? 2 : 4);
   const yOf = (row: number) => top + row * rowH + rowH / 2;
   const xOf = (lane: string) => (lane === "raw" ? x0 : lane === "adjusted" ? x1 : x2);

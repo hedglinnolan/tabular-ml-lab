@@ -23,7 +23,7 @@ import type { TeachingEntry } from "../api/m1-types";
 import type { AskCard } from "../api/m3-types";
 import { keys } from "../api/queries";
 import type { Decision, ProjectView, QuestLine, QuestLog, Refusal } from "../api/schema";
-import { besideAsk } from "../components/record/AskFor";
+import { besideAsk } from "../components/record/besideAsk";
 import { artifactAt, expandView, viewsOf, type M3Fixture } from "../mocks/m3";
 import { CONTRACT } from "./fixtures/contract";
 import { QuestScreen } from "./QuestScreen";

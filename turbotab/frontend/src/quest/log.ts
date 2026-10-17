@@ -9,12 +9,29 @@ import type { FitLock, QuestLine, QuestLog, QuestStage, StageStatus, SweptLineIn
 export type Label = QuestLine["label"];
 export const LABELS: readonly Label[] = ["Decide", "Confirm", "For the record"];
 
-/** The stage the card opens on: the first reached stage not yet complete, else the last reached
- *  (Models, complete, before Fit), else the first. */
+/** Where the analysis is, and the stage the card opens on: the first reached stage not yet
+ *  complete that is not passed for the triage (`passedForTriage`: its only lines still to answer are
+ *  open noticings, finding 6), else the last reached (Models, complete, before Fit), else the
+ *  first. */
 export function openStageKey(log: QuestLog): string {
   const reached = log.stages.filter((s) => s.reached);
-  const working = reached.find((s) => !s.progress?.complete);
+  const working = reached.find((s) => !s.progress?.complete && !passedForTriage(log, s));
   return (working ?? reached[reached.length - 1] ?? log.stages[0]!).key;
+}
+
+/**
+ * Whether a reached stage that is not complete is passed for the triage (finding 6): outside the
+ * triage's stage (`triageStage`), its only counted Decides still to answer are noticings, which
+ * travel to the triage, and no Confirm sweep waits, so its Continue is enabled (`primaryFor`).
+ * The engine counts those noticings in the stage's progress, so the stage reads incomplete; it is
+ * not where the analysis is.
+ */
+export function passedForTriage(log: QuestLog, stage: QuestStage): boolean {
+  if (!stage.reached || stage.key === triageStage(log)) return false;
+  const sweep = stage.sweep;
+  if (sweep && !sweep.answered && sweep.lines > 0) return false;
+  const rest = unanswered(stage);
+  return rest.length > 0 && rest.every((l) => l.source === "finding");
 }
 
 export function stageOf(log: QuestLog, key: string): QuestStage | undefined {

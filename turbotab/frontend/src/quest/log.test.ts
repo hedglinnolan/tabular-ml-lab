@@ -288,6 +288,83 @@ describe("a stage not reached yet (P4)", () => {
   });
 });
 
+/**
+ * Where the analysis is, beside open noticings (finding 6): the engine counts a stage's open
+ * noticings in its progress, but they travel to the triage, so outside the triage's stage a stage
+ * whose only lines still to answer are noticings is passed (its Continue is enabled) and is not
+ * where the analysis is: the shell lands past it, and a stage not reached yet leads past it. In the
+ * triage's own stage, and beside a question still open, the noticing holds the stage as before.
+ */
+describe("where the analysis is, beside open noticings (finding 6)", () => {
+  /** Your question answered and confirmed, so Who's in, with only its noticing open, comes first. */
+  const questionDone = (log: QuestLog) => {
+    const q = stageOf(log, "question")!;
+    return withStage(log, "question", answered, {
+      sweep: { ...q.sweep!, answered: true },
+      progress: { answered: q.progress!.required, required: q.progress!.required, complete: true },
+    }).log;
+  };
+  const unansweredOf = (s: QuestStage) => s.lines.filter((l) => l.label === "Decide" && l.counted && (l.status === "open" || l.status === "waiting"));
+  const onlyNoticing = (log: QuestLog) => {
+    const whos = stageOf(log, "whos_in")!;
+    const left = unansweredOf(whos);
+    expect(whos.progress?.complete).toBe(false);
+    expect(left.length).toBeGreaterThan(0);
+    expect(left.every((l) => l.source === "finding")).toBe(true);
+  };
+  /** The first reached stage after Who's in that is not complete, read off the log. */
+  const pastWhosIn = (log: QuestLog) => {
+    const i = log.stages.findIndex((s) => s.key === "whos_in");
+    return log.stages.slice(i + 1).find((s) => s.reached && !s.progress?.complete)!;
+  };
+
+  it("lands past a stage whose only open lines are noticings that travel to the triage", () => {
+    const log = questionDone(LOG);
+    onlyNoticing(log);
+    expect(LOG.fit?.purpose).toBe("prediction");
+    const at = pastWhosIn(log);
+    expect(at.key).toBe("models");
+    expect(openStageKey(log)).toBe(at.key);
+  });
+
+  it("leads a stage not reached yet past it too, naming where the analysis is", () => {
+    const log = questionDone(NOT_REACHED);
+    onlyNoticing(log);
+    const at = pastWhosIn(log);
+    const results = stageOf(log, "results")!;
+    expect(results.reached).toBe(false);
+    const p = primaryFor(log, results, { kind: "none" });
+    expect(p).toMatchObject({ kind: "continue", to: at.key, label: `Go to ${at.name}` });
+    expect(text((p as { hint: Hint }).hint)).toBe(`Results is not reached yet; the analysis is at ${at.name}.`);
+  });
+
+  it("stays at a stage whose noticing has a question still open beside it, or a sweep still to confirm", () => {
+    const log = withStage(questionDone(LOG), "whos_in", (l) => (l.key === "missing" ? { ...l, status: "open", decision_id: null } : l)).log;
+    expect(openStageKey(log)).toBe("whos_in");
+    const sweep = { ...stageOf(LOG, "question")!.sweep!, id: "other:confirm-sweep:whos_in", lines: 1, answered: false };
+    const swept = withStage(questionDone(LOG), "whos_in", (l) => l, { sweep }).log;
+    expect(openStageKey(swept)).toBe("whos_in");
+  });
+
+  it("stays at the triage's own stage, where the noticing is decided", () => {
+    // Under Estimate the triage stands in Models: a noticing there, every other line answered.
+    const estimate = { ...questionDone(LOG), fit: { ...LOG.fit!, purpose: "inference" } } as QuestLog;
+    const n = stageOf(estimate, "whos_in")!.lines.find((l) => l.source === "finding" && l.status === "open")!;
+    const whosDone = withStage(estimate, "whos_in", answered, { progress: { answered: 5, required: 5, complete: true } }).log;
+    const decided = withStage(whosDone, "models", answered, { sweep: null }).log;
+    const models = stageOf(decided, "models")!;
+    const log = withStage(decided, "models", (l) => l, {
+      lines: [...models.lines, { ...n, id: "finding:models-noticing", key: "models-noticing" }],
+      progress: { answered: 3, required: 4, complete: false },
+    }).log;
+    expect(unansweredOf(stageOf(log, "models")!).map((l) => l.key)).toEqual(["models-noticing"]);
+    expect(openStageKey(log)).toBe("models");
+    // Under Predict the same Models is passed for Results, the triage's stage there.
+    const predict = { ...log, fit: LOG.fit } as QuestLog;
+    expect(openStageKey(predict)).toBe("results");
+  });
+});
+
 describe("the opening, in Results (P5)", () => {
   const results = stageOf(LOG, "results")!;
 

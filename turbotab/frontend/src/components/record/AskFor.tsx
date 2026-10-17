@@ -33,6 +33,7 @@ import {
   SurveyAsk,
 } from "./ask/ChoiceQuestions";
 import { AskCard } from "./ask/AskCard";
+import { besideAsk } from "./besideAsk";
 import type { AskProps } from "./ask/common";
 import { LensAsk, PurposeAsk, TargetAsk, TaskAsk } from "./ask/FactQuestions";
 import { RolesAsk } from "./ask/RolesAsk";
@@ -109,27 +110,6 @@ interface PlainAnswer {
   at: string;
   refusal?: Refusal;
   failure?: string;
-}
-
-const confirms = (d: Record<string, unknown> | null) =>
-  d?.kind === "confirm_reading" || d?.kind === "confirm_readings";
-/** Where a refusal's own words stop and the ledger's question about the readings begins
- *  (core/readings.py `ask_text`; core/quest.py `asks` splits a refusal there too). */
-const ASK_TEXT = /\s*Tell me about (?:this column|these columns): /;
-
-/**
- * A refusal answered beside the ledger's ask card on the same question (finding 12 of the
- * 2026-10-17 walkthrough: the readings shown once): the card above lists each reading the refusal
- * waits on, with its evidence and its confirmation, so the answer keeps the consumer's own words,
- * which say what it waits for, up to the ledger's question, and the ways forward that are not those
- * confirmations. A refusal that offers no confirmation is said whole.
- */
-export function besideAsk(refusal: Refusal): Refusal {
-  const exits = refusal.error.exits.filter((x) => !confirms(x.decision));
-  if (exits.length === refusal.error.exits.length) return refusal;
-  const message = refusal.error.message;
-  const cut = message.search(ASK_TEXT);
-  return { error: { ...refusal.error, message: cut > 0 ? message.slice(0, cut) : message, exits } };
 }
 
 /* A const, not a function declaration: purposes.test.tsx registers every function the record/

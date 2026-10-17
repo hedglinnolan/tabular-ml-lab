@@ -21,6 +21,7 @@ import type { StageFocus } from "../../state/focus";
 import { useDecide } from "../../api/queries";
 import type { Decision, ProjectView, Refusal } from "../../api/schema";
 import { useMotionPrefs, useTransitions } from "../../motion/prefs";
+import { besideAsk } from "../record/besideAsk";
 import { stateSeq, useEvidence, useM1Stage, usePreview, type Answer } from "./data";
 import { ColumnsScene, ModelsScene, NowScene, ResultsScene, RowsScene, type LiveData } from "./LiveScenes";
 import { FitHeld } from "./results/Results";
@@ -54,7 +55,9 @@ export interface StageProps {
    * whose card is the one place a choice is recorded (the quest shell: FOUNDATION §1, the card's
    * foot is the one action) passes false: the stage draws neither, so no second record button
    * disagrees with the card's and a refusal's readings are not drawn again beside the card that
-   * asks them. The refusal still says why there is no preview.
+   * asks them: the refusal still says why there is no preview, in the consumer's own words up to
+   * the ledger's question, which the card asks (record/besideAsk.ts, as the card's own answer to a
+   * refused press does).
    */
   recordHere?: boolean;
 }
@@ -381,7 +384,9 @@ export function Stage({ pid, view, focus, onFocus, fitWithheld = null, recordHer
                 {scene.kind === "refusal" ? (
                   <div className={s.refusal} role="alert" data-testid="refusal" data-purpose="refusal">
                     <p className={s.refusalText}>
-                      <Rich text={`Not available: ${scene.refusal.error.message}`} />
+                      <Rich
+                        text={`Not available: ${(recordHere ? scene.refusal : besideAsk(scene.refusal)).error.message}`}
+                      />
                     </p>
                     {recordHere && scene.refusal.error.exits.length ? (
                       <div className={s.exits}>

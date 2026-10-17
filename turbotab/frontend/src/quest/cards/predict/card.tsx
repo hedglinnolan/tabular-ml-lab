@@ -243,9 +243,11 @@ export function RecordChosen({
  * what stands in the way of sending it; a press that cannot be sent says so under the option,
  * until the fields are put right.
  *
- * The choice starts at the value on record, else the one set for the person. A card that records
- * several choices with one button (LeversCard) holds them itself (`chosen`, `onChoose`) and draws
- * that button itself (`button={false}`).
+ * The choice starts at the value on record, else the one set for the person, each only while the
+ * card offers it (a use on record that no longer fits the outcome is not listed, so nothing is
+ * chosen and the button asks for a choice). A card that records several choices with one button
+ * (LeversCard) holds them itself (`chosen`, `onChoose`) and draws that button itself
+ * (`button={false}`).
  */
 export function Choice<V extends string>({
   card,
@@ -282,8 +284,14 @@ export function Choice<V extends string>({
   button?: boolean;
 }) {
   const { setFocus } = useStageFocus();
-  const [own, setOwn] = useState<V | null>(recorded ?? setForYou);
-  const chosen = held !== undefined ? held : own;
+  const offered = (v: V | null | undefined): v is V =>
+    v !== null && v !== undefined && values.includes(v);
+  const [own, setOwn] = useState<V | null>(
+    offered(recorded) ? recorded : offered(setForYou) ? setForYou : null,
+  );
+  // A choice the list does not offer is no choice: the button never records an unlisted option.
+  const holding = held !== undefined ? held : own;
+  const chosen = offered(holding) ? holding : null;
   const decisions = new Map<string, Decision | null>();
   const problems = new Map<string, string[]>();
   for (const v of values) {

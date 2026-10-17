@@ -10,9 +10,12 @@
  * The subgroups lead with the columns the engine groups by their levels (a categorical, yes/no or
  * text column, one of two values, one declared categorical or confirmed as codes: models/
  * decision_curve.py `grouping_of`), then the amounts it groups by thirds, each in the table's
- * order; the outcome, the identifier and the flags on other columns are not offered.
+ * order; the outcome, the identifier and the flags on other columns are not offered. A column's
+ * role is the one recorded, else, while the roles are not recorded (the engine opens this card
+ * once the goal is chosen, before the roles in Your data), the one the roles stage proposes.
  */
 import { useState } from "react";
+import { useProjectView, useStageResult } from "../../../api/queries";
 import type { ColumnSummary, ProjectState } from "../../../api/schema";
 import { takesLevel } from "../../../components/record/ask/ChoiceQuestions";
 import { Pending } from "../../../components/record/blocks";
@@ -65,15 +68,15 @@ function byLevels(
 }
 
 /** The columns that can group the performance, those grouped by their levels first, each in the
- *  table's order. */
+ *  table's order. A column's role is the one recorded, else the one `proposed` (the roles stage's). */
 export function subgroupColumns(
   columns: readonly string[],
   summaries: ReadonlyMap<string, ColumnSummary>,
   state: ProjectState,
+  proposed: ReadonlyMap<string, string> = new Map(),
 ): string[] {
-  const offered = columns.filter(
-    (col) => col !== state.target && !NOT_SUBGROUPS.has(state.roles?.[col] ?? ""),
-  );
+  const roleOf = (col: string) => state.roles?.[col] ?? proposed.get(col) ?? "";
+  const offered = columns.filter((col) => col !== state.target && !NOT_SUBGROUPS.has(roleOf(col)));
   const levels = offered.filter((col) => byLevels(col, summaries.get(col), state));
   return [...levels, ...offered.filter((col) => !levels.includes(col))];
 }
@@ -87,10 +90,12 @@ function Body({
   card,
   state,
   recorded,
+  proposed,
 }: {
   card: CardWiring;
   state: ProjectState;
   recorded: boolean;
+  proposed: ReadonlyMap<string, string>;
 }) {
   const on = recorded ? state.intended_use : null;
   const [fairness, setFairness] = useState<IntendedUse["fairness"]>(
@@ -101,7 +106,7 @@ function Body({
   const [high, setHigh] = useState(text(on?.threshold_high));
   const [decision, setDecision] = useState(text(on?.threshold));
 
-  const groupable = subgroupColumns(card.columns, card.summaries, state);
+  const groupable = subgroupColumns(card.columns, card.summaries, state, proposed);
   const support = offersDecisionSupport(card.task);
   const uses = support ? USES : USES.filter((u) => u !== "decision_support");
   const bounds = BOUNDS.set_intended_use;
@@ -199,8 +204,18 @@ function Body({
   );
 }
 
+/** Each column's role as the roles stage proposes it, once that stage has started (state/stages.ts
+ *  `useStage`'s rule: a blocked stage's older result, if any, stays cached). */
+function useProposedRoles(pid: string): ReadonlyMap<string, string> {
+  const status = useProjectView(pid).data?.stages.roles?.status;
+  const started = status !== undefined && status !== "idle" && status !== "blocked";
+  const roles = useStageResult(pid, "roles", started).data?.artifact;
+  return new Map((roles?.columns ?? []).map((c) => [c.column, c.proposed]));
+}
+
 export const IntendedUseCard: LineCard = ({ pid, line }) => {
   const card = useCard(pid, "set_intended_use");
+  const proposed = useProposedRoles(pid);
   return (
     <Frame line={line}>
       {card.state ? (
@@ -209,6 +224,7 @@ export const IntendedUseCard: LineCard = ({ pid, line }) => {
           card={card}
           state={card.state}
           recorded={line.status === "answered"}
+          proposed={proposed}
         />
       ) : (
         <Pending>Loading the project…</Pending>

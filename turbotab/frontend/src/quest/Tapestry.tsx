@@ -6,7 +6,8 @@
  * lineage view) with Fit at its end (§7); in Results it is W1-G's ResultsTapestry inside the kit's
  * canvas; in Write-up the manuscript at full width, in the export bundle's sections (P8). Nothing
  * is recorded from the tapestry: the card's foot is the one action (FOUNDATION §1), so the stage
- * draws no record button and no refusal's ways forward (StageProps `recordHere`).
+ * draws no record button and no refusal's ways forward, and leaves a refusal's readings to the card
+ * that asks them (StageProps `recordHere`).
  */
 import type { MethodsSections } from "../api/m3-types";
 import type { ProjectView, QuestLog } from "../api/schema";

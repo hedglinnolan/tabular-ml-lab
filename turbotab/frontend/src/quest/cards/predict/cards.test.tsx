@@ -155,19 +155,40 @@ function mount(
     summaries?: Record<string, unknown>[];
     /** The target stage's reading of an outcome: its column and the task it detected. */
     detected?: { column: string; detected_task: string };
+    /** The roles stage's proposal for each column (core/stages/rows.py `roles_stage`). */
+    proposed?: Record<string, string>;
   } = {},
 ): Mounted {
   const state = stateWith(opts.recorded);
   const base = viewOf(state);
-  const view = opts.detected
-    ? ({ ...base, stages: { ...base.stages, target_info: { stage: "target_info", status: "fresh", key: "t", updated_at: null } } } as unknown as ProjectView)
-    : base;
+  const fresh = (stage: string, key: string) => ({ stage, status: "fresh", key, updated_at: null });
+  const view = {
+    ...base,
+    stages: {
+      ...base.stages,
+      ...(opts.detected ? { target_info: fresh("target_info", "t") } : {}),
+      ...(opts.proposed ? { roles: fresh("roles", "r") } : {}),
+    },
+  } as unknown as ProjectView;
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
   qc.setQueryData(keys.view(PID), view);
   if (opts.detected) {
     qc.setQueryData(keys.stage(PID, "target_info"), { stage: "target_info", key: "t", fresh: true, status: "fresh", artifact: opts.detected });
+  }
+  if (opts.proposed) {
+    const columns = Object.entries(opts.proposed).map(([column, proposed]) => ({
+      column,
+      proposed,
+      confidence: "high",
+      reason: "",
+      linked_to: null,
+      unit: null,
+      nested_in: null,
+      kind: null,
+    }));
+    qc.setQueryData(keys.stage(PID, "roles"), { stage: "roles", key: "r", fresh: true, status: "fresh", artifact: { columns, repeats: null, categorical: [] } });
   }
   qc.setQueryData(
     keys.columns(PID),
@@ -883,6 +904,39 @@ describe("each card's own record button (finding 8)", () => {
     expect(decide.mock.calls[0]![1]).toEqual({ kind: "set_updating", method: "shrinkage" });
   });
 
+  /** Decision support on record from before the outcome read as not yes/no (recorded while the task
+   *  was unknown, or before the outcome changed): the card no longer offers it (finding 9), so its
+   *  button starts at nothing chosen rather than at an option it does not list. */
+  const DECISION_SUPPORT = {
+    use: "decision_support",
+    threshold_low: 0.1,
+    threshold_high: 0.3,
+    threshold: 0.2,
+    subgroups: [],
+    fairness: "none",
+  };
+
+  it("starts at nothing chosen where the answer on record is no longer offered, and a press of an option records it", async () => {
+    const { decide } = mount("set_intended_use", {
+      recorded: { task: "regression", intended_use: DECISION_SUPPORT },
+      answered: true,
+    });
+    expect(Array.from(document.querySelectorAll("[role=option]")).map((o) => o.getAttribute("data-key"))).toEqual(["use:risk_estimation"]);
+    const button = screen.getByTestId("card-record");
+    expect(button).toHaveTextContent("Choose an option above");
+    expect(button).toBeDisabled();
+    expect(document.body.textContent).not.toContain("Decision support");
+    press("use:risk_estimation");
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    expect(decide.mock.calls[0]![1]).toMatchObject({ kind: "set_intended_use", use: "risk_estimation" });
+  });
+
+  it("starts at the answer on record where it is still offered", () => {
+    mount("set_intended_use", { recorded: { task: "binary", intended_use: DECISION_SUPPORT }, answered: true });
+    expect(screen.getByTestId("card-record")).toHaveTextContent("Record: Decision support");
+    expect(screen.getByTestId("card-record")).toBeEnabled();
+  });
+
   it("records every list's choice of the levers at once, the lists not chosen as they stand", async () => {
     const { decide } = mount("set_levers");
     fireEvent.click(screen.getByTestId("option-forms:rule"));
@@ -980,6 +1034,48 @@ describe("the intended use (finding 9)", () => {
       e.getAttribute("data-testid")!.replace("pick-subgroups-", ""),
     );
     expect(picks).toEqual(["RIAGENDR", "RIDRETH1", "DMDEDUC2", "INDFMPIR", "RIDAGEYR", "BMXBMI", "cycle_begin_year"]);
+  });
+
+  /**
+   * The engine opens the intended use once the goal is chosen (core/quest.py: it reads the
+   * purpose alone), before the roles are recorded in Your data, as the walk met it. There the card
+   * reads the roles stage's proposal, so the identifier and a flag on another column are left out
+   * before the roles are recorded as after; a column the person recorded otherwise is offered.
+   */
+  describe("before the roles are recorded", () => {
+    const summary = (name: string, dtype: string, n_unique: number) => ({ name, dtype, n_unique });
+    const SUMMARIES = [
+      summary("SEQN", "integer", 21849),
+      summary("RIDAGEYR", "integer", 61),
+      summary("RIAGENDR", "integer", 2),
+      summary("imputed_bmi", "boolean", 2),
+      summary("LBXGLU", "numeric", 412),
+    ];
+    const PROPOSED = { SEQN: "identifier", RIDAGEYR: "covariate", RIAGENDR: "covariate", imputed_bmi: "flag" };
+    const picks = () =>
+      Array.from(document.querySelectorAll("[data-testid^=pick-subgroups-]")).map((e) =>
+        e.getAttribute("data-testid")!.replace("pick-subgroups-", ""),
+      );
+
+    it("leaves out the identifier and the flags the roles stage proposes, as it does once they are recorded", () => {
+      mount("set_intended_use", { summaries: SUMMARIES, recorded: { roles: null }, proposed: PROPOSED });
+      expect(picks()).toEqual(["RIAGENDR", "RIDAGEYR"]);
+      cleanup();
+      mount("set_intended_use", { summaries: SUMMARIES, recorded: { roles: PROPOSED }, proposed: PROPOSED });
+      expect(picks()).toEqual(["RIAGENDR", "RIDAGEYR"]);
+    });
+
+    it("offers a column the person recorded in another role than the one proposed, and every column while nothing is proposed", () => {
+      mount("set_intended_use", {
+        summaries: SUMMARIES,
+        recorded: { roles: { ...PROPOSED, imputed_bmi: "covariate" } },
+        proposed: PROPOSED,
+      });
+      expect(picks()).toEqual(["RIAGENDR", "imputed_bmi", "RIDAGEYR"]);
+      cleanup();
+      mount("set_intended_use", { summaries: SUMMARIES, recorded: { roles: null } });
+      expect(picks()).toEqual(["RIAGENDR", "imputed_bmi", "SEQN", "RIDAGEYR"]);
+    });
   });
 
   it("posts the subgroups in the table's order, whatever order they are listed in", async () => {

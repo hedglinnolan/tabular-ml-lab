@@ -468,8 +468,8 @@
   gap: 12px;
 }
 
-/* The lineage scrolls in its own box where the card is narrower than its labels need
-   (views/Lineage.tsx `lineageMinWidth`, set on the inner box). */
+/* The lineage scrolls in its own box where the card is narrower than its whole pills and its
+   labels need (views/Lineage.tsx `lineageMinWidth`, set on the inner box). */
 .lineageBox {
   position: relative;
   width: 100%;

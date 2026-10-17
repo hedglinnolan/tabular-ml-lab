@@ -1,17 +1,18 @@
 /**
  * The lineage keeps its labels apart and inside its box (finding 5 of the 2026-10-17 walkthrough,
- * and W1-N's leftover V3).
+ * W1-N's leftover V3, and the W1-R verifier's V4).
  *
- * Its narrowest clear width (`lineageMinWidth`, which the live Columns card sets as its inner
- * box's minimum and scrolls below) counts only what keeps the labels apart: the raw labels' room,
- * the widest adjusted label with its pill's padding, and the matrix labels' room; the pill itself
- * is free to squeeze, as the layout always let it. At that width every adjusted label clears the
- * lane dots on either side by the pill's padding and every matrix label ends inside the drawing;
- * one pixel narrower, the widest does not clear them. The layout reads a monospace character as
- * 0.61 of the type size (Lineage.tsx `laneWidths`), which these checks use too. The NHANES roles
- * lineage the Columns card draws (the capture's predictors, grouped by role) fits the 634 px box
- * the card has at a 1280 px window (measured by W1-N's reviewer and again for W1-R), so it shows
- * whole there without a sideways scroll; the old rule asked 675.
+ * An adjusted pill is drawn whole or not at all: never narrower than its label with its padding
+ * (the label's width plus 16, Lineage.tsx `laneWidths`), and never closer to the lane dots on
+ * either side than a link's run of 40 px. Where the lanes are too close for the widest pill, the
+ * adjusted lane draws its dots alone, as a thumbnail does. The narrowest whole width
+ * (`lineageMinWidth`, which the live Columns card sets as its inner box's minimum and scrolls
+ * below) is the raw labels' room, the widest pill with a link's run on either side, and the matrix
+ * labels' room: at that width every pill is whole and every matrix label ends inside the drawing,
+ * and one pixel narrower the pills give way to dots. The layout reads a monospace character as
+ * 0.61 of the type size, which these checks use too. The NHANES roles lineage the Columns card
+ * draws (the capture's predictors, grouped by role) fits whole in the 634 px box the card has at a
+ * 1280 px window (measured by W1-N's reviewer and again for W1-R), without a sideways scroll.
  *
  * Its rows never draw below its box: where the box is shorter than its rows need at one row per
  * type size (a pitch at which no label runs into the next), the drawing is as tall as they need
@@ -97,32 +98,65 @@ const labels = (lineage: LineageData, lane: string) =>
     .map((n) => (n.node.count > 1 ? n.node.label : (n.node.column ?? n.node.label)));
 const widest = (words: string[]) => Math.max(...words.map((s) => s.length)) * CW;
 
-/** How far the widest adjusted label stays from the lane dots on its two sides, and how far the
- *  widest matrix label ends inside the drawing. */
-function clearance(lineage: LineageData, width: number) {
-  const { x0, x1, x2, w } = lanes(lineage, width);
-  const half = widest(labels(lineage, "adjusted")) / 2;
-  return {
-    adjusted: Math.min(x1 - half - x0, x2 - (x1 + half)),
-    matrix: w - (x2 + 7 + widest(labels(lineage, "matrix"))),
-  };
+/** Each adjusted pill as drawn: its label and its width (the rect just before its label; a group's
+ *  deck of cards lies behind it), and where the lanes sit. */
+function pills(lineage: LineageData, width: number) {
+  const { x0, x1, x2 } = lanes(lineage, width);
+  const r = draw(lineage, width);
+  const drawn = [...r.container.querySelectorAll("svg g")].flatMap((g) => {
+    const kids = [...g.children];
+    const text = kids.find((k) => k.tagName.toLowerCase() === "text");
+    const rects = kids.filter((k) => k.tagName.toLowerCase() === "rect");
+    return text && rects.length
+      ? [{ label: text.textContent ?? "", w: Number(rects[rects.length - 1]!.getAttribute("width")) }]
+      : [];
+  });
+  r.unmount();
+  return { x0, x1, x2, drawn };
 }
 
-describe("the lineage's narrowest clear width", () => {
-  /** The pill's padding on either side of its label (laneWidths: the label's width plus 16). */
-  const PAD = 8;
-  /** The matrix lane's room after its label (laneWidths: the label's width plus 12, 7 before it). */
-  const END = 5;
-  const clear = (c: { adjusted: number; matrix: number }) =>
-    c.adjusted >= PAD - 1e-9 && c.matrix >= END - 1e-9;
+/** The pill's padding on either side of its label (laneWidths: the label's width plus 16). */
+const PAD = 8;
+/** A link's least run between a pill and the lane dot on either side. */
+const LINK = 40;
+/** The matrix lane's room after its label (laneWidths: the label's width plus 12, 7 before it). */
+const END = 5;
+const whole = (p: { label: string; w: number }) => p.w >= p.label.length * CW + 2 * PAD - 1e-9;
 
-  it("keeps every adjusted label clear of the lane dots by the pill's padding, and every matrix label inside", () => {
+/** Whether, at `width`, every adjusted node is a whole pill clear of both lanes' dots by a link's
+ *  run, and every matrix label ends inside the drawing. */
+function wholeAt(lineage: LineageData, width: number) {
+  const { x0, x1, x2, drawn } = pills(lineage, width);
+  const widestPill = Math.max(...drawn.map((p) => p.w));
+  const matrix = width - (x2 + 7 + widest(labels(lineage, "matrix")));
+  return (
+    drawn.length === labels(lineage, "adjusted").length &&
+    drawn.every(whole) &&
+    x1 - widestPill / 2 - x0 >= LINK - 1e-9 &&
+    x2 - (x1 + widestPill / 2) >= LINK - 1e-9 &&
+    matrix >= END - 1e-9
+  );
+}
+
+describe("the lineage's adjusted pills", () => {
+  it("are whole at the narrowest whole width, clear of the lane dots, and give way to dots one pixel narrower", () => {
     const min = lineageMinWidth(LINEAGE);
-    expect(clear(clearance(LINEAGE, min))).toBe(true);
-    expect(clear(clearance(LINEAGE, min - 1))).toBe(false);
+    expect(labels(LINEAGE, "adjusted").length).toBeGreaterThan(5);
+    expect(wholeAt(LINEAGE, min)).toBe(true);
+    expect(pills(LINEAGE, min - 1).drawn).toEqual([]);
   });
 
-  it("is set by the widest adjusted label where that is wider than the lanes' least span", () => {
+  it("are never drawn narrower than their labels, at any width", () => {
+    const min = lineageMinWidth(LINEAGE);
+    const all = labels(LINEAGE, "adjusted").length;
+    for (let width = 200; width <= min + 400; width += 7) {
+      const { drawn } = pills(LINEAGE, width);
+      expect(drawn.filter((p) => !whole(p)), `${width} px`).toEqual([]);
+      expect([0, all], `${width} px`).toContain(drawn.length);
+    }
+  });
+
+  it("set the narrowest whole width by the widest adjusted label where that is wider than the lanes' least span", () => {
     // The lineage with one adjusted column's label made long, by construction.
     const one = LINEAGE.nodes.find((n) => n.lane === "adjusted" && n.count === 1 && n.column)!;
     const wide: LineageData = {
@@ -131,14 +165,14 @@ describe("the lineage's narrowest clear width", () => {
         n === one ? { ...n, column: "protein_per_kcal_of_total_energy_intake" } : n,
       ),
     };
-    expect(widest(labels(wide, "adjusted")) + 2 * PAD).toBeGreaterThan(120);
+    expect(widest(labels(wide, "adjusted")) + 2 * PAD + 2 * LINK).toBeGreaterThan(120);
     const min = lineageMinWidth(wide);
-    expect(clear(clearance(wide, min))).toBe(true);
-    const narrower = clearance(wide, min - 1);
-    expect(narrower.adjusted).toBeLessThan(PAD);
+    expect(min).toBeGreaterThan(lineageMinWidth(LINEAGE));
+    expect(wholeAt(wide, min)).toBe(true);
+    expect(pills(wide, min - 1).drawn).toEqual([]);
   });
 
-  it("is narrow enough for the NHANES roles lineage at a 1280 px window's Columns card", () => {
+  it("are whole in the NHANES roles lineage at a 1280 px window's Columns card", () => {
     const FIXTURES = import.meta.glob<M3Fixture>(
       "../../../mocks/fixtures/m3-nhanes-prediction.json",
       { eager: true, import: "default" },
@@ -167,9 +201,7 @@ describe("the lineage's narrowest clear width", () => {
       "7 exposure columns",
     ]);
     expect(lineageMinWidth(roles)).toBeLessThanOrEqual(634);
-    const at = clearance(roles, 634);
-    expect(at.adjusted).toBeGreaterThanOrEqual(PAD);
-    expect(at.matrix).toBeGreaterThanOrEqual(0);
+    expect(wholeAt(roles, 634)).toBe(true);
   });
 });
 
