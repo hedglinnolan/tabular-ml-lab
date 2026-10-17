@@ -142,6 +142,30 @@ def test_impossible_values_excluded_leave_the_flow_as_exactly_those_rows(tables)
     assert preds == ["age"] and len(kept) == len(frame)
 
 
+def test_sas_zeros_name_the_columns_count_plainly_and_the_record_keeps_every_column():
+    """R-f 14 (the walkthrough's minor): "152 cells in `bp_di` and 8 more" read as 8 more cells or
+    8 more columns, and the recorded sentence named no column. The counts come from the table
+    built here: 5, 3 and 1 SAS zeros in three columns, and 2 in a table of one."""
+    zero = 5.397605e-79  # a SAS transport zero read back without conversion (16 ** -65)
+    frame = pd.DataFrame({"a": [zero] * 5 + [1.0], "b": [zero] * 3 + [2.0] * 3,
+                          "c": [zero] + [3.0] * 5, "d": [4.0] * 6})
+    _raw, found = repairs.sas_zero_finding(frame)
+    assert found["summary"] == ("`9` cells in `3` columns (`a` and 2 more) hold `5.4e-79`: a zero "
+                                "in a SAS transport file, misread.")
+    [offer] = repairs._offer_sas(found, _raw["params"], repairs.OfferContext(frame))
+    assert offer.consequence == "`9` cells holding `5.4e-79` become `0` in `3` columns (`a` and 2 more)."
+    assert offer.sentence == ("`9` cells holding `5.4e-79`, a misread SAS transport zero, were read "
+                              "as `0` in `3` columns: `a`, `b` and `c`.")
+    # one column: named, and no count of columns
+    one = frame[["b"]].iloc[:4]
+    _raw, found = repairs.sas_zero_finding(one)
+    assert found["summary"] == ("`3` cells in `b` hold `5.4e-79`: a zero in a SAS transport file, "
+                                "misread.")
+    [offer] = repairs._offer_sas(found, _raw["params"], repairs.OfferContext(one))
+    assert offer.sentence == ("`3` cells holding `5.4e-79`, a misread SAS transport zero, were read "
+                              "as `0` in `b`.")
+
+
 @needs_nhanes
 def test_sas_zeros_become_zero_and_compose_with_the_impossible_band(tables):
     table, artifact = tables["nhanes"]
