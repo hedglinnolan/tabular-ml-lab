@@ -100,6 +100,8 @@ from typing import Any, Callable, Literal, Sequence
 import numpy as np
 from scipy import optimize, special, stats
 
+from turbotab.core import claims
+
 TOOZE_2006 = "Tooze et al. 2006"
 TOOZE_2010 = "Tooze et al. 2010"
 KIPNIS_2009 = "Kipnis et al. 2009"
@@ -1297,7 +1299,11 @@ DRI_GROUP = "DRI life-stage group (age band, sex, pregnancy and lactation status
 # foods), so the nutrient as food holds it counts toward none of them; vitamin A's limits the form
 # only, retinol from food counting as retinol from supplements does. Every other UL covers intake
 # from food, water and supplements (Institute of Medicine 2000a, the report on dietary assessment
-# cited above).
+# cited above). The claim ``data.ul_share`` (``turbotab/core/claims/data.py``) states this rule and
+# names the tests that hold :func:`share_phrase` to it; the sentences here carry the share's own
+# cut-off, so they are worded here. Where the component's name is read as no nutrient, what its UL
+# covers cannot be read, and the share's sentence is the claim :data:`UL_SHARE_UNREAD`'s.
+UL_SHARE_UNREAD = "data.ul_share_unread"
 UL_FORMS = {
     "magnesium": ("magnesium from supplements and medicines only, not from food or water",
                   "Institute of Medicine 1997"),
@@ -1311,16 +1317,35 @@ UL_FORMS = {
 }
 
 
+def reads_as_a_nutrient(name: str) -> bool:
+    """Whether the name reader reads ``name`` as one nutrient (``calcium_mg``, ``DR1TCALC``); a
+    name it reads as none (NHANES's supplement-recall ``DS1TMAGN``, a bare ``Mg``) or as two
+    macronutrients at once is not."""
+    from turbotab.core.recognizers import AmbiguousNutrient, read_nutrient
+
+    try:
+        return read_nutrient(name) is not None
+    except AmbiguousNutrient:
+        return False
+
+
 def share_phrase(cutoff: float | None, kind: CutoffKind | None, *, ear_for_all: bool = False,
-                 iron: bool = False, ul_form: str | None = None) -> str:
+                 iron: bool = False, ul_form: str | None = None,
+                 nutrient_read: bool = True) -> str:
     """The share's sentence. Below an EAR it is the prevalence of inadequacy only when the cut-off
     was answered as the EAR of every participant's DRI group (``ear_for_all``); for iron the answer
     that its requirement is symmetric here (no menstruating women) is stated with it. Above a UL it
     says what the UL covers: one form only for ``ul_form``'s nutrient (:data:`UL_FORMS`), or every
     source, so that a share from foods alone is a lower bound. Vitamin A's covers one form from every
-    source, so a share of retinol from foods alone is a lower bound too."""
+    source, so a share of retinol from foods alone is a lower bound too. Where the component's name
+    was read as no nutrient (``nutrient_read`` False) and names no form, what its UL covers is not
+    known: the share is a share of the distribution (:data:`UL_SHARE_UNREAD`), and the UL is
+    stated beside it. A cut-off that is no finite number is refused before any sentence, or any
+    claim's card, is rendered from it; the decision that sets it refuses one too."""
     if cutoff is None:
         return ""
+    if not math.isfinite(cutoff):
+        raise ValueError(f"a share's cut-off is a finite number, not {cutoff!r}")
     value = _number(cutoff)
     if kind == "EAR" and ear_for_all:
         skew = (", and its requirement distribution as symmetric in them (no menstruating women, in "
@@ -1344,6 +1369,9 @@ def share_phrase(cutoff: float | None, kind: CutoffKind | None, *, ear_for_all: 
         return (f" The share above the UL ({value}) is reported as a share of the distribution: the "
                 f"UL for {ul_form} covers {covers} ({source}), so it is a share at risk of excess "
                 f"only where these intakes are that form alone, supplements included.")
+    if kind == "UL" and not nutrient_read:
+        context = {"cutoff": cutoff, "cutoff_kind": kind, "nutrient": None}
+        return f" {claims.card(UL_SHARE_UNREAD, context)} The UL is {value}."
     if kind == "UL":
         return (f" The share above the UL ({value}) is a share at risk of excess where the recalls "
                 f"include supplements, the UL covering intake from food, water and supplements "
@@ -1357,8 +1385,11 @@ def methods_sentence(*, label: str, model: Model, names: Sequence[str], lam: flo
                      replication: Replication | None, n_ok: int, cutoff: float | None,
                      cutoff_kind: CutoffKind | None, rho: float | None = None,
                      attestation: str | None = None, ear_for_all: bool = False,
-                     iron: bool = False, ul_form: str | None = None) -> str:
-    """The methods sentence: the model, the transform, the covariates, the variance method."""
+                     iron: bool = False, ul_form: str | None = None,
+                     nutrient_read: bool | None = None) -> str:
+    """The methods sentence: the model, the transform, the covariates, the variance method.
+    ``nutrient_read`` says whether the component's name was read as a nutrient; None reads
+    ``label`` (:func:`reads_as_a_nutrient`)."""
     head = (f"Usual intake of `{label}` was estimated by the NCI method ({TOOZE_2006}; {TOOZE_2010}) "
             f"from 24-hour recalls of {n_persons:,} participants ({days_phrase(recalls)}; "
             f"{n_repeat:,} with two or more)")
@@ -1389,7 +1420,9 @@ def methods_sentence(*, label: str, model: Model, names: Sequence[str], lam: flo
         whom = "the whole population"
         if model == "two_part":
             whom += f", everyone taken to consume it on some days ({KIPNIS_2009})"
-    share = share_phrase(cutoff, cutoff_kind, ear_for_all=ear_for_all, iron=iron, ul_form=ul_form)
+    read = reads_as_a_nutrient(label) if nutrient_read is None else nutrient_read
+    share = share_phrase(cutoff, cutoff_kind, ear_for_all=ear_for_all, iron=iron, ul_form=ul_form,
+                         nutrient_read=read)
     sentence = (f"{head}{body}; the distribution was {reference_phrase(names)}{integrate}, and "
                 f"describes {whom}. {variance_phrase(replication, n_ok, weight, cutoff is not None)}"
                 f"{share}")
@@ -1401,7 +1434,7 @@ def methods_sentence(*, label: str, model: Model, names: Sequence[str], lam: flo
 __all__ = [
     "AmountFit", "CutoffKind", "DRI_GROUP", "Distribution", "covariates_phrase", "days_phrase",
     "interval_phrase", "log_interval", "logit_interval", "methods_sentence",
-    "reference_phrase", "share_phrase", "variance_phrase", "Estimate", "FAY", "IOM_2000", "IOM_2000B", "KIPNIS_2009", "LAMBDA_RANGE",
+    "reads_as_a_nutrient", "reference_phrase", "share_phrase", "variance_phrase", "Estimate", "FAY", "IOM_2000", "IOM_2000B", "KIPNIS_2009", "LAMBDA_RANGE",
     "N_BOOT", "NINE_POINT_C", "NINE_POINT_W", "PERCENTILES", "Recalls", "Replication", "Result",
     "TOOZE_2006", "TOOZE_2010", "TwoPartFit", "UsualIntakeRefused", "WEEKEND_SHARE", "Z_95",
     "amount_distribution", "back_transform", "boxcox", "boxcox_inverse", "brr", "fit_amount",

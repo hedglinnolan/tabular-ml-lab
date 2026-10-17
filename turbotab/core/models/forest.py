@@ -46,6 +46,7 @@ from sklearn.base import is_classifier
 from sklearn.ensemble import RandomForestClassifier as _SklearnClassifier
 from sklearn.ensemble import RandomForestRegressor as _SklearnRegressor
 
+from turbotab.core import claims
 from turbotab.core.decisions import Purpose, Task
 from turbotab.core.models.base import (
     CLASS_SCALES,
@@ -64,7 +65,9 @@ from turbotab.core.models.tuning import Dimension, TuningDecl, derive_seed
 STANDARD = "default"  # a symbolic standard, resolved per task by ``settings``
 THIRD = 1.0 / 3.0  # scikit-learn's max(1, int(p/3)): randomForest's max(floor(p/3), 1) for every p
 LEAF = {"numbers": 5, "classes": 10}  # randomForest's nodesize; ranger's probability forest
-SMALL_N, MID_N = 500, 2000  # RECIPES §2.6's rows for the forest's score
+# RECIPES §2.6's rows for the forest's score: fair below SMALL_N, its claim's value; 2.0 from MID_N.
+SMALL_N = claims.value("forest.small_rows", "small_rows")
+MID_N = 2000
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -417,7 +420,8 @@ class RandomForest(FamilyBase):
     def assess(self, s: Situation) -> Assessment:
         """RECIPES §2.6: 2.0 from 2,000 training rows, 1.5 from 500, "fair" at 1.0 below; "fair" at
         1.5 at most when predictors outnumber rows; under inference, as boosted trees (conventions:
-        no validated rule says which family will predict best)."""
+        no validated rule says which family will predict best). The rows are those the shelf ranks
+        for: the training rows under Predict, every analyzed row under Estimate."""
         concerns: list[str] = []
         fit = "good"
         score = 2.0 if s.n_rows >= MID_N else 1.5

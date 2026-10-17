@@ -53,6 +53,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
+from turbotab.core import claims
+
 ATTENTION = ("medium", "low")
 CONFIDENCES = ("high", "medium", "low")
 
@@ -835,10 +837,17 @@ def characteristic_predictor(name: Any, values: Any, units: Any = None) -> Verdi
     return Verdict(True, "covariate", "its values fit the characteristic")
 
 
+# The claim the constant test makes (``turbotab/core/claims/data.py``, claims backtest C-123). Its
+# sentence renders inside its regime only, which its own predicate reads with a blank counted as a
+# value, never through this test, so a test that dropped the blanks again would fail strict mode.
+CONSTANT_COLUMN = "data.constant_column"
+
+
 def constant_values(values: Any) -> Verdict:
     """Left out because every row holds one value: no reading of a constant explains anything. A
     blank is a value here: one value beside blanks (a checkbox exported as 'yes' or 1 where ticked,
-    blank where not) varies through its blanks, so it is asked (claims backtest C-123)."""
+    blank where not) varies through its blanks, so it is asked (claims backtest C-123,
+    :data:`CONSTANT_COLUMN`)."""
     import pandas as pd
 
     s = pd.Series(values)
@@ -846,7 +855,7 @@ def constant_values(values: Any) -> Verdict:
     if not len(present):
         return Verdict(True, "excluded", "every row is blank")
     if int(present.nunique()) <= 1 and not blanks:
-        return Verdict(True, "excluded", "every row holds the same value")
+        return Verdict(True, "excluded", claims.card(CONSTANT_COLUMN, {"values": s}))
     if int(present.nunique()) <= 1:
         return Verdict(False, None, f"one value, blank on `{blanks:,}` of `{len(s):,}` rows: the "
                                     f"blank may be the other answer")

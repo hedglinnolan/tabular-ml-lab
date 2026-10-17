@@ -257,13 +257,13 @@ def _non_negative(value: Any) -> bool:
 
 def _design_named(name: str, exact: set[str]) -> bool:
     """An NHANES design variable or weight by its published name or the tutorial's multi-cycle
-    grammar (``SDMVSTRA``, ``WTMEC2YR``, ``WTSAF6YR``, ``MEC6YR``)."""
-    from turbotab.core.recognizers import MULTI_CYCLE_WEIGHT, NHANES_WEIGHT_PREFIX, weight_tier
+    grammar (``SDMVSTRA``, ``WTMEC2YR``, ``WTSAF6YR``, ``MEC6YR``), or a subsample's weight named as
+    NCHS names one (``WTSC2YR``), which the weight reader's own name test reads."""
+    from turbotab.core.recognizers import MULTI_CYCLE_WEIGHT, _nhanes_weight_name, weight_tier
 
     upper = str(name).upper()
     return (upper in exact or upper.startswith("SDMV") or weight_tier(upper) is not None
-            or bool(MULTI_CYCLE_WEIGHT.fullmatch(upper))
-            or (bool(re.fullmatch(r"[A-Z0-9]+", upper)) and upper.startswith(NHANES_WEIGHT_PREFIX)))
+            or bool(MULTI_CYCLE_WEIGHT.fullmatch(upper)) or _nhanes_weight_name(upper))
 
 
 def characteristic_fits(name: str, values: Any) -> bool:

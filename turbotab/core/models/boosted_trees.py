@@ -34,6 +34,7 @@ from typing import Any, Mapping
 import numpy as np
 from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
 
+from turbotab.core import claims
 from turbotab.core.decisions import Purpose, Task
 from turbotab.core.models.base import (
     CLASS_SCALES,
@@ -47,10 +48,13 @@ from turbotab.core.models.base import (
     Source,
     register_family,
 )
+from turbotab.core.models.tuning import SMALL_N as SEARCHED_FROM
 from turbotab.core.models.tuning import Dimension, TuningDecl
 
-SMALL_N = 500
-TINY_N = 200
+# The shelf rates boosted trees fair below SMALL_N of the rows it ranks for and poor below TINY_N,
+# its claim's values; not the tuning's SEARCHED_FROM, the effective size from which a search runs.
+SMALL_N = claims.value("boosted_trees.small_rows", "small_rows")
+TINY_N = claims.value("boosted_trees.small_rows", "tiny_rows")
 
 STANDARD = "default"  # the standard smallest leaf: scikit-learn's own, never capped
 STANDARD_LEAF = 20  # HistGradientBoosting*'s min_samples_leaf default
@@ -90,8 +94,9 @@ TUNING = TuningDecl(
                     "patience": 20, "share": 0.1},
     space_version="boosted_trees/1",
     structural=("loss",),
-    reason="Its settings are searched inside every training fold from an effective size of 300, "
-           "scikit-learn's defaults among them; below, a small-sample standard.",
+    reason=f"Its settings are searched inside every training fold from an effective size of "
+           f"{SEARCHED_FROM:,}, scikit-learn's defaults among them; below, a small-sample "
+           f"standard.",
 )
 
 
@@ -300,9 +305,10 @@ class BoostedTrees(FamilyBase):
     def describe(self, task: Task, purpose: Purpose | None) -> tuple[str, str]:
         d, s = TUNING.standard, TUNING.small_standard
         return ("Histogram gradient boosting",
-                f"From an effective size of 300 (units, events or the rarest class's count) its "
-                f"settings are searched inside every training fold, scikit-learn's defaults "
-                f"({d['max_iter']} trees of at most {d['max_leaf_nodes']} leaves) among them. "
+                f"From an effective size of {SEARCHED_FROM:,} (units, events or the rarest "
+                f"class's count) its settings are searched inside every training fold, "
+                f"scikit-learn's defaults ({d['max_iter']} trees of at most "
+                f"{d['max_leaf_nodes']} leaves) among them. "
                 f"Below it one fit is made at a small-sample standard: {s['max_iter']} trees of "
                 f"at most {s['max_leaf_nodes']} leaves, learning rate {s['learning_rate']:g}, "
                 f"smallest leaf {STANDARD_LEAF} rows, L2 pull {s['l2_regularization']:g}. "

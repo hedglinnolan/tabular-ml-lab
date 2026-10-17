@@ -1,4 +1,140 @@
 {
-  "claims": [],
+  "claims": [
+    {
+      "hash": "b54a6d90a1ff399aca97bf7a6ad4e4669d06cf2fba7a33fb1f359a48a9d8bda3",
+      "id": "baseline.min_gain",
+      "status": "built"
+    },
+    {
+      "hash": "0ad8bc341d73cab1a55346dc3049583e766a33324693931addad5c1792f26dde",
+      "id": "boosted_trees.small_rows",
+      "status": "built"
+    },
+    {
+      "hash": "2c56ce9bb85ca5d26764226e5f287b294b9cd931be637e99ab12e730a43f3d7b",
+      "id": "causal.numeric_exposure_r2",
+      "status": "built"
+    },
+    {
+      "hash": "e7b182d46a141ee6b428c64d228fd692411aed96ddd14abca865ec738b48a17f",
+      "id": "data.clusters_adjust",
+      "status": "built"
+    },
+    {
+      "hash": "9b7306091382cdf705419e34ef577f73e12e321b72afdf47d3f38c2b47a4bd65",
+      "id": "data.constant_column",
+      "status": "built"
+    },
+    {
+      "hash": "1d39bec82fe1ced1c11fe3a46233ad6bc86a6313683d2f9dc7b20990c8a622b5",
+      "id": "data.nhanes_weight",
+      "status": "built"
+    },
+    {
+      "hash": "031081e3bee85bc2a41461d162e2a949674779082707d71d08e5a8367df0dced",
+      "id": "data.omics_raw_scale",
+      "status": "built"
+    },
+    {
+      "hash": "15ca79508d483955349e2cf1dcc9016b03f6dfbcdb60513f3e2eb6559aa4143f",
+      "id": "data.tail_share",
+      "status": "proposed"
+    },
+    {
+      "hash": "e23b5ea15e9bfda89c5f00f0502d1aba720e90b6744a01d9da9d97b0e49a276a",
+      "id": "data.ul_share",
+      "status": "built"
+    },
+    {
+      "hash": "0f1ac86cf4dbffc7821b4028b0748483e40cde4e3026992a1fe94127c6bf897a",
+      "id": "data.ul_share_unread",
+      "status": "built"
+    },
+    {
+      "hash": "62898b35eb18e42c9e21ed82ca914949e6a1607e2884bf40b74d38421ba3f601",
+      "id": "designs.observational_default",
+      "status": "built"
+    },
+    {
+      "hash": "44de8f0f782ef7532dec3c7e672e4d8cf4459c6fe7cfedb7429e245d24bfe85b",
+      "id": "designs.sampled_by_outcome",
+      "status": "built"
+    },
+    {
+      "hash": "c4b227b07dd6dea272098b62362bf98cf4e22dbdbd5b3ecefed262c4d035870d",
+      "id": "forest.small_rows",
+      "status": "built"
+    },
+    {
+      "hash": "360cbafdf778881f83257d1c599959334b711f95ef1e99c6fbc6927fdec27388",
+      "id": "inference.few_clusters",
+      "status": "built"
+    },
+    {
+      "hash": "8e4cf2a99a7fdea7039a87c235ef1705453f9703a8c33d64090cce74d078b1fa",
+      "id": "materiality.collinear_under_prediction",
+      "status": "built"
+    },
+    {
+      "hash": "99dbbc8e24af20d8e8a6e62a4245ea71ec60aa6246a145f37a9d540b6379d08a",
+      "id": "materiality.rows_smd_floor",
+      "status": "built"
+    },
+    {
+      "hash": "b21b769d80e07b1234fee9ef7608e0b349689421e3704499fbe1d052a4b06e57",
+      "id": "materiality.rows_smd_floor_prediction",
+      "status": "built"
+    },
+    {
+      "hash": "59f692f0a8789bbf181e338335c527a0e888729b78ec253e49f2a367f3446eae",
+      "id": "ordinal.cluster_robust_intervals",
+      "status": "built"
+    },
+    {
+      "hash": "823bf8cdc0729c1b2020fe743359d6a8e1d01e8ce39332799cdac8a32ab5543e",
+      "id": "results.tail_share",
+      "status": "proposed"
+    },
+    {
+      "hash": "0728e6d01185e8f211154677655043dea8d0cfc301be0e87344e366cb713a78c",
+      "id": "survival.monotone_likelihood",
+      "status": "built"
+    },
+    {
+      "hash": "9452f4a50fef5645c3be8df2b508fb8a26164cb4771e1d2a256139ec748bcfa4",
+      "id": "trials.few_clusters",
+      "status": "built"
+    },
+    {
+      "hash": "5ae1a73abc640434c8343d19bc21594c9e4ea300d5852447e7bb0f4eccbc51b2",
+      "id": "trials.few_clusters_extended",
+      "status": "built"
+    },
+    {
+      "hash": "01d63161247238c7b71ecf16c106c4d8d6aad13ee782e11b25184aceb7b2ab41",
+      "id": "trials.separation",
+      "status": "built"
+    },
+    {
+      "hash": "18c13b0a383dc1c3824ced77f7b2baaedd61aa552840b541332ea9bd264468d7",
+      "id": "tuning.small_sample_no_search",
+      "status": "built"
+    },
+    {
+      "hash": "0c289cd52743fe25c2d9895925a56523f84ef1340ee45cd4bda33fe0a326eef0",
+      "id": "tuning.small_sample_standard",
+      "status": "built"
+    },
+    {
+      "hash": "ca57c8afc8f030790e0659b829f665d7af168fe909218b23ffe1fee4d6d30251",
+      "id": "tuning.small_sample_standard_classes",
+      "status": "built"
+    },
+    {
+      "hash": "6c1234c9b49b5e3e5286d82777e37f8415b120674d82945dae0749fe24c1c254",
+      "id": "tuning.small_sample_standard_estimate",
+      "status": "built"
+    }
+  ],
   "generated_by": "python -m turbotab.core.reference.claims"
 }

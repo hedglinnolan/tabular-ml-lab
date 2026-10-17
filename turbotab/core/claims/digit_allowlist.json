@@ -138,6 +138,10 @@
       "tag": "threshold-pending-claim"
     },
     {
+      "text": "Assay values were read as unnormalized from the values alone, never the outcome, over the numeric columns other than those named, wholly or by a whole word, as an identifier (SEQN, or an ID, counted as the whole word ID or as SampleID, SubjectID or PatientID), a participant's age, sex, gender or BMI, NHANES's RIDAGEYR, RIDAGEMN, RIAGENDR, RIDRETH1, RIDRETH3, BMXBMI or INDFMPIR, or a time (a visit, time point, date, day, hour, year or session), yes/no columns, those named for how the samples were acquired and a numbering of the rows, that were non-negative with more than {indicator_levels} distinct values each, at least {min_features} of them: whole-number counts reaching {count_max:,.0f}, intensities spanning {raw_range:,.0f}-fold and either reaching {raw_max:,.0f} or right-skewed (median skewness at least {raw_skew}), or fractional values with zeros and values of {raw_max:,.0f} or more in {estimated_columns} columns or more whose sample totals were not all within {per_million_near:.0%} of a million (FPKM or estimated counts).",
+      "tag": "name"
+    },
+    {
       "text": "Classes with an order but no fixed spacing, such as a 1–5 rating; best modeled by a cumulative link model.",
       "tag": "example"
     },
@@ -156,10 +160,6 @@
     {
       "text": "Each completed copy is analyzed design-based, and Rubin's rules take the design's degrees of freedom as the complete-data degrees of freedom (MS2).",
       "tag": "citation"
-    },
-    {
-      "text": "Each group gets its own intercept and clustered intervals; yes/no outcomes need 16 rows per group.",
-      "tag": "threshold-pending-claim"
     },
     {
       "text": "Finds shared response scales and codes outside them, such as 9 for no answer.",
@@ -298,16 +298,16 @@
       "tag": "citation"
     },
     {
-      "text": "Under inference a site that differs in both what you study and the outcome confounds the estimate, and intervals treating its participants as independent can be too narrow: each site gets its own intercept and clustered intervals, except a yes/no outcome in groups under 16 rows. Under prediction, validation keeps a group together and can hold out whole groups.",
-      "tag": "threshold-pending-claim"
-    },
-    {
       "text": "Under inference no cross-validated score is shown (MODELING_SEQUENCE ruling 13): the fit's unweighted scores, about the fitting procedure on these rows, are withheld from a client; under prediction the population's are design-based cross-validation (EXPLORE).",
       "tag": "citation"
     },
     {
       "text": "Under inference: each blank imputed 20 times with the outcome; results pooled by Rubin's rules.",
       "tag": "threshold-pending-claim"
+    },
+    {
+      "text": "Under the genomics or metabolomics lens, assay values are read from the numeric columns that are not the outcome, a column whose name, or a whole word of it, is an identifier (SEQN, or an ID, which counts as the whole word ID, as in a sample, subject or patient ID, or as SampleID, SubjectID or PatientID), a person's age, sex, gender or BMI, NHANES's RIDAGEYR, RIDAGEMN, RIAGENDR, RIDRETH1, RIDRETH3, BMXBMI or INDFMPIR, or a time (a visit, time point, date, day, hour, year or session), a yes/no column, a column named for how the samples were acquired (a batch, plate, well, run, run order, plex or polarity) or a numbering of the rows, and that are non-negative with more than {indicator_levels} distinct values each. A reading takes at least {min_features} such columns and names only those. They are read as raw counts under genomics when {min_features} or more of them hold whole numbers, the largest reaching {count_max:,.0f}; as raw intensities under metabolomics when they span {raw_range:,.0f}-fold and either reach {raw_max:,.0f} or have a median skewness of at least {raw_skew}; and under genomics as FPKM or estimated counts, which the values cannot tell apart, when {min_features} or more of them are fractional, with a zero and a value of {raw_max:,.0f} or more each in {estimated_columns} columns or more, and sample totals not all within {per_million_near:.0%} of a million. Other values are read as already normalized or on a log scale.",
+      "tag": "name"
     },
     {
       "text": "When shares of energy sum to 100%, one part is determined by the others, and a coefficient on percent energy from fat has no meaning until you say what the fat replaced.",
@@ -390,10 +390,6 @@
       "tag": "name"
     },
     {
-      "text": "fewer than 10 clusters are named among the concerns (the fewest Li & Redden 2015 studied), beside the missing-outcome notice, neither displacing the other",
-      "tag": "threshold-pending-claim"
-    },
-    {
       "text": "filters run before selection (MODELING_SEQUENCE §1.1)",
       "tag": "citation"
     },
@@ -410,8 +406,8 @@
       "tag": "guideline item"
     },
     {
-      "text": "refused when the logistic model's risk for any group of people runs to 0% or 100% (the arm and the covariates predict exactly whether they had the event): an arm, everyone (complete separation), or a group a linear program finds or cannot rule out (for the estimating equations, any fitted risk within 1e-10 of either); a partly separated fit is not read at its limit",
-      "tag": "threshold-pending-claim"
+      "text": "refused when the logistic model's risk for any group of people runs to 0% or 100% (the arm and the covariates predict exactly whether they had the event): an arm, everyone (complete separation), or a group a linear program finds or cannot rule out; a partly separated fit is not read at its limit; the estimating equations start from the logistic model fitted without the clustering, on the raw columns, and from no other start, and where that start shows a sign of separation (no convergence, a singular information matrix, a coefficient past {coefficient_bound} on its column's own scale, or a fitted risk within {risk_floor} of 0 or 1), or their own fit puts a risk within {risk_floor} of 0 or 1, the program decides only the reason: separation where it finds anyone separated, and otherwise a start or a fit that did not settle within these bounds; the start's bound can so refuse a trial no one is separated in, as one with a covariate far from its zero whose start's intercept passes the bound",
+      "tag": "mathematical constant"
     },
     {
       "text": "refused: compositional models go to v2.x",

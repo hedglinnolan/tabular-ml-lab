@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from turbotab.core import claims
 from turbotab.core.methods.missing import RULE
 
 _NUT = "research/NUTRITION_PACK.md"
@@ -1332,23 +1333,22 @@ FOLLOW_UP = {
     "evidence": None,
 }
 
+# The grouping's "why" and its "Adjust and cluster" option are the two sentences of one claim
+# (``turbotab/core/claims/data.py``, claims backtest D-058), filled from it with the rows per group
+# the incidental-parameter refusal reads.
+CLUSTERS_CLAIM = "data.clusters_adjust"
+
 CLUSTERS = {
     "key": "clusters",
     "title": "Groups above the person",
     "question": "Are participants grouped in sites, centres, households or batches?",
     "one_liner": "People in one group are more alike than people across groups, so the model and "
                  "its intervals must know the groups.",
-    "why": "Under inference a site that differs in both what you study and the outcome confounds the "
-           "estimate, and intervals treating its participants as independent can be too narrow: "
-           "each site gets its own intercept and clustered intervals, except a yes/no outcome in "
-           "groups under 16 rows. Under prediction, validation keeps a group together and can "
-           "hold out whole groups.",
+    "why": claims.card(CLUSTERS_CLAIM),
     "consumer": "The model's intercepts, the intervals, the split's internal–external option and "
                 "the methods read it.",
     "options": [
-        option("fixed_effects", "Adjust and cluster",
-               "Each group gets its own intercept and clustered intervals; yes/no outcomes need 16 "
-               "rows per group."),
+        option("fixed_effects", "Adjust and cluster", claims.methods(CLUSTERS_CLAIM)),
         option("cluster_only", "Cluster only",
                "Intervals cluster-robust by the group; differences between groups stay in the "
                "estimate."),

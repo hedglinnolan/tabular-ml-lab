@@ -58,6 +58,7 @@ states it as a concern on every family while the values are not normalized.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
@@ -65,14 +66,33 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
+from turbotab.core import claims
+from turbotab.core.claims.data import OMICS_NHANES_NAMES, OMICS_ONE_WORD_IDS
+
 OMICS_LENSES = ("genomics", "metabolomics")
 FINDING = "omics_scale"
-MIN_FEATURES = 20  # fewer assay-like columns than this is not a feature block
-COUNT_MAX = 100.0  # whole numbers whose largest value is below this are not read as counts
-RAW_MAX = 1_000.0  # raw intensities reach thousands; log2 intensities stay below ~40
-RAW_RANGE = 100.0  # ... and span two orders of magnitude (largest over smallest positive value)
-RAW_SKEW = 0.5  # or, below RAW_MAX (a targeted panel in µM), are right-skewed feature by feature
-ESTIMATED_COLUMNS = 2  # estimated counts' zero and thousands, each in this many columns: not one's
+# The reading's cut-offs are the parameters of the claim RAW_SCALE
+# (``turbotab/core/claims/data.py``, claims backtest C-193), each graded there with its reason.
+RAW_SCALE = "data.omics_raw_scale"
+# Fewer assay-like columns than this is not a feature block.
+MIN_FEATURES = claims.value(RAW_SCALE, "min_features")
+# Whole numbers whose largest value is below this are not read as counts.
+COUNT_MAX = claims.value(RAW_SCALE, "count_max")
+# Raw intensities reach thousands; log2 intensities stay below ~40 ...
+RAW_MAX = claims.value(RAW_SCALE, "raw_max")
+# ... and span two orders of magnitude (largest over smallest positive value) ...
+RAW_RANGE = claims.value(RAW_SCALE, "raw_range")
+# ... or, below RAW_MAX (a targeted panel in µM), are right-skewed feature by feature.
+RAW_SKEW = claims.value(RAW_SCALE, "raw_skew")
+# Estimated counts' zero and thousands, each in this many columns: not one column's.
+ESTIMATED_COLUMNS = claims.value(RAW_SCALE, "estimated_columns")
+# A column of this many distinct values or fewer (a yes/no indicator, a two-level code) is no
+# assay reading, however large its values.
+INDICATOR_LEVELS = claims.value(RAW_SCALE, "indicator_levels")
+# Sample totals within this share of a million are CPM, TPM or TMM-scaled CPM, normalized: the
+# genomics pack's own tolerance (``packs._LIBRARY_NEAR``, §02 row 4), which a test holds the
+# estimated-counts reading to.
+PER_MILLION_NEAR = claims.value(RAW_SCALE, "per_million_near")
 CHECK_ALPHA = 0.01  # the library-size check speaks below this p-value
 PRIOR_COUNT = 2.0  # edgeR cpm(log = TRUE)'s default prior.count
 LOGRATIO_TRIM, SUM_TRIM, A_CUTOFF = 0.3, 0.05, -1e10  # edgeR calcNormFactors' TMM defaults
@@ -121,24 +141,43 @@ class ScaleReading:
         return float(t.max() / t.min()) if t.size else float("nan")
 
 
+# The names that are never an assay feature (``data.omics_raw_scale``, claims backtest C-193):
+# omics' own list, not the roles stage's word lists, whose covariate and identifier words name
+# real features too (methionine's Met and Met-SO in Biocrates panels; the genes MET, IDS and PIR).
+# Lower case; a column leaves the block when its whole name, or one whole word of it, is one. The
+# NHANES variables and the one-word IDs are the claim's own (claims/data.py), so that its card and
+# methods sentence name them as this list holds them.
+NOT_FEATURE_IDENTIFIERS = frozenset({"seqn", "id", "sample_id", "subject_id", "patient_id",
+                                     *(n.lower() for n in OMICS_ONE_WORD_IDS)})
+NOT_FEATURE_CHARACTERISTICS = frozenset({"age", "sex", "gender", "bmi",
+                                         *(n.lower() for n in OMICS_NHANES_NAMES)})
+NOT_FEATURE_TIMES = frozenset({"visit", "time", "timepoint", "date", "day", "days", "hour",
+                               "hours", "year", "years", "session"})
+NOT_FEATURE_NAMES = NOT_FEATURE_IDENTIFIERS | NOT_FEATURE_CHARACTERISTICS | NOT_FEATURE_TIMES
+_WORD = re.compile(r"[a-z0-9]+")
+
+
 def _excluded_by_name(name: str) -> bool:
-    """Identifiers and a person's characteristics are never assay features (the roles stage's own
-    name rules, so the block and the roles agree)."""
-    try:
-        from turbotab.core.stages.rows import _COVARIATE_TOKENS, _TIME_TOKENS, _id_like, _tokens
-    except ImportError:  # pragma: no cover - the roles module always exists in this app
-        return False
-    tokens = set(_tokens(str(name)))
-    return _id_like(str(name)) or bool(tokens & _COVARIATE_TOKENS) or bool(tokens & _TIME_TOKENS)
+    """An identifier, a person's characteristic or a time is never an assay feature: the column
+    leaves the block when its whole name, or one whole word of it (a run of letters and digits),
+    in any case, is in :data:`NOT_FEATURE_NAMES`, or the name ends ``_id``. Only a whole name or
+    word counts, so Met, MET, IDS and PIR stay in, and so do AGER and TIMELESS; an ID counts as the
+    whole word (a sample ID, Specimen_ID) or as a one-word SampleID, SubjectID or PatientID. Until
+    the claim data.omics_raw_scale was registered, nothing was left out by its name (an import of
+    the roles stage's rules failed silently), and a numeric SEQN entered the block."""
+    low = str(name).strip().lower()
+    return (low in NOT_FEATURE_NAMES or low.endswith("_id")
+            or not NOT_FEATURE_NAMES.isdisjoint(_WORD.findall(low)))
 
 
 def candidate_columns(frame: pd.DataFrame, target: str | None = None,
                       only: Sequence[str] | None = None) -> list[str]:
-    """Numeric columns that could be assay features: not the outcome, not an identifier or a
-    person's characteristic by name, not two-valued, and not how the samples were acquired: a
-    column named as a run order, batch, plate or well, or one that numbers the rows once each (a
-    run order read name-blind) is never an intensity (MS7 repair: a `run_order` column was counted
-    among the intensities). ``only`` limits them (the exposures)."""
+    """Numeric columns that could be assay features: not the outcome, not an identifier, a
+    person's characteristic or a time by name (:func:`_excluded_by_name`), not two-valued, and not
+    how the samples were acquired: a column named as a run order, batch, plate or well, or one
+    that numbers the rows once each (a run order read name-blind) is never an intensity (MS7
+    repair: a `run_order` column was counted among the intensities). ``only`` limits them (the
+    exposures)."""
     from turbotab.core.recognizers import acquisition_kind
 
     allowed = None if only is None else set(only)
@@ -190,7 +229,8 @@ def scale_reading(frame: pd.DataFrame, lenses: Sequence[str] | None, target: str
     with np.errstate(invalid="ignore"):
         nonneg = np.where(finite, values >= 0, True).all(axis=0)
         whole = np.where(finite, np.equal(np.mod(values, 1), 0), True).all(axis=0)
-        distinct = np.array([np.unique(values[finite[:, j], j]).size > 2 for j in range(len(columns))])
+        distinct = np.array([np.unique(values[finite[:, j], j]).size > INDICATOR_LEVELS
+                             for j in range(len(columns))])
     keep = nonneg & distinct
     if "genomics" in lenses:
         counts = keep & whole
@@ -220,17 +260,17 @@ def _estimated_counts(values: np.ndarray, columns: Sequence[str],
     TPM and FPKM alike), so LC-MS peak areas under a genomics lens stay unread. The zero and the
     thousands each sit in :data:`ESTIMATED_COLUMNS` columns or more, as a quantification's do in
     many genes, so one clinical column beside a normalized block (serum ferritin, with a 0 and a
-    4,452) does not make it estimated counts. Totals within the card's tolerance of a million on
-    every sample are CPM, TPM or TMM-scaled CPM (§02 rows 3 and 4), normalized. Every other block
-    is asked about whatever its library-size spread: estimated counts from evenly sequenced samples
-    spread as little as FPKM does."""
+    4,452) does not make it estimated counts. Totals within the card's tolerance of a million
+    (:data:`PER_MILLION_NEAR`) on every sample are CPM, TPM or TMM-scaled CPM (§02 rows 3 and 4),
+    normalized. Every other block is asked about whatever its library-size spread: estimated
+    counts from evenly sequenced samples spread as little as FPKM does."""
     from turbotab import packs
 
     if estimated.sum() < MIN_FEATURES:
         return None
     block = values[:, estimated]
     totals = np.nansum(block, axis=1)
-    per_million = np.abs(totals / packs._LIBRARY_TOTAL - 1) <= packs._LIBRARY_NEAR
+    per_million = np.abs(totals / packs._LIBRARY_TOTAL - 1) <= PER_MILLION_NEAR
     reaching = int(np.sum(np.nanmax(block, axis=0) >= RAW_MAX))
     zeroed = int(np.sum((np.isfinite(block) & (block == 0)).any(axis=0)))
     if min(reaching, zeroed) < ESTIMATED_COLUMNS or per_million.all():

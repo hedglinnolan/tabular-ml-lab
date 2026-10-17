@@ -76,7 +76,14 @@ The cluster is the unit of randomization, so every cluster has one arm (refused 
   (Li & Redden's K − 2 for two arms and no cluster-level covariate). A yes/no outcome's risks are
   standardized as in a parallel trial, by the delta method on the corrected covariance (the
   covariates' own sampling variation is not added); the intraclass correlation reported is the
-  GEE's exchangeable working correlation.
+  GEE's exchangeable working correlation. Their start is the logistic model fitted without the
+  clustering, on the raw columns, and no other. Where that start shows a sign of separation (no
+  convergence, a singular information matrix, a coefficient or a fitted risk past the bounds
+  above), or their own fit puts a risk within the same floor of 0 or 1, the linear program only
+  decides which refusal is given: the separation, as above, where it finds anyone separated;
+  otherwise a refusal saying that the start did not settle, or that the fit reached the floor,
+  never that some group's risk runs to 0% or 100%. So a covariate far from its zero (a calendar
+  year, a body temperature), whose intercept passes the bound, is refused, not reported.
 
 **Missing outcomes.** The primary analysis analyzes the outcomes observed, which is valid when they
 are missing at random given the arm and the covariates (White, Horton, Carpenter & Pocock 2011).
@@ -122,6 +129,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from turbotab.core import claims
+
 CONF = 0.95
 TRIAL_DESIGNS: tuple[str, ...] = ("parallel_trial", "cluster_randomized_trial")
 SETS: tuple[str, ...] = ("itt", "per_protocol")
@@ -136,7 +145,18 @@ CORRECTIONS: tuple[str, ...] = ("auto", "kc", "fg", "md")
 GOALS: tuple[str, ...] = ("inference", "prediction", "describe")
 FG_BOUND = 0.75  # Fay & Graubard's b, geesmv's default
 CV_RULE = 0.6  # Li & Redden 2015: KC below this coefficient of variation of cluster sizes, FG above
-FEW_CLUSTERS = 10  # the fewest clusters Li & Redden 2015 simulated
+# The fewest clusters Li & Redden 2015 simulated: its claim's (``trials.few_clusters``, which
+# ``trials.few_clusters_extended`` carries past their simulation by judgment), not the model
+# families' thirty (``inference.few_clusters``).
+FEW_CLUSTERS = claims.value("trials.few_clusters", "few_clusters")
+# Signs of separation in a converged logistic fit (``trials.separation``): a coefficient past
+# this on its column's own scale, or a fitted risk this near 0 or 1. :func:`_logistic` refuses on
+# either; a parallel trial then asks the linear program (:func:`_fit_risks`), and so do the
+# estimating equations, whose independence start it is, and whose own fit's risks are checked
+# against the same floor (:func:`fit_gee`): there the program only decides which refusal is
+# given, separation or a start (or a fit) that did not settle within these bounds.
+COEFFICIENT_BOUND = claims.value("trials.separation", "coefficient_bound")
+RISK_FLOOR = claims.value("trials.separation", "risk_floor")
 GEE_TOL = 1e-12
 GEE_MAXITER = 200
 
@@ -733,10 +753,10 @@ class _Logit:
 def _logistic(X: np.ndarray, y: np.ndarray, *, offset: np.ndarray | None = None,
               separable: bool = True) -> _Logit:
     """Maximum likelihood by Newton's method to |step| ≤ 1e-12 (R's ``glm`` with a tight
-    ``epsilon``); no convergence, a coefficient past 25 or a fitted risk within 1e-10 of 0 or 1
-    (signs of separation) is refused. Where a linear program has shown that no one is separated
-    (``separable=False``, :func:`_separated_people`), the last two are a finite fit's, and are
-    kept."""
+    ``epsilon``); no convergence, a coefficient past :data:`COEFFICIENT_BOUND` or a fitted risk
+    within :data:`RISK_FLOOR` of 0 or 1 (signs of separation) is refused. Where a linear program
+    has shown that no one is separated (``separable=False``, :func:`_separated_people`), the last
+    two are a finite fit's, and are kept."""
     off = np.zeros(len(y)) if offset is None else offset
     beta = np.zeros(X.shape[1])
     p0 = float(np.clip(y.mean(), 1e-6, 1 - 1e-6))
@@ -756,8 +776,8 @@ def _logistic(X: np.ndarray, y: np.ndarray, *, offset: np.ndarray | None = None,
             else:
                 raise _separation()
             mu = _expit(X @ beta + off)
-            if separable and (np.max(np.abs(beta)) > 25 or np.min(mu) < 1e-10
-                              or np.max(mu) > 1 - 1e-10):
+            if separable and (np.max(np.abs(beta)) > COEFFICIENT_BOUND
+                              or np.min(mu) < RISK_FLOOR or np.max(mu) > 1 - RISK_FLOOR):
                 raise _separation()
             w = mu * (1 - mu)
             cov = np.linalg.inv(X.T @ (X * w[:, None]))
@@ -910,12 +930,21 @@ def _nearly_singular() -> TrialRefused:
         term="nearly singular information in the logistic model")
 
 
+# What counts no uncertainty in an arm whose outcomes are all the same, in the refusal for it.
+YE_VARIANCE = ("Ye et al.'s variance, built from each arm's spread of outcomes around its fitted "
+               "risks")
+GEE_SANDWICH = ("the corrected sandwich, built from each cluster's residuals around its fitted "
+                "risks")
+
+
 def _separated_refusal(d: _Design, y: np.ndarray, arms: list[str], people: np.ndarray,
-                       columns: list[int]) -> TrialRefused:
+                       columns: list[int], variance: str = YE_VARIANCE) -> TrialRefused:
     """The refusal when the data separate some people (:func:`_separated_people`). An arm with no
-    events, or only events: its risk is 0% or 100%, and Ye et al.'s variance, made of each arm's
-    spread of outcomes around its fitted risks, is zero there. Everyone separated: no fit is
-    left. Otherwise the terms ``columns`` predict those people's outcomes exactly, and the
+    events, or only events: its risk is 0% or 100%, and the effect's ``variance`` (Ye et al.'s,
+    made of each arm's spread of outcomes around its fitted risks, or the estimating equations'
+    corrected sandwich, :data:`GEE_SANDWICH`) counts no uncertainty from that arm. Everyone
+    separated: no fit is left. Otherwise the terms ``columns`` predict those people's outcomes
+    exactly, and the
     logistic model has no finite fit for them. At its limit the standardized risks are finite
     (Lesaffre & Albert 1989, *J R Stat Soc B* 51:109), those people at their own outcome under
     every arm and the rest the fit to the people left, but reading that fit is withdrawn (claims
@@ -929,9 +958,8 @@ def _separated_refusal(d: _Design, y: np.ndarray, arms: list[str], people: np.nd
                 f"{'No one' if events == 0 else 'Everyone'} in {a} had the event ({events} of "
                 f"{m}), so the arm's risk is {'0%' if events == 0 else '100%'} and the logistic "
                 f"model's coefficient for the arm has no finite value. The risk difference is "
-                f"still finite, but Ye et al.'s variance, built from each arm's spread of outcomes "
-                f"around its fitted risks, counts no uncertainty where every outcome is the same, "
-                f"so no interval is given for it here.", (DESCRIBE_OUTCOMES_EXIT,),
+                f"still finite, but {variance}, counts no uncertainty where every outcome is the "
+                f"same, so no interval is given for it here.", (DESCRIBE_OUTCOMES_EXIT,),
                 term="separation in the logistic model")
     exits = (FEWER_COVARIATES_EXIT, DESCRIBE_OUTCOMES_EXIT)
     if people.all():
@@ -1329,16 +1357,85 @@ class GEEResult:
     iterations: int
 
 
-def fit_gee(X: np.ndarray, y: np.ndarray, codes: np.ndarray, family: str) -> GEEResult:
+def _start_unsettled() -> TrialRefused:
+    """The refusal when the estimating equations' independence start, :func:`_logistic` on the
+    raw columns, refuses and the linear program does not show anyone separated: it found no one,
+    or could not decide. A covariate far from its zero (a calendar year, a body temperature)
+    puts the intercept past :data:`COEFFICIENT_BOUND` with no one separated, so the reason is
+    that the start did not settle within its bounds, never that some risk runs to 0% or 100%."""
+    return TrialRefused(
+        "The estimating equations start from the logistic model fitted without the clustering, "
+        "and that fit did not settle within its bounds here, so no estimate is given; this does "
+        "not show that anyone's risk runs to 0% or 100%.", (FEWER_COVARIATES_EXIT,),
+        term="the estimating equations' start did not settle")
+
+
+# The short scale's names of the powers of a thousand, to say a share in words (:func:`_one_in`).
+_THOUSANDS = ("", " thousand", " million", " billion", " trillion", " quadrillion")
+
+
+def _one_in(share: float) -> str:
+    """``share``, between 0 and 1, said as one in so many: in words where its reciprocal is a
+    power of ten from ten to a hundred quadrillion (10⁻¹⁰ as "one in ten billion"), and otherwise
+    in digits, its reciprocal rounded to a whole number ("one in 400")."""
+    if not 0 < share < 1:
+        raise ValueError(f"a share is between 0 and 1, not {share!r}")
+    k = round(-math.log10(share))
+    if 1 <= k < 3 * len(_THOUSANDS) and math.isclose(share, 10.0 ** -k, rel_tol=1e-9):
+        return f"one in {('a', 'ten', 'a hundred')[k % 3]}{_THOUSANDS[k // 3]}"
+    return f"one in {round(1 / share):,}"
+
+
+def _fit_at_the_floor() -> TrialRefused:
+    """The refusal when the estimating equations' own fit puts a risk within :data:`RISK_FLOOR` of
+    0 or 1 and the linear program does not show anyone separated (it found no one, or could not
+    decide): one person's outlying covariate value can put their risk there with the others'
+    outcomes overlapping on every value. The floor is said in words (:func:`_one_in`)."""
+    return TrialRefused(
+        f"The estimating equations' fit puts someone's risk within {_one_in(RISK_FLOOR)} of 0% or "
+        f"100%, the edge at which its risks are not read, though no one was found separated (no "
+        f"group whose outcomes the arm and the covariates predict exactly), so no estimate is "
+        f"given at that edge.", (FEWER_COVARIATES_EXIT, DESCRIBE_OUTCOMES_EXIT),
+        term="the estimating equations' fit at the risk floor")
+
+
+def _gee_refusal(X: np.ndarray, y: np.ndarray,
+                 separated: Callable[[np.ndarray, list[int]], TrialRefused] | None,
+                 otherwise: Callable[[], TrialRefused]) -> TrialRefused:
+    """Which true refusal the estimating equations give when their start, or their own fit, does
+    not settle within the separation signs' bounds: the linear program (:func:`_separated_people`)
+    decides. Anyone separated: the separation refusal, naming them as ``separated`` does where
+    the caller has the trial's design (:func:`_separated_refusal`), the plain one
+    (:func:`_separation`) where it does not. No one separated, or the program could not decide:
+    ``otherwise``."""
+    found = _separated_people(X, y)
+    if found is not None and found[0].any():
+        return separated(*found) if separated is not None else _separation()
+    return otherwise()
+
+
+def fit_gee(X: np.ndarray, y: np.ndarray, codes: np.ndarray, family: str, *,
+            separated: Callable[[np.ndarray, list[int]], TrialRefused] | None = None
+            ) -> GEEResult:
     """GEE with an exchangeable working correlation as R's ``gee`` (4.13) fits it: start from the
     independence fit (``glm``); then, until β stops moving, compute the Pearson residuals r at the
     current β, the scale φ = Σ r²/(N − p) and
     α = Σ_g Σ_{j≠k} r_gj r_gk / (φ(Σ_g m_g(m_g − 1) − 2p)), and take one Fisher-scoring step
-    with R_g = (1 − α)I + αJ."""
+    with R_g = (1 − α)I + αJ. A yes/no outcome's start is :func:`_logistic` on the raw columns,
+    and no other: where it refuses, and where the fit puts a risk within :data:`RISK_FLOOR` of 0
+    or 1, the linear program decides which refusal is given (:func:`_gee_refusal`), separation
+    (``separated`` names the people, from the trial's design) or :func:`_start_unsettled` and
+    :func:`_fit_at_the_floor`."""
     from turbotab.core.models.repeated import gee_working
 
     task = "regression" if family == "gaussian" else "binary"
-    beta = _ols(X, y).beta if family == "gaussian" else _logistic(X, y).beta
+    if family == "gaussian":
+        beta = _ols(X, y).beta
+    else:
+        try:
+            beta = _logistic(X, y).beta
+        except TrialRefused:
+            raise _gee_refusal(X, y, separated, _start_unsettled) from None
     G = int(codes.max()) + 1
     m = np.bincount(codes, minlength=G).astype(float)
     N, p = X.shape
@@ -1361,8 +1458,8 @@ def fit_gee(X: np.ndarray, y: np.ndarray, codes: np.ndarray, family: str) -> GEE
         raise TrialRefused("The estimating equations did not settle on an answer.",
                            (GEE_EXIT,), term="GEE did not converge")
     mu = X @ beta if family == "gaussian" else _expit(X @ beta)
-    if family == "binary" and (np.min(mu) < 1e-10 or np.max(mu) > 1 - 1e-10):
-        raise _separation()
+    if family == "binary" and (np.min(mu) < RISK_FLOOR or np.max(mu) > 1 - RISK_FLOOR):
+        raise _gee_refusal(X, y, separated, _fit_at_the_floor)
     return GEEResult(beta=beta, alpha=alpha, phi=phi, mu=mu, iterations=it)
 
 
@@ -1434,7 +1531,9 @@ def size_cv(codes: np.ndarray) -> float:
 def _gee(d: _Design, y: np.ndarray, codes: np.ndarray, arms: list[str], family: str,
          correction: str, df: int) -> tuple[list[Contrast], list[ArmEstimate], GEEResult,
                                             np.ndarray]:
-    fit = fit_gee(d.X, y, codes, family)
+    fit = fit_gee(d.X, y, codes, family,
+                  separated=lambda people, columns: _separated_refusal(d, y, arms, people, columns,
+                                                                       GEE_SANDWICH))
     V = gee_covariance(d.X, y, codes, fit.beta, fit.alpha, family, correction)
     contrasts: list[Contrast] = []
     estimates: list[ArmEstimate] = []
@@ -1613,9 +1712,16 @@ def estimate(frame: pd.DataFrame, spec: TrialSpec, *, analysis_set: str = "itt",
                 f"same for everyone in a cluster; the comparison needs more clusters than those "
                 f"terms.", exits, term="too few clusters")
         if K < FEW_CLUSTERS:
-            concerns.append(f"Only {K} clusters were randomized; the intervals rest on the "
-                            f"small-sample correction, and the fewest clusters Li & Redden (2015) "
-                            f"studied was {FEW_CLUSTERS}.")
+            # Li & Redden studied the corrected sandwich on a 0/1 outcome, simulating two
+            # unadjusted arms (``trials.few_clusters``, which carries their ten to adjusted and
+            # multi-arm analyses by judgment); the mixed model and a numeric outcome carry it by
+            # judgment too (``trials.few_clusters_extended``), in the same words.
+            studied = method == "gee" and pr.kind == "binary"
+            few = claims.card("trials.few_clusters" if studied else
+                              "trials.few_clusters_extended",
+                              {"trial_design": spec.trial_design, "method": method,
+                               "outcome_values": y, "n_clusters": K})
+            concerns.append(f"Only {K} clusters were randomized; {few}")
         if method == "mixed":
             if pr.kind == "binary":
                 raise TrialRefused(
@@ -2272,13 +2378,10 @@ def _register_contracts() -> None:
                      condition="one cluster in an arm, or clusters ≤ cluster-level terms",
                      enforced_by=f"{here}:estimate",
                      id="cluster_floor"),
-            Relation("implies", "few_clusters_noticed",
-                     "fewer than 10 clusters are named among the concerns (the fewest Li & Redden "
-                     "2015 studied), beside the missing-outcome notice, neither displacing the "
-                     "other",
+            Relation("implies", "few_clusters_noticed", claims.methods("trials.few_clusters"),
                      purposes=est_only, when=("mixed_kr", "gee_corrected"),
-                     condition="fewer than 10 clusters", enforced_by=f"{here}:estimate",
-                     id="few_clusters"),
+                     condition=f"fewer than {FEW_CLUSTERS} clusters",
+                     enforced_by=f"{here}:estimate", id="few_clusters"),
             Relation("implies", "correction_by_cluster_sizes",
                      "Kauermann–Carroll when the cluster sizes' coefficient of variation is below "
                      "0.6, Fay–Graubard otherwise (Li & Redden 2015)", purposes=est_only,
@@ -2290,13 +2393,7 @@ def _register_contracts() -> None:
                      exits=("estimating equations with a corrected sandwich",),
                      condition="a yes/no outcome", enforced_by=f"{here}:estimate",
                      id="kr_numeric_only"),
-            Relation("conflicts", "separation",
-                     "refused when the logistic model's risk for any group of people runs to "
-                     "0% or 100% (the arm and the covariates predict exactly whether they had "
-                     "the event): an arm, everyone (complete separation), or a group a linear "
-                     "program finds or cannot rule out (for the estimating equations, any "
-                     "fitted risk within 1e-10 of either); a partly separated fit is not read "
-                     "at its limit",
+            Relation("conflicts", "separation", claims.methods("trials.separation"),
                      purposes=est_only, rung="refused",
                      when=("standardized_risk", "gee_corrected"),
                      exits=("adjust for fewer covariates", "describe the events in each arm"),
