@@ -29,8 +29,8 @@ export type ResultsPart = (props: ResultsProps) => ReactElement | null;
  *
  * - each line the card column expands goes through CardFor, which picks its renderer by the line's
  *   source and stage (src/quest/cards/renderers.ts);
- * - a declaration line's card is `DECLARATION_CARDS[line.key]` when W1-F defines one, else
- *   GenericAsk in the line's own words;
+ * - a declaration line's card is `DECLARATION_CARDS[line.key]` when W1-F defines one, else the
+ *   dispatcher's fallback card in the line's own words (src/quest/cards/LineGeneric.tsx);
  * - in Results, the question line (the opening, `open_seal`) is `ResultsCards`, mounted once in the
  *   card column where that line is expanded (the open line, or a line clicked open), and the stage's
  *   declarations there (`set_updating`, `set_explain`) are W1-F's cards like any other;

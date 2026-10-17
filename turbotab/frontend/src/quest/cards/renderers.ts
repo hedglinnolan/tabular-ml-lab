@@ -8,8 +8,8 @@
  *   declaration  a declaration with its own card: W1-F's DECLARATION_CARDS (src/quest/cards/predict)
  *   finding      one noticing: the findings artifact filtered to it (FindingCard.tsx)
  *   reading      what the values settled, or the readings a refusal waits on: quiet rows (Readings.tsx)
- *   generic      anything else, a declaration without a card included: GenericAsk with the line's
- *                own words (LineGeneric.tsx)
+ *   generic      anything else, a declaration without a card included: a card in the line's own
+ *                words, the generic question's content (LineGeneric.tsx)
  */
 import { QUESTION_KEYS } from "../../api/m1-types";
 import type { QuestLine } from "../../api/schema";

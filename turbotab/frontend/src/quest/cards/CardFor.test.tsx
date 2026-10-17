@@ -3,8 +3,8 @@
  * the path fuzzer emits for the sample datasets under every goal (fixtures/quest-contract.json,
  * written by turbotab/core/tests/test_quest_renderer_contract.py) has a renderer in the card
  * dispatcher, and renders something, never a blank. A declaration counts as rendered only through
- * W1-F's DECLARATION_CARDS or GenericAsk; the kinds that fall to GenericAsk today are listed here,
- * since W1-F's cards replace them.
+ * W1-F's DECLARATION_CARDS or the generic fallback (LineGeneric, GenericAsk's content in the line's
+ * own words); the kinds that fall to it today are listed here, since W1-F's cards replace them.
  *
  * Each line renders on a real server's captured view (src/mocks/fixtures, the M3 captures), with
  * the stages it reads served from the capture, as the generic question's test does.
@@ -22,6 +22,7 @@ import { CONTRACT, type ContractPair } from "../fixtures/contract";
 import { CardFor } from "./CardFor";
 import { DECLARATION_CARDS } from "./predict";
 import { rendererOf, type Renderer } from "./renderers";
+import { said } from "../words";
 
 const FIXTURES = import.meta.glob<M3Fixture>("../../mocks/fixtures/m3-*.json", { eager: true, import: "default" });
 const SHARED = Object.entries(FIXTURES).find(([p]) => p.endsWith("m3-shared.json"))![1] as unknown as {
@@ -126,7 +127,7 @@ describe("every (source, key) the engine emits has a renderer", () => {
     if (source === "question") expect(kind).toBe(stage === "results" ? "results" : "ask");
   });
 
-  it("lists the declaration kinds that fall to GenericAsk today (W1-F's cards replace them)", () => {
+  it("lists the declaration kinds that fall to the generic fallback today (W1-F's cards replace them)", () => {
     const generic = [
       ...new Set(
         CONTRACT.pairs
@@ -137,7 +138,7 @@ describe("every (source, key) the engine emits has a renderer", () => {
     const declared = CONTRACT.pairs.filter((p) => p.source === "declaration").map((p) => p.key);
     // Every declaration is one or the other, never neither.
     expect(generic.length + declared.filter((k) => DECLARATION_CARDS[k]).length).toBe(declared.length);
-    // On the base, DECLARATION_CARDS is W1-F's stub: every declaration falls to GenericAsk.
+    // On the base, DECLARATION_CARDS is W1-F's stub: every declaration falls to the generic fallback.
     if (Object.keys(DECLARATION_CARDS).length === 0) expect(generic).toEqual([...declared].sort());
   });
 });
@@ -158,7 +159,7 @@ describe("the dispatcher never renders a blank", () => {
 describe("the dispatcher's fallbacks, both ways", () => {
   const Probe = ({ line }: LineCardProps) => <p data-testid="probe">{line.key}</p>;
 
-  it("draws a declaration with its own card through that card, and without one through GenericAsk", () => {
+  it("draws a declaration with its own card through that card, and without one through the generic fallback", () => {
     const line = lineOf({ source: "declaration", key: "set_selection" });
     const withCard = renderLine(line, "models", { set_selection: Probe });
     expect(screen.getByTestId("probe")).toHaveTextContent("set_selection");
@@ -166,7 +167,28 @@ describe("the dispatcher's fallbacks, both ways", () => {
     withCard.unmount();
     renderLine(line, "models", {});
     expect(screen.queryByTestId("probe")).toBeNull();
-    expect(screen.getByTestId("question-set_selection")).toHaveTextContent("The predictor-selection question");
+    expect(screen.getByTestId("generic-set_selection")).toHaveTextContent("The predictor-selection question");
+  });
+
+  it("names a fallback card by the line's own name, never by its decision kind (FOUNDATION §2)", () => {
+    const unknown: QuestLine = { ...lineOf({ source: "question", key: "lens" }), source: "exhibit" as QuestLine["source"], key: "table_one", name: "the first table" };
+    const lines = [
+      ...Object.keys(CONTRACT.declarations).flatMap((key) =>
+        (["open", "answered"] as const).map((status) => ({ ...lineOf({ source: "declaration", key }), status })),
+      ),
+      unknown,
+    ];
+    expect(lines.length).toBeGreaterThan(20);
+    for (const line of lines) {
+      const stage = line.source === "declaration" ? CONTRACT.declarations[line.key]!.stage : "results";
+      const { container, unmount } = renderLine(line, stage, {});
+      expect(rendererOf(line, stage, {})).toBe("generic");
+      const text = container.textContent!.toLowerCase();
+      expect(text, `${line.key} (${line.status})`).not.toContain(line.key.replace(/_/g, " "));
+      expect(text, `${line.key} (${line.status})`).not.toContain(line.key);
+      expect(screen.getByTestId(`generic-${line.key}`)).toHaveTextContent(said(line.name));
+      unmount();
+    }
   });
 
   it("draws a Router question as today's card, and a line of a source it does not know by its own name", () => {
@@ -178,7 +200,7 @@ describe("the dispatcher's fallbacks, both ways", () => {
     const unknown: QuestLine = { ...lineOf({ source: "question", key: "lens" }), source: "exhibit" as QuestLine["source"], key: "table_one", name: "the first table" };
     expect(rendererOf(unknown, "results", DECLARATION_CARDS)).toBe("generic");
     renderLine(unknown, "results");
-    expect(screen.getByTestId("question-table_one")).toHaveTextContent("The first table");
+    expect(screen.getByTestId("generic-table_one")).toHaveTextContent("The first table");
   });
 
   it("draws the ledger's ask line and a reading line as rows of their items", () => {

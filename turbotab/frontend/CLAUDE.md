@@ -39,7 +39,7 @@ src/quest/            the quest shell at /p/:pid (W1_PART2_PLAN §2 "W1-E"): Que
 src/quest/cards/      CardFor, the dispatcher: every quest line's card by its source, never a blank
                       (renderers.ts): today's AskFor, W1-F's DECLARATION_CARDS (cards/predict),
                       W1-G's ResultsCards (src/quest/results), a finding's own card, reading rows,
-                      else GenericAsk in the line's words. CardFor.test.tsx is the renderer
+                      else a fallback card in the line's words. CardFor.test.tsx is the renderer
                       contract: every (source, key) in fixtures/quest-contract.json, which
                       turbotab/core/tests/test_quest_renderer_contract.py writes from the path fuzzer
 src/kit/              the product's calm kit, copied from src/explore/calm-kit as the shell uses it:

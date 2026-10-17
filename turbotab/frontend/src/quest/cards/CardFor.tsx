@@ -3,7 +3,7 @@
  * the shell's card column, by its source (renderers.ts). A Router question is today's card
  * (AskFor); a question in Results is W1-G's ResultsCards; a declaration is W1-F's card for its
  * kind (DECLARATION_CARDS); a finding is a card of its own; reading items are quiet rows; anything
- * else is GenericAsk in the line's own words. It never renders a blank: until the project's view
+ * else is the fallback card in the line's own words (LineGeneric). It never renders a blank: until the project's view
  * arrives, the line's name stands with what it waits for.
  */
 import type { QuestionKey } from "../../api/m1-types";
