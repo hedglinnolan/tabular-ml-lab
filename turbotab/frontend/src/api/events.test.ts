@@ -145,6 +145,16 @@ describe("a decision event", () => {
     expect(cachedView().decisions).toHaveLength(1);
     expect(isInvalid(keys.view(PID))).toBe(false);
   });
+
+  it("reads the methods' sections (P8) again with the other log-derived reads, and only then", () => {
+    qc.setQueryData(keys.methodsSections(PID), { sections: [], count: 0 });
+    qc.setQueryData(keys.checklist(PID), { items: [] });
+    applyProjectEvent(qc, PID, { type: "decision", data: record(1) }); // already held: no-op
+    expect(isInvalid(keys.methodsSections(PID))).toBe(false);
+    applyProjectEvent(qc, PID, { type: "decision", data: record(2) });
+    expect(isInvalid(keys.methodsSections(PID))).toBe(true);
+    expect(isInvalid(keys.checklist(PID))).toBe(true);
+  });
 });
 
 describe("a stage event", () => {

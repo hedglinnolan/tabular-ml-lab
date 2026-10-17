@@ -37,6 +37,14 @@ Requiring the two-sided interval to clear zero is a one-sided test at 2.5%: the 
 interval the reader sees never disagree. The rule it replaces — a gain above one fold
 standard error — called a model "better" on 25–31% of binary datasets with no signal at all
 (audit MA-10).
+
+**On the held-out rows** (W1 part 2 ruling 2; :func:`versus_held_out`) the same rule and floor are
+read on a held-out gain over the baseline and the interval served for it. For a numeric outcome
+that gain is the held-out R² measured against the training rows' mean: the baseline (that mean)
+scores an R² of 0 there by construction, so the R² is the MSE's gain as a share of the
+baseline's, and its delta-method interval (:mod:`turbotab.core.models.performance`) counts the
+baseline's error on the same rows as well as the model's. No other task's held-out intervals are
+the gain's (each is one score's own), so no other task gets a held-out verdict.
 """
 from __future__ import annotations
 
@@ -118,6 +126,35 @@ def _t(level: float, df: int) -> float:
     return float(stats.t.ppf(1 - (1 - level) / 2, df))
 
 
+def _at_least(metric: str, floor: float) -> str:
+    """The floor as the rule's sentence states it (module docstring)."""
+    from turbotab.core.models.metrics import higher_is_better
+
+    if higher_is_better(metric):
+        return f"at least {MIN_GAIN:g} (a convention)"
+    return (f"at least {_share_of(metric, None)}, {floor:.2g} here "
+            f"({SKILL.get(metric, 'a skill score')} of {MIN_GAIN:g}, a convention)")
+
+
+def _above(metric: str, tolerance: float) -> str:
+    from turbotab.core.models.metrics import higher_is_better
+
+    return f"{tolerance:.3f}" if higher_is_better(metric) else f"{tolerance:.3g}"
+
+
+def _verdict(gain: float | None, interval: bool, tolerance: float) -> Verdict:
+    """The rule (module docstring): ``worse`` below zero; ``better`` only with an interval and a
+    gain above ``tolerance`` (the floor, or the interval's half-width when that is larger, so
+    the interval lies above zero); ``no_better`` otherwise."""
+    if gain is None:
+        return "no_better"
+    if gain < 0:
+        return "worse"
+    if interval and gain > tolerance:
+        return "better"
+    return "no_better"
+
+
 def versus_baseline(metric: str, model_folds: Sequence[float | None],
                     baseline_folds: Sequence[float | None], *, gain: float | None = None,
                     test_share: float | None = None,
@@ -142,11 +179,7 @@ def versus_baseline(metric: str, model_folds: Sequence[float | None],
     if baseline is None and pairs:
         baseline = sum(b for _, b in pairs) / len(pairs)
     floor = min_gain(metric, baseline)
-    if higher_is_better(metric):
-        at_least = f"at least {MIN_GAIN:g} (a convention)"
-    else:
-        at_least = (f"at least {_share_of(metric, None)}, {floor:.2g} here "
-                    f"({SKILL.get(metric, 'a skill score')} of {MIN_GAIN:g}, a convention)")
+    at_least = _at_least(metric, floor)
     se = ci_low = ci_high = None
     df = None
     if k > 1 and gain is not None:
@@ -158,24 +191,45 @@ def versus_baseline(metric: str, model_folds: Sequence[float | None],
         half = _t(LEVEL, df) * se
         ci_low, ci_high = gain - half, gain + half
         tolerance = max(floor, half)
-        above = f"{tolerance:.3f}" if higher_is_better(metric) else f"{tolerance:.3g}"
         basis = (f"Better only when the gain's {LEVEL:.0%} interval lies above zero and the gain is "
-                 f"{at_least}: a gain above {above}. The interval is corrected for the {k} folds "
-                 f"sharing training rows (Nadeau & Bengio 2003).")
+                 f"{at_least}: a gain above {_above(metric, tolerance)}. The interval is corrected "
+                 f"for the {k} folds sharing training rows (Nadeau & Bengio 2003).")
     else:
         tolerance = floor
         basis = (f"With {k} fold{'s' if k != 1 else ''} the gain has no interval, so the model is "
                  f"never called better than its baseline.")
-    if gain is None:
-        verdict: Verdict = "no_better"
-    elif gain < 0:
-        verdict = "worse"
-    elif se is not None and gain > tolerance:
-        verdict = "better"
-    else:
-        verdict = "no_better"
+    verdict = _verdict(gain, se is not None, tolerance)
     return VersusBaseline(verdict=verdict, metric=metric, gain=gain, tolerance=tolerance,
                           tolerance_basis=basis, se=se, ci_low=ci_low, ci_high=ci_high, df=df)
+
+
+def versus_held_out(metric: str, gain: Any, rows: int, *,
+                    baseline: float | None = None) -> VersusBaseline | None:
+    """The held-out verdict (module docstring, "On the held-out rows"): the rule and floor of
+    :func:`versus_baseline` read on a held-out gain over the baseline and the interval served for
+    it, ``gain`` (a ``performance.Interval``: for a numeric outcome the held-out R² against the
+    training rows' mean). ``rows``: the held-out rows it was scored on. ``baseline``: the
+    baseline's held-out loss, of which a loss's floor is a share (:func:`min_gain`).
+
+    None, and no verdict served, when no interval is: no gain, or no standard error (a single
+    held-out row, or an outcome with no spread on them)."""
+    estimate = getattr(gain, "estimate", None)
+    se = getattr(gain, "se", None)
+    ci_low, ci_high = getattr(gain, "ci_low", None), getattr(gain, "ci_high", None)
+    if estimate is None or se is None or ci_low is None or ci_high is None:
+        return None
+    estimate, level = float(estimate), float(getattr(gain, "level", LEVEL))
+    floor = min_gain(metric, baseline)
+    # The interval's lower half-width: a gain above it is an interval above zero.
+    tolerance = max(floor, estimate - float(ci_low))
+    method = getattr(gain, "method", "") or "influence function"
+    basis = (f"Better only when the gain's {level:.0%} interval lies above zero and the gain is "
+             f"{_at_least(metric, floor)}: a gain above {_above(metric, tolerance)}. The interval "
+             f"is the held-out {_spoken(metric).removeprefix('the ')}'s ({method}; {rows:,} "
+             f"held-out rows).")
+    return VersusBaseline(verdict=_verdict(estimate, True, tolerance), metric=metric,
+                          gain=estimate, tolerance=tolerance, tolerance_basis=basis, se=float(se),
+                          ci_low=float(ci_low), ci_high=float(ci_high), df=None, level=level)
 
 
 def compare(task: str, model: Any, baseline: Any,
@@ -226,4 +280,4 @@ def no_better_concern(task: str, metric_label: str, versus: VersusBaseline,
 
 
 __all__ = ["LEVEL", "MIN_GAIN", "SKILL", "VersusBaseline", "compare", "floor_words", "min_gain",
-           "no_better_concern", "versus_baseline"]
+           "no_better_concern", "versus_baseline", "versus_held_out"]

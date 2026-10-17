@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request, Response
 from starlette.concurrency import run_in_threadpool
 
+from turbotab.core.export.methods import MethodsSections
 from turbotab.core.fit_press import FitLock
 from turbotab.core.materiality import Ledger
 from turbotab.core.plan_lock import PlanExport
@@ -214,6 +215,20 @@ def methods(request: Request, pid: str) -> MethodsText:
     superseded before anything was seen folded out, and every change made after the estimates
     were seen or the held-out rows were opened kept and marked (audit WP16)."""
     return get_service(request).methods(pid)
+
+
+@router.get(
+    "/projects/{pid}/methods/sections",
+    response_model=MethodsSections,
+    responses={404: refusal("No such project")},
+)
+def methods_sections(request: Request, pid: str) -> MethodsSections:
+    """The methods in the sections and words of the export bundle's methods (P8): TRIPOD+AI's
+    sections under prediction, STROBE's with STROBE-nut's otherwise, each line with its decision
+    record's id (null for a paragraph the analysis wrote and for the export's own sentence), and
+    how many lines there are. Built as the bundle builds them, without its refusal; reading it
+    records nothing."""
+    return get_service(request).methods_sections(pid)
 
 
 @router.get(

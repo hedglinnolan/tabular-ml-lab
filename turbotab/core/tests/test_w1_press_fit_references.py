@@ -23,9 +23,9 @@ the engine:
   cross-validated MSE (so the folds are the engine's), and the gain over the baseline on the
   comparison substrate (ten draws of the five folds; each draw's pooled out-of-fold R² against the
   training-fold mean, averaged) against numpy;
-* the no-predictor baseline's held-out RMSE by numpy (the held-out y around the training mean): the
-  engine serves no held-out baseline yet (the baseline above is cross-validated only), so it is
-  checked against the engine's once served, and a strict expected failure says it is not;
+* the no-predictor baseline on the held-out rows (W1 part 2 ruling 2, ``HoldoutDetail.baseline``)
+  by numpy: the held-out y around the training rows' mean, its MSE, RMSE and MAE, and its R²
+  against that mean, 0 by construction; and the held-out verdict's gain, the held-out R² above;
 * the held-out calibration (Van Calster et al. 2016, on the outcome's scale as
   ``models.performance`` defines it): the slope is statsmodels' OLS slope of y on ŷ, the intercept
   (calibration-in-the-large) statsmodels' OLS of y − ŷ on a constant, each with its standard error,
@@ -284,13 +284,15 @@ def test_a_light_nhanes_predict_walk_presses_fit_and_its_held_out_numbers_match_
     assert versus["gain"] == pytest.approx(float(np.mean(r2s)), rel=TOL, abs=TOL)
     assert linear["compared_on"]["estimate"] == pytest.approx(float(np.mean(mses)), rel=TOL, abs=TOL)
 
-    # The no-predictor baseline on the held-out rows: their y around the training rows' mean, by
-    # numpy. The engine serves none yet (the open gap the strict expected failure below names);
-    # once it does, it is this.
-    baseline_rmse = float(np.sqrt(np.mean((y_held - train_mean) ** 2)))
+    # The no-predictor baseline on the held-out rows (W1 part 2 ruling 2): their y around the
+    # training rows' mean, by numpy; and the held-out verdict, read on the held-out R² above.
     served = _held_out_baseline(linear)
-    if served is not None:
-        assert served == pytest.approx(baseline_rmse, rel=TOL, abs=TOL)
+    assert served is not None, linear["holdout_detail"]
+    for metric, value in _mean_scores(y_held, train_mean).items():
+        assert served[metric] == pytest.approx(value, rel=TOL, abs=TOL), metric
+    versus = linear["holdout_detail"]["versus_baseline"]
+    assert versus["metric"] == "r2" and versus["df"] is None
+    assert versus["gain"] == pytest.approx(expected["r2"], rel=TOL, abs=TOL)
 
     # The held-out calibration, by statsmodels: the slope of y on ŷ, and the mean of y − ŷ.
     calibration = linear["holdout_detail"]["calibration"]
@@ -310,29 +312,106 @@ def test_a_light_nhanes_predict_walk_presses_fit_and_its_held_out_numbers_match_
     print(f"the light walk took {time.monotonic() - t0:.0f} s")
 
 
-def _held_out_baseline(model: dict[str, Any]) -> float | None:
-    """The no-predictor baseline's held-out RMSE, wherever the engine serves it on a fitted model:
-    a ``baseline`` beside the held-out scores or in their detail. None while it serves none."""
-    for where in (model.get("holdout_detail") or {}, model.get("holdout") or {}):
-        found = where.get("baseline") if isinstance(where, dict) else None
-        if isinstance(found, dict):
-            if found.get("rmse") is not None:
-                return float(found["rmse"])
-            if found.get("mse") is not None:
-                return float(np.sqrt(found["mse"]))
-        elif isinstance(found, (int, float)):
-            return float(found)
-    return None
+def _held_out_baseline(model: dict[str, Any]) -> dict[str, float | None] | None:
+    """The no-predictor baseline's held-out scores a fitted model is served with (W1 part 2
+    ruling 2: ``holdout_detail.baseline.scores``); None while it is served none."""
+    found = (model.get("holdout_detail") or {}).get("baseline")
+    return dict(found["scores"]) if isinstance(found, dict) else None
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "The engine serves no held-out no-predictor baseline: FittedModel.baseline is the "
-    "cross-validated primary (models/artifacts.py, Baseline), and HoldoutDetail carries none, so "
-    "W1-G has no engine number for 'held-out scores against the baseline'. The fix belongs to "
-    "models/ (phase 3's files): a baseline in HoldoutDetail, its RMSE (or MSE) on the held-out rows "
-    "around the training mean, sealed with the rest. When it lands this passes, the strict mark "
-    "fails, and the walk above checks its value against numpy."))
-def test_the_engine_serves_a_held_out_no_predictor_baseline():
-    from turbotab.core.models.artifacts import HoldoutDetail
+def _mean_scores(y_held: np.ndarray, train_mean: float) -> dict[str, float]:
+    """The training rows' mean as the prediction for every held-out row, scored by numpy: its MSE,
+    RMSE and MAE, and its R² against that same mean (1 − SSE/SSE: 0 by construction)."""
+    e = np.asarray(y_held, dtype=float) - train_mean
+    sse = float(np.sum(e ** 2))
+    return {"mse": float(np.mean(e ** 2)), "rmse": float(np.sqrt(np.mean(e ** 2))),
+            "mae": float(np.mean(np.abs(e))), "r2": 1.0 - sse / sse}
 
-    assert "baseline" in HoldoutDetail.model_fields
+
+def _regression_table(tmp_path: Path, n: int, slope: float, seed: int) -> tuple[Any, pd.DataFrame]:
+    """``n`` rows of two standard-normal predictors and y = 3 + slope·x1 − slope/2·x2 + N(0, 1),
+    ingested as the stages read a file."""
+    from turbotab.core.tests.stage_harness import Ingested
+
+    rng = np.random.default_rng(seed)
+    x = rng.normal(size=(n, 2))
+    frame = pd.DataFrame({"id": np.arange(n), "x1": x[:, 0], "x2": x[:, 1],
+                          "y": 3 + slope * x[:, 0] - slope / 2 * x[:, 1] + rng.normal(size=n)})
+    source = tmp_path / "regression.csv"
+    frame.to_csv(source, index=False)
+    return Ingested(source, tmp_path / "ingested"), pd.read_csv(source)
+
+
+def _fit_stages(table: Any, state: Any) -> tuple[Any, Any]:
+    """The split and the fit, through the real stages."""
+    from turbotab.core.stages.modeling import design_stage, fit_stage
+    from turbotab.core.stages.rows import cohort_stage, split_stage
+    from turbotab.core.stages.target import target_info_stage
+
+    info = table.run(target_info_stage, state)
+    cohort = table.run(cohort_stage, state, {"target_info": info})
+    split = table.run(split_stage, state, {"cohort": cohort, "target_info": info})
+    design = table.run(design_stage, state, {"split": split, "target_info": info})
+    fit = table.run(fit_stage, state, {"design": design, "split": split, "target_info": info})
+    return split, fit
+
+
+def _served(fit: Any, *, opened: bool) -> dict[str, Any]:
+    """The fit as a client is served it, the seal closed or opened (``seal.serve_fit``)."""
+    from turbotab.core.seal import (SEALED_DETAIL, SEALED_SCORES, details_by_family,
+                                    scores_by_family, serve_fit)
+
+    return serve_fit(fit.data, opened=opened,
+                     scores=lambda: scores_by_family(fit.frames[SEALED_SCORES]),
+                     details=lambda: details_by_family(fit.frames[SEALED_DETAIL]))
+
+
+def _split_rows(split: Any) -> tuple[np.ndarray, np.ndarray]:
+    """The training and held-out row ids the seal drew (row ids are the file's row positions)."""
+    a = split.frames["assignment"]
+    return (np.sort(a.loc[a["partition"] != "holdout", "row_id"].to_numpy()),
+            np.sort(a.loc[a["partition"] == "holdout", "row_id"].to_numpy()))
+
+
+def test_the_engine_serves_a_held_out_no_predictor_baseline_sealed_with_the_rest(tmp_path: Path):
+    """W1 part 2 ruling 2: the no-predictor baseline on the held-out rows is the training rows'
+    mean, scored as the held-out scores are, and served in ``HoldoutDetail.baseline``, sealed with
+    the rest of the held-out detail. Its truth is numpy's: the held-out y around the training
+    rows' mean (the rows the seal drew). The held-out verdict's gain is the held-out R² of
+    scikit-learn's least squares refit on the training rows, against that mean."""
+    from turbotab.core.decisions import GrainSpec, ProjectState, SplitSpec
+
+    table, frame = _regression_table(tmp_path, 600, slope=2.0, seed=11)
+    state = ProjectState(lens=["clinical"], target="y", task="regression", purpose="prediction",
+                         roles={"id": "identifier", "x1": "covariate", "x2": "covariate"},
+                         missing="complete_case",
+                         grain=GrainSpec(grain="one_row_per_unit", id_column="id"),
+                         split=SplitSpec(holdout=0.2, seed=4, folds=5), models=["linear"])
+    split, fit = _fit_stages(table, state)
+    train, held = _split_rows(split)
+    assert len(held) == fit.data["n_holdout"] > 100 and len(train) == fit.data["n_train"]
+
+    # Sealed: never in the public data, and served with nothing held out until the opening.
+    assert all(m["holdout_detail"] is None for m in fit.data["models"])
+    closed = _served(fit, opened=False)
+    assert closed["holdout_sealed"] and all(m["holdout_detail"] is None for m in closed["models"])
+
+    linear = next(m for m in _served(fit, opened=True)["models"] if m["family"] == "linear")
+    detail = linear["holdout_detail"]
+    y = frame["y"].to_numpy(float)
+    train_mean = float(y[train].mean())
+    assert detail["baseline"]["label"] == "the outcome's average"
+    want = _mean_scores(y[held], train_mean)
+    assert set(detail["baseline"]["scores"]) == set(linear["holdout"]) == set(want)
+    for metric, value in want.items():
+        assert detail["baseline"]["scores"][metric] == pytest.approx(value, rel=TOL, abs=TOL), metric
+
+    # The verdict against it: the held-out R² of least squares, against the training rows' mean.
+    X = frame[["x1", "x2"]].to_numpy(float)
+    y_hat = LinearRegression().fit(X[train], y[train]).predict(X[held])
+    r2 = 1 - np.sum((y[held] - y_hat) ** 2) / np.sum((y[held] - train_mean) ** 2)
+    versus = detail["versus_baseline"]
+    assert versus["metric"] == "r2" and versus["gain"] == pytest.approx(r2, rel=TOL, abs=TOL)
+    assert (versus["ci_low"], versus["ci_high"]) == (detail["intervals"]["r2"]["ci_low"],
+                                                     detail["intervals"]["r2"]["ci_high"])
+    assert r2 > 0.5 and versus["ci_low"] > 0 and versus["verdict"] == "better"

@@ -37,6 +37,16 @@ const refusal: Refusal = {
   },
 };
 
+describe("the methods' sections (P8)", () => {
+  it("are read from the project's route", async () => {
+    const sections = { guideline: "TRIPOD+AI", seen_from: null, sections: [], count: 0 };
+    const fetchMock = respond(200, sections);
+    await expect(api.methodsSections("p 1")).resolves.toEqual(sections);
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/projects/p%201/methods/sections");
+  });
+});
+
 describe("a decision the server refuses (409)", () => {
   it("is thrown as a RefusalError carrying the typed refusal and its exits", async () => {
     respond(409, refusal);

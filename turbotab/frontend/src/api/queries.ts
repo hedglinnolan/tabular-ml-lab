@@ -42,6 +42,9 @@ export const keys = {
   // M3: each is read from the decision log, so a decision event invalidates it (events.ts).
   readings: (pid: string) => [pid, "readings"] as const,
   methods: (pid: string) => [pid, "methods"] as const,
+  // P8: the methods in the bundle's sections, read from the log and the results as the bundle reads
+  // them, so a decision event invalidates it with the other log-derived keys.
+  methodsSections: (pid: string) => [pid, "methods", "sections"] as const,
   plan: (pid: string) => [pid, "plan"] as const,
   files: (pid: string) => [pid, "files"] as const,
   models: () => ["models"] as const,
@@ -56,7 +59,14 @@ export const keys = {
 
 /** The reads that follow the decision log: stale after any decision. */
 export function logDerivedKeys(pid: string) {
-  return [keys.quest(pid), keys.record(pid), keys.triage(pid), keys.materiality(pid), keys.checklist(pid)];
+  return [
+    keys.quest(pid),
+    keys.record(pid),
+    keys.triage(pid),
+    keys.materiality(pid),
+    keys.checklist(pid),
+    keys.methodsSections(pid),
+  ];
 }
 
 export function makeQueryClient(): QueryClient {
@@ -323,6 +333,15 @@ export function useMethods(pid: string, enabled = true) {
   return useQuery({
     queryKey: keys.methods(pid),
     queryFn: ({ signal }) => api.methods(pid, signal),
+    enabled,
+  });
+}
+
+/** P8: the methods in the export bundle's own sections and words, for the manuscript rail. */
+export function useMethodsSections(pid: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.methodsSections(pid),
+    queryFn: ({ signal }) => api.methodsSections(pid, signal),
     enabled,
   });
 }

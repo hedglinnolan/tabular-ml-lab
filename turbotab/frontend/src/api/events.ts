@@ -49,7 +49,7 @@ function applyDecision(qc: QueryClient, pid: string, record: DecisionRecord): vo
   // changes the findings stage's key: any decision may settle one, so it is read again.
   void qc.invalidateQueries({ queryKey: keys.stage(pid, "findings"), exact: true });
   // The readings card, the methods text, the plan and the joined files are read from the log, as
-  // are the quest log, the record, the triage, the ledger and the checklist.
+  // are the quest log, the record, the triage, the ledger, the checklist and the methods' sections.
   const derived = [keys.readings(pid), keys.methods(pid), keys.plan(pid), keys.files(pid), ...logDerivedKeys(pid)];
   for (const key of derived) {
     void qc.invalidateQueries({ queryKey: key, exact: true });

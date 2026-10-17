@@ -36,6 +36,7 @@ import type {
   FitLock,
   JoinPreview,
   JoinPreviewRequest,
+  MethodsSections,
   MethodsText,
   PlanExport,
   ReadingsCard,
@@ -293,6 +294,11 @@ export const api = {
   /** The methods text built from the decision log (audit WP16). */
   methods: (pid: string, signal?: AbortSignal) =>
     request<MethodsText>(`/projects/${enc(pid)}/methods`, { signal }),
+
+  /** P8: the methods in the export bundle's own sections and words, each line with its record id
+   * and the lines counted (the manuscript rail; TRIPOD+AI's sections under Predict). */
+  methodsSections: (pid: string, signal?: AbortSignal) =>
+    request<MethodsSections>(`/projects/${enc(pid)}/methods/sections`, { signal }),
 
   /** The analysis plan for registration: canonical JSON with its SHA-256 (MODELING_SEQUENCE §1). */
   plan: (pid: string, signal?: AbortSignal) =>
