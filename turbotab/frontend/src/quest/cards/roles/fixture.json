@@ -9,11 +9,21 @@
   "unread_evidence": "proposed below high confidence and recorded with the other roles",
   "templates": {
     "name": "the role of `{column}`",
-    "reason": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
     "proposed": "proposed as {role}",
     "settled": "is {role}",
     "confirm": "Confirm `{column}` as {role}",
     "change": "`{column}` is {other}"
+  },
+  "reasons": {
+    "identifier": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+    "exposure": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+    "energy": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+    "covariate": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+    "design": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a covariate.",
+    "flag": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a covariate.",
+    "time": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a covariate.",
+    "excluded": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or keep it in the model.",
+    "cluster": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a covariate."
   },
   "words": {
     "identifier": "the unit's identifier",
@@ -169,7 +179,7 @@
       "counted": true,
       "order": 30.002,
       "decision_id": null,
-      "reason": "`imputed_waist` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+      "reason": "`imputed_waist` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a covariate.",
       "waiting_for": [],
       "computing": [],
       "reopened_by": null,
@@ -214,7 +224,7 @@
       "counted": true,
       "order": 30.003,
       "decision_id": null,
-      "reason": "`cycle_begin_year` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+      "reason": "`cycle_begin_year` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or keep it in the model.",
       "waiting_for": [],
       "computing": [],
       "reopened_by": null,

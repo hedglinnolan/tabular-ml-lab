@@ -94,6 +94,12 @@ describe("the mock's quest log", () => {
     expect(roleLines.every((l) => l.status === "open" && l.counted)).toBe(true);
     const { order, ...mockBp } = roleLines.find((l) => l.key === "confirm_role:bp_sys")!;
     expect(mockBp).toEqual(bp);
+    // Why a line waits names its own presses, so a flag's (the capture's six imputed_* columns)
+    // differs from a covariate's: it is the engine's for a flag.
+    const flag = roleLines.find((l) => l.key === "confirm_role:imputed_waist")!;
+    expect(flag.reason).toBe(engine("imputed_waist").reason);
+    expect(flag.items[0]!.options).toEqual(engine("imputed_waist").items[0]!.options);
+    expect(flag.reason).not.toBe(bp.reason!.replaceAll("bp_sys", "imputed_waist"));
     expect(order).toBeGreaterThanOrEqual(ROLES.place.order);
     expect(before.progress?.complete).toBe(false);
     expect(before.progress!.required - before.progress!.answered).toBeGreaterThanOrEqual(16);

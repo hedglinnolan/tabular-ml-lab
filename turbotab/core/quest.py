@@ -1651,15 +1651,39 @@ def role_choices(role: str) -> list[str]:
     return [o for o in dict.fromkeys(others) if o != role]
 
 
+def role_line_reason(column: str, role: str) -> str:
+    """Why one column's role line waits: the fit's words for one column
+    (``readings.unsettled_message``), whose last clause names only what the line's presses do instead
+    of confirming (:func:`role_choices`): leaving it out where a press records it as left out of the
+    models; keeping it in the model where it was proposed as left out and every press makes it a
+    predictor; else recording it as each role a press records (a flag, a time, a design column or a
+    cluster changes only to a covariate)."""
+    from turbotab.core.readings import PREDICTOR_ROLES, role_words, unsettled_message
+
+    choices = role_choices(role)
+    if "excluded" in choices:
+        return unsettled_message([column], ROLE_WAITS_FOR)
+    if role == "excluded" and choices and all(c in PREDICTOR_ROLES for c in choices):
+        instead = ", or keep it in the model"
+    elif choices:
+        instead = ", or record it as " + " or ".join(role_words(c) for c in choices)
+    else:
+        instead = ""
+    return (f"`{column}` was proposed below high confidence and recorded with the other roles, not "
+            f"confirmed on its own, so it cannot set {ROLE_WAITS_FOR} yet. Confirm it after reading "
+            f"why it was proposed{instead}.")
+
+
 def role_line_text(column: str, role: str, other: str = "") -> dict[str, str]:
-    """The words of one column's role line (:func:`_role_lines`): its name, why it waits, its
-    reading while it waits (``proposed``) and once settled (``settled``), and the labels of its
-    confirmation (``confirm``) and of a change to ``other`` (``change``)."""
-    from turbotab.core.readings import role_words, unsettled_message
+    """The words of one column's role line (:func:`_role_lines`): its name, why it waits
+    (:func:`role_line_reason`), its reading while it waits (``proposed``) and once settled
+    (``settled``), and the labels of its confirmation (``confirm``) and of a change to ``other``
+    (``change``)."""
+    from turbotab.core.readings import role_words
 
     return {
         "name": f"the role of `{column}`",
-        "reason": unsettled_message([column], ROLE_WAITS_FOR),
+        "reason": role_line_reason(column, role),
         "proposed": f"proposed as {role_words(role)}",
         "settled": f"is {role_words(role)}",
         "confirm": f"Confirm `{column}` as {role_words(role)}",
@@ -1685,7 +1709,8 @@ def _role_lines(state: Any, steps: Sequence[Any], log: _Log,
     While one waits no number-changing default reads it: it is no predictor
     (``readings.predictor_columns``) and the fit asks for it. Each line's ways forward are one
     ``confirm_role`` each: the role as proposed, or another the ledger offers for it
-    (:func:`role_choices`); none confirms another column. The evidence is the roles stage's own
+    (:func:`role_choices`); none confirms another column, and why the line waits names only what
+    those presses do (:func:`role_line_reason`). The evidence is the roles stage's own
     reason for the proposal, where its artifact is at hand. While the roles question is asked
     again (its answer no longer holds) the columns wait with it and are not listed."""
     from turbotab.core.readings import proposals_of, role_reading
@@ -2138,7 +2163,8 @@ __all__ = [
     "asks", "explore_label", "explore_place", "finding_place", "fit_waits", "goal_of", "kind_place",
     "kind_stages", "noticing_place",
     "noticing_places", "noticing_stage", "noticing_stages", "quest_log", "question_reads",
-    "record_stage", "record_steps", "role_choices", "role_line_key", "role_line_text",
+    "record_stage", "record_steps", "role_choices", "role_line_key", "role_line_reason",
+    "role_line_text",
     "served_exhibits", "stage_reads", "waits_on_an_answer",
     "written_slots",
 ]

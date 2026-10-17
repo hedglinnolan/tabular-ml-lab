@@ -70,6 +70,8 @@ const latest = (records: readonly DecisionRecord[], test: (d: DecisionRecord["de
 
 const WORDS: Record<string, string> = ROLES.words;
 const CHOICES: Record<string, string[]> = ROLES.choices;
+/** Why a role line waits, by the proposed role: its last clause names what that role's presses do. */
+const REASONS: Record<string, string> = ROLES.reasons;
 const fill = (template: string, column: string, role: string, other = "") =>
   template
     .replaceAll("{column}", column)
@@ -121,7 +123,7 @@ export function mockRoleLines(view: ProjectView, reasons: Readonly<Record<string
           counted: true,
           order: ROLES.place.order + i / 1000,
           decision_id: waiting ? null : (confirmedBy(column)?.id ?? null),
-          reason: waiting ? fill(T.reason, column, role) : null,
+          reason: waiting && REASONS[role] ? fill(REASONS[role], column, role) : null,
           items: [
             {
               kind: "role",

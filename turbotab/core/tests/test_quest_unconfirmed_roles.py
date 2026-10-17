@@ -76,8 +76,12 @@ def test_each_role_recorded_below_high_is_an_open_counted_line_of_your_data():
         # the evidence the roles stage served for its proposal, word for word
         reason = next(p["reason"] for p in PROPOSALS["columns"] if p["column"] == column)
         assert item.evidence == reason
-        # the ledger's own words for a role that waits (the fit's refusal says the same)
-        assert line.reason == readings.unsettled_message([column], "the model's predictors")
+        # the ledger's own words for a role that waits, the fit's refusal's where a press leaves the
+        # column out (an exclusion's names its own presses: the tests of P4 below)
+        if "excluded" in quest.role_choices(ROLES[column]):
+            assert line.reason == readings.unsettled_message([column], "the model's predictors")
+        else:
+            assert "leave it out" not in line.reason
     data = stage(log, "data")
     settled = stage(_log(_records([])), "data")
     # Three more objectives than the same answers with nothing waiting, none of them answered.
@@ -153,6 +157,73 @@ def test_each_way_forward_confirms_exactly_one_column_with_its_own_confirm_role(
         assert set(roles[1:]) == set(readings.ROLE_CHANGES[ROLES[column]])
 
 
+# ── why it waits names only what its presses do (the verifier's P4) ───────────
+
+# One waiting column per kind of proposal: two whose changes leave it out of the models, a flag, a
+# time, a design column and a cluster whose only change keeps it in as a covariate, and one proposed
+# as left out of the models.
+EVERY_KIND = {"SEQN": "identifier", "bp_sys": "covariate", "diet": "exposure",
+              "imputed_waist": "flag", "exam_date": "time", "sdmvstra": "design", "sdmvpsu": "cluster",
+              "cycle": "excluded"}
+
+
+def _kinds_log() -> quest.QuestLog:
+    waiting = [c for c in EVERY_KIND if c != "SEQN"]
+    records = [
+        record(1, {"kind": "set_lens", "lenses": ["clinical"]}),
+        record(2, {"kind": "set_target", "column": "glucose"}),
+        record(3, {"kind": "set_purpose", "purpose": "prediction"}),
+        record(4, {"kind": "set_roles", "roles": dict(EVERY_KIND), "unconfirmed": waiting}),
+    ]
+    return quest.quest_log(decisions.fold(records), records, steps_until("exclusions"))
+
+
+def _instead(line: quest.QuestLine) -> list[str]:
+    """The roles a line's presses record other than its proposal, read from its options."""
+    item = line.items[0]
+    return [d["role"] for d in _decisions(line) if d["role"] != item.value]
+
+
+def test_a_role_lines_reason_says_leave_it_out_only_where_a_press_leaves_it_out():
+    lines = {l.items[0].column: l for l in _role_lines(_kinds_log())}
+    assert set(lines) == set(EVERY_KIND) - {"SEQN"}
+    said = {c: "leave it out" in (l.reason or "") for c, l in lines.items()}
+    offered = {c: "excluded" in _instead(l) for c, l in lines.items()}
+    # It fires where a press records the column as left out of the models, and is silent where none
+    # does (the flag, the time, the design column and the cluster offer only a covariate; the
+    # exclusion is the proposal itself).
+    assert said == offered
+    assert {c for c, v in offered.items() if v} == {"bp_sys", "diet"}
+    for column in ("bp_sys", "diet"):
+        # where it holds, the line keeps the fit's own words (the refusal says the same)
+        assert lines[column].reason == readings.unsettled_message([column], quest.ROLE_WAITS_FOR)
+
+
+def test_a_role_lines_reason_names_the_role_its_only_change_records():
+    for column in ("imputed_waist", "exam_date", "sdmvstra", "sdmvpsu"):
+        line = next(l for l in _role_lines(_kinds_log()) if l.items[0].column == column)
+        others = _instead(line)
+        assert others == ["covariate"], (column, others)
+        first, _, last = line.reason.partition(" Confirm it after reading why it was proposed, ")
+        # The first sentence is the fit's for the same column; the last names each press's role in
+        # the words its option label uses.
+        fit = readings.unsettled_message([column], quest.ROLE_WAITS_FOR)
+        assert fit.startswith(first + " ")
+        labels = [o.label for o in line.items[0].options]
+        for role in others:
+            words = readings.role_words(role)
+            assert f"`{column}` is {words}" in labels
+            assert words in last, (column, line.reason)
+
+
+def test_an_exclusion_lines_reason_offers_keeping_it_in_the_model():
+    [line] = [l for l in _role_lines(_kinds_log()) if l.items[0].column == "cycle"]
+    # Every press but the confirmation puts the column in the model as a predictor.
+    assert _instead(line) and set(_instead(line)) <= set(readings.PREDICTOR_ROLES)
+    assert "leave it out" not in line.reason
+    assert line.reason.endswith("or keep it in the model.")
+
+
 def test_confirm_all_holds_none_of_them():
     log = _log(_records(WAITING), artifacts={"roles": PROPOSALS})
     data = stage(log, "data")
@@ -217,6 +288,9 @@ def _fixture() -> dict:
     [unread, *_] = _role_lines(quest.quest_log(decisions.fold(records), records,
                                                steps_until("exclusions")))
     every = typing.get_args(decisions.Role)
+    # Why a line waits names what its presses do, which differs by role: one template per role.
+    templates = quest.role_line_text("{column}", "{role}", "{other}")
+    del templates["reason"]
     return {
         "about": "Written by turbotab/core/tests/test_quest_unconfirmed_roles.py from core/quest.py "
                  "(_role_lines): never edit by hand.",
@@ -224,7 +298,8 @@ def _fixture() -> dict:
                   "order": quest.ROLE_LINE.order},
         "key": quest.role_line_key("{column}"),
         "unread_evidence": unread.items[0].evidence,
-        "templates": quest.role_line_text("{column}", "{role}", "{other}"),
+        "templates": templates,
+        "reasons": {r: quest.role_line_reason("{column}", r) for r in every},
         "words": {r: readings.role_words(r) for r in every},
         "choices": {r: quest.role_choices(r) for r in every},
         "lines": [l.model_dump(mode="json") for l in _role_lines(log)],
