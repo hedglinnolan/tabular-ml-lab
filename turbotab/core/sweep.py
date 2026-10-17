@@ -346,9 +346,11 @@ def _withdrawn(log: _Log, stage: str, sweep: str) -> Any:
 
 
 def _sweep_words(n: int) -> tuple[str, str]:
+    """The sweep's heading and action: what it confirms, the choices set for the person, in plain
+    words (R-f 16; the lines under the heading name each one)."""
     if n == 1:
-        return "Here is the other choice set for you", "Confirm it"
-    return f"Here are the {n} other choices set for you", f"Confirm all {n}"
+        return "The choice set for you", "Confirm it"
+    return f"The {n} choices set for you", f"Confirm all {n}"
 
 
 def sweep_of(stage: str, lines: Sequence[QuestLine], state: Any, log: _Log) -> Sweep | None:

@@ -71,10 +71,12 @@ def test_the_sweep_holds_the_defaults_that_would_change_a_number_last_in_the_sta
         assert ranks == sorted(ranks), s.key
     assert whos_in.sweep.lines == 1 and not whos_in.sweep.answered
     assert whos_in.sweep.id == "other:confirm-sweep:whos_in"
+    # R-f 16: the heading says plainly what the sweep confirms, the choices set for the person
+    # (the walkthrough read "Confirm · Here is the other choice set for you").
     assert (models.sweep.heading, models.sweep.action) == (
-        "Here are the 2 other choices set for you", "Confirm all 2")
+        "The 2 choices set for you", "Confirm all 2")
     assert (whos_in.sweep.heading, whos_in.sweep.action) == (
-        "Here is the other choice set for you", "Confirm it")
+        "The choice set for you", "Confirm it")
     # Your data: one line for what the values settled. `bp_sys` enters no analysis (left out), so
     # how its values are read changes no number; the outcome's kind is Your question's.
     [read] = [l for l in data.lines if l.label == "Confirm"]

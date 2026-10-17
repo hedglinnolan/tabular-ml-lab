@@ -995,7 +995,7 @@ class Sweep(BaseModel):
     answered, by the person's own answer or by "Confirm all" (``confirmed_by``, the
     ``confirm_sweep`` record). ``changed``: the lines set for the person anew, or stated otherwise,
     since that confirmation. ``id`` is the crosswalk's card; ``heading`` and ``action`` are its
-    words ("Here are the 6 other choices set for you", "Confirm all 6")."""
+    words ("The 6 choices set for you", "Confirm all 6")."""
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
