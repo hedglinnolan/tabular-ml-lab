@@ -20,16 +20,15 @@ export function openStageKey(log: QuestLog): string {
 }
 
 /**
- * Whether a reached stage that is not complete is passed for the triage (finding 6): under Predict,
- * outside the triage's stage (`triageStage`), its only counted Decides still to answer are
- * noticings, which travel to the triage, and no Confirm sweep waits, so its Continue is enabled
- * (`primaryFor`). The engine may count those noticings in the stage's progress, so the stage reads
- * incomplete; it is not where the analysis is. Outside Predict nothing is passed: a noticing is
- * decided in its own stage (`triageStage`).
+ * Whether a reached stage that is not complete is passed for the triage (finding 6): where open
+ * noticings travel (`noticingsTravel`: under Predict, and before the goal is chosen), outside the
+ * triage's stage (`triageStage`), its only counted Decides still to answer are noticings and no
+ * Confirm sweep waits, so its Continue is enabled (`primaryFor`). The engine may count those
+ * noticings in the stage's progress, so the stage reads incomplete; it is not where the analysis
+ * is. Under Estimate nothing is passed: a noticing is decided in its own stage.
  */
 export function passedForTriage(log: QuestLog, stage: QuestStage): boolean {
-  const gate = triageStage(log);
-  if (gate === null || !stage.reached || stage.key === gate) return false;
+  if (!noticingsTravel(log) || !stage.reached || stage.key === triageStage(log)) return false;
   const sweep = stage.sweep;
   if (sweep && !sweep.answered && sweep.lines > 0) return false;
   const rest = unanswered(stage);
@@ -39,10 +38,9 @@ export function passedForTriage(log: QuestLog, stage: QuestStage): boolean {
 /**
  * Whether a stage reads as done on the quest line and its segment (finding 25: a stage not reached
  * never reads as done): reached and complete, and, where it asks nothing (0 of 0), come to by the
- * analysis, no earlier stage being where the analysis is (`openStageKey`). Under Predict the
- * engine reaches Write-up with Results, and First look with the stages around it; neither reads as
- * done while the analysis is still before it. A stage whose own objectives are all answered reads
- * as done wherever the analysis is.
+ * analysis (`cameTo`). Under Predict the engine reaches Write-up with Results, and First look with
+ * the stages around it; neither reads as done while the analysis is still before it. A stage
+ * whose own objectives are all answered reads as done wherever the analysis is.
  */
 export function readsDone(log: QuestLog, stage: QuestStage): boolean {
   if (!stage.reached || !stage.progress?.complete) return false;
@@ -50,10 +48,17 @@ export function readsDone(log: QuestLog, stage: QuestStage): boolean {
   return cameTo(log, stage);
 }
 
-/** Whether the analysis has come to a stage: no stage before it is where the analysis is. */
+/**
+ * Whether the analysis has come to a stage (W1-R B1): it is at or before where the analysis is
+ * (`openStageKey`), or at or before the furthest reached stage with an objective answered, which
+ * the researcher has worked past it to. The analysis is at the first stage still working, so a
+ * line left open early (Your question's intended use) would otherwise keep First look from
+ * reading as done after Who's in holds answers; Write-up stays not done while Results has none.
+ */
 function cameTo(log: QuestLog, stage: QuestStage): boolean {
-  const at = log.stages.findIndex((s) => s.key === openStageKey(log));
-  return log.stages.findIndex((s) => s.key === stage.key) <= at;
+  const index = (key: string) => log.stages.findIndex((s) => s.key === key);
+  const worked = log.stages.findLastIndex((s) => s.reached && (s.progress?.answered ?? 0) > 0);
+  return index(stage.key) <= Math.max(index(openStageKey(log)), worked);
 }
 
 export function stageOf(log: QuestLog, key: string): QuestStage | undefined {
@@ -244,8 +249,9 @@ export interface Hint {
 /** The card's one primary action (FOUNDATION §1), for the stage it shows. A disabled Continue
  *  always says why, and links to what it waits for. An enabled one goes to `to`, with `line` (the
  *  next open line, finding 7) brought into view there. `note` says how many open noticings wait
- *  for the triage in Results under Predict (finding 6), and outside Predict, beside a noticing
- *  still to answer, that the stage's noticings are decided in it. */
+ *  for the triage in Results under Predict (finding 6), and under Estimate, beside a noticing
+ *  still to answer, that the stage's noticings are decided in it; before the goal is chosen it
+ *  says nothing of them (`noticingsTravel`). */
 export type Primary =
   | { kind: "continue"; to: string | null; line?: string; label: string; disabled: boolean; hint: Hint | null; note?: string }
   | { kind: "confirm"; label: string; heading: string }
@@ -267,14 +273,24 @@ const nameOf = (log: QuestLog, key: string) => stageOf(log, key)?.name ?? key;
 
 /**
  * Where the shell draws the triage of the open noticings, or null where it draws none: under
- * Predict, in Results, before the held-out rows open (core/sweep.py `gate_stage`; FOUNDATION §7),
- * and there open noticings travel to it. Outside Predict, an unanswered goal included, the engine's
- * triage stands before the plan's lock, in Models, which the shell does not draw until W3 (W1-R R3
- * P5): each noticing is decided in its own stage, as before finding 6. The goal is the one the Fit
- * lock serves.
+ * Predict, in Results, before the held-out rows open (core/sweep.py `gate_stage`; FOUNDATION §7).
+ * Elsewhere the engine's triage stands before the plan's lock, in Models, which the shell does not
+ * draw until W3 (W1-R R3 P5). The goal is the one the Fit lock serves.
  */
 export function triageStage(log: QuestLog): string | null {
   return log.fit?.purpose === "prediction" ? "results" : null;
+}
+
+/**
+ * Whether open noticings travel, holding no stage's Continue but the triage's own (finding 6):
+ * under Predict, to the triage in Results; and before the goal is chosen (W1-R M1), since under
+ * Predict the goal is chosen in Your question, after Your data's noticings, and where they are
+ * decided waits on it. Under Estimate each is decided in its own stage, as before finding 6, and
+ * so where a log is served with no Fit lock to name the goal.
+ */
+export function noticingsTravel(log: QuestLog): boolean {
+  const goal = log.fit?.purpose;
+  return goal === "prediction" || goal === null;
 }
 
 /** A stage's open noticings: its Decide lines from a finding, still to answer. */
@@ -284,7 +300,8 @@ const openNoticings = (stage: QuestStage) =>
 /** "1 noticing waits …", "2 noticings are …": a count of noticings and its verb. */
 const noticings = (n: number, one: string, many: string) => `${n} noticing${n === 1 ? ` ${one}` : `s ${many}`}`;
 
-/** The foot's note on the open noticings travelling from `stage` to the triage (none where none do). */
+/** The foot's note on the open noticings travelling from `stage` to the triage the shell draws:
+ *  none where none do, or where the triage is not drawn yet (before the goal is chosen). */
 function travelNote(log: QuestLog, stage: QuestStage): { note?: string } {
   const gate = triageStage(log);
   if (gate === null || stage.key === gate) return {};
@@ -295,12 +312,12 @@ function travelNote(log: QuestLog, stage: QuestStage): { note?: string } {
 /**
  * The next open line a card can answer, outside the stage `from` (finding 7): in the seven stages'
  * order, each reached stage's first counted Decide that is open, a card can answer and is neither
- * a noticing where noticings wait for the triage (under Predict, `triageStage`) nor the draw while
- * it waits for its sweep, else that stage's Confirm sweep still to confirm (line null). Null when
- * none is left. Outside Predict a noticing is decided in its own stage, so it can be the next line.
+ * a noticing where noticings travel (`noticingsTravel`) nor the draw while it waits for its sweep,
+ * else that stage's Confirm sweep still to confirm (line null). Null when none is left. Under
+ * Estimate a noticing is decided in its own stage, so it can be the next line.
  */
 export function nextOpen(log: QuestLog, from: string, canAnswer: CanAnswer = ANY): { stage: QuestStage; line: QuestLine | null } | null {
-  const triaged = triageStage(log) !== null;
+  const triaged = noticingsTravel(log);
   for (const s of log.stages) {
     if (s.key === from || !s.reached) continue;
     const held = drawWaitsForSweep(s);
@@ -333,15 +350,16 @@ export function primaryFor(log: QuestLog, stage: QuestStage, fit: FitPosition, c
 
   const held = drawWaitsForSweep(stage);
   const rest = unanswered(stage).filter((l) => !(held && l.key === DRAW));
-  // Under Predict open noticings travel to the triage in Results (FOUNDATION §7): they hold no
-  // stage but the triage's own. Outside Predict the shell draws no triage, so each holds its stage.
-  const gate = triageStage(log);
-  const travel = gate === null || stage.key === gate ? [] : rest.filter((l) => l.source === "finding");
+  // Under Predict open noticings travel to the triage in Results (FOUNDATION §7), and before the
+  // goal is chosen they hold nothing either (W1-R M1): they hold no stage but the triage's own.
+  // Under Estimate the shell draws no triage, so each holds its stage.
+  const travels = noticingsTravel(log);
+  const travel = !travels || stage.key === triageStage(log) ? [] : rest.filter((l) => l.source === "finding");
   const left = rest.filter((l) => !travel.includes(l));
   const next = nextStageKey(log, stage.key);
   const open = left.find((l) => l.status === "open");
   if (open) {
-    const here = gate === null ? openNoticings(stage).length : 0;
+    const here = travels ? 0 : openNoticings(stage).length;
     return {
       kind: "continue",
       to: null,

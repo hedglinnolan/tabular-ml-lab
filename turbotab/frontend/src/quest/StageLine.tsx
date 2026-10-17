@@ -2,10 +2,11 @@
  * The quest line and the progress bar (FOUNDATION §3): the seven stages by name, the open one in
  * the text color, and seven segments at the right, one per stage, filled with its objectives
  * (empty when not reached, never "0 of N"; a stage that asks nothing reads as done only once the
- * analysis comes to it, log.ts `readsDone`). A stage reopened by an earlier change drops back and
- * says why beside the bar. Pointing at a stage or its segment, or focusing it, opens a quiet panel
- * of its lines by label, each answered line with its answer (GET /methods by `decision_id`);
- * leaving closes it after the kit's grace. Clicking a stage opens it on the card.
+ * analysis comes to it, log.ts `readsDone`, and as not done, never as not reached, before). A
+ * stage reopened by an earlier change drops back and says why beside the bar. Pointing at a stage
+ * or its segment, or focusing it, opens a quiet panel of its lines by label, each answered line
+ * with its answer (GET /methods by `decision_id`); leaving closes it after the kit's grace.
+ * Clicking a stage opens it on the card.
  */
 import { useEffect, useId, useRef, useState, type FocusEvent } from "react";
 import type { QuestLine, QuestLog, QuestStage } from "../api/schema";
@@ -120,13 +121,17 @@ export function StageLine({ log, shown, onOpen, answers, fitting }: StageLinePro
               {...point(seg.key)}
             >
               <span className={q.segmentFill} style={{ width: `${filled(seg) * 100}%` }} />
+              {/* "Not reached" only where the engine says so; a reached stage that asks nothing
+                  and does not read as done is not done (W1-R B1). */}
               <span className={q.srOnly}>
                 {seg.name}:{" "}
-                {!seg.reached || (!seg.complete && seg.required === 0)
+                {!seg.reached
                   ? "not reached yet"
                   : seg.complete
                     ? "done"
-                    : `${seg.answered} of ${seg.required} answered`}
+                    : !seg.required
+                      ? "not done yet"
+                      : `${seg.answered} of ${seg.required} answered`}
               </span>
             </li>
           ))}

@@ -558,3 +558,55 @@ describe("the fit's foot (ruling R-a)", () => {
     expect(screen.queryByTestId("primary")).toBeNull();
   });
 });
+
+/**
+ * The foot's refusal (BLUEPRINT §14 rule 2; ruling R-b): a refused press at the foot (the Confirm
+ * sweep, Download) draws the server's ways forward as presses, but never one that confirms a
+ * column's role together with other readings ("Confirm each of the 7 as shown"); a role confirmed
+ * alone stays, and a refusal with no such block keeps every way forward, a block of other
+ * readings included.
+ */
+describe("the foot's refusal, one role at a time (ruling R-b)", () => {
+  // Models as the engine serves it with its Decides answered: the sweep is the foot's action.
+  const log = patched(REACHED, { models: (l) => (l.label === "Decide" ? { ...l, status: "answered", decision_id: `r-${l.key}`, waiting_for: [] } : l) });
+  const role = (column: string, value: string) => ({ reading: "role", column, value });
+  const exit = (label: string, decision: Record<string, unknown> | null) => ({ label, decision });
+  /** The sweep's press, answered with `exits` in a refusal. */
+  const refusedWith = async (exits: ReturnType<typeof exit>[]) => {
+    const body = { error: { code: "readings_unsettled", message: "The sweep waits for the readings it rests on.", exits } };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(body), { status: 409, headers: { "Content-Type": "application/json" } }))),
+    );
+    // The foot is the sweep's press: every counted Decide answered, the sweep still to confirm.
+    const models = stageIn(log, "models");
+    expect(models.sweep).toMatchObject({ answered: false });
+    expect(models.lines.filter((l) => l.label === "Decide" && l.counted).every((l) => l.status === "answered")).toBe(true);
+    const { card } = cardOf(log, "models");
+    expect(within(card).getByTestId("primary")).toHaveTextContent(models.sweep!.action);
+    fireEvent.click(within(card).getByTestId("primary"));
+    const refusal = await screen.findByTestId("primary-refusal");
+    return within(refusal).queryAllByRole("button").map((b) => b.textContent);
+  };
+
+  it("draws no exit that confirms several roles in one press, and draws the one that confirms a role alone", async () => {
+    const labels = await refusedWith([
+      exit("Confirm each of the 2 as shown", { kind: "confirm_readings", items: [role("bp_sys", "covariate"), role("imputed_bp", "flag")] }),
+      exit("Confirm `bp_sys` as a predictor", { kind: "confirm_readings", items: [role("bp_sys", "covariate")] }),
+    ]);
+    expect(labels).toEqual(["Confirm `bp_sys` as a predictor"]);
+  });
+
+  it("keeps every exit of a refusal that confirms no role in a block: a block of other readings, a role alone, a way with no decision", async () => {
+    const codes = [
+      { reading: "code_or_count", column: "kids", value: "amount" },
+      { reading: "code_or_count", column: "visits", value: "amount" },
+    ];
+    const labels = await refusedWith([
+      exit("Confirm the 2 as amounts", { kind: "confirm_readings", items: codes }),
+      exit("Confirm `bp_sys` as a predictor", { kind: "confirm_readings", items: [role("bp_sys", "covariate")] }),
+      exit("Choose the models", null),
+    ]);
+    expect(labels).toEqual(["Confirm the 2 as amounts", "Confirm `bp_sys` as a predictor", "Choose the models"]);
+  });
+});
