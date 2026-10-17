@@ -124,7 +124,12 @@ not infallible orders, 2026-10-02; he confirmed this habit on 2026-10-15).
    exists. Eight verifiers once reviewed an empty diff.
 5. **Build, then verify.** Every package gets a verifier; engine code gets an adversarial Opus one;
    docs-only work gets one reviewer. Any blocker, major or minor sends the package to a repair
-   round, and "approve, but" with a silent wrong number is a blocker. A problem the builder disputes
+   round, and "approve, but" with a silent wrong number is a blocker. A minor is a defect in what
+   the researcher reads; a gap that touches no number and nothing the researcher reads (a report,
+   a docstring, a plan, a test's hygiene beyond the trust bar) is an inbox item, filed and never a
+   round (verifier.md, "Severity"). Nolan, 2026-10-17, on R0b's 14 reviews and 55 minors, most of
+   its last two rounds wording: "If it saves a quarter to a third of a wave's cost, I think we make
+   that change." Give each verifier schema an `inbox` list beside `problems`. A problem the builder disputes
    with evidence is ruled by you or a fresh verifier; a dispute closes nothing by itself. The
    integrator re-checks every listed problem.
 6. **Integrate** on `feat/<wave>-int`: regenerate, run the fast tier once, push `ci/<wave>-int`,

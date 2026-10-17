@@ -51,12 +51,20 @@ change the line there. A test that pins the code to itself proves nothing.
   sentence; a guard never fires; a test fails.
 - major: a test that cannot fail; a guard tested one way only; a rule stated wider than its
   evidence; a change outside the owned files.
-- minor: a wording, naming or documentation defect where the behavior is right.
+- minor: the behavior is right but a sentence the researcher reads is unclear, imprecise or not
+  plain: a card, a refusal, a methods sentence, anything in the exported bundle, or a review
+  packet for a human methodologist. A false sentence is a blocker.
+- inbox: a gap that touches no number and nothing the researcher reads: a report's wording, a
+  docstring or comment, a plan or internal document, a claim part's reason, a test's name or
+  hygiene beyond the trust bar. It is filed as an INBOX line and triggers no repair round.
 - note: an observation that needs no change.
 
 Blockers, majors and minors go in your problem list, and any entry there sends the package to a
-repair round, so the verdict is "needs repair". Notes go in a separate list and trigger nothing.
-There is no "approve, but": a defect is in the problem list whatever you think of the rest.
+repair round, so the verdict is "needs repair". Inbox items and notes go in their own lists and
+trigger nothing. There is no "approve, but": a defect that can reach a number or a reader is in the
+problem list whatever you think of the rest. Flag only what affects correctness, a stated
+requirement or what the researcher reads; an empty problem list is a result, not a failure to look
+(Nolan, 2026-10-17).
 
 **A design review** takes `docs/turbotab-next/calm/FOUNDATION.md` and the beats document the prompt
 names as its brief. Judge the whole screen first ("what do I click, within five seconds?"), then
