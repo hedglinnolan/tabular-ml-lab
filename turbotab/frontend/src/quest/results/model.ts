@@ -117,7 +117,7 @@ export function cvComparison(fit: FitArtifact): TableData {
   ];
   return {
     number: "Models compared",
-    title: `cross-validated on ${fit.n_train.toLocaleString("en-US")} training rows: each score with its interval`,
+    title: `Cross-validated on ${fit.n_train.toLocaleString("en-US")} training rows${intervalClause(rows, metrics, base ? { baseline: base.label } : {})}`,
     stub: "Model",
     columns: [...metrics.map((x) => ({ key: x.key, label: x.label })), ...(rows.some((r) => r.kind === "row" && r.cells.versus) ? [{ key: "versus", label: against }] : [])],
     rows,
@@ -128,6 +128,42 @@ export function cvComparison(fit: FitArtifact): TableData {
 
 const mark = (i: number) => String.fromCharCode(97 + i);
 const cap = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
+
+/** "a", "a and b", "a, b and c". */
+const listing = (xs: string[]) => (xs.length < 2 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+
+/**
+ * What a table's caption may say of intervals, true of every score it prints (each estimate cell
+ * with a served value): "each score with its interval" only where every one carries its interval.
+ * Where some do not, the caption names them when they are whole rows (the no-predictor baseline's
+ * scores, served with none) or whole columns (a metric served with none, as macro-F1's: core/models/
+ * artifacts.py), "except …"; where they are neither, it claims nothing of intervals, and where none
+ * has one, nothing either. `names` gives a row's name in running text, by its key (else its label).
+ */
+export function intervalClause(rows: readonly TableRow[], metrics: readonly Metric[], names: Record<string, string> = {}): string {
+  const cells: { row: string; col: string; has: boolean }[] = [];
+  const labels = new Map<string, string>();
+  for (const r of rows) {
+    if (r.kind !== "row") continue;
+    labels.set(r.key, names[r.key] ?? r.label);
+    for (const m of metrics) {
+      const c = r.cells[m.key];
+      if (c && c.kind === "estimate" && c.est !== null) cells.push({ row: r.key, col: m.key, has: c.lo !== null && c.hi !== null });
+    }
+  }
+  if (!cells.some((c) => c.has)) return "";
+  if (cells.every((c) => c.has)) return ": each score with its interval";
+  const uniq = (xs: string[]) => xs.filter((x, i) => xs.indexOf(x) === i);
+  const rowsWithout = uniq(cells.map((c) => c.row)).filter((row) => cells.every((c) => c.row !== row || !c.has));
+  const rest = cells.filter((c) => !rowsWithout.includes(c.row));
+  const colsWithout = uniq(rest.map((c) => c.col)).filter((col) => rest.every((c) => c.col !== col || !c.has));
+  if (rest.some((c) => !c.has && !colsWithout.includes(c.col))) return "";
+  const named = [
+    ...rowsWithout.map((row) => labels.get(row) ?? row),
+    ...colsWithout.map((col) => metrics.find((m) => m.key === col)?.label ?? col),
+  ];
+  return `: each score with its interval, except ${listing(named)}`;
+}
 
 // ── the held-out rows, once opened ───────────────────────────────────────────
 
@@ -194,7 +230,7 @@ export function currentOpening(view: Pick<ProjectView, "decisions" | "state">): 
  * opened in turn, the scores are those rows'. The engine's note, a footnote, says which result
  * stays reported.
  */
-function heldOutTitle(fit: FitArtifact, phase: SealPhase, exploratory: boolean): string {
+function heldOutTitle(fit: FitArtifact, phase: SealPhase, exploratory: boolean, intervals: string): string {
   const rows = `${fit.n_holdout.toLocaleString("en-US")} rows`;
   const what =
     phase === "post_seal"
@@ -202,7 +238,7 @@ function heldOutTitle(fit: FitArtifact, phase: SealPhase, exploratory: boolean):
       : fit.at_opening?.current === false
         ? `on ${rows} drawn again after the first opening, so not an independent test`
         : `scored once, on ${rows} no choice has seen`;
-  return `${what}: each score with its interval${exploratory ? ", exploratory" : ""}`;
+  return `${cap(what)}${exploratory ? ", exploratory" : ""}${intervals}`;
 }
 
 /**
@@ -256,7 +292,7 @@ export function heldOutTable(fit: FitArtifact, phase: SealPhase, split: SplitBas
   ];
   return {
     number: "Held-out rows",
-    title: heldOutTitle(fit, phase, !!exploratory),
+    title: heldOutTitle(fit, phase, !!exploratory, intervalClause(rows, metrics, base ? { baseline: base.label } : {})),
     stub: "Model",
     columns: [
       ...metrics.map((x) => ({ key: x.key, label: x.label })),

@@ -11,15 +11,21 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FitArtifact, SplitArtifact } from "../../api/m1-stage-types";
 import type { EvaluationArtifact, ExplainArtifact, VersusBaseline } from "../../api/m3-types";
 import type { ProjectView } from "../../api/schema";
+import PAYLOADS from "../cards/predict/payloads.fixture.json";
+import { FootSlot } from "../contracts";
 import { SealCard } from "./cards";
 import capture from "./fixtures/nhanes-predict.json";
 import { ResultsCards, ResultsTapestry } from "./index";
-import { currentOpening, cvComparison, heldOutTable, verdictCell } from "./model";
+import { currentOpening, cvComparison, heldOutTable, intervalClause, verdictCell } from "./model";
+
+/** The models' defaults and choices, as test_w1_declaration_cards.py holds them to decisions.py. */
+const DEFAULTS = PAYLOADS.defaults;
+const CHOICES = PAYLOADS.choices;
 
 // ── the capture ──────────────────────────────────────────────────────────────
 
@@ -96,6 +102,28 @@ const resealed = (): Snapshot => ({
     fit: { ...C.sealed.stages.fit!, artifact: { ...fitOf(C.sealed), at_opening: { ...fitOf(C.opened).at_opening!, current: false, note: RESEALED_NOTE } } },
   },
 });
+
+/** A snapshot whose quest log has the Results line `key` answered. */
+const withAnswered =
+  (key: string) =>
+  (s: Snapshot): Snapshot => ({
+    ...s,
+    quest: {
+      ...s.quest,
+      stages: (s.quest.stages as { key: string; lines: Json[] }[]).map((st) =>
+        st.key === "results" ? { ...st, lines: st.lines.map((l) => (l.key === key ? { ...l, status: "answered", decision_id: `rec-${key}` } : l)) } : st,
+      ),
+    },
+  });
+
+/** A snapshot whose triage reads as confirmed (each noticing as recommended). */
+const triageConfirmed = (s: Snapshot): Snapshot => ({
+  ...s,
+  triage: { ...s.triage, answered: true, confirmable: false, items: s.triage.items.map((i) => ({ ...i, recorded: i.recommended })) },
+});
+
+/** Sealed, with what the opening waits for done: the shrinkage answered and the triage confirmed. */
+const readyToOpen = (s: Snapshot): Snapshot => triageConfirmed(withAnswered("set_updating")(s));
 
 /** Opened a second time over the rows drawn again. */
 const reopened = (s: Snapshot): Snapshot => notCurrent(REDRAWN_NOTE, false)({ ...s, view: { ...s.view, decisions: [...C.opened.view.decisions, RESEAL, SECOND] } });
@@ -342,7 +370,7 @@ describe("the held-out exhibit's title", () => {
     expect(fitOf(C.opened).at_opening!.current).toBe(true);
     serve("opened");
     mount(<ResultsTapestry pid={PID} />);
-    expect(await caption()).toContain(`scored once, on ${n} rows no choice has seen`);
+    expect(await caption()).toContain(`Scored once, on ${n} rows no choice has seen`);
   });
 
   it("says the scores come from a fit changed after the opening, once one is", async () => {
@@ -350,8 +378,8 @@ describe("the held-out exhibit's title", () => {
     mount(<ResultsTapestry pid={PID} />);
     const text = await caption();
     expect(screen.getByTestId("results-tapestry").getAttribute("data-seal-phase")).toBe("post_seal");
-    expect(text).not.toMatch(/scored once|no choice has seen/);
-    expect(text).toContain("from a fit changed after the opening");
+    expect(text).not.toMatch(/scored once|no choice has seen/i);
+    expect(text).toContain("From a fit changed after the opening");
     expect(text).toContain("not an independent test");
     expect(screen.getByTestId("results-held-out").textContent).toContain(unticked(changed));
   });
@@ -361,8 +389,8 @@ describe("the held-out exhibit's title", () => {
     mount(<ResultsTapestry pid={PID} />);
     const text = await caption();
     expect(screen.getByTestId("results-tapestry").getAttribute("data-seal-phase")).toBe("opened");
-    expect(text).not.toMatch(/scored once|no choice has seen/);
-    expect(text).toContain("drawn again after the first opening");
+    expect(text).not.toMatch(/scored once|no choice has seen/i);
+    expect(text).toContain(`On ${n} rows drawn again after the first opening`);
     expect(text).toContain("not an independent test");
   });
 });
@@ -663,7 +691,11 @@ describe("the triage's heading", () => {
 
 describe("the opening's chain of refusals", () => {
   it("is walked press by press: each exit records, then the opening is tried again, until the rows open", async () => {
-    const server = serve("sealed");
+    // The press waits for the shrinkage answer and the triage's confirmation (the foot says so,
+    // below); the real walk pressed before either, and the server answered as the chain holds. So
+    // the page is shown them done, and the server still answers as the real one did: the engine's
+    // refusals stand behind the page's reading, a noticing to act on included.
+    const server = serve("sealed", readyToOpen);
     mount(<ResultsCards pid={PID} />);
     const card = await screen.findByTestId("results-open");
     const user = userEvent.setup();
@@ -725,7 +757,7 @@ describe("the seal card beside a fit that is not current", () => {
 });
 
 /** What the first opening's card and line claim, which a re-seal makes untrue. */
-const FIRST_CLAIMS = ["Opened once", "no choice has seen", "It happens once", "fixed in the record"];
+const FIRST_CLAIMS = ["Opens once", "no choice has seen", "It happens once", "fixed in the record"];
 
 describe("the seal card after a re-seal", () => {
   it("says the engine's note, and none of the first opening's claims, over the rows drawn again", async () => {
@@ -811,21 +843,33 @@ describe("the current opening", () => {
   it("ignores a re-seal of another outcome's seal", () => expect(seqOf(view(record(FIRST.seq + 1, { kind: "reseal", reason: null, target: "hba1c" })))).toBe(FIRST.seq));
 });
 
-describe("the explain offer, and the Results declarations", () => {
-  it("records the explanations with the engine's defaults, as the real walk did", async () => {
+describe("the Results declarations, through W1-F's cards", () => {
+  // The orchestrator's ruling (CARRIED-INT-1): W1-F's DECLARATION_CARDS are the only renderers of
+  // set_explain and set_updating, in Results as everywhere; Results draws no offer or line of its own.
+
+  it("records the explanations with the engine's defaults through W1-F's card, as the real walk did", async () => {
     const { calls } = serve("sealed");
     mount(<ResultsCards pid={PID} />);
-    await userEvent.click(await screen.findByTestId("explain-offer"));
+    const card = await screen.findByTestId("declaration-set_explain");
+    expect(screen.queryByTestId("explain-offer")).toBeNull();
+    // The engine's default curves, with every other field left as the card starts it.
+    await userEvent.click(await within(card).findByTestId(`option-curves:${DEFAULTS.set_explain.curves}`));
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
-    expect(calls.find((c) => c.method === "POST")!.body).toEqual(C.explain_posted.posted);
+    // The real walk posted the kind alone and the server filled in its model's defaults
+    // (payloads.fixture.json `defaults`, held to decisions.py by test_w1_declaration_cards.py): the
+    // card posts the same decision with each default spelled out.
+    expect(calls.find((c) => c.method === "POST")!.body).toEqual({ ...C.explain_posted.posted, ...DEFAULTS.set_explain });
   });
 
-  it("gives the shrinkage question a line of its own until its card is served, never a blank", async () => {
+  it("draws the shrinkage question as W1-F's card, never a line of Results' own", async () => {
     serve("sealed");
     mount(<ResultsCards pid={PID} />);
-    const line = await screen.findByTestId("results-line");
-    expect(line.getAttribute("data-key")).toBe("set_updating");
-    expect(line.textContent).toBe("Decide: the shrinkage question");
+    const card = await screen.findByTestId("declaration-set_updating");
+    expect(within(card).getByRole("heading")).toHaveTextContent("The shrinkage question");
+    expect(within(card).getAllByRole("option").map((o) => o.getAttribute("data-key"))).toEqual(
+      CHOICES.set_updating.method.map((v) => `method:${v}`),
+    );
+    expect(screen.queryByTestId("results-line")).toBeNull();
   });
 });
 
@@ -892,5 +936,163 @@ describe("the tables' rules", () => {
     );
     await act(async () => {});
     expect(container.innerHTML).toBe("");
+  });
+});
+
+// ── the design review's repairs (W1 part 2) ──────────────────────────────────
+
+describe("the comparison's caption on intervals (P2)", () => {
+  const caption = async () => within(await screen.findByTestId("results-cv")).getByRole("table").querySelector("caption")?.textContent ?? "";
+  const fit = fitOf(C.opened);
+  const n = fit.n_train.toLocaleString("en-US");
+  const base = fit.models[0]!.baseline.label;
+  const bare = <T extends object>(s: T) => ({ ...s, ci_low: null, ci_high: null });
+  /** The fit with no cross-validated interval served at all, and no BBC-CV row (the mock's fit; a
+   *  fit from before WP9). */
+  const noIntervals = withFit((f) => ({
+    models: f.models.map((m) => ({ ...m, cv: Object.fromEntries(Object.entries(m.cv).map(([k, s]) => [k, bare(s)])) })),
+    selection: null,
+  }));
+
+  it("says each score has its interval but the baseline's, where every model's printed score has one", async () => {
+    // By the capture: each family's and BBC-CV's printed scores carry their intervals; the
+    // no-predictor baseline is served with none.
+    expect(fit.models.every((m) => Object.values(m.cv).every((s) => s.ci_low !== null && s.ci_high !== null))).toBe(true);
+    expect(fit.selection!.corrected_low).not.toBeNull();
+    serve("opened");
+    mount(<ResultsTapestry pid={PID} />);
+    expect(await caption()).toBe(`Models compared. Cross-validated on ${n} training rows: each score with its interval, except ${base}`);
+  });
+
+  it("claims no interval where no printed score has one", async () => {
+    serve("opened", noIntervals);
+    mount(<ResultsTapestry pid={PID} />);
+    expect(await caption()).toBe(`Models compared. Cross-validated on ${n} training rows`);
+  });
+
+  it("names a metric served with no interval (as macro-F1's), beside the baseline", async () => {
+    const noMae = withFit((f) => ({ models: f.models.map((m) => ({ ...m, cv: { ...m.cv, mae: bare(m.cv.mae!) } })) }));
+    serve("opened", noMae);
+    mount(<ResultsTapestry pid={PID} />);
+    expect(await caption()).toBe(
+      `Models compared. Cross-validated on ${n} training rows: each score with its interval, except ${base} and ${fit.metric_labels.mae}`,
+    );
+  });
+
+  it("is a rule that holds both ways, on rows built by hand", () => {
+    const m = [
+      { key: "a", label: "A" },
+      { key: "b", label: "B" },
+    ];
+    const est = (lo: number | null) => ({ kind: "estimate" as const, est: 1, lo, hi: lo === null ? null : 2 });
+    const row = (key: string, a: number | null, b: number | null) => ({ kind: "row" as const, key, label: key.toUpperCase(), cells: { a: est(a), b: est(b) } });
+    expect(intervalClause([row("x", 0, 0), row("y", 0, 0)], m)).toBe(": each score with its interval");
+    expect(intervalClause([row("x", null, null), row("y", null, null)], m)).toBe("");
+    expect(intervalClause([row("x", 0, 0), row("y", null, null)], m, { y: "the baseline" })).toBe(": each score with its interval, except the baseline");
+    expect(intervalClause([row("x", 0, null), row("y", 0, null)], m)).toBe(": each score with its interval, except B");
+    // One score without its interval, neither a whole row nor a whole column: nothing is claimed.
+    expect(intervalClause([row("x", 0, null), row("y", 0, 0)], m)).toBe("");
+    // A cell with nothing served is not a printed score.
+    expect(intervalClause([{ ...row("x", 0, 0), cells: { a: est(0), b: null } }], m)).toBe(": each score with its interval");
+  });
+
+  it("starts the held-out caption with a capital, as the comparison's", async () => {
+    serve("opened");
+    mount(<ResultsTapestry pid={PID} />);
+    const held = within(await screen.findByTestId("results-held-out")).getByRole("table").querySelector("caption")!.textContent!;
+    expect(held).toMatch(/^Held-out rows\. Scored once, /);
+    expect(held).toContain(`except ${fit.models[0]!.holdout_detail!.baseline!.label}`);
+  });
+});
+
+describe("the opening at the card's foot (P5)", () => {
+  const press = () => screen.findByTestId("results-open-press");
+  const hint = () => screen.getByTestId("results-open-hint").textContent;
+  const results = (C.sealed.quest.stages as { key: string; lines: { key: string; name: string }[] }[]).find((s) => s.key === "results")!;
+  const shrinkage = results.lines.find((l) => l.key === "set_updating")!;
+  const n = C.sealed.triage.items.length;
+
+  it("waits, in the button's own words, for the Results question before it", async () => {
+    serve("sealed");
+    mount(<ResultsCards pid={PID} />);
+    await screen.findByTestId("results-open-hint");
+    await waitFor(() => expect(hint()).toBe(`To open the held-out rows, first answer ${shrinkage.name}.`));
+    expect(await press()).toHaveTextContent("Open the held-out rows");
+    expect(await press()).toBeDisabled();
+  });
+
+  it("then for the triage's confirmation", async () => {
+    serve("sealed", withAnswered("set_updating"));
+    mount(<ResultsCards pid={PID} />);
+    await screen.findByTestId("results-open-hint");
+    await waitFor(() => expect(hint()).toBe(`To open the held-out rows, first confirm the ${n} noticings above.`));
+    expect(await press()).toBeDisabled();
+  });
+
+  it("can be pressed once both are done", async () => {
+    serve("sealed", readyToOpen);
+    mount(<ResultsCards pid={PID} />);
+    await screen.findByTestId("results-open-hint");
+    await waitFor(() => expect(hint()).toBe("Nothing is opened until you press it."));
+    expect(await press()).toBeEnabled();
+  });
+
+  it("is drawn in the shell's foot, the card column's one primary action, and nowhere else", async () => {
+    serve("sealed", readyToOpen);
+    function Shell() {
+      const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+      return (
+        <FootSlot.Provider value={slot}>
+          <ResultsCards pid={PID} />
+          <div ref={setSlot} data-testid="foot" />
+        </FootSlot.Provider>
+      );
+    }
+    mount(<Shell />);
+    const card = await screen.findByTestId("results-open");
+    await waitFor(() => expect(within(screen.getByTestId("foot")).getByTestId("results-open-press")).toBeEnabled());
+    expect(within(card).queryByTestId("results-open-press")).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Open the held-out rows" })).toHaveLength(1);
+  });
+});
+
+describe("the opening's card before the opening (P6)", () => {
+  it("says what will happen, and wears no recorded glyph", async () => {
+    serve("sealed");
+    mount(<ResultsCards pid={PID} />);
+    const card = await screen.findByTestId("results-open");
+    expect(card.textContent).toContain("Opens once");
+    expect(card.textContent).not.toContain("Opened once");
+    expect(within(card).queryByRole("img")).toBeNull();
+  });
+
+  it("draws the basis's glyph where the basis is not a verified clean one, as its label says", async () => {
+    serve("sealed", withSplit(UNDETERMINED));
+    mount(<ResultsCards pid={PID} />);
+    const card = await screen.findByTestId("results-open");
+    await waitFor(() => expect(within(card).getByRole("img")).toHaveAccessibleName("Sealed by row: basis undetermined"));
+  });
+});
+
+describe("the triage's heading with no rows held out (CARRIED-G-1)", () => {
+  // By construction: the sealed capture with nothing held out (the fit's `n_holdout` 0). Under
+  // Predict the triage is served whatever the holdout, and its gate never passes, since the engine
+  // refuses to open nothing (core/seal.py, `nothing_sealed`).
+  const cvOnly = withFit(() => ({ n_holdout: 0 }));
+  const heading = async () => within(await screen.findByTestId("results-triage")).getByRole("heading").textContent;
+  const n = C.sealed.triage.items.length;
+
+  it("names no held-out rows, and says what confirming records", async () => {
+    serve("sealed", cvOnly);
+    mount(<ResultsCards pid={PID} />);
+    expect(await heading()).toBe(`${n} noticings, each recorded as listed once confirmed`);
+    expect(await screen.findByTestId("seal-none")).toBeInTheDocument();
+    expect(screen.getByTestId("results-triage").textContent).not.toMatch(/held-out/);
+  });
+
+  it("says each disposition is recorded once confirmed", async () => {
+    serve("sealed", (s) => triageConfirmed(cvOnly(s)));
+    mount(<ResultsCards pid={PID} />);
+    expect(await heading()).toBe(`${n} noticings, each with its disposition recorded`);
   });
 });

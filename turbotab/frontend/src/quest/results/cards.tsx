@@ -1,14 +1,21 @@
 /**
  * Predict Results' card column (plans/W1_PART2_PLAN.md §2 W1-G; rulings 2 and 4), in Predict's
  * order (FOUNDATION §3, §10): the Results declarations before the opening (the shrinkage
- * question's own card), the triage of the open noticings, the opening of the held-out rows with
- * the chain of refusals that names the final model, and the explain offer.
+ * question), the triage of the open noticings, the opening of the held-out rows with the chain of
+ * refusals that names the final model, and the explanations. Every declaration is drawn through
+ * the shell's dispatcher, so W1-F's cards are their only renderers, here as everywhere.
+ *
+ * The opening is the card's one primary action once the Results questions before it and the
+ * triage are done (FOUNDATION §1): "Open the held-out rows" sits at the foot of the card column
+ * (the shell's FootSlot), and until then the foot says, in the button's own words, what it waits
+ * for. The opening's card above it says what the press does, and holds the chain of refusals.
  *
  * Today's card idiom inside the shell (no Direction A styling yet): the seal's CONSEQUENCE card,
  * the stage's quiet captions. Every sentence is the engine's, or says only what the code does; no
  * number is computed here.
  */
-import { Fragment, useId, useState } from "react";
+import { Fragment, useContext, useId, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { isRefusalError } from "../../api/client";
 import type { FitArtifact, SplitArtifact } from "../../api/m1-stage-types";
@@ -22,7 +29,10 @@ import { glyphOf, sealPhase } from "../../components/stage/seal/phase";
 import { SealGlyph } from "../../components/stage/seal/SealGlyph";
 import seal from "../../components/stage/seal/seal.module.css";
 import { Rich } from "../../components/stage/text";
-import { DECLARATION_CARDS } from "../cards/predict";
+import { Foot } from "../../kit";
+import { CardFor } from "../cards/CardFor";
+import { FootSlot } from "../contracts";
+import { runningName } from "../log";
 import { currentOpening, exploratoryReasons, openingNotes } from "./model";
 import s from "./results.module.css";
 
@@ -36,36 +46,58 @@ export function resultsLines(quest: { stages: { key: string; lines: QuestLine[] 
 
 export function Cards({ pid, view }: { pid: string; view: ProjectView }) {
   const quest = useQuest(pid).data;
-  const triage = useTriage(pid).data;
+  const triageQ = useTriage(pid);
+  const served = triageQ.data;
   const fit = useM1Stage(pid, view, "fit");
   const split = useM1Stage(pid, view, "split");
   const triageId = useId();
-  useRefetchOnOpening(pid, !!view.state.seal_opened, fit.artifact, view.stages.fit?.key ?? undefined);
+  const opened = !!view.state.seal_opened;
+  useRefetchOnOpening(pid, opened, fit.artifact, view.stages.fit?.key ?? undefined);
   const lines = resultsLines(quest);
+  // The explanations come after the opening; every other declaration before it.
   const declarations = lines.filter((l) => l.source === "declaration" && l.key !== "set_explain");
-  const explain = lines.find((l) => l.key === "set_explain") ?? null;
+  const explain = lines.find((l) => l.source === "declaration" && l.key === "set_explain") ?? null;
+  const triage = served && served.stage === "results" ? served : null;
+  // No rows held out (the fit's `n_holdout` is 0): there is nothing to open, and the triage says so.
+  const heldOut = !(fit.artifact && sealPhase(fit.artifact, opened) === "cv_only");
+  // Until the quest log and the triage are read, the press waits for them (a triage the server
+  // cannot serve leaves the engine's own refusals to say what is open).
+  const waits = quest === undefined || triageQ.isPending ? READING : openingWaits(lines, triage);
   return (
     <div className={s.cards} data-testid="results-cards">
       {declarations.map((line) => (
-        <Declaration key={line.id} pid={pid} line={line} />
+        <CardFor key={line.id} pid={pid} line={line} />
       ))}
-      {triage && triage.stage === "results" ? <TriageCard pid={pid} triage={triage} id={triageId} /> : null}
-      {fit.artifact ? <SealCard pid={pid} view={view} fit={fit.artifact} fresh={fit.veil === "fresh"} split={split.artifact} /> : null}
-      {explain ? <ExplainOffer pid={pid} view={view} line={explain} /> : null}
+      {triage ? <TriageCard pid={pid} triage={triage} id={triageId} heldOut={heldOut} /> : null}
+      {fit.artifact ? (
+        <SealCard pid={pid} view={view} fit={fit.artifact} fresh={fit.veil === "fresh"} split={split.artifact} waits={waits} />
+      ) : null}
+      {explain ? <CardFor pid={pid} line={explain} /> : null}
     </div>
   );
 }
 
-/** A Results declaration through its Predict card (W1-F's), else its line as the quest log names it. */
-function Declaration({ pid, line }: { pid: string; line: QuestLine }) {
-  const Card = DECLARATION_CARDS[line.key];
-  if (Card) return <Card pid={pid} line={line} />;
-  return (
-    <p className={s.quietLine} data-testid="results-line" data-key={line.key}>
-      {line.label}: {line.name}
-      {line.status === "answered" ? ", answered" : line.status === "waiting" ? ", waiting" : ""}
-    </p>
-  );
+/** What the press waits for while the quest log and the triage are being read. */
+const READING = "Reading what the opening waits for…";
+
+/** "a", "a and b", "a, b and c". */
+const listing = (xs: string[]) => (xs.length < 2 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+
+/**
+ * What the opening waits for, in the button's own words, or null when it can be pressed: the
+ * Results questions before it, whose answers the held-out score reads (FOUNDATION §3 and §10: what
+ * the held-out rows read is fixed before they are scored), then the triage's confirmation (§7: the
+ * triage stands before the held-out rows open). The engine's own refusals stand behind it: a
+ * noticing still to act on, or the final model to name, is refused at the press, with its exits.
+ */
+export function openingWaits(lines: readonly QuestLine[], triage: Triage | null): string | null {
+  const before = lines.filter((l) => l.label === "Decide" && l.counted && l.key !== "open_seal" && l.status !== "answered");
+  if (before.length) return `To open the held-out rows, first answer ${listing(before.map((l) => runningName(l.name)))}.`;
+  if (triage && triage.items.length && !triage.answered && !triage.passed) {
+    const n = triage.items.length;
+    return `To open the held-out rows, first confirm the ${n === 1 ? "noticing" : `${n} noticings`} above.`;
+  }
+  return null;
 }
 
 // ── the triage of the open noticings ─────────────────────────────────────────
@@ -82,9 +114,12 @@ const RECORDED: Record<NonNullable<TriageItem["recorded"]>, string> = {
  * The noticings the held-out rows wait for (`GET /triage`, ruling 4): each with the engine's
  * recommended disposition and its reason; a blocker is decided on its own first. "Confirm all"
  * records each as listed (`confirm_sweep`, stage "results", sweep "noticings"). Once the rows are
- * opened (`passed`) the card is read, not confirmed, and its heading says so in the past.
+ * opened (`passed`) the card is read, not confirmed, and its heading says so in the past. With no
+ * rows held out (`heldOut` false: cross-validation only) there are none to open, so the gate never
+ * passes (core/seal.py refuses the opening, `nothing_sealed`) and the heading names no held-out rows:
+ * it says what confirming records.
  */
-export function TriageCard({ pid, triage, id }: { pid: string; triage: Triage; id?: string }) {
+export function TriageCard({ pid, triage, id, heldOut = true }: { pid: string; triage: Triage; id?: string; heldOut?: boolean }) {
   const confirm = useConfirmSweep(pid);
   const [refused, setRefused] = useState<Refusal | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -109,11 +144,15 @@ export function TriageCard({ pid, triage, id }: { pid: string; triage: Triage; i
     <section className={r.section} id={id} tabIndex={-1} aria-labelledby={`${id}-h`} data-testid="results-triage" data-purpose="triage">
       <header className={r.sectionHead}>
         <h3 id={`${id}-h`} className={r.kicker}>
-          {!triage.passed
-            ? `${counted} before the held-out rows open`
-            : settled
-              ? `${counted}, settled before the held-out rows were opened`
-              : `${counted}, ${open} open after the held-out rows were opened`}
+          {!heldOut
+            ? open === 0
+              ? `${counted}, each with its disposition recorded`
+              : `${counted}, each recorded as listed once confirmed`
+            : !triage.passed
+              ? `${counted} before the held-out rows open`
+              : settled
+                ? `${counted}, settled before the held-out rows were opened`
+                : `${counted}, ${open} open after the held-out rows were opened`}
         </h3>
       </header>
       <ul className={s.items}>
@@ -173,10 +212,31 @@ export function TriageCard({ pid, triage, id }: { pid: string; triage: Triage; i
  * is posted again, so the chain is walked press by press. An exit with no decision says where to
  * act and records nothing. Sealed again by a re-seal after an opening, the card says the engine's
  * note on the first opening's result in place of that opening's claims.
+ *
+ * The press itself is the card column's one primary action, "Open the held-out rows", drawn at the
+ * foot (the shell's FootSlot; in place, where no shell provides one). Before the opening the card
+ * says what will happen ("Opens once"), and wears no recorded glyph: nothing is opened yet. Until
+ * `waits` is null the press waits, and the foot says for what.
  */
-export function SealCard({ pid, view, fit, fresh, split }: { pid: string; view: ProjectView; fit: FitArtifact; fresh: boolean; split: SplitArtifact | null }) {
+export function SealCard({
+  pid,
+  view,
+  fit,
+  fresh,
+  split,
+  waits = null,
+}: {
+  pid: string;
+  view: ProjectView;
+  fit: FitArtifact;
+  fresh: boolean;
+  split: SplitArtifact | null;
+  /** What the opening waits for, in the button's words (`openingWaits`), or null. */
+  waits?: string | null;
+}) {
   const decide = useDecide(pid);
   const qc = useQueryClient();
+  const slot = useContext(FootSlot);
   const [attempt, setAttempt] = useState<Decision>(OPEN);
   const [refused, setRefused] = useState<Refusal | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -232,12 +292,29 @@ export function SealCard({ pid, view, fit, fresh, split }: { pid: string; view: 
     if (taken) await open(attempt);
   };
 
+  // The card column's one primary action, at its foot (FOUNDATION §1).
+  const foot = (
+    <Foot
+      label={busy ?? "Open the held-out rows"}
+      onClick={() => void open(OPEN)}
+      disabled={!!busy || !fresh || waits !== null}
+      left={
+        <span data-testid="results-open-hint">
+          {!fresh ? "The fit shown is not current; the rows can be opened once it is." : (waits ?? "Nothing is opened until you press it.")}
+        </span>
+      }
+      testId="results-open-press"
+    />
+  );
+
   return (
     <section className={seal.consequence} aria-labelledby="results-open-title" data-testid="results-open" data-purpose="open_seal">
       <div className={seal.conRule} aria-hidden="true" />
       <div className={seal.conHead}>
-        <SealGlyph state={glyph} recorded size={26} />
-        <span className={seal.conSignal}>{before ? "Re-sealed" : "Opened once"}</span>
+        {/* Nothing is opened yet, so no recorded glyph: only a basis that is not a verified clean
+            one is drawn, in the coach's amber, as its exploratory label says. */}
+        {glyph !== "closed" ? <SealGlyph state={glyph} recorded={false} size={26} /> : null}
+        <span className={seal.conSignal}>{before ? "Re-sealed" : "Opens once"}</span>
       </div>
       <h3 id="results-open-title" className={seal.conTitle}>
         {before
@@ -259,18 +336,6 @@ export function SealCard({ pid, view, fit, fresh, split }: { pid: string; view: 
           </>
         ) : null}
       </p>
-      <div className={seal.conExits}>
-        <button
-          type="button"
-          className={seal.conAttest}
-          onClick={() => void open(OPEN)}
-          disabled={!!busy || !fresh}
-          data-testid="results-open-press"
-        >
-          {busy ?? "Open the held-out rows"}
-        </button>
-        <span className={seal.conOr}>{fresh ? "Nothing is opened until you press it." : "The fit shown is not current; the rows can be opened once it is."}</span>
-      </div>
       {refused ? (
         <div role="alert" data-testid="results-open-refused" data-code={refused.error.code}>
           <p className={seal.conRefused}>
@@ -302,6 +367,7 @@ export function SealCard({ pid, view, fit, fresh, split }: { pid: string; view: 
           Not opened: the server did not record it ({failed}).
         </p>
       ) : null}
+      {slot ? createPortal(foot, slot) : foot}
     </section>
   );
 }
@@ -335,61 +401,5 @@ function OpenedLine({ view, fit, split }: { view: ProjectView; fit: FitArtifact;
         ) : null}
       </span>
     </p>
-  );
-}
-
-// ── the explain offer ────────────────────────────────────────────────────────
-
-/**
- * The explanations (`set_explain`): W1-F's Predict card where it serves one; else the offer as
- * the engine's defaults, recorded with no field set, so every choice in it is the engine's.
- */
-function ExplainOffer({ pid, view, line }: { pid: string; view: ProjectView; line: QuestLine }) {
-  const Card = DECLARATION_CARDS[line.key];
-  const decide = useDecide(pid);
-  const [failed, setFailed] = useState<string | null>(null);
-  if (Card) return <Card pid={pid} line={line} />;
-  const record = line.decision_id ? view.decisions.find((d) => d.id === line.decision_id) : undefined;
-  const status = view.stages.explain;
-  const press = () => {
-    setFailed(null);
-    decide.mutate({ kind: "set_explain" } as Decision, {
-      onError: (e) => setFailed(isRefusalError(e) ? e.refusal.error.message : e.message),
-    });
-  };
-  return (
-    <section className={r.section} data-testid="results-explain-offer" data-purpose="set_explain">
-      <header className={r.sectionHead}>
-        <h3 className={r.kicker}>What drives each model</h3>
-      </header>
-      {line.status === "answered" ? (
-        <p className={r.caption} data-testid="explain-recorded">
-          {record?.sentence ? <Rich text={record.sentence} /> : "Recorded."}
-          {status && (status.status === "running" || status.status === "queued") ? " Explaining each fitted model…" : ""}
-        </p>
-      ) : (
-        <>
-          {line.would_change ? (
-            <p className={r.basis}>
-              <Rich text={line.would_change} />
-            </p>
-          ) : null}
-          <div className={r.bandRow}>
-            <button type="button" className={r.bandButton} onClick={press} disabled={decide.isPending || line.status === "waiting"} data-testid="explain-offer">
-              {decide.isPending ? "Recording…" : "Explain each model"}
-            </button>
-            <span className={r.bandNote}>Pressing it records the explanations with the engine&apos;s own settings.</span>
-            {line.status === "waiting" && line.waiting_for.length ? (
-              <span className={r.bandNote}>Waiting for {line.waiting_for.map((w) => w.name).join(", ")}.</span>
-            ) : null}
-          </div>
-          {failed ? (
-            <p className={r.bandNote} role="alert">
-              <Rich text={`Not recorded: ${failed}`} />
-            </p>
-          ) : null}
-        </>
-      )}
-    </section>
   );
 }
