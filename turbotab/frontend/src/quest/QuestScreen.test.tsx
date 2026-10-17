@@ -8,13 +8,19 @@
  * quest log and Fit's locks are the engine's (fixtures/quest-contract.json), with Models complete
  * and the fit stage's status set for each step, as the client sees them after the press: the lock
  * first (usePressFit keeps the returned lock), then the fit job's status from the view.
+ *
+ * Then a card's recorded answer, followed through the shell: the tapestry returns to live, as it
+ * does under the Record, and keeps its preview while nothing is recorded.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
+import { api, RefusalError } from "../api/client";
+import type { TeachingEntry } from "../api/m1-types";
+import type { PreviewResult } from "../api/m1-stage-types";
 import { keys } from "../api/queries";
-import type { FitLock, ProjectView, QuestLog, StageStatus } from "../api/schema";
-import { expandView, viewsOf, type M3Fixture } from "../mocks/m3";
+import type { FitLock, ProjectView, QuestLog, Refusal, StageStatus } from "../api/schema";
+import { artifactAt, expandView, viewsOf, type M3Fixture } from "../mocks/m3";
 import { CONTRACT } from "./fixtures/contract";
 import { QuestScreen } from "./QuestScreen";
 
@@ -145,6 +151,111 @@ describe("pressing Fit on a short fit already computed", () => {
     await s.lock(pressed);
     expect(card()).toBe("card-results");
     expect(screen.getByTestId("tapestry-results")).toBeInTheDocument();
+  });
+});
+
+/**
+ * A recorded answer returns the tapestry to the live data, as the Record's recording does
+ * (record/Record.tsx resets the stage focus on success): the option a card previewed is not shown
+ * as "nothing is recorded" beside an answer that is. The view is the capture's first, the lens
+ * question open, and the next captured view is what the server returns for the recording; the
+ * quest log is the engine's, with the lens line open in Your data and no later stage reached.
+ */
+describe("a card's recorded answer in the shell", () => {
+  const views = viewsOf(JOURNEY);
+  const OPEN = expandView(JOURNEY, views[0]!, PID, "2026-10-17T00:00:00Z");
+  const RECORDED = expandView(JOURNEY, views[1]!, PID, "2026-10-17T00:00:01Z");
+  const SHARED = Object.values(
+    import.meta.glob<{ teaching: TeachingEntry[] }>("../mocks/fixtures/m3-shared.json", { eager: true, import: "default" }),
+  )[0]!;
+  const MODELS_OPEN = CONTRACT.logs.models_open.log;
+  const LENS_OPEN: QuestLog = {
+    ...MODELS_OPEN,
+    stages: MODELS_OPEN.stages.map((s) =>
+      s.key === "data"
+        ? {
+            ...s,
+            progress: { answered: 1, required: 2, complete: false },
+            lines: s.lines.map((l) => (l.key === "lens" ? { ...l, status: "open", decision_id: null } : l)),
+          }
+        : { ...s, reached: false, progress: null, sweep: null },
+    ),
+  };
+  const PREVIEW: PreviewResult = { kind: "none", views: [], basis: "No views.", note: null, caution: null };
+
+  function lensOpen() {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    qc.setQueryData(keys.teaching(), SHARED.teaching);
+    qc.setQueryData(keys.quest(PID), LENS_OPEN);
+    qc.setQueryData(keys.view(PID), OPEN);
+    for (const [name, status] of Object.entries(OPEN.stages)) {
+      if (!status || status.status !== "fresh") continue;
+      qc.setQueryData(keys.stage(PID, name), {
+        stage: name,
+        key: status.key,
+        fresh: true,
+        status: status.status,
+        artifact: artifactAt(JOURNEY, name, status.key),
+      });
+    }
+    vi.spyOn(api, "preview").mockResolvedValue(PREVIEW);
+    render(
+      <QueryClientProvider client={qc}>
+        <QuestScreen pid={PID} stream="open" />
+      </QueryClientProvider>,
+    );
+    return qc;
+  }
+
+  /** Keyboard focus on the dietary lens: the tapestry previews it, with the stage's record button. */
+  async function previewDietary() {
+    expect(card()).toBe("card-data");
+    const option = await screen.findByTestId("option-dietary");
+    fireEvent.focus(option);
+    await waitFor(() => expect(screen.getByTestId("stage-record")).toBeEnabled());
+    expect(screen.getByTestId("stage")).toHaveAttribute("data-focus", "option");
+    expect(screen.getByTestId("stage")).toHaveAttribute("data-scene", "preview");
+    return option;
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns the tapestry to live once the card records, with no record button left beside the answer", async () => {
+    expect(RECORDED.decisions.length).toBe(OPEN.decisions.length + 1);
+    lensOpen();
+    const option = await previewDietary();
+    const decide = vi.spyOn(api, "decide").mockResolvedValue(RECORDED);
+    fireEvent.keyDown(option, { key: "Enter" });
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    expect(decide.mock.calls[0]![1]).toMatchObject({ kind: "set_lens", lenses: ["dietary"] });
+    await waitFor(() => expect(screen.getByTestId("stage")).toHaveAttribute("data-focus", "live"));
+    expect(screen.queryByTestId("stage-record")).toBeNull();
+    expect(screen.getByTestId("stage")).not.toHaveAttribute("data-scene", "preview");
+  });
+
+  it("keeps the preview while nothing is recorded: a refused press, or a view that records nothing new", async () => {
+    const qc = lensOpen();
+    const option = await previewDietary();
+    const refusal: Refusal = { error: { code: "not_yet", message: "Not yet.", exits: [] } };
+    const decide = vi.spyOn(api, "decide").mockRejectedValue(new RefusalError(refusal));
+    fireEvent.keyDown(option, { key: "Enter" });
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+    await screen.findByText("Not yet.");
+    // A view read again with the same decisions (a stage's status moved) records nothing either.
+    const before = qc.getQueryData<ProjectView>(keys.view(PID))!;
+    await act(async () => {
+      qc.setQueryData<ProjectView>(keys.view(PID), (prev) => ({
+        ...prev!,
+        stages: { ...prev!.stages, ingest: { ...prev!.stages.ingest!, updated_at: "2026-10-17T00:00:02Z" } },
+      }));
+      await notified();
+    });
+    expect(qc.getQueryData(keys.view(PID))).not.toBe(before);
+    expect(screen.getByTestId("stage")).toHaveAttribute("data-focus", "option");
+    expect(screen.getByTestId("stage")).toHaveAttribute("data-scene", "preview");
+    expect(screen.getByTestId("stage-record")).toBeInTheDocument();
   });
 });
 
