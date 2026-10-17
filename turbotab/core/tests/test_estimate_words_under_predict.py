@@ -109,7 +109,9 @@ def test_under_predict_measured_noise_says_its_reliability_and_is_never_acted_on
     k = 2
     frame = _two_recalls(sd_between=4.0, sd_within=12.0, k=k)
     lam = _balanced_lambda(frame, k)
-    assert 1 - lam > 0.5  # by construction: σ²w / k = 72 against σ²b = 16, so λ ≈ 0.18
+    # by construction σ²w / k = 72 against σ²b = 16, a population λ of 0.18; the drawn rows' λ is
+    # the one computed by hand above
+    assert 1 - lam > 0.5
     repeats = dict(grain={"grain": "repeated", "id_column": "participant_id"},
                    repeat_kind={"repeat_kind": "repeats"})
     for purpose, expected in (("inference", "act_on_it"), ("prediction", "no_change")):
