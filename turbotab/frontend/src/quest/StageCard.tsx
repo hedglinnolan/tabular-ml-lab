@@ -3,8 +3,9 @@
  * their labels. The open Decide line is expanded through the dispatcher (CardFor); answered lines
  * collapse to their answers; lines still to come wait below, quieter, each "Waiting for" what it
  * needs. The stage's Confirm sweep comes after its Decides, each default with its reason and what
- * another choice would change, and any can be opened to change it. For the record sits collapsed at
- * the foot (GET /record). The one primary action is at the very foot (FOUNDATION §1).
+ * another choice would change, and any can be opened to change it. Results, once reached, has W1-G's
+ * ResultsCards in place of its lines, mounted once (src/quest/contracts.ts). For the record sits
+ * collapsed at the foot (GET /record). The one primary action is at the very foot (FOUNDATION §1).
  */
 import { useState, type ReactNode } from "react";
 import { isRefusalError } from "../api/client";
@@ -18,7 +19,9 @@ import {
 import type { Decision, QuestLine, QuestLog, QuestStage, Refusal, SweepStage } from "../api/schema";
 import { Foot, Plain, foot as f, kit as k } from "../kit";
 import { CardFor } from "./cards/CardFor";
+import { columnOf } from "./cards/renderers";
 import { type FitPosition, byLabel, openLine, primaryFor, sweptLines } from "./log";
+import { ResultsCards } from "./results";
 import { said } from "./words";
 import q from "./quest.module.css";
 
@@ -48,7 +51,9 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, arrival,
   }
 
   const groups = byLabel(stage);
-  const back = open && expanded !== openId ? () => setExpanded(openId) : null;
+  // Results, once reached, is W1-G's column whole: it draws every line of the stage itself.
+  const results = columnOf(stage) === "results";
+  const back = !results && open && expanded !== openId ? () => setExpanded(openId) : null;
   const toggle = (l: QuestLine) => setExpanded((cur) => (cur === idOf(l) ? openId : idOf(l)));
 
   return (
@@ -70,14 +75,19 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, arrival,
         ) : null}
       </div>
 
-      {groups.Decide.length ? (
+      {results ? (
+        <div data-testid="results-column">
+          <ResultsCards pid={pid} />
+        </div>
+      ) : null}
+
+      {!results && groups.Decide.length ? (
         <Group label="Decide">
           {groups.Decide.map((l) => (
             <Line
               key={idOf(l)}
               pid={pid}
               line={l}
-              stage={stage}
               expanded={expanded === idOf(l)}
               onToggle={() => toggle(l)}
               answers={answers}
@@ -87,14 +97,13 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, arrival,
         </Group>
       ) : null}
 
-      {groups.Confirm.length ? (
+      {!results && groups.Confirm.length ? (
         <Group label="Confirm" heading={stage.sweep?.heading}>
           {groups.Confirm.map((l) => (
             <Line
               key={idOf(l)}
               pid={pid}
               line={l}
-              stage={stage}
               expanded={expanded === idOf(l)}
               onToggle={() => toggle(l)}
               answers={answers}
@@ -142,7 +151,6 @@ function Group({ label, heading, children }: { label: string; heading?: string |
 function Line({
   pid,
   line,
-  stage,
   expanded,
   onToggle,
   answers,
@@ -151,7 +159,6 @@ function Line({
 }: {
   pid: string;
   line: QuestLine;
-  stage: QuestStage;
   expanded: boolean;
   onToggle: () => void;
   answers: ReadonlyMap<string, string>;
@@ -163,7 +170,7 @@ function Line({
   if (expanded && line.status !== "waiting") {
     return (
       <li className={q.lineOpen} data-testid={testId} data-status={line.status} data-expanded>
-        <CardFor pid={pid} line={line} stage={stage.key} onOpenStage={onOpenStage} />
+        <CardFor pid={pid} line={line} onOpenStage={onOpenStage} />
       </li>
     );
   }

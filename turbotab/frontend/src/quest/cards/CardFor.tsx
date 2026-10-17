@@ -1,17 +1,17 @@
 /**
  * The card dispatcher (plans/W1_PART2_PLAN.md §2 "W1-E", rulings 6 and 7): each quest line's card in
  * the shell's card column, by its source (renderers.ts). A Router question is today's card
- * (AskFor); a question in Results is W1-G's ResultsCards; a declaration is W1-F's card for its
- * kind (DECLARATION_CARDS); a finding is a card of its own; reading items are quiet rows; anything
- * else is the fallback card in the line's own words (LineGeneric). It never renders a blank: until the project's view
- * arrives, the line's name stands with what it waits for.
+ * (AskFor); a declaration is W1-F's card for its kind (DECLARATION_CARDS); a finding is a card of
+ * its own; reading items are quiet rows; anything else is the fallback card in the line's own words
+ * (LineGeneric). Results, once reached, is not drawn line by line: its column is W1-G's
+ * ResultsCards (StageCard.tsx, renderers.ts `columnOf`). It never renders a blank: until the
+ * project's view arrives, the line's name stands with what it waits for.
  */
 import type { QuestionKey } from "../../api/m1-types";
 import { useProjectView, useQuest } from "../../api/queries";
 import type { ProjectView } from "../../api/schema";
 import { AskFor } from "../../components/record/AskFor";
 import { BESPOKE_KEYS } from "../../components/record/generic/compose";
-import { ResultsCards } from "../results";
 import type { CardForProps, DeclarationCards } from "../contracts";
 import { DECLARATION_CARDS } from "./predict";
 import { FindingCard } from "./FindingCard";
@@ -21,24 +21,16 @@ import { rendererOf } from "./renderers";
 import { said } from "../words";
 import c from "./cards.module.css";
 
-export function CardFor({ pid, line, stage, onOpenStage, cards = DECLARATION_CARDS }: CardForProps & { cards?: DeclarationCards }) {
+export function CardFor({ pid, line, onOpenStage, cards = DECLARATION_CARDS }: CardForProps & { cards?: DeclarationCards }) {
   const view = useProjectView(pid).data;
   const log = useQuest(pid).data;
-  const kind = rendererOf(line, stage, cards);
+  const kind = rendererOf(line, cards);
   const routeTo = (question: string) => {
     const at = log?.stages.find((s) => s.lines.some((l) => l.source === "question" && l.key === question));
     if (at) onOpenStage?.(at.key);
   };
 
   switch (kind) {
-    case "results":
-      return (
-        // The line's name heads W1-G's card, so the opening is named even where it draws nothing.
-        <section className={c.lineCard} data-testid="results-cards" aria-label={said(line.name)}>
-          <p className={c.kicker}>{said(line.name)}</p>
-          <ResultsCards pid={pid} />
-        </section>
-      );
     case "declaration": {
       const Card = cards[line.key]!;
       return <Card pid={pid} line={line} />;

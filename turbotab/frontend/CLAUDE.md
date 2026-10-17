@@ -37,11 +37,13 @@ src/quest/            the quest shell at /p/:pid (W1_PART2_PLAN §2 "W1-E"): Que
                       lines), StageLine (the line, the bar, the hover panel), StageCard, Tapestry,
                       Fit; contracts.ts is the interface W1-F and W1-G implement
 src/quest/cards/      CardFor, the dispatcher: every quest line's card by its source, never a blank
-                      (renderers.ts): today's AskFor, W1-F's DECLARATION_CARDS (cards/predict),
-                      W1-G's ResultsCards (src/quest/results), a finding's own card, reading rows,
-                      else a fallback card in the line's words. CardFor.test.tsx is the renderer
-                      contract: every (source, key) in fixtures/quest-contract.json, which
-                      turbotab/core/tests/test_quest_renderer_contract.py writes from the path fuzzer
+                      (renderers.ts): today's AskFor, W1-F's DECLARATION_CARDS (cards/predict), a
+                      finding's own card, reading rows, else a fallback card in the line's words.
+                      Results, once reached, is not drawn line by line: StageCard mounts W1-G's
+                      ResultsCards (src/quest/results) once as its column (contracts.ts).
+                      CardFor.test.tsx is the renderer contract: every (source, key) in
+                      fixtures/quest-contract.json, which turbotab/core/tests/
+                      test_quest_renderer_contract.py writes from the path fuzzer
 src/kit/              the product's calm kit, copied from src/explore/calm-kit as the shell uses it:
                       tokens (scoped to [data-kit]: a part carries the attribute; today's cards keep
                       src/styles/tokens.css), the Source Sans 3 faces, kit.module.css, Why, Foot,

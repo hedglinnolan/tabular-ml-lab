@@ -5,6 +5,9 @@
  * dispatcher, and renders something, never a blank. A declaration counts as rendered only through
  * W1-F's DECLARATION_CARDS or the generic fallback (LineGeneric, GenericAsk's content in the line's
  * own words); the kinds that fall to it today are listed here, since W1-F's cards replace them.
+ * The Results stage, once reached, is not drawn line by line: its column is W1-G's ResultsCards,
+ * which draws every Results line (renderers.ts `columnOf`; StageCard.test.tsx pins the mount). Its
+ * lines still render through the dispatcher without a blank, as they would before Results is reached.
  *
  * Each line renders on a real server's captured view (src/mocks/fixtures, the M3 captures), with
  * the stages it reads served from the capture, as the generic question's test does.
@@ -21,7 +24,7 @@ import type { DeclarationCards, LineCardProps } from "../contracts";
 import { CONTRACT, type ContractPair } from "../fixtures/contract";
 import { CardFor } from "./CardFor";
 import { DECLARATION_CARDS } from "./predict";
-import { rendererOf, type Renderer } from "./renderers";
+import { columnOf, rendererOf, type Renderer } from "./renderers";
 import { said } from "../words";
 
 const FIXTURES = import.meta.glob<M3Fixture>("../../mocks/fixtures/m3-*.json", { eager: true, import: "default" });
@@ -69,7 +72,7 @@ function lineOf(pair: Pick<ContractPair, "source" | "key">, label: QuestLine["la
   };
 }
 
-function renderLine(line: QuestLine, stage: string, cards?: DeclarationCards) {
+function renderLine(line: QuestLine, cards?: DeclarationCards) {
   const { view, f } = viewFor(line.key);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(keys.teaching(), SHARED.teaching);
@@ -90,7 +93,7 @@ function renderLine(line: QuestLine, stage: string, cards?: DeclarationCards) {
   return render(
     <QueryClientProvider client={qc}>
       <StageFocusProvider>
-        <CardFor pid={PID} line={line} stage={stage} {...(cards ? { cards } : {})} />
+        <CardFor pid={PID} line={line} {...(cards ? { cards } : {})} />
       </StageFocusProvider>
     </QueryClientProvider>,
   );
@@ -106,7 +109,7 @@ afterEach(() => {
 
 const CASES = CONTRACT.pairs.flatMap((p) => p.stages.map((stage) => ({ ...p, stage })));
 const ALLOWED: Record<string, readonly Renderer[]> = {
-  question: ["ask", "results"],
+  question: ["ask"],
   declaration: ["declaration", "generic"],
   finding: ["finding"],
   reading: ["reading"],
@@ -120,18 +123,20 @@ describe("every (source, key) the engine emits has a renderer", () => {
   });
 
   it.each(CASES)("$source $key in $stage", ({ source, key, stage }) => {
-    const kind = rendererOf({ source: source as QuestLine["source"], key }, stage, DECLARATION_CARDS);
+    const kind = rendererOf({ source: source as QuestLine["source"], key }, DECLARATION_CARDS);
     expect(ALLOWED[source], `a source the shell does not know: ${source}`).toBeDefined();
     expect(ALLOWED[source]).toContain(kind);
-    // A Router question is today's card, except the opening in Results, which is W1-G's.
-    if (source === "question") expect(kind).toBe(stage === "results" ? "results" : "ask");
+    if (source === "question") expect(kind).toBe("ask");
+    // Results' lines, once it is reached, are W1-G's ResultsCards' to draw; every other stage's
+    // are drawn line by line, through the dispatcher.
+    expect(columnOf({ key: stage, reached: true })).toBe(stage === "results" ? "results" : "lines");
   });
 
   it("lists the declaration kinds that fall to the generic fallback today (W1-F's cards replace them)", () => {
     const generic = [
       ...new Set(
         CONTRACT.pairs
-          .filter((p) => p.source === "declaration" && rendererOf({ source: p.source as QuestLine["source"], key: p.key }, p.stages[0]!, DECLARATION_CARDS) === "generic")
+          .filter((p) => p.source === "declaration" && rendererOf({ source: p.source as QuestLine["source"], key: p.key }, DECLARATION_CARDS) === "generic")
           .map((p) => p.key),
       ),
     ].sort();
@@ -144,15 +149,14 @@ describe("every (source, key) the engine emits has a renderer", () => {
 });
 
 describe("the dispatcher never renders a blank", () => {
-  it.each(CASES)("$source $key in $stage renders something", ({ source, key, stage, labels }) => {
+  it.each(CASES)("$source $key in $stage renders something", ({ source, key, labels }) => {
     const line = lineOf({ source, key }, labels[0] as QuestLine["label"]);
-    const { container } = renderLine(line, stage);
+    const { container } = renderLine(line);
     expect(container.textContent!.trim().length, `${source} ${key}`).toBeGreaterThan(0);
-    const kind = rendererOf(line, stage, DECLARATION_CARDS);
+    const kind = rendererOf(line, DECLARATION_CARDS);
     if (kind === "ask") expect(screen.getByTestId(`ask-${key}`).textContent!.trim().length).toBeGreaterThan(0);
     if (kind === "generic") expect(screen.getByTestId(`generic-${key}`)).toBeInTheDocument();
     if (kind === "finding") expect(screen.getByTestId(`finding-card-${key}`)).toBeInTheDocument();
-    if (kind === "results") expect(screen.getByTestId("results-cards")).toHaveAccessibleName(/opening the seal/i);
   });
 });
 
@@ -161,11 +165,11 @@ describe("the dispatcher's fallbacks, both ways", () => {
 
   it("draws a declaration with its own card through that card, and without one through the generic fallback", () => {
     const line = lineOf({ source: "declaration", key: "set_selection" });
-    const withCard = renderLine(line, "models", { set_selection: Probe });
+    const withCard = renderLine(line, { set_selection: Probe });
     expect(screen.getByTestId("probe")).toHaveTextContent("set_selection");
     expect(screen.queryByTestId("generic-set_selection")).toBeNull();
     withCard.unmount();
-    renderLine(line, "models", {});
+    renderLine(line, {});
     expect(screen.queryByTestId("probe")).toBeNull();
     expect(screen.getByTestId("generic-set_selection")).toHaveTextContent("The predictor-selection question");
   });
@@ -180,9 +184,8 @@ describe("the dispatcher's fallbacks, both ways", () => {
     ];
     expect(lines.length).toBeGreaterThan(20);
     for (const line of lines) {
-      const stage = line.source === "declaration" ? CONTRACT.declarations[line.key]!.stage : "results";
-      const { container, unmount } = renderLine(line, stage, {});
-      expect(rendererOf(line, stage, {})).toBe("generic");
+      const { container, unmount } = renderLine(line, {});
+      expect(rendererOf(line, {})).toBe("generic");
       const text = container.textContent!.toLowerCase();
       expect(text, `${line.key} (${line.status})`).not.toContain(line.key.replace(/_/g, " "));
       expect(text, `${line.key} (${line.status})`).not.toContain(line.key);
@@ -193,13 +196,13 @@ describe("the dispatcher's fallbacks, both ways", () => {
 
   it("draws a Router question as today's card, and a line of a source it does not know by its own name", () => {
     expect(QUESTION_KEYS).toContain("lens");
-    const known = renderLine(lineOf({ source: "question", key: "lens" }), "data");
+    const known = renderLine(lineOf({ source: "question", key: "lens" }));
     expect(screen.getByTestId("question-lens")).toBeInTheDocument();
     expect(screen.queryByTestId("generic-lens")).toBeNull();
     known.unmount();
     const unknown: QuestLine = { ...lineOf({ source: "question", key: "lens" }), source: "exhibit" as QuestLine["source"], key: "table_one", name: "the first table" };
-    expect(rendererOf(unknown, "results", DECLARATION_CARDS)).toBe("generic");
-    renderLine(unknown, "results");
+    expect(rendererOf(unknown, DECLARATION_CARDS)).toBe("generic");
+    renderLine(unknown);
     expect(screen.getByTestId("generic-table_one")).toHaveTextContent("The first table");
   });
 
@@ -218,8 +221,8 @@ describe("the dispatcher's fallbacks, both ways", () => {
         },
       ],
     };
-    expect(rendererOf(ask, "models", DECLARATION_CARDS)).toBe("reading");
-    renderLine(ask, "models");
+    expect(rendererOf(ask, DECLARATION_CARDS)).toBe("reading");
+    renderLine(ask);
     expect(screen.getByTestId("reading-ask:models")).toHaveTextContent("kcal is energy in kilocalories");
     expect(screen.getByRole("button", { name: "It is in kilojoules" })).toBeEnabled();
   });
