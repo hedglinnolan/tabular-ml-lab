@@ -10,6 +10,8 @@ the captures the packet test reads are built here too. Each guard is checked bot
 """
 from __future__ import annotations
 
+import re
+
 from turbotab.core import custom_sound
 from turbotab.core.decisions import ProjectState
 from turbotab.core.interview import route
@@ -332,3 +334,80 @@ def test_the_dietary_packets_chain_drops_prediction_from_the_substitution_curves
         assert rows and rows == _chain_expected(_contract(key), set()), key
     assert any("prediction" in row[3] for key in ("dietary_patterns", "nci_usual_intake")
                for row in _chain_rows(text, key))
+
+
+# ── what the chain's purposes leave out, and what its intro says (W1-P11c) ───────────────────
+#
+# A chain row leaves out a purpose only where the Router does not ask, under it, the one question
+# that records the declaring method (``set_substitution`` records both substitution curves, and
+# under Predict the substitution is not asked); a purpose under which the registry's rungs offer
+# none of a method's options is a refusal the relation still states, so it stays. The §2 intro
+# says that much and no more. The truth is the Router's gate on the dietary table and the decision
+# each contract is recorded by, read off the contract.
+
+
+def _unasked() -> dict[str, set[str]]:
+    """Each gated question (a slot) -> the purposes under which the Router does not ask it."""
+    return {q: _gated(q) for q in ("energy_adjustment", "substitution")}
+
+
+def _recorded_slot(c) -> str | None:
+    from turbotab.core.decisions import SLOTS
+    from turbotab.core.reference import catalog
+
+    return SLOTS.get(catalog.recorded_by(c) or "")
+
+
+def _all_chain_rows(lens: str) -> list[tuple[str, ...]]:
+    """Every row of the lens's chain table, sorted: (from, kind, toward, purposes)."""
+    rows = packet.chain_table(lens)[2:]  # past the header
+    cells = [[cell.strip() for cell in row.strip("|").split(" | ")] for row in rows]
+    return sorted((f, kind, toward, purposes) for f, kind, toward, _fires, purposes, *_ in cells)
+
+
+def test_every_chain_row_whose_method_an_unasked_question_records_omits_that_purpose():
+    from turbotab.core.contracts import contracts
+    from turbotab.core.reference import catalog
+
+    unasked = _unasked()
+    assert unasked == {"energy_adjustment": {"prediction"}, "substitution": {"prediction"}}
+    dropped, refused_kept = 0, 0
+    for lens in catalog.LENSES:
+        own = {c.key for c in packet.lens_contracts(lens)[0]}
+        expected = []
+        for c in contracts().values():
+            gated = unasked.get(_recorded_slot(c), set())
+            for r in c.relations:
+                if c.key not in own and r.target not in own:
+                    continue
+                kept = [p for p in r.purposes if p not in gated]
+                dropped += len(r.purposes) - len(kept)
+                if kept:
+                    expected.append((f"`{c.key}`", r.kind, f"`{r.target}`", ", ".join(kept)))
+                # silent: a purpose whose rungs offer none of the method's options stays listed
+                refused_kept += sum(1 for p in kept if c.options and all(
+                    o.rung.get(p) == "not_offered" for o in c.options))
+        assert _all_chain_rows(lens) == sorted(expected), lens
+    assert dropped > 0 and refused_kept > 0  # each side of the rule is exercised
+
+
+def test_the_chain_intro_says_which_purposes_it_leaves_out_and_no_more():
+    from turbotab.core.contracts import contracts
+
+    unasked = _unasked()
+    # the gates that leave a method wholly unoffered: the question that records it, not asked
+    gates = sorted({(slot, p) for c in contracts().values()
+                    if (slot := _recorded_slot(c)) in unasked for p in unasked[slot]})
+    assert gates == [("substitution", "prediction")]
+    for lens in ("dietary", "genomics"):  # a lens with a gated method in its chain, and one without
+        text = packet.render(lens, packet.captures_for(lens))
+        body = text[text.index("## 2 · How they chain"):text.index("## 3 · The defaults")]
+        intro = next(line for line in body.splitlines()
+                     if line.startswith("Every relation this lens's own methods take part in"))
+        named = re.findall(r"the `(\w+)` question under (\w+)", intro)
+        assert sorted(named) == gates, lens
+        # the energy model's gate takes only the transform's residual away: no purpose goes
+        assert "energy_adjustment" not in intro and "energy model" not in intro
+        # the old words claimed every purpose the method is not offered under was left out
+        assert "does not offer the declaring method under is left out" not in intro
+        assert "rungs offer none" in intro  # and say that such a purpose stays

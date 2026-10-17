@@ -665,6 +665,39 @@ def test_a_noticing_set_aside_is_no_change_to_the_fit_the_seal_opened_on(held_en
     assert "repair" in seal.post_seal_changes(repaired, seal.slots_read_by(graph, "fit"))
 
 
+def test_the_post_seal_changes_list_no_noticing_set_aside_beside_a_real_change(held_engine):
+    """W1-Q's S1 line, both ways: the post-seal changes are the records after the opening that
+    change what the fit reads. Once a new exclusion makes the fit changed after the opening, a
+    dismissal and a deferral after it still repair nothing, so the exclusion is listed alone. A
+    dismissal that withdraws a repair applied before the opening changes the data the fit reads
+    (the engine keys it: a changed fit), so it is listed."""
+    engine, keys = held_engine
+    graph = engine.graph
+    slots = seal.slots_read_by(graph, "fit")
+    rule = d.ExclusionRule(column="energy_kcal", low=500, high=5000, reason="implausible intake")
+    beside = [*predict_log(),
+              record(13, d.DismissFinding(finding_id="binary_text__sex"), "dismiss", post_seal=True),
+              record(14, d.DeferFinding(finding_id="pack::dietary::compositional", to="exclusions"),
+                     "defer", post_seal=True),
+              record(15, d.SetExclusions(rules=[rule]), "exclude", post_seal=True)]
+    assert seal.changed_after_seal(graph, beside, "fp-1", keys(beside)["fit"]) is True
+    assert seal.post_seal_changes(beside, slots) == ["exclude"]
+    # alone, the two set aside leave the fit the one opened on, and nothing is listed
+    alone = beside[:-1]
+    assert seal.changed_after_seal(graph, alone, "fp-1", keys(alone)["fit"]) is False
+    assert seal.post_seal_changes(alone, slots) == []
+
+    # fires: the repair applied before the opening is dismissed after it
+    log = predict_log()
+    repaired = [*log[:11], record(12, d.ApplyRepair(finding_id="pack::dietary::implausible_intake",
+                                                    option="exclude_implausible"), "repair"),
+                record(13, log[11].decision, "open"),
+                record(14, d.DismissFinding(finding_id="pack::dietary::implausible_intake"),
+                       "withdrawn", post_seal=True)]
+    assert seal.changed_after_seal(graph, repaired, "fp-1", keys(repaired)["fit"]) is True
+    assert seal.post_seal_changes(repaired, slots) == ["withdrawn"]
+
+
 def test_the_post_seal_sentence_keeps_a_data_value_or_an_acronym_as_it_is():
     opened = ProjectState(seal_opened=True)
     assert seal.post_seal_sentence("`177` rows were excluded.", opened) == (
