@@ -149,3 +149,62 @@ def test_roles_recorded_before_the_goal_are_worded_by_the_goal_in_the_methods(tm
     log.append(SetPurpose(purpose="inference"),
                sentence=lambda x, before: voice.sentence_for(x, before, None))
     assert _said(log, "confirm_role") == [as_said[1]]
+
+
+# ── finding 11 (ruling R-c): the readings the values settled are a sentence of their own ──────
+
+READ = "Read from the values, no question asked: `age` is a covariate (ages in years)."
+
+
+def _families(task: str | None = None) -> str:
+    """The families answer as the families declare their own labels for ``task``
+    (``methods_label``)."""
+    import turbotab.core.models  # noqa: F401 - registers the families
+    from turbotab.core.models.base import get_family
+
+    a, b = (get_family(k).methods_label(task) for k in ("linear", "ridge"))
+    return f"Two model families were chosen: {a} and {b}."
+
+
+def _families_said(purpose: str, read: str | None) -> str:
+    from turbotab.core.decisions import ProjectState, SelectModels
+
+    return voice.sentence_for(SelectModels(models=["linear", "ridge"]),
+                              ProjectState(purpose=purpose), {"read_from_values": read})
+
+
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_the_families_answer_names_the_families_and_nothing_else(purpose):
+    assert _families_said(purpose, READ) == _families_said(purpose, None) == _families()
+
+
+def _sections(tmp_path, purpose: str, read: str | None) -> dict[str, list]:
+    from types import SimpleNamespace
+
+    from turbotab.core.decisions import SelectModels
+    from turbotab.core.export.methods import methods_section
+
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    log = _log(tmp_path, *HEAD, SetPurpose(purpose=purpose), SetRoles(roles=ROLES),
+               SelectModels(models=["linear", "ridge"]))
+    source = SimpleNamespace(name="diet", purpose=purpose, methods=methods_text(log.records()),
+                             artifact=lambda stage: None, read_from_values=read)
+    doc = methods_section(source, {"engine": {}, "inputs": [], "decisions": {"n": 1},
+                                   "analysis_plan": {}})
+    return {s.key: s.entries for s in doc.sections}
+
+
+@pytest.mark.parametrize("purpose, section", [("prediction", "predictors"),
+                                              ("inference", "variables")])
+def test_the_readings_the_values_settled_are_their_own_sentence_among_the_predictors(
+        tmp_path, purpose, section):
+    """TRIPOD+AI 9 (under Predict) and STROBE 7 (under Estimate) are where a predictor's
+    definition and measurement are said; the families answer is the analysis's."""
+    sections = _sections(tmp_path, purpose, READ)
+    found = [(key, e) for key, entries in sections.items() for e in entries if READ in e.text]
+    assert [(key, e.source, e.text) for key, e in found] == [(section, "analysis", READ)]
+    [families] = [e for entries in sections.values() for e in entries if e.kind == "select_models"]
+    assert families.text == _families("regression")
+    # silent: nothing the values settled, no such sentence
+    quiet = _sections(tmp_path / "quiet", purpose, None)
+    assert not [e for entries in quiet.values() for e in entries if "Read from the values" in e.text]

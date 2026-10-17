@@ -285,14 +285,16 @@ def sentence_for(decision: Any, state_before: Any = None, ctx: Any = None) -> st
 # analysis is now (``provenance``), so it restates these sentences on the current state; the Record
 # keeps them as said.
 #
-# There are two ways to restate:
+# There are three ways to restate:
 # * whole: a kind whose sentence reads only the decision and the state is re-authored on the
 #   current state, led by what had been seen when it was recorded (``decisions.disclose``);
 # * standing clause: a kind whose sentence also reads the recorder's context (``select_models``:
-#   its labels and the readings the values settled) ends with its standing clause. That clause is
-#   a sentence of its own, a function of the decision, the state and at most the context's
-#   ``detected_task`` (the task the target stage detected, where none was answered), and only it is
-#   restated.
+#   its labels) ends with its standing clause. That clause is a sentence of its own, a function of
+#   the decision, the state and at most the context's ``detected_task`` (the task the target stage
+#   detected, where none was answered), and only it is restated;
+# * by goal: a kind whose words follow the goal and that is recorded before the goal is (the roles
+#   and the confirmations of a role, in Your data) is re-authored on the state it was recorded on
+#   with the goal as it stands (:func:`restated_by_goal`).
 
 StandingFn = Callable[[Any, Any, Any], "str | None"]
 _RESTATED_WHOLE: set[str] = set()
@@ -1497,11 +1499,9 @@ def _select_models(d: Any, state: Any, ctx: Any) -> str:
                    "bias-corrected cross-validation (Tsamardinos et al. 2018), and that "
                    "selection-corrected estimate is the reported result, not the best family's "
                    "own score")
-    # BLUEPRINT §14.3 (amendment): the readings the values settled, which the fit reads, are
-    # stated in the record ("read from the values"), each with its evidence.
-    read = _get(ctx, "read_from_values")
-    if read:
-        chosen = f"{chosen}. {read}"
+    # The readings the values settled, which the fit reads, are a sentence of their own among the
+    # predictors in the methods (BLUEPRINT §14.3, amendment; W1-R round 2's ruling R-c:
+    # ``export.methods``), never this answer's.
     # MS4: under the surveyed population, each family's design-based estimator, or its block. It
     # is the sentence's standing clause, last, so the methods text restates it when the survey
     # answer changes (:func:`restate`).

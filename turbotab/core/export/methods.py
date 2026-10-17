@@ -7,8 +7,9 @@ after the estimates were seen (or the held-out rows opened) kept and marked, and
 counts rows restated on the participant flow as it stands (``voice.restated_counts``; the server
 gives the counts). Beside those, the
 paragraphs the analysis itself wrote on these answers (the declared model sequence's, multiple
-imputation's, cross-validation's), each marked with the stage that wrote it, and one sentence the
-export writes: where the provenance record is and what replaying it checks
+imputation's, cross-validation's), each marked with the stage that wrote it, the readings the values
+settled with no question asked (one sentence among the predictors), and one sentence the export
+writes: where the provenance record is and what replaying it checks
 (:func:`reproducibility_sentence`).
 
 **How it is ordered.** By the reporting guideline of the declared purpose, never by when an answer
@@ -317,6 +318,13 @@ def methods_section(source: Any, provenance: Mapping[str, Any]) -> MethodsDocume
             closing.append(entry)
         else:
             by_key[section_of(line.kind, guideline)].append(entry)
+    # The readings the values settled with no question asked (BLUEPRINT §14.3, amendment): a
+    # sentence of their own where a predictor's definition and measurement are said (TRIPOD+AI 9,
+    # STROBE 7), never the families answer's (W1-R round 2, ruling R-c).
+    read = getattr(source, "read_from_values", None)
+    if isinstance(read, str) and read.strip():
+        by_key["predictors" if guideline == "TRIPOD+AI" else "variables"].append(
+            MethodsEntry(source="analysis", kind="readings", text=_finish(read)))
     last = "analysis" if guideline == "TRIPOD+AI" else "statistical"
     by_key[last].extend(analysis_paragraphs(source))
     by_key[last].extend(closing)

@@ -84,6 +84,9 @@ class Source:
     inputs: list[InputFile]
     decisions_jsonl: bytes
     stage_versions: dict[str, int] = field(default_factory=dict)
+    # What the values settled with no question asked, as one sentence (``readings.
+    # read_from_values_sentence``; None: nothing settled, or not read).
+    read_from_values: str | None = None
 
     def status(self, stage: str) -> Any:
         return self.statuses.get(stage)
