@@ -2,8 +2,10 @@
  * The card dispatcher (plans/W1_PART2_PLAN.md §2 "W1-E", rulings 6 and 7): each quest line's card in
  * the shell's card column, by its source (renderers.ts). A Router question is today's card
  * (AskFor); a declaration is W1-F's card for its kind (DECLARATION_CARDS); a finding is a card of
- * its own; reading items are quiet rows; anything else is the fallback card in the line's own words
- * (LineGeneric). Results, once reached, is not drawn line by line: its column is W1-G's
+ * its own; reading items are quiet rows, except a column's own role line (the engine's
+ * `decision:confirm_role` reading line, core/quest.py `_role_lines`), which is the role card
+ * (roles/RoleCard.tsx: one confirm_role per press); anything else is the fallback card in the
+ * line's own words (LineGeneric). Results, once reached, is not drawn line by line: its column is W1-G's
  * ResultsCards (StageCard.tsx, renderers.ts `columnOf`). It never renders a blank: until the
  * project's view arrives, the line's name stands with what it waits for.
  */
@@ -19,6 +21,8 @@ import { FindingCard } from "./FindingCard";
 import { LineGeneric } from "./LineGeneric";
 import { Readings } from "./Readings";
 import { rendererOf } from "./renderers";
+import { RoleCard } from "./roles/RoleCard";
+import { isRoleLine } from "./roles/roles";
 import { chooseFamilies, said } from "../words";
 import c from "./cards.module.css";
 
@@ -31,6 +35,10 @@ export function CardFor({ pid, line, onOpenStage, cards = DECLARATION_CARDS }: C
     const at = log?.stages.find((s) => s.lines.some((l) => l.source === "question" && l.key === question));
     if (at) onOpenStage?.(at.key, question);
   };
+
+  // W1-R finding 1: a role recorded below high confidence is confirmed on its own card, one column
+  // per press (BLUEPRINT §14 rule 2); its renderer stays "reading", so the column opens it.
+  if (kind === "reading" && isRoleLine(line)) return <RoleCard pid={pid} line={line} />;
 
   switch (kind) {
     case "declaration": {

@@ -9,7 +9,9 @@
  * The quest log is built from the project's view as the mock serves it (the Router's steps, the
  * decisions, the findings) and placed by the engine's own registry: each question's and
  * declaration's stage, label, order and name, the sweep words and the Fit lock's sentences come
- * from src/quest/fixtures/quest-contract.json (written by the engine's renderer-contract test).
+ * from src/quest/fixtures/quest-contract.json (written by the engine's renderer-contract test); a
+ * column's own role line's words, choices and place from src/quest/cards/roles/fixture.json (written
+ * by the engine's test of those lines).
  * What the mock decides itself is said where it does: which declarations apply (the Predict and
  * Estimate walks'), which stages are reached, and when a finding is settled. Every number is the
  * mock's.
@@ -31,6 +33,8 @@ import type {
   Triage,
 } from "../api/schema";
 import type { MethodsSections, MethodsText } from "../api/m3-types";
+import type { RolesArtifact } from "../api/m1-types";
+import ROLES from "../quest/cards/roles/fixture.json";
 import { CONTRACT } from "../quest/fixtures/contract";
 import type { MockServer } from "./db";
 
@@ -64,8 +68,83 @@ function line(p: Partial<QuestLine> & Pick<QuestLine, "id" | "key" | "source" | 
 const latest = (records: readonly DecisionRecord[], test: (d: DecisionRecord["decision"]) => boolean) =>
   [...records].reverse().find((r) => test(r.decision));
 
-/** The quest log of a mock project's view, Fit pressed or not. */
-export function mockQuest(view: ProjectView, findings: readonly Finding[] | null, pressed: boolean): QuestLog {
+const WORDS: Record<string, string> = ROLES.words;
+const CHOICES: Record<string, string[]> = ROLES.choices;
+const fill = (template: string, column: string, role: string, other = "") =>
+  template
+    .replaceAll("{column}", column)
+    .replaceAll("{role}", WORDS[role] ?? role)
+    .replaceAll("{other}", WORDS[other] ?? other);
+
+/**
+ * Your data's role lines (core/quest.py `_role_lines`; the walkthrough of 2026-10-17, finding 1):
+ * each column the roles answer recorded below high confidence as proposed (`roles_unconfirmed`) is a
+ * counted Decide of its own, open until a confirmation of its own role, then answered by that
+ * record; none while the roles question is asked again. The engine moves a column's recorded role
+ * to the role confirmed for it, so a confirmation here is the column's role. The evidence is the
+ * roles stage's reason for the proposal (`reasons`), else the ledger's own reading's.
+ */
+export function mockRoleLines(view: ProjectView, reasons: Readonly<Record<string, string>> = {}): QuestLine[] {
+  const { state, decisions, interview } = view;
+  const named = new Set(state.roles_unconfirmed ?? []);
+  const step = interview.find((s) => s.key === "roles");
+  if (!named.size || step?.status === "open" || step?.status === "waiting") return [];
+  const T = ROLES.templates;
+  const confirmedBy = (column: string) =>
+    latest(
+      decisions,
+      (d) =>
+        (d.kind === "confirm_role" && d.column === column) ||
+        (d.kind === "confirm_reading" && d.reading === "role" && d.column === column) ||
+        (d.kind === "confirm_readings" && d.items.some((i) => i.reading === "role" && i.column === column)),
+    );
+  return Object.entries(state.roles ?? {})
+    .filter(([column]) => named.has(column))
+    .flatMap(([column, recorded], i) => {
+      if (column === state.target) return [];
+      const confirmed = state.role_confirmations?.[column] ?? null;
+      const role = String(confirmed ?? recorded);
+      const waiting = confirmed === null;
+      const option = (r: string, label: string) => ({ label, decision: { kind: "confirm_role", column, role: r } as Record<string, unknown> });
+      const options = [
+        ...(waiting ? [option(role, fill(T.confirm, column, role))] : []),
+        ...(CHOICES[role] ?? ["covariate"]).map((other) => option(other, fill(T.change, column, role, other))),
+      ];
+      return [
+        line({
+          id: ROLES.place.id,
+          key: ROLES.key.replace("{column}", column),
+          source: "reading",
+          label: "Decide",
+          name: fill(T.name, column, role),
+          status: waiting ? "open" : "answered",
+          counted: true,
+          order: ROLES.place.order + i / 1000,
+          decision_id: waiting ? null : (confirmedBy(column)?.id ?? null),
+          reason: waiting ? fill(T.reason, column, role) : null,
+          items: [
+            {
+              kind: "role",
+              column,
+              value: role,
+              words: fill(waiting ? T.proposed : T.settled, column, role),
+              evidence: reasons[column] || ROLES.unread_evidence,
+              options,
+            },
+          ],
+        }),
+      ];
+    });
+}
+
+/** The quest log of a mock project's view, Fit pressed or not; `reasons`: the roles stage's reason
+ *  for each column's proposal, where its artifact is served. */
+export function mockQuest(
+  view: ProjectView,
+  findings: readonly Finding[] | null,
+  pressed: boolean,
+  reasons: Readonly<Record<string, string>> = {},
+): QuestLog {
   const { state, decisions, interview } = view;
   const predict = state.purpose === "prediction";
   const estimate = state.purpose === "inference";
@@ -112,6 +191,9 @@ export function mockQuest(view: ProjectView, findings: readonly Finding[] | null
       }),
     });
   }
+
+  // ── each column's own role, where the roles answer recorded it below high (core/quest.py) ──
+  for (const l of mockRoleLines(view, reasons)) placed.push({ stage: ROLES.place.stage, line: l });
 
   // ── the declarations the mock's Predict and Estimate walks meet (core/quest.py DECLARATIONS) ──
   const declare = (kind: string, applies: boolean, reads: string | null) => {
@@ -498,10 +580,21 @@ async function findingsOf(pid: string, view: ProjectView): Promise<Finding[] | n
   return result.artifact?.findings ?? null;
 }
 
+/** The roles stage's reason for each column's proposal, where its artifact is served. */
+async function reasonsOf(pid: string, view: ProjectView): Promise<Record<string, string>> {
+  const st = view.stages.roles;
+  if (!view.state.roles_unconfirmed?.length || !st || st.status === "idle" || st.status === "blocked") return {};
+  const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/stages/roles`);
+  if (!res.ok) return {};
+  const result = (await res.json()) as StageResult<RolesArtifact>;
+  return Object.fromEntries((result.artifact?.columns ?? []).map((p) => [p.column, p.reason]));
+}
+
 async function questOf(pid: string): Promise<{ view: ProjectView; log: QuestLog } | null> {
   const view = await viewOf(pid);
   if (!view) return null;
-  return { view, log: mockQuest(view, await findingsOf(pid, view), pressedFor.get(pid) ?? false) };
+  const log = mockQuest(view, await findingsOf(pid, view), pressedFor.get(pid) ?? false, await reasonsOf(pid, view));
+  return { view, log };
 }
 
 const notFound = () =>

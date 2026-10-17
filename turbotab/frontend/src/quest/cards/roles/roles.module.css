@@ -1,0 +1,19 @@
+/* A column's own role card (RoleCard.tsx): today's card idiom (src/styles/tokens.css), beside the
+   dispatcher's other small cards (../cards.module.css). The confirmation of the role as proposed is
+   the stronger of the card's buttons; the other roles stay quiet beside it. */
+.confirm {
+  justify-self: start;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  font-size: var(--fs-control);
+  font-weight: 600;
+}
+.confirm:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+.confirm:disabled {
+  opacity: 0.45;
+}

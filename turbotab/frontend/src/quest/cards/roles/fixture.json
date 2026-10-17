@@ -5,6 +5,8 @@
     "id": "decision:confirm_role",
     "order": 30
   },
+  "key": "confirm_role:{column}",
+  "unread_evidence": "proposed below high confidence and recorded with the other roles",
   "templates": {
     "name": "the role of `{column}`",
     "reason": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",

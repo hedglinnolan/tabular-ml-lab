@@ -213,12 +213,17 @@ def _fixture() -> dict:
     ]
     log = quest.quest_log(decisions.fold(records), records, steps_until("exclusions"),
                           artifacts={"roles": proposals})
+    # Without the roles stage's artifact at hand, the evidence is the ledger's own reading's.
+    [unread, *_] = _role_lines(quest.quest_log(decisions.fold(records), records,
+                                               steps_until("exclusions")))
     every = typing.get_args(decisions.Role)
     return {
         "about": "Written by turbotab/core/tests/test_quest_unconfirmed_roles.py from core/quest.py "
                  "(_role_lines): never edit by hand.",
         "place": {"stage": quest.ROLE_LINE.stage, "id": quest.ROLE_LINE.item,
                   "order": quest.ROLE_LINE.order},
+        "key": quest.role_line_key("{column}"),
+        "unread_evidence": unread.items[0].evidence,
         "templates": quest.role_line_text("{column}", "{role}", "{other}"),
         "words": {r: readings.role_words(r) for r in every},
         "choices": {r: quest.role_choices(r) for r in every},
