@@ -3688,7 +3688,7 @@ None declared.
 
 **Methods sentence:**
 
-- Written by `turbotab.core.models.decision_curve:intended_use_sentence`: The `set_intended_use` record's sentence.
+- Written by `turbotab.core.models.decision_curve:intended_use_sentence`: The `set_intended_use` record's sentence. `task`: the outcome's task (answered, else the one the target stage detected); a numeric outcome is classified by no threshold.
 
 **Relations:**
 

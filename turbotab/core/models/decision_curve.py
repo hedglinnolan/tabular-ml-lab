@@ -553,7 +553,7 @@ _register_validators()
 
 def intended_use_sentence(d: Any, state: Any, task: str | None = None) -> str:
     """The ``set_intended_use`` record's sentence. ``task``: the outcome's task (answered, else the
-    one the target stage detected); a numeric outcome is classified by no threshold (R-f 17)."""
+    one the target stage detected); a numeric outcome is classified by no threshold."""
     from turbotab.core.voice import listing, tick
 
     if d.use == "decision_support":
