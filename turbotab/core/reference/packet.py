@@ -15,8 +15,9 @@ writes ``docs/turbotab-next/review-packets/<lens>.md``:
    exist;
 2. **how they chain**: a Mermaid diagram of every relation the lens's own methods take part in
    (from them, or toward them from any contract), and the relations in a table with the sentence
-   the app states when each fires; a relation lists only the purposes its method is offered
-   under, and one that holds only where it is offered not at all is left out;
+   the app states when each fires; a relation lists the purposes it declares less any under which
+   the Router does not ask the one question that offers its method's options (:func:`chain_intro`
+   names them), and one declared only for such purposes is left out;
 3. **the defaults by purpose**, each with its reason: the option each method offers first for
    prediction and for inference, its rung, and the sound label that justifies it; where the app
    ranks by the data, the first option under each condition, computed by the app's own ranking
@@ -168,8 +169,9 @@ def node_label(text: str) -> str:
 
 def chain_relations(lens: str) -> list[tuple[Any, Any]]:
     """``(contract, relation)`` for every relation a lens's own method takes part in: declared by
-    it, or declared by any contract toward it; a relation whose declaring method is offered under
-    none of its purposes is left out (``methods.relation_purposes``)."""
+    it, or declared by any contract toward it; left out is a relation every purpose of which is one
+    under which the Router does not ask the one question that offers the declaring method's
+    options (``methods.relation_purposes`` leaves it none)."""
     own, _ = lens_contracts(lens)
     keys = {c.key for c in own}
     out = []
@@ -214,6 +216,27 @@ def mermaid(lens: str) -> list[str]:
     if not keys:
         return []
     return lines
+
+
+def chain_intro() -> str:
+    """§2's opening paragraph: what the chain holds, which purposes its rows leave out, read from
+    the registry (``methods.dropped_purposes``, the purposes ``methods.relation_purposes`` takes
+    off), and the diagram's key."""
+    said = [f"the `{q}` question under {p}" for q, p in ref.dropped_purposes()]
+    if said:
+        gates = said[0] if len(said) == 1 else ", ".join(said[:-1]) + " and " + said[-1]
+        purposes = (f"Each lists the purposes it declares, less any under which the Router does "
+                    f"not ask the one question that offers the declaring method's options "
+                    f"({gates}), and a relation declared only for such a purpose is left out. Any "
+                    f"other purpose stays listed, even one under which the registry's rungs offer "
+                    f"none of the method's options.")
+    else:
+        purposes = "Each lists every purpose it declares."
+    return ("Every relation this lens's own methods take part in: declared by them, or declared by "
+            f"another method toward them (BLUEPRINT §13). {purposes} Blue: this lens's methods; "
+            "grey: other methods; orange: a named consequence (a state, a concern or a refusal, "
+            "not a method). Solid: implies or precedes; dotted: enables, disables or conflicts; "
+            "thick: invalidates.")
 
 
 def chain_table(lens: str) -> list[str]:
@@ -589,14 +612,7 @@ def render(lens: str, captures: dict[str, dict[str, Any] | None]) -> str:
                   "shown here:", ""]
     for q in labeled:
         lines += ref.question_section(q, QUESTION_TITLES[q], level=4)
-    lines += ["## 2 · How they chain", "",
-              "Every relation this lens's own methods take part in: declared by them, or declared "
-              "by another method toward them (BLUEPRINT §13), each with the purposes it fires "
-              "under: a purpose the app does not offer the declaring method under is left out, "
-              "and so is a relation that holds only there. Blue: this lens's methods; grey: "
-              "other methods; orange: a named consequence (a state, a concern or a refusal, not "
-              "a method). Solid: implies or precedes; dotted: enables, disables or conflicts; "
-              "thick: invalidates.", ""]
+    lines += ["## 2 · How they chain", "", chain_intro(), ""]
     diagram = mermaid(lens)
     lines += diagram or ["This lens has no methods of its own, so no chain of its own; the shared "
                          "chain is in the methods reference."]

@@ -1060,29 +1060,55 @@ def slots_read_by(graph: Any, stage: str) -> set[str]:
 
 
 def post_seal_changes(records: Sequence[Any], slots: set[str]) -> list[str]:
-    """Ids of the live records made after the current seal's opening that touch one of ``slots``."""
+    """Ids of the live records made after the current seal's opening that change what is read from
+    ``slots`` now (a served fit's ``post_seal_decisions``): each writes one of them (a revert:
+    what it reverts), and none is
+
+    * held: an answer whose condition fails on the answers as they stand
+      (``decisions.register_kind(..., holds=)``: the energy model and the substitution while the
+      goal is prediction, BEATS_PREDICT §9 ruling 5), or a revert of one; it shapes nothing;
+    * a noticing set aside: a dismissal or a deferral (or a revert of one) that leaves each of
+      ``slots`` as the engine keys it (``graph.key_value``: only an applied repair changes data),
+      so it withdrew no applied repair."""
+    from turbotab.core.graph import key_value
+
     ordered = sorted(records, key=lambda r: r.seq)
     try:
         cancelled = decisions.reverted(ordered)
     except Refusal:
         cancelled = {}
+    try:
+        now: dict[str, Any] | None = decisions.fold(ordered).model_dump()
+    except Refusal:
+        now = None
     opened = opening(ordered)
     since = opened.seq if opened is not None else 0
     by_id = {r.id: r for r in ordered}
+
+    def keyed(upto: int) -> dict[str, Any] | None:
+        try:
+            values = decisions.fold(ordered[:upto]).model_dump(mode="json")
+        except Refusal:
+            return None
+        return {slot: key_value(slot, values.get(slot)) for slot in slots}
+
     out = []
-    for record in ordered:
+    for i, record in enumerate(ordered):
         if not getattr(record, "post_seal", False) or record.id in cancelled or record.seq <= since:
             continue
-        decision = record.decision
-        if isinstance(decision, Revert):
-            target = by_id.get(decision.decision_id)
-            while target is not None and isinstance(target.decision, Revert):
-                target = by_id.get(target.decision.decision_id)
-            slot = decisions.SLOTS.get(target.decision.kind) if target is not None else None
-        else:
-            slot = decisions.SLOTS.get(decision.kind)
-        if slot in slots:
-            out.append(record.id)
+        answer = record
+        while answer is not None and isinstance(answer.decision, Revert):
+            answer = by_id.get(answer.decision.decision_id)
+        if answer is None or decisions.SLOTS.get(answer.decision.kind) not in slots:
+            continue
+        holds = decisions._HOLDS.get(answer.decision.kind)
+        if now is not None and holds is not None and not holds(answer.decision, now):
+            continue
+        if answer.decision.kind in ("dismiss_finding", "defer_finding"):
+            before = keyed(i)
+            if before is not None and before == keyed(i + 1):
+                continue
+        out.append(record.id)
     return out
 
 

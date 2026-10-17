@@ -500,7 +500,7 @@ Under **inference** it is stated, never asked by default (`causal.causal_gate`):
 
 ## 2 · How they chain
 
-Every relation this lens's own methods take part in: declared by them, or declared by another method toward them (BLUEPRINT §13), each with the purposes it fires under: a purpose the app does not offer the declaring method under is left out, and so is a relation that holds only there. Blue: this lens's methods; grey: other methods; orange: a named consequence (a state, a concern or a refusal, not a method). Solid: implies or precedes; dotted: enables, disables or conflicts; thick: invalidates.
+Every relation this lens's own methods take part in: declared by them, or declared by another method toward them (BLUEPRINT §13). Each lists the purposes it declares, less any under which the Router does not ask the one question that offers the declaring method's options (the `substitution` question under prediction), and a relation declared only for such a purpose is left out. Any other purpose stays listed, even one under which the registry's rungs offer none of the method's options. Blue: this lens's methods; grey: other methods; orange: a named consequence (a state, a concern or a refusal, not a method). Solid: implies or precedes; dotted: enables, disables or conflicts; thick: invalidates.
 
 ```mermaid
 flowchart LR

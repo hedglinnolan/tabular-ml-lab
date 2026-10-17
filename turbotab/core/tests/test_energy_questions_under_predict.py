@@ -15,16 +15,23 @@ Estimate on the same table and answers.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
 
-from turbotab.core import materiality, quest, surfacing, sweep, voice
+from turbotab.core import materiality, quest, seal, surfacing, sweep, voice
 from turbotab.core.decisions import (
     DecisionLog,
+    DismissFinding,
+    ExclusionRule,
+    OpenSeal,
     ProjectState,
+    Revert,
     SelectModels,
     SetEnergyAdjustment,
+    SetExclusions,
     SetLens,
     SetMissing,
     SetPurpose,
@@ -34,6 +41,7 @@ from turbotab.core.decisions import (
     SetTarget,
     SetTask,
 )
+from turbotab.core.export.methods import methods_section
 from turbotab.core.interview import (
     ENERGY_UNDER_PREDICTION,
     NOT_ASKED,
@@ -51,6 +59,7 @@ from turbotab.core.models.pipeline import (
 from turbotab.core.provenance import methods_text
 from turbotab.core.quest import Facts
 from turbotab.core.repairs import annotate
+from turbotab.core.stages import build_graph
 from turbotab.core.tests import modeling_fixtures as mf
 
 ONE_ROW = {"grain": "one_row_per_unit"}
@@ -245,8 +254,8 @@ def _project(folder, *answers) -> DecisionLog:
     return log
 
 
-def _say(log: DecisionLog, decision) -> None:
-    log.append(decision, sentence=lambda d, before: voice.sentence_for(d, before, None))
+def _say(log: DecisionLog, decision):
+    return log.append(decision, sentence=lambda d, before: voice.sentence_for(d, before, None))
 
 
 @pytest.fixture(scope="module")
@@ -359,3 +368,81 @@ def test_an_answer_recorded_under_predict_holds_nothing_and_applies_once_the_goa
     bare = _project(tmp_path / "bare", ENERGY, SWAP).state()
     assert bare.purpose is None
     assert bare.energy_adjustment is not None and bare.substitution is not None
+
+
+# ── an answer posted after the held-out rows were opened (W1-P11c) ───────────────────────────
+#
+# Under Predict a direct post still records the energy model or the substitution after the opening.
+# Held, it shapes no fit, so it is no change made after the opening: the methods, and the exported
+# methods, state neither, and the seal lists neither among the post-seal changes (what the fit, or
+# the substitution stage, reads). The truth is the project with the same answers but those: under
+# Predict the two are the same project. A noticing dismissed after the opening repairs nothing, so
+# it is stated as dismissed and not listed either. Silent: a missing-values change and a new
+# exclusion after the opening change what the fit reads, so each is stated and listed; and once
+# the goal is Estimate the energy answer applies, so it is stated and listed as a change after the
+# opening.
+
+OPENED = OpenSeal(family="linear", target="glucose")
+
+
+def _changes(log: DecisionLog, stage: str) -> list[str]:
+    return seal.post_seal_changes(log.records(), seal.slots_read_by(build_graph(), stage))
+
+
+def _exported(log: DecisionLog) -> str:
+    """The bundle's methods.md for the log, the analysis's own paragraphs aside."""
+    source = SimpleNamespace(name="diet", purpose=log.state().purpose,
+                             methods=methods_text(log.records()), artifact=lambda stage: None)
+    return methods_section(source, {"engine": {}, "inputs": [], "decisions": {"n": 1},
+                                    "analysis_plan": {}}).markdown
+
+
+def test_an_energy_or_substitution_answer_posted_after_the_opening_under_predict_is_no_change(
+        tmp_path, nhanes):
+    posted = _project(tmp_path / "posted", PREDICT, OPENED, ENERGY, SWAP)
+    never = _project(tmp_path / "never", PREDICT, OPENED)
+    energy, swap = (next(r for r in posted.records() if r.decision.kind == kind)
+                    for kind in ("set_energy_adjustment", "set_substitution"))
+    # recorded after the opening, and marked so in the record
+    assert energy.post_seal and swap.post_seal
+    assert energy.sentence.startswith("After the held-out rows were opened, energy was adjusted")
+    # held: the fit's predictors are the other project's
+    pd.testing.assert_frame_equal(_matrix(posted.state(), nhanes), _matrix(never.state(), nhanes))
+    # the methods, and the exported methods, are the other project's word for word
+    assert _methods(posted) == _methods(never)
+    assert _exported(posted) == _exported(never)
+    assert "energy was adjusted" not in _exported(posted)
+    assert "Decisions made after the held-out rows were opened" not in _exported(posted)
+    assert _changes(posted, "fit") == [] and _changes(posted, "substitution") == []
+    # a revert of the held answer withdraws nothing that stood
+    withdrawn = _project(tmp_path / "withdrawn", PREDICT, OPENED, ENERGY)
+    _say(withdrawn, Revert(decision_id=withdrawn.records()[-1].id))
+    assert _methods(withdrawn) == _methods(never) and _changes(withdrawn, "fit") == []
+    # a noticing dismissed after the opening repairs nothing: stated as dismissed, never listed
+    dismissed = _say(posted, DismissFinding(finding_id=ENERGY_FINDING))
+    assert dismissed.sentence.startswith("After the held-out rows were opened, ")
+    assert "was dismissed" in dismissed.sentence
+    assert _changes(posted, "fit") == []
+
+    # silent: a missing-values change and a new exclusion after the opening are stated and listed
+    missing = _say(posted, SetMissing(strategy="impute"))
+    excluded = _say(posted, SetExclusions(rules=[ExclusionRule(column="age", low=20,
+                                                               reason="adults")]))
+    assert _changes(posted, "fit") == [missing.id, excluded.id]
+    after = [(line.record_id, line.sentence) for line in methods_text(posted.records()).lines
+             if line.post_seal]
+    assert after == [(dismissed.id, dismissed.sentence), (missing.id, missing.sentence),
+                     (excluded.id, excluded.sentence)]
+    assert missing.sentence.startswith("After the held-out rows were opened, ")
+    exported = _exported(posted)
+    assert "## Decisions made after the held-out rows were opened" in exported
+    assert missing.sentence in exported and "energy was adjusted" not in exported
+
+    # silent: under Estimate the energy answer applies, so it is a change after the opening
+    goal = _say(posted, ESTIMATE)
+    assert posted.state().energy_adjustment is not None
+    assert _changes(posted, "fit") == [energy.id, missing.id, excluded.id, goal.id]
+    assert swap.id in _changes(posted, "substitution")
+    said = {line.record_id: (line.sentence, line.in_force)
+            for line in methods_text(posted.records()).lines}
+    assert said[energy.id] == (energy.sentence, True) and swap.id in said

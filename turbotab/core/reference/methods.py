@@ -207,6 +207,18 @@ def relation_purposes(c: Any, r: Any) -> tuple[str, ...]:
     return tuple(p for p in r.purposes if not wholly_unoffered(c, p))
 
 
+def dropped_purposes() -> list[tuple[str, str]]:
+    """``(question, purpose)`` for each question the Router does not ask under a purpose and that
+    alone offers every option of some method (:func:`wholly_unoffered`): the purposes
+    :func:`relation_purposes` takes off that method's relations, in the registry's order."""
+    out: list[tuple[str, str]] = []
+    for c in ordered_contracts():
+        for p, (question, _reason, _keys) in unoffered(c).items():
+            if wholly_unoffered(c, p) and (question, p) not in out:
+                out.append((question, p))
+    return out
+
+
 def _placed(place: str, purposes: Sequence[str]) -> str:
     """A placement without its clauses for ``purposes`` (``…, beside the comparison under
     prediction``), for a contract not offered under them."""

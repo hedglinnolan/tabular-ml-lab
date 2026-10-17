@@ -18,7 +18,9 @@ decisions out, but only those superseded before anything was seen:
   before any estimate was displayed), and so does every record made after it, each led by what had
   been seen ("After the estimates were seen, …"; ``decisions.disclose``). A change tried after the
   estimates were seen and then withdrawn is a fork in Gelman & Loken's (2013) sense, so it is
-  stated, not folded away.
+  stated, not folded away. An answer held when it was recorded and held still (the energy model or
+  the substitution posted under prediction; :func:`never_applied`) changed nothing, so it is no
+  fork and writes no sentence, nor does a revert of it.
 * **Restated.** An in-force sentence that says what another answer does to it (under the surveyed
   population, each chosen family's estimator or block, the substitution band, the calibration;
   MS4) is restated on the answers as they stand (:func:`restated`; ``voice.restate``), so the
@@ -115,6 +117,41 @@ def in_force(records: Sequence[Any]) -> set[str]:
             if (fn := APPLIES.get(by_id[i].decision.kind)) is None or fn(by_id[i].decision, state)}
 
 
+def never_applied(records: Sequence[Any], since: int) -> set[str]:
+    """Ids of the records after ``since`` (a seq) that applied to nothing: an answer whose
+    condition (``decisions.register_kind(..., holds=)``) failed when it was recorded and fails on
+    the answers as they stand (the energy model or the substitution posted while the goal is
+    prediction, BEATS_PREDICT §9 ruling 5), and a revert of one. Held, such an answer is no change
+    made, so it writes no methods sentence; it does once its condition holds. An opening and a
+    re-seal are events, never one."""
+    ordered = sorted(records, key=lambda r: r.seq)
+    try:
+        now = decisions.fold(ordered).model_dump()
+    except Refusal:
+        return set()
+    by_id = {r.id: r for r in ordered}
+    at = {r.id: i for i, r in enumerate(ordered)}
+    out: set[str] = set()
+    for record in ordered:
+        if record.seq <= since:
+            continue
+        answer = record
+        while answer is not None and isinstance(answer.decision, Revert):
+            answer = by_id.get(answer.decision.decision_id)
+        if answer is None or answer.decision.kind in EVENTS:
+            continue
+        holds = decisions._HOLDS.get(answer.decision.kind)
+        if holds is None or holds(answer.decision, now):
+            continue
+        try:
+            then = decisions.fold(ordered[:at[answer.id] + 1]).model_dump()
+        except Refusal:
+            continue
+        if not holds(answer.decision, then):
+            out.add(record.id)
+    return out
+
+
 def seen_from(records: Sequence[Any]) -> int | None:
     """The seq of the first record after which something had been seen: the first opening of
     held-out rows or the analysis-plan lock (None: nothing seen yet)."""
@@ -175,7 +212,7 @@ def methods_text(records: Sequence[Any], ctx: Any = None) -> MethodsText:
     kept = set(now)
     if seen is not None:
         kept |= in_force([r for r in ordered if r.seq <= seen])
-        kept |= {r.id for r in ordered if r.seq > seen}
+        kept |= {r.id for r in ordered if r.seq > seen} - never_applied(ordered, seen)
     again = restated(ordered, now, ctx)
     lines = [MethodsLine(record_id=r.id, seq=r.seq, kind=r.decision.kind,
                          sentence=again.get(r.id, r.sentence),
@@ -185,4 +222,5 @@ def methods_text(records: Sequence[Any], ctx: Any = None) -> MethodsText:
     return MethodsText(lines=lines, seen_from=seen, text=" ".join(line.sentence for line in lines))
 
 
-__all__ = ["APPLIES", "MethodsLine", "MethodsText", "in_force", "methods_text", "restated", "seen_from"]
+__all__ = ["APPLIES", "MethodsLine", "MethodsText", "in_force", "methods_text", "never_applied",
+           "restated", "seen_from"]
