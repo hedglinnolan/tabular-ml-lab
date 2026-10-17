@@ -2,11 +2,12 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { FitArtifact } from "../src/api/m1-stage-types";
 import type { ExplainArtifact } from "../src/api/m3-types";
 import type { QuestLine, QuestLog, QuestStage, Triage } from "../src/api/schema";
-import { ANY_STAGE, stagesComputing, visibleWhileComputing } from "./fit";
+import { confirmAsk, enabledNow } from "./ask";
+import { ANY_STAGE, FIT_CAP, FIT_QUIET, stagesComputing, visibleWhileComputing, waitWhileComputing } from "./fit";
 
 /**
  * What the quest journeys share (plans/W1_PART2_PLAN.md §2 "W1-L"; WALKABLE_PLAN §5 W1 acceptance 1
@@ -28,6 +29,17 @@ export async function getJson<T>(page: Page, pid: string, path = ""): Promise<T>
     },
     [pid, path] as const,
   ) as Promise<T>;
+}
+
+/**
+ * Waits for the server to answer a press, as long as the app is working on it (ruling 11 of
+ * plans/W1_PART2_PLAN.md: a journey's waits are bounded by what is computing, not by a flat time):
+ * ``done`` is looked at while any stage computes (up to 15 minutes), and the wait ends once none has
+ * for a minute. Fails naming ``what`` and what the last look saw.
+ */
+async function settled(page: Page, what: string, done: () => Promise<boolean>): Promise<void> {
+  const r = await waitWhileComputing(page, done, [ANY_STAGE], { quiet: 60_000, cap: 900_000 });
+  expect(r.done, `${what} (waited ${r.waited} s; ${r.seen})`).toBe(true);
 }
 
 export const getQuest = (page: Page, pid: string) => getJson<QuestLog>(page, pid, "/quest");
@@ -208,7 +220,7 @@ export const lineOn = (page: Page, line: QuestLine): Locator => page.locator(`li
 /** The line expanded to its card: its "Answer" or "Change" pressed when it is collapsed. */
 export async function expandLine(page: Page, line: QuestLine): Promise<Locator> {
   const li = lineOn(page, line);
-  await expect(li, `${lineId(line)} is listed on the card`).toBeVisible({ timeout: 30_000 });
+  await visibleWhileComputing(page, li, [ANY_STAGE], { label: `${lineId(line)} is listed on the card` });
   if ((await li.getAttribute("data-expanded")) === null) await li.getByTestId(`line-${line.key}-toggle`).click();
   await expect(li).toHaveAttribute("data-expanded", "true");
   return li;
@@ -218,19 +230,21 @@ export async function expandLine(page: Page, line: QuestLine): Promise<Locator> 
  *  loading mark is off (the Results exhibits have none). */
 export async function previewSettled(page: Page): Promise<void> {
   const loading = page.getByTestId("stage-loading");
-  if (await loading.count()) await expect(loading).not.toHaveAttribute("data-on", /.*/, { timeout: 30_000 });
+  if (await loading.count()) {
+    await settled(page, "the stage's preview has settled", () => loading.evaluateAll((els) => els.every((e) => !e.hasAttribute("data-on"))));
+  }
 }
 
 /** Nothing the page sent is still being recorded (an Enter pressed while it is, is not sent). */
 export async function notPending(list: Locator): Promise<void> {
-  await expect(list).not.toHaveAttribute("aria-busy", "true", { timeout: 60_000 });
+  await settled(list.page(), "nothing is being recorded", () => list.evaluateAll((els) => els.every((e) => e.getAttribute("aria-busy") !== "true")));
 }
 
 /** An option of the card's list chosen as the keyboard chooses it: focused (the stage previews it),
  *  then Enter. A multi-select takes ``space`` first. */
 export async function pickOption(page: Page, scope: Locator, testId: string, opts: { space?: boolean } = {}): Promise<void> {
   const option = scope.getByTestId(testId);
-  await expect(option, `${testId} is offered`).toBeVisible({ timeout: 60_000 });
+  await visibleWhileComputing(page, option, [ANY_STAGE], { label: `${testId} is offered` });
   await option.focus();
   await previewSettled(page);
   await notPending(option.locator("xpath=ancestor::*[@role='listbox'][1]"));
@@ -240,45 +254,8 @@ export async function pickOption(page: Page, scope: Locator, testId: string, opt
 
 /** The ledger's ask card on a question, answered as a person who knows the table does: "Confirm
  *  every line as shown" once it is offered, else the first line's Confirm, until the card is gone. */
-export async function confirmAskCard(page: Page, scope: Locator): Promise<number> {
-  const card = scope.getByTestId("ask-card");
-  const words = async () => (await card.allTextContents())[0] ?? null;
-  let presses = 0;
-  for (let round = 0; round < 40; round++) {
-    let before = await words();
-    if (before === null) {
-      // Gone, or only between two renders (a confirmed line recomputes the card).
-      await page.waitForTimeout(3_000);
-      before = await words();
-      if (before === null) return presses;
-    }
-    const pick = async (): Promise<Locator | null> => {
-      const all = card.getByTestId("ask-confirm-all");
-      if (await all.count()) return all.first();
-      const one = card.getByTestId("ask-confirm");
-      if (await one.count()) return one.first();
-      const exits = card.getByTestId("ask-exits").getByRole("button");
-      return (await exits.count()) ? exits.first() : null;
-    };
-    let press: Locator | null = null;
-    await expect
-      .poll(
-        async () => {
-          if ((await words()) === null) return "gone";
-          press = await pick();
-          return press ? "ready" : "waiting";
-        },
-        { message: "the ask card offers a press", timeout: 60_000 },
-      )
-      .not.toBe("waiting");
-    if (press === null) continue;
-    before = await words();
-    await (press as Locator).click({ timeout: 15_000 });
-    presses++;
-    await expect.poll(words, { message: "the ask card answers the press", timeout: 120_000 }).not.toBe(before);
-  }
-  await expect(card, "the ask card is answered").toHaveCount(0);
-  return presses;
+export async function confirmAskCard(_page: Page, scope: Locator): Promise<number> {
+  return confirmAsk(scope);
 }
 
 /**
@@ -289,7 +266,7 @@ export async function confirmAskCard(page: Page, scope: Locator): Promise<number
 export async function answerFinding(page: Page, li: Locator, line: QuestLine): Promise<void> {
   const card = li.locator('[data-testid^="repair-options-"]');
   const keep = li.getByTestId(`keep-as-is-${line.key}`);
-  await expect(card.or(keep).first(), `${line.key}'s card offers an answer`).toBeVisible({ timeout: 60_000 });
+  await visibleWhileComputing(page, card.or(keep).first(), [ANY_STAGE], { label: `${line.key}'s card offers an answer` });
   if (await keep.count()) return void (await keep.click());
   const options = card.locator('[role="option"]');
   await options.first().focus();
@@ -318,8 +295,9 @@ export async function chooseFamilies(page: Page, li: Locator, families: readonly
     await expect(li.getByTestId(`option-${f}`)).toHaveAttribute("aria-selected", "true");
   }
   const record = li.getByTestId("record-models");
-  await expect(record).toHaveText(`Fit these ${families.length} families`);
-  await expect(record).toBeEnabled({ timeout: 60_000 });
+  // The shell's card records the choice; Fit is a separate press at the flowchart's end.
+  await expect(record).toHaveText(`Choose these ${families.length} families`);
+  await settled(page, "the families button is enabled", () => enabledNow(record));
   await notPending(li.getByTestId("options-models"));
   await page.keyboard.press("Enter");
 }
@@ -356,13 +334,20 @@ async function confirmSweepOf(page: Page, pid: string, stage: QuestStage): Promi
   const primary = page.getByTestId("primary");
   if (!(await primary.count()) || (await primary.isDisabled()) || (await primary.innerText()) !== sweep.action) return false;
   await primary.click();
-  await expect
-    .poll(async () => (await getQuest(page, pid)).stages.find((s) => s.key === stage.key)?.sweep?.answered, {
-      message: `${stage.name}'s sweep is confirmed`,
-      timeout: 60_000,
-    })
-    .toBe(true);
+  await settled(page, `${stage.name}'s sweep is confirmed`, async () => (await getQuest(page, pid)).stages.find((s) => s.key === stage.key)?.sweep?.answered === true);
   return true;
+}
+
+/**
+ * Until nothing is computing, as a person waits for the spinner before answering a card: the
+ * card's controls (the outcome's picker, which lists the columns once the file is read) are there
+ * only when what they read has been computed, and an action given thirty seconds for them gives up
+ * on a runner that reads the file slower. It ends at the cap with the work still going, and the
+ * action that follows then reports what it found.
+ */
+async function untilIdle(page: Page, cap = 900_000): Promise<void> {
+  const start = Date.now();
+  while ((await stagesComputing(page, [ANY_STAGE])).computing && Date.now() - start < cap) await page.waitForTimeout(2_000);
 }
 
 /**
@@ -390,18 +375,17 @@ export async function walk(
     for (const next of openLines(log, a)) {
       await openStage(page, next.stage.key);
       const li = lineOn(page, next.line);
-      await expect(li, `${lineId(next.line)} is listed on the card`).toBeVisible({ timeout: 30_000 });
+      await visibleWhileComputing(page, li, [ANY_STAGE], { label: `${lineId(next.line)} is listed on the card` });
       // Under Predict the draw of the held-out rows waits for its stage's sweep (the card says so):
       // it is answered once the sweep is.
       if ((await li.getAttribute("data-held")) !== null) continue;
       // A line waits again while what it reads recomputes: it is answered when it is open again.
       if ((await li.getAttribute("data-status")) !== "open") continue;
       if ((await li.getAttribute("data-unavailable")) !== null) throw new Error(`${lineId(next.line)} has no card to answer it`);
+      await untilIdle(page);
       await expandLine(page, next.line);
       await a.answer(page, li, next.line);
-      await expect
-        .poll(() => answered(page, pid, next.line), { message: `${lineId(next.line)} is answered through its card`, timeout: 120_000 })
-        .toBe(true);
+      await settled(page, `${lineId(next.line)} is answered through its card`, () => answered(page, pid, next.line));
       taken.push(lineId(next.line));
       await expectBarEqualsQuest(page, pid, `after ${lineId(next.line)}`);
       busyAt = Date.now();
@@ -464,19 +448,52 @@ export function misprinted(cell: string, served: readonly (number | null | undef
   return wrong.length ? `${what}: "${cell}": ${wrong.join(", ")}` : "";
 }
 
-/** A table's cells by row key and header label: each row's `td`s read against the header's `th`s. */
-export async function readTable(table: Locator): Promise<{ header: string[]; rows: Record<string, string[]> }> {
+/** A table's cells by row key and header label: each row's `td`s read against the header's `th`s,
+ *  and each row's own label (its `th scope=row`). */
+export async function readTable(
+  table: Locator,
+): Promise<{ header: string[]; rows: Record<string, string[]>; labels: Record<string, string> }> {
   return table.evaluate((el) => {
     const header = Array.from(el.querySelectorAll("thead th")).slice(1).map((th) => (th.firstChild?.textContent ?? "").trim());
     const rows: Record<string, string[]> = {};
+    const labels: Record<string, string> = {};
     for (const tr of Array.from(el.querySelectorAll("tbody tr[data-row]"))) {
-      rows[tr.getAttribute("data-row") ?? ""] = Array.from(tr.querySelectorAll("td")).map((td) => (td.textContent ?? "").trim());
+      const key = tr.getAttribute("data-row") ?? "";
+      rows[key] = Array.from(tr.querySelectorAll("td")).map((td) => (td.textContent ?? "").trim());
+      labels[key] = (tr.querySelector("th")?.textContent ?? "").trim();
     }
-    return { header, rows };
+    return { header, rows, labels };
   });
 }
 
 const VERDICT_WORDS = { better: "Better", no_better: "Not shown to be better", worse: "Worse" } as const;
+
+/** The metrics a set of served scores holds (the keys of ``scores`` on any family), each one a
+ *  column of the table drawn from them: a metric served with no label could have no column, and
+ *  one with a label whose header the table lacks has none. Returns what is missing. */
+function missingColumns(fit: FitArtifact, header: readonly string[], scores: (m: FitArtifact["models"][number]) => object | null | undefined, what: string): string[] {
+  const served = [...new Set(fit.models.flatMap((m) => Object.keys(scores(m) ?? {})))];
+  return served.flatMap((key) => {
+    const label = fit.metric_labels[key];
+    if (label === undefined) return [`${key} is served on the ${what} scores with no label, so it can have no column`];
+    return header.includes(label) ? [] : [`the ${what} table has no column for ${label}, which is served`];
+  });
+}
+
+/** A verdict against the baseline as a cell prints it: the verdict's words, and where a gain is
+ *  served "a gain in <metric> of <estimate (interval)>", the numbers its served fields. */
+function verdictDifferences(
+  cell: string,
+  v: { verdict: keyof typeof VERDICT_WORDS; metric: string; gain: number | null; ci_low: number | null; ci_high: number | null },
+  labels: Record<string, string>,
+  who: string,
+): string {
+  const word = VERDICT_WORDS[v.verdict];
+  if (v.gain === null) return cell === word ? "" : `${who} verdict: "${cell}" is not the served "${word}"`;
+  const head = `${word}: a gain in ${labels[v.metric] ?? v.metric} of `;
+  if (!cell.startsWith(head)) return `${who} verdict: "${cell}" does not begin "${head}"`;
+  return misprinted(cell.slice(head.length), [v.gain, v.ci_low, v.ci_high], `${who} gain`);
+}
 
 /**
  * The held-out exhibit against the fit artifact the server serves, once the rows are opened: for
@@ -489,7 +506,9 @@ export async function heldOutDifferences(page: Page, fit: FitArtifact): Promise<
   if (!(await table.count())) return ["the held-out table is not drawn"];
   const { header, rows } = await readTable(table);
   const keyOf = (label: string) => Object.entries(fit.metric_labels).find(([, l]) => l === label)?.[0];
-  const out: string[] = [];
+  // Every metric the opened rows are scored on is a column; the loop below reads only those the
+  // header lists, so a column the page left out would otherwise go unchecked.
+  const out: string[] = missingColumns({ ...fit, models: fit.models.filter((m) => m.holdout) }, header, (m) => m.holdout, "held-out");
   // A verdict column is drawn when, and only when, the server serves a verdict for a family.
   const verdictServed = fit.models.some((m) => m.holdout && m.holdout_detail?.versus_baseline);
   if (header.some((h) => h.startsWith("Against")) !== verdictServed) out.push(`the verdict column is ${verdictServed ? "missing" : "drawn though no verdict is served"}`);
@@ -507,11 +526,9 @@ export async function heldOutDifferences(page: Page, fit: FitArtifact): Promise<
         const iv = m.holdout_detail?.intervals?.[key];
         const served = iv ? [iv.estimate, iv.ci_low, iv.ci_high] : [m.holdout?.[key]];
         out.push(misprinted(cell, served, `${m.family} ${label}`));
-      } else if (label.startsWith("Against") && m.holdout_detail?.versus_baseline) {
-        const v = m.holdout_detail.versus_baseline;
-        const head = `${VERDICT_WORDS[v.verdict]}: a gain in ${fit.metric_labels[v.metric] ?? v.metric} of `;
-        if (!cell.startsWith(head)) out.push(`${m.family} verdict: "${cell}" does not begin "${head}"`);
-        else out.push(misprinted(cell.slice(head.length), [v.gain, v.ci_low, v.ci_high], `${m.family} gain`));
+      } else if (label.startsWith("Against")) {
+        const v = m.holdout_detail?.versus_baseline;
+        out.push(v ? verdictDifferences(cell, v, fit.metric_labels, m.family) : cell ? `${m.family}: a verdict "${cell}" is printed though none is served` : "");
       }
     });
   }
@@ -523,7 +540,8 @@ export async function heldOutDifferences(page: Page, fit: FitArtifact): Promise<
     else
       header.forEach((label, i) => {
         const key = keyOf(label);
-        if (key && base.scores[key] !== undefined) out.push(misprinted(cells[i] ?? "", [base.scores[key]], `baseline ${label}`));
+        // The baseline is scored on the metrics it is served for; the others print nothing.
+        if (key) out.push(misprinted(cells[i] ?? "", base.scores[key] === undefined ? [] : [base.scores[key]], `baseline ${label}`));
       });
   }
   return out.filter(Boolean);
@@ -583,9 +601,14 @@ export async function calibrationDifferences(page: Page, fit: FitArtifact): Prom
 export async function cvDifferences(page: Page, fit: FitArtifact): Promise<string[]> {
   const table = page.getByTestId("results-cv").locator("table");
   if (!(await table.count())) return ["the cross-validated table is not drawn"];
-  const { header, rows } = await readTable(table);
+  const { header, rows, labels } = await readTable(table);
   const keyOf = (label: string) => Object.entries(fit.metric_labels).find(([, l]) => l === label)?.[0];
-  const out: string[] = [];
+  // Every metric some family is scored on is a column; the loops below read only those the header
+  // lists, so a column the page left out would otherwise go unchecked.
+  const out: string[] = missingColumns(fit, header, (m) => m.cv, "cross-validated");
+  // A verdict column is drawn when, and only when, the server serves a verdict for a family.
+  const verdictServed = fit.models.some((m) => m.versus_baseline);
+  if (header.some((h) => h.startsWith("Against")) !== verdictServed) out.push(`the verdict column is ${verdictServed ? "missing" : "drawn though no verdict is served"}`);
   for (const m of fit.models) {
     const cells = rows[m.family];
     if (!cells) {
@@ -593,15 +616,52 @@ export async function cvDifferences(page: Page, fit: FitArtifact): Promise<strin
       continue;
     }
     header.forEach((label, i) => {
+      const cell = cells[i] ?? "";
       const key = keyOf(label);
-      const s = key ? m.cv[key] : undefined;
-      if (key && s) out.push(misprinted(cells[i] ?? "", [s.estimate ?? s.mean, s.ci_low, s.ci_high], `${m.family} ${label} (cross-validated)`));
+      if (key) {
+        // A metric the family was not scored on prints nothing.
+        const s = m.cv[key];
+        out.push(misprinted(cell, s ? [s.estimate ?? s.mean, s.ci_low, s.ci_high] : [], `${m.family} ${label} (cross-validated)`));
+      } else if (label.startsWith("Against")) {
+        const v = m.versus_baseline;
+        out.push(v ? verdictDifferences(cell, v, fit.metric_labels, `${m.family} (cross-validated)`) : cell ? `${m.family}: a verdict "${cell}" is printed though none is served` : "");
+      }
     });
   }
+  // The no-predictor baseline is scored on one metric; the other columns print nothing for it.
   const base = fit.models.find((m) => m.baseline.value !== null)?.baseline;
-  if (base && rows["baseline"]) {
+  if (base) {
+    const cells = rows["baseline"];
+    if (!cells) out.push("the baseline has no row (cross-validated)");
+    else
+      header.forEach((label, i) => {
+        const key = keyOf(label);
+        if (key) out.push(misprinted(cells[i] ?? "", key === base.metric ? [base.value] : [], `baseline ${label} (cross-validated)`));
+      });
+  }
+  // BBC-CV: the row for the best family corrected for having been chosen, drawn when, and only
+  // when, the server serves the correction: its metric's estimate with its interval, the other
+  // metrics' from ``extras``, and nothing for a metric the correction was not made on.
+  const sel = fit.selection;
+  const corrected = rows["corrected"];
+  if (!sel) {
+    if (corrected) out.push("a BBC-CV row is drawn though no selection correction is served");
+  } else if (!corrected) {
+    out.push("the BBC-CV row is not drawn though the selection correction is served");
+  } else {
+    const best = fit.models.find((m) => m.family === sel.best)?.label ?? sel.best;
+    if (!(labels["corrected"] ?? "").includes(best)) out.push(`the BBC-CV row is labeled "${labels["corrected"]}", not for ${best}`);
     header.forEach((label, i) => {
-      if (keyOf(label) === base.metric) out.push(misprinted(rows["baseline"]![i] ?? "", [base.value], `baseline ${label} (cross-validated)`));
+      const key = keyOf(label);
+      if (!key) return;
+      const e = sel.extras[key];
+      const served =
+        key === sel.metric
+          ? [sel.corrected, sel.corrected_low, sel.corrected_high]
+          : e && e["corrected"] !== undefined
+            ? [e["corrected"], e["corrected_low"], e["corrected_high"]]
+            : [];
+      out.push(misprinted(corrected[i] ?? "", served, `${best} corrected for choosing it (BBC-CV), ${label}`));
     });
   }
   return out.filter(Boolean);
@@ -615,8 +675,16 @@ export async function cvDifferences(page: Page, fit: FitArtifact): Promise<strin
  * it shows its progress and a Cancel (W1_PART2_PLAN ruling 3), and the page must say so whenever
  * the server serves the job as running. Returns whether the press found the job still running (a
  * short fit may have computed already, which the server then serves at once).
+ *
+ * The fit is held for the press or it is not, whichever the runner's speed makes of its estimate
+ * (fit_press.HOLD_SECONDS), and both are walked as the engine serves them. Before the press the
+ * position reads the lock's reason in the engine's words; a held fit's reason says how long it is
+ * expected to take, and the button reads the same, and no hold is claimed otherwise. A held fit
+ * computes only once it is pressed, so the wait for Results covers the whole fit: it goes on
+ * while the fit job runs (up to ``cap``) and gives up once none has for ``quiet``, or at once if
+ * the press is refused or the fit fails.
  */
-export async function pressFit(page: Page, pid: string, timeout = 600_000): Promise<boolean> {
+export async function pressFit(page: Page, pid: string, { quiet = FIT_QUIET, cap = FIT_CAP }: { quiet?: number; cap?: number } = {}): Promise<boolean> {
   await openStage(page, "models");
   const position = page.getByTestId("fit-position");
   await expect(position).toBeVisible();
@@ -637,22 +705,39 @@ export async function pressFit(page: Page, pid: string, timeout = 600_000): Prom
   await expect(page.getByTestId("fit-cancel"), "no Cancel while nothing runs").toHaveCount(0);
   await page.getByTestId("fit").click();
   let sawRunning = false;
-  await expect
-    .poll(
-      async () => {
-        const view = await getJson<{ stages: Record<string, { status: string }> }>(page, pid);
-        if (["running", "queued"].includes(view.stages.fit?.status ?? "")) {
-          await expect(position).toHaveAttribute("data-running", "true", { timeout: 15_000 });
-          await expect(page.getByTestId("fit-progress")).toBeVisible();
-          await expect(page.getByTestId("fit-cancel")).toBeVisible();
-          sawRunning = true;
-        }
-        return shownStage(page);
-      },
-      { message: "the fit computes and Results opens", timeout, intervals: [1_000] },
-    )
-    .toBe("results");
-  return sawRunning;
+  const start = Date.now();
+  let busyAt = start;
+  let firstSeen: number | null = null;
+  const secondsIn = () => Math.round((Date.now() - start) / 1_000);
+  for (;;) {
+    if ((await shownStage(page)) === "results") {
+      // Reported with the run (the report's annotations): whether the press found the fit held, how
+      // long after it the fit job was first seen, and how long Results took.
+      test.info().annotations.push({
+        type: "fit press",
+        description: `${before.fit!.held ? "held for the press" : "not held"}; after the press the fit job was first seen ${firstSeen === null ? "never" : `${firstSeen} s in`}, Results ${secondsIn()} s in`,
+      });
+      return sawRunning;
+    }
+    const refusal = position.getByRole("alert");
+    if (await refusal.count()) throw new Error(`Fit was refused: ${(await refusal.first().innerText()).trim()}`);
+    const view = await getJson<{ stages: Record<string, { status: string; error?: string | null }> }>(page, pid);
+    const fit = view.stages.fit;
+    if (["running", "queued"].includes(fit?.status ?? "")) {
+      await expect(position).toHaveAttribute("data-running", "true", { timeout: 15_000 });
+      await expect(page.getByTestId("fit-progress")).toBeVisible();
+      await expect(page.getByTestId("fit-cancel")).toBeVisible();
+      sawRunning = true;
+      busyAt = Date.now();
+      firstSeen ??= secondsIn();
+    } else if (fit?.status === "error") {
+      throw new Error(`the fit failed: ${fit.error ?? "no reason was given"}`);
+    }
+    const waited = Math.round((Date.now() - start) / 1_000);
+    expect(Date.now() - start < cap, `the fit computes and Results opens (waited ${waited} s, to the ${cap / 1_000} s cap; fit ${fit?.status})`).toBe(true);
+    expect(Date.now() - busyAt < quiet, `the fit computes and Results opens (waited ${waited} s; the fit job was not seen for ${quiet / 1_000} s; fit ${fit?.status})`).toBe(true);
+    await page.waitForTimeout(1_000);
+  }
 }
 
 // ── Results: the triage, the final model and the opening ─────────────────────
@@ -684,9 +769,7 @@ export async function openHeldOutRows(
   await expect(open).toBeDisabled();
   await expect(page.getByTestId("results-open-hint")).toContainText("shrinkage question");
   await pickOption(page, cards, "option-method:none");
-  await expect
-    .poll(async () => linesOf(await getQuest(page, pid)).find((x) => x.line.key === "set_updating")?.line.status, { message: "the shrinkage question is answered" })
-    .toBe("answered");
+  await settled(page, "the shrinkage question is answered", async () => linesOf(await getQuest(page, pid)).find((x) => x.line.key === "set_updating")?.line.status === "answered");
   await after("after the shrinkage question");
 
   // The triage: each noticing left open, with the engine's recommended disposition.
@@ -706,7 +789,7 @@ export async function openHeldOutRows(
     await expect(page.getByTestId("results-open-hint")).toContainText(`first confirm the ${n === 1 ? "noticing" : `${n} noticings`} above`);
     await expect(page.getByTestId("triage-confirm")).toHaveText(`Confirm all ${n}`);
     await page.getByTestId("triage-confirm").click();
-    await expect.poll(async () => (await getTriage(page, pid)).answered, { message: "the triage is confirmed", timeout: 60_000 }).toBe(true);
+    await settled(page, "the triage is confirmed", async () => (await getTriage(page, pid)).answered);
     await expect(page.getByTestId("triage-confirm")).toHaveCount(0);
     for (const item of (await getTriage(page, pid)).items) expect(item.recorded, `${item.id} has its disposition recorded`).toBe(item.recommended);
     await after("after the triage");
@@ -715,18 +798,19 @@ export async function openHeldOutRows(
   // The opening: refused until the final model is named, and while a noticing the triage marked
   // "act on it" is neither acted on nor recorded as a limitation; each refusal's first way through
   // is taken (each is a button that records, then retries), until the rows open once.
-  const settled = await getTriage(page, pid);
-  const acting = settled.items.filter((i) => i.recorded === "act_on_it");
-  await expect(open).toBeEnabled({ timeout: 60_000 });
+  const triaged = await getTriage(page, pid);
+  const acting = triaged.items.filter((i) => i.recorded === "act_on_it");
+  await settled(page, "the opening is enabled", () => enabledNow(open));
   await open.click();
   const refusals: string[] = [];
   let family: FitArtifact["models"][number] | undefined;
-  for (let step = 0; step < families.length + settled.items.length + 2; step++) {
-    const refused = page.getByTestId("results-open-refused");
-    const opened = page.getByTestId("results-opened");
-    // Either the rows opened, or the engine refused again and says why.
-    await expect.poll(async () => ((await opened.count()) ? "opened" : (await refused.count()) ? "refused" : "waiting"), { message: "the opening is answered", timeout: 120_000 }).not.toBe("waiting");
-    if (await opened.count()) break;
+  const refused = page.getByTestId("results-open-refused");
+  const rowsOpened = page.getByTestId("results-opened");
+  for (let step = 0; step < families.length + triaged.items.length + 2; step++) {
+    // Either the rows opened, or the engine refused again and says why: the answer is waited for
+    // while the app computes (the opening reads the fit it opens).
+    await settled(page, "the opening is answered", async () => (await rowsOpened.count()) > 0 || (await refused.count()) > 0);
+    if (await rowsOpened.count()) break;
     const code = (await refused.getAttribute("data-code")) ?? "";
     const message = await refused.innerText();
     refusals.push(code);
@@ -746,8 +830,14 @@ export async function openHeldOutRows(
       expect(await exits.count(), "each of them has its own exit").toBe(left);
     }
     await exits.first().click();
+    // The exit records its answer and retries the opening: wait for that (the refusal gone, a new
+    // one, or the rows opened), then hold the bar and the hover panels to GET /quest here too, since
+    // each exit changes what the quest log says before the rows open.
+    const shown = () => refused.evaluateAll((els) => (els[0] ? (els[0] as HTMLElement).innerText : null));
+    await settled(page, `the exit of the refusal ${code} is answered`, async () => (await rowsOpened.count()) > 0 || (await shown()) !== message);
+    await after(`after the exit of the refusal ${code}`);
   }
-  await expect(page.getByTestId("results-opened")).toBeVisible({ timeout: 120_000 });
+  await visibleWhileComputing(page, rowsOpened, [ANY_STAGE], { label: "the held-out rows are opened" });
   expect(refusals[0], "the first refusal asks for the final model").toBe("final_model_needed");
   expect(family, "a final model was named").toBeDefined();
   const opened = await getFit(page, pid);
@@ -764,9 +854,7 @@ export async function openHeldOutRows(
  */
 export async function askExplanations(page: Page, pid: string): Promise<void> {
   await pickOption(page, page.getByTestId("results-cards"), "option-curves:ale");
-  await expect
-    .poll(async () => linesOf(await getQuest(page, pid)).find((x) => x.line.key === "set_explain")?.line.status, { message: "the explanations are asked" })
-    .toBe("answered");
+  await settled(page, "the explanations are asked", async () => linesOf(await getQuest(page, pid)).find((x) => x.line.key === "set_explain")?.line.status === "answered");
   const box = page.getByTestId("results-explain");
   // The explanations compute after the question: waited for while the explain stage runs.
   await visibleWhileComputing(page, box.locator('[data-testid="results-importance"]').first(), ["explain"], {

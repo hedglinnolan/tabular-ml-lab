@@ -21,7 +21,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { onMock } from "./backend";
-import { pidOf } from "./fit";
+import { ANY_STAGE, pidOf, visibleWhileComputing } from "./fit";
 import {
   answerFinding,
   askExplanations,
@@ -51,7 +51,9 @@ const CSV = resolve(HERE, "../../sample_data/clinical_longitudinal.csv");
 const REAL = !!process.env.E2E_BASE_URL;
 const FAMILIES = ["linear", "ridge"];
 
-// A press that finds nothing to press fails in half a minute, not in the length of the test.
+// A press that finds nothing to press fails in half a minute, not in the length of the test. What
+// the app is computing is waited for before a press, bounded by the computing (e2e/quest.ts
+// `walk`, `settled`), so an action finds its target ready.
 test.use({ actionTimeout: 30_000 });
 
 /** What the seal's claim comes to on this file, derived from the file alone: the latest fifth of the
@@ -121,7 +123,7 @@ const answers: Answers = {
         // taken, and the card refuses until it is named, with the visit dates as its way forward.
         await pickOption(page, li, "option-true");
         const refusal = li.getByTestId("refusal");
-        await expect(refusal).toBeVisible({ timeout: 30_000 });
+        await visibleWhileComputing(page, refusal, [ANY_STAGE], { label: "the temporal question refuses until the time column is named" });
         return void (await refusal.getByRole("button", { name: /^Order by visit_date instead$/ }).click());
       }
       case "question:exclusions":
@@ -151,7 +153,9 @@ const answers: Answers = {
 const allComplete = (log: Awaited<ReturnType<typeof getQuest>>) => log.stages.every((s) => !s.reached || s.progress?.complete);
 
 test("an own CSV: a yes/no outcome under Predict, sealed by time, through the quest shell to the opened held-out rows", async ({ page }) => {
-  test.setTimeout(REAL ? 900_000 : 60_000);
+  // The walk and the opening, and a fit that a slower runner holds for the press and then computes
+  // after it (up to e2e/fit.ts FIT_CAP, 900 s), at most.
+  test.setTimeout(REAL ? 1_500_000 : 60_000);
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference" });
   await page.goto("/");
   test.skip(await onMock(page), "the quest journeys run against the real server");
