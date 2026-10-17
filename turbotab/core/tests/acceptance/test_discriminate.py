@@ -680,9 +680,15 @@ def test_a3_the_users_codes_reach_the_fit_as_one_indicator_per_level(tmp_path):
                 fixture=f"p3, smoking as {truth}"))
             drive_unsettled(drive, plan, roles={"participant_id": "identifier"})
             error = fit_refused_without_a_number(drive, plan["models"])
-            block = error["exits"][0]["decision"]
-            assert block["kind"] == "confirm_readings"
-            shown = {(i["column"], i["value"]) for i in block["items"]}
+            # The guess is offered as shown, in a block of the other readings or, beside roles that
+            # wait (each confirmed on its own: W1-R round 2's ruling R-b), on its own.
+            shown = set()
+            for e in error["exits"]:
+                d = e["decision"] or {}
+                if d.get("kind") == "confirm_readings":
+                    shown |= {(i["column"], i["value"]) for i in d["items"]}
+                elif d.get("kind") == "confirm_reading":
+                    shown.add((d["column"], d["value"]))
             assert ("smoking", "code") in shown, shown
             age_asked(drive)
             drive.decide(plan["models"])
