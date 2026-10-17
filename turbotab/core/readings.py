@@ -34,7 +34,8 @@ count of values), and every confirmation is honored wherever it is stored (:func
 The ask stays light (:func:`ask_exits`): the unsettled readings a consumer needs are listed once,
 ordered by consequence, a homogeneous family grouped, each led by its best guess and its evidence,
 and one block confirmation (``confirm_readings``) settles exactly the readings it lists, each with
-the value it shows.
+the value it shows. A role proposed below high confidence is never grouped or put in a block
+(:func:`one_at_a_time`; BLUEPRINT §14 rule 2): it has a line and a press of its own.
 
 **The codebook is an evidence source** (BLUEPRINT §14.2, "let the codebook answer"; V2 definition
 of done §1). An imported codebook's structured fields (a unit, a value-code table, the variable
@@ -1800,7 +1801,8 @@ def predictors_or_ask(state: Any, info: Mapping[str, Any] | None = None,
     column is in the model or out), and each predictor's code-or-amount reading the fit uses
     (:func:`code_question`: one indicator per level or one slope), the roles first. A column whose
     role is waiting is asked its code-or-amount reading too when its proposed role is a predictor,
-    so one answer settles both. A column the plan does not fit as its own values is not asked
+    so both are asked at once (the role by its own press, :func:`one_at_a_time`). A column the plan
+    does not fit as its own values is not asked
     (:func:`energy_plan`: total energy the energy answer "none" leaves out; the columns an energy
     method computes with, amounts by that answer); one the user confirmed as codes there is
     refused, since that answer would be ignored."""
@@ -3007,13 +3009,23 @@ def ordered(readings: Iterable[Reading]) -> list[Reading]:
     return sorted(seen.values(), key=lambda r: (CONSEQUENCE.get(r.kind, 9), _weight(r), r.column))
 
 
+def one_at_a_time(r: Reading) -> bool:
+    """A role proposed below high confidence and not settled since: BLUEPRINT §14 rule 2, it
+    "needs its own confirmation; it never rides along in a bulk 'confirm all'", so it is asked on a
+    line of its own and confirmed by a press of its own, never in a family or a block (W1-R round 2,
+    ruling R-b)."""
+    return r.kind == "role" and not r.settled
+
+
 def families(readings: Iterable[Reading]) -> list[list[Reading]]:
     """The readings in order, a homogeneous family (one kind, one guess, one name pattern, at
-    least :data:`FAMILY_MIN` of them: 20,000 genes proposed as exposures) as one group."""
+    least :data:`FAMILY_MIN` of them: a lab panel's codes or amounts) as one group. A role that
+    waits (:func:`one_at_a_time`) is a group of its own, however many like it wait."""
     groups: dict[tuple[str, str, str], list[Reading]] = {}
     order: list[tuple[str, str, str]] = []
     for r in ordered(readings):
-        k = (r.kind, str(r.value), _pattern(r.column))
+        k = (r.kind, str(r.value), _pattern(r.column)) if not one_at_a_time(r) else \
+            (r.kind, str(r.value), f"`{r.column}`")
         if k not in groups:
             groups[k] = []
             order.append(k)
@@ -3085,15 +3097,16 @@ def labeled(readings: Iterable[Reading], state: Any = None) -> list[Reading]:
     """Each unsettled reading with the label an imported codebook gives its column beside its
     evidence, and its guess moved to what the label's words point to (a unit it spells, codes or
     an amount). Still proposed and still medium: a label is a name, and names never settle a
-    reading (BLUEPRINT §14.3); the user confirms the guess in one tap (§14.2)."""
+    reading (BLUEPRINT §14.3); the user confirms the guess in one tap (§14.2). A reading already
+    labeled is kept as it is, so labeling twice says the label once."""
     out = []
     for r in readings:
         label = codebook_label(state, r.column) if state is not None and r is not None else None
-        if r is None or label is None or r.settled:
+        said = f"your codebook labels it \"{label}\""
+        if r is None or label is None or r.settled or said in (r.evidence or ""):
             out.append(r)
             continue
         guess = label_guess(r, label)
-        said = f"your codebook labels it \"{label}\""
         evidence = f"{r.evidence}; {said}" if r.evidence else said
         value = guess if guess is not None else r.value
         out.append(Reading(r.subject, r.kind, value, r.confidence, evidence, r.corroborated,
@@ -3134,12 +3147,14 @@ def _alternatives(r: Reading, state: Any = None) -> list[str]:
 
 def block_exit(readings: Iterable[Reading], label: str | None = None) -> dict[str, Any] | None:
     """One ``confirm_readings`` decision that settles exactly the readings listed, each with the
-    value it shows (BLUEPRINT §14.2): never a reading it does not list. None when no reading has a
-    guess to confirm."""
+    value it shows (BLUEPRINT §14.2): never a reading it does not list, and never a role that waits
+    (:func:`one_at_a_time`: each has its own confirmation). None when no other reading has a guess
+    to confirm."""
     from turbotab.core.decisions import ConfirmReadings
 
     items = [{"reading": r.kind, "column": r.column, "value": str(r.value)}
-             for r in ordered(readings) if r.value is not None and r.kind in CONFIRMABLE]
+             for r in ordered(readings) if r.value is not None and r.kind in CONFIRMABLE
+             and not one_at_a_time(r)]
     if not items:
         return None
     n = len(items)
@@ -3151,11 +3166,14 @@ def block_exit(readings: Iterable[Reading], label: str | None = None) -> dict[st
 def ask_exits(readings: Iterable[Reading], state: Any = None) -> list[dict[str, Any]]:
     """The ask's ways forward: one block confirmation of every best guess as shown (it settles
     exactly those readings), then each reading's own alternatives, one confirmation each, in the
-    ask's order. A codebook label moves a guess as :func:`ask_text` shows it (:func:`labeled`)."""
+    ask's order. A role that waits is in no block (:func:`one_at_a_time`): its own confirmation is
+    its only way forward, so no press settles two of them. A codebook label moves a guess as
+    :func:`ask_text` shows it (:func:`labeled`)."""
     listed = ordered(labeled(readings, state) if state is not None else readings)
     out: list[dict[str, Any]] = []
-    block = block_exit(listed)
-    if block is not None and len(listed) > 1:
+    others = [r for r in listed if not one_at_a_time(r)]
+    block = block_exit(others)
+    if block is not None and len(others) > 1:
         out.append(block)
     for r in listed:
         if r.kind == "code_or_count":
@@ -3555,7 +3573,7 @@ __all__ = [
     "cluster_reading",
     "code_or_count_exits", "code_or_count_reading", "confirm_exit", "confirm_exits",
     "confirmation", "confirmed_codes", "day_count_candidates", "day_count_reading",
-    "is_settled", "key", "listing", "names_several_days",
+    "is_settled", "key", "listing", "names_several_days", "one_at_a_time",
     "outcome_unit_reading", "predictor_columns", "predictors_or_ask", "proposals_of", "reading",
     "repeat_kind_reading", "rode_along", "stated_reading", "task_reading", "role_evidence",
     "role_reading", "role_words", "settled",

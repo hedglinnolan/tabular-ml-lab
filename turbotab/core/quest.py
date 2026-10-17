@@ -1569,7 +1569,7 @@ def _ask_items(asked: Asked, state: Any) -> list[ReadItem]:
         column = str(getattr(r, "column", ""))
         mine = [e for e in asked.exits if column_of(e) in (column, None) and not several_roles(e)]
         try:
-            words = guess_words(r)
+            words = guess_words(r, state)  # a role in the goal's words (W1-R round 2, R2's P4)
         except Exception:  # noqa: BLE001 - a reading the ledger cannot word keeps its value
             words = str(getattr(r, "value", ""))
         items.append(ReadItem(kind=str(getattr(r, "kind", "")), column=column,

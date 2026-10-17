@@ -112,9 +112,11 @@ def test_the_nhanes_journey_records_the_roles_and_the_split_for_the_record(clien
         assert waits.json()["error"]["message"].startswith("Waiting for the column roles")
     chosen = {c: ROLES.get(c, next(p["proposed"] for p in proposals if p["column"] == c))
               for c in attention}
-    r = settle_post(client, drive.pid, {"kind": "confirm_readings", "items": [
-        {"reading": "role", "column": c, "value": v} for c, v in chosen.items()]}, drive.truth)
-    assert r.status_code == 200, r.text[:600]
+    # Each proposal below high is confirmed on its own (BLUEPRINT §14 rule 2; ruling R-b).
+    for c, v in chosen.items():
+        r = settle_post(client, drive.pid, {"kind": "confirm_reading", "reading": "role",
+                                            "column": c, "value": v}, drive.truth)
+        assert r.status_code == 200, r.text[:600]
     # The high readings are not confirmed yet: nothing is recorded over them.
     assert r.json()["state"]["roles"] is None and records_of(drive, "set_roles") == []
     proposed = {p["column"]: p["proposed"] for p in proposals}
@@ -303,7 +305,13 @@ def test_the_roles_are_recorded_for_a_client_that_reads_only_the_quest_log(clien
     items = [{"reading": "role", "column": p["column"],
               "value": CLINICAL_ROLES.get(p["column"], p["proposed"])} for p in proposals]
     url = f"/api/projects/{drive.pid}/decisions"
-    r = settle_post(client, drive.pid, {"kind": "confirm_readings", "items": items}, drive.truth)
+    # Each proposal below high on its own (BLUEPRINT §14 rule 2; ruling R-b), the high ones together.
+    below = {p["column"] for p in proposals if p["confidence"] in ("medium", "low")}
+    for item in [i for i in items if i["column"] in below]:
+        r = settle_post(client, drive.pid, {"kind": "confirm_reading", **item}, drive.truth)
+        assert r.status_code == 200, r.text[:600]
+    high = [i for i in items if i["column"] not in below]
+    r = settle_post(client, drive.pid, {"kind": "confirm_readings", "items": high}, drive.truth)
     assert r.status_code == 200, r.text[:600]
     # Only the quest log is read from here on: the record is made with the answers, not by a read.
     end = time.monotonic() + 120

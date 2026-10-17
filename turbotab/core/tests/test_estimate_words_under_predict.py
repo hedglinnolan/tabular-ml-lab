@@ -376,6 +376,52 @@ def test_an_unsettled_roles_exits_and_ask_name_it_by_the_goals_word(purpose, wor
     assert readings.guess_words(r, state) == words
 
 
+ASKED = {"protein_g": "exposure", "bp_sys": "covariate"}  # recorded below high, waiting
+
+
+def _models_card(purpose: str | None):
+    from turbotab.core import ask
+
+    state = ProjectState(lens=["dietary"], target="y", task="regression", purpose=purpose,
+                         roles={**ASKED, "age": "covariate", "energy_kcal": "energy",
+                                "participant_id": "identifier"},
+                         roles_unconfirmed=list(ASKED))
+    return ask.card("models", ask.AskContext(state, {}))
+
+
+@pytest.mark.parametrize("purpose, words", [
+    ("prediction", {"protein_g": "a predictor", "bp_sys": "a predictor"}),
+    ("inference", {"protein_g": "what you study", "bp_sys": "a covariate"}),
+    (None, {"protein_g": "what you study", "bp_sys": "a covariate"})])
+def test_the_models_ask_card_asks_and_answers_in_one_goals_words(purpose, words):
+    """W1-R round 2 (R2's P4): the card's lines, its question and its buttons word each role the
+    same way, the goal's (under Predict a predictor, under Estimate as before)."""
+    card = _models_card(purpose)
+    said = {g.columns[0]: g.guess_words for g in card.groups}
+    assert said == words
+    for column, word in words.items():
+        assert f"`{column}`: {word}?" in card.text
+        assert f"Confirm `{column}` as {word}" in [e.label for e in card.exits]
+
+
+def test_the_quest_logs_ask_items_word_each_role_by_the_goal():
+    from turbotab.core.tests.test_stage_registry import record
+
+    for purpose, word in (("prediction", "a predictor"), ("inference", "a covariate")):
+        records = [record(1, {"kind": "set_lens", "lenses": ["dietary"]}),
+                   record(2, {"kind": "set_target", "column": "y"}),
+                   record(3, {"kind": "set_purpose", "purpose": purpose}),
+                   record(4, {"kind": "set_roles", "roles": {"bp_sys": "covariate",
+                                                             "age": "covariate"},
+                              "unconfirmed": ["bp_sys"]})]
+        from turbotab.core import decisions
+
+        state = decisions.fold(records)
+        log = quest.quest_log(state, records, steps_until(None), asked=[quest.fit_waits(state)])
+        line = next(l for s in log.stages for l in s.lines if l.key == "ask:models")
+        assert [(i.column, i.words) for i in line.items] == [("bp_sys", word)], purpose
+
+
 def test_the_role_words_are_the_estimates_without_a_state():
     """A caller that passes no goal reads today's words: the strictest case, as before."""
     assert readings.role_words("exposure") == "what you study"

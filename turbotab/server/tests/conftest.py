@@ -327,9 +327,11 @@ def truth_of(pid: str) -> Any:
 
 
 def answer_settled(client: TestClient, pid: str, key: str | None, answer: dict) -> Any:
-    """Post ``answer``; after roles, confirm in one block each one that rode along, with the role
-    the answer gave it; when the answer is refused only for readings to settle, answer them from
-    the fixture's truth and post it again."""
+    """Post ``answer``; after roles, confirm each one that rode along, with the role the answer
+    gave it, on its own (the server refuses a block that confirms several: BLUEPRINT §14 rule 2);
+    when the answer is refused only for readings to settle, answer them from the fixture's truth
+    and post it again."""
+    from turbotab.core.tests.acceptance.server_drive import confirm_each
     from turbotab.core.tests.truths import answer_refusal
 
     url = f"/api/projects/{pid}/decisions"
@@ -337,9 +339,8 @@ def answer_settled(client: TestClient, pid: str, key: str | None, answer: dict) 
     if response.status_code == 200 and answer.get("kind") == "set_roles":
         record = client.get(f"/api/projects/{pid}").json()["decisions"][-1]
         waiting = record["decision"].get("unconfirmed") or []
-        if waiting:
-            r = client.post(url, json={"kind": "confirm_readings", "items": [
-                {"reading": "role", "column": c, "value": answer["roles"][c]} for c in waiting]})
+        for body in confirm_each(answer["roles"], waiting):
+            r = client.post(url, json=body)
             assert r.status_code == 200, r.text
     truth = truth_of(pid)
     if answer.get("kind") == "set_roles":

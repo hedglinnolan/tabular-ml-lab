@@ -779,12 +779,20 @@ def _batch_answer_fits(decision: Any, ctx: Any) -> None:
             if confirmation(state, "code_or_count", decision.column) != "code":
                 items.append({"reading": "code_or_count", "column": decision.column, "value": "code"})
         if items:
+            from turbotab.core.decisions import ConfirmReadings, _below_high_roles
+
+            block = {"kind": "confirm_readings", "items": items}
+            exit_ = {"label": "Confirm it as a categorical covariate", "decision": block}
+            if len(items) > 1 and _below_high_roles(ConfirmReadings(items=items), ctx):
+                # BLUEPRINT §14 rule 2 (ruling R-b): a role proposed below high is confirmed on
+                # its own, never in a block; its codes are asked once it is.
+                exit_ = {"label": "Confirm it as a covariate first, on its own",
+                         "decision": {"kind": "confirm_reading", **items[0]}}
             raise Refusal(
                 "batch_covariate_unsettled",
                 f"As a covariate, `{decision.column}` enters the outcome model as categories, one "
                 f"indicator per batch. Confirm that first.",
-                exits=[{"label": "Confirm it as a categorical covariate",
-                        "decision": {"kind": "confirm_readings", "items": items}}])
+                exits=[exit_])
 
 
 def _column_info(ctx: Any) -> Any:

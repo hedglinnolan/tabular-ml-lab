@@ -3297,6 +3297,71 @@ def _readings_name_columns(decision: "ConfirmReadings", ctx: Any) -> None:
                           exits=[*exits, *refused.exits]) from None
 
 
+def _below_high_roles(decision: "ConfirmReadings", ctx: Any) -> list[ReadingItem]:
+    """The role readings a block lists that were proposed below high confidence and are not settled
+    since: a recorded role that rode along unconfirmed (``readings.role_reading``), or, with no role
+    recorded for the column, one the roles stage did not propose high. Without the proposals at
+    hand, a column with no settled role is counted among them (the strictest case)."""
+    from turbotab.core.readings import proposals_of, role_reading
+
+    state = _state(ctx)
+    roles = (getattr(state, "roles", None) or {}) if state is not None else {}
+    opener = _ctx(ctx, "artifact")
+    try:
+        artifact = opener("roles") if callable(opener) else None
+    except Exception:  # noqa: BLE001 - no proposals at hand: the strictest case
+        artifact = None
+    high = {str(p.get("column")) for p in proposals_of(artifact) if p.get("confidence") == "high"}
+    out = []
+    for item in decision.items:
+        if item.reading != "role":
+            continue
+        if item.column in roles:
+            reading = role_reading(state, item.column)
+            if reading is not None and not reading.settled:
+                out.append(item)
+        elif item.column not in high:
+            out.append(item)
+    return out
+
+
+def _roles_confirmed_one_at_a_time(decision: "ConfirmReadings", ctx: Any) -> None:
+    """BLUEPRINT §14 rule 2 (W1-R round 2, ruling R-b): a role proposed below high confidence "needs
+    its own confirmation; it never rides along in a bulk 'confirm all'", so a block that lists one
+    beside any other reading is refused, whoever posts it, with each such role's own confirmation
+    as the way forward and the other readings still one block. One reading alone is its own
+    confirmation."""
+    if len(decision.items) < 2:
+        return
+    waiting = _below_high_roles(decision, ctx)
+    if not waiting:
+        return
+    from turbotab.core.readings import role_words
+    from turbotab.core.voice import listing
+
+    purpose = getattr(_state(ctx), "purpose", None)
+    names = [i.column for i in waiting]
+    one = len(names) == 1
+    exits: list[dict[str, Any]] = [
+        {"label": f"Confirm `{i.column}` as {role_words(i.value, purpose)}",
+         "decision": ConfirmReading(reading="role", column=i.column, value=i.value)}
+        for i in waiting]
+    rest = [i for i in decision.items if i not in waiting]
+    if len(rest) == 1:
+        exits.append({"label": f"Confirm `{rest[0].column}` as listed",
+                      "decision": ConfirmReading(reading=rest[0].reading, column=rest[0].column,
+                                                 value=rest[0].value)})
+    elif rest:
+        exits.append({"label": f"Confirm the other {len(rest):,} as listed",
+                      "decision": ConfirmReadings(items=rest)})
+    raise Refusal(
+        "roles_one_at_a_time",
+        f"{listing(names)} {'was' if one else 'were'} proposed below high confidence, so "
+        f"{'it' if one else 'each'} is confirmed on its own, after the evidence for its proposal "
+        f"is read, never in one press with other readings.",
+        exits=exits)
+
+
 def _models_read_settled_readings(decision: Any, ctx: Any) -> None:
     """BLUEPRINT §14.1: a fit is a number-changing consumer of every role (a column enters the
     model or leaves it by its role) and of each whole-number predictor's code-or-amount reading.
@@ -5387,6 +5452,7 @@ register_completion("set_roles", _roles_record_what_rode_along)
 register_validator("confirm_role", _confirmed_role_names_a_column)
 register_validator("confirm_reading", _reading_names_a_column)
 register_validator("confirm_readings", _readings_name_columns)
+register_validator("confirm_readings", _roles_confirmed_one_at_a_time)
 register_validator("set_exclusions", _screens_read_a_settled_energy_column)
 register_validator("set_feature_table", _feature_table_names_the_files_columns)
 register_validator("set_categorical", _categorical_names_predictors)

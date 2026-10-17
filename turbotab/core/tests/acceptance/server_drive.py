@@ -76,8 +76,8 @@ def settle_post(client: Any, pid: str, body: dict[str, Any], truth: Truth | None
                 unblock: Callable[[], bool] | None = None) -> Any:
     """Post ``body``; while it is refused only for readings to settle, answer every reading it
     asks about from the fixture's ``truth`` (one block confirmation, ``confirm_readings``, which
-    settles exactly the readings it lists; an energy column's unit and days as declared), then
-    post it again. ``unblock``: answers an earlier question that holds ``body`` (WP17: a reading
+    settles exactly the readings it lists, beside a role's own confirmation; an energy column's
+    unit and days as declared: ``truths.answers``), then post it again. ``unblock``: answers an earlier question that holds ``body`` (WP17: a reading
     confirmed here can settle a covariate the adjustment question then asks about)."""
     url = f"/api/projects/{pid}/decisions"
     truth = truth if truth is not None else Truth(fixture="the test (no truth given)")
@@ -102,6 +102,18 @@ def _post_when_reached(client: Any, url: str, body: dict[str, Any], timeout: flo
         if unblock is not None and unblock():
             continue
         time.sleep(0.1)
+
+
+def confirm_each(roles: dict[str, str], waiting: list[str]) -> list[dict[str, Any]]:
+    """The confirmations of the roles a ``set_roles`` left waiting, each as its author gave it:
+    one ``confirm_readings`` of the one column where one waits (as recorded before ruling R-b),
+    else one ``confirm_reading`` per column, since the server refuses a block that confirms several
+    roles proposed below high (BLUEPRINT §14 rule 2)."""
+    if len(waiting) == 1:
+        return [{"kind": "confirm_readings", "items": [
+            {"reading": "role", "column": waiting[0], "value": roles[waiting[0]]}]}]
+    return [{"kind": "confirm_reading", "reading": "role", "column": c, "value": roles[c]}
+            for c in waiting]
 
 
 def every_row(model: dict[str, Any]) -> list[dict[str, Any]]:
@@ -379,17 +391,17 @@ class Drive:
     def decide_roles(self, roles: dict[str, str]) -> None:
         """Record the roles as their author answers them (BLUEPRINT §14, recognition's leash):
         the ``set_roles`` answer, then every role the server recorded unconfirmed (proposed below
-        high confidence) confirmed in one block, each with the role the author gave it, as a user
-        who knows the table does. A bulk ``set_roles`` alone confirms none of them. The author's
-        roles are the fixture's truth for its role readings."""
+        high confidence) confirmed on its own, each with the role the author gave it, as a user
+        who knows the table does. A bulk ``set_roles`` alone confirms none of them, and the server
+        refuses a block that confirms several (rule 2; W1-R round 2, ruling R-b). The author's roles
+        are the fixture's truth for its role readings."""
         for column, role in roles.items():
             self.truth.setdefault(f"role:{column}", role)
         self.decide({"kind": "set_roles", "roles": roles})
         record = self.view()["decisions"][-1]
         waiting = record["decision"].get("unconfirmed") or []
-        if waiting:
-            self.decide({"kind": "confirm_readings", "items": [
-                {"reading": "role", "column": c, "value": roles[c]} for c in waiting]})
+        for body in confirm_each(roles, waiting):
+            self.decide(body)
 
     def reach(self, key: str, timeout: float = 120.0) -> dict[str, Any]:
         end = time.monotonic() + timeout
