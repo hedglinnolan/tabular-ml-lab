@@ -291,9 +291,11 @@ def test_write_up_closes_without_a_reason_only_when_the_goal_became_estimate():
 def test_the_aggregation_answer_that_makes_calibration_apply_says_why_in_models():
     """Ruling 3 (P1-FU): after the unit is changed, the aggregation answer (a first answer, decided
     in Who's in) makes the regression-calibration question apply in a Models already worked and
-    complete. Models has been reopened, and says why: by that answer, in Who's in."""
-    journey = path_fuzzer.run_journey(26)
-    prev, snap = journey.snapshots[38], journey.snapshots[39]
+    complete. Models has been reopened, and says why: by that answer, in Who's in. Journey 758:
+    journey 26 reached this through the energy question under Predict, which BEATS_PREDICT §9
+    ruling 5 no longer asks."""
+    journey = path_fuzzer.run_journey(758)
+    prev, snap = journey.snapshots[35], journey.snapshots[36]
     assert (snap.action, snap.kind) == ("answer", "set_aggregation")
     assert path_fuzzer.i11_monotone_progress(prev, snap) == []
     before = next(s for s in prev.log.stages if s.key == "models")
@@ -343,11 +345,12 @@ def _models_after(snap, records):
 
 def test_a_first_answer_given_while_the_stage_still_asked_is_not_named_later():
     """Completeness is judged as the log stood when the answer was given (verifier, P1-FU item 6).
-    Journey 26 with the model sequence answered only after the aggregation answer: Models was 6/8
-    when the aggregation made the calibration question apply, so answering the sequence later
-    (7/8) does not turn that answer into a reopening of Models."""
-    journey = path_fuzzer.run_journey(26)
-    snap = journey.snapshots[39]
+    Journey 758 (journey 26's scenario before BEATS_PREDICT §9 ruling 5) with the model sequence
+    answered only after the aggregation answer: Models was 7/9 when the aggregation made the
+    calibration question apply, so answering the sequence later (8/9) does not turn that answer
+    into a reopening of Models."""
+    journey = path_fuzzer.run_journey(758)
+    snap = journey.snapshots[36]
     records = list(snap.records)
     [sequence] = [i for i, r in enumerate(records) if r.decision.kind == "set_model_sequence"]
     assert records[-1].decision.kind == "set_aggregation" and sequence < len(records) - 1
@@ -356,7 +359,7 @@ def test_a_first_answer_given_while_the_stage_still_asked_is_not_named_later():
                                   "at": path_fuzzer.T0 + path_fuzzer.timedelta(minutes=i + 1)})
              for i, r in enumerate(moved)]
     models = _models_after(snap, moved)
-    assert (models.progress.answered, models.progress.required) == (7, 8)
+    assert (models.progress.answered, models.progress.required) == (8, 9)
     [line] = [l for l in models.lines if l.key == "set_measurement_error"]
     assert (line.status, line.reopened_by) == ("open", None)
     assert models.reopened == []

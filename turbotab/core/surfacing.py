@@ -192,12 +192,13 @@ QUESTION_READS: dict[str, tuple[str, ...]] = {
     "estimand": ("purpose", "roles"),  # the exposure, under inference
     "adjustment": ("purpose", "roles", "estimand"),  # each covariate, for the exposure
     "time_varying": ("purpose", "grain", "repeat_kind", "unit", "temporal", "roles", "estimand"),
-    "energy_adjustment": ("lens", "roles"),  # the dietary lens, an energy column and an exposure
+    # the dietary lens, an energy column and an exposure; never under prediction (ruling 5)
+    "energy_adjustment": ("lens", "purpose", "roles"),
     "form": ("purpose", "roles", "estimand", "adjustment", "energy_adjustment"),
     "modification": ("purpose", "roles", "estimand"),
     "causal": ("lens", "purpose", "roles", "estimand", "adjustment"),
     "models": ("target", "task", "purpose"),  # the shelf for this outcome's kind and the goal
-    "substitution": ("roles",),  # two exposures that carry energy
+    "substitution": ("purpose", "roles"),  # two exposures that carry energy, never under prediction
     "open_seal": ("split", "models"),  # rows held out, and the fit of the chosen models
 }
 

@@ -1725,10 +1725,14 @@ def annotate(artifact: Any, state: Any, records: Sequence[Any]) -> Any:
     ``answered_by`` is the record that wrote the finding's disposition; else, the answer to its
     routed question when that answer settles it (:func:`matching_answer`); else, an applied repair
     of another finding that already does what one of this finding's options would.
+
+    A finding that does not fire on these answers is left out (``materiality.finding_fires``: the
+    dietary pack's energy finding under prediction, BEATS_PREDICT §9 ruling 5).
     """
     if not isinstance(artifact, Mapping) or not isinstance(artifact.get("findings"), list):
         return artifact
     from turbotab.core.interview import _live_writer
+    from turbotab.core.materiality import finding_fires
 
     dispositions = _dispositions(state)
     writers = disposition_writers(records)
@@ -1740,6 +1744,8 @@ def annotate(artifact: Any, state: Any, records: Sequence[Any]) -> Any:
                 done.setdefault(mark, writers[fid])
     out = []
     for finding in artifact["findings"]:
+        if isinstance(finding, Mapping) and not finding_fires(finding, state):
+            continue
         f = dict(finding)
         f.setdefault("repairs", [])
         d = dispositions.get(str(f.get("id")))
