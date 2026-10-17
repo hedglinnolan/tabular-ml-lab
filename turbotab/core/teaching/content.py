@@ -130,8 +130,8 @@ LENS = {
     "consumer": "The findings, the column roles and the order of every suggestion read it.",
     "options": [
         option("dietary", "Dietary intake",
-               "Checks energy units and implausible intakes; offers energy adjustment and "
-               "substitution curves."),
+               "Checks energy units and implausible intakes; for estimating effects, offers energy "
+               "adjustment and substitution curves."),
         option("clinical", "Clinical measurements and labs",
                "Separates impossible values from abnormal ones; checks units and censored "
                "results."),

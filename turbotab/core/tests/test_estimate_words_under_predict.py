@@ -519,6 +519,17 @@ def test_under_estimate_the_roles_card_is_as_before():
     assert _roles_entry(None)["one_liner"].startswith("Only study factors, covariates and the energy")
 
 
+def test_the_dietary_lens_offers_the_energy_model_and_substitution_for_estimating_effects():
+    """R-f 13: the lens is chosen before the goal, and neither the energy model nor the
+    substitution is asked under Predict (BEATS_PREDICT §9 ruling 5), so the option says what they
+    are for. The other lenses' options say what they did."""
+    lens = next(e for e in entries_now() if e["key"] == "lens")
+    options = {o["value"]: o["consequence"] for o in lens["options"]}
+    assert options["dietary"] == ("Checks energy units and implausible intakes; for estimating "
+                                  "effects, offers energy adjustment and substitution curves.")
+    assert "effects" not in options["clinical"]
+
+
 def test_under_predict_only_the_roles_card_changes():
     before = {e["key"]: e for e in entries_now()}
     after = {e["key"]: e for e in entries_now("prediction")}
