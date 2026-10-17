@@ -27,6 +27,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { confirmAsk, confirmParts } from "./ask";
+import { toClassic } from "./classic";
 import { fitOnceComputed } from "./fit";
 import { nhanesExport } from "./nhanes";
 
@@ -120,6 +121,7 @@ async function openNhanes(page: Page) {
     await page.getByRole("link", { name: /nhanes diet glucose/ }).first().click();
   }
   await expect(page).toHaveURL(/\/p\/[^/]+$/);
+  await toClassic(page);
   await expect(page.getByTestId("question-lens")).toBeVisible({ timeout: 60_000 });
 }
 

@@ -25,6 +25,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
+import { toClassic } from "./classic";
 import { ANY_STAGE, cheapestFamily, fitReached, openSealCard, pressFit, visibleWhileComputing } from "./fit";
 import { nhanesExport } from "./nhanes";
 
@@ -394,7 +395,9 @@ async function upload(page: Page, file: string): Promise<string> {
   await expect(page.getByRole("heading", { name: "Open a table to begin." })).toBeVisible();
   await page.locator('input[type="file"]').setInputFiles(file);
   await expect(page).toHaveURL(/\/p\/[^/]+$/, { timeout: 120_000 });
-  return decodeURIComponent(/\/p\/([^/]+)$/.exec(page.url())![1]!);
+  const pid = decodeURIComponent(/\/p\/([^/]+)$/.exec(page.url())![1]!);
+  await toClassic(page);
+  return pid;
 }
 
 /** The first question the Router has not settled, once nothing it waits on is computing. Fit is
@@ -507,6 +510,7 @@ test("the mock replays a captured journey: the lab lists it, the follow-up is an
   await page.getByTestId("m3-journey-clinical").click();
   await page.getByTestId("m3-step-clinical-3").click();
   await expect(page).toHaveURL(/\/p\/m3~clinical~3$/);
+  await toClassic(page);
   const slot = page.locator('[data-slot="follow_up"]');
   await expect(slot.getByTestId("generic-follow_up")).toBeVisible({ timeout: 30_000 });
   await expect(slot.locator(ANSWERABLE).first()).toBeVisible();
