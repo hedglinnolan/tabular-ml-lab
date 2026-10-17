@@ -13,11 +13,13 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { FitArtifact } from "../../api/m1-stage-types";
-import type { EvaluationArtifact, ExplainArtifact } from "../../api/m3-types";
+import type { FitArtifact, SplitArtifact } from "../../api/m1-stage-types";
+import type { EvaluationArtifact, ExplainArtifact, VersusBaseline } from "../../api/m3-types";
+import type { ProjectView } from "../../api/schema";
+import { SealCard } from "./cards";
 import capture from "./fixtures/nhanes-predict.json";
 import { ResultsCards, ResultsTapestry } from "./index";
-import { cvComparison, heldOutTable } from "./model";
+import { cvComparison, heldOutTable, verdictCell } from "./model";
 
 // ── the capture ──────────────────────────────────────────────────────────────
 
@@ -38,6 +40,71 @@ const PID = C.sealed.view.id;
 const fitOf = (s: Snapshot) => s.stages.fit!.artifact as FitArtifact;
 const explainOf = (s: Snapshot) => s.stages.explain!.artifact as ExplainArtifact;
 const evaluationOf = (s: Snapshot) => s.stages.evaluation!.artifact as EvaluationArtifact;
+const splitOf = (s: Snapshot) => s.stages.split!.artifact as SplitArtifact;
+
+/** The verdict's word for each served verdict, as its rule names it (`tolerance_basis`), written
+ *  here rather than read from the module, so a cell showing another verdict's word fails. */
+const WORD: Record<VersusBaseline["verdict"], string> = { better: "Better", no_better: "Not shown to be better", worse: "Worse" };
+
+/** A snapshot whose split artifact is patched: the basis fields given, and any top-level fields. */
+const withSplit =
+  (basis: Json, top: Json = {}) =>
+  (s: Snapshot): Snapshot => ({
+    ...s,
+    stages: { ...s.stages, split: { ...s.stages.split!, artifact: { ...splitOf(s), basis: { ...splitOf(s).basis, ...basis }, ...top } } },
+  });
+
+/** A snapshot whose served fit is patched. */
+const withFit =
+  (patch: (f: FitArtifact) => Partial<FitArtifact>) =>
+  (s: Snapshot): Snapshot => ({
+    ...s,
+    stages: { ...s.stages, fit: { ...s.stages.fit!, artifact: { ...fitOf(s), ...patch(fitOf(s)) } } },
+  });
+
+// The bases a split can serve, in the engine's words for each (turbotab/core/seal.py `_basis`).
+const UNDETERMINED: Json = {
+  state: "undetermined",
+  column: null,
+  label: "undetermined",
+  sentence:
+    "Held out by row, because whether a unit can appear in more than one row was answered as not known. This is not a verified clean split: treat held-out scores as exploratory.",
+  exploratory: true,
+  source: "grain",
+};
+const ABANDONED: Json = {
+  state: "abandoned",
+  column: "SEQN",
+  label: "repetition found but grouping abandoned",
+  sentence:
+    "Each row was said to be a different unit, but `SEQN` repeats (`8,000` values over `9,000` rows); the held-out rows were drawn by row as answered. Treat held-out scores as exploratory.",
+  exploratory: true,
+  source: "stated",
+  n_units: 8000,
+};
+const GROUPED: Json = {
+  state: "grouped",
+  column: "SEQN",
+  label: "grouped by `SEQN`",
+  sentence: "Held out by `SEQN`: each of the `9,000` units sits wholly on one side, so no unit is both trained on and scored.",
+  exploratory: false,
+  source: "grain",
+  n_units: 9000,
+};
+// A clean basis whose draw is still exploratory: time was asked for and no column named it.
+const UNTIMED = {
+  drawn: false,
+  time_column: null,
+  boundary: null,
+  n_units: null,
+  n_undated: 0,
+  sentence:
+    "Later outcomes were said to be predicted from earlier ones, but no column was named as time, so the held-out rows were drawn at random rather than by time: treat held-out scores as exploratory.",
+  n_held_rows: null,
+  n_held_earlier: null,
+  earlier: [],
+};
+const unticked = (s: string) => s.replace(/`/g, "");
 
 // ── reading numbers back off the screen ──────────────────────────────────────
 
@@ -155,6 +222,7 @@ describe("the cross-validated comparison", () => {
         expectShows(cell(table, m.label, label), [s.estimate ?? s.mean, s.ci_low, s.ci_high], `${m.label} ${label}`);
       }
       const v = m.versus_baseline!;
+      expect(cell(table, m.label, "Against"), `${m.label}: the word for a served "${v.verdict}"`).toMatch(new RegExp(`^${WORD[v.verdict]}: `));
       expectShows(cell(table, m.label, "Against"), [v.gain, v.ci_low, v.ci_high], `${m.label} against the baseline`);
     }
     const base = fit.models[0]!.baseline;
@@ -188,8 +256,11 @@ describe("the held-out rows", () => {
       expectShows(cell(table, base.label[0]!.toUpperCase() + base.label.slice(1), label), [base.scores[k]], `baseline ${label}`);
     }
     const v = detail.versus_baseline!;
-    expect(cell(table, final.label, "Against")).toMatch(/^(Better|Not shown to be better|Worse)/);
-    expectShows(cell(table, final.label, "Against"), [v.gain, v.ci_low, v.ci_high], "the held-out verdict");
+    for (const m of fit.models) {
+      const w = m.holdout_detail!.versus_baseline!;
+      expect(cell(table, m.label, "Against"), `${m.label}: the word for a served "${w.verdict}"`).toMatch(new RegExp(`^${WORD[w.verdict]}: `));
+      expectShows(cell(table, m.label, "Against"), [w.gain, w.ci_low, w.ci_high], `${m.label}'s held-out verdict`);
+    }
     // Its rule, with the floor the engine interpolated, is the table's own footnote.
     expect(screen.getByTestId("results-held-out").textContent).toContain(v.tolerance_basis.replace(/`/g, ""));
   });
@@ -216,8 +287,119 @@ describe("the held-out rows", () => {
     const printed = numbersIn(screen.getByTestId("results-tapestry").textContent ?? "");
     for (const m of opened.models) for (const v of Object.values(m.holdout ?? {})) if (v !== null && Math.abs(v) > 1) expect(printed.some((p) => shows(p, v)), `held-out ${v}`).toBe(false);
     // The pure rule both ways: no table while sealed, the table once opened.
-    expect(heldOutTable(opened, "sealed")).toBeNull();
-    expect(heldOutTable(opened, "opened")).not.toBeNull();
+    expect(heldOutTable(opened, "sealed", splitOf(C.opened))).toBeNull();
+    expect(heldOutTable(opened, "opened", splitOf(C.opened))).not.toBeNull();
+  });
+});
+
+describe("the held-out exhibit's title", () => {
+  const caption = async () => (within(await screen.findByTestId("results-held-out")).getByRole("table").querySelector("caption")?.textContent ?? "");
+  const n = fitOf(C.opened).n_holdout.toLocaleString("en-US");
+  // The engine's note once the served scores are not the opening's (turbotab/core/seal.py
+  // `reported_result`): its head is the capture's own note, its tail the engine's for each case.
+  const head = fitOf(C.opened).at_opening!.note.replace(/\.$/, "");
+  const changed = `${head}; the held-out scores shown now are from a fit changed after it, so they are post-seal and not an independent test.`;
+  const redrawn = `${head}; the held-out scores shown now are from rows drawn again after it, so they are not an independent test.`;
+  const notCurrent = (note: string, after: boolean) =>
+    withFit((f) => ({ changed_after_seal: after, at_opening: { ...f.at_opening!, current: false, note }, final_note: note }));
+
+  it("says the rows were scored once, by no choice seen, while the served scores are the opening's", async () => {
+    expect(fitOf(C.opened).at_opening!.current).toBe(true);
+    serve("opened");
+    mount(<ResultsTapestry pid={PID} />);
+    expect(await caption()).toContain(`scored once, on ${n} rows no choice has seen`);
+  });
+
+  it("says the scores come from a fit changed after the opening, once one is", async () => {
+    serve("opened", notCurrent(changed, true));
+    mount(<ResultsTapestry pid={PID} />);
+    const text = await caption();
+    expect(screen.getByTestId("results-tapestry").getAttribute("data-seal-phase")).toBe("post_seal");
+    expect(text).not.toMatch(/scored once|no choice has seen/);
+    expect(text).toContain("from a fit changed after the opening");
+    expect(text).toContain("not an independent test");
+    expect(screen.getByTestId("results-held-out").textContent).toContain(unticked(changed));
+  });
+
+  it("says the scores come from rows drawn again after the first opening, once they are", async () => {
+    serve("opened", notCurrent(redrawn, false));
+    mount(<ResultsTapestry pid={PID} />);
+    const text = await caption();
+    expect(screen.getByTestId("results-tapestry").getAttribute("data-seal-phase")).toBe("opened");
+    expect(text).not.toMatch(/scored once|no choice has seen/);
+    expect(text).toContain("drawn again after the first opening");
+    expect(text).toContain("not an independent test");
+  });
+});
+
+describe("an exploratory split", () => {
+  // Every place a held-out score or the opening is said: the held-out table, the held-out
+  // calibration, the opened line.
+  const said = () =>
+    [screen.getByTestId("results-held-out"), screen.getByTestId("results-calibration"), screen.getByTestId("results-opened")].map((x) => x.textContent ?? "");
+
+  for (const [name, patch, sentences] of [
+    ["an undetermined basis", withSplit(UNDETERMINED), [UNDETERMINED.sentence as string]],
+    ["an abandoned grouping", withSplit(ABANDONED), [ABANDONED.sentence as string]],
+    ["a clean basis drawn at random where time was asked for", withSplit(GROUPED, { exploratory: true, chronology: UNTIMED }), [UNTIMED.sentence]],
+  ] as const) {
+    it(`labels the opened held-out scores exploratory, in the split's own words, under ${name}`, async () => {
+      serve("opened", patch);
+      mount(
+        <>
+          <ResultsCards pid={PID} />
+          <ResultsTapestry pid={PID} />
+        </>,
+      );
+      await within(await screen.findByTestId("results-held-out")).findByRole("table");
+      await screen.findByTestId("results-opened");
+      await waitFor(() => expect(screen.getByTestId("results-held-out").textContent).toContain(unticked(sentences[0]!)));
+      const [held, calibration, opened] = said();
+      expect(within(screen.getByTestId("results-held-out")).getByRole("table").querySelector("caption")!.textContent).toMatch(/exploratory/);
+      expect(calibration).toMatch(/exploratory/);
+      for (const s of sentences) {
+        expect(held).toContain(unticked(s));
+        expect(opened).toContain(unticked(s));
+      }
+      expect(opened).toMatch(/These scores are exploratory/);
+    });
+  }
+
+  for (const [name, patch] of [
+    ["the capture's one row per unit", undefined],
+    ["a grouped basis", withSplit(GROUPED)],
+  ] as const) {
+    it(`gives no exploratory label under ${name}`, async () => {
+      expect(splitOf(C.opened).basis.state).toBe("one_row_per_unit");
+      serve("opened", patch);
+      const { container } = mount(
+        <>
+          <ResultsCards pid={PID} />
+          <ResultsTapestry pid={PID} />
+        </>,
+      );
+      await within(await screen.findByTestId("results-held-out")).findByRole("table");
+      await screen.findByTestId("results-opened");
+      // Until the split is read its basis is unknown, which is labeled (seal/phase.ts); once read, nothing.
+      await waitFor(() => expect(container.textContent).not.toMatch(/exploratory/i));
+      expect(said().every((t) => t.length > 0)).toBe(true);
+    });
+  }
+
+  it("says on the seal card, before the opening, why the scores will carry the label", async () => {
+    serve("sealed", withSplit(UNDETERMINED));
+    mount(<ResultsCards pid={PID} />);
+    const card = await screen.findByTestId("results-open");
+    await waitFor(() => expect(card.textContent).toContain(unticked(UNDETERMINED.sentence as string)));
+    expect(card.textContent).toContain("In the Results the held-out scores are then marked exploratory.");
+  });
+
+  it("says nothing of a label on the seal card under a clean basis", async () => {
+    serve("sealed");
+    mount(<ResultsCards pid={PID} />);
+    const card = await screen.findByTestId("results-open");
+    await waitFor(() => expect(card.textContent).not.toMatch(/exploratory/i));
+    expect(card.textContent).toContain("Open the held-out rows");
   });
 });
 
@@ -295,6 +477,36 @@ describe("what drives each model", () => {
     expect(container.querySelectorAll('[data-testid="results-curve-not-drawn"]').length).toBe(
       art.curves.reduce((n, ic) => n + ic.curves.filter((c) => !c.drawn && c.reason).length, 0),
     );
+  });
+});
+
+describe("a curve the palette cannot color", () => {
+  it("names each family the engine drew past the palette's last color, beside the curve it is missing from", async () => {
+    // By construction: the capture's first input with four more families drawn, each a copy of
+    // the linear model's served values under its own name (the engine caps neither count).
+    const more = [
+      ["elastic_net", "Elastic net"],
+      ["huber", "Huber regression"],
+      ["random_forest", "Random forest"],
+      ["boosted_trees", "Boosted trees"],
+    ];
+    const six = (s: Snapshot): Snapshot => {
+      const art = explainOf(s);
+      const [first, ...rest] = art.curves;
+      const linear = first!.curves.find((c) => c.family === "linear")!;
+      const curves = [{ ...first!, curves: [...first!.curves, ...more.map(([family, label]) => ({ ...linear, family: family!, label: label! }))] }, ...rest];
+      return { ...s, stages: { ...s.stages, explain: { ...s.stages.explain!, artifact: { ...art, curves } } } };
+    };
+    serve("opened", six);
+    mount(<ResultsTapestry pid={PID} />);
+    const [fig, ...others] = await screen.findAllByTestId("results-curve");
+    expect(fig!.querySelectorAll("[data-line]")).toHaveLength(5);
+    expect(fig!.querySelector('[data-line="boosted_trees"]')).toBeNull();
+    expect(within(fig!).getByTestId("results-curve-past-palette").textContent).toBe(
+      "Not drawn here: Boosted trees. Each curve takes the color of its family's place among the families explained, and there are 5 colors.",
+    );
+    // Where every drawn family has a color, nothing is said.
+    for (const f of others) expect(within(f).queryByTestId("results-curve-past-palette")).toBeNull();
   });
 });
 
@@ -390,6 +602,28 @@ describe("the opening's chain of refusals", () => {
   });
 });
 
+describe("the seal card beside a fit that is not current", () => {
+  const card = (fresh: boolean) => {
+    serve("sealed");
+    return mount(<SealCard pid={PID} view={C.sealed.view as unknown as ProjectView} fit={fitOf(C.sealed)} fresh={fresh} split={splitOf(C.sealed)} />);
+  };
+
+  it("says the rows can be opened once the fit is current, beside a button that waits for it", () => {
+    card(false);
+    const button = screen.getByRole("button", { name: "Open the held-out rows" });
+    expect(button).toHaveProperty("disabled", true);
+    expect(screen.getByTestId("results-open").textContent).toContain("The fit shown is not current; the rows can be opened once it is.");
+    expect(screen.getByTestId("results-open").textContent).not.toContain("Nothing is opened until you press it.");
+  });
+
+  it("says nothing opens until it is pressed, beside a button that can be, once the fit is current", () => {
+    card(true);
+    expect(screen.getByRole("button", { name: "Open the held-out rows" })).toHaveProperty("disabled", false);
+    expect(screen.getByTestId("results-open").textContent).toContain("Nothing is opened until you press it.");
+    expect(screen.getByTestId("results-open").textContent).not.toContain("not current");
+  });
+});
+
 describe("the explain offer, and the Results declarations", () => {
   it("records the explanations with the engine's defaults, as the real walk did", async () => {
     const { calls } = serve("sealed");
@@ -431,12 +665,34 @@ describe("the tables' rules", () => {
     }
     expect(rowOf(cv, "baseline").cells).toEqual({ [fit.models[0]!.baseline.metric]: { kind: "estimate", est: fit.models[0]!.baseline.value, lo: null, hi: null } });
     expect(rowOf(cv, "corrected").cells[fit.selection!.metric]).toEqual({ kind: "estimate", est: fit.selection!.corrected, lo: fit.selection!.corrected_low, hi: fit.selection!.corrected_high });
-    const held = heldOutTable(fit, "opened")!;
+    const held = heldOutTable(fit, "opened", splitOf(C.opened))!;
     for (const m of fit.models) {
       for (const [k, iv] of Object.entries(m.holdout_detail!.intervals)) expect(rowOf(held, m.family).cells[k]).toEqual({ kind: "estimate", est: iv.estimate, lo: iv.ci_low, hi: iv.ci_high });
     }
     const base = fit.models[0]!.holdout_detail!.baseline!;
     for (const [k, v] of Object.entries(base.scores)) expect(rowOf(held, "baseline").cells[k]).toEqual({ kind: "estimate", est: v, lo: null, hi: null });
+  });
+
+  it("give each served verdict its own word, with the gain as served, a negative one included", () => {
+    const v = (verdict: VersusBaseline["verdict"], gain: number, lo: number, hi: number): VersusBaseline => ({
+      verdict,
+      metric: "r2",
+      gain,
+      tolerance: 0.02,
+      tolerance_basis: "Better only when the gain's 95% interval lies above zero and the gain is at least 0.01 (a convention): a gain above 0.020.",
+      se: 0.01,
+      ci_low: lo,
+      ci_high: hi,
+      df: null,
+      level: 0.95,
+    });
+    const labels = { r2: "R²" };
+    expect(verdictCell(v("better", 0.135, 0.114, 0.156), labels)).toEqual({ kind: "text", text: "Better: a gain in R² of 0.135 (0.114 to 0.156)" });
+    expect(verdictCell(v("no_better", 0.004, -0.012, 0.02), labels)).toEqual({ kind: "text", text: "Not shown to be better: a gain in R² of 0.004 (−0.012 to 0.02)" });
+    expect(verdictCell(v("worse", -0.031, -0.05, -0.012), labels)).toEqual({ kind: "text", text: "Worse: a gain in R² of −0.031 (−0.05 to −0.012)" });
+    // No gain served: the word alone, and no verdict at all where none is served.
+    expect(verdictCell({ ...v("no_better", 0, 0, 0), gain: null, ci_low: null, ci_high: null }, labels)).toEqual({ kind: "text", text: "Not shown to be better" });
+    expect(verdictCell(null, labels)).toBeNull();
   });
 
   it("render nothing until the project view is served", async () => {

@@ -4,7 +4,9 @@
  *
  *   1. the cross-validated comparison of every metric, with intervals, the baseline and BBC-CV;
  *   2. once the held-out rows are opened, their scores beside the no-predictor baseline's and the
- *      held-out verdict (sealed until then: no held-out number is read before the opening);
+ *      held-out verdict (sealed until then: no held-out number is read before the opening), titled
+ *      by whether they are still the opening's, and labeled exploratory, with the split's reason,
+ *      wherever its basis is not a verified clean one (the calibration too);
  *   3. the final model's held-out calibration (the served curve, intercept and slope; binned
  *      points wait for W2, ruling 5);
  *   4. what drives each model: SHAP importance as a table, ALE curves with their support mask;
@@ -23,11 +25,11 @@ import { openingRecord, PostSealBand, useRefetchOnOpening } from "../../componen
 import { sealPhase, type SealPhase } from "../../components/stage/seal/phase";
 import { Rich } from "../../components/stage/text";
 import { CalibrationView } from "../../components/views/CalibrationView";
-import { calibrationFromEngine, curveFromExplain } from "../../components/views/curveAdapters";
+import { calibrationFromEngine, curveFromExplain, pastPalette } from "../../components/views/curveAdapters";
 import { CurveView } from "../../components/views/CurveView";
 import { ExhibitTable } from "../../components/views/ExhibitTable";
 import { OneLine } from "../../components/views/common/parts";
-import { cvComparison, heldOutTable, importanceTable, interpretableCost } from "./model";
+import { cvComparison, exploratoryReasons, heldOutTable, importanceTable, interpretableCost, type SplitBasis } from "./model";
 import s from "./results.module.css";
 
 const busy = (status: StageStatus | undefined) => status?.status === "running" || status?.status === "queued";
@@ -36,6 +38,7 @@ export function Tapestry({ pid, view }: { pid: string; view: ProjectView }) {
   const fit = useM1Stage(pid, view, "fit");
   const explain = useM1Stage(pid, view, "explain");
   const evaluation = useM1Stage(pid, view, "evaluation");
+  const split = useM1Stage(pid, view, "split").artifact;
   const opened = !!view.state.seal_opened;
   useRefetchOnOpening(pid, opened, fit.artifact, view.stages.fit?.key ?? undefined);
   const art = fit.artifact;
@@ -67,12 +70,12 @@ export function Tapestry({ pid, view }: { pid: string; view: ProjectView }) {
       </StaleVeil>
       <StaleVeil state={fit.veil} order={1} label="Held-out rows">
         <section className={s.exhibit} data-purpose="held_out" data-testid="results-held-out">
-          <HeldOut fit={art} phase={phase} />
+          <HeldOut fit={art} phase={phase} split={split} />
         </section>
       </StaleVeil>
       <StaleVeil state={fit.veil} order={2} label="Calibration">
         <section className={s.exhibit} data-purpose="calibration" data-testid="results-calibration">
-          <Calibration fit={art} phase={phase} target={target} />
+          <Calibration fit={art} phase={phase} target={target} split={split} />
         </section>
       </StaleVeil>
       <Explanations artifact={explain.artifact} veil={explain.veil} status={view.stages.explain} task={art.task} target={target} />
@@ -81,9 +84,9 @@ export function Tapestry({ pid, view }: { pid: string; view: ProjectView }) {
   );
 }
 
-function HeldOut({ fit, phase }: { fit: FitArtifact; phase: SealPhase }) {
+function HeldOut({ fit, phase, split }: { fit: FitArtifact; phase: SealPhase; split: SplitBasis | null }) {
   if (phase === "cv_only") return <OneLine view="table" title="Held-out rows" text="No rows were held out." />;
-  const table = heldOutTable(fit, phase);
+  const table = heldOutTable(fit, phase, split);
   if (!table) {
     return (
       <OneLine
@@ -96,8 +99,9 @@ function HeldOut({ fit, phase }: { fit: FitArtifact; phase: SealPhase }) {
   return <ExhibitTable data={table} gate={null} />;
 }
 
-/** The final model's held-out calibration, once opened; the engine's note where it served none. */
-function Calibration({ fit, phase, target }: { fit: FitArtifact; phase: SealPhase; target: string }) {
+/** The final model's held-out calibration, once opened; the engine's note where it served none. An
+ *  exploratory split labels it as it labels the held-out table, whose footnote says why. */
+function Calibration({ fit, phase, target, split }: { fit: FitArtifact; phase: SealPhase; target: string; split: SplitBasis | null }) {
   const title = "Calibration on the held-out rows";
   if (phase === "cv_only") return null;
   if (phase === "sealed" || phase === "none") {
@@ -112,7 +116,7 @@ function Calibration({ fit, phase, target }: { fit: FitArtifact; phase: SealPhas
   const kind = fit.task === "binary" ? "risk" : "value";
   return (
     <CalibrationView
-      title={`${final.label}: ${title.toLowerCase()}`}
+      title={`${final.label}: ${title.toLowerCase()}${exploratoryReasons(split) ? ", exploratory" : ""}`}
       data={calibrationFromEngine(detail.calibration, { kind, outcome: target, where: "held_out", sealed: null })}
     />
   );
@@ -173,18 +177,26 @@ function Explanations({
             </p>
           ),
         )}
-        {artifact.curves.map((ic) => (
-          <div key={ic.input} data-testid="results-curve" data-input={ic.input}>
-            <CurveView title={`How the predictions move with ${ic.input}`} data={curveFromExplain(ic, { outcome: target, task })} />
-            {ic.curves
-              .filter((c) => !c.drawn && c.reason)
-              .map((c) => (
-                <p key={c.family} className={r.basis} data-testid="results-curve-not-drawn">
-                  <Rich text={c.reason!} />
+        {artifact.curves.map((ic) => {
+          const past = pastPalette(ic);
+          return (
+            <div key={ic.input} data-testid="results-curve" data-input={ic.input}>
+              <CurveView title={`How the predictions move with ${ic.input}`} data={curveFromExplain(ic, { outcome: target, task })} />
+              {past ? (
+                <p className={r.basis} data-testid="results-curve-past-palette">
+                  {past}
                 </p>
-              ))}
-          </div>
-        ))}
+              ) : null}
+              {ic.curves
+                .filter((c) => !c.drawn && c.reason)
+                .map((c) => (
+                  <p key={c.family} className={r.basis} data-testid="results-curve-not-drawn">
+                    <Rich text={c.reason!} />
+                  </p>
+                ))}
+            </div>
+          );
+        })}
         {artifact.notes.map((n, i) => (
           <p key={i} className={r.basis}>
             <Rich text={n} />

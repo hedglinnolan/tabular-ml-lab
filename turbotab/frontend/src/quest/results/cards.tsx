@@ -18,11 +18,12 @@ import { useM1Stage } from "../../components/stage/data";
 import { fmtInt } from "../../components/stage/format";
 import r from "../../components/stage/results/results.module.css";
 import { openingRecord, useRefetchOnOpening } from "../../components/stage/seal/OpenSeal";
-import { glyphOf, isExploratory, sealPhase } from "../../components/stage/seal/phase";
+import { glyphOf, sealPhase } from "../../components/stage/seal/phase";
 import { SealGlyph } from "../../components/stage/seal/SealGlyph";
 import seal from "../../components/stage/seal/seal.module.css";
 import { Rich } from "../../components/stage/text";
 import { DECLARATION_CARDS } from "../cards/predict";
+import { exploratoryReasons } from "./model";
 import s from "./results.module.css";
 
 /** The opening's decision with no family named: the engine asks for one where several were fit. */
@@ -178,12 +179,12 @@ export function SealCard({ pid, view, fit, fresh, split }: { pid: string; view: 
       </p>
     );
   }
-  if (phase === "opened" || phase === "post_seal") return <OpenedLine view={view} fit={fit} />;
+  if (phase === "opened" || phase === "post_seal") return <OpenedLine view={view} fit={fit} split={split} />;
 
   const metric = fit.metric_labels[fit.primary_metric] ?? fit.primary_metric;
   const families = fit.models.length;
   const glyph = glyphOf(split?.basis?.state);
-  const exploratory = isExploratory(split?.basis?.state, split?.exploratory);
+  const exploratory = exploratoryReasons(split);
 
   /** Post one decision; a refusal is kept with its exits, any other failure said as it is. */
   const post = async (d: Decision): Promise<boolean> => {
@@ -231,7 +232,7 @@ export function SealCard({ pid, view, fit, fresh, split }: { pid: string; view: 
         {exploratory ? (
           <>
             {" "}
-            <Rich text={`The held-out rows' basis is ${split?.basis?.label ?? "undetermined"}, so these scores carry an exploratory label.`} />
+            <Rich text={`${exploratory.join(" ")} In the Results the held-out scores are then marked exploratory.`} />
           </>
         ) : null}
       </p>
@@ -245,7 +246,7 @@ export function SealCard({ pid, view, fit, fresh, split }: { pid: string; view: 
         >
           {busy ?? "Open the held-out rows"}
         </button>
-        <span className={seal.conOr}>{fresh ? "Nothing is opened until you press it." : "The fit shown is not current; the rows open once it is."}</span>
+        <span className={seal.conOr}>{fresh ? "Nothing is opened until you press it." : "The fit shown is not current; the rows can be opened once it is."}</span>
       </div>
       {refused ? (
         <div role="alert" data-testid="results-open-refused" data-code={refused.error.code}>
@@ -282,9 +283,11 @@ export function SealCard({ pid, view, fit, fresh, split }: { pid: string; view: 
   );
 }
 
-/** Once opened: the opening's record, and the final model's sentence as the engine serves it. */
-function OpenedLine({ view, fit }: { view: ProjectView; fit: FitArtifact }) {
+/** Once opened: the opening's record, and the final model's sentence as the engine serves it; an
+ *  exploratory split's label with its reason, in the split's words. */
+function OpenedLine({ view, fit, split }: { view: ProjectView; fit: FitArtifact; split: SplitArtifact | null }) {
   const opening = openingRecord(view);
+  const exploratory = exploratoryReasons(split);
   const label = fit.models.find((m) => m.family === fit.final_model)?.label ?? null;
   return (
     <p className={seal.sealRecorded} data-testid="results-opened" data-post={fit.changed_after_seal || undefined}>
@@ -295,6 +298,12 @@ function OpenedLine({ view, fit }: { view: ProjectView; fit: FitArtifact }) {
           <>
             {" "}
             <Rich text={fit.final_note} />
+          </>
+        ) : null}
+        {exploratory ? (
+          <>
+            {" "}
+            <Rich text={`These scores are exploratory: ${exploratory.join(" ")}`} />
           </>
         ) : null}
       </span>

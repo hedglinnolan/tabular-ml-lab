@@ -4,12 +4,12 @@
  * field, carried as it was served and formatted by the table view (`components/views/format.ts`);
  * every sentence is the engine's, or composed only from served fields.
  */
-import type { FitArtifact, FittedModel } from "../../api/m1-stage-types";
+import type { FitArtifact, FittedModel, SplitArtifact } from "../../api/m1-stage-types";
 import type { EvaluationArtifact, FamilyExplanation, VersusBaseline } from "../../api/m3-types";
 import { plain } from "../../components/stage/format";
 import { fmtEstimate } from "../../components/views/format";
 import type { Cell, Footnote, TableData, TableRow } from "../../components/views/types";
-import { scoresVisible, type SealPhase } from "../../components/stage/seal/phase";
+import { glyphOf, isExploratory, scoresVisible, type SealPhase } from "../../components/stage/seal/phase";
 
 export interface Metric {
   key: string;
@@ -130,15 +130,56 @@ const cap = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
 
 // ── the held-out rows, once opened ───────────────────────────────────────────
 
+/** The split as the held-out exhibits read it: its basis, its chronology and its own flag. */
+export type SplitBasis = Pick<SplitArtifact, "basis" | "chronology" | "exploratory">;
+
+/**
+ * Why the held-out scores are exploratory, in the split's own words, or null where its basis is a
+ * verified clean one (`seal/phase.ts` `isExploratory`: an abandoned or undetermined basis, one
+ * the split marks exploratory, or one not read). The words are the basis's sentence where the
+ * basis is the reason, and the chronology's where time was asked for and no column could order
+ * the draw (turbotab/core/seal.py `SealDraw.exploratory`).
+ */
+export function exploratoryReasons(split: SplitBasis | null | undefined): string[] | null {
+  if (!isExploratory(split?.basis?.state, split?.exploratory)) return null;
+  if (!split) return ["The split that drew these rows is not read yet, so its basis is not shown as a verified clean one."];
+  const said: string[] = [];
+  const b = split.basis;
+  if (b && (b.exploratory || glyphOf(b.state) !== "closed")) said.push(b.sentence);
+  const c = split.chronology;
+  if (c && !c.drawn && c.time_column === null) said.push(c.sentence);
+  return said.length ? said : ["The split that drew these rows marks its held-out scores exploratory."];
+}
+
+/**
+ * What the held-out scores are, said in the exhibit's title. "Scored once, by no choice seen" only
+ * while the served scores are the opening's: the phase is `opened` and the fit does not say the
+ * opening's result is no longer current (`at_opening.current`, turbotab/core/seal.py
+ * `reported_result`). After a change the fit is post-seal; after the rows are drawn again and
+ * opened in turn, the scores are those rows'. The engine's note, a footnote, says which result
+ * stays reported.
+ */
+function heldOutTitle(fit: FitArtifact, phase: SealPhase, exploratory: boolean): string {
+  const rows = `${fit.n_holdout.toLocaleString("en-US")} rows`;
+  const what =
+    phase === "post_seal"
+      ? `from a fit changed after the opening, on ${rows}, so not an independent test`
+      : fit.at_opening?.current === false
+        ? `on ${rows} drawn again after the first opening, so not an independent test`
+        : `scored once, on ${rows} no choice has seen`;
+  return `${what}: each score with its interval${exploratory ? ", exploratory" : ""}`;
+}
+
 /**
  * The held-out scores once the rows are opened (`holdout` with `holdout_detail.intervals`), beside
  * the no-predictor baseline scored on the same rows (`holdout_detail.baseline`) and the held-out
  * verdict against it (`holdout_detail.versus_baseline`). Null while the phase hides held-out
  * scores (`seal/phase.ts`): no held-out number is read before the opening, whatever the artifact
- * holds.
+ * holds. An exploratory split labels the exhibit, with its reason as the first footnote.
  */
-export function heldOutTable(fit: FitArtifact, phase: SealPhase): TableData | null {
+export function heldOutTable(fit: FitArtifact, phase: SealPhase, split: SplitBasis | null): TableData | null {
   if (!scoresVisible(phase)) return null;
+  const exploratory = exploratoryReasons(split);
   const metrics = metricsOf(fit, (m) => m.holdout);
   const families = familiesOf(fit).filter((m) => m.holdout);
   const detail = families.find((m) => m.holdout_detail?.baseline)?.holdout_detail ?? null;
@@ -171,6 +212,7 @@ export function heldOutTable(fit: FitArtifact, phase: SealPhase): TableData | nu
     });
   }
   const footnotes: Footnote[] = [
+    ...(exploratory ? [{ text: plain(`Exploratory. ${exploratory.join(" ")}`) }] : []),
     ...families.flatMap((m, i) => {
       const v = m.holdout_detail?.versus_baseline;
       return v ? [{ mark: mark(i), text: `${m.label}: ${plain(v.tolerance_basis)}` }] : [];
@@ -180,7 +222,7 @@ export function heldOutTable(fit: FitArtifact, phase: SealPhase): TableData | nu
   ];
   return {
     number: "Held-out rows",
-    title: `scored once, on ${fit.n_holdout.toLocaleString("en-US")} rows no choice has seen: each score with its interval`,
+    title: heldOutTitle(fit, phase, !!exploratory),
     stub: "Model",
     columns: [
       ...metrics.map((x) => ({ key: x.key, label: x.label })),

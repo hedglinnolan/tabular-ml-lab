@@ -75,11 +75,15 @@ export function curveFromSubstitution(art: SubstitutionArtifact, opts: Substitut
   };
 }
 
+/** Whether a family's place among the explained families has a color in the comparison palette. */
+const colored = (place: number) => place < SLOTS.length;
+
 /**
  * One input's curves from the explain artifact (turbotab/core/models/explain.py `InputCurves`):
  * every drawn family on the input's shared grid, in the comparison palette by its place among the
  * artifact's families, so a family keeps its color whether or not the others draw. A family the
- * engine did not draw has no line here; its reason is the artifact's (`curves[].reason`).
+ * engine did not draw has no line here; its reason is the artifact's (`curves[].reason`). A drawn
+ * family whose place is past the palette's last color has no line either; `pastPalette` names it.
  *
  * The support mask: the engine serves each family's value at the grid's edges, null at an edge
  * touching no segment with enough rows. An edge between a supported segment and an unsupported
@@ -92,7 +96,7 @@ export function curveFromExplain(ic: InputCurves, opts: { outcome: string; task:
   const K = ic.grid.length - 1;
   const lines: CurveLine[] = [];
   ic.curves.forEach((c, place) => {
-    if (!c.drawn || place >= SLOTS.length) return;
+    if (!c.drawn || !colored(place)) return;
     const x: number[] = [];
     const y: (number | null)[] = [];
     ic.grid.forEach((z, i) => {
@@ -117,6 +121,18 @@ export function curveFromExplain(ic: InputCurves, opts: { outcome: string; task:
     basis: ic.method === "ale" ? "Accumulated local effects, centered on their average over the rows." : "Partial dependence, centered on its average over the rows.",
     sealed: opts.sealed ?? null,
   };
+}
+
+/**
+ * The families the engine drew a curve for that `curveFromExplain` gives no line, for want of a
+ * color at their place, said beside the curve; null where every drawn family has one. The engine
+ * caps neither the families fitted nor those drawn.
+ */
+export function pastPalette(ic: InputCurves): string | null {
+  const past = ic.curves.filter((c, place) => c.drawn && !colored(place)).map((c) => c.label);
+  if (!past.length) return null;
+  const named = past.length === 1 ? past[0] : `${past.slice(0, -1).join(", ")} and ${past[past.length - 1]}`;
+  return `Not drawn here: ${named}. Each curve takes the color of its family's place among the families explained, and there are ${SLOTS.length} colors.`;
 }
 
 /** The engine's calibration of one model's predictions, with the binned points when served. */

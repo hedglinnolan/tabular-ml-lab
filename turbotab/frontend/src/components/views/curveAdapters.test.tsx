@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { substitutionChoice, substitutionCompare, substitutionSealed } from "./lab/curves.fixtures";
-import { curveFromExplain, curveFromSubstitution } from "./curveAdapters";
+import { curveFromExplain, curveFromSubstitution, pastPalette } from "./curveAdapters";
 import { CurveView } from "./CurveView";
 import type { CurveLine } from "./curve";
 import prediction from "../../mocks/fixtures/m3-nhanes-prediction.json";
@@ -107,6 +107,36 @@ describe("an explain artifact's input curves as a curve, keeping the support mas
     expect(c.lines.map((l) => [l.key, l.slot])).toEqual([["ridge", 2]]);
     expect(defined(c.lines[0]!)).toEqual([[80, 1], [90, 2], [130, 3], [140, 4]]);
     expect(c.lines[0]!.y[0]).toBeNull();
+  });
+
+  it("draws the families in the palette's places and names each drawn family past them", () => {
+    const fam = (family: string, label: string, drawn = true) => ({ family, label, drawn, values: drawn ? [-3, -1, 0.5, 4, 6] : [], reason: drawn ? null : `${label} draws no curve.` });
+    const six = ic({
+      curves: [
+        fam("linear", "Linear model"),
+        fam("ridge", "Ridge"),
+        fam("elastic_net", "Elastic net"),
+        fam("huber", "Huber regression"),
+        fam("random_forest", "Random forest"),
+        fam("boosted_trees", "Boosted trees"),
+      ],
+    });
+    const c = curveFromExplain(six, regression);
+    // Five colors (--cat-1 to --cat-5): the sixth family has no place in them.
+    expect(c.lines.map((l) => [l.key, l.slot])).toEqual([["linear", 1], ["ridge", 2], ["elastic_net", 3], ["huber", 4], ["random_forest", 5]]);
+    expect(pastPalette(six)).toBe(
+      "Not drawn here: Boosted trees. Each curve takes the color of its family's place among the families explained, and there are 5 colors.",
+    );
+    // Seven, with one not drawn by the engine inside the palette's places: its place still counts,
+    // and the engine's own reason, not this one, says why it has no line.
+    const seven = ic({ curves: [fam("linear", "Linear model"), fam("ridge", "Ridge", false), ...six.curves.slice(2), fam("svm", "Support vector machine")] });
+    expect(curveFromExplain(seven, regression).lines.map((l) => l.key)).toEqual(["linear", "elastic_net", "huber", "random_forest"]);
+    expect(pastPalette(seven)).toBe(
+      "Not drawn here: Boosted trees and Support vector machine. Each curve takes the color of its family's place among the families explained, and there are 5 colors.",
+    );
+    // A family past the palette the engine did not draw is the engine's to explain: none named here.
+    expect(pastPalette(ic({ curves: [...six.curves.slice(0, 5), fam("boosted_trees", "Boosted trees", false)] }))).toBeNull();
+    expect(pastPalette(ic())).toBeNull();
   });
 
   it("says the model's own scale where the prediction is not the outcome's value", () => {
