@@ -14,11 +14,13 @@
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, vi } from "vitest";
 import { QUESTION_KEYS, type TeachingEntry } from "../../api/m1-types";
 import { keys } from "../../api/queries";
 import type { ProjectView, QuestLine } from "../../api/schema";
 import { artifactAt, expandView, viewsOf, type M3Fixture } from "../../mocks/m3";
+import { AskFor } from "../../components/record/AskFor";
 import { StageFocusProvider } from "../../state/focus";
 import type { DeclarationCards, LineCardProps } from "../contracts";
 import { CONTRACT, type ContractPair } from "../fixtures/contract";
@@ -277,5 +279,51 @@ describe("the dispatcher's fallbacks, both ways", () => {
     renderLine(ask);
     expect(screen.getByTestId("reading-ask:models")).toHaveTextContent("kcal is energy in kilocalories");
     expect(screen.getByRole("button", { name: "It is in kilojoules" })).toBeEnabled();
+  });
+});
+
+/**
+ * Fit is the analysis flowchart's one action (FOUNDATION §7), so in the shell the families card
+ * records the choice in words that do not say Fit; today's screen fits the families as it records
+ * them and keeps its words. The families chosen are the capture's two first on its shelf, so the
+ * count in each label is 2 by construction.
+ */
+describe("the families card's words (P3)", () => {
+  /** The Predict capture's first view with the families open on a fresh shelf. */
+  const j = JOURNEYS.find((x) => x.name === "nhanes-prediction")!;
+  const at = j.views.findIndex((v) => v.stages.shelf?.status === "fresh" && v.interview.some((s) => s.key === "models" && s.status === "open"));
+  const view = expandView(j.f, j.views[at]!, PID, AT);
+  const mount = (node: ReactNode) => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    qc.setQueryData(keys.teaching(), SHARED.teaching);
+    qc.setQueryData(keys.view(PID), view);
+    qc.setQueryData(keys.quest(PID), CONTRACT.logs.models_open.log);
+    const shelf = view.stages.shelf!;
+    qc.setQueryData(keys.stage(PID, "shelf"), { stage: "shelf", key: shelf.key, fresh: true, status: "fresh", artifact: artifactAt(j.f, "shelf", shelf.key) });
+    render(
+      <QueryClientProvider client={qc}>
+        <StageFocusProvider>{node}</StageFocusProvider>
+      </QueryClientProvider>,
+    );
+  };
+  const chooseTwo = () => {
+    const options = screen.getAllByRole("option").filter((o) => o.dataset.testid?.startsWith("option-"));
+    for (const o of options) if (o.getAttribute("aria-selected") === "true") fireEvent.click(o);
+    fireEvent.click(options[0]!);
+    fireEvent.click(options[1]!);
+    expect(options.filter((o) => o.getAttribute("aria-selected") === "true")).toHaveLength(2);
+  };
+
+  it("says Choose in the shell, never Fit", () => {
+    expect(at).toBeGreaterThanOrEqual(0);
+    mount(<CardFor pid={PID} line={lineOf({ source: "question", key: "models" })} />);
+    chooseTwo();
+    expect(screen.getByTestId("record-models")).toHaveTextContent(/^Choose these 2 families$/);
+  });
+
+  it("keeps Fit on today's card", () => {
+    mount(<AskFor pid={PID} view={view} stepKey="models" />);
+    chooseTwo();
+    expect(screen.getByTestId("record-models")).toHaveTextContent(/^Fit these 2 families$/);
   });
 });

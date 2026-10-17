@@ -197,6 +197,7 @@ export function findings(
   ds: MockDataset,
   lenses: Lens[],
   target: string | null,
+  purpose: string | null = null,
 ): { findings: Finding[]; basis: string } {
   const out: Draft[] = [];
   const checked: string[] = ["structural diagnosis"];
@@ -287,7 +288,9 @@ export function findings(
           evidence: { status: "settled", source: "research/NUTRITION_PACK.md §05" },
         });
       }
-      if (target && target !== energy.name) {
+      // Under prediction no nutrient's coefficient is read as an effect, so the energy noticing does
+      // not fire (BEATS_PREDICT ruling 5; the energy question is not asked there either).
+      if (target && target !== energy.name && purpose !== "prediction") {
         out.push({
           id: "energy_adjustment",
           severity: "warning",

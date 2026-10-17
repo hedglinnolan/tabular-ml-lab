@@ -19,7 +19,7 @@ import { fmtInt } from "../format";
 import { localPos, type Track } from "../tracks";
 import { usePlayerStore, usePlayerUi } from "../usePlayer";
 import { useSize } from "./geometry";
-import { narrowLineage, placeLineage, touchedIdentities, type PlacedNode } from "./lineageLayout";
+import { narrowLineage, placeLineage, touchedIdentities, type Placed, type PlacedNode } from "./lineageLayout";
 import s from "./views.module.css";
 
 interface Props {
@@ -39,6 +39,29 @@ const HEAD = 26;
 
 function label(n: PlacedNode): string {
   return n.node.count > 1 ? n.node.label : (n.node.column ?? n.node.label);
+}
+
+/** The type size and the room each lane's labels take: the raw lane's (left of its dots), the
+ *  adjusted lane's pills (centered on theirs) and the matrix lane's (right of its dots). */
+function laneWidths(placed: Placed, compact: boolean) {
+  const fs = compact ? 9.5 : 11;
+  const cw = fs * 0.61;
+  const longest = (lane: string) =>
+    Math.max(0, ...placed.nodes.filter((n) => n.lane === lane).map((n) => label(n).length));
+  const rawW = longest("raw") * cw + 10;
+  const mxW = Math.max(longest("matrix"), ...placed.notes.map((n) => n.text.length));
+  return { fs, rawW, mxLabelW: mxW * cw + 12, adjLabelW: longest("adjusted") * cw + 16 };
+}
+
+/**
+ * The narrowest width at which the lineage, drawn full size, keeps every label clear of the next:
+ * the raw labels, each adjusted pill whole with its links' 20 px on either side, and the matrix
+ * labels (the layout in `Lineage`, solved for the pill's full width). A box narrower than this
+ * scrolls (the live Columns card, stage/LiveScenes.tsx) rather than drawing labels over each other.
+ */
+export function lineageMinWidth(lineage: LineageData): number {
+  const { rawW, mxLabelW, adjLabelW } = laneWidths(placeLineage(lineage), false);
+  return Math.ceil(rawW + 4 + 2 * (adjLabelW + 40) + mxLabelW);
 }
 
 export function Lineage({
@@ -67,17 +90,7 @@ export function Lineage({
   const compact = small && !(h - HEAD > placed.rows * 22 && w > 560);
   const picked = new Set(emphasis ?? []);
 
-  const fs = compact ? 9.5 : 11;
-  const cw = fs * 0.61;
-  const rawW =
-    Math.max(0, ...placed.nodes.filter((n) => n.lane === "raw").map((n) => label(n).length)) * cw +
-    10;
-  const mxW = Math.max(
-    0,
-    ...placed.nodes.filter((n) => n.lane === "matrix").map((n) => label(n).length),
-    ...placed.notes.map((n) => n.text.length),
-  );
-  const mxLabelW = mxW * cw + 12;
+  const { fs, rawW, mxLabelW, adjLabelW } = laneWidths(placed, compact);
   const cap = compact ? (placed.rows <= 8 ? 21 : 16) : 28;
   const rowH = Math.max(
     9,
@@ -86,17 +99,7 @@ export function Lineage({
   const x0 = rawW + 4;
   const x2 = Math.max(x0 + 120, w - mxLabelW);
   const x1 = (x0 + x2) / 2;
-  const adjW = compact
-    ? 0
-    : Math.min(
-        x2 - x1 - 40,
-        Math.max(
-          0,
-          ...placed.nodes.filter((n) => n.lane === "adjusted").map((n) => label(n).length),
-        ) *
-          cw +
-          16,
-      );
+  const adjW = compact ? 0 : Math.min(x2 - x1 - 40, adjLabelW);
   const top = HEAD + (compact ? 2 : 4);
   const yOf = (row: number) => top + row * rowH + rowH / 2;
   const xOf = (lane: string) => (lane === "raw" ? x0 : lane === "adjusted" ? x1 : x2);

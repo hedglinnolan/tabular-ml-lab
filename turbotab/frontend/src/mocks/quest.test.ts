@@ -4,11 +4,11 @@
  * not reached and the opening waits until Fit is pressed, and the families wait for the
  * predictor-selection question. Read on the real server's captured NHANES walk under prediction.
  */
-import type { DecisionRecord, ProjectView } from "../api/schema";
+import type { DecisionRecord, Finding, ProjectView } from "../api/schema";
 import { CONTRACT } from "../quest/fixtures/contract";
 import prediction from "./fixtures/m3-nhanes-prediction.json";
 import { expandView, viewsOf, type M3Fixture } from "./m3";
-import { mockQuest, mockSections } from "./quest";
+import { mockQuest, mockSections, openingRefusal, servedFit } from "./quest";
 
 const F = prediction as unknown as M3Fixture;
 const VIEWS = viewsOf(F).map((v) => expandView(F, v, "mock-test", "2026-10-17T00:00:00Z"));
@@ -78,5 +78,82 @@ describe("the mock's quest log", () => {
     const recorded = AT_OPENING.decisions.filter((r) => r.sentence).length;
     expect(sections.count).toBe(recorded);
     expect(sections.guideline).toBe("TRIPOD+AI");
+  });
+});
+
+/**
+ * Fit's gate under Predict, as core/fit_press.py and core/seal.py keep it (P1): the fit is served
+ * withheld until Fit is pressed, and the opening waits for the press, then for the triage of every
+ * open noticing, in seal.py's order. Under Estimate the mock keeps its walk (W3). The noticing is
+ * one constructed open finding, under an id of its own so no captured disposition settles it.
+ */
+describe("the mock's Fit gate under Predict", () => {
+  const NOTICED = {
+    id: "test::noticed",
+    severity: "info",
+    title: "9 columns hold SAS export zeros.",
+    summary: "152 cells in bp_di hold 5.4e-79.",
+    detail: "",
+    why_it_matters: null,
+    affected_columns: ["bp_di"],
+    source: "profile",
+    lens: null,
+    evidence: null,
+    routes_to: null,
+    lever_label: null,
+    group: null,
+    repairs: [],
+    disposition: null,
+    answered_by: null,
+  } as unknown as Finding;
+  const opening = (view: ProjectView, pressed: boolean) => openingRefusal(view, mockQuest(view, [NOTICED], pressed), pressed);
+  const TRIAGED = { kind: "confirm_sweep", stage: "results", sweep: "noticings", lines: [] } as never;
+
+  it("is where the capture's opening stands: under Predict, the fit computed, rows held out, not opened", () => {
+    expect(AT_OPENING.state.purpose).toBe("prediction");
+    expect(AT_OPENING.stages.fit?.status).toBe("fresh");
+    expect(AT_OPENING.state.split?.holdout).toBeGreaterThan(0);
+    expect(AT_OPENING.state.seal_opened).toBeNull();
+  });
+
+  it("refuses the opening until Fit is pressed, with the way to press it", () => {
+    const r = opening(AT_OPENING, false);
+    expect(r?.error.code).toBe("fit_not_yet");
+    expect(r?.error.exits).toEqual([{ label: "Press Fit on the analysis flowchart", decision: null }]);
+  });
+
+  it("then refuses it while a noticing is open, offering its triage's Confirm all, and lets it through once that is recorded", () => {
+    const r = opening(AT_OPENING, true);
+    expect(r?.error.code).toBe("triage_open");
+    expect(r?.error.message).toContain("1 is still open");
+    expect(r?.error.message).toContain("152 cells in bp_di hold 5.4e-79 (doesn't change your numbers here)");
+    expect(r?.error.exits.map((x) => x.decision)).toEqual([null, TRIAGED]);
+    expect(opening(record(AT_OPENING, TRIAGED), true)).toBeNull();
+  });
+
+  it("leaves the refusals that come first in seal.py, and every other goal, to the mock's own validator", () => {
+    const opened = { ...AT_OPENING, state: { ...AT_OPENING.state, seal_opened: { at: "x" } } } as unknown as ProjectView;
+    expect(opening(opened, false)).toBeNull();
+    const stale = { ...AT_OPENING, stages: { ...AT_OPENING.stages, fit: { ...AT_OPENING.stages.fit!, status: "running" as const } } };
+    expect(opening(stale, false)).toBeNull();
+    const estimate = { ...AT_OPENING, state: { ...AT_OPENING.state, purpose: "inference" as const } };
+    expect(opening(estimate, false)).toBeNull();
+  });
+
+  it("serves the fit withheld until Fit is pressed: every score and coefficient removed, the reason first", () => {
+    const fit = {
+      withheld: null,
+      withheld_for: null,
+      comparison: { metric: "r2" },
+      comparisons: [{ a: 1 }],
+      models: [{ family: "linear", cv: { r2: { mean: 0.08 } }, holdout: { r2: 0.07 }, coefficients: [{ term: "kcal", estimate: 0.1 }], concerns: ["c"] }],
+    };
+    const withheld = servedFit(fit, "prediction", false) as unknown as typeof fit & { models: Record<string, unknown>[] };
+    expect(withheld).toMatchObject({ withheld_for: "fit", comparison: null, comparisons: [] });
+    expect(withheld.withheld).toMatch(/^No score or estimate is shown until Fit is pressed/);
+    expect(withheld.models[0]).toMatchObject({ family: "linear", cv: {}, holdout: null, coefficients: null });
+    expect(withheld.models[0]!.concerns).toEqual([withheld.withheld, "c"]);
+    expect(servedFit(fit, "prediction", true)).toBe(fit);
+    expect(servedFit(fit, "inference", false)).toBe(fit);
   });
 });

@@ -15,7 +15,10 @@
   text-overflow: ellipsis;
   max-width: 28ch;
 }
-.classicLink {
+/* The link between a project's two screens: the shell's to today's, and today's back
+   (screens/ProjectScreen.tsx). */
+.classicLink,
+.screenLink {
   font-size: 12.5px;
   white-space: nowrap;
 }
@@ -357,4 +360,24 @@
   font-size: 14px;
   color: var(--muted);
   min-width: 3ch;
+}
+
+/* The foot's waiting line (StageCard `HintLine`): the whole sentence is one link, so it wraps as
+   text, left-aligned, with its period; the name it waits for is underlined, as the kit's links. */
+.hintLink {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.hintLink:hover {
+  color: var(--ink);
+}
+.hintName {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--line-strong);
 }

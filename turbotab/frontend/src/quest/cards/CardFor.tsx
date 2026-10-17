@@ -11,6 +11,7 @@ import type { QuestionKey } from "../../api/m1-types";
 import { useProjectView, useQuest } from "../../api/queries";
 import type { ProjectView } from "../../api/schema";
 import { AskFor } from "../../components/record/AskFor";
+import { FamiliesLabelContext } from "../../components/record/ask/ChoiceQuestions";
 import { BESPOKE_KEYS } from "../../components/record/generic/compose";
 import type { CardForProps, DeclarationCards } from "../contracts";
 import { DECLARATION_CARDS } from "./predict";
@@ -18,7 +19,7 @@ import { FindingCard } from "./FindingCard";
 import { LineGeneric } from "./LineGeneric";
 import { Readings } from "./Readings";
 import { rendererOf } from "./renderers";
-import { said } from "../words";
+import { chooseFamilies, said } from "../words";
 import c from "./cards.module.css";
 
 export function CardFor({ pid, line, onOpenStage, cards = DECLARATION_CARDS }: CardForProps & { cards?: DeclarationCards }) {
@@ -66,9 +67,12 @@ function Ask({
 }) {
   const listed = view.interview.some((s) => s.key === stepKey);
   if (!listed && !BESPOKE_KEYS.includes(stepKey)) return <LineGeneric line={line} />;
+  // The families card records the choice; Fit is the analysis flowchart's (FOUNDATION §7).
   return (
     <div data-testid={`ask-${stepKey}`}>
-      <AskFor pid={pid} view={view} stepKey={stepKey} />
+      <FamiliesLabelContext.Provider value={chooseFamilies}>
+        <AskFor pid={pid} view={view} stepKey={stepKey} />
+      </FamiliesLabelContext.Provider>
     </div>
   );
 }

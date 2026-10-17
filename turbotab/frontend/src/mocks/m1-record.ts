@@ -47,6 +47,7 @@ import {
 } from "./m1-stages";
 import { sentenceFor, validateM1, voiceFindings } from "./m1-voice";
 import { FEATURE_MAJOR_NAME, effectiveGrain, m2Mock, metabolomicsFeatureMajor } from "./m2-record";
+import { fitPressed, servedFit } from "./quest";
 
 type M1Stage = keyof M1StageArtifacts;
 
@@ -626,6 +627,8 @@ export function m1RecordHandlers(server: MockServer): HttpHandler[] {
               models: fit.models.map((x) => ({ ...x, holdout: null, holdout_detail: null })),
             };
           }
+          // Under prediction no score is served before Fit is pressed, as the real server serves it.
+          result.artifact = servedFit(result.artifact, state.purpose, fitPressed(pid));
         }
         return result ? HttpResponse.json(result) : undefined;
       }

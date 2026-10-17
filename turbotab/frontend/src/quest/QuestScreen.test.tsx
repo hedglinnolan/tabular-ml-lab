@@ -259,6 +259,73 @@ describe("a card's recorded answer in the shell", () => {
   });
 });
 
+/**
+ * What waits is what is shown (FOUNDATION §7): under Predict the fit may already be computed
+ * before Fit is pressed, but until the quest log says it was pressed (`fit.pressed`), the Models
+ * tapestry shows no fit scene: no cross-validated comparison, no coefficients, no substitution and
+ * no seal card. The view is the capture's where the opening is the Router's open question (the
+ * fit computed and served whole, the held-out rows still sealed), each fresh stage's artifact as
+ * captured; Models is left one objective short, so its tapestry is the live stage, not the
+ * analysis flowchart.
+ */
+describe("the Models tapestry under Predict, before and after Fit is pressed", () => {
+  const AT_OPENING = viewsOf(JOURNEY)
+    .map((v, i) => expandView(JOURNEY, v, PID, `2026-10-17T00:00:${String(i).padStart(2, "0")}Z`))
+    .find((v) => v.interview.some((s) => s.key === "open_seal" && s.status === "open"))!;
+  /** The fit scene's parts, as Results (components/stage/results) marks each. */
+  const FIT_SCENE = ['[data-purpose="model_comparison"]', '[data-purpose="coefficients"]', '[data-purpose="substitution"]', '[data-testid="open-seal-card"]'];
+  beforeEach(() => {
+    // The views measure their box; jsdom has no layout to measure.
+    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  });
+
+  function modelsBefore(lock: FitLock) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    qc.setQueryData(keys.quest(PID), {
+      ...BASE,
+      fit: lock,
+      stages: BASE.stages.map((s) =>
+        s.key === "models" ? { ...s, progress: { answered: 4, required: 5, complete: false } } : s,
+      ),
+    } satisfies QuestLog);
+    qc.setQueryData(keys.view(PID), AT_OPENING);
+    for (const [name, status] of Object.entries(AT_OPENING.stages)) {
+      if (!status || status.status !== "fresh") continue;
+      qc.setQueryData(keys.stage(PID, name), {
+        stage: name,
+        key: status.key,
+        fresh: true,
+        status: status.status,
+        artifact: artifactAt(JOURNEY, name, status.key),
+      });
+    }
+    render(
+      <QueryClientProvider client={qc}>
+        <QuestScreen pid={PID} stream="open" />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByTestId("stage-models"));
+    expect(card()).toBe("card-models");
+  }
+  const fitScene = () => FIT_SCENE.filter((sel) => screen.getByTestId("tapestry").querySelector(sel));
+
+  it("shows no fit scene until Fit is pressed, and says why in the engine's words", async () => {
+    expect(AT_OPENING.stages.fit?.status).toBe("fresh");
+    modelsBefore(ready);
+    await waitFor(() => expect(screen.getByTestId("stage")).toHaveAttribute("data-scene", "now"));
+    expect(fitScene()).toEqual([]);
+    expect(screen.queryByTestId("results")).toBeNull();
+    expect(screen.getByTestId("tapestry")).toHaveTextContent(ready.reason);
+    expect(screen.getByTestId("tapestry")).not.toHaveTextContent("Nothing has been fit yet");
+  });
+
+  it("shows the fit scene once Fit is pressed", async () => {
+    modelsBefore(pressed);
+    await waitFor(() => expect(screen.getByTestId("stage")).toHaveAttribute("data-scene", "results"));
+    await waitFor(() => expect(fitScene()).toEqual(FIT_SCENE));
+  });
+});
+
 describe("a screen opened while the pressed fit runs", () => {
   it("lands on Models' flowchart, with the fit's progress and Cancel", () => {
     shell(pressed, fitStatus("running", 0.4));

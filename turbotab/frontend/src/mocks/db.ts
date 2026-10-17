@@ -73,7 +73,8 @@ export const STAGE_DEFS: StageDef[] = [
     name: "findings",
     version: 1,
     deps: ["ingest"],
-    reads: ["lens", "target"],
+    // The goal too: under prediction the energy noticing does not fire (findings.ts).
+    reads: ["lens", "target", "purpose"],
     requires: ["lens"],
     ms: 1000,
     label: "Checking the table against the chosen lenses",
@@ -529,7 +530,7 @@ export class MockServer {
       case "target_info":
         return targetInfo(ds, state.target!, state.task);
       case "findings":
-        return findings(ds, state.lens ?? [], state.target);
+        return findings(ds, state.lens ?? [], state.target, state.purpose);
     }
   }
 

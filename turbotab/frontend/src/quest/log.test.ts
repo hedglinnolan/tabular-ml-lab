@@ -9,7 +9,7 @@
  */
 import type { QuestLine, QuestLog, QuestStage } from "../api/schema";
 import { CONTRACT } from "./fixtures/contract";
-import { type Hint, drawWaitsForSweep, openLine, openStageKey, primaryFor, stageOf, sweptLines } from "./log";
+import { type Hint, drawWaitsForSweep, fitWithheld, openLine, openStageKey, primaryFor, settledBy, stageOf, sweptLines } from "./log";
 
 const strip = (lines: { id: string; key: string; value: string }[]) =>
   lines.map(({ id, key, value }) => ({ id, key, value }));
@@ -226,5 +226,43 @@ describe("the open line (P8)", () => {
     expect(openLine(data, (l) => l.source !== "declaration")).toBeNull();
     const reopened = withStage(LOG, "data", (l) => (l.key === "lens" ? { ...l, status: "open", decision_id: null } : l)).stage;
     expect(openLine(reopened, (l) => l.source !== "declaration")?.key).toBe("lens");
+  });
+});
+
+describe("the line that settled a noticing (P2)", () => {
+  const KEY = "pack::dietary::implausible_intake#1";
+  const exclusions = stageOf(LOG, "whos_in")!.lines.find((l) => l.key === "exclusions")!;
+  const settle = (id: string, also: (l: QuestLine) => QuestLine = (l) => l) =>
+    withStage(LOG, "whos_in", (l) => also(l.key === KEY ? { ...l, status: "answered", decision_id: id } : l));
+  const noticing = (log: QuestLog) => stageOf(log, "whos_in")!.lines.find((l) => l.key === KEY)!;
+
+  it("is the question whose record settled it", () => {
+    const { log } = settle(exclusions.decision_id!);
+    expect(settledBy(log, noticing(log))?.key).toBe("exclusions");
+  });
+
+  it("is none for its own disposition, for a record several lines share, or for a line that is not a settled noticing", () => {
+    const own = settle("r-own").log;
+    expect(settledBy(own, noticing(own))).toBeNull();
+    // A record two lines share, as a sweep's confirmation is: neither alone settled it.
+    const shared = settle("r-sweep", (l) => (l.key === "exclusions" || l.key === "missing" ? { ...l, decision_id: "r-sweep" } : l)).log;
+    expect(stageOf(shared, "whos_in")!.lines.filter((l) => l.source !== "finding" && l.decision_id === "r-sweep").length).toBeGreaterThan(1);
+    expect(settledBy(shared, noticing(shared))).toBeNull();
+    expect(settledBy(LOG, noticing(LOG))).toBeNull();
+    expect(settledBy(LOG, exclusions)).toBeNull();
+  });
+});
+
+describe("the fit withheld until Fit is pressed (FOUNDATION §7)", () => {
+  const { ready, held, pressed, unlocked, no_goal } = CONTRACT.fit_locks;
+  it("withholds it under Predict until the press, in the lock's own words", () => {
+    expect(fitWithheld({ ...LOG, fit: ready })).toBe(ready.reason);
+    expect(fitWithheld({ ...LOG, fit: held })).toBe(held.reason);
+  });
+  it("withholds nothing once Fit is pressed, under Estimate (the stage's own rule), or with no lock", () => {
+    expect(fitWithheld({ ...LOG, fit: pressed })).toBeNull();
+    expect(fitWithheld({ ...LOG, fit: unlocked })).toBeNull();
+    expect(fitWithheld({ ...LOG, fit: no_goal })).toBeNull();
+    expect(fitWithheld({ ...LOG, fit: null })).toBeNull();
   });
 });

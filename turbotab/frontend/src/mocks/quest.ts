@@ -2,7 +2,9 @@
  * The mock's quest log and the reads around it (dev:mock only; plans/W1_PART2_PLAN.md §2 "W1-E"),
  * so the quest shell can be walked on the mock's projects: GET /quest, /record, /triage,
  * /materiality, /checklist, /methods, /methods/sections and /export, and POST /fit and
- * /fit/cancel.
+ * /fit/cancel. Under prediction it also keeps Fit's gate as the engine does: the fit is served
+ * withheld until Fit is pressed (`servedFit`, read by m1-record.ts), and the opening of the
+ * held-out rows waits for the press and then for the triage (`openingRefusal`).
  *
  * The quest log is built from the project's view as the mock serves it (the Router's steps, the
  * decisions, the findings) and placed by the engine's own registry: each question's and
@@ -353,6 +355,97 @@ export function mockTriage(view: ProjectView, log: QuestLog): Triage {
   };
 }
 
+// ── Fit's gate under Predict (core/fit_press.py, core/seal.py), mirrored ─────────
+
+/** The engine's reason no score is served before Fit under prediction (fit_press.FIT_FIRST). */
+const FIT_FIRST =
+  "No score or estimate is shown until Fit is pressed, so none is seen before the models' settings are confirmed.";
+/** The way on it names (fit_press.PRESS_FIT). */
+const PRESS_FIT = "Press Fit on the analysis flowchart";
+/** What `estimand.withhold` empties in a fit before Fit is pressed: each model's scores
+ *  (MODEL_SCORES, and `cv`) and the comparison's (FIT_SCORES). */
+const MODEL_SCORES = [
+  "holdout",
+  "versus_baseline",
+  "calibration",
+  "holdout_detail",
+  "optimism",
+  "internal_external",
+  "compared_on",
+  "performance",
+  "nested_cv",
+  "calibration_levels",
+  "calibration_horizon",
+  "calibration_note",
+];
+const FIT_SCORES = ["selection", "precision", "comparison", "comparisons_note", "result", "nested_offer", "at_opening"];
+
+/**
+ * The fit as the real server serves it under prediction before Fit is pressed
+ * (`fit_press.served`, `estimand.withhold` with scores withheld): every score and estimate removed,
+ * the reason first, `withheld_for` "fit". Under any other goal the mock serves its fit whole, as
+ * before (the Estimate lane's lock is W3's).
+ */
+export function servedFit<T>(fit: T, purpose: string | null | undefined, pressed: boolean): T {
+  if (purpose !== "prediction" || pressed || !fit || typeof fit !== "object") return fit;
+  const f = fit as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...f, withheld: FIT_FIRST, withheld_for: "fit", comparisons: [] };
+  for (const k of FIT_SCORES) if (k in out) out[k] = null;
+  out.models = ((f.models as Record<string, unknown>[] | undefined) ?? []).map((m) => {
+    const x: Record<string, unknown> = {
+      ...m,
+      cv: {},
+      coefficients: null,
+      inference: null,
+      exposure_tests: [],
+      concerns: [FIT_FIRST, ...((m.concerns as string[] | undefined) ?? [])],
+    };
+    for (const k of MODEL_SCORES) if (k in x) x[k] = null;
+    if (x.baseline && typeof x.baseline === "object") x.baseline = { ...(x.baseline as object), value: null };
+    return x;
+  });
+  return out as T;
+}
+
+const refusal = (code: string, message: string, exits: { label: string; decision: unknown }[]) => ({
+  error: { code, message, exits },
+});
+
+/**
+ * Why the opening of the held-out rows waits under prediction, in core/seal.py's order and words:
+ * after its own checks (opened already, nothing held out, the fit not fresh: the mock's validator,
+ * m2-record.ts, refuses those, so they pass here), until Fit is pressed (`fit_not_yet`), then while
+ * a noticing has no recorded disposition (`triage_open`, its exits the triage and its Confirm all).
+ * The mock's triage holds no blocker and no "act on it", so the engine's other two refusals never
+ * arise. Null when nothing here holds it; under other goals the mock keeps its walk (W3).
+ */
+export function openingRefusal(view: ProjectView, log: QuestLog, pressed: boolean) {
+  const { state, stages } = view;
+  if (state.purpose !== "prediction") return null;
+  if (state.seal_opened || !state.split || state.split.holdout === 0 || stages.fit?.status !== "fresh") return null;
+  if (!pressed)
+    return refusal(
+      "fit_not_yet",
+      `The held-out rows open after Fit is pressed: the final model is named on the cross-validated scores it shows. ${FIT_FIRST}`,
+      [{ label: PRESS_FIT, decision: null }],
+    );
+  const t = mockTriage(view, log);
+  if (t.passed) return null;
+  const waiting = t.items.filter((i) => i.recorded === null);
+  if (!waiting.length) return null;
+  const n = waiting.length;
+  const named = waiting.map((i) => `${i.summary.trim().replace(/\.+$/, "")} (${i.label.toLowerCase()})`).join("; ");
+  const where = C.stages.find((s) => s.key === t.stage)?.name ?? "Results";
+  return refusal(
+    "triage_open",
+    `The held-out rows open once, after every open noticing is triaged: ${n} ${n === 1 ? "is" : "are"} still open, each with its recommended disposition: ${named}. Triage ${n === 1 ? "it" : "them"} in ${where} first, so each is decided before any held-out score is seen.`,
+    [
+      { label: `Triage the open noticings in ${where}`, decision: null },
+      { label: "Keep the recommended dispositions", decision: { kind: "confirm_sweep", stage: t.stage, sweep: "noticings", lines: [] } },
+    ],
+  );
+}
+
 const LEDGER: Ledger = { version: 1, locked: false, gate: "", rows: [], limitations: 0, budget: 0 };
 
 /** The reporting checklist: the mock holds no items, and says what the export waits for. */
@@ -383,6 +476,11 @@ function exportWaits(view: ProjectView): string[] {
 
 /** Fit pressed, by project (the mock's; a real server keeps it with the project). */
 const pressedFor = new Map<string, boolean>();
+
+/** Whether Fit was pressed for a mock project (the fit stage's handler, m1-record.ts, reads it). */
+export function fitPressed(pid: string): boolean {
+  return pressedFor.get(pid) ?? false;
+}
 
 async function viewOf(pid: string): Promise<ProjectView | null> {
   // Through the mock's own handlers: each project kind (the mock server's, a replay, a lab's)
@@ -425,6 +523,17 @@ export function questHandlers(server: MockServer): HttpHandler[] {
     http.get("/api/projects/:pid/triage", async ({ params }) => {
       const q = await questOf(pidOf(params));
       return q ? HttpResponse.json(mockTriage(q.view, q.log)) : notFound();
+    }),
+    // The opening's gates under prediction (openingRefusal); anything else, and an opening they let
+    // through, goes on to the mock server's own decisions handler (m1-record.ts).
+    http.post("/api/projects/:pid/decisions", async ({ params, request }) => {
+      const pid = pidOf(params);
+      if (!own(pid)) return undefined;
+      const d = (await request.clone().json()) as { kind?: string };
+      if (d.kind !== "open_seal") return undefined;
+      const q = await questOf(pid);
+      const refused = q ? openingRefusal(q.view, q.log, fitPressed(pid)) : null;
+      return refused ? HttpResponse.json(refused, { status: 409 }) : undefined;
     }),
     http.get("/api/projects/:pid/materiality", () => HttpResponse.json(LEDGER)),
     http.get("/api/projects/:pid/checklist", async ({ params }) => {

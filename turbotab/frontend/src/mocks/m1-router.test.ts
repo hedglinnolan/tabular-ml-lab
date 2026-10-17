@@ -5,7 +5,9 @@
  * it cannot be taken (fit_failed), never "wait for the fit".
  */
 import type { Decision, ProjectState, StageStatus } from "../api/schema";
+import type { MockDataset } from "./datasets";
 import type { MockProject } from "./db";
+import { findings } from "./findings";
 import { holdsBack, route } from "./m1-router";
 import { m2Mock } from "./m2-record";
 
@@ -44,6 +46,43 @@ describe("a step that needs the fit fresh", () => {
     expect(waiting(status("idle"))).toContain("fit");
     expect(waiting(FAILED)).not.toContain("fit");
     expect(waiting(STOPPED)).not.toContain("fit");
+  });
+});
+
+/**
+ * BEATS_PREDICT ruling 5, as the engine's W1-P11 makes it: under prediction neither the energy
+ * model nor the substitution is asked, and the dietary energy noticing does not fire; under
+ * estimation, with energy and two energy-bearing exposures recorded, both are asked and it fires.
+ * The table is constructed: kcal and glucose, three rows.
+ */
+describe("the energy model and the substitution under Predict (ruling 5)", () => {
+  const roles = { kcal: "energy", protein: "exposure", sugar: "exposure", glucose: "outcome" };
+  const asked = (purpose: string) => {
+    const state = new Proxy({ purpose, lens: ["dietary"], roles, target: "glucose" } as Record<string, unknown>, {
+      get: (t, k) => (k in t ? t[k as string] : null),
+    }) as unknown as ProjectState;
+    const steps = route(state, { fit: status("fresh") }, null, [], {}, () => true);
+    return ["energy_adjustment", "substitution"].map((k) => steps.find((s) => s.key === k)!.status);
+  };
+  const ds: MockDataset = {
+    name: "t.csv",
+    nRows: 3,
+    sourceBytes: 1,
+    columns: [
+      { name: "kcal", dtype: "numeric", physical_type: "double", values: [300, 2000, 6000] },
+      { name: "glucose", dtype: "numeric", physical_type: "double", values: [90, 100, 110] },
+    ],
+  };
+  const energyNoticed = (purpose: string) => findings(ds, ["dietary"], "glucose", purpose).findings.some((f) => f.id === "energy_adjustment");
+
+  it("asks neither under prediction, and the energy noticing does not fire", () => {
+    expect(asked("prediction")).toEqual(["not_applicable", "not_applicable"]);
+    expect(energyNoticed("prediction")).toBe(false);
+  });
+
+  it("asks both under estimation, and the energy noticing fires", () => {
+    expect(asked("inference")).not.toContain("not_applicable");
+    expect(energyNoticed("inference")).toBe(true);
   });
 });
 

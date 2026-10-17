@@ -96,6 +96,19 @@ export function openLine(stage: QuestStage, canAnswer: CanAnswer = ANY): QuestLi
   return decide.find((l) => l.counted) ?? decide[0] ?? null;
 }
 
+/**
+ * The line whose answer settled an answered noticing, when that answer is another line's: the
+ * question the noticing is decided by, answered there (core/quest.py `_finding_lines` gives the
+ * noticing that question's record). Null for a noticing settled by its own disposition (dismissed,
+ * repaired, set aside), whose record speaks of it alone; for a record several lines share (a
+ * sweep's confirmation), which no one line can be named for; and for every other line.
+ */
+export function settledBy(log: QuestLog, line: QuestLine): QuestLine | null {
+  if (line.source !== "finding" || line.status !== "answered" || !line.decision_id) return null;
+  const by = log.stages.flatMap((s) => s.lines).filter((l) => l.source !== "finding" && l.decision_id === line.decision_id);
+  return by.length === 1 ? by[0]! : null;
+}
+
 /** The counted Decide lines still to answer (open or waiting). */
 export function unanswered(stage: QuestStage): QuestLine[] {
   return byLabel(stage).Decide.filter((l) => l.counted && (l.status === "open" || l.status === "waiting"));
@@ -153,6 +166,17 @@ export function fitPosition(log: QuestLog, fit: StageStatus | undefined): FitPos
   const models = stageOf(log, "models");
   if (!models?.reached || !models.progress?.complete) return { kind: "none" };
   return { kind: "press", held: lock.held, estimate: lock.held ? heldFor(lock) : null };
+}
+
+/**
+ * Why the tapestry shows no fit yet, in the engine's words (the lock's reason), or null when it may
+ * (FOUNDATION §7, "what waits is what is shown"): under Predict a short fit may be computed before
+ * Fit is pressed, and until the quest log says it was pressed none of it is shown. Under Estimate
+ * the shell keeps the stage's own rule (W3 designs it).
+ */
+export function fitWithheld(log: QuestLog): string | null {
+  const lock = log.fit;
+  return lock && lock.purpose === "prediction" && !lock.pressed ? lock.reason : null;
 }
 
 /** The stage the shell opens on: Models while the pressed fit runs, since its analysis flowchart

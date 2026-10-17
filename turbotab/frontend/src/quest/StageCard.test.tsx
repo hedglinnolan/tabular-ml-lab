@@ -147,11 +147,16 @@ function patched(base: QuestLog, set: Record<string, (l: QuestLine) => QuestLine
 const stageIn = (log: QuestLog, key: string) => log.stages.find((s) => s.key === key)!;
 const lineEl = (card: HTMLElement, key: string) => within(card).getAllByTestId(`line-${key}`)[0]!;
 
-function cardOf(log: QuestLog, key: string, opts: { request?: OpenRequest | null; answers?: Map<string, string>; open?: (stage: string, line?: string) => void } = {}) {
+function cardOf(
+  log: QuestLog,
+  key: string,
+  opts: { request?: OpenRequest | null; answers?: Map<string, string>; open?: (stage: string, line?: string) => void; seed?: (qc: QueryClient) => void } = {},
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(keys.quest(PID), log);
   qc.setQueryData(keys.view(PID), VIEW);
   qc.setQueryData(keys.record(PID), RECORD);
+  opts.seed?.(qc);
   const props = {
     pid: PID,
     log,
@@ -302,6 +307,53 @@ describe("an answered noticing (P12)", () => {
     const { card } = cardOf(log, "whos_in", { answers: new Map([[exclusions.decision_id!, ANSWER]]) });
     expect(lineEl(card, "exclusions")).toHaveTextContent(exclusions.name.charAt(0).toUpperCase() + exclusions.name.slice(1));
     expect(lineEl(card, "exclusions")).toHaveTextContent(ANSWER);
+  });
+});
+
+/**
+ * A noticing settled by its question's answer (P2): the engine gives it that question's record, so
+ * reading as its answer would print the question's sentence twice and drop what the noticing was
+ * about. It names its columns (the findings artifact's) and the question instead, and the answer
+ * is printed once, on the question's line. The noticing and its columns are set by construction.
+ */
+describe("a noticing settled by its question's answer (P2)", () => {
+  const KEY = "pack::dietary::implausible_intake#1";
+  const ANSWER = "1,917 rows were excluded as implausible intakes.";
+  const exclusions = stageIn(REACHED, "whos_in").lines.find((l) => l.key === "exclusions")!;
+  const log = patched(REACHED, { whos_in: (l) => (l.key === KEY ? { ...l, status: "answered", decision_id: exclusions.decision_id } : l) });
+  const name = stageIn(REACHED, "whos_in").lines.find((l) => l.key === KEY)!.name;
+  const SETTLED = `Kcal: settled by ${exclusions.name}`;
+  const count = (el: HTMLElement, text: string) => (el.textContent ?? "").split(text).length - 1;
+  const findings = { findings: [{ id: KEY, affected_columns: ["kcal"], title: "The days in `kcal` are not settled." }] };
+  const seeded = (findingsServed: boolean) => {
+    const view = { ...VIEW, stages: { ...VIEW.stages, findings: { ...VIEW.stages.findings!, status: "fresh" as const } } };
+    return (qc: QueryClient) => {
+      qc.setQueryData(keys.view(PID), view);
+      if (findingsServed) qc.setQueryData(keys.stage(PID, "findings"), { stage: "findings", key: "k", fresh: true, status: "fresh", artifact: findings });
+    };
+  };
+
+  it("names its columns and the question, and the answer is printed once, on the question's line", () => {
+    const { card } = cardOf(log, "whos_in", { answers: new Map([[exclusions.decision_id!, ANSWER]]), seed: seeded(true) });
+    expect(lineEl(card, KEY)).toHaveTextContent(SETTLED);
+    expect(lineEl(card, KEY)).not.toHaveTextContent(ANSWER);
+    expect(lineEl(card, KEY)).not.toHaveTextContent(name);
+    expect(lineEl(card, "exclusions")).toHaveTextContent(ANSWER);
+    expect(count(card, ANSWER)).toBe(1);
+  });
+
+  it("names itself by its own name while the findings are not read", () => {
+    const { card } = cardOf(log, "whos_in", { answers: new Map([[exclusions.decision_id!, ANSWER]]), seed: seeded(false) });
+    expect(lineEl(card, KEY)).toHaveTextContent(`${name}: settled by ${exclusions.name}`);
+    expect(count(card, ANSWER)).toBe(1);
+  });
+
+  it("is listed the same way in First look", () => {
+    const { card } = cardOf(log, "first_look", { answers: new Map([[exclusions.decision_id!, ANSWER]]), seed: seeded(true) });
+    const item = within(card).getByTestId(`noticed-${KEY}`);
+    expect(item).toHaveTextContent(SETTLED);
+    expect(item).toHaveTextContent(`Settled in ${stageIn(REACHED, "whos_in").name}`);
+    expect(count(card, ANSWER)).toBe(0);
   });
 });
 

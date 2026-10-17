@@ -318,6 +318,9 @@
   flex-direction: column;
 }
 
+/* What is wider than a narrow window scrolls, never clipped out of reach. The side padding holds
+   a card's stale veil, which reaches 4px past the card (motion/StaleVeil.module.css), so at rest
+   nothing scrolls. */
 .scene {
   flex: 1;
   min-height: 0;
@@ -325,8 +328,8 @@
   flex-direction: column;
   gap: 10px;
   overflow-y: auto;
-  overflow-x: hidden;
-  padding: 2px 2px 8px;
+  overflow-x: auto;
+  padding: 2px 4px 8px;
 }
 
 .views,
@@ -465,9 +468,17 @@
   gap: 12px;
 }
 
+/* The lineage scrolls in its own box where the card is narrower than its labels need
+   (views/Lineage.tsx `lineageMinWidth`, set on the inner box). */
 .lineageBox {
   position: relative;
   width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.lineageWide {
+  height: 100%;
 }
 
 .provenance {
@@ -489,10 +500,12 @@
   font-size: 14px;
 }
 
+/* A narrow card wraps its head, so its Save stays in reach. */
 .cardHead {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 4px 10px;
   margin-bottom: 6px;
   min-height: 22px;
 }

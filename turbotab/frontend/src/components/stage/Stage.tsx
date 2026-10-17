@@ -39,6 +39,14 @@ export interface StageProps {
   view: ProjectView;
   focus: StageFocus;
   onFocus: (focus: StageFocus) => void;
+  /**
+   * Why the screen shows no fit yet, though one may be computed (the quest shell under Predict
+   * until Fit is pressed: FOUNDATION §7, "what waits is what is shown"), or null. While it is set
+   * the stage draws no fit: no Results scene (the comparison, the coefficients, the substitution,
+   * the seal), no fitted family's concern on the shelf, and no Fit of its own, since the screen
+   * places Fit itself; the live Results card says this reason. Today's screen passes none.
+   */
+  fitWithheld?: string | null;
 }
 
 type Scene =
@@ -68,7 +76,7 @@ const LIVE_TITLE: Record<string, [string, string]> = {
   results: ["Results", "what the recorded pipeline fitted"],
 };
 
-export function Stage({ pid, view, focus, onFocus }: StageProps) {
+export function Stage({ pid, view, focus, onFocus, fitWithheld = null }: StageProps) {
   const seq = stateSeq(view);
   const { reduced } = useMotionPrefs();
   const t = useTransitions();
@@ -110,12 +118,14 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
     split: split.artifact,
     shelf: shelf.artifact,
     design: design.artifact,
-    fit: { artifact: fit.artifact, veil: fit.veil },
+    // Computed or not, a withheld fit reaches no scene.
+    fit: { artifact: fitWithheld ? null : fit.artifact, veil: fit.veil },
     substitution: { artifact: substitution.artifact, veil: substitution.veil },
+    fitWithheld,
   };
 
   // ── what the stage wants to show, and whether it is ready ──
-  const fitted = !!fit.artifact;
+  const fitted = !!live.fit.artifact;
   const segment = focus.kind === "banner" ? focus.segment : null;
   const findingList = findings.artifact?.findings;
   const target = useMemo<Scene | null>(() => {
@@ -340,10 +350,12 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
           ) : null}
           {/* Fit waits for the person when it is expected to take long: it is offered wherever the
               recorded pipeline is on the stage, never while a preview or evidence is, and once:
-              where the Results show an older fit withheld for Fit, they offer it themselves. */}
-          {scene.kind === "now" ||
-          scene.kind === "models" ||
-          (scene.kind === "results" && live.fit.artifact?.withheld_for !== "fit") ? (
+              where the Results show an older fit withheld for Fit, they offer it themselves. A
+              screen that withholds the fit places Fit itself. */}
+          {!fitWithheld &&
+          (scene.kind === "now" ||
+            scene.kind === "models" ||
+            (scene.kind === "results" && live.fit.artifact?.withheld_for !== "fit")) ? (
             <FitHeld pid={pid} status={view.stages.fit} />
           ) : null}
           <div className={s.body}>

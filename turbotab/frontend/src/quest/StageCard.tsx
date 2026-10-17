@@ -2,11 +2,13 @@
  * The card (FOUNDATION §3): the stage shown, its name, why it dropped back, then its lines under
  * their labels. The open Decide line is expanded through the dispatcher (CardFor); answered lines
  * collapse to their answers (a noticing to its answer alone, so its open-tense headline is not left
- * beside it); lines still to come wait below, quieter, each "Waiting for" what it needs. A line no
- * card can answer yet is listed after the rest, "Not available yet", and never opened. The stage's
- * Confirm sweep comes after its Decides, each default with its reason (or, where the engine serves
- * none, the default itself, from its value) and what another choice would change, and any can be
- * opened to change it; under Predict, Who's in's draw waits for that sweep (§3, "two departures").
+ * beside it, or, where a question's answer settled it, to what it was about and that question, so
+ * the answer is printed once); lines still to come wait below, quieter, each "Waiting for" what it
+ * needs. A line no card can answer yet is listed after the rest, "Not available yet", and never
+ * opened. The stage's Confirm sweep comes after its Decides, each default with its reason (or,
+ * where the engine serves none, the default itself, from its value) and what another choice would
+ * change, and any can be opened to change it; under Predict, Who's in's draw waits for that sweep
+ * (§3, "two departures").
  * Results, once reached, has W1-G's ResultsCards in place of its lines, mounted once
  * (src/quest/contracts.ts). First look lists every noticing with the stage that decides it. For
  * the record sits collapsed at the foot (GET /record). The one primary action is at the very foot
@@ -25,20 +27,58 @@ import {
   useExport,
   useProjectView,
   useRecord,
+  useStageResult,
 } from "../api/queries";
-import type { Decision, ProjectState, QuestLine, QuestLog, QuestStage, Refusal, SweepStage } from "../api/schema";
+import type { Decision, Finding, ProjectState, QuestLine, QuestLog, QuestStage, Refusal, SweepStage } from "../api/schema";
 import { Foot, Plain, foot as f, kit as k } from "../kit";
+import { listJoin } from "../util/format";
 import { CardFor } from "./cards/CardFor";
 import { DECLARATION_CARDS, DECLARATION_DEFAULTS } from "./cards/predict";
 import { columnOf, recordable } from "./cards/renderers";
 import { FootSlot } from "./contracts";
-import { type FitPosition, type Hint, DRAW, byLabel, drawWaitsForSweep, openLine, primaryFor, sweptLines } from "./log";
+import {
+  type FitPosition,
+  type Hint,
+  DRAW,
+  byLabel,
+  drawWaitsForSweep,
+  openLine,
+  primaryFor,
+  runningName,
+  settledBy,
+  sweptLines,
+} from "./log";
 import { ResultsCards } from "./results";
 import { said } from "./words";
 import q from "./quest.module.css";
 
 const idOf = (l: QuestLine) => `${l.source}:${l.key}`;
 const canAnswer = (l: QuestLine) => recordable(l, DECLARATION_CARDS);
+
+/** The findings artifact's noticings, once the stage has started (as FindingCard reads them). */
+function useNoticings(pid: string): readonly Finding[] | undefined {
+  const status = useProjectView(pid).data?.stages.findings?.status;
+  const started = status !== undefined && status !== "idle" && status !== "blocked";
+  return useStageResult(pid, "findings", started).data?.artifact?.findings;
+}
+
+/**
+ * A noticing settled by another line's answer (log.ts `settledBy`), in a line of its own: what it
+ * was about, by its columns (else its title, else its name), and the question that settled it, so
+ * the answer is printed once, on that question's line (FOUNDATION §2). Null for any other line.
+ */
+function settledText(log: QuestLog, line: QuestLine, noticings: readonly Finding[] | undefined): string | null {
+  const by = settledBy(log, line);
+  if (!by) return null;
+  const f = noticings?.find((x) => x.id === line.key);
+  const cols = f?.affected_columns ?? [];
+  const about = cols.length
+    ? cols.length <= 3
+      ? listJoin(cols)
+      : `${cols.slice(0, 2).join(", ")} and ${cols.length - 2} more`
+    : runningName(f?.title ?? line.name);
+  return `${said(about)}: settled by ${runningName(by.name)}`;
+}
 
 /** A request to bring a line into view: the line's key (null: the stage's open line), and a count
  *  that changes with every request, so asking again for the same line still answers. */
@@ -108,6 +148,7 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
   }, [requested]);
 
   const state = useProjectView(pid).data?.state ?? null;
+  const noticings = useNoticings(pid);
   const groups = byLabel(stage);
   // A line no card can answer yet comes after those that can (FOUNDATION §3, "Not available yet").
   const decide = [...groups.Decide.filter(canAnswer), ...groups.Decide.filter((l) => !canAnswer(l))];
@@ -129,6 +170,7 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
       held={drawHeld && l.key === DRAW}
       state={state}
       confirm={confirm}
+      settledAs={settledText(log, l, noticings)}
     />
   );
 
@@ -153,7 +195,7 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
         </div>
 
         {stage.key === "first_look" && stage.reached ? (
-          <Noticed log={log} answers={answers} onOpenStage={onOpenStage} />
+          <Noticed log={log} answers={answers} noticings={noticings} onOpenStage={onOpenStage} />
         ) : null}
 
         {results ? (
@@ -216,6 +258,7 @@ function Line({
   held,
   state,
   confirm = false,
+  settledAs = null,
 }: {
   pid: string;
   line: QuestLine;
@@ -229,6 +272,8 @@ function Line({
   held: boolean;
   state: ProjectState | null;
   confirm?: boolean;
+  /** A noticing another line's answer settled, as it reads then (`settledText`). */
+  settledAs?: string | null;
 }) {
   const answer = line.decision_id ? answers.get(line.decision_id) : undefined;
   const testId = `line-${line.key}`;
@@ -241,7 +286,8 @@ function Line({
     );
   }
   // An answered noticing reads as its answer: the engine names a noticing by its open-tense
-  // summary ("…is not asked yet"), which its answer settles.
+  // summary ("…is not asked yet"), which its answer settles. Settled by another line's answer, it
+  // names what it was about and that line, which prints the answer once.
   const settled = line.source === "finding" && line.status === "answered" && !!answer;
   const offer = answerable && !held && line.status !== "waiting";
   // A default the engine states no reason for is said by its value (DECLARATION_DEFAULTS).
@@ -260,7 +306,7 @@ function Line({
     >
       <div className={q.lineRow}>
         <span className={q.lineName}>
-          {settled ? <Plain text={answer} /> : said(line.name)}
+          {settledAs ?? (settled ? <Plain text={answer} /> : said(line.name))}
         </span>
         {offer ? (
           <button type="button" className={k.linkish} onClick={onToggle} data-testid={`${testId}-toggle`}>
@@ -326,15 +372,18 @@ function Line({
 /**
  * First look's noticings (FOUNDATION §3; WALKABLE_PLAN §2, "lists its noticings by where each is
  * decided"): First look decides nothing itself; each noticing is decided in the stage whose answer
- * it changes, and each links there. A settled one reads as its answer, as on its own stage's card.
+ * it changes, and each links there. A settled one reads as it does on its own stage's card: its
+ * answer, or what it was about and the question whose answer settled it.
  */
 function Noticed({
   log,
   answers,
+  noticings,
   onOpenStage,
 }: {
   log: QuestLog;
   answers: ReadonlyMap<string, string>;
+  noticings: readonly Finding[] | undefined;
   onOpenStage: (stage: string, line?: string) => void;
 }) {
   const noticed = log.stages.flatMap((s) => s.lines.filter((l) => l.source === "finding").map((l) => ({ s, l })));
@@ -343,11 +392,12 @@ function Noticed({
     <Group label="Noticed" heading="each is decided where it changes an answer">
       {noticed.map(({ s, l }) => {
         const answer = l.status === "answered" && l.decision_id ? answers.get(l.decision_id) : undefined;
+        const settledAs = settledText(log, l, noticings);
         const where =
           l.label === "For the record" ? "For the record, in" : l.status === "answered" ? "Settled in" : "Decided in";
         return (
           <li key={`${s.key}:${l.key}`} className={q.line} data-kit data-testid={`noticed-${l.key}`} data-status={l.status}>
-            <span className={q.lineName}>{answer ? <Plain text={answer} /> : said(l.name)}</span>
+            <span className={q.lineName}>{settledAs ?? (answer ? <Plain text={answer} /> : said(l.name))}</span>
             <p className={q.lineQuiet}>
               {where}{" "}
               <button type="button" className={k.linkish} onClick={() => onOpenStage(s.key, l.key)} data-testid={`noticed-${l.key}-to`}>
@@ -405,19 +455,25 @@ function Checklist({ pid }: { pid: string }) {
   );
 }
 
-/** The foot's line beside a waiting action: what it waits for, its name a link to that line. */
+/** The foot's line beside a waiting action: what it waits for, its name underlined. Where it can
+ *  go there, the whole sentence is the link, so it wraps as one sentence, its period with it. */
 function HintLine({ hint, onOpenStage }: { hint: Hint; onOpenStage: (stage: string, line?: string) => void }) {
   const to = hint.to;
+  if (hint.name && to) {
+    return (
+      <span data-testid="primary-hint">
+        <button type="button" className={q.hintLink} onClick={() => onOpenStage(to.stage, to.line ?? undefined)} data-testid="primary-hint-link">
+          {hint.lead}
+          <span className={q.hintName}>{hint.name}</span>
+          {hint.tail}
+        </button>
+      </span>
+    );
+  }
   return (
     <span data-testid="primary-hint">
       {hint.lead}
-      {hint.name && to ? (
-        <button type="button" className={k.linkish} onClick={() => onOpenStage(to.stage, to.line ?? undefined)} data-testid="primary-hint-link">
-          {hint.name}
-        </button>
-      ) : (
-        hint.name
-      )}
+      {hint.name}
       {hint.tail}
     </span>
   );

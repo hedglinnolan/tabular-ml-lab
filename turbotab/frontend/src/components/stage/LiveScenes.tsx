@@ -26,7 +26,7 @@ import { Shelf } from "./results/Shelf";
 import { figureSvg, lineagePanel, rowFlowPanel } from "./save/journal";
 import { SaveMenu } from "./save/SaveMenu";
 import { Rich } from "./text";
-import { Lineage } from "./views/Lineage";
+import { Lineage, lineageMinWidth } from "./views/Lineage";
 import { RowFlow } from "./views/RowFlow";
 import s from "./Stage.module.css";
 
@@ -35,6 +35,9 @@ export interface LiveData extends ResultsData {
   cohort: { artifact: CohortArtifact | null; veil: VeilState };
   splitVeil: VeilState;
   designVeil: VeilState;
+  /** Why no fit is shown yet, when the screen withholds it (StageProps `fitWithheld`); the fit's
+   *  artifact is then null here, whether or not it is computed. */
+  fitWithheld?: string | null;
 }
 
 /** The participant flow as recorded: the cohort's steps, then the split's fork. */
@@ -222,7 +225,10 @@ function ColumnsCard({ view, data, full }: { view: ProjectView; data: LiveData; 
           className={s.lineageBox}
           style={{ height: full ? Math.max(360, rawRows * 26 + 60) : Math.min(380, Math.max(220, rawRows * 15 + 60)) }}
         >
-          <Lineage lineage={lineage} openLabel={openLabel} />
+          {/* Never narrower than its labels need: a narrow card scrolls the lineage instead. */}
+          <div className={s.lineageWide} style={{ minWidth: lineageMinWidth(lineage) }}>
+            <Lineage lineage={lineage} openLabel={openLabel} />
+          </div>
         </div>
         {full ? (
           <DesignWarnings warnings={warnings} />
@@ -296,8 +302,9 @@ export function ResultsScene({ pid, view, data }: { pid: string; view: ProjectVi
   return <Results pid={pid} view={view} data={data} />;
 }
 
-/** Why nothing is fitted, truly: a failure or a stop with its levers, the fit under way, or the
- *  questions still to answer before it (never "waits on substitution", which comes after). */
+/** Why nothing is fitted, truly: a failure or a stop with its levers, the fit under way, a fit
+ *  computed but withheld by the screen (its reason), or the questions still to answer before it
+ *  (never "waits on substitution", which comes after). */
 function NotFitted({ view, data }: { view: ProjectView; data: LiveData }) {
   if (rootFailure(view.stages, "fit") || view.stages.fit?.cancelled) {
     return <StageFailure pid={data.pid} view={view} stage="fit" lead="Nothing was fitted." testId="fit-failure" />;
@@ -308,6 +315,13 @@ function NotFitted({ view, data }: { view: ProjectView; data: LiveData }) {
     return (
       <p className={s.captionText}>
         {design === "running" || design === "queued" ? "Building each model's pipeline…" : "Fitting the models…"}
+      </p>
+    );
+  }
+  if (data.fitWithheld && (fit === "fresh" || fit === "stale")) {
+    return (
+      <p className={s.captionText} data-testid="fit-withheld">
+        <Rich text={data.fitWithheld} />
       </p>
     );
   }

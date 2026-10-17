@@ -1,9 +1,10 @@
 /**
  * The tapestry (FOUNDATION §3, §5): the dynamic window beside the card. Before the fit it is today's
  * stage (record/stage's previews: what the pointed option does to the data, the live scenes) under
- * the kit's canvas head; at Models' end it is the analysis flowchart (today's lineage view) with Fit
- * at its end (§7); in Results it is W1-G's ResultsTapestry inside the kit's canvas; in Write-up the
- * manuscript at full width, in the export bundle's sections (P8).
+ * the kit's canvas head, and under Predict it shows no fit until Fit is pressed (§7: what waits is
+ * what is shown; log.ts `fitWithheld`); at Models' end it is the analysis flowchart (today's
+ * lineage view) with Fit at its end (§7); in Results it is W1-G's ResultsTapestry inside the kit's
+ * canvas; in Write-up the manuscript at full width, in the export bundle's sections (P8).
  */
 import type { MethodsSections } from "../api/m3-types";
 import type { ProjectView, QuestLog } from "../api/schema";
@@ -11,7 +12,7 @@ import { Stage } from "../components/stage/Stage";
 import { ManuscriptBody, kit as k } from "../kit";
 import { useStageFocus, type StageFocus } from "../state/focus";
 import { FitControl } from "./Fit";
-import type { FitPosition } from "./log";
+import { fitWithheld, type FitPosition } from "./log";
 import { ResultsTapestry } from "./results";
 import q from "./quest.module.css";
 
@@ -66,7 +67,13 @@ export function Tapestry({
         </div>
       ) : null}
       <div className={q.stageHost} onPointerEnter={keepPreview} onPointerLeave={endPreview}>
-        <Stage pid={pid} view={view} focus={flowchart ? FLOWCHART : focus} onFocus={flowchart ? NOOP : setFocus} />
+        <Stage
+          pid={pid}
+          view={view}
+          focus={flowchart ? FLOWCHART : focus}
+          onFocus={flowchart ? NOOP : setFocus}
+          fitWithheld={fitWithheld(log)}
+        />
       </div>
       {flowchart ? <FitControl pid={pid} log={log} fit={view.stages.fit} /> : null}
     </section>

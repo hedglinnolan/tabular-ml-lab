@@ -5,7 +5,7 @@
  * recorded sentence). The pack's usual choice is tagged and ordered first, never pre-selected;
  * an option that does not apply stays on the shelf and says why.
  */
-import { useRef, useState, type FormEvent } from "react";
+import { createContext, useContext, useRef, useState, type FormEvent } from "react";
 import type {
   EnergyMethod,
   EnergyReading,
@@ -521,21 +521,37 @@ export function EnergyAsk({
  * `cost.NOTEWORTHY_SECONDS`): the models card says nothing about it. */
 export const NOTEWORTHY_SECONDS = 10;
 
+/**
+ * The models card's words for recording the chosen families: `one` is the family's name when one is
+ * chosen (lower case), else null, and `n` their count. Today's screen fits the families as it
+ * records them, so it says Fit; a screen where Fit is pressed elsewhere provides its own words.
+ */
+export type FamiliesLabel = (one: string | null, n: number) => string;
+const FIT_FAMILIES: FamiliesLabel = (one, n) => (one ? `Fit the ${one}` : `Fit these ${n} families`);
+/** The words ModelsAsk uses where its `label` prop is not given (the quest shell provides them
+ *  around today's card, src/quest/cards/CardFor.tsx); today's Fit words by default. */
+export const FamiliesLabelContext = createContext<FamiliesLabel>(FIT_FAMILIES);
+
 export function ModelsAsk({
   shelf,
   current,
+  label,
   ...p
 }: AskProps & {
   shelf: ShelfArtifact;
   current: string[] | null;
+  /** The record button's words for the chosen families; FamiliesLabelContext's when absent. */
+  label?: FamiliesLabel;
 }) {
   // Nothing is chosen for the user: the shelf's order is its judgment (§0).
   const [chosen, setChosen] = useState<string[]>(current ?? []);
+  const provided = useContext(FamiliesLabelContext);
+  const words = label ?? provided;
   const families = [...shelf.families].sort((a, b) => a.rank - b.rank);
   const ordered = families.map((f) => f.key).filter((k) => chosen.includes(k));
   const fitLabel = (keys: string[]) => {
     const one = keys.length === 1 ? families.find((f) => f.key === keys[0])?.label : null;
-    return one ? `Fit the ${one.toLowerCase()}` : `Fit these ${keys.length} families`;
+    return words(one ? one.toLowerCase() : null, keys.length);
   };
   // Enter and the stage's record button do the same thing: record the chosen families, or the
   // shown one when none is chosen yet.
