@@ -640,44 +640,6 @@
         "changes_nothing": null,
         "computing": [],
         "counted": true,
-        "decision_id": "r9",
-        "id": "q:energy_adjustment",
-        "items": [],
-        "key": "energy_adjustment",
-        "label": "Decide",
-        "name": "the energy-adjustment question",
-        "order": 4.0,
-        "reason": null,
-        "reopened_by": null,
-        "source": "question",
-        "status": "answered",
-        "waiting_for": [],
-        "would_change": null
-       },
-       {
-        "changed_since": null,
-        "changes_nothing": null,
-        "computing": [],
-        "counted": true,
-        "decision_id": "r9",
-        "id": "finding:pack::dietary::energy_adjustment#1",
-        "items": [],
-        "key": "pack::dietary::energy_adjustment#1",
-        "label": "Decide",
-        "name": "Energy carries the nutrients",
-        "order": 4.5,
-        "reason": null,
-        "reopened_by": null,
-        "source": "finding",
-        "status": "answered",
-        "waiting_for": [],
-        "would_change": null
-       },
-       {
-        "changed_since": null,
-        "changes_nothing": null,
-        "computing": [],
-        "counted": true,
         "decision_id": null,
         "id": "decision:set_selection",
         "items": [],
@@ -783,9 +745,9 @@
       ],
       "name": "Models",
       "progress": {
-       "answered": 2,
+       "answered": 0,
        "complete": false,
-       "required": 5
+       "required": 3
       },
       "reached": true,
       "reopened": [],
@@ -1377,44 +1339,6 @@
         "changes_nothing": null,
         "computing": [],
         "counted": true,
-        "decision_id": "r9",
-        "id": "q:energy_adjustment",
-        "items": [],
-        "key": "energy_adjustment",
-        "label": "Decide",
-        "name": "the energy-adjustment question",
-        "order": 4.0,
-        "reason": null,
-        "reopened_by": null,
-        "source": "question",
-        "status": "answered",
-        "waiting_for": [],
-        "would_change": null
-       },
-       {
-        "changed_since": null,
-        "changes_nothing": null,
-        "computing": [],
-        "counted": true,
-        "decision_id": "r9",
-        "id": "finding:pack::dietary::energy_adjustment#1",
-        "items": [],
-        "key": "pack::dietary::energy_adjustment#1",
-        "label": "Decide",
-        "name": "Energy carries the nutrients",
-        "order": 4.5,
-        "reason": null,
-        "reopened_by": null,
-        "source": "finding",
-        "status": "answered",
-        "waiting_for": [],
-        "would_change": null
-       },
-       {
-        "changed_since": null,
-        "changes_nothing": null,
-        "computing": [],
-        "counted": true,
         "decision_id": null,
         "id": "decision:set_selection",
         "items": [],
@@ -1434,7 +1358,7 @@
         "changes_nothing": null,
         "computing": [],
         "counted": true,
-        "decision_id": "r10",
+        "decision_id": "r9",
         "id": "q:models",
         "items": [],
         "key": "models",
@@ -1508,9 +1432,9 @@
       ],
       "name": "Models",
       "progress": {
-       "answered": 3,
+       "answered": 1,
        "complete": false,
-       "required": 5
+       "required": 3
       },
       "reached": true,
       "reopened": [],
@@ -1831,8 +1755,7 @@
    ],
    "seen": [
     "nhanes/inference",
-    "nhanes/none",
-    "nhanes/prediction"
+    "nhanes/none"
    ],
    "source": "finding",
    "stages": [
@@ -1994,8 +1917,7 @@
    "seen": [
     "metabolomics/none",
     "nhanes/inference",
-    "nhanes/none",
-    "nhanes/prediction"
+    "nhanes/none"
    ],
    "source": "question",
    "stages": [
@@ -2294,10 +2216,8 @@
    "seen": [
     "metabolomics/inference",
     "metabolomics/none",
-    "metabolomics/prediction",
     "nhanes/inference",
-    "nhanes/none",
-    "nhanes/prediction"
+    "nhanes/none"
    ],
    "source": "question",
    "stages": [

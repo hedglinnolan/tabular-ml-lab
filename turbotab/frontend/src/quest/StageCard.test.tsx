@@ -362,7 +362,8 @@ describe("First look (P14)", () => {
     const open = vi.fn();
     const { card } = cardOf(REACHED, "first_look", { open });
     const findings = REACHED.stages.flatMap((s) => s.lines.filter((l) => l.source === "finding").map((l) => ({ s, l })));
-    expect(findings.length).toBeGreaterThan(2);
+    // Several noticings; under Predict the dietary energy noticing no longer fires (ruling 5, W1-P11).
+    expect(findings.length).toBeGreaterThan(1);
     for (const { s, l } of findings) {
       const item = within(card).getByTestId(`noticed-${l.key}`);
       const where = l.label === "For the record" ? "For the record, in" : l.status === "answered" ? "Settled in" : "Decided in";
