@@ -1628,5 +1628,7 @@ def test_chain_6_a_multi_site_cohort_with_repeated_visits_under_prediction(clien
         "on the rest by `5`-fold cross-validation; models were compared with each other and with "
         "the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the "
         "corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004).")
-    assert sentences["select_models"].startswith(
-        "Two model families were chosen: logistic regression and elastic net. ")
+    # The families answer names the families alone: the readings the values settled are their own
+    # sentence among the predictors (W1-R round 2, ruling R-c).
+    assert sentences["select_models"] == (
+        "Two model families were chosen: logistic regression and elastic net.")
