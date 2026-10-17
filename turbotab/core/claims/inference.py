@@ -374,8 +374,9 @@ TRIALS_SEPARATION = register(Claim(
              "on its column's own scale, or a fitted risk within {risk_floor} of 0 or 1), or "
              "their own fit puts a risk within {risk_floor} of 0 or 1, the program decides only "
              "the reason: separation where it finds anyone separated, and otherwise a start or a "
-             "fit that did not settle within these bounds, which refuses a trial no one is "
-             "separated in, as one with a covariate far from its zero"),
+             "fit that did not settle within these bounds; the start's bound can so refuse a "
+             "trial no one is separated in, as one with a covariate far from its zero whose "
+             "start's intercept passes the bound"),
     goal=("inference",),
     regime=Regime("a randomized trial whose outcome is yes/no, coded 1 and 0 (some outcome "
                   "seen and each one 0 or 1, though all may be the same): the standardized risks "
@@ -407,13 +408,26 @@ TRIALS_SEPARATION = register(Claim(
             "spread of outcomes around its fitted risks, is zero there, so no interval is given; "
             "for the estimating equations the refusal names their corrected sandwich, built from "
             "each cluster's residuals around its fitted risks, in its place. Where the program "
-            "finds no one separated, the estimating equations' refusal says their start, or "
-            "their fit, did not settle within the bounds, and that this does not show anyone's "
-            "risk runs to 0% or 100%."),
+            "finds no one separated, or cannot decide, the estimating equations give one of two "
+            "refusals, as the code words them. Where their start refused, the refusal says that "
+            "the logistic model fitted without the clustering, which they start from, did not "
+            "settle within its bounds, and that this does not show anyone's risk runs to 0% or "
+            "100%. Where their own fit put a risk within the floor, it says the fit puts "
+            "someone's risk within the floor of 0% or 100%, said in words (one in so many), the "
+            "edge at which its risks are not read, though no one was found separated (no group "
+            "whose outcomes the arm and the covariates predict exactly). Neither says that no "
+            "one is separated, since a program that cannot decide does not show it."),
             tests=(f"{ACCEPTANCE}/test_e2_trials.py::test_a_group_with_every_event_is_refused_"
                    "naming_it_and_an_empty_arm_says_why",
                    f"{TESTS}::test_a_cluster_trial_whose_treated_clusters_all_had_the_event_is_"
-                   "refused"))),
+                   "refused",
+                   f"{TESTS}::test_a_cluster_trial_adjusted_for_a_calendar_year_is_refused_as_"
+                   "unsettled_not_separated",
+                   f"{TESTS}::test_a_cluster_trial_tied_at_zero_up_to_noise_is_refused_as_"
+                   "unsettled_not_separated",
+                   f"{TESTS}::test_a_cluster_trial_whose_own_fit_reaches_the_floor_with_no_one_"
+                   "separated_is_refused",
+                   f"{TESTS}::test_a_share_is_said_as_one_in_so_many_in_words"))),
         Part("detection", grade="judgment", basis=Basis(reason=(
             "For a parallel trial, Newton's method runs on the raw columns first. When it does "
             "not converge, or converges with a sign of separation (a coefficient past the bound, "
@@ -433,13 +447,20 @@ TRIALS_SEPARATION = register(Claim(
             "risks of the people the arm or smoking predicts run to 1), and the program finds "
             "them separated; replaced by a program that finds no one, both tests fail. A "
             "calendar year and a body temperature refuse on the bound, read on the intercept, "
-            "and the program finds no one separated. No test builds a start that fails to "
-            "converge alone, or a program that cannot decide, on this path; the code gives that "
-            "case the refusal that the start did not settle."),
+            "and the program finds no one separated. A program that cannot decide is built on "
+            "this path by the parallel tests' tied trial recast as a cluster trial (30 people at "
+            "x = 0 up to noise of 1e-12 to 1e-8, whose outcomes, mixed in each arm and not "
+            "ordered by x, show that no one is separated): the start stops with a coefficient "
+            "past the bound and risks within the floor, the program returned None for each of "
+            "its 12 trials on macOS (2026-10-16), and each is refused as unsettled; given the "
+            "plain separation reason there instead, the test fails. No test builds a start that "
+            "fails to converge alone on this path; the code gives that case the same refusal."),
             tests=(f"{TESTS}::test_a_cluster_trial_whose_treated_clusters_all_had_the_event_is_"
                    "refused",
                    f"{TESTS}::test_a_cluster_trial_whose_smokers_all_had_the_event_is_refused_"
-                   "naming_smoking"))),
+                   "naming_smoking",
+                   f"{TESTS}::test_a_cluster_trial_tied_at_zero_up_to_noise_is_refused_as_"
+                   "unsettled_not_separated"))),
         Part("coefficient_bound", grade="judgment", basis=Basis(reason=(
             "A coefficient past the bound, in log odds per unit of its column, is a sign of "
             "separation, not a proof of it. It is not scale-free, and it is read on the intercept "
@@ -489,16 +510,17 @@ TRIALS_SEPARATION = register(Claim(
         Part("scope", grade="judgment", basis=Basis(reason=(
             "The estimating equations are not given the parallel trial's treatment: their start "
             "stays the Newton fit on the raw columns, and the program decides only the reason "
-            "for refusing. So a cluster trial with a yes/no outcome is still refused, though no "
-            "one is separated in it, for any covariate far from its zero, whatever its effect, "
-            "and for one outlying covariate value at the floor; its reason says the start did "
-            "not settle within its bounds, or the fit reached the floor, not that some group's "
-            "risk runs to 0% or 100%. The package's verifier (2026-10-16), 16 clusters of 10 to "
-            "29 people, 10 seeds each: a calendar year of 2021 ± 1.5 with no effect was refused "
-            "10 of 10, where statsmodels' exchangeable GEE fits each with fitted risks from "
-            "0.272 to 0.710; a body temperature of 37 ± 0.5 °C, 0 of 10 with no effect, 8 of 10 "
-            "at 0.8 log odds per °C and 10 of 10 at 1.2; a pH of 7.4 ± 0.02 at 60 per unit, 10 "
-            "of 10; one dose of 18 among doses of SD 1, 10 of 10 at the floor. Reporting them by "
+            "for refusing. So a cluster trial with a yes/no outcome can still be refused though "
+            "no one is separated in it: for a covariate far from its zero whose start's "
+            "intercept passes the bound, and for one outlying covariate value at the floor; its "
+            "reason says the start did not settle within its bounds, or the fit reached the "
+            "floor, not that some group's risk runs to 0% or 100%. The package's verifier "
+            "(2026-10-16), 16 clusters of 10 to 29 people, 10 seeds each: a calendar year of "
+            "2021 ± 1.5 with no effect was refused 10 of 10, where statsmodels' exchangeable GEE "
+            "fits each with fitted risks from 0.272 to 0.710; a body temperature of 37 ± 0.5 °C, "
+            "0 of 10 with no effect, 8 of 10 at 0.8 log odds per °C and 10 of 10 at 1.2; a pH of "
+            "7.4 ± 0.02 at 60 per unit, 10 of 10; one dose of 18 among doses of SD 1, 10 of 10 at "
+            "the floor. Reporting them by "
             "starting from the fit on standardized columns was built and withdrawn: the round-3 "
             "verifier found that with a covariate far from zero relative to its spread (its mean "
             "over its SD from about 3e5 to 2e6) the estimating equations and their sandwich, "
@@ -521,6 +543,8 @@ TRIALS_SEPARATION = register(Claim(
               "as_unsettled", truth="independent:statsmodels"),
         Fires(f"{TESTS}::test_a_cluster_trial_whose_own_fit_reaches_the_floor_with_no_one_"
               "separated_is_refused", truth="independent:statsmodels"),
+        Fires(f"{TESTS}::test_a_cluster_trial_tied_at_zero_up_to_noise_is_refused_as_unsettled_"
+              "not_separated", truth="construction"),
         Fires(f"{TESTS}::test_a_converged_fit_with_a_risk_at_float64_s_edge_is_checked_by_the_"
               "linear_program", truth="independent:statsmodels"),
         Silent(f"{TESTS}::test_a_trial_no_one_is_separated_in_is_reported_as_statsmodels_fits_it",

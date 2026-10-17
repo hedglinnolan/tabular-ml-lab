@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -330,7 +331,24 @@ def test_a_cluster_trial_whose_own_fit_reaches_the_floor_with_no_one_separated_i
     said = str(r.value)
     assert r.value.term == "the estimating equations' fit at the risk floor", said
     assert "no one was found separated" in said and "runs to 0% or 100%" not in said, said
+    # The floor in plain words, and no other number than the risks' ends.
+    assert re.search(r"risk within one in [a-z ]+ of 0% or 100%, the edge", said), said
+    assert not re.search(r"\d", said.replace("0% or 100%", "")), said
     assert calls == [len(df)], calls
+
+
+@pytest.mark.parametrize("share, words", [
+    (1e-10, "one in ten billion"), (1e-12, "one in a trillion"), (1e-9, "one in a billion"),
+    (1e-6, "one in a million"), (1e-4, "one in ten thousand"), (1e-3, "one in a thousand"),
+    (0.01, "one in a hundred"), (0.1, "one in ten"), (1e-11, "one in a hundred billion"),
+    (5e-11, "one in 20,000,000,000"), (2.5e-3, "one in 400")])
+def test_a_share_is_said_as_one_in_so_many_in_words(share, words):
+    """The floor refusal's share, said as the English names of the powers of ten (a thousand, a
+    million, a billion, a trillion: the short scale), and a share that is no power of ten as one
+    in its whole reciprocal, in digits."""
+    from turbotab.core.methods import trials as T
+
+    assert T._one_in(share) == words
 
 
 def test_the_same_trial_with_a_nearer_dose_is_reported_as_statsmodels_fits_it(monkeypatch):
@@ -350,6 +368,70 @@ def test_the_same_trial_with_a_nearer_dose_is_reported_as_statsmodels_fits_it(mo
     assert r.coefficients == pytest.approx(list(params), rel=1e-9)
     assert r.icc == pytest.approx(alpha, rel=1e-8)
     assert calls == [], calls
+
+
+def _tied_cluster_trial(sigma: float, seed: int, n: int = 160, m: int = 30) -> pd.DataFrame:
+    """The trial of ``acceptance/test_e2_trials.py::_tied`` (claims backtest B-281, its fifth
+    review), its construction copied here line for line: everyone's outcome is whether x is above
+    0, with |x| at least 0.05, but for the first ``m``, at x = 0 up to noise of size ``sigma``,
+    whose outcomes are mixed. Then recast as a cluster trial, as the R0b finish verifier did: each
+    person in one of 16 clusters at random, the odd clusters control and the even treated."""
+    rng = np.random.default_rng(99000 + seed)
+    x = rng.normal(0, 1, n)
+    df = pd.DataFrame({"arm": rng.choice(["ctl", "trt"], n), "site": rng.choice(["a", "b"], n),
+                       "x": np.sign(x) * (0.05 + np.abs(x))})
+    df["event"] = (df.x > 0).astype(float)
+    df.loc[:m - 1, "x"] = sigma * rng.normal(0, 1, m)
+    lp = -0.2 + 1.0 * (df.loc[:m - 1, "arm"] == "trt")
+    df.loc[:m - 1, "event"] = (rng.random(m) < 1 / (1 + np.exp(-lp))).astype(float)
+    df["cluster"] = np.random.default_rng(99100 + seed).integers(1, 17, n)
+    df["arm"] = np.where(df.cluster % 2, "ctl", "trt")
+    return df
+
+
+def _no_one_separated(df: pd.DataFrame, m: int = 30) -> bool:
+    """Whether the first ``m`` show, on their own, that no direction of the coefficients on the
+    intercept, the arm and x separates anyone (Albert & Anderson 1984), derived from the order of
+    their x and their outcomes alone. A direction (a, b, c) leaves each of them on their outcome's
+    side of a + b·arm + c·x = 0, or on it, only where, within each arm, c is 0 and the arm's
+    outcomes are all the same, or every event's c·x is at or past every non-event's. So where each
+    arm holds both outcomes, and for either sign of c some arm's outcomes are not so ordered, the
+    zero direction alone keeps all ``m`` on their side; then it is the only one that keeps
+    everyone there, and it separates no one."""
+    tied = df.iloc[:m]
+    unordered = {1: False, -1: False}
+    for arm in ("ctl", "trt"):
+        events = tied.x[(tied.arm == arm) & (tied.event == 1)]
+        others = tied.x[(tied.arm == arm) & (tied.event == 0)]
+        if events.empty or others.empty:
+            return False
+        for sign in unordered:
+            unordered[sign] |= bool((sign * events).min() < (sign * others).max())
+    return all(unordered.values())
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2, 3])
+@pytest.mark.parametrize("sigma", [1e-12, 1e-10, 1e-8])
+def test_a_cluster_trial_tied_at_zero_up_to_noise_is_refused_as_unsettled_not_separated(
+        sigma, seed, monkeypatch):
+    """The tied trial of the parallel tests, recast as a cluster trial over 16 clusters: x
+    separates 130 people but for 30 at x = 0 up to noise of size σ, whose outcomes are mixed in
+    each arm and not ordered by x, so no direction separates anyone (derived from their order,
+    :func:`_no_one_separated`). The estimating equations' start, Newton's method on the raw
+    columns, stops with a coefficient past 25 and fitted risks within 10⁻¹⁰ of 0 or 1, so it
+    does not settle within its bounds; the linear program is asked once, and the trial is refused
+    as unsettled, in the ruled words. A refusal for separation would claim what the construction
+    rules out, and the plain reason, a risk running to 0% or 100%, what the program never showed.
+
+    Here, where float arithmetic hardly tells the noise from a tie, the program could not decide
+    any of these 12 trials on macOS (2026-10-16; it returned None), the branch no test had
+    reached; another build of HiGHS may find no one separated instead, and the refusal is the
+    same. Given the plain separation reason where the program cannot decide (the R0b finish
+    verifier's mutation of :func:`_gee_refusal`), the test fails."""
+    df = _tied_cluster_trial(sigma, seed)
+    assert df.cluster.nunique() == 16
+    assert _no_one_separated(df), (sigma, seed)
+    _refused_as_unsettled(df, "x", monkeypatch)
 
 
 def test_a_trial_no_one_is_separated_in_is_reported_as_statsmodels_fits_it():

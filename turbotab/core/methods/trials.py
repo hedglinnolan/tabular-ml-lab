@@ -1370,16 +1370,32 @@ def _start_unsettled() -> TrialRefused:
         term="the estimating equations' start did not settle")
 
 
+# The short scale's names of the powers of a thousand, to say a share in words (:func:`_one_in`).
+_THOUSANDS = ("", " thousand", " million", " billion", " trillion", " quadrillion")
+
+
+def _one_in(share: float) -> str:
+    """``share``, between 0 and 1, said as one in so many: in words where its reciprocal is a
+    power of ten from ten to a hundred quadrillion (10⁻¹⁰ as "one in ten billion"), and otherwise
+    in digits, its reciprocal rounded to a whole number ("one in 400")."""
+    if not 0 < share < 1:
+        raise ValueError(f"a share is between 0 and 1, not {share!r}")
+    k = round(-math.log10(share))
+    if 1 <= k < 3 * len(_THOUSANDS) and math.isclose(share, 10.0 ** -k, rel_tol=1e-9):
+        return f"one in {('a', 'ten', 'a hundred')[k % 3]}{_THOUSANDS[k // 3]}"
+    return f"one in {round(1 / share):,}"
+
+
 def _fit_at_the_floor() -> TrialRefused:
     """The refusal when the estimating equations' own fit puts a risk within :data:`RISK_FLOOR` of
     0 or 1 and the linear program does not show anyone separated (it found no one, or could not
     decide): one person's outlying covariate value can put their risk there with the others'
-    outcomes overlapping on every value."""
+    outcomes overlapping on every value. The floor is said in words (:func:`_one_in`)."""
     return TrialRefused(
-        f"The estimating equations' fit puts someone's risk within {RISK_FLOOR:g} of 0 or 1 (0% "
-        f"or 100%), the edge at which its risks are not read, though no one was found separated "
-        f"(no group whose outcomes the arm and the covariates predict exactly), so no estimate "
-        f"is given at that edge.", (FEWER_COVARIATES_EXIT, DESCRIBE_OUTCOMES_EXIT),
+        f"The estimating equations' fit puts someone's risk within {_one_in(RISK_FLOOR)} of 0% or "
+        f"100%, the edge at which its risks are not read, though no one was found separated (no "
+        f"group whose outcomes the arm and the covariates predict exactly), so no estimate is "
+        f"given at that edge.", (FEWER_COVARIATES_EXIT, DESCRIBE_OUTCOMES_EXIT),
         term="the estimating equations' fit at the risk floor")
 
 
