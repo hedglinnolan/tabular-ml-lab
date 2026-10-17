@@ -9,13 +9,14 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from turbotab.core.config import Settings
-from turbotab.server.app import create_app
-
 # The claims registry's strict mode (CLAIMS_REGISTRY.md §2.2), on for every server test as for the
 # core tests (turbotab/core/tests/conftest.py): a claim rendered outside its regime raises instead
-# of falling back. Set at import, so each xdist worker, and each job worker it starts, has it.
+# of falling back. Set before any turbotab import, since importing the app renders claims (the
+# study designs' sentences), so each xdist worker, and each job worker it starts, has it.
 os.environ["TURBOTAB_CLAIMS_STRICT"] = "1"
+
+from turbotab.core.config import Settings  # noqa: E402
+from turbotab.server.app import create_app  # noqa: E402
 
 def pytest_configure(config) -> None:
     config.addinivalue_line(
