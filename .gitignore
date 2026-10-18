@@ -85,3 +85,6 @@ Tabular ML Lab.app/
 .venv-stamp
 .worktrees/
 research/data/
+
+# The swarm driver's runs: each run's server home, logs and bundle (DRIVER_PLAN D1)
+research/runs/
