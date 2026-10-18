@@ -103,6 +103,14 @@ def test_roles_proposed_alike_word_for_word_are_one_group_and_one_differing_word
     assert [len(g.waiting) for g in groups] == [5, 2, 1]
 
 
+def test_a_group_is_named_by_its_first_columns_and_how_many_more():
+    many = [f"g{i}" for i in range(20_000)]
+    assert readings.first_columns(many) == "`g0`, `g1` and 19,998 more"
+    assert readings.first_columns(GENES) == "`g00`, `g01` and 3 more"
+    assert readings.first_columns(["a", "b", "c"]) == "`a`, `b` and `c`"
+    assert readings.first_columns(["a", "b"]) == "`a` and `b`"
+
+
 # ── the engine: one group's press accepted, any other block of them refused ──
 
 
@@ -275,6 +283,17 @@ def test_moving_one_column_is_one_press_and_the_rest_stay_one_group():
     validate(_press(rest, "exposure"), _ctx(state))
     own = next(l for l in lines if l.key == quest.role_line_key("g02"))
     assert own.status == "answered" and own.decision_id == records[-1].id
+
+
+def test_a_group_keeps_its_line_when_its_first_column_moves():
+    records = _records(("genomics",), "prediction",
+                       {"kind": "confirm_role", "column": "g00", "role": "excluded"})
+    lines = _role_lines(_log(records))
+    genes = next(l for l in lines if l.key == quest.role_group_key("g00"))
+    assert [i.column for i in genes.items if i.kind == "role"] == GENES[1:]
+    assert genes.name == "the roles of `g01`, `g02` and 2 more"
+    own = next(l for l in lines if l.key == quest.role_line_key("g00"))
+    assert (own.status, own.items[0].value) == ("answered", "excluded")
 
 
 def test_without_the_proposals_each_waiting_column_is_a_line_of_its_own():

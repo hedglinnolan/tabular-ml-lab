@@ -1621,25 +1621,26 @@ class RoleGroup:
 def role_groups(state: Any, artifact: Any) -> list[RoleGroup]:
     """The judgments of the roles stage's proposals in ``artifact`` (its Bundle, its dict or its
     proposals' list) below high confidence, each once, in the proposals' order: after a roles answer
-    its columns that rode along (``roles_unconfirmed``, recorded as proposed), before it every column
-    so proposed. No proposals at hand: none (each waiting column is then a group of its own)."""
+    its columns that rode along (``roles_unconfirmed``: recorded as proposed then, whatever a move
+    since made them, so a group keeps its columns, and its first, while some leave it), before it
+    every column so proposed; ``waiting`` those still held as proposed and unsettled. No proposals
+    at hand: none (each waiting column is then a group of its own)."""
     proposals = list(artifact) if isinstance(artifact, list) else proposals_of(artifact)
     roles = getattr(state, "roles", None) or {}
-    named = set(getattr(state, "roles_unconfirmed", None) or ())
+    named = _unconfirmed(state)
     target = getattr(state, "target", None)
     found: dict[tuple[str, str, str], list[str]] = {}
     for p in proposals:
         column, confidence = str(p.get("column")), p.get("confidence")
-        if confidence not in ATTENTION or column == target:
+        if confidence not in ATTENTION or column == target or (roles and column not in named):
             continue
-        role = str(p.get("proposed"))
-        if roles and (column not in named or str(roles.get(column)) != role):
-            continue
-        found.setdefault((role, str(confidence), str(p.get("reason") or "")), []).append(column)
+        found.setdefault((str(p.get("proposed")), str(confidence), str(p.get("reason") or "")),
+                         []).append(column)
     out = []
     for (role, confidence, reason), columns in found.items():
         if roles:
-            waiting = [c for c in columns if not settled(role_reading(state, c))]
+            waiting = [c for c in columns if str(roles.get(c)) == role
+                       and not settled(role_reading(state, c))]
         else:
             waiting = [c for c in columns if confirmation(state, "role", c) is None]
         out.append(RoleGroup(role, confidence, reason, tuple(columns), tuple(waiting)))
@@ -1719,18 +1720,26 @@ def group_press(columns: Sequence[str], role: str) -> dict[str, Any]:
                                   for c in columns]).model_dump(mode="json")
 
 
+def first_columns(columns: Sequence[str]) -> str:
+    """A group's first columns, as the shell names columns elsewhere: "`a`, `b` and 298 more"
+    (``voice.listing``'s, its count of the rest with thousands separators, "19,998 more")."""
+    from turbotab.core.voice import listing, tick
+
+    if len(columns) <= 3:
+        return listing(list(columns), 3)
+    return f"{tick(columns[0])}, {tick(columns[1])} and {len(columns) - 2:,} more"
+
+
 def group_phrase(columns: Sequence[str], role: str, confidence: str, reason: str,
                  purpose: str | None = None, lenses: Iterable[str] | None = None) -> str:
     """One group named in a sentence: how many, its first columns, the role in the goal's words,
     the confidence, below high, and the shared reason ("the 300 columns `a`, `b` and 298 more,
     proposed as assay features at medium confidence, below high, for one reason ("…")"); a group of
     one, its column and its proposal."""
-    from turbotab.core.voice import listing as named
-
     if len(columns) == 1:
         return (f"`{columns[0]}`, proposed as {role_line_words(role, purpose, lenses)} at "
                 f"{confidence} confidence, below high")
-    return (f"the {len(columns):,} columns {named(list(columns), 3)}, proposed as "
+    return (f"the {len(columns):,} columns {first_columns(columns)}, proposed as "
             f"{role_group_words(role, purpose, lenses)} at {confidence} confidence, below high, "
             f"for one reason (\"{reason}\")")
 
@@ -1806,6 +1815,22 @@ def roles_completion(state: Any, artifact: Any) -> dict[str, Any] | None:
     return {"kind": "set_roles", "roles": roles} if roles else None
 
 
+_UNCONFIRMED: tuple[Any, frozenset[str]] = (None, frozenset())
+
+
+def _unconfirmed(state: Any) -> frozenset[str]:
+    """The columns ``state``'s roles answer recorded unconfirmed, as a set, kept for the last list
+    asked about (one tuple, swapped whole, so threads never pair one list with another's set): a
+    caller that asks about each of 20,000 genes builds it once, not once per gene."""
+    global _UNCONFIRMED
+    found = getattr(state, "roles_unconfirmed", None) or ()
+    last = _UNCONFIRMED
+    if last[0] is not found:
+        last = (found, frozenset(found))
+        _UNCONFIRMED = last
+    return last[1]
+
+
 def role_reading(state: Any, column: str) -> Reading | None:
     """``column``'s role as the ledger holds it: settled when the answer recorded it as the user's
     own (changed from the proposal, or proposed high from its values) or a confirmation since
@@ -1814,7 +1839,7 @@ def role_reading(state: Any, column: str) -> Reading | None:
     if column not in roles:
         return None
     role = roles[column]
-    waiting = column in set(getattr(state, "roles_unconfirmed", None) or [])
+    waiting = column in _unconfirmed(state)
     if not waiting or confirmation(state, "role", column) == role or _answered_role(state, column, role):
         return Reading((column,), "role", role, "high", "recorded", True, "confirmed")
     return Reading((column,), "role", role, "medium",
@@ -3966,7 +3991,8 @@ __all__ = [
     "confirmation", "confirmed_codes", "day_count_candidates", "day_count_reading",
     "is_settled", "key", "listing", "names_several_days", "one_at_a_time",
     "RoleGroup", "group_phrase", "group_press", "group_press_label", "role_group_words",
-    "role_groups", "served_groups", "fill_runs", "judged_exits", "with_proposals",
+    "role_groups", "served_groups", "fill_runs", "first_columns", "judged_exits",
+    "with_proposals",
     "outcome_unit_reading", "predictor_columns", "predictors_or_ask", "proposals_of", "reading",
     "repeat_kind_reading", "rode_along", "stated_reading", "task_reading", "role_evidence",
     "role_reading", "role_words", "settled",

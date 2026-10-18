@@ -1785,14 +1785,30 @@ def role_group_reason(n: int | str, role: str, purpose: str | None = None,
             f"Confirm {every} in one press after reading why they were proposed{instead}.")
 
 
-def _confirmed_in_a_group(log: _Log, column: str) -> bool:
-    """Whether ``column``'s role was settled by one group's press: a ``confirm_readings`` of two or
-    more roles (the engine accepts no other block of roles below high; ruling R-g)."""
-    record = _confirmed_at(log, column)
+def _role_confirmations(log: _Log) -> dict[str, Any]:
+    """Each column's latest live record that confirmed its role, as :func:`_confirmed_at` finds it,
+    for every column at once: one pass over the log, so a group of 20,000 genes is not one pass
+    each."""
+    out: dict[str, Any] = {}
+    for r in log.live:
+        d = r.decision
+        if d.kind == "confirm_role" or (d.kind == "confirm_reading" and d.reading == "role"):
+            out[d.column] = r
+        elif d.kind == "confirm_readings":
+            for i in d.items:
+                if i.reading == "role":
+                    out[i.column] = r
+    return out
+
+
+def _in_a_group(record: Any) -> bool:
+    """Whether a confirming record is one group's press: a ``confirm_readings`` of two or more roles
+    (the engine accepts no other block of roles below high; ruling R-g)."""
     decision = getattr(record, "decision", None) if record is not None else None
     if getattr(decision, "kind", None) != "confirm_readings":
         return False
-    return sum(1 for i in decision.items if i.reading == "role") > 1
+    roles = (i for i in decision.items if i.reading == "role")
+    return next(roles, None) is not None and next(roles, None) is not None  # two, read no further
 
 
 def _role_lines(state: Any, steps: Sequence[Any], log: _Log,
@@ -1840,20 +1856,21 @@ def _role_lines(state: Any, steps: Sequence[Any], log: _Log,
     order = {c: i for i, c in enumerate(roles)}
     found = {c: role_reading(state, c) for c in roles if c in named and c != target}
     held = {c: r for c, r in found.items() if r is not None}
+    by = _role_confirmations(log)
     # Each judgment's columns that wait or were confirmed by its one press; any other column of it
     # (settled on a press of its own) has a line of its own.
     grouped: list[tuple[Any, list[str]]] = []
     in_group: set[str] = set()
     for g in role_groups(state, artifact):
-        members = [c for c in g.rode if c in held and (
-            not held[c].settled or _confirmed_in_a_group(log, c))]
+        members = [c for c in g.rode if c in held and str(roles[c]) == g.role and (
+            not held[c].settled or _in_a_group(by.get(c)))]
         if len(members) > 1:
             grouped.append((g, members))
             in_group.update(members)
     lines: list[tuple[int, QuestLine]] = []
     for g, members in grouped:
         waiting = [c for c in members if not held[c].settled]
-        confirmed = None if waiting else _confirmed_at(log, members[0])
+        confirmed = None if waiting else by.get(members[0])
         press = ([ReadOption(label=group_press_label(len(waiting), g.role, purpose, lenses),
                              decision=group_press(waiting, g.role))] if waiting else [])
         many = role_group_words(g.role, purpose, lenses)
@@ -1888,7 +1905,7 @@ def _role_lines(state: Any, steps: Sequence[Any], log: _Log,
         waiting = not reading.settled
         if waiting:
             options.insert(0, _role_option(column, role, text["confirm"]))
-        confirmed = None if waiting else _confirmed_at(log, column)
+        confirmed = None if waiting else by.get(column)
         lines.append((order[column], QuestLine(
             id=ROLE_LINE.item, key=role_line_key(column), source="reading", label=DECIDE,
             name=text["name"], status="open" if waiting else "answered", counted=True,
@@ -1905,10 +1922,10 @@ def _role_lines(state: Any, steps: Sequence[Any], log: _Log,
 
 def _listing(columns: Sequence[str]) -> str:
     """The first columns of a group, as the shell names columns elsewhere ("`a`, `b` and 298
-    more")."""
-    from turbotab.core.voice import listing
+    more"; ``readings.first_columns``)."""
+    from turbotab.core.readings import first_columns
 
-    return listing(list(columns), 3)
+    return first_columns(columns)
 
 
 def asks(message: str) -> str:
