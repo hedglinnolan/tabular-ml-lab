@@ -41,7 +41,11 @@ by :mod:`research.swarm.options`.
 * a ``reseal`` (the server refuses one in analyst mode too, and offers none), a ``lock_plan`` (the
   server's own), a ``revert`` other than by ``revisit``, and an ``open_seal`` other than by ``seal``;
 * ``fit`` past the run's fit budget: its count of fits and their seconds, read from
-  ``GET /fits``'s records (SWARM_ENGINE_PLAN E1);
+  ``GET /fits``'s records (SWARM_ENGINE_PLAN E1), with the fit under way counted among them;
+* once those meet the budget, an ``answer`` or ``revisit`` that would make a new fit, since the
+  server makes and serves it without another press (the fit budget's section below); one that
+  makes none (the triage, which the fit does not read; a revisit that leaves the models
+  unanswered; going back to answers already fitted) is still recorded;
 * once the held-out rows are opened, any change or attempt (``preview``, ``answer``, ``revisit``,
   ``fit``): the reported result is the opening's score, and nothing more is tried (SWARM_PLAN §3).
   ``seal`` again goes to the server, which refuses a second opening.
@@ -783,8 +787,9 @@ def cmd_answer(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | Non
     run = Run.load(args.run)
     client = run.client()
     note = reason_of(args.reason)
-    decision, _ = chosen(run, client, list(args.option), args.set or [])
+    decision, q = chosen(run, client, list(args.option), args.set or [])
     guard_kind(decision)
+    guard_budget(run, client, q["_view"], decision)
     r = post_decision(run, client, decision, note)
     if r.status != 200:
         return 1, {"posted": decision} | refused(r, run, "answer"), run
@@ -802,37 +807,163 @@ def cmd_revisit(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | No
     if args.decision not in ids:
         raise DriverError("no_such_decision", f"No decision {args.decision} is in the log; ask "
                                               f"lists each decision's id.")
-    r = post_decision(run, client, {"kind": "revert", "decision_id": args.decision}, note)
+    revert = {"kind": "revert", "decision_id": args.decision}
+    guard_budget(run, client, view, revert)
+    r = post_decision(run, client, revert, note)
     if r.status != 200:
         return 1, refused(r, run, "revisit"), run
     run.keep_exits([], None, "revisit")
     return 0, recorded(r.json(), "revert"), run
 
 
-def budget_now(run: Run, client: Client) -> dict[str, Any]:
-    r = client.get(f"/projects/{run.project}/fits")
-    if r.status != 200:
-        raise DriverError("server_unreadable", f"The fit records could not be read ({r.status}).")
-    records = (r.json() or {}).get("records") or []
-    spent = sum(float(x.get("seconds") or 0.0) for x in records)
-    budget = run.meta["budget"]
-    return {"fits": len(records), "seconds": round(spent, 3), "budget_fits": budget["fits"],
-            "budget_seconds": budget["seconds"], "keys": [x.get("fit_key") for x in records]}
+# ── the fit budget ───────────────────────────────────────────────────────────
+#
+# The budget bounds the fits made for the analyst, not only the presses of Fit: under Predict,
+# once Fit is pressed for the outcome, every fit the scheduler makes is served without another
+# press (``fit_press.serving_gate``), and a fit expected under about two minutes runs without one
+# (``fit_press.holds``); under Estimate a change after the lock refits too. So once the fits made
+# meet the budget, an ``answer`` or ``revisit`` is recorded only when it makes no new fit: the
+# fit it leaves is none, one already made, or the one under way. Which fit it leaves is told by
+# the engine's own key rule (:func:`fit_key_after`), trusted only where it gives the server's keys.
+
+FIT_UNDER_WAY_NOT = ("error", "blocked")
+RECORD_WAIT = 10.0  # a fit just made is recorded by the server's recorder a moment later
+
+
+def spent_of(records: list[dict[str, Any]], fit: dict[str, Any], budget: dict[str, Any]) -> dict[str, Any]:
+    """What the run has spent: ``GET /fits``' records, their seconds, and the fit under way, the
+    current fit (``fit``, its stage status) when no record holds its key and it is neither held for
+    Fit, failed, blocked nor cancelled: the scheduler is making it."""
+    keys = [x.get("fit_key") for x in records]
+    key = fit.get("key")
+    running = key if (key and key not in keys and fit.get("held") != "fit" and not fit.get("cancelled")
+                      and fit.get("status") not in FIT_UNDER_WAY_NOT) else None
+    return {"fits": len(records), "running": int(running is not None),
+            "seconds": round(sum(float(x.get("seconds") or 0.0) for x in records), 3),
+            "budget_fits": budget["fits"], "budget_seconds": budget["seconds"], "keys": keys,
+            "running_key": running}
+
+
+def budget_now(run: Run, client: Client, view: dict[str, Any] | None = None) -> dict[str, Any]:
+    """:func:`spent_of` as the server stands now. A fit just turned fresh is waited for, up to
+    :data:`RECORD_WAIT` seconds, until its record is written."""
+    view = view if view is not None else view_of(run, client)
+    end = time.monotonic() + RECORD_WAIT
+    while True:
+        r = client.get(f"/projects/{run.project}/fits")
+        if r.status != 200:
+            raise DriverError("server_unreadable", f"The fit records could not be read ({r.status}).")
+        fit = (view.get("stages") or {}).get("fit") or {}
+        spent = spent_of((r.json() or {}).get("records") or [], fit, run.meta["budget"])
+        if not (spent["running"] and fit.get("status") == "fresh") or time.monotonic() >= end:
+            return spent
+        time.sleep(0.5)
+        view = view_of(run, client)
+
+
+def budget_met(spent: dict[str, Any]) -> bool:
+    """Whether the fits made, the one under way among them, meet the budget's count or seconds."""
+    return (spent["fits"] + spent["running"] >= int(spent["budget_fits"])
+            or spent["seconds"] >= float(spent["budget_seconds"]))
+
+
+def budget_words(spent: dict[str, Any]) -> str:
+    """The budget and what was spent of it, from ``GET /fits``, as a refusal says them."""
+    budget, made = int(spent["budget_fits"]), int(spent["fits"])
+    if made + spent["running"] >= budget:
+        done = (f"{made} {'was' if made == 1 else 'were'} made and 1 is under way" if spent["running"]
+                else f"{made} {'was' if made == 1 else 'were'} made already")
+        return f"the run's fit budget is {budget} {'fit' if budget == 1 else 'fits'}, and {done}"
+    return (f"the run's fit budget is {float(spent['budget_seconds']):g} seconds of fitting, and "
+            f"{spent['seconds']:g} were spent already")
 
 
 def over_budget(spent: dict[str, Any], fit_key: str | None) -> str | None:
     """Why pressing Fit now would pass the run's fit budget, or None. A fit already recorded for
     the answers now (one the scheduler ran before the press) is within the count it was made in."""
     counted = spent["fits"] if fit_key in spent["keys"] else spent["fits"] + 1
-    budget, made = int(spent["budget_fits"]), int(spent["fits"])
-    if counted > budget:
-        return (f"Fit is not pressed: the run's fit budget is {budget} "
-                f"{'fit' if budget == 1 else 'fits'}, and {made} {'was' if made == 1 else 'were'} "
-                f"made already.")
-    if spent["seconds"] >= spent["budget_seconds"]:
-        return (f"Fit is not pressed: the run's fit budget is {spent['budget_seconds']:g} seconds "
-                f"of fitting, and {spent['seconds']:g} were spent already.")
+    if counted > int(spent["budget_fits"]) or spent["seconds"] >= float(spent["budget_seconds"]):
+        return f"Fit is not pressed: {budget_words(spent)}."
     return None
+
+
+AFTER_BUDGET = ("An answer that makes no new fit is still recorded, and results, seal and export "
+                "still run.")
+
+
+def attempt_over_budget(spent: dict[str, Any], after: str | None) -> str | None:
+    """Why recording an answer that leaves the fit keyed ``after`` would pass the budget, or None:
+    within it every answer passes; once it is met, only one that leaves no fit (``None``), a fit
+    already made, or the one under way."""
+    if not budget_met(spent) or after is None or after in spent["keys"] or after == spent["running_key"]:
+        return None
+    return f"Not recorded: this would make a new fit, and {budget_words(spent)}. {AFTER_BUDGET}"
+
+
+class CannotTell(Exception):
+    """The fit an answer would leave cannot be told here, with why."""
+
+
+def fit_key_after(run: Run, view: dict[str, Any], decision: dict[str, Any]) -> str | None:
+    """The fit's key once ``decision`` is recorded, or None when the fit would not compute then.
+
+    Told by the engine's own rule, as the server keys every stage (``graph.stage_keys`` over the
+    stage graph the server runs, ``workspace.stage_graph``): the decision log as ``GET
+    /projects/{pid}`` serves it, folded with ``decision`` as ``decisions.state_after`` folds a
+    probe, on the data file's fingerprint (``datastore.fingerprint_file``). The rule is trusted
+    only where the keys it gives the log as it stands are every key the server serves for it now;
+    otherwise, or when ``decision`` does not read or fold, :class:`CannotTell` says why."""
+    from turbotab.core import decisions
+    from turbotab.core.datastore import fingerprint_file
+    from turbotab.core.graph import stage_keys
+    from turbotab.core.workspace import stage_graph
+
+    fingerprint = run.meta.get("fingerprint")
+    if not fingerprint:
+        try:
+            fingerprint = fingerprint_file(Path(run.meta["data"]["path"]))
+        except (OSError, KeyError, TypeError):
+            raise CannotTell("the run's data file cannot be read") from None
+        run.meta["fingerprint"] = fingerprint
+        if (run.folder / "driver.json").exists():
+            run.save()
+    order = stage_graph().order()
+    try:
+        records = [decisions.DecisionRecord.model_validate(r) for r in view.get("decisions") or []]
+        now_keys = stage_keys(order, decisions.fold(records).model_dump(mode="json"), fingerprint)
+    except Exception as exc:  # noqa: BLE001 - a log this cannot read is a log it cannot key
+        raise CannotTell(f"the decision log does not read here ({type(exc).__name__})") from None
+    served = {name: (s or {}).get("key") for name, s in (view.get("stages") or {}).items()}
+    differ = sorted(name for name, key in served.items() if now_keys.get(name) != key)
+    if differ or not served:
+        raise CannotTell("the keys it computes are not the server's, for "
+                         + (", ".join(differ[:4]) if differ else "any stage"))
+    try:
+        probe = decisions.DecisionRecord(
+            id="__probe__", seq=max((r.seq for r in records), default=0) + 1,
+            at=datetime.now(timezone.utc), decision=decisions.parse_decision(decision))
+        after = decisions.fold([*records, probe])
+    except Exception as exc:  # noqa: BLE001 - not a decision, or one the log refuses
+        raise CannotTell(f"the answer does not read as a decision the log takes "
+                         f"({type(exc).__name__})") from None
+    return stage_keys(order, after.model_dump(mode="json"), fingerprint).get("fit")
+
+
+def guard_budget(run: Run, client: Client, view: dict[str, Any], decision: dict[str, Any]) -> None:
+    """Refuse ``decision`` when the budget is met and it would make a new fit (the section's
+    rule); a decision is told only once the budget is met."""
+    spent = budget_now(run, client, view)
+    if not budget_met(spent):
+        return
+    try:
+        after = fit_key_after(run, view, decision)
+    except CannotTell as exc:
+        raise DriverError("fit_budget_unknown", f"Not recorded: {budget_words(spent)}, and the driver "
+                                                f"cannot tell whether this would make a new fit: "
+                                                f"{exc}.", spent=public_budget(spent)) from None
+    why = attempt_over_budget(spent, after)
+    if why:
+        raise DriverError("fit_budget", why, spent=public_budget(spent))
 
 
 def wait_fit(run: Run, client: Client, seconds: float) -> dict[str, Any]:
@@ -851,7 +982,7 @@ def cmd_fit(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]:
     client = run.client()
     view = view_of(run, client)
     guard_sealed(view)
-    spent = budget_now(run, client)
+    spent = budget_now(run, client, view)
     why = over_budget(spent, ((view.get("stages") or {}).get("fit") or {}).get("key"))
     if why:
         raise DriverError("fit_budget", why, spent=public_budget(spent))
@@ -865,7 +996,7 @@ def cmd_fit(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]:
 
 
 def public_budget(spent: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in spent.items() if k != "keys"}
+    return {k: v for k, v in spent.items() if k not in ("keys", "running_key")}
 
 
 def cmd_results(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]:

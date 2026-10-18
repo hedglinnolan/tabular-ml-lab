@@ -21,9 +21,13 @@ Run the driver, one command per call, from the repo root:
 
     scripts/py -m research.swarm.driver <command> --run <run id> ...
 
-Nothing else runs: no other program, no file reading or writing, no web. A command with any of
-`;` `&` `|` `` ` `` `$` `<` `>` or a line break in it is refused, so write each reason in plain
-words without those characters. Each command prints one JSON object. Its words are the app's;
+Nothing else runs: no other program, no file reading or writing, no web. Write each id, option
+and setting as a plain word of letters, digits and `. _ - / : , @ % +`, with `=` only inside a
+word (`--set low=18`). Put each reason in double quotes, and any other word that holds another
+character in double or single quotes. A command is refused if it holds `;` `&` `|` `` ` `` `$`
+`<` `>`, a line break or another control character anywhere, even in quotes; any other
+character outside quotes; or a backslash or `!` inside double quotes. So write each reason in
+plain words without those characters. Each command prints one JSON object. Its words are the app's;
 read them, and say only what they show. A command can take up to a minute and a half while the
 app computes; if `ask` still shows the question waiting, run it again.
 
@@ -52,8 +56,10 @@ app computes; if `ask` still shows the question waiting, run it again.
 
       scripts/py -m research.swarm.driver revisit --run RUN 0d27d9a3 --reason "The CV log loss was worse with ridge. Testing whether plain logistic does better."
 
-- `fit`: presses Fit. Under Estimate this locks the plan. The run has a fit budget, and `fit`
-  says what is spent; past the budget it is refused.
+- `fit`: presses Fit. Under Estimate this locks the plan. The run has a fit budget, a number of
+  fits and of seconds, and `fit` says what is spent. Once it is spent, `fit` is refused, and so
+  is an `answer` or `revisit` that would make a new fit; one that makes none, such as going back
+  to a model already fitted, still goes through.
 
       scripts/py -m research.swarm.driver fit --run RUN
 
@@ -86,7 +92,7 @@ one with `answer <id> --reason <why>`, or change an earlier answer with `revisit
    what the previews or fits before it showed, quoting the numbers they printed. Say only what
    the output printed; never guess a number.
 4. **Under Predict:** compare models and choices on the cross-validated scores, as often as the
-   fit budget allows; once `fit` is refused for the budget, work with the fits you have. Then
+   fit budget allows; once the budget is spent, work with the fits you have. Then
    declare the final model from those scores and open the seal once. Its held-out score is the
    result. After the seal nothing more is tried: the driver refuses it. Read `results`, then
    `export`.

@@ -249,19 +249,96 @@ def test_an_id_not_offered_is_refused_and_a_way_forward_is_taken_by_its_id():
     assert opts.resolve(q, ["impute"], [], ways)["kind"] == "set_missing"
 
 
-def test_an_exclusion_offered_with_its_rule_records_that_rule():
-    rule = {"kind": "range", "column": "kcal", "low": 500, "high": 3500}
-    proposals = {"labels": {"exclusions": LABELED("exclusions", ["keep_every_row", "sex_neutral", "custom"])},
-                 "exclusions": [{"key": "sex_neutral", "label": "500 to 3,500 kcal", "rule": rule,
-                                 "refused": "Waits for the energy unit."}]}
-    q = compose("exclusions", {"proposals": proposals})
-    by = {o["id"]: o for o in q["options"]}
-    assert by["keep_every_row"]["decision"] == {"kind": "set_exclusions", "rules": []}
-    assert by["sex_neutral"]["decision"] == {"kind": "set_exclusions", "rules": [rule]}
-    assert by["sex_neutral"]["note"] == "Waits for the energy unit."
-    assert by["custom"]["decision"] is None
+# The exclusions card as the app shows it (ExclusionsAsk): keeping every row, each screen offered
+# on this table, and a range of one's own on a numeric column, in the teaching entry's words.
+EXCLUSIONS_ENTRY = {"key": "exclusions", "question": "Is your study restricted to part of this data?",
+                    "options": [{"value": "none", "label": "Keep every row",
+                                 "consequence": "No row is excluded; the record says so."},
+                                {"value": "sex_neutral_500_3500", "label": "500–3,500 kcal a day",
+                                 "consequence": "Anyone outside 500–3,500 kcal a day is excluded."},
+                                {"value": "custom", "label": "Your own range",
+                                 "consequence": "Rows outside a range you set are excluded."}]}
+SCREEN = {"kind": "range", "column": "kcal", "low": 500.0, "high": 3500.0, "by": None,
+          "reason": "implausible intake", "missing": "exclude"}
+COLUMNS = {"columns": [{"name": "__row_id", "dtype": "integer"}, {"name": "kcal", "dtype": "numeric"},
+                       {"name": "age", "dtype": "integer"}, {"name": "sex", "dtype": "categorical"},
+                       {"name": "glucose", "dtype": "numeric"}, {"name": "smoker", "dtype": "boolean"}]}
+
+
+def exclusions(labeled: bool = True) -> dict[str, Any]:
+    proposals: dict[str, Any] = {
+        "exclusions": [{"key": "sex_neutral_500_3500", "label": "500 to 3,500 kcal", "rule": SCREEN,
+                        "refused": "Waits for the energy unit.", "affected": 12}],
+        "n_base": 900}
+    if labeled:  # custom_sound.exclusions: keeping every row, then the screens offered
+        proposals["labels"] = {"exclusions": LABELED("exclusions",
+                                                     ["keep_every_row", "sex_neutral_500_3500"])}
+    return compose("exclusions", {"proposals": proposals, "oriented": COLUMNS}, EXCLUSIONS_ENTRY,
+                   target="glucose")
+
+
+@pytest.mark.parametrize("labeled", [True, False])
+def test_the_exclusions_card_offers_every_row_each_screen_and_a_range_of_ones_own(labeled):
+    """As the card offers them: keeping every row, in the teaching entry's words, under its id;
+    each screen offered with the rule it records; a range of one's own, which records nothing
+    until it is set."""
+    q = exclusions(labeled)
+    assert [o["id"] for o in q["options"]] == ["none", "sex_neutral_500_3500", "custom"]
+    none, screen, custom = q["options"]
+    assert (none["label"], none["consequence"]) == ("Keep every row",
+                                                     "No row is excluded; the record says so.")
+    assert none["decision"] == {"kind": "set_exclusions", "rules": []}
+    assert screen["decision"] == {"kind": "set_exclusions", "rules": [SCREEN]}
+    assert screen["label"] == "500–3,500 kcal a day" and screen["note"] == "Waits for the energy unit."
+    assert (custom["label"], custom["decision"]) == ("Your own range", None)
+    if labeled:  # the two labels the server gives keeping every row ride on its option
+        assert none["labels"]["customary"]["text"] == "customary keep_every_row"
+    else:
+        assert "labels" not in none
+    fields = {f["name"]: f for f in opts.public(q)["fields"]}
+    assert set(fields) == {"column", "low", "high"}
+    # the numeric columns, never the outcome or the row id (AskFor.tsx's numericColumns)
+    assert [c["value"] for c in fields["column"]["choices"]] == ["kcal", "age"]
+    assert all(f["applies_to"] == ["custom"] for f in fields.values())
+
+
+def test_a_range_of_ones_own_records_the_rule_the_card_records():
+    """Set, it records the app's own range rule (ChoiceQuestions.tsx's customRule): the column,
+    the bounds given (one may be open), by none, the card's reason, and a row with no value left
+    out as not confirmed eligible."""
+    q = exclusions()
+    rule = {"kind": "range", "column": "age", "low": 18.0, "high": 95.5, "by": None,
+            "reason": "implausible values (your own range)", "missing": "exclude"}
+    assert opts.resolve(q, ["custom"], ["column=age", "low=18", "high=95.5"]) == {
+        "kind": "set_exclusions", "rules": [rule]}
+    assert opts.resolve(q, ["custom"], ["column=kcal", "high=4000"])["rules"] == [
+        {**rule, "column": "kcal", "low": None, "high": 4000.0}]
+    assert opts.resolve(q, ["custom"], ["column=age", "low=-1e3"])["rules"][0]["low"] == -1000.0
+
+
+@pytest.mark.parametrize("sets,word", [
+    ([], "--set"),  # nothing set: it records nothing by itself
+    (["column=age"], "low"),  # neither bound
+    (["low=18", "high=60"], "column"),  # no column
+    (["column=age", "low=eighteen"], "low"),
+    (["column=age", "high="], "high"),
+    (["column=age", "low=nan"], "low"),
+    (["column=age", "high=inf"], "high"),
+    (["column=sex", "low=1"], "column"),  # not numeric
+    (["column=glucose", "low=1"], "column"),  # the outcome
+    (["column=__row_id", "low=1"], "column"),
+    (["column=height", "low=1"], "column"),  # not a column
+])
+def test_a_range_without_a_bound_or_with_one_that_is_not_a_number_is_refused(sets, word):
+    q = exclusions()
+    with pytest.raises(opts.Unanswerable) as caught:
+        opts.resolve(q, ["custom"], sets)
+    assert word in str(caught.value), (sets, str(caught.value))
+
+
+def test_a_range_is_set_only_on_its_own_option():
     with pytest.raises(opts.Unanswerable):
-        opts.resolve(q, ["custom"], [])
+        opts.resolve(exclusions(), ["none"], ["column=age", "low=18"])
 
 
 def test_the_estimand_offers_each_exposure_with_the_cards_measures_as_a_field():
@@ -310,6 +387,10 @@ CASES = [
      {"target": "y"}),
     ("purpose", {}, {"key": "purpose", "options": [{"value": "prediction", "label": "Prediction",
                                                     "consequence": "Judged on new rows."}]}, {}),
+    ("exclusions", {"proposals": {"exclusions": [{"key": "sex_neutral_500_3500", "label": "a screen",
+                                                  "rule": SCREEN, "refused": "Waits."}],
+                                  "labels": {"exclusions": LABELED("exclusions", ["keep_every_row"])}},
+                    "oriented": COLUMNS}, EXCLUSIONS_ENTRY, {"target": "glucose"}),
 ]
 
 

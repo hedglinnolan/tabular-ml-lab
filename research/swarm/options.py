@@ -15,14 +15,17 @@ pass, so it is named by its decision: ``x-`` and the first 8 hex digits of the S
 decision's canonical JSON (:func:`exit_id`), the same for the same decision.
 
 **Words.** Every label, consequence and note is the server's, as served. Where the server serves
-no label (a column, a level), the option has none; the driver adds no words to a question.
+no label (a column, a level), the option has none; the driver adds no words to a question. The
+one string it writes into a decision is the app's own: the reason its exclusions card records
+for a range of one's own (:data:`CUSTOM_RANGE`).
 
 **Fields.** A question answered with one value per column (the roles, the adjustment answers, the
-forms) or with a setting beside its option (the split's validation, the estimand's measure) lists
-``fields``; ``answer <option> --set <name>=<value>`` sets one, from the field's served
-``choices``. Each field's ``initial`` is what the card itself shows chosen (a proposal, the
-first-ranked measure), so an option's ``decision`` is exactly what pressing it records; a field
-the card leaves unchosen starts empty.
+forms) or with a setting beside its option (the split's validation, the estimand's measure, the
+exclusions' range of one's own: a numeric column, and ``low``, ``high`` or both, as numbers)
+lists ``fields``; ``answer <option> --set <name>=<value>`` sets one, from the field's served
+``choices`` or as a number (``"type": "number"``). Each field's ``initial`` is what the card
+itself shows chosen (a proposal, the first-ranked measure), so an option's ``decision`` is
+exactly what pressing it records; a field the card leaves unchosen starts empty.
 
 **Several at once.** The lens and the models take more than one option (``multi``): ``answer a b``
 records them together.
@@ -31,6 +34,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from typing import Any, Callable, Iterable, Mapping
 
 Served = Callable[[str], Any]  # stage name -> its artifact as GET /stages/<stage> serves it, or None
@@ -296,25 +300,55 @@ def _survey(ctx: Context) -> Composed:
                      if card.get(k)}}
 
 
+# The range of one's own as the app's card records it (``ExclusionsAsk``'s ``customRule``,
+# turbotab/frontend/src/components/record/ask/ChoiceQuestions.tsx): by no level, the card's reason,
+# and a row whose value is not recorded left out as not confirmed eligible (the server's default).
+CUSTOM_RANGE = {"kind": "range", "column": None, "low": None, "high": None, "by": None,
+                "reason": "implausible values (your own range)", "missing": "exclude"}
+NUMERIC = ("numeric", "integer")
+ROW_ID = "__row_id"
+
+
+def _numeric_columns(ctx: Context) -> list[str]:
+    """The columns a range is kept on, as the card lists them (``AskFor.tsx``'s
+    ``numericColumns``): the table's numeric columns as it stands, never the outcome."""
+    columns = _art(ctx.served, "oriented").get("columns") or _art(ctx.served, "ingest").get("columns")
+    return [str(c["name"]) for c in columns or [] if isinstance(c, Mapping) and c.get("name")
+            and c.get("dtype") in NUMERIC and c["name"] not in (ROW_ID, ctx.target)]
+
+
 def _exclusions(ctx: Context) -> Composed:
+    """The card's options (``ExclusionsAsk``): keeping every row (``none``), each screen offered
+    on this table with the rule it records, and a range of one's own on a numeric column
+    (``custom``), each in the teaching entry's words; the two labels the server gives each, where
+    it gives them (keeping every row's under ``keep_every_row``)."""
     proposals = _art(ctx.served, "proposals")
-    offered = {e.get("key"): e for e in proposals.get("exclusions") or [] if isinstance(e, Mapping)}
-    labeled = _labeled((proposals.get("labels") or {}).get("exclusions"))
-    options = []
-    for o in labeled or [{"key": k} for k in offered] or [{"key": "keep_every_row"}]:
-        key = o.get("key")
-        offer = offered.get(key) or {}
-        if key == "keep_every_row":
-            decision: dict[str, Any] | None = {"kind": "set_exclusions", "rules": []}
-        elif offer.get("rule"):
-            decision = {"kind": "set_exclusions", "rules": [offer["rule"]]}
-        else:
-            decision = None  # an option that needs rules this card does not hold (custom)
-        options.append(_option(key, decision, label=o.get("label") or offer.get("label"),
-                               labels=_two_labels(o), note=offer.get("refused")))
-    return {"options": options,
-            "data": {"tension": ((proposals.get("labels") or {}).get("exclusions") or {})
-                     .get("tension")} if labeled else {}}
+    offered = [e for e in proposals.get("exclusions") or [] if isinstance(e, Mapping) and e.get("key")]
+    labeled = {str(o.get("key")): o for o in _labeled((proposals.get("labels") or {}).get("exclusions"))}
+    taught = {str(o.get("value")): o for o in _taught(ctx.entry)}
+    none, custom = taught.get("none") or {}, taught.get("custom") or {}
+    options = [_option("none", {"kind": "set_exclusions", "rules": []}, label=none.get("label"),
+                       consequence=none.get("consequence"),
+                       labels=_two_labels(labeled.get("keep_every_row") or {}))]
+    for e in offered:
+        key, words = str(e["key"]), taught.get(str(e["key"])) or {}
+        options.append(_option(key, {"kind": "set_exclusions", "rules": [e["rule"]]}
+                               if e.get("rule") else None,
+                               label=words.get("label") or e.get("label"),
+                               consequence=words.get("consequence"), affected=e.get("affected"),
+                               labels=_two_labels(labeled.get(key) or {}), note=e.get("refused")))
+    options.append(_option("custom", None, label=custom.get("label"),
+                           consequence=custom.get("consequence"),
+                           _base={"kind": "set_exclusions", "rules": [dict(CUSTOM_RANGE)]},
+                           _range=True))
+    columns = _numeric_columns(ctx)
+    fields = [{"name": "column", "choices": [{"value": c} for c in columns], "initial": None,
+               "applies_to": ["custom"], "_apply": ("range", "column")},
+              *({"name": bound, "type": "number", "initial": None, "applies_to": ["custom"],
+                 "_apply": ("range", bound)} for bound in ("low", "high"))]
+    tension = ((proposals.get("labels") or {}).get("exclusions") or {}).get("tension")
+    return {"options": options, "fields": fields,
+            "data": {"tension": tension, "n_base": proposals.get("n_base") if offered else None}}
 
 
 def _missing(ctx: Context) -> Composed:
@@ -615,6 +649,20 @@ class Unanswerable(ValueError):
 
 def _set_value(field: Mapping[str, Any], raw: str) -> Any:
     how = field["_apply"]
+    if how == ("range", "column"):
+        allowed = [str(c.get("value")) for c in field.get("choices") or []]
+        if raw not in allowed:
+            raise Unanswerable(f"column is one of the numeric columns, {', '.join(allowed) or 'none here'}"
+                               f"; not {raw!r}.")
+        return raw
+    if how[0] == "range":
+        try:
+            value = float(raw)
+        except ValueError:
+            value = math.nan
+        if not math.isfinite(value):
+            raise Unanswerable(f"{field['name']} takes a finite number, such as 18 or 2.5; not {raw!r}.")
+        return value
     if how[0] == "answers":
         parts = [p.strip() for p in raw.split(",")]
         if len(parts) != 3 or any(p not in ANSWER3 for p in parts):
@@ -649,6 +697,8 @@ def _apply(decision: dict[str, Any], field: Mapping[str, Any], value: Any) -> No
         decision.pop("cluster", None)
         if scheme.get("cluster"):
             decision["cluster"] = scheme["cluster"]
+    elif how[0] == "range":
+        decision["rules"][0][how[1]] = value
     elif how[0] == "form":
         _, column, proposal, knots = how
         if value == proposal.get("form"):
@@ -683,7 +733,7 @@ def resolve(composed: Composed, ids: list[str], sets: list[str],
     if any(not isinstance(o.get("decision"), Mapping) for o in chosen) and not sets:
         raise Unanswerable(f"Option {ids[0]} records nothing by itself: "
                            f"{'set its fields with --set' if composed.get('fields') else 'it says what to do'}.")
-    decision = json.loads(json.dumps(chosen[0].get("decision") or {}))
+    decision = json.loads(json.dumps(chosen[0].get("decision") or chosen[0].get("_base") or {}))
     if multi and len(chosen) > 1:
         decision[multi] = [v for o in chosen for v in (o["decision"] or {}).get(multi) or []]
     fields = {str(f["name"]): f for f in composed.get("fields") or []}
@@ -698,6 +748,14 @@ def resolve(composed: Composed, ids: list[str], sets: list[str],
         if applies and ids[0] not in applies:
             raise Unanswerable(f"The field {name.strip()} does not apply to option {ids[0]}.")
         _apply(decision, field, _set_value(field, raw.strip()))
+    if chosen[0].get("_range"):
+        rule = decision["rules"][0]
+        if rule["column"] is None:
+            raise Unanswerable(f"Option {ids[0]} keeps the rows inside a range on one numeric "
+                               f"column: set column, and low, high or both.")
+        if rule["low"] is None and rule["high"] is None:
+            raise Unanswerable(f"Option {ids[0]} takes low, high or both, as numbers: neither is "
+                               f"set.")
     if not decision.get("kind"):
         raise Unanswerable(f"Option {ids[0]} records nothing as it stands.")
     return decision

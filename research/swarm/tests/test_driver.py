@@ -41,9 +41,10 @@ PROVENANCE = "https://example.org/data/clinical_risk.csv,2026-08-02,CC0-1.0"
 
 
 def spent(fits: int, seconds: float, *, budget_fits: int = 2, budget_seconds: float = 100.0,
-          keys: list[str] | None = None) -> dict[str, Any]:
-    return {"fits": fits, "seconds": seconds, "budget_fits": budget_fits,
-            "budget_seconds": budget_seconds, "keys": keys or [f"k{i}" for i in range(fits)]}
+          keys: list[str] | None = None, running: str | None = None) -> dict[str, Any]:
+    return {"fits": fits, "running": int(running is not None), "seconds": seconds,
+            "budget_fits": budget_fits, "budget_seconds": budget_seconds,
+            "keys": keys or [f"k{i}" for i in range(fits)], "running_key": running}
 
 
 def test_the_fit_budget_refuses_a_press_past_its_count():
@@ -71,6 +72,77 @@ def test_the_fit_budget_refuses_a_press_once_its_seconds_are_spent():
     assert why == ("Fit is not pressed: the run's fit budget is 100 seconds of fitting, and 100 "
                    "were spent already.")
     assert driver.over_budget(spent(1, 250.0, keys=["a"]), "a") is not None
+
+
+def test_a_fit_under_way_counts_as_made():
+    """The fits made are GET /fits' records and the fit the scheduler is making now: the current
+    fit's key, recorded by no record, neither held for Fit nor failed. With one under way, the
+    budget's count is met one fit sooner, and its words say so."""
+    records = [{"fit_key": "a", "seconds": 2.5}]
+    budget = {"fits": 2, "seconds": 100.0}
+    for fit, running in [({"status": "running", "key": "b"}, "b"),
+                         ({"status": "queued", "key": "b"}, "b"),
+                         ({"status": "stale", "key": "b", "held": "estimate"}, "b"),
+                         ({"status": "stale", "key": "b", "held": "fit"}, None),  # waits for Fit
+                         ({"status": "fresh", "key": "a"}, None),  # recorded
+                         ({"status": "error", "key": "b"}, None),
+                         ({"status": "blocked", "key": None}, None),
+                         ({"status": "running", "key": "b", "cancelled": True}, None)]:
+        got = driver.spent_of(records, fit, budget)
+        assert (got["running_key"], got["running"]) == (running, int(running is not None)), fit
+        assert (got["fits"], got["seconds"], got["keys"]) == (1, 2.5, ["a"])
+    met = driver.spent_of(records, {"status": "running", "key": "b"}, budget)
+    assert driver.budget_met(met) and not driver.budget_met(driver.spent_of(records, {}, budget))
+    assert driver.over_budget(met, "b") is None  # a press for the fit under way counts it once
+    one = driver.spent_of(records, {"status": "running", "key": "b"}, {"fits": 1, "seconds": 100.0})
+    assert driver.over_budget(one, "b") == ("Fit is not pressed: the run's fit budget is 1 fit, "
+                                            "and 1 was made and 1 is under way.")
+
+
+def test_past_the_budget_an_answer_that_makes_a_new_fit_is_refused():
+    """Within the budget every answer passes, whatever fit it makes. Once the fits made meet it, an
+    answer passes only when the fit it leaves is none (the models unanswered), one already made,
+    or the one under way; one that makes a new fit is refused, by count or by seconds."""
+    within = spent(1, 9.0, keys=["a"])
+    assert driver.attempt_over_budget(within, "new") is None
+    met = spent(2, 18.0, keys=["a", "b"])
+    for after in (None, "a", "b"):
+        assert driver.attempt_over_budget(met, after) is None, after
+    assert driver.attempt_over_budget(met, "new") == (
+        "Not recorded: this would make a new fit, and the run's fit budget is 2 fits, and 2 were "
+        "made already. An answer that makes no new fit is still recorded, and results, seal and "
+        "export still run.")
+    running = spent(1, 9.0, keys=["a"], running="b")
+    assert driver.attempt_over_budget(running, "b") is None
+    assert driver.attempt_over_budget(running, "new").startswith(
+        "Not recorded: this would make a new fit, and the run's fit budget is 2 fits, and 1 was "
+        "made and 1 is under way.")
+    seconds = spent(1, 100.0, keys=["a"])
+    assert driver.attempt_over_budget(seconds, "a") is None
+    assert driver.attempt_over_budget(seconds, "new").startswith(
+        "Not recorded: this would make a new fit, and the run's fit budget is 100 seconds of "
+        "fitting, and 100 were spent already.")
+
+
+def test_the_fit_an_answer_would_make_is_told_only_where_the_servers_keys_are_matched(tmp_path):
+    """The driver tells the fit an answer would leave by the engine's own key rule
+    (``graph.stage_keys`` over the log folded with the answer). It trusts that rule only where the
+    keys it computes for the log as it stands are the keys the server serves: with one stage's
+    key not the server's, it cannot tell, and says why; with the server's keys, it answers."""
+    from turbotab.core import decisions
+    from turbotab.core.graph import stage_keys
+    from turbotab.core.workspace import stage_graph
+
+    run = driver.Run(tmp_path, {"fingerprint": "f" * 32, "data": {"path": str(FIXTURE)}})
+    keys = stage_keys(stage_graph().order(), decisions.fold([]).model_dump(mode="json"), "f" * 32)
+    view = {"decisions": [], "stages": {name: {"key": key} for name, key in keys.items()}}
+    assert driver.fit_key_after(run, view, {"kind": "set_purpose", "purpose": "prediction"}) is None
+    wrong = {**view, "stages": {**view["stages"], "ingest": {"key": "0" * 64}}}
+    with pytest.raises(driver.CannotTell) as caught:
+        driver.fit_key_after(run, wrong, {"kind": "set_purpose", "purpose": "prediction"})
+    assert "ingest" in str(caught.value)
+    with pytest.raises(driver.CannotTell):  # not a decision
+        driver.fit_key_after(run, view, {"kind": "no_such_kind"})
 
 
 @pytest.mark.parametrize("kind", ["reseal", "lock_plan", "revert", "open_seal"])
@@ -238,7 +310,7 @@ PREDICT: Plan = {
     "purpose": [(["prediction"], [])],
     "grain": [(["one_row_per_unit"], [])],
     "roles": [(["proposed"], [])],
-    "exclusions": [(["keep_every_row"], [])],
+    "exclusions": [(["none"], [])],
     "missing": [(["impute"], [])],
     "split": [(["0.2"], ["validation=kfold"])],
     "models": [(["linear"], [])],
@@ -255,7 +327,7 @@ ESTIMATE: Plan = {
     "grain": PREDICT["grain"],
     "roles": [(["proposed"], [f"{c}=covariate" for c in LABS])],
     "clusters": [(["none"], [])],
-    "exclusions": [(["keep_every_row"], [])],
+    "exclusions": [(["none"], [])],
     "missing": [(["complete_case"], [])],
     "estimand": [(["charlson_index"], ["measure=odds_ratio"])],
     "adjustment": [(["demographic"], []),
@@ -270,9 +342,11 @@ ESTIMATE: Plan = {
 class Analyst:
     """A scripted analyst working one run through the driver's command line."""
 
-    def __init__(self, runs: Path, run_id: str, plan: Plan | None = None):
+    def __init__(self, runs: Path, run_id: str, plan: Plan | None = None,
+                 before: dict[str, Any] | None = None):
         self.runs, self.run = runs, run_id
         self.plan = {k: list(v) for k, v in (plan or PREDICT).items()}
+        self.before = dict(before or {})  # question -> a check run on its ask before answering
         self.truth = truth()
         self.proposed: dict[str, str] = {}
         self.reasons: list[str] = []  # every reason given, in order
@@ -372,6 +446,8 @@ class Analyst:
                 self.proposed = {c["column"]: c["proposed"] for c in q["data"]["columns"]}
             if key == "missing" and ids == ["impute"]:
                 self.examine("complete_case", q)
+            if key in self.before:
+                self.before.pop(key)(q)
             self.answer(ids, sets)
         raise AssertionError(f"the Router never reached Fit: {self.asked}")
 
@@ -479,7 +555,8 @@ def test_a_run_from_start_to_export_through_the_driver(tmp_path):
         assert set(fit) == {"pressed", "fit", "spent"}
         assert fit["pressed"]["pressed"] is True and fit["fit"]["status"] == "fresh"
         _, fits = http(meta["port"], f"/projects/{meta['project']}/fits")
-        assert fit["spent"] == {"fits": len(fits["records"]), "budget_fits": 2, "budget_seconds": 900.0,
+        assert fit["spent"] == {"fits": len(fits["records"]), "running": 0, "budget_fits": 2,
+                                "budget_seconds": 900.0,
                                 "seconds": round(sum(r["seconds"] or 0 for r in fits["records"]), 3)}
         assert 1 <= fit["spent"]["fits"] <= 2
 
@@ -546,30 +623,143 @@ def test_a_run_from_start_to_export_through_the_driver(tmp_path):
         stop(analyst, meta)
 
 
+TARGET = "readmit_30d"  # the fixture's outcome (clinical_risk.md)
+
+
+def numeric_columns() -> list[str]:
+    """The fixture's columns whose every recorded value reads as a number, read here with the csv
+    module, the outcome left out: the columns a range can be kept on."""
+    import csv
+
+    with FIXTURE.open(newline="") as fh:
+        rows = list(csv.DictReader(fh))
+
+    def number(text: str) -> bool:
+        try:
+            float(text)
+        except ValueError:
+            return False
+        return True
+
+    return [c for c in rows[0] if c != TARGET and all(number(r[c]) for r in rows if r[c] != "")]
+
+
+# The app's own range on age, 18 to 95 kept, as its card records it (ExclusionsAsk,
+# turbotab/frontend/src/components/record/ask/ChoiceQuestions.tsx: by none, the card's reason, a
+# row with no age not confirmed eligible).
+AGE_RANGE = {"kind": "range", "column": "age", "low": 18.0, "high": 95.0, "by": None,
+             "reason": "implausible values (your own range)", "missing": "exclude"}
+
+
+def models_of(analyst: Analyst) -> str:
+    return next(d["id"] for d in reversed(analyst.cmd("ask")["decisions"])
+                if d["kind"] == "select_models")
+
+
+def records_of(meta: dict[str, Any]) -> list[dict[str, Any]]:
+    status, fits = http(meta["port"], f"/projects/{meta['project']}/fits")
+    assert status == 200
+    return fits["records"]
+
+
 @pytest.mark.slow
-def test_a_fit_past_the_budget_is_refused(tmp_path):
-    """A run budgeted one fit: the first press passes; after a revisit changes the models, a press
-    that would make a second fit is refused by the driver, with what was spent."""
-    analyst = Analyst(tmp_path, "budget")
-    meta = start(analyst, budget_fits=1)
+def test_the_budget_bounds_the_fits_the_analyst_gets(tmp_path):
+    """A run budgeted two fits, on the fixture with its own range of ages kept:
+
+    * the exclusions question offers keeping every row in the teaching entry's words and the card's
+      own range on a numeric column; a range with no bound, or a bound that is not a number, is
+      refused, and one on age records the rule the app's card records;
+    * within the budget a revisit and a new model make the second fit, and ``results`` serves its
+      cross-validated scores, the same as its record in ``GET /fits``;
+    * past it a third model is refused before anything is recorded, and ``/fits`` does not grow;
+      going back to the first model, whose fit was made, is recorded and serves that fit's scores;
+      a press for it, the triage and the seal still pass.
+    """
+    def exclusions_card(q: dict[str, Any]) -> None:
+        assert [o["id"] for o in q["options"]] == ["none", "custom"]
+        _, taught = http(meta["port"], "/teaching?purpose=prediction")
+        entry = {o["value"]: o for o in next(e for e in taught if e["key"] == "exclusions")["options"]}
+        none, custom = q["options"]
+        assert (none["label"], none["consequence"]) == (entry["none"]["label"],
+                                                         entry["none"]["consequence"])
+        assert none["decision"] == {"kind": "set_exclusions", "rules": []}
+        assert (custom["label"], custom["consequence"], custom["decision"]) == (
+            entry["custom"]["label"], entry["custom"]["consequence"], None)
+        fields = {f["name"]: f for f in q["fields"]}
+        assert [c["value"] for c in fields["column"]["choices"]] == numeric_columns()
+        for sets, word in ([["column=age"]], "low"), ([["column=age", "low=eighteen"]], "low"), \
+                ([["column=age", "high=inf"]], "high"), ([["column=sex", "low=1"]], "column"), \
+                ([["low=18"]], "column"):
+            refused = analyst.cmd("answer", "custom", *[a for s in sets[0] for a in ("--set", s)],
+                                  "--reason", "a range", expect=1)["refused"]
+            assert refused["by"] == "driver" and refused["code"] == "not_offered", (sets, refused)
+            assert word in refused["message"], (sets, refused)
+        assert len(analyst.cmd("ask")["decisions"]) == len(q["decisions"])  # nothing recorded
+
+    plan = {**PREDICT, "exclusions": [(["custom"], ["column=age", "low=18", "high=95"])]}
+    analyst = Analyst(tmp_path, "budget", plan, before={"exclusions": exclusions_card})
+    meta = start(analyst, budget_fits=2)
     try:
         analyst.until_fit()
+        status, view = http(meta["port"], f"/projects/{meta['project']}")
+        assert view["state"]["exclusions"] == [AGE_RANGE]
+
         fit = analyst.cmd("fit")
-        assert fit["spent"]["fits"] == 1 and fit["spent"]["budget_fits"] == 1
-        q = analyst.cmd("ask")
-        models = next(d for d in q["decisions"] if d["kind"] == "select_models")
-        revisit = analyst.cmd("revisit", models["id"], "--reason", "Ridge may calibrate better.")
-        assert revisit["recorded"]["decision"] == {"kind": "revert", "decision_id": models["id"]}
+        assert fit["spent"]["fits"] == 1 and fit["spent"]["budget_fits"] == 2
+        (first,) = records_of(meta)
+        linear = analyst.cmd("results")["results"]["families"][0]
+        assert linear["family"] == "linear" and linear["cv"] == first["scores"]["linear"]
+
+        # within the budget: a second model makes the second fit, and its scores are served
+        revisit = analyst.cmd("revisit", models_of(analyst), "--reason", "Ridge may calibrate better.")
         assert revisit["recorded"]["note"] == "Ridge may calibrate better."
         assert revisit["next"]["key"] == "models"
         analyst.answer(["ridge"], why="Ridge may calibrate better.")
-        refused = analyst.cmd("fit", expect=1)["refused"]
-        assert refused["by"] == "driver" and refused["code"] == "fit_budget"
-        assert refused["message"].startswith("Fit is not pressed: the run's fit budget is 1 fit,")
-        _, fits = http(meta["port"], f"/projects/{meta['project']}/fits")
-        assert refused["spent"]["fits"] == len(fits["records"])
+        served = analyst.cmd("results", "--wait", "120")["results"]
+        records = records_of(meta)
+        assert [r["families"] for r in records] == [["linear"], ["ridge"]]
+        assert [f["family"] for f in served["families"]] == ["ridge"]
+        assert served["families"][0]["cv"] == records[1]["scores"]["ridge"]
+        assert served["fit"]["key"] == records[1]["fit_key"]
+
+        # past it: a third model would make a third fit, and is refused before it is recorded
+        analyst.cmd("revisit", models_of(analyst), "--reason", "Elastic net may do better still.")
+        before = analyst.cmd("ask")
+        refused = analyst.cmd("answer", "elastic_net", "--reason", "Elastic net may do better.",
+                              expect=1)["refused"]
+        assert refused["by"] == "driver" and refused["code"] == "fit_budget", refused
+        assert refused["message"].startswith("Not recorded: this would make a new fit, and the "
+                                             "run's fit budget is 2 fits, and 2 were made already.")
+        assert refused["spent"] == {"fits": 2, "running": 0, "budget_fits": 2,
+                                    "budget_seconds": 900.0,
+                                    "seconds": round(sum(r["seconds"] or 0 for r in records), 3)}
+        after = analyst.cmd("ask")
+        assert after["decisions"] == before["decisions"] and after["question"]["key"] == "models"
+        time.sleep(2.0)
+        assert len(records_of(meta)) == 2
+        # going back to a fit already made is recorded, and serves that fit
+        analyst.answer(["linear"], why="Back to plain logistic, whose fit was made first.")
+        again = analyst.cmd("results", "--wait", "120")["results"]
+        assert [f["family"] for f in again["families"]] == ["linear"]
+        assert again["families"][0]["cv"] == first["scores"]["linear"]
+        assert again["fit"]["key"] == first["fit_key"]
+        pressed = analyst.cmd("fit")
+        assert pressed["spent"]["fits"] == 2
         unknown = analyst.cmd("revisit", "no-such-id", "--reason", "x", expect=1)["refused"]
         assert unknown["code"] == "no_such_decision"
+        # the triage and the seal still pass, past the budget
+        why = "Plain logistic and ridge scored alike; the simpler model is final."
+        sealed = analyst.cmd("seal", "linear", "--reason", why, expect=None)
+        for _ in range(4):
+            if "recorded" in sealed:
+                break
+            assert sealed["refused"]["code"] == "triage_open", sealed
+            way = next(e for e in sealed["refused"]["exits"]
+                       if (e.get("decision") or {}).get("kind") == "confirm_sweep")
+            analyst.answer([way["id"]], why="The noticings are triaged before any held-out score.")
+            sealed = analyst.cmd("seal", "linear", "--reason", why, expect=None)
+        assert sealed["recorded"]["decision"]["kind"] == "open_seal"
+        assert len(records_of(meta)) == 2
     finally:
         stop(analyst, meta)
 
@@ -579,10 +769,11 @@ def test_an_estimate_run_through_the_driver(tmp_path):
     """Under Estimate the driver's composed answers for the grouping, the exposure and its measure,
     the adjustment set (a group's one tap, then answers per column) and the forms are each
     recorded as posted; ``fit`` locks the plan; ``results`` serves the estimate and, after the
-    lock, which decisions mattered, each the server's own document; the run exports; and ``seal``
-    is refused by the server, nothing being held out."""
+    lock, which decisions mattered, each the server's own document; past the budget of one fit a
+    secondary analysis that would refit is refused; the run exports; and ``seal`` is refused by
+    the server, nothing being held out."""
     analyst = Analyst(tmp_path, "estimate", ESTIMATE)
-    meta = start(analyst, budget_fits=2)
+    meta = start(analyst, budget_fits=1)
     try:
         q = analyst.until_fit()
         assert q["question"] is None and q["fit_reached"] is True
@@ -608,6 +799,19 @@ def test_an_estimate_run_through_the_driver(tmp_path):
         assert out["mattered"] == mattered and mattered["curve"] is not None
         (effect,) = [f["effect"] for f in out["results"]["families"] if f["family"] == "linear"]
         assert effect[0]["feature"] == "charlson_index"
+
+        # one fit budgeted, and made: after the lock a secondary analysis that would refit is
+        # refused, told by the engine's keys as the server serves them (not "cannot tell"), while
+        # a revisit that leaves no fit, and going back to the locked plan's model, are recorded
+        made = records_of(meta)
+        assert len(made) == 1
+        analyst.cmd("revisit", models_of(analyst), "--reason", "A second family as a secondary analysis.")
+        offered = [o["id"] for o in analyst.cmd("ask")["options"]]
+        other = next(o for o in offered if o != "linear")
+        refused = analyst.cmd("answer", other, "--reason", "A second family.", expect=1)["refused"]
+        assert refused["code"] == "fit_budget", refused
+        analyst.answer(["linear"], why="Back to the locked plan's model.")
+        assert records_of(meta) == made
 
         sealed = analyst.cmd("seal", "linear", "--reason", "Nothing is held out here.", expect=1)
         assert sealed["refused"]["by"] == "server" and sealed["refused"]["code"] == "nothing_sealed"
