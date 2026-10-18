@@ -126,9 +126,13 @@ export async function firstDrawnPair(page: Page, done: Locator, tries = 12): Pro
  *
  * Every wait is bounded by what the app is computing, not by a flat time: the card's press is
  * waited for, and then its answer, for as long as any stage computes (up to ten minutes), and the
- * wait ends once none has for a minute.
+ * wait ends once none has for a minute. ``returnsWith``: the stages the question's card waits on
+ * to come back after a press (the models question waits for the shelf to rank again): a card gone
+ * after a press is waited for while one of them computes, since each waiting group, or column
+ * judged on its own, is its own press (ruling R-g) and on a slow runner the shelf ranks again for
+ * longer than the five seconds a card is otherwise given to come back.
  */
-export async function confirmAsk(slot: Locator): Promise<number> {
+export async function confirmAsk(slot: Locator, returnsWith: readonly string[] = []): Promise<number> {
   const card = slot.getByTestId("ask-card");
   const page = slot.page();
   const bounds = { quiet: 60_000, cap: 600_000 };
@@ -140,8 +144,11 @@ export async function confirmAsk(slot: Locator): Promise<number> {
     let before = await words();
     if (before === null) {
       // Gone, or only between two renders (a confirmed line recomputes the card): settled once
-      // it stays away.
-      await page.waitForTimeout(5_000);
+      // it stays away for five seconds, after a press while none of the stages it returns with
+      // computes.
+      if (presses && returnsWith.length)
+        await waitWhileComputing(page, async () => (await words()) !== null, returnsWith, { quiet: 5_000, cap: bounds.cap });
+      else await page.waitForTimeout(5_000);
       before = await words();
       if (before === null) return presses;
     }

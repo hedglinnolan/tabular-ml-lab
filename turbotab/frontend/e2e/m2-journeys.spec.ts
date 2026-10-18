@@ -260,7 +260,9 @@ async function fit(
   // Every journey here is a prediction: no coefficient is read as an effect, so the energy model
   // is not asked, and the models come right after the split.
   await expect(page.getByTestId("question-energy_adjustment")).toHaveCount(0);
-  await confirmAsk(page.locator('[data-slot="models"]'));
+  // Each waiting group, or column judged on its own, is its own press (ruling R-g), and the card
+  // comes back after each once the shelf has ranked again.
+  await confirmAsk(page.locator('[data-slot="models"]'), ["shelf"]);
   await visibleWhileComputing(page, options.first(), ["shelf"]);
   await onShelf?.(options);
   const families = await options.evaluateAll((els) => els.map((e) => e.getAttribute("data-key") ?? ""));
@@ -292,7 +294,9 @@ async function fit(
   };
   await choose();
   const recorded = page.getByTestId("decision-models");
-  for (let tries = 0; tries < 3; tries++) {
+  // A try is spent by each way forward taken and by each refusal whose card confirmed nothing: one
+  // whose readings the card confirmed made progress (each group is its own press, ruling R-g).
+  for (let tries = 0; tries < 3; ) {
     const took = await recorded
       .waitFor({ state: "visible", timeout: 15_000 })
       .then(() => true)
@@ -302,8 +306,10 @@ async function fit(
     // with ways forward at the control (raw counts: the first normalization it offers); then the
     // families are chosen again.
     const exit = page.locator('[data-slot="models"] [role="alert"] button', { hasText: / instead$/ }).first();
-    if (await exit.isVisible().catch(() => false)) await exit.click();
-    else await confirmAsk(page.locator('[data-slot="models"]'));
+    if (await exit.isVisible().catch(() => false)) {
+      await exit.click();
+      tries++;
+    } else if (!(await confirmAsk(page.locator('[data-slot="models"]'), ["shelf"]))) tries++;
     await page.waitForTimeout(1_500);
     if (await recorded.isVisible().catch(() => false)) break;
     await choose();
