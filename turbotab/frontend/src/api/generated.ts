@@ -777,7 +777,7 @@ export interface paths {
         put?: never;
         /**
          * Upload File
-         * @description Upload a file to join to the project's table (multipart field ``file``).
+         * @description Upload a file to join to the project's table (multipart field ``file``). ``url``, ``release_date`` and ``license`` (each optional, each at most 2,000 characters) say where the file came from: kept on the file's meta and echoed into the export's ``provenance.json`` inputs beside the file's SHA-256 once it is joined (SWARM_ENGINE_PLAN E5). One that does not read refuses the upload before any of it is kept.
          */
         post: operations["upload_file_api_projects__pid__files_upload_post"];
         delete?: never;
@@ -18843,7 +18843,14 @@ export interface operations {
     };
     upload_file_api_projects__pid__files_upload_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Where the file came from, in full (https://…) */
+                url?: string | null;
+                /** @description When it was released, YYYY-MM-DD */
+                release_date?: string | null;
+                /** @description The license it was released under */
+                license?: string | null;
+            };
             header?: never;
             path: {
                 pid: string;
@@ -18868,7 +18875,7 @@ export interface operations {
                     "application/json": components["schemas"]["AddedFile"];
                 };
             };
-            /** @description No file, or not a readable data file */
+            /** @description No file, not a readable data file, or a field of where it came from that does not read */
             400: {
                 headers: {
                     [name: string]: unknown;

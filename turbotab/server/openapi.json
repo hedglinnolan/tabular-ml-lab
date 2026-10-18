@@ -2767,7 +2767,7 @@
           "assembly"
         ],
         "summary": "Upload File",
-        "description": "Upload a file to join to the project's table (multipart field ``file``).",
+        "description": "Upload a file to join to the project's table (multipart field ``file``). ``url``, ``release_date`` and ``license`` (each optional, each at most 2,000 characters) say where the file came from: kept on the file's meta and echoed into the export's ``provenance.json`` inputs beside the file's SHA-256 once it is joined (SWARM_ENGINE_PLAN E5). One that does not read refuses the upload before any of it is kept.",
         "operationId": "upload_file_api_projects__pid__files_upload_post",
         "parameters": [
           {
@@ -2778,6 +2778,60 @@
               "type": "string",
               "title": "Pid"
             }
+          },
+          {
+            "name": "url",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Where the file came from, in full (https://…)",
+              "title": "Url"
+            },
+            "description": "Where the file came from, in full (https://…)"
+          },
+          {
+            "name": "release_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "When it was released, YYYY-MM-DD",
+              "title": "Release Date"
+            },
+            "description": "When it was released, YYYY-MM-DD"
+          },
+          {
+            "name": "license",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The license it was released under",
+              "title": "License"
+            },
+            "description": "The license it was released under"
           }
         ],
         "responses": {
@@ -2792,7 +2846,7 @@
             }
           },
           "400": {
-            "description": "No file, or not a readable data file",
+            "description": "No file, not a readable data file, or a field of where it came from that does not read",
             "content": {
               "application/json": {
                 "schema": {

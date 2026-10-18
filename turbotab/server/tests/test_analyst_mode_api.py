@@ -270,10 +270,16 @@ def test_each_preview_is_logged_in_analyst_mode_and_not_for_a_person(client, ana
     assert not (project_dir(client, theirs) / "previews.jsonl").exists()
 
 
-def added_file(client: TestClient, pid: str, name: str, frame) -> str:
+def add_file(client: TestClient, pid: str, name: str, frame, **params: str):
+    """``frame`` uploaded to the project as a file to join (``POST …/files/upload``), with
+    ``params`` as the query fields."""
+    return client.post(f"/api/projects/{pid}/files/upload", params=params,
+                       files={"file": (name, frame.to_csv(index=False).encode(), "text/csv")})
+
+
+def added_file(client: TestClient, pid: str, name: str, frame, **params: str) -> str:
     """``frame`` uploaded to the project as a file to join (``POST …/files/upload``); its id."""
-    added = client.post(f"/api/projects/{pid}/files/upload",
-                        files={"file": (name, frame.to_csv(index=False).encode(), "text/csv")})
+    added = add_file(client, pid, name, frame, **params)
     assert added.status_code == 200, added.text[:300]
     return added.json()["id"]
 
@@ -386,7 +392,7 @@ def test_a_joined_file_keeps_its_sha256_and_where_it_came_from_and_the_export_ec
     """A file added to join (DATAIN) is served with the SHA-256 of its bytes beside its
     fingerprint, and keeps where it came from when that is given; once joined, the export's
     inputs echo it beside the table's. The service is called as the upload route calls it
-    (``routes/assembly.py``, whose query fields are not wired yet)."""
+    (``routes/assembly.py``); the next test goes through the route."""
     import pandas as pd
 
     from turbotab.core.workspace import source_provenance
@@ -412,6 +418,51 @@ def test_a_joined_file_keeps_its_sha256_and_where_it_came_from_and_the_export_ec
     assert glu["role"] == "joined file" and glu["sha256"] == hashlib.sha256(data).hexdigest()
     assert {k: glu[k] for k in NHANES_GLU} == NHANES_GLU
     assert not set(NHANES_GLU) & set(table)  # the table was uploaded with none
+
+
+def test_a_joined_file_uploaded_with_where_it_came_from_keeps_it_and_the_export_echoes_it(
+        client):
+    """The joined-file upload (``POST …/files/upload``) takes the table upload's three fields:
+    given, they are kept on the file's ``file.json`` and echoed in the export's inputs beside the
+    SHA-256 of the bytes uploaded (hashlib's); not given, neither holds any of them."""
+    import pandas as pd
+
+    service = client.app.state.service
+    pid = uploaded(client)
+    assert decide(client, pid, {"kind": "set_lens", "lenses": ["dietary"]}).status_code == 200
+    ids = pd.read_csv(DIETARY)["participant_id"].drop_duplicates()  # one row each: many to one
+    glu = pd.DataFrame({"participant_id": ids,
+                        "fasting_glucose": [90 + i % 17 for i in range(len(ids))]})
+    ins = pd.DataFrame({"participant_id": ids,
+                        "fasting_insulin": [5 + i % 11 for i in range(len(ids))]})
+    given = added_file(client, pid, "GLU_J.csv", glu, **NHANES_GLU)
+    bare = added_file(client, pid, "INS_J.csv", ins)
+    files = project_dir(client, pid) / "files"
+    assert json.loads((files / given / "file.json").read_text("utf-8"))["provenance"] == NHANES_GLU
+    assert "provenance" not in json.loads((files / bare / "file.json").read_text("utf-8"))
+    for fid in (given, bare):
+        joined = decide(client, pid, {"kind": "join_files", "file": fid, "on": "participant_id"})
+        assert joined.status_code == 200, joined.text[:400]
+        wait_for(client, pid, {"ingest": "fresh"})  # each join reads the table again
+    inputs = {f.file_id: f.to_json() for f in service._export_inputs(
+        pid, service.workspace.get(pid), service.log(pid).state())}
+    assert {k: inputs[given][k] for k in NHANES_GLU} == NHANES_GLU
+    assert inputs[given]["sha256"] == hashlib.sha256(glu.to_csv(index=False).encode()).hexdigest()
+    assert not set(NHANES_GLU) & set(inputs[bare])
+
+
+@pytest.mark.parametrize("field, value", [("release_date", "November 2019"),
+                                          ("url", "wwwn.cdc.gov/Nchs/GLU_J.xpt")])
+def test_a_provenance_field_that_does_not_read_refuses_the_joined_file_and_adds_none(
+        client, field, value):
+    import pandas as pd
+
+    pid = uploaded(client)
+    frame = pd.DataFrame({"participant_id": [1, 2], "fasting_glucose": [91, 97]})
+    refused = add_file(client, pid, "GLU_J.csv", frame, **{**NHANES_GLU, field: value})
+    assert refused.status_code == 400
+    assert refused.json()["error"]["code"] == "bad_provenance"
+    assert client.get(f"/api/projects/{pid}/files").json() == []
 
 
 @pytest.mark.parametrize("field, value", [("release_date", "November 2019"),
