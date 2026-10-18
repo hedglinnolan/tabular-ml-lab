@@ -72,6 +72,13 @@ async function view(page: Page, pid: string): Promise<View> {
   return page.evaluate(async (p) => (await (await fetch(`/api/projects/${p}`)).json()) as View, pid);
 }
 
+/** How many readings the open question's ask card still asks, each confirmed in its own press: a
+ *  group of one judgment, or a column judged on its own (core/readings.py `ask_exits`, ruling R-g). */
+function asking(step: Step): number {
+  const ask = step.ask as { groups?: unknown[] } | null;
+  return ask?.groups?.length ?? 0;
+}
+
 /** Console errors and failed requests; a 409 is an answer the app shows, not a failure. */
 function watch(page: Page): string[] {
   const problems: string[] = [];
@@ -457,13 +464,19 @@ for (const journey of JOURNEYS) {
     const pid = await upload(page, journey.file);
     const asked: string[] = [];
     let last = "";
+    let lastAsking = 0;
     let tries = 0;
     for (let i = 0; i < 200; i++) {
       const { v, step } = await settle(page, pid);
       if (!step) break;
       const key = step.key;
-      tries = key === last ? tries + 1 : 0;
+      // An answer that left the question open counts toward its dead end only where it settled
+      // nothing the question's ask card asks: each press confirms one group, or one column judged
+      // on its own (ruling R-g), so six waiting flags are six presses that each settle one.
+      const pending = asking(step);
+      tries = key === last && pending >= lastAsking ? tries + 1 : 0;
       last = key;
+      lastAsking = pending;
       expect(tries, `${key} stays open after ${tries} answers`).toBeLessThan(6);
       // The open question renders something answerable (the seal's opening is its own card).
       const slot = key === "open_seal" ? page.getByTestId("open-seal-step") : page.locator(`[data-slot="${key}"]`);
