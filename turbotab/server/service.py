@@ -144,7 +144,8 @@ class DecisionContext:
     # grouping the seal draws by, not none (WAVE_C6A ruling 5).
     settled: Callable[[str], Any] | None = field(default=None, repr=False, compare=False)
     # Analyst mode (``Settings.analyst``; SWARM_ENGINE_PLAN E4): an agent drives the API, so a
-    # re-seal is refused and no refusal offers one (``seal``).
+    # re-seal is refused and no refusal offers one, nor, once the held-out rows are opened, a
+    # withdrawal that would draw them again (``seal._withdrawal``).
     analyst: bool = False
 
 
@@ -768,10 +769,26 @@ class ProjectService:
             return self.workspace.data_path(pid)
         return self.workspace.data_path(pid).with_name(Path(str(name)).name)
 
+    @_renders_logged
     def join_preview(self, pid: str, file: str, on: str, right_on: str | None, how: str) -> dict[str, Any]:
         """What joining ``file`` on ``on`` would do: the row counts on each side, the rows with no
         partner, the relation, the joined table's rows, and the sentence it would record; a
-        many-to-many join carries its refusal. Nothing is recorded."""
+        many-to-many join carries its refusal. Nothing is recorded. In analyst mode each is logged
+        with the previews (``preview``), as the ``join_files`` decision it previews, with the
+        refusal's code when it was refused (SWARM_ENGINE_PLAN E4)."""
+        if not self.settings.analyst:
+            return self._join_preview(pid, file, on, right_on, how)
+        asked = {"kind": "join_files", "file": file, "on": on, "right_on": right_on, "how": how}
+        try:
+            out = self._join_preview(pid, file, on, right_on, how)
+        except ApiError as refusal:  # no such file, or the table is not read yet
+            self._log_preview(pid, asked, refusal.code)
+            raise
+        self._log_preview(pid, asked, (out.get("refusal") or {}).get("code"))
+        return out
+
+    def _join_preview(self, pid: str, file: str, on: str, right_on: str | None,
+                      how: str) -> dict[str, Any]:
         from turbotab.core.assembly import file_meta, file_parquet, join_sentence, preview
 
         self.workspace.get(pid)
@@ -1482,11 +1499,13 @@ class ProjectService:
 
     def _log_preview(self, pid: str, decision: Any, refused: str | None) -> None:
         """One line of the previews log: when, the decision as asked, and the refusal's code (None
-        when it previewed)."""
+        when it previewed). A decision that does not read as one (a join whose file is not
+        written as a file's id) is logged as none, so every line serves as the log's schema
+        says."""
         try:
             asked = decisions.parse_decision(decision).model_dump(mode="json")
-        except Exception:  # noqa: BLE001 - a decision that does not parse was refused as one
-            asked = decision if isinstance(decision, dict) else None
+        except Exception:  # noqa: BLE001 - logged as none; the line keeps when, and any refusal
+            asked = None
         line = {"at": datetime.now(timezone.utc).isoformat(), "decision": asked,
                 "refused": refused}
         data = (json.dumps(line, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
@@ -2188,7 +2207,8 @@ class ProjectService:
 
     def analyst_log(self, pid: str) -> dict[str, Any]:
         """What the analyst saw (SWARM_ENGINE_PLAN E4): each claim rendered for the project and
-        each preview asked for, oldest first, as logged. Served in analyst mode only."""
+        each decision and join preview asked for, oldest first, as logged. Served in analyst mode
+        only."""
         self.workspace.get(pid)
         if not self.settings.analyst:
             raise ApiError(403, "analyst_mode_only",

@@ -140,7 +140,8 @@ def analyst_log(request: Request, pid: str) -> dict:
     SWARM_ENGINE_PLAN E4), oldest first: each claim rendered for the project (the claim asked for,
     its register, frozen status and grade, the claim that rendered in its place outside its
     regime, and why a render was refused), which is logged in every mode; and each preview asked
-    for in analyst mode (the decision as asked, and the refusal's code when it was refused)."""
+    for in analyst mode, a decision's (``…/preview``) or a join's (``…/join-preview``, as the
+    ``join_files`` decision it previews), with the refusal's code when it was refused."""
     return get_service(request).analyst_log(pid)
 
 

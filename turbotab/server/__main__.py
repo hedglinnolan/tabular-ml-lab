@@ -39,7 +39,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--open", action="store_true", help="open the app in a browser once it is up")
     parser.add_argument("--analyst", action="store_true",
                         help="analyst mode, for an agent driving the API: a re-seal is refused, "
-                             "each preview is logged, and GET /api/projects/{pid}/analyst-log "
+                             "and once the held-out rows are opened they are not drawn again; "
+                             "each decision and join preview is logged, and "
+                             "GET /api/projects/{pid}/analyst-log "
                              "serves that log and the claims rendered (default: $TURBOTAB_ANALYST)")
     parser.add_argument("--stop-on-eof", action="store_true",
                         help="shut down cleanly when standard input closes: how the desktop "

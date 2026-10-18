@@ -144,7 +144,8 @@ export interface paths {
          *     SWARM_ENGINE_PLAN E4), oldest first: each claim rendered for the project (the claim asked for,
          *     its register, frozen status and grade, the claim that rendered in its place outside its
          *     regime, and why a render was refused), which is logged in every mode; and each preview asked
-         *     for in analyst mode (the decision as asked, and the refusal's code when it was refused).
+         *     for in analyst mode, a decision's (``…/preview``) or a join's (``…/join-preview``, as the
+         *     ``join_files`` decision it previews), with the refusal's code when it was refused.
          */
         get: operations["analyst_log_api_projects__pid__analyst_log_get"];
         put?: never;
@@ -3653,7 +3654,8 @@ export interface components {
         };
         /**
          * PreviewLogged
-         * @description One preview asked for in analyst mode.
+         * @description One preview asked for in analyst mode: a decision's (``…/preview``), or a join's
+         *     (``…/join-preview``), logged as the ``join_files`` decision it previews.
          */
         PreviewLogged: {
             /**
@@ -3661,7 +3663,10 @@ export interface components {
              * Format: date-time
              */
             at: string;
-            /** Decision */
+            /**
+             * Decision
+             * @description The decision previewed, as asked; null for a join whose fields do not read as one
+             */
             decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"] | components["schemas"]["SetModelSequence-Output"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Output"] | components["schemas"]["SetTimeVarying-Output"] | components["schemas"]["SetExplain-Output"] | components["schemas"]["SetForms-Output"] | components["schemas"]["SetModification-Output"] | components["schemas"]["ViewOutcome-Output"] | components["schemas"]["SetLevers-Output"] | components["schemas"]["SetSelection-Output"] | components["schemas"]["SetIntendedUse-Output"] | components["schemas"]["SetUpdating-Output"] | components["schemas"]["ConfirmSweep-Output"] | components["schemas"]["SetDesign-Output"] | components["schemas"]["SetValidation-Output"]) | null;
             /**
              * Refused

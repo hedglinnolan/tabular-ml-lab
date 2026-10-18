@@ -505,13 +505,44 @@ def test_the_seal_opens_once_on_a_fresh_fit_and_is_never_reverted():
 
 
 KEEP_THE_DRAW = {"label": "Keep the held-out rows as they were drawn", "decision": None}
+# Analyst mode's keep (SWARM_ENGINE_PLAN E4): true wherever its refusals fire, nothing drawn included.
+KEEP_AS_THEY_ARE = {"label": "Keep the held-out rows as they are", "decision": None}
+RESEAL_EXIT = "Re-seal: withdraw the held-out rows, change this, then draw them again"
+WITHDRAW_EXIT = "Withdraw the held-out rows, change this, then draw them again"
+
+
+def offers_a_withdrawal(refusal: Refusal, records) -> bool:
+    """Whether an exit of ``refusal`` withdraws the held-out rows to draw them again: a re-seal, a
+    revert of a split's record, or words offering either."""
+    splits = {r.id for r in records if r.decision.kind == "set_split"}
+    for exit_ in refusal.exits:
+        decision = exit_["decision"] or {}
+        if decision.get("kind") == "reseal" or (decision.get("kind") == "revert"
+                                                and decision.get("decision_id") in splits):
+            return True
+        label = exit_["label"].lower()
+        if any(w in label for w in ("re-seal", "withdraw", "draw them again", "draw it again")):
+            return True
+    return False
+
+
+def one_split_log(opened: bool):
+    """One split record (``split``), so its revert withdraws the seal; opened at #6 when asked."""
+    records = [record(1, d.SetTarget(column="hba1c")),
+               record(2, d.SetGrain(grain="repeated", id_column="participant_id"), "grain"),
+               record(3, d.SetUnit(unit="row"), "unit"),
+               record(4, d.SetSplit(holdout=0.2, seed=0, folds=5), "split")]
+    if opened:
+        records += [record(5, d.SelectModels(models=["linear"])), record(6, d.OpenSeal(), "open")]
+    return records
 
 
 def test_in_analyst_mode_a_reseal_is_refused_with_no_exit_offering_one():
     """SWARM_ENGINE_PLAN E4: an agent driving the API (analyst mode) never re-seals. Reference:
     the same opened log (the seal opened at #7, so a person's re-seal passes every check), with
     only the context's ``analyst`` differing; the refusal offers no exit whose decision is a
-    re-seal, and says so in words that offer none."""
+    re-seal, and says so in words that offer none. Its one exit keeps the held-out rows as they
+    are, which is true before any opening and with nothing drawn at all (no split recorded)."""
     opened = opened_log()
     person = {"state": d.fold(opened), "records": opened}
     assert person["state"].seal_opened is True
@@ -520,13 +551,20 @@ def test_in_analyst_mode_a_reseal_is_refused_with_no_exit_offering_one():
     with pytest.raises(Refusal) as refused:
         d.validate(d.Reseal(), {**person, "analyst": True})
     assert refused.value.code == "no_reseal_in_analyst_mode"
-    assert refused.value.exits == [KEEP_THE_DRAW]
+    assert refused.value.exits == [KEEP_AS_THEY_ARE]
     assert "not recorded" in refused.value.message
     # Before any opening, too: analyst mode is the reason, not the seal's own check.
     sealed = sealed_log()
     with pytest.raises(Refusal) as early:
         d.validate(d.Reseal(), {"state": d.fold(sealed), "records": sealed, "analyst": True})
     assert early.value.code == "no_reseal_in_analyst_mode"
+    assert early.value.exits == [KEEP_AS_THEY_ARE]
+    # And on a project with no split: nothing is drawn, and the exit says none was.
+    with pytest.raises(Refusal) as bare:
+        d.validate(d.Reseal(), {"state": ProjectState(), "records": [], "analyst": True})
+    assert bare.value.code == "no_reseal_in_analyst_mode"
+    assert bare.value.exits == [KEEP_AS_THEY_ARE]
+    assert all("drawn" not in e["label"] for e in bare.value.exits)
 
 
 def test_in_analyst_mode_an_opened_seal_s_refusal_drops_its_reseal_exit():
@@ -545,13 +583,122 @@ def test_in_analyst_mode_an_opened_seal_s_refusal_drops_its_reseal_exit():
     with pytest.raises(Refusal) as analyst:
         seal._an_opened_seal_holds_still(reseed, {**ctx, "analyst": True})
     assert analyst.value.code == "seal_opened"
-    assert analyst.value.exits == [KEEP_THE_DRAW]
+    assert analyst.value.exits == [KEEP_AS_THEY_ARE]
     assert "re-seal" not in analyst.value.message.lower()
     assert "seed 1 in place of seed 0 would draw other rows" in analyst.value.message
     # Through the validators the decision meets, as the server's ``decide`` runs them.
     with pytest.raises(Refusal) as validated:
         d.validate(reseed, {**ctx, "analyst": True})
-    assert validated.value.code == "seal_opened" and validated.value.exits == [KEEP_THE_DRAW]
+    assert validated.value.code == "seal_opened" and validated.value.exits == [KEEP_AS_THEY_ARE]
+
+
+@pytest.mark.parametrize("decision", [d.SetUnit(unit="unit"), d.SetTarget(column="sbp")],
+                         ids=["decision_a", "what_the_draw_reads"])
+def test_after_the_opening_analyst_mode_offers_no_withdrawal_and_a_person_keeps_it(decision):
+    """Decision A (what a row is) and a change to what the draw reads (the outcome), once the seal
+    is opened. Reference: the opened log's live split record (``split-2``), whose revert is the
+    withdrawal. For a person the refusal's exit is that revert, named the re-seal, and the message
+    asks to withdraw the seal and draw it again, as before. In analyst mode, with only the
+    context's ``analyst`` differing, no exit withdraws the rows or redraws them (no re-seal, no
+    revert of a split's record, no words offering either), and the message says they are not
+    drawn again, which analyst mode holds to: a new draw after the opening is refused."""
+    opened = opened_log()
+    person = {"state": d.fold(opened), "records": opened}
+    with pytest.raises(Refusal) as theirs:
+        d.validate(decision, person)
+    assert theirs.value.code == "sealed"
+    assert theirs.value.exits[-1] == {"label": RESEAL_EXIT,
+                                      "decision": {"kind": "revert", "decision_id": "split-2"}}
+    assert theirs.value.message.endswith("Withdraw the seal first, then draw it again.")
+    assert offers_a_withdrawal(theirs.value, opened)
+
+    analyst = {**person, "analyst": True}
+    with pytest.raises(Refusal) as mine:
+        d.validate(decision, analyst)
+    assert mine.value.code == "sealed"
+    assert not offers_a_withdrawal(mine.value, opened)
+    assert mine.value.exits[-1] == KEEP_AS_THEY_ARE
+    assert "draw it again" not in mine.value.message
+    assert "in analyst mode they are not drawn again" in mine.value.message
+    with pytest.raises(Refusal) as redrawn:  # the words hold: no new draw is recorded
+        d.validate(d.SetSplit(holdout=0.25, seed=1, folds=5), analyst)
+    assert redrawn.value.code == "seal_opened"
+
+
+def test_before_the_opening_analyst_mode_keeps_the_withdrawal_named_for_what_it_does():
+    """No score has been seen before the opening, so analyst mode keeps the withdrawal, named
+    without the word re-seal (it records none), and each step it names is accepted in analyst
+    mode: the revert, the changed answer, and a new draw."""
+    sealed = one_split_log(opened=False)
+    ctx = {"state": d.fold(sealed), "records": sealed, "analyst": True}
+    with pytest.raises(Refusal) as refused:
+        d.validate(d.SetUnit(unit="unit"), ctx)
+    assert refused.value.code == "sealed"
+    assert refused.value.exits == [{"label": WITHDRAW_EXIT,
+                                    "decision": {"kind": "revert", "decision_id": "split"}}]
+    assert refused.value.message.endswith("Withdraw the seal first, then draw it again.")
+    with pytest.raises(Refusal) as person:
+        d.validate(d.SetUnit(unit="unit"), {**ctx, "analyst": False})
+    assert person.value.exits[0]["label"] == RESEAL_EXIT
+
+    steps = [d.Revert(decision_id="split"), d.SetUnit(unit="unit"),
+             d.SetSplit(holdout=0.2, seed=1, folds=5)]
+    records = list(sealed)
+    for step in steps:
+        here = {"state": d.fold(records), "records": records, "analyst": True}
+        records.append(record(len(records) + 1, d.validate(step, here)))
+    assert d.fold(records).unit == "unit" and d.fold(records).split.seed == 1
+
+
+@pytest.fixture(scope="module")
+def labs(tmp_path_factory):
+    """``clinical_labs`` with its findings under the clinical lens, the outcome ``sbp``: four
+    impossible ``sbp`` values (clinical_labs.md), a finding whose repair rewrites the outcome."""
+    from turbotab.core.stages.findings import findings_stage
+
+    table = Ingested(SAMPLES / "clinical_labs.csv", tmp_path_factory.mktemp("labs"))
+    return table.run(findings_stage, ProjectState(lens=["clinical"], target="sbp"))
+
+
+def test_a_settle_first_finding_offers_the_withdrawal_except_in_analyst_mode_after_the_opening(
+        labs):
+    """The settle-first refusal (a finding on the outcome is not settled, and a new draw is asked
+    for while rows are held out) ends with the withdrawal for a person, as before; in analyst mode
+    before the opening it is named without the word re-seal; once opened, it offers none. Through
+    the validators an opened seal's own refusal comes first (it is registered first for a split),
+    so the last case is the refusal's own function, as a later validator order would reach it."""
+    impossible = next(f for f in labs["findings"]
+                      if f["id"] == "pack::clinical::impossible_vs_extreme")
+    assert impossible["repairs"][0]["decision"]["params"]["bands"] == {"sbp": [30.0, 300.0]}
+    reseed = d.SetSplit(holdout=0.2, seed=1, folds=5)
+    drawn_log = [record(1, d.SetLens(lenses=["clinical"])), record(2, d.SetTarget(column="sbp")),
+                 record(3, d.SetSplit(holdout=0.2, seed=0, folds=5), "split")]
+    opened = [*drawn_log, record(4, d.SelectModels(models=["linear"])),
+              record(5, d.OpenSeal(), "open")]
+
+    def settle_first(records, analyst):
+        ctx = {"state": d.fold(records), "records": records, "analyst": analyst,
+               "artifact": lambda stage: labs if stage == "findings" else None}
+        with pytest.raises(Refusal) as refused:
+            seal._the_draw_reads_settled_values(reseed, ctx)
+        assert refused.value.code == "settle_first"
+        return refused.value
+
+    revert = {"kind": "revert", "decision_id": "split"}
+    person = settle_first(drawn_log, analyst=False)
+    assert person.exits[-1] == {"label": RESEAL_EXIT, "decision": revert}
+    early = settle_first(drawn_log, analyst=True)
+    assert early.exits[-1] == {"label": WITHDRAW_EXIT, "decision": revert}
+    late = settle_first(opened, analyst=True)
+    assert not offers_a_withdrawal(late, opened)
+    assert late.exits[-1]["decision"]["kind"] == "dismiss_finding"
+    assert late.exits == early.exits[:-1]  # the repairs and the keep, as before the opening
+    assert settle_first(opened, analyst=False).exits[-1] == {"label": RESEAL_EXIT,
+                                                             "decision": revert}
+    with pytest.raises(Refusal) as first:
+        d.validate(reseed, {"state": d.fold(opened), "records": opened, "analyst": True,
+                            "artifact": lambda stage: labs if stage == "findings" else None})
+    assert first.value.code == "seal_opened" and first.value.exits == [KEEP_AS_THEY_ARE]
 
 
 def test_opening_on_a_failed_fit_says_why_rather_than_to_wait():

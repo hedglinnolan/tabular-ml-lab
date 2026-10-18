@@ -2,9 +2,11 @@
 (SWARM_ENGINE_PLAN E4 and E5).
 
 An agent driving the API in a person's place runs the server in analyst mode (``--analyst``, or
-``TURBOTAB_ANALYST=1``). There a re-seal is refused with no exit offering one, each preview is
-logged, and ``GET …/analyst-log`` serves the previews and the claims rendered. The claims log is
-written in every mode (R1_PLAN R1-M reads it); for a person nothing else changes. In every mode a
+``TURBOTAB_ANALYST=1``). There a re-seal is refused with no exit offering one, and once the
+held-out rows are opened no refusal offers to withdraw them and draw them again; each decision and
+join preview is logged, and ``GET …/analyst-log`` serves the previews and the claims rendered. The
+claims log is written in every mode (R1_PLAN R1-M reads it), by the stages in the job workers and
+by the requests alike; for a person nothing else changes. In every mode a
 decision takes an optional note (its reason, at most 2,000 characters), kept in the decision log and
 never in the methods; an upload takes the file's URL, release date and license, kept on the
 project's meta and echoed into the export's inputs; the ingest serves the SHA-256 of the bytes.
@@ -94,26 +96,133 @@ def test_the_analyst_log_is_served_in_analyst_mode_and_refused_for_a_person(clie
     assert analyst.get("/api/projects/p0000000000/analyst-log").status_code == 404
 
 
-def test_every_stage_runs_in_its_project_s_claims_log_and_analyst_mode_serves_the_log(
-        client, analyst):
-    """Both servers' engines load the logged stage graph, which their job workers load too (a
-    render in a worker lands in the log: ``test_claims_render_log``); a claim rendered inside the
-    project's log is served by ``analyst-log`` as logged."""
-    from turbotab.core import claims
-    from turbotab.core.claims._registry import render_log
-    from turbotab.core.workspace import STAGE_GRAPH
+# A built claim with no regime, which nothing shipped renders at run time (``designs`` fills it
+# once, as it is imported, and an import's renders are never logged).
+PLANTED = "designs.observational_default"
 
-    assert client.app.state.service.engine.graph_factory == STAGE_GRAPH
-    assert analyst.app.state.service.engine.graph_factory == STAGE_GRAPH
-    pid = uploaded(analyst)
-    with render_log(analyst.app.state.service.workspace.claims_log_path(pid)):
-        said = claims.card("designs.observational_default")
-    served = schemas.AnalystLog.model_validate(
-        analyst.get(f"/api/projects/{pid}/analyst-log").json())
-    mine = [c for c in served.claims if c.id == "designs.observational_default"]
-    assert [(c.sentence_register, c.status, c.fallback, c.refused) for c in mine] == [
-        ("card", "built", None, None)]
-    assert said
+
+def claims_logged(client: TestClient, pid: str, id: str = PLANTED) -> list[dict]:
+    """The project's claims render log's lines for ``id``, read from its file (either mode)."""
+    path = client.app.state.service.workspace.claims_log_path(pid)
+    if not path.exists():
+        return []
+    return [line for line in map(json.loads, path.read_text("utf-8").splitlines())
+            if line["id"] == id]
+
+
+def _ingest_as_a_job_worker(spec: dict, out: str) -> None:
+    """A spawned process doing what a job worker does for a heavy stage (``graph.run_stage_job``,
+    which loads the graph by the factory's name), its job's progress reports each rendering a
+    shipped claim: a render made inside the stage's function as it reads the file."""
+    from turbotab.core import claims, graph
+
+    renders: list[str] = []
+
+    class Job:
+        def progress(self, fraction: float, message: str = "") -> None:
+            renders.append(claims.card(PLANTED))
+
+        def cancelled(self) -> bool:
+            return False
+
+    graph.current_job = lambda: Job()
+    meta = graph.run_stage_job(spec)
+    Path(out).write_text(json.dumps({"renders": len(renders), "stage": meta["stage"]}), "utf-8")
+
+
+@pytest.mark.parametrize("mode", ["person", "analyst"])
+def test_a_claim_rendered_inside_the_server_s_stage_in_a_job_worker_lands_in_its_log(
+        mode, client, analyst, tmp_path):
+    """The graph the server's engine hands its job workers, by its own name
+    (``service.engine.graph_factory``), loaded in a spawned process as a worker loads it, runs the
+    real ingest stage over the project's file inside that project's claims log: each claim
+    rendered as the stage reports its progress is a line of the project's log (the count is the
+    child's own), in either mode, and analyst mode serves them. The stage writes its table to a
+    scratch path, so the project's own is untouched."""
+    import multiprocessing
+
+    from turbotab.core.graph import load_graph
+
+    c = client if mode == "person" else analyst
+    service = c.app.state.service
+    pid = uploaded(c)
+    factory = service.engine.graph_factory
+    stage = load_graph(factory)["ingest"]
+    assert stage.heavy  # the engine sends it to a job worker
+    ctx = service._project_ctx(pid)
+    (tmp_path / "data").mkdir()
+    spec = {"graph_factory": factory, "stage": "ingest", "version": stage.version, "key": "probe",
+            "dep_keys": {}, "cache_root": str(tmp_path / "cache"), "project_id": pid,
+            "state": ctx.state, "paths": {**ctx.paths, "data": str(tmp_path / "data" / "raw.parquet")},
+            "settings": dict(ctx.settings)}
+    out = tmp_path / "child.json"
+    child = multiprocessing.get_context("spawn").Process(target=_ingest_as_a_job_worker,
+                                                         args=(spec, str(out)))
+    child.start()
+    child.join(120)
+    assert child.exitcode == 0
+    done = json.loads(out.read_text("utf-8"))
+    assert done["stage"] == "ingest" and done["renders"] >= 1
+    logged = claims_logged(c, pid)
+    assert len(logged) == done["renders"]
+    assert {(x["register"], x["status"], x["fallback"], x["refused"]) for x in logged} == {
+        ("card", "built", None, None)}
+    if mode == "analyst":
+        served = [x for x in schemas.AnalystLog.model_validate(
+            analyst.get(f"/api/projects/{pid}/analyst-log").json()).claims if x.id == PLANTED]
+        assert len(served) == done["renders"]
+        assert {(x.sentence_register, x.status, x.fallback, x.refused) for x in served} == {
+            ("card", "built", None, None)}
+
+
+@pytest.mark.parametrize("mode", ["person", "analyst"])
+def test_a_claim_rendered_on_the_request_path_is_logged_beside_its_project(
+        mode, client, analyst, monkeypatch):
+    """A planted check on the lens answer renders a shipped claim each time it runs, and refuses
+    in its words for the lens ``other``; a planted reading of the questions renders it as TurboTab
+    looks for what it records itself. Each render made while a decision is recorded, refused or
+    previewed, or a completion is looked for, is a line of that project's log, in either mode:
+    the count is the planted check's own."""
+    from turbotab.core import claims
+    from turbotab.core import decisions as d
+
+    c = client if mode == "person" else analyst
+    service = c.app.state.service
+    pid = uploaded(c)
+    renders: list[str] = []
+
+    def planted(decision, ctx) -> None:
+        said = claims.card(PLANTED)
+        renders.append(said)
+        if decision.lenses == ["other"]:
+            raise d.Refusal("planted", f"Planted: {said}")
+
+    monkeypatch.setitem(d._VALIDATORS, "set_lens", [*d._VALIDATORS.get("set_lens", []), planted])
+    assert claims_logged(c, pid) == []
+    assert decide(c, pid, {"kind": "set_lens", "lenses": ["dietary"]}).status_code == 200
+    assert len(renders) >= 1 and len(claims_logged(c, pid)) == len(renders)
+    refused = decide(c, pid, {"kind": "set_lens", "lenses": ["other"]})
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "planted"
+    assert renders[-1] in refused.json()["error"]["message"]
+    assert len(claims_logged(c, pid)) == len(renders)
+    previewed = c.post(f"/api/projects/{pid}/preview", json={"kind": "set_lens", "lenses": ["clinical"]})
+    assert previewed.status_code == 200, previewed.text[:300]
+    assert len(claims_logged(c, pid)) == len(renders)
+
+    # The completer: it reads the questions (``interview``) to find what is due.
+    asked: list[str] = []
+    real = service.interview
+
+    def interview(project, *args, **kwargs):
+        if project == pid:
+            asked.append(claims.card(PLANTED))
+        return real(project, *args, **kwargs)
+
+    before = len(claims_logged(c, pid))
+    with monkeypatch.context() as m:
+        m.setattr(service, "interview", interview)
+        service._complete(pid)
+    assert len(asked) >= 1 and len(claims_logged(c, pid)) == before + len(asked)
 
 
 # ── E4: no re-seal, and what the analyst saw ─────────────────────────────────
@@ -130,6 +239,8 @@ def test_a_reseal_is_refused_in_analyst_mode_and_meets_the_seal_s_own_checks_for
     error = refused.json()["error"]
     assert error["code"] == "no_reseal_in_analyst_mode"
     assert all((e["decision"] or {}).get("kind") != "reseal" for e in error["exits"])
+    # Nothing is drawn on a fresh project, and the one exit says none was.
+    assert error["exits"] == [{"label": "Keep the held-out rows as they are", "decision": None}]
     assert analyst.get(f"/api/projects/{mine}").json()["decisions"] == []
     previewed = analyst.post(f"/api/projects/{mine}/preview", json={"kind": "reseal"})
     assert previewed.status_code == 409
@@ -156,6 +267,61 @@ def test_each_preview_is_logged_in_analyst_mode_and_not_for_a_person(client, ana
 
     theirs = uploaded(client)
     assert client.post(f"/api/projects/{theirs}/preview", json=lens).status_code == 200
+    assert not (project_dir(client, theirs) / "previews.jsonl").exists()
+
+
+def added_file(client: TestClient, pid: str, name: str, frame) -> str:
+    """``frame`` uploaded to the project as a file to join (``POST …/files/upload``); its id."""
+    added = client.post(f"/api/projects/{pid}/files/upload",
+                        files={"file": (name, frame.to_csv(index=False).encode(), "text/csv")})
+    assert added.status_code == 200, added.text[:300]
+    return added.json()["id"]
+
+
+def test_each_join_preview_is_logged_in_analyst_mode_and_not_for_a_person(client, analyst):
+    """A join preview previews a ``join_files`` decision: in analyst mode each is logged with the
+    previews as that decision, the refusal's code beside it when it was refused (many-to-many,
+    which the preview carries; an unknown file, which it raises); a join whose file is not written
+    as a file's id is logged with no decision, so the log still serves. Reference: the table
+    repeats ``participant_id`` (DIETARY), so a file with one row per identifier joins many to one,
+    and one with two rows per identifier is many to many."""
+    import pandas as pd
+
+    ids = pd.read_csv(DIETARY)["participant_id"].drop_duplicates()
+    once = pd.DataFrame({"participant_id": ids,
+                         "fasting_glucose": [90 + i % 17 for i in range(len(ids))]})
+    twice = pd.concat([once, once], ignore_index=True)
+    assert ids.size < pd.read_csv(DIETARY).shape[0]  # the table's identifier repeats
+
+    mine = uploaded(analyst)
+    one, two = added_file(analyst, mine, "GLU_J.csv", once), added_file(analyst, mine, "x.csv", twice)
+    started = time.time()
+    asks = [({"file": one, "on": "participant_id"}, 200, None),
+            ({"file": two, "on": "participant_id", "how": "inner"}, 200, "many_to_many"),
+            ({"file": "f0000000000", "on": "participant_id"}, 404, "unknown_file")]
+    for body, status, code in asks:
+        answer = analyst.post(f"/api/projects/{mine}/join-preview", json=body)
+        assert answer.status_code == status, answer.text[:300]
+        if status == 200:
+            assert (answer.json()["refusal"] or {}).get("code") == code
+    malformed = analyst.post(f"/api/projects/{mine}/join-preview",
+                             json={"file": "GLU_J.csv", "on": "participant_id"})
+    assert malformed.status_code == 404 and malformed.json()["error"]["code"] == "unknown_file"
+    served = analyst.get(f"/api/projects/{mine}/analyst-log")
+    assert served.status_code == 200, served.text[:300]
+    *previews, last = schemas.AnalystLog.model_validate(served.json()).previews
+    assert [(p.decision.model_dump(mode="json", exclude={"name", "counts"}), p.refused)
+            for p in previews] == [
+        ({"kind": "join_files", "right_on": None, "how": "left", **body}, code)
+        for body, _, code in asks]
+    assert (last.decision, last.refused) == (None, "unknown_file")
+    assert all(started - 1 <= p.at.timestamp() <= time.time() + 1 for p in [*previews, last])
+
+    theirs = uploaded(client)
+    fid = added_file(client, theirs, "GLU_J.csv", once)
+    answer = client.post(f"/api/projects/{theirs}/join-preview",
+                         json={"file": fid, "on": "participant_id"})
+    assert answer.status_code == 200 and answer.json()["refusal"] is None
     assert not (project_dir(client, theirs) / "previews.jsonl").exists()
 
 
@@ -279,7 +445,9 @@ def test_the_export_echoes_the_file_s_provenance_keeps_the_note_out_of_the_metho
     came from and one decision noted, through Fit and the opening of the held-out rows, in analyst
     mode. The bundle's input is the uploaded bytes (hashlib's SHA-256) with the three fields as
     given; the note is in the decision log and in no other file; and a fresh-home replay of the
-    bundle reproduces it as one without them does (``test_export``'s replay)."""
+    bundle reproduces it as one without them does (``test_export``'s replay). Once the held-out
+    rows are opened, a change to what a row is is refused with no exit that withdraws them or
+    draws them again (``test_seal`` has a person's, which offers it)."""
     from turbotab.core.export import replay
     from turbotab.core.tests.acceptance import test_export as journey
     from turbotab.core.tests.acceptance.server_drive import Drive
@@ -331,3 +499,12 @@ def test_the_export_echoes_the_file_s_provenance_keeps_the_note_out_of_the_metho
     report = replay.run(bundle, data=str(csv), workers=2)
     assert report.reproduced is True, report.model_dump()
     assert report.files_different == []
+
+    assert drive.view()["state"]["seal_opened"] is True
+    n_records = len(drive.view()["decisions"])
+    regrain = decide(analyst, drive.pid, {"kind": "set_grain", "grain": "repeated", "id_column": "pid"})
+    assert regrain.status_code == 409, regrain.text[:400]
+    error = regrain.json()["error"]
+    assert error["code"] == "sealed" and "in analyst mode they are not drawn again" in error["message"]
+    assert error["exits"] == [{"label": "Keep the held-out rows as they are", "decision": None}]
+    assert len(drive.view()["decisions"]) == n_records

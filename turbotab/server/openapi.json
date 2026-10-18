@@ -735,7 +735,7 @@
           "projects"
         ],
         "summary": "Analyst Log",
-        "description": "What the analyst saw, in analyst mode only (``--analyst``, or ``TURBOTAB_ANALYST=1``;\nSWARM_ENGINE_PLAN E4), oldest first: each claim rendered for the project (the claim asked for,\nits register, frozen status and grade, the claim that rendered in its place outside its\nregime, and why a render was refused), which is logged in every mode; and each preview asked\nfor in analyst mode (the decision as asked, and the refusal's code when it was refused).",
+        "description": "What the analyst saw, in analyst mode only (``--analyst``, or ``TURBOTAB_ANALYST=1``;\nSWARM_ENGINE_PLAN E4), oldest first: each claim rendered for the project (the claim asked for,\nits register, frozen status and grade, the claim that rendered in its place outside its\nregime, and why a render was refused), which is logged in every mode; and each preview asked\nfor in analyst mode, a decision's (``…/preview``) or a join's (``…/join-preview``, as the\n``join_files`` decision it previews), with the refusal's code when it was refused.",
         "operationId": "analyst_log_api_projects__pid__analyst_log_get",
         "parameters": [
           {
@@ -10926,7 +10926,8 @@
                 "type": "null"
               }
             ],
-            "title": "Decision"
+            "title": "Decision",
+            "description": "The decision previewed, as asked; null for a join whose fields do not read as one"
           },
           "refused": {
             "anyOf": [
@@ -10948,7 +10949,7 @@
           "refused"
         ],
         "title": "PreviewLogged",
-        "description": "One preview asked for in analyst mode."
+        "description": "One preview asked for in analyst mode: a decision's (``…/preview``), or a join's\n(``…/join-preview``), logged as the ``join_files`` decision it previews."
       },
       "PreviewResult": {
         "properties": {

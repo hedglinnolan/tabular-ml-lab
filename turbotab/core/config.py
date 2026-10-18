@@ -112,8 +112,10 @@ def default_memory_budget() -> int:
 
 
 # Analyst mode (SWARM_ENGINE_PLAN E4): an agent drives the API in a person's place. A re-seal is
-# refused and no refusal offers one, each preview is logged beside the project, and
-# ``GET …/analyst-log`` serves that log and the claims rendered. Off, nothing a person meets changes.
+# refused and no refusal offers one; once the held-out rows are opened, no refusal offers to
+# withdraw them and draw them again either (``seal._withdrawal``). Each decision and join preview
+# is logged beside the project, and ``GET …/analyst-log`` serves that log and the claims rendered.
+# Off, nothing a person meets changes.
 ANALYST_VALUES = {"1": True, "0": False}
 
 

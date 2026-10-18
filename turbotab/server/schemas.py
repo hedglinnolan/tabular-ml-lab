@@ -361,10 +361,12 @@ class ClaimRendered(Model):
 
 
 class PreviewLogged(Model):
-    """One preview asked for in analyst mode."""
+    """One preview asked for in analyst mode: a decision's (``…/preview``), or a join's
+    (``…/join-preview``), logged as the ``join_files`` decision it previews."""
 
     at: datetime
-    decision: Decision | None
+    decision: Decision | None = Field(description="The decision previewed, as asked; null for a "
+                                                   "join whose fields do not read as one")
     refused: str | None = Field(description="The refusal's code; null when it previewed")
 
 
