@@ -3,7 +3,7 @@
  "design": "analysts",
  "purpose": "Predict",
  "question": "How well do the table's measures predict fasting glucose?",
- "population": "NHANES participants aged 18 to 85, one row each, every one with a fasting glucose, from the 9 survey cycles 2001–2002 to 2017–2018.",
+ "population": "NHANES participants aged 18 or older, one row each, every one with a fasting glucose, from the 9 survey cycles 2001–2002 to 2017–2018. NHANES top-codes age: 85 stands for 85 or older in the cycles 2001–2002 to 2005–2006 and 80 stands for 80 or older in the cycles 2007–2008 to 2017–2018.",
  "outcome": {
   "column": "glucose",
   "meaning": "fasting plasma glucose (mg/dL)"
@@ -13,6 +13,9 @@
   "format": "csv"
  },
  "source": "An NHANES export tracked in this repository (turbotab/core/tests/fixtures/nhanes.csv.gz), the table of the app's NHANES glucose journeys. How it was exported from the NHANES files is not recorded with it.",
- "prepared": [],
+ "prepared": [
+  "Before the export reached this repository, by a method it does not record, values were imputed in 6 measures, each flagged in its own column: weight on the 235 rows where imputed_weight is true, height on the 248 rows where imputed_height is true, bmi on the 306 rows where imputed_bmi is true, waist on the 658 rows where imputed_waist is true, bp_sys on the 1,876 rows where imputed_bp_sys is true and bp_di on the 1,876 rows where imputed_bp_di is true; none of these measures has a blank.",
+  "Before the export reached this repository, by rules it does not record, its rows were limited: every row has a glucose value and an age of 18 or more. No column has a blank but meds_hbp (15,552 rows) and meds_chol (17,204 rows)."
+ ],
  "manifest": "research/datasets/nhanes_glucose_predict/manifest.json"
 }

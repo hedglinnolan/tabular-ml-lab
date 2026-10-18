@@ -11,8 +11,9 @@ Per dataset it writes three files under ``research/datasets/<id>/`` (committed):
 * ``card.json``: the question card an analyst reads (:data:`CARD_FIELDS`): the question, the
   population, the purpose (Predict or Estimate), the outcome (and under Estimate the exposure),
   for a replication the paper and its stated question, the table the run uploads, and every step
-  taken to prepare it before the upload. It holds no known answer, and no number the answers
-  state beyond the coincidences :data:`SHARED_NUMBERS` names.
+  taken to prepare it before the upload. It holds no known answer, and no number that is an
+  answer's rounded to the card's own decimal places, beyond the coincidences
+  :data:`SHARED_NUMBERS` names.
 * ``answers.json``: what the checks compare a run against (:data:`ANSWER_KINDS`): a paper's
   numbers, a fixture's declared truth, a decoy's "no finding is real", or that nothing is known.
   No analyst reads it.
@@ -38,10 +39,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 import sys
 import time
 import urllib.request
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
@@ -232,7 +235,11 @@ ANSWER_KINDS = {
 # Bibliographic identifiers: they name the paper and say nothing about the data, so the number
 # scan (:func:`card_numbers`) does not read them.
 BIBLIOGRAPHIC = ("citation", "doi", "pmid")
-NUMBER = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?(?!\w)")
+# A number as prose writes it: digits, with or without thousands commas, and a decimal part
+# ("16,913", "0.79"), or a decimal part alone (".79"). It is read wherever no letter, digit,
+# underscore or point comes just before it, so DBQ700, item_05 and log10 are names, and whatever
+# follows it: "126mg", "210cases" and "2.6x" are 126, 210 and 2.6.
+NUMBER = re.compile(r"(?<![\w.])(?:(\d{1,3}(?:,\d{3})+(?!\d)|\d+)(\.\d+)?|(\.\d+))")
 
 
 def _text(value: Any) -> bool:
@@ -329,16 +336,21 @@ def validate_answers(answers: Any, id_: str | None = None) -> list[str]:
 
 
 def _numbers(value: Any, skip: Callable[[tuple[str, ...]], bool], at: tuple[str, ...] = ()
-             ) -> Iterator[float]:
+             ) -> Iterator[tuple[float, int]]:
+    """Every number in ``value``, by absolute value, with the decimal places it is written to."""
     if skip(at):
         return
     if isinstance(value, bool) or value is None:
         return
-    if isinstance(value, (int, float)):
-        yield round(abs(float(value)), 9)
+    if isinstance(value, int):
+        yield float(abs(value)), 0
+    elif isinstance(value, float):
+        if math.isfinite(value):
+            yield abs(value), max(0, -Decimal(repr(value)).as_tuple().exponent)
     elif isinstance(value, str):
-        for whole, decimals in NUMBER.findall(value):
-            yield round(abs(float(whole.replace(",", "") + decimals)), 9)
+        for whole, fraction, alone in NUMBER.findall(value):
+            part = fraction or alone
+            yield abs(float(whole.replace(",", "") + part)), max(0, len(part) - 1)
     elif isinstance(value, dict):
         for k, v in value.items():
             yield from _numbers(v, skip, (*at, str(k)))
@@ -347,32 +359,64 @@ def _numbers(value: Any, skip: Callable[[tuple[str, ...]], bool], at: tuple[str,
             yield from _numbers(v, skip, at)
 
 
-def card_numbers(card: dict[str, Any]) -> set[float]:
+def card_readings(card: dict[str, Any]) -> set[tuple[float, int]]:
     """Every number the card states, in any field (its paper's bibliographic identifiers aside),
-    by absolute value."""
+    by absolute value, each with the decimal places the card writes it to."""
     return set(_numbers(card, lambda at: len(at) == 3 and at[:2] == ("replication", "paper")
                         and at[2] in BIBLIOGRAPHIC))
 
 
+def card_numbers(card: dict[str, Any]) -> set[float]:
+    """Every number the card states (:func:`card_readings`), by absolute value."""
+    return {value for value, _ in card_readings(card)}
+
+
 def answer_numbers(answers: dict[str, Any]) -> set[float]:
     """Every number the answers' truths state (each truth's value), by absolute value."""
-    return set(_numbers([t.get("value") for t in answers.get("truths") or []], lambda at: False))
+    return {value for value, _ in
+            _numbers([t.get("value") for t in answers.get("truths") or []], lambda at: False)}
+
+
+def rounds_to(answer: float, stated: float, places: int) -> bool:
+    """Whether ``stated``, written to ``places`` decimal places, is ``answer`` rounded there: it
+    lies within half a unit of that last place (a tie counts, so half up and half to even both
+    do). 0.742 is 0.74194 rounded, .79 is 0.79, and 8 is 8.1."""
+    return abs(answer - stated) <= 0.5 * 10.0 ** -places * (1 + 1e-9)
 
 
 def shared_numbers(card: dict[str, Any], answers: dict[str, Any]) -> set[float]:
-    """The numbers the card states that an answer also states."""
-    return card_numbers(card) & answer_numbers(answers)
+    """The numbers the card states that are an answer's number rounded to the card's own decimal
+    places (:func:`rounds_to`), by the card's value."""
+    stated = answer_numbers(answers)
+    return {value for value, places in card_readings(card)
+            if any(rounds_to(a, value, places) for a in stated)}
 
 
-# A number a card states that an answer also states, where the two are not the same fact; the
-# intake refuses every other shared number, and the tests pin this list.
+# A number a card states that is an answer's rounded to the card's places (:func:`shared_numbers`),
+# where the two are not the same fact; the intake refuses every other shared number, a pinned
+# value at whatever places the card writes it, and the tests pin this list. A whole 0 or 1 in a
+# card matches every answer within 0.5 of it, so a binary column's coding meets the answers'
+# small decimals.
 SHARED_NUMBERS: dict[str, dict[float, str]] = {
     "bang2009": {1.0: "the outcome column's coding (diabetes_fpg is 1 at or above the cut); "
-                      "a factor's points in the paper's score are also 1"},
+                      "a factor's points in the paper's score are also 1, and its odds ratios, "
+                      "confidence bounds, likelihood ratios and AUC from 0.5 to 1.5 round to 1",
+                 0.0: "the outcome column's coding (diabetes_fpg is 0 below the cut); the "
+                      "paper's P values, negative likelihood ratios and the bounds up to 0.5 "
+                      "round to 0"},
     "sullivan2021": {20.0: "the paper's stated inclusion, aged 20 or older (its flow's 'Age < 20' "
                            "step); the flow also excludes 20 people for reporting only water",
                      10.0: "the base of the insulin crosswalk's logarithm; the flow also "
-                           "excludes 10 people for having no self-rating"},
+                           "excludes 10 people for having no self-rating",
+                     1.0: "the derived columns' coding (smoke_now, glu_med and water_only_alt "
+                          "are 1 or 0); the paper's betas of 0.5 to 1.5 in size round to 1",
+                     0.0: "the same columns' coding (0); the paper's betas, SEs and P values up "
+                          "to 0.5 in size round to 0"},
+    "clinical_readmission_predict": {
+        1.0: "the outcome's coding (readmit_30d is 1 yes); the generating model's intercept, "
+             "coefficients and centers of 0.5 to 1.5 in size, and its C-statistic, round to 1",
+        0.0: "the outcome's coding (0 no); the generating model's coefficients up to 0.5 in "
+             "size round to 0"},
 }
 
 
@@ -822,38 +866,116 @@ def readings(key: str) -> dict[str, str]:
     return dict(FIXTURE_TRUTHS[key])
 
 
-def intake_nhanes_glucose_predict(old: dict | None) -> tuple[dict, dict, dict]:
-    import gzip
+def nhanes_age_top_code(begin_year: int) -> int:
+    """The age NHANES's public files record for every older participant in the cycle beginning
+    ``begin_year`` (RIDAGEYR): "Individuals 85 and over are topcoded at 85 years of age" through
+    DEMO_D (2005–2006), and "80 and over ... at 80" from DEMO_E (2007–2008), as each cycle's
+    demographics codebook page states."""
+    return 85 if begin_year <= 2005 else 80
+
+
+def cycle_span(year: int) -> str:
+    return f"{year}–{year + 1}"
+
+
+def row_count(n: int) -> str:
+    return f"{n:,} row" + ("" if n == 1 else "s")
+
+
+def listed(words: list[str]) -> str:
+    """``a``, ``a and b``, ``a, b and c``."""
+    return words[0] if len(words) == 1 else f"{', '.join(words[:-1])} and {words[-1]}"
+
+
+def nhanes_export(data: bytes, pinned: str) -> Any:
+    """The export's frame from its decompressed bytes, refused unless they hash to ``pinned``
+    (stage_harness's NHANES_SHA256) and hold one row per participant, each with a glucose."""
     import io
 
     import pandas as pd
+    if hashlib.sha256(data).hexdigest() != pinned:
+        raise SystemExit("the decompressed export is not the bytes stage_harness pins")
+    frame = pd.read_csv(io.BytesIO(data))
+    if not (frame["SEQN"].is_unique and frame["glucose"].notna().all()):
+        raise SystemExit("the export is not one row per participant, each with a glucose")
+    return frame
+
+
+def nhanes_population(frame: Any) -> str:
+    """Who the export's rows are, its ages read from the frame: refused where a cycle's oldest age
+    is not the top code its codebook states (:func:`nhanes_age_top_code`), since the sentence
+    reads the oldest age as that code."""
+    years = sorted(int(y) for y in frame["cycle_begin_year"].unique())
+    oldest = frame.groupby("cycle_begin_year")["age"].max()
+    runs: list[tuple[int, list[int]]] = []
+    for y in years:
+        top = nhanes_age_top_code(y)
+        if oldest[y] != top:
+            raise SystemExit(f"the export's oldest age in {cycle_span(y)} is {oldest[y]:g}, not "
+                             f"the top code {top} its demographics codebook states")
+        if runs and runs[-1][0] == top:
+            runs[-1][1].append(y)
+        else:
+            runs.append((top, [y]))
+    coded = listed([f"{top} stands for {top} or older in "
+                    + (cycle_span(ys[0]) if len(ys) == 1 else
+                       f"the cycles {cycle_span(ys[0])} to {cycle_span(ys[-1])}")
+                    for top, ys in runs])
+    return (f"NHANES participants aged {frame['age'].min():g} or older, one row each, every one "
+            f"with a fasting glucose, from the {len(years)} survey cycles "
+            f"{cycle_span(years[0])} to {cycle_span(years[-1])}. NHANES top-codes age: {coded}.")
+
+
+def nhanes_prepared(frame: Any) -> list[str]:
+    """What the export shows of the steps taken before it reached this repository: the values it
+    flags as imputed (its ``imputed_<measure>`` columns), and the rows it holds."""
+    flags = [c for c in frame.columns if c.startswith("imputed_")]
+    measures = [c.removeprefix("imputed_") for c in flags]
+    if any(m not in frame.columns for m in measures):
+        raise SystemExit(f"an imputed_ column flags no column of the export: {flags}")
+    out = []
+    if flags:
+        counts = listed([f"{m} on the {row_count(int(frame[c].sum()))} where {c} is true"
+                         for m, c in zip(measures, flags)])
+        blank = {m: int(frame[m].isna().sum()) for m in measures}
+        left = ("none of these measures has a blank" if not any(blank.values()) else
+                "blanks remain in "
+                + listed([f"{m} ({row_count(n)})" for m, n in blank.items() if n]))
+        out.append(f"Before the export reached this repository, by a method it does not record, "
+                   f"values were imputed in {len(measures)} measures, each flagged in its own "
+                   f"column: {counts}; {left}.")
+    blanks = frame.isna().sum()
+    blanks = blanks[blanks > 0]
+    left = ("No column has a blank" if blanks.empty else "No column has a blank but "
+            + listed([f"{c} ({row_count(int(n))})" for c, n in blanks.items()]))
+    out.append(f"Before the export reached this repository, by rules it does not record, its rows "
+               f"were limited: every row has a glucose value and an age of "
+               f"{frame['age'].min():g} or more. {left}.")
+    return out
+
+
+def intake_nhanes_glucose_predict(old: dict | None) -> tuple[dict, dict, dict]:
+    import gzip
+
     from turbotab.core.tests.stage_harness import NHANES_SHA256
     id_ = "nhanes_glucose_predict"
     table = TABLES / id_ / NHANES_KEY
     data = gzip.decompress(NHANES_GZ.read_bytes())
-    if hashlib.sha256(data).hexdigest() != NHANES_SHA256:
-        raise SystemExit("the decompressed export is not the bytes stage_harness pins")
-    copy_table(NHANES_GZ, table, data)
-    frame = pd.read_csv(io.BytesIO(data))
-    if not (frame["SEQN"].is_unique and frame["glucose"].notna().all()):
-        raise SystemExit("the export is not one row per participant, each with a glucose")
-    years = sorted(int(y) for y in frame["cycle_begin_year"].unique())
+    frame = nhanes_export(data, NHANES_SHA256)
     card = {
         "id": id_, "design": "analysts", "purpose": "Predict",
         "question": "How well do the table's measures predict fasting glucose?",
-        "population": (f"NHANES participants aged {int(frame['age'].min())} to "
-                       f"{int(frame['age'].max())}, one row each, every one with a fasting "
-                       f"glucose, from the {len(years)} survey cycles {years[0]}–{years[0] + 1} to "
-                       f"{years[-1]}–{years[-1] + 1}."),
+        "population": nhanes_population(frame),
         "outcome": {"column": "glucose", "meaning": "fasting plasma glucose (mg/dL)"},
         "table": {"path": rel(table), "format": "csv"},
         "source": ("An NHANES export tracked in this repository "
                    "(turbotab/core/tests/fixtures/nhanes.csv.gz), the table of the app's NHANES "
                    "glucose journeys. How it was exported from the NHANES files is not recorded "
                    "with it."),
-        "prepared": [],
+        "prepared": nhanes_prepared(frame),
         "manifest": f"research/datasets/{id_}/manifest.json",
     }
+    copy_table(NHANES_GZ, table, data)
     manifest = {"about": "The NHANES export, decompressed from the repository's tracked copy.",
                 "dataset": id_, **NHANES_LICENSE,
                 "files": [{"file": rel(NHANES_GZ), "origin": "this repository",
@@ -907,15 +1029,42 @@ def intake_clinical_readmission_predict(old: dict | None) -> tuple[dict, dict, d
     return manifest, card, answers
 
 
+def survey_key(scale: dict[str, Any], reverse_coded: tuple[str, ...] | list[str],
+               frame: Any) -> list[str]:
+    """The instrument's key, as its codebook gives it (``reverse_coded``, make_fixtures.py's
+    REVERSE_CODED), and the support scale the question names (``scale``, the journeys' scale).
+    Refused where the scale is not the instrument's first items, its reverse-coded items are not
+    the key's among them, or an answer lies outside the scale's range."""
+    items = [c for c in frame.columns if c.startswith("item_")]
+    own, rest = list(scale["items"]), items[len(scale["items"]):]
+    reversed_ = [r for r in reverse_coded if r in own]
+    if own != items[:len(own)] or not rest or not set(reverse_coded) <= set(items) \
+            or list(scale["reverse"]) != reversed_:
+        raise SystemExit("the support scale is not the instrument's first items with the key's "
+                         "reverse-coded items among them")
+    answered = frame[items].stack()
+    if not answered.between(scale["low"], scale["high"]).all():
+        raise SystemExit(f"an item is answered outside {scale['low']} to {scale['high']}")
+    return [
+        f"The instrument's key: {items[0]} to {items[-1]} are one {len(items)}-item instrument, "
+        f"each item answered from {scale['low']} to {scale['high']}, and its reverse-coded items "
+        f"are {listed(list(reverse_coded))}.",
+        f"The support scale the question names is {own[0]} to {own[-1]}, whose reverse-coded "
+        + (f"item is {reversed_[0]}" if len(reversed_) == 1 else
+           f"items are {listed(reversed_)}" if reversed_ else "items are none")
+        + f"; {rest[0]} to {rest[-1]} belong to no scale the question uses.",
+    ]
+
+
 def intake_survey_support_estimate(old: dict | None) -> tuple[dict, dict, dict]:
     import pandas as pd
     from turbotab.core.reference.journeys import SURVEY_SCALE
+    from turbotab.sample_data.make_fixtures import REVERSE_CODED
     id_, key = "survey_support_estimate", "survey_instrument.csv"
     source, table = SAMPLE / key, TABLES / id_ / key
     copy_table(source, table)
     frame = pd.read_csv(table)
     items = [c for c in frame.columns if c.startswith("item_")]
-    scale = SURVEY_SCALE
     card = generated_card(
         id_, "Estimate",
         "Is age associated with having sought support, with the support scale scored from its "
@@ -925,10 +1074,7 @@ def intake_survey_support_estimate(old: dict | None) -> tuple[dict, dict, dict]:
         "sought support.",
         {"column": "sought_support", "meaning": "sought support (1 yes, 0 no)"}, table,
         exposure={"column": "age", "meaning": "age in years"},
-        documentation=[
-            f"The instrument's key: the support scale is {scale['items'][0]} to "
-            f"{scale['items'][-1]}, with {' and '.join(scale['reverse'])} reverse-coded; each item "
-            f"is answered from {scale['low']} to {scale['high']}."])
+        documentation=survey_key(SURVEY_SCALE, REVERSE_CODED, frame))
     generator = "turbotab/sample_data/make_fixtures.py::survey"
     answers = {
         "id": id_, "kind": "known_answer", "fixture_key": key,

@@ -13,7 +13,8 @@
   "meaning": "age in years"
  },
  "documentation": [
-  "The instrument's key: the support scale is item_01 to item_10, with item_05 reverse-coded; each item is answered from 1 to 5."
+  "The instrument's key: item_01 to item_40 are one 40-item instrument, each item answered from 1 to 5, and its reverse-coded items are item_05, item_11, item_17, item_23, item_29, item_34, item_38 and item_40.",
+  "The support scale the question names is item_01 to item_10, whose reverse-coded item is item_05; item_11 to item_40 belong to no scale the question uses."
  ],
  "table": {
   "path": "research/data/datasets/survey_support_estimate/survey_instrument.csv",
