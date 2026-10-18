@@ -16,7 +16,8 @@ that shape serves, a research swarm's candidates or the claims backtest's invent
 candidates unless ``--decoys`` says), gives every item a neutral id in an order the seed shuffles,
 and deals them into batches of about a dozen, no decoy in its sibling's batch: a queue with decoys
 is dealt into two or more, and ``--batches 1`` with any decoy is refused, writing nothing, since
-its one batch would hold each decoy beside the candidate it was made from. It writes
+its one batch would hold each decoy beside the candidate it was made from; so is a ``--batches``
+above the count of items, which would leave a batch empty. It writes
 ``DIR/batches/batch_NN.jsonl``, what a referee sees (the id and the merits fields alone), and
 ``DIR/key.json``, which item is real and which a decoy, with its kind, sibling, author and why it
 is false, sealed by its SHA-256 in ``DIR/key.sha256``. Show a referee its batch, never the key.
@@ -146,6 +147,9 @@ def build(candidates: Sequence[dict[str, Any]], out: Path, decoys: int | None = 
                                      len(groups[k]), k))
         groups[b].append(it)
         where[it["orig"]] = b
+    if not all(groups):
+        raise ValueError(f"{nb} batches for {len(items)} items leaves a batch empty, with nothing "
+                         f"for a referee to read: deal at most {len(items)}")
     for g in groups:
         rng.shuffle(g)
     source = {**{c["id"]: c for c in candidates}, **{d["key"]: d for d in made}}
