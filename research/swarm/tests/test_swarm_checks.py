@@ -258,6 +258,61 @@ def test_logging_fires_on_an_analysts_record_with_no_reason_and_not_on_turbotabs
     assert outcome(C.logging_complete, estimate_record()).outcome == "pass"  # #4 is TurboTab's
 
 
+FIT_UNSERVED = ("This fit cannot be matched to your recorded decisions: at no point in your "
+                "decision log, up to when the fit completed, were the answers those it was "
+                "computed from, so none of its numbers is served.")
+
+
+def _unserved(data, i):
+    """Fit ``i`` (from 0) as ``GET …/fits`` serves a fit whose records it cannot read
+    (``FitRecord.decisions`` null, ``runs.ANSWERS_UNREAD``): no records, no change known, no
+    numbers, and the engine's why."""
+    data["attempts"][i].update(decisions=None, changed=None, reasons=[], withdrawn=[],
+                               reinstated=[], movement=[], scores={},
+                               movement_why="This fit cannot be matched to your recorded "
+                                            "decisions.", withheld=FIT_UNSERVED)
+    return data
+
+
+def test_logging_does_not_judge_a_fit_whose_records_the_server_does_not_serve():
+    """DRV-INT (DRV-B's verifier, P4): fit 2's records are not served, so whether its change has a
+    reason is not known: not checked, with the engine's own why, never failed as "no reason". The
+    other way, with every fit's records served, logging passes (the first logging test)."""
+    data = _unserved(predict_record(), 1)
+    data["result"]["decisions"] = [1, 3, 4]
+    data["result"].update(attempt=None)
+    got = outcome(C.logging_complete, data)
+    assert (got.outcome, got.problems) == ("not_checked", [])
+    assert got.unchecked == [f"Fit #2's records are not served, so its change from the fit before "
+                             f"and its reason are not known: {FIT_UNSERVED}"]
+
+
+def test_logging_does_not_judge_the_fit_after_one_whose_records_are_not_served():
+    data = revert_record()
+    data = _unserved(data, 1)
+    data["attempts"][2].update(changed=None, reasons=[])
+    data["decisions"][2]["materiality"] = {"source": None, "why": "constructed: none measured"}
+    data["decisions"][3]["materiality"] = {"source": None, "why": "constructed: none measured"}
+    got = outcome(C.logging_complete, data)
+    assert (got.outcome, got.problems) == ("not_checked", [])
+    assert got.unchecked == [
+        f"Fit #2's records are not served, so its change from the fit before and its reason are "
+        f"not known: {FIT_UNSERVED}",
+        f"Fit #3's change from the fit before is not known, since fit #2's records are not "
+        f"served: {FIT_UNSERVED}"]
+
+
+def test_logging_does_not_judge_a_fit_whose_change_the_log_does_not_account_for():
+    from research.swarm.assemble import UNACCOUNTED
+
+    data = predict_record()
+    data["attempts"][1].update(changed=None, reasons=[], withdrawn=[])
+    data["decisions"][3]["materiality"] = {"source": None, "why": UNACCOUNTED}
+    got = outcome(C.logging_complete, data)
+    assert (got.outcome, got.problems) == ("not_checked", [])
+    assert got.unchecked == [f"Fit #2's change from the fit before is not known: {UNACCOUNTED}"]
+
+
 def test_a_failed_run_is_a_logging_failure(tmp_path):
     raw = predict_record()
     raw["decisions"][0]["materiality"] = {"source": None}
@@ -385,6 +440,41 @@ def test_known_answer_holds_an_estimate_whose_interval_covers_the_declared_value
     data["dataset"]["known"] = {"family": "linear", "feature": "x", "value": value}
     got = outcome(C.known_answer, data, truths={"table.csv": {}})
     assert got.outcome == status
+
+
+def _read_again(*later):
+    """The Predict record with no opening (its result none reported, so it names no records) and
+    ``later`` decisions after record #4: each a confirmation of age's code-or-count reading, or a
+    revert, at its own minute."""
+    data = predict_record("known_answer")
+    data["decisions"] = data["decisions"][:4]
+    data["result"] = {"purpose": "prediction", "attempt": None, "plan_digest": None,
+                      "decisions": None, "refused": "The held-out rows were never opened.",
+                      "refused_kind": "not_reported"}
+    for seq, what in later:
+        if what.startswith("r"):
+            data["decisions"].append(decision(seq, "revert", {"decision_id": what},
+                                              [(f"revert:{what}", {"decision_id": what})],
+                                              minute=14 + seq))
+        else:
+            option = {"reading": "code_or_count", "column": "age", "value": what}
+            data["decisions"].append(decision(seq, "confirm_reading", option,
+                                              [("code_or_count:age", what)], minute=14 + seq))
+    return data
+
+
+def test_known_answer_judges_the_reading_in_force_at_the_logs_end_when_the_result_names_none():
+    """DRV-INT (DRV-B's verifier, P2): the result names no records, so each reading is judged by
+    the answer in force at the log's end (the log's own revert rule): #6 answers age as a code
+    (wrong), #7 as an amount (right), #8 reverts #7, so #6's wrong answer is in force: it fails.
+    The other way: #7 reverts #6, so #3's amount is in force: it passes."""
+    wrong = outcome(C.known_answer, _read_again((6, "code"), (7, "amount"), (8, "r7")),
+                    truths=TRUTH)
+    assert wrong.outcome == "fail"
+    assert wrong.problems == ["Record #6 answers the code_or_count:age reading as `code`; the "
+                              "fixture declares `amount`."]
+    right = outcome(C.known_answer, _read_again((6, "code"), (7, "r6")), truths=TRUTH)
+    assert (right.outcome, right.problems) == ("pass", [])
 
 
 def test_known_answer_holds_a_refused_result():

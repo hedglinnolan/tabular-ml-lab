@@ -209,6 +209,32 @@ def test_an_option_examined_the_same_way_twice_is_listed_once():
         ("preview", "flag", None), ("fit", "exposure", 1)]  # #2 held the same option in fit 1
 
 
+SPLIT_DRAW = {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5}
+SCHEME = {"kind": "set_validation", "folds": 5, "validation": "kfold"}
+
+
+def test_a_validation_scheme_is_compared_with_the_split_by_what_each_leaves_in_the_slot():
+    """DRV-INT (DRV-B's verifier, P3): ``set_split`` draws the held-out rows and sets the scheme;
+    ``set_validation`` writes only the scheme onto the draw (``SetValidation.scheme()``). So the
+    split held in the only fit, its scheme the one #3 records again, is no alternative examined
+    for #3, and neither is a preview of that scheme; a split or a scheme with ten folds is."""
+    records = [_rec(1, 1, {"kind": "set_target", "column": "y"}), _rec(2, 2, SPLIT_DRAW),
+               _rec(3, 6, SCHEME)]
+    fits = [{"id": "fit1", "seq": 1, "at": "2026-10-18T10:04:00Z", "decisions": [1, 2]}]
+    same = [_preview(5, {**SCHEME})]
+    got = A.examined_of(records[2], records, same, fits)
+    assert [(e["how"], e["alternative"]) for e in got] == [("preview", False), ("fit", False)]
+    other = [_rec(1, 1, {"kind": "set_target", "column": "y"}),
+             _rec(2, 2, {**SPLIT_DRAW, "folds": 10}), _rec(3, 6, SCHEME)]
+    got = A.examined_of(other[2], other, [_preview(5, {**SCHEME, "folds": 10})], fits)
+    assert [(e["how"], e["alternative"]) for e in got] == [("preview", True), ("fit", True)]
+    # The other way round: a draw chosen after a scheme previewed alone, the same or another.
+    drawn = [_rec(1, 1, {"kind": "set_target", "column": "y"}), _rec(2, 6, SPLIT_DRAW)]
+    for folds, alternative in ((5, False), (10, True)):
+        got = A.examined_of(drawn[1], drawn, [_preview(4, {**SCHEME, "folds": folds})], [])
+        assert [(e["how"], e["alternative"]) for e in got] == [("preview", alternative)], folds
+
+
 def _adjust(seq, minute, **answers):
     return _rec(seq, minute, {"kind": "set_adjustment", "exposure": "sugar", "answers": answers})
 
@@ -293,7 +319,8 @@ def _revert(seq: int, minute: int, target: int, note: str = "why") -> dict[str, 
 
 
 def _rule(low: int) -> dict[str, Any]:
-    return {"kind": "set_exclusions", "rules": [{"column": "kcal", "low": low, "high": 5000}]}
+    return {"kind": "set_exclusions", "rules": [{"column": "kcal", "low": low, "high": 5000,
+                                                 "reason": "implausible intake"}]}
 
 
 def _moved(attempts: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -386,6 +413,31 @@ def test_a_record_first_in_force_by_a_revert_says_so_and_has_no_measure_of_its_o
                "change."}
 
 
+ANSWERS_UNREAD = "This fit cannot be matched to your recorded decisions."
+
+
+def test_a_record_is_in_no_fit_only_where_every_fits_records_are_served():
+    """DRV-INT (DRV-B's verifier, P4): the only fit's records are not served (``decisions``
+    null), so whether record #1 was in force at it is not known: its materiality says so with the
+    engine's why, never "no fit completed". A fit after one whose records are not served has no
+    change known, and a record first held there has the earlier fit's why. With every fit's
+    records served, a record in none of them was in no fit (the test below)."""
+    records = [_rec(1, 1, {"kind": "set_target", "column": "y"}), _rec(2, 5, _excluded("a"))]
+    unread = _fit(1, 4, None, movement=[], movement_why=ANSWERS_UNREAD, withheld="Not served.")
+    got = A.attempts_of([unread], records)
+    assert got[0]["changed"] is None
+    for rec in records:
+        assert A.fits_materiality(rec, got, records) == {
+            "source": None, "why": f"Fit #1's records are not served, so whether this record was "
+                                   f"in force at it is not known: Not served."}
+    got = A.attempts_of([unread, _fit(2, 6, [1, 2], movement=[], movement_why="x")], records)
+    assert got[1]["changed"] is None
+    assert A.fits_materiality(records[1], got, records) == {
+        "source": None, "attempt": "fit2",
+        "why": "The fit before this record's first fit, fit #1, has records the server does not "
+               "serve, so the change between them is not known: Not served."}
+
+
 def test_a_revert_no_fit_measured_says_why_and_a_record_never_fitted_says_so():
     records = [TARGET, _rec(2, 2, _excluded("a")), _revert(3, 3, 2)]
     fits = [_fit(1, 4, [1])]  # #2 was withdrawn before any fit
@@ -472,6 +524,136 @@ def test_a_record_that_left_force_by_no_record_found_withholds_every_measure_of_
         "why": "It took effect at fit #2 while record #2 left force by no record found between "
                "the two fits: the fit records measure the change between two fits, not each "
                "record's share of it."}
+
+
+# DRV-INT (DRV-B's verifier, P1): a credit to one record is confirmed by the server's own rule.
+
+def _age(low: int) -> dict[str, Any]:
+    return {"kind": "set_exclusions", "rules": [{"column": "age", "low": low, "high": 90,
+                                                 "reason": "r"}]}
+
+
+def test_two_reverts_between_fits_that_restore_and_withdraw_one_answer_share_the_change():
+    """The verifier's probe: rule age >= 18 (#1), replaced by age >= 30 (#2), fit 1 (#2 in force);
+    #2 reverted (#3, which brings #1 back) and #1 reverted (#4), both before fit 2 (no rule in
+    force). By the log's own rule, #3 alone after fit 1's records leaves rule #1 in force, not fit
+    2's records, so #3 is not credited with fit 2's whole change: #3 and #4 moved together, and
+    neither has fit 2's movement. The other way: #3 alone before fit 2 is credited, with it."""
+    records = [_rec(1, 1, _age(18)), _rec(2, 2, _age(30)), _revert(3, 5, 2), _revert(4, 6, 1)]
+    fits = [_fit(1, 3, [2]), _fit(2, 7, [])]
+    got = _moved(A.attempts_of(fits, records))
+    assert got[1]["changed"] == [3, 4]
+    assert [r["seq"] for r in got[1]["reasons"]] == [3, 4]
+    tail = ": the fit records measure the change between two fits, not each record's share of it."
+    for seq, other in ((3, 4), (4, 3)):
+        m = A.fits_materiality(records[seq - 1], got, records)
+        assert m == {"source": None, "attempt": "fit2",
+                     "why": f"It took effect at fit #2 together with record #{other}" + tail}, seq
+    alone = records[:3]
+    got = _moved(A.attempts_of([_fit(1, 3, [2]), _fit(2, 7, [1])], alone))
+    assert (got[1]["changed"], got[1]["withdrawn"]) == ([3], [{"seq": 2, "by": 3}])
+    assert A.fits_materiality(alone[2], got, alone) == {
+        "source": "fits", "attempt": "fit2", "movement": got[1]["movement"]}
+
+
+def test_a_credit_the_log_cannot_account_for_is_withheld_and_says_so():
+    """Fit 2's records ({1, 3}) are those of no prefix of the log by the server's rule (#2 holds a
+    question of its own, and nothing withdrew it), though #3 is the one record new since fit 1:
+    the change is not known, so no record is credited with it and none has its movement; the why
+    says the log does not account for it. A record that changed nothing the log cannot account
+    for keeps its credit (the first test above)."""
+    records = [_rec(1, 1, _excluded("a")), _rec(2, 2, _excluded("b")), _rec(3, 4, _excluded("c"))]
+    got = _moved(A.attempts_of([_fit(1, 3, [1]), _fit(2, 5, [1, 3])], records))
+    assert got[1]["changed"] is None
+    m = A.fits_materiality(records[2], got, records)
+    assert (m["source"], m["attempt"], m["why"]) == (None, "fit2", A.UNACCOUNTED)
+
+
+def _simulated(seed: int, events: int = 14) -> tuple[list[Any], list[dict[str, Any]]]:
+    """A log of roles confirmed and reverted at random, and its fits as the server records them
+    (``ProjectService._write_fit_record``): each fit keyed by the confirmations in force when it
+    started, completing after up to two more records, recorded once per key, its records in force
+    those of the longest prefix appended by its completion that keys it (``runs.keyed_prefix``).
+    The verifier's simulation (DRV-B, dbv3/probes/sim.py)."""
+    import random
+    from datetime import timedelta
+
+    from turbotab.core import decisions as D, provenance, runs
+
+    rnd, recs, t = random.Random(seed), [], 0.0
+    t0 = datetime(2026, 10, 18, 10, 0, tzinfo=timezone.utc)
+
+    def key_of(state: Any) -> str:
+        return json.dumps(state.model_dump(mode="json").get("role_confirmations"), sort_keys=True)
+
+    def append(p_revert: float) -> None:
+        nonlocal t
+        t += 1.0
+        decision = ({"kind": "revert", "decision_id": rnd.choice(recs).id}
+                    if recs and rnd.random() < p_revert else
+                    {"kind": "confirm_role", "column": rnd.choice("ab"),
+                     "role": rnd.choice(["covariate", "excluded"])})
+        r = D.DecisionRecord(id=f"r{len(recs) + 1}", seq=len(recs) + 1,
+                             at=t0 + timedelta(seconds=t), note=f"n{len(recs) + 1}",
+                             decision=D.parse_decision(decision))
+        try:
+            D.fold(recs + [r])
+        except D.Refusal:
+            return
+        recs.append(r)
+
+    fits, keys = [], set()
+    for _ in range(events):
+        for _ in range(rnd.randint(0, 2)):
+            append(0.45)
+        key = key_of(D.fold(recs))
+        for _ in range(rnd.randint(0, 2)):
+            append(0.6)
+        t += 0.5
+        if key in keys:
+            continue
+        keys.add(key)
+        done = t0 + timedelta(seconds=t)
+        prefix = runs.keyed_prefix(runs.appended_by(recs, done), key, key_of)
+        live = provenance.in_force(prefix)
+        fits.append({"id": f"fit{len(fits) + 1}", "seq": len(fits) + 1, "at": done.isoformat(),
+                     "decisions": sorted(r.seq for r in prefix if r.id in live),
+                     "_read": len(prefix), "_key": key})
+    return recs, fits
+
+
+def test_every_credit_to_one_record_is_that_records_change_by_the_servers_rule():
+    """Over 150 simulated runs: every record credited with a fit's change, or with a shift of it,
+    is among the records this fit read that the fit before did not; and wherever a fit's whole
+    change is credited to one record, that record alone, after the records the fit before read,
+    keys this fit by the server's own rule (``decisions.fold``). The truth is the server's prefix
+    for each fit (``runs.keyed_prefix``); the assembler reads only what ``GET …/fits`` serves.
+    Some runs do credit one record, so the rule is exercised."""
+    from turbotab.core import decisions as D
+
+    credited = 0
+    for seed in range(150):
+        recs, fits = _simulated(seed)
+        records = [r.model_dump(mode="json") for r in recs]
+        got = A.attempts_of([{k: v for k, v in f.items() if not k.startswith("_")} for f in fits],
+                            records)
+        for i in range(1, len(fits)):
+            before, fit, change = fits[i - 1], fits[i], got[i]
+            if fit["_read"] > before["_read"]:
+                read = set(range(before["_read"] + 1, fit["_read"] + 1))
+                named = set(change["changed"] or ()) | {
+                    s["by"] for s in change["withdrawn"] + change["reinstated"] if s["by"]}
+                assert named <= read, (seed, i, change, sorted(read))
+            loose = [s for s in change["withdrawn"] + change["reinstated"] if s["by"] is None]
+            if not change["changed"] or len(change["changed"]) != 1 or loose:
+                continue
+            (x,) = change["changed"]
+            credited += 1
+            assert before["_read"] < x <= fit["_read"], (seed, i, change)
+            alone = D.fold(recs[:before["_read"]] + [recs[x - 1]]).model_dump(mode="json")
+            assert json.dumps(alone.get("role_confirmations"), sort_keys=True) == fit["_key"], (
+                seed, i, change)
+    assert credited > 20
 
 
 def _curve_doc() -> dict[str, Any]:
@@ -745,9 +927,58 @@ def test_the_analyst_log_is_read_before_any_route_that_can_render_a_claim():
 
 def _run_dir(folder: Path, **driver: Any) -> Path:
     folder.mkdir(parents=True)
-    (folder / A.DRIVER_FILE).write_text(json.dumps({"run_id": folder.name, "project_id": "p1",
+    (folder / A.DRIVER_FILE).write_text(json.dumps({"run": folder.name, "project": "p1",
                                                     "port": 1, **driver}), "utf-8")
     return folder
+
+
+def test_the_record_reads_the_run_directory_the_driver_writes(tmp_path):
+    """DRV-INT: the run directory as ``research.swarm.driver`` writes it (``Run.save``,
+    ``Run.log`` of each command's ``summary``): its run, project, budget, start and end, its
+    server, each refusal it met with the command after it, and the analyst's own export. Each
+    value is the one written here; a refused export is not the export reached."""
+    from research.swarm import driver as drv
+
+    folder = tmp_path / "runs" / "pilot-0123456789abcdef0123456789abcdef"
+    folder.mkdir(parents=True)
+    meta = {"run": folder.name, "pid": 4242, "port": 1, "project": "p1",
+            "budget": {"fits": 3, "seconds": 600.0}, "started": "2026-10-18T10:00:00+00:00",
+            "ended": "2026-10-18T10:30:00+00:00", "workers": 2, "analyst": "scripted"}
+    run = drv.Run(folder, meta)
+    run.save()
+    way = {"label": "Keep the score at the opening", "decision": {"kind": "open_seal"}}
+    refused = {"refused": {"by": "server", "status": 409, "code": "no_reseal",
+                           "message": "The held-out rows open once.",
+                           "exits": drv.opts.exits([way])}}
+    exported = {"exported": {"path": str(folder / "export.zip"), "bytes": 9, "sha256": "ab"}}
+    for at, name, code, payload in (("10:10", "answer", 1, refused),
+                                    ("10:20", "export", 1, {"refused": {
+                                        "by": "server", "code": "result_not_ready",
+                                        "message": "Not yet.", "exits": []}}),
+                                    ("10:25", "export", 0, exported)):
+        run.log({"at": f"2026-10-18T{at}:00+00:00", "command": name, "args": {},
+                 "summary": drv.summary(name, code, payload)})
+    path, ok = A.assemble(folder, meta=META, client=FakeClient(_served_routes()),
+                          corpus=tmp_path / "corpus", mattered_wait=0)
+    assert ok, path.read_text("utf-8")[:2000]
+    rec = validate(json.loads(path.read_text("utf-8")))
+    assert rec.run.id == folder.name
+    assert (rec.run.started.isoformat(), rec.run.ended.isoformat()) == (meta["started"],
+                                                                        meta["ended"])
+    assert rec.run.fit_budget == meta["budget"]
+    assert (rec.run.server["pid"], rec.run.server["port"]) == (4242, 1)
+    assert [(s.command, s.code, s.message, s.exits, s.then) for s in rec.surfacings.refusals] == [
+        ("answer", "no_reseal", "The held-out rows open once.", [way["label"]], "export"),
+        ("export", "result_not_ready", "Not yet.", [], "export")]
+    assert rec.export.reached
+    only_refused = tmp_path / "runs" / "pilot-fedcba9876543210fedcba9876543210"
+    only_refused.mkdir()
+    drv.Run(only_refused, {**meta, "run": only_refused.name}).save()
+    drv.Run(only_refused, meta).log({"at": meta["ended"], "command": "export", "args": {},
+                                     "summary": drv.summary("export", 1, refused)})
+    path, ok = A.assemble(only_refused, meta=META, client=FakeClient(_served_routes()),
+                          corpus=tmp_path / "corpus", mattered_wait=0)
+    assert ok and not validate(json.loads(path.read_text("utf-8"))).export.reached
 
 
 def test_a_server_that_serves_no_analyst_log_leaves_a_failed_run(tmp_path):
@@ -782,7 +1013,7 @@ def test_a_route_that_fails_to_serve_leaves_a_failed_run_not_an_empty_record(tmp
                                                                             name):
     """DB-V8: these routes refuse only a project the server does not hold, so a failed read is no
     record of an empty run (no fit, no concern): a failed run. Silent where each serves."""
-    run = _run_dir(tmp_path / "runs" / "r1", start="2026-10-18T10:00:00+00:00")
+    run = _run_dir(tmp_path / "runs" / "r1", started="2026-10-18T10:00:00+00:00")
     path, ok = A.assemble(run, meta=META, client=FakeClient(_served_routes()),
                           corpus=tmp_path / "served", mattered_wait=0)
     assert ok and validate(json.loads(path.read_text("utf-8"))).run.fits == 0
@@ -822,9 +1053,27 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _payload(r: Any, command: str) -> tuple[int, dict[str, Any]]:
+    """What the driver would print for the server's response ``r`` to ``command``, and its exit
+    status: a refusal as the driver's ``refused`` (``driver.refused``), the export as its
+    ``exported``, anything else as served."""
+    from research.swarm import driver as drv
+
+    if r.status_code != 200:
+        error = r.json().get("error") or {}
+        return 1, {"refused": {"by": "server", "status": r.status_code, "code": error.get("code"),
+                               "message": error.get("message"),
+                               "exits": drv.opts.exits(error.get("exits"))}}
+    if command == "export":
+        return 0, {"exported": {"path": "export.zip", "bytes": len(r.content),
+                                "sha256": hashlib.sha256(r.content).hexdigest()}}
+    return 0, {"results": r.json()} if command == "results" else {}
+
+
 class ScriptedDriver:
     """A scripted analyst's client: every decision posted with a note, kept by the seq it was
-    recorded at, and each command logged as a line of ``commands.jsonl`` with what it returned."""
+    recorded at, and each command logged as a line of ``commands.jsonl`` as the driver logs it
+    (``driver.main``: its time, name and ``driver.summary`` of what it printed)."""
 
     def __init__(self, client: Any):
         self.c, self.commands, self.notes, self.n = client, [], {}, 0
@@ -833,13 +1082,18 @@ class ScriptedDriver:
     def app(self) -> Any:
         return self.c.app
 
+    def log(self, command: str, r: Any) -> None:
+        from research.swarm import driver as drv
+
+        code, payload = _payload(r, command)
+        self.commands.append({"at": _now(), "command": command, "args": {},
+                              "summary": drv.summary(command, code, payload)})
+
     def get(self, url: str, **kw: Any) -> Any:
         r = self.c.get(url, **kw)
         for command in ("results", "export"):
             if url.endswith(f"/{command}"):
-                out = r.json() if r.status_code != 200 or command != "export" else {
-                    "sha256": hashlib.sha256(r.content).hexdigest()}
-                self.commands.append({"command": command, "at": _now(), "output": out})
+                self.log(command, r)
         return r
 
     def post(self, url: str, json: Any = None, **kw: Any) -> Any:  # noqa: A002
@@ -848,7 +1102,7 @@ class ScriptedDriver:
             note = f"Reason {self.n}: {json.get('kind')} as the evidence on its card reads."
             kw.setdefault("params", {})["note"] = note
             r = self.c.post(url, json=json, **kw)
-            self.commands.append({"command": "answer", "at": _now(), "output": r.json()})
+            self.log("answer", r)
             if r.status_code == 200:  # TurboTab may record its own answers in the same request
                 mine = next(d for d in r.json()["decisions"] if d["note"] == note)
                 self.notes[mine["seq"]] = note
@@ -856,7 +1110,7 @@ class ScriptedDriver:
         r = self.c.post(url, json=json, **kw)
         command = "preview" if url.endswith("/preview") else "fit" if url.endswith("/fit") else None
         if command:
-            self.commands.append({"command": command, "at": _now(), "output": r.json()})
+            self.log(command, r)
         return r
 
 
@@ -907,15 +1161,16 @@ def _drive(driver: ScriptedDriver, pid: str) -> dict[str, Any]:
 
 def finish(run_dir: Path, driver: ScriptedDriver, pid: str, start: str,
            dataset: dict[str, Any]) -> None:
-    """The run directory as the driver leaves it: its commands, the analyst's transcript (here the
-    constructed one) and driver.json."""
+    """The run directory as the driver leaves it (``driver.cmd_start``'s ``driver.json``, with the
+    run's own fields beside it): its commands, the analyst's transcript (here the constructed one)
+    and driver.json."""
     (run_dir / A.COMMANDS_FILE).write_text(
         "".join(json.dumps(c) + "\n" for c in driver.commands), "utf-8")
     transcript(run_dir / "transcript.jsonl")
     (run_dir / A.DRIVER_FILE).write_text(json.dumps({
-        "run_id": run_dir.name, "pid": os.getpid(), "port": None, "project_id": pid,
-        "fit_budget": {"count": 10, "seconds": 600}, "start": start, "end": _now(), "design": 2,
-        "analyst_model": "scripted", "effort": None, "prompt_version": "e2e-1",
+        "run": run_dir.name, "pid": os.getpid(), "port": None, "project": pid,
+        "budget": {"fits": 10, "seconds": 600.0}, "started": start, "ended": _now(),
+        "design": 2, "analyst_model": "scripted", "effort": None, "prompt_version": "e2e-1",
         "transcript": "transcript.jsonl", "dataset": dataset}), "utf-8")
 
 
@@ -1570,3 +1825,75 @@ def test_on_the_server_a_shift_is_credited_to_the_revert_the_fit_before_had_not_
     else:
         assert shift.by is None and by_seq[seqs["back again"]].materiality.source is None
     assert by_seq[seqs["back"]].materiality.attempt != fits[last]["id"]
+
+
+# ── end to end: two reverts between fits restore an answer and withdraw it (DRV-INT) ──
+
+
+@pytest.fixture(scope="module")
+def restore_e2e(tmp_path_factory) -> dict[str, Any]:
+    """``clinical_risk.csv`` under Predict in analyst mode, every record posted with a note: after
+    the first fit, a roles answer with albumin left out ("A", a fit), the elastic net added (a
+    fit), a roles answer with hemoglobin left out in A's place ("B", the fit before); then B
+    reverted, which brings A back (a plan fitted already, so no new fit record), and A reverted,
+    posted one after the other: the last fit has the first fit's roles and both families, a plan
+    no fit held before, on the same rows and folds. DRV-B's verifier's probe on the server."""
+    from turbotab.server.tests.conftest import answer_settled, wait_for
+
+    folder = tmp_path_factory.mktemp("swarm_e2e_restore")
+    run_dir = folder / "runs" / "e2e-restore-1"
+    start = _now()
+    seqs: dict[str, int] = {}
+    with analyst_server(run_dir / "home") as client:
+        made = client.post("/api/projects", json={"path": str(SAMPLE)})
+        assert made.status_code == 200, made.text
+        pid = made.json()["id"]
+        driver = ScriptedDriver(client)
+        _first_fit(driver, pid)
+        roles = client.get(f"/api/projects/{pid}").json()["state"]["roles"]
+        assert "excluded" not in (roles["albumin_g_dl"], roles["hemoglobin_g_dl"])  # predictors
+        a = {"kind": "set_roles", "roles": {**roles, "albumin_g_dl": "excluded"}}
+        b = {"kind": "set_roles", "roles": {**roles, "hemoglobin_g_dl": "excluded"}}
+        both = {"kind": "select_models", "models": ["linear", "elastic_net"]}
+        for name, body in (("A", a), ("both", both), ("B", b)):
+            assert answer_settled(driver, pid, None, body).status_code == 200, body
+            seqs[name] = max(s for s, n in driver.notes.items() if body["kind"] in n)
+            wait_for(driver, pid, {"fit": "fresh"}, timeout=600)
+        ids = {d["seq"]: d["id"] for d in client.get(f"/api/projects/{pid}").json()["decisions"]}
+        for name, of in (("B back", "B"), ("A back", "A")):
+            r = driver.post(f"/api/projects/{pid}/decisions",
+                            json={"kind": "revert", "decision_id": ids[seqs[of]]})
+            assert r.status_code == 200, r.text
+            seqs[name] = _seq_of(driver)
+        wait_for(driver, pid, {"fit": "fresh"}, timeout=600)
+        finish(run_dir, driver, pid, start, {"id": "clinical-risk", "fixture": FIXTURE})
+        path, ok = A.assemble(run_dir, client=client, corpus=folder / "corpus")
+        fits = client.get(f"/api/projects/{pid}/fits").json()["records"]
+        in_force = _server_in_force(client, pid)
+    assert ok, path.read_text("utf-8")[:2000]
+    return {"rec": validate(json.loads(path.read_text("utf-8"))), "fits": fits, "seqs": seqs,
+            "in_force": in_force}
+
+
+def test_on_the_server_two_reverts_that_restore_and_withdraw_an_answer_share_the_change(
+        restore_e2e):
+    """By construction the last fit holds neither roles answer, and the fit before it B: the
+    revert of B alone would have left A in force, so it is not credited with the last fit's
+    change. Both reverts moved together, and neither has the movement GET …/fits serves for that
+    fit (a number: same rows, same folds, the linear model's predictors changed)."""
+    rec, fits, seqs = (restore_e2e[k] for k in ("rec", "fits", "seqs"))
+    last, before = fits[-1], fits[-2]
+    assert {seqs["B"], seqs["both"]} <= set(before["decisions"])
+    assert not {seqs["A"], seqs["B"]} & set(last["decisions"])
+    assert seqs["both"] in last["decisions"]
+    assert set(last["decisions"]) == restore_e2e["in_force"]
+    attempt = rec.attempts[-1]
+    assert attempt.changed == sorted([seqs["B back"], seqs["A back"]])
+    linear = next(m for m in last["movement"] if m["family"] == "linear")
+    assert linear["movement"] is not None  # served, and credited to neither revert alone
+    by_seq = {d.seq: d for d in rec.decisions}
+    for mine, other in (("B back", "A back"), ("A back", "B back")):
+        m = by_seq[seqs[mine]].materiality
+        assert (m.source, m.attempt) == (None, last["id"])
+        assert m.why.startswith(f"It took effect at fit #{attempt.seq} together with record "
+                                f"#{seqs[other]}:")

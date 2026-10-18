@@ -264,7 +264,10 @@ class Attempt(_Strict):
 
     * ``changed``: the records credited with the change, each record in force here that is new
       since the fit before, and each record credited with a shift (every record in force, for the
-      first fit; null where either fit's records are not served);
+      first fit), held to the server's own rule: one record alone only where that record alone
+      makes this fit's records from the fit before's, else the records this fit read since the
+      fit before, which moved together; null where either fit's records are not served, or the
+      decision log does not account for them (``assemble.Prefixes``);
     * ``withdrawn``: each record in force at the fit before and not here, with the record credited;
     * ``reinstated``: each record in force here, recorded before the fit before and not in force
       at it, with the revert credited;

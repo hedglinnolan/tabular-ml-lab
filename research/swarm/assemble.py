@@ -8,17 +8,20 @@ reads the run directory the driver wrote and the server's own data, builds the r
 * ``research/corpus/failed/<run id>.json``, the error beside what was assembled, when it does not:
   a failed run, never an edited record. Neither file is ever written over.
 
-**The run directory** (``research/runs/<run id>/``, written by the driver):
+**The run directory** (``research/runs/<run id>/``, written by the driver, ``research.swarm.driver``):
 
-* ``driver.json``: ``run_id``, ``pid`` (the server's process), ``port``, ``project_id``,
-  ``fit_budget``, ``start`` and ``end``; and, where the driver or its launcher writes them, the
-  run's ``design``, ``analyst_model``, ``effort``, ``prompt_version``, ``transcript`` (the analyst
-  agent's transcript JSONL, relative to the run directory or absolute), ``dataset`` (the intake's
-  ``id``, ``control``, ``fixture``, ``known`` answer, ``codebook`` and ``card``) and ``help`` (each
-  intervention a person made). An argument given to :func:`assemble` takes the place of the file's.
-* ``commands.jsonl``: one line per command the driver ran, oldest first, each with ``command``
-  (its name), ``at`` and ``output`` (the JSON it printed); an output holding the server's ``error``
-  object (``code``, ``message``, ``exits``) is a refusal met. No other key is read.
+* ``driver.json`` (``driver.cmd_start``): ``run`` (its id), ``pid`` (the server's process),
+  ``port``, ``project``, ``budget`` (the fit budget), ``started`` and ``ended``; and, where the
+  driver or its launcher writes them, the run's ``design``, ``analyst_model``, ``effort``,
+  ``prompt_version``, ``transcript`` (the analyst agent's transcript JSONL, relative to the run
+  directory or absolute), ``dataset`` (the intake's ``id``, ``control``, ``fixture``, ``known``
+  answer, ``codebook`` and ``card``) and ``help`` (each intervention a person made). An argument
+  given to :func:`assemble` takes the place of the file's.
+* ``commands.jsonl`` (``driver.main``): one line per command the driver ran, oldest first, each
+  with ``command`` (its name), ``at`` and ``summary`` (``driver.summary`` of the JSON it printed):
+  a summary holding ``refused`` (``code``, ``message``, ``exits``) is a refusal met, the server's
+  or the driver's, and one holding ``exported`` with exit status 0 is the export returned. No other
+  key is read.
 * ``home/``: the server's home.
 
 **The server's reads.** The analyst log comes first, since any later read can render a claim and
@@ -42,6 +45,16 @@ what had replaced it; any other came into force new. A record no record of the l
 credit, or that several may be (more than one revert of its chain, or a new answer beside a
 revert of its chain this fit may not have read), is kept with none. A revert is never in force,
 so a fit whose only change is a revert has that revert as its change and its note as its reason.
+
+Each credit is then held to the server's own rule (:class:`Prefixes`: ``provenance.in_force``
+over ``decisions.fold``, for the longest prefix of the log appended by each fit's completion that
+holds its records in force, as ``runs.keyed_prefix`` reads a fit's answers): a record the fit
+before had read already is credited with nothing of this fit's, and a fit's whole change is one
+record's only where that record alone, after the records the fit before read, holds this fit's
+records in force and folds to its answers. Otherwise the records this fit read since the fit
+before moved together and are its change, each with its note among the reasons; where those are
+not known (no prefix holds a fit's records), neither is the change (``changed`` null,
+:data:`UNACCOUNTED`).
 
 **A decision's materiality** is the engine's (:class:`record.Materiality`):
 
@@ -67,7 +80,9 @@ when it was previewed (the analyst log's previews) while the decision was being 
 stood, after the question's previous answer and before its next (a preview followed by keeping the
 answer examined it too), or when it was an earlier answer in force in a fit that completed before
 the decision (SWARM_PLAN §3: reading a card does not count). It is an alternative when it is not
-the option chosen and, for a preview, the preview was not refused.
+the option chosen and, for a preview, the preview was not refused. On the split, which the held-out
+draw and the validation scheme both answer, an option is the one chosen where it leaves the slot
+as the chosen answer does on the fields both write (:func:`same_answer`).
 
 **Spend** (:func:`spend`): the transcript's assistant lines, once per message id. A message
 streams as several lines with one id, the same input counts and a growing output count, so each
@@ -114,6 +129,10 @@ MATTERED_KINDS = ("set_exclusions", "set_adjustment")
 SETTLED = ("fresh", "error", "blocked")
 
 NOT_IN_A_FIT = "No fit completed while this record was in force."
+UNACCOUNTED = ("The decision log, read by the server's own rule, does not account for this fit's "
+               "records from the fit before's, so no record is credited with the change between "
+               "them.")
+NOT_SERVED = "its records are not served"
 FIRST_FIT = "This record was in force at the first fit, which has no earlier fit to compare with."
 LOOSE = "by no record found between the two fits"
 NO_MOVEMENT = "The fit records serve no movement for the fit this record first took effect in."
@@ -154,6 +173,31 @@ def _restored(fit_seq: int, by: int | None) -> str:
         return f"It took effect at fit #{fit_seq}, back in force {LOOSE}."
     return (f"It took effect at fit #{fit_seq}, restored by record #{by}, which is credited with "
             f"that change.")
+
+
+def unserved_why(fit: Mapping[str, Any]) -> str:
+    """The engine's why for a fit whose records ``GET …/fits`` does not serve: the route's own
+    words for withholding its numbers, else the record's for its movement."""
+    return str(fit.get("withheld") or fit.get("movement_why") or NOT_SERVED)
+
+
+def _not_known_in(fits: Sequence[Mapping[str, Any]], revert: bool = False) -> str:
+    """Why a record found in no fit whose records are served is not said to be in none: ``fits``,
+    whose records are not served, may hold it (a revert: may have it as their change)."""
+    one = len(fits) == 1
+    listed = ", ".join(f"#{f['seq']}" for f in fits)
+    whys = " ".join(dict.fromkeys(unserved_why(f) for f in fits))
+    named = f"Fit {listed}'s records are" if one else f"Fits {listed}' records are"
+    what = ("whether this revert is in its change from the fit before" if revert and one else
+            "whether this revert is in their changes from the fits before" if revert else
+            "whether this record was in force at it" if one else
+            "whether this record was in force at them")
+    return f"{named} not served, so {what} is not known: {whys}"
+
+
+def _before_unserved(fit: Mapping[str, Any]) -> str:
+    return (f"The fit before this record's first fit, fit #{fit['seq']}, has records the server "
+            f"does not serve, so the change between them is not known: {unserved_why(fit)}")
 
 
 def _unseen_revert(target: int | None) -> str:
@@ -400,6 +444,41 @@ def same_option(examined: Any, chosen: Any) -> bool:
     return examined == chosen
 
 
+# The slot both the held-out draw (``set_split``) and the validation scheme (``set_validation``,
+# written onto the draw: ``decisions._scheme_onto_the_draw``) answer.
+SPLIT_SLOT = "split"
+
+
+def left_in_split(decision: Mapping[str, Any]) -> dict[str, Any] | None:
+    """What a split answer leaves in the split slot, each field as the server fills it: a
+    ``set_split`` the whole split (its draw and its scheme); a ``set_validation`` the scheme it
+    writes onto the draw (``SetValidation.scheme()``). None for any other decision, or one that
+    does not read as one."""
+    from turbotab.core import decisions as D
+
+    kind = decision.get("kind")
+    if kind not in ("set_split", "set_validation"):
+        return None
+    try:
+        model = D.parse_decision(dict(decision))
+    except ValidationError:
+        return None
+    return model.scheme() if kind == "set_validation" else model.model_dump(exclude={"kind"})
+
+
+def same_answer(question: str, examined: Mapping[str, Any], value: Any,
+                chosen: Mapping[str, Any], chosen_value: Any) -> bool:
+    """Whether the examined decision's answer to ``question`` is the option chosen. On the split
+    slot each is compared by what it leaves there (:func:`left_in_split`), on the fields both
+    write: a scheme answer leaves the draw as it was, so a draw and a scheme answer are the same
+    option where their schemes are. Any other answer by :func:`same_option`."""
+    if question == SPLIT_SLOT:
+        a, b = left_in_split(examined), left_in_split(chosen)
+        if a is not None and b is not None:
+            return all(a[k] == b[k] for k in set(a) & set(b))
+    return same_option(value, chosen_value)
+
+
 def phase_of(rec: Mapping[str, Any]) -> str:
     """The record's phase (:data:`record.Phase`), by the decision log's own marks."""
     if rec.get("post_seal"):
@@ -429,8 +508,87 @@ CHANGE = ("changed", "withdrawn", "reinstated")
 AMBIGUOUS = object()  # a shift several records made, which no one of them is credited with
 
 
+class Prefixes:
+    """The server's own rule over the decision log (DRV-INT): the records in force in each prefix
+    of it (``provenance.in_force`` over ``decisions.fold``), and the prefix a fit read. A fit's
+    records are those in force in the longest prefix of the log appended by its completion whose
+    answers key its fit (``runs.keyed_prefix``); a prefix holding the same records in force folds
+    to the same answers, so that is the longest prefix appended by then whose records in force are
+    the fit's (:meth:`read_through`). ``log`` is None where a record does not read as the server's
+    (``decisions.DecisionRecord``): then no prefix is known."""
+
+    def __init__(self, records: Sequence[Mapping[str, Any]]):
+        from turbotab.core.decisions import DecisionRecord
+
+        fields = DecisionRecord.model_fields
+        try:
+            self.log: list[Any] | None = sorted(
+                (DecisionRecord.model_validate({k: v for k, v in r.items() if k in fields})
+                 for r in records), key=lambda r: r.seq)
+        except (ValidationError, TypeError, AttributeError):
+            self.log = None
+        self._held: dict[int, tuple[frozenset[int], Any] | None] = {}
+
+    def held(self, log: Sequence[Any]) -> tuple[frozenset[int], Any] | None:
+        """``log``'s records in force (their seqs) and its folded answers, or None where the log
+        refuses to fold (a revert of what is not there)."""
+        from turbotab.core import decisions as D, provenance
+
+        try:
+            state = D.fold(log)
+        except D.Refusal:
+            return None
+        ids = provenance.in_force(log)
+        return frozenset(r.seq for r in log if r.id in ids), state.model_dump(mode="json")
+
+    def at(self, n: int) -> tuple[frozenset[int], Any] | None:
+        if n not in self._held:
+            self._held[n] = self.held(self.log[:n]) if self.log is not None else None
+        return self._held[n]
+
+    def read_through(self, fit: Mapping[str, Any]) -> int | None:
+        """How many records of the log ``fit`` read (the module docstring), or None where its
+        records are not served or no prefix appended by its completion holds them in force."""
+        served = fit.get("decisions")
+        if self.log is None or served is None:
+            return None
+        done = _at(fit["at"]) if fit.get("at") else None
+        appended = next((i for i, r in enumerate(self.log) if done is not None and r.at > done),
+                        len(self.log))
+        want = frozenset(served)
+        for n in range(appended, -1, -1):
+            held = self.at(n)
+            if held is not None and held[0] == want:
+                return n
+        return None
+
+    def between(self, before: Mapping[str, Any], fit: Mapping[str, Any]) -> list[int] | None:
+        """The records ``fit`` read that ``before`` (the fit before it) did not, by their seqs; None
+        where those are not known (either fit's prefix is not, or ``fit`` read no more of the log
+        than ``before``)."""
+        n_before, n_now = self.read_through(before), self.read_through(fit)
+        if n_before is None or n_now is None or n_now <= n_before:
+            return None
+        return [r.seq for r in self.log[n_before:n_now]]
+
+    def alone(self, before: Mapping[str, Any], fit: Mapping[str, Any], seq: int
+              ) -> tuple[bool, list[int] | None]:
+        """Whether ``fit``'s records differ from those of ``before`` (the fit before it) by record
+        ``seq`` alone, by the server's rule: ``seq`` is among the records ``fit`` read that
+        ``before`` did not, and that record alone, after those ``before`` read, holds ``fit``'s
+        records in force and folds to its answers. With it, :meth:`between` (the records that
+        moved together)."""
+        between = self.between(before, fit)
+        if between is None or seq not in between:
+            return False, between
+        n_before = self.read_through(before)
+        alone = self.held([*self.log[:n_before], next(r for r in self.log if r.seq == seq)])
+        return alone is not None and alone == self.at(self.read_through(fit)), between
+
+
 def change_of(before: Mapping[str, Any] | None, fit: Mapping[str, Any],
-              records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+              records: Sequence[Mapping[str, Any]], prefixes: Prefixes | None = None
+              ) -> dict[str, Any]:
     """``fit``'s change from ``before``, the fit record before it (None for the first), both ways
     (the module docstring; :class:`record.Attempt`'s ``changed``, ``withdrawn`` and
     ``reinstated``).
@@ -448,7 +606,14 @@ def change_of(before: Mapping[str, Any] | None, fit: Mapping[str, Any],
     of it read since), a record that left force is credited to a new record that answers its
     question (one that replaced it), and one that came into force to the revert that withdrew what
     had replaced it. Beside a new answer to its question, a record's chain is credited with its
-    leaving only where this fit read every revert of the chain."""
+    leaving only where this fit read every revert of the chain.
+
+    Then the server's own rule (``prefixes``, :class:`Prefixes` over ``records`` by default): a
+    shift credited to a record the fit before had read is credited to none; a change credited to
+    records outside those this fit read since the fit before is those records; and a change
+    credited to one record alone stands only where :meth:`Prefixes.alone` confirms it, else it is
+    the records this fit read since the fit before (they moved together), or null where those are
+    not known."""
     now = fit.get("decisions")
     if before is None:
         return {"changed": sorted(now) if now is not None else None, "withdrawn": [],
@@ -525,8 +690,27 @@ def change_of(before: Mapping[str, Any] | None, fit: Mapping[str, Any],
             withdrawn[x] = replaced
         elif withdrawn[x] is AMBIGUOUS or (replaced is not None and x not in whole):
             withdrawn[x] = None
+    prefixes = prefixes or Prefixes(records)
+    read = prefixes.between(before, fit)
+    if read is not None:
+        # A record the fit before read already is credited with no shift of this fit's.
+        for shifted in (withdrawn, reinstated):
+            for x, b in shifted.items():
+                if isinstance(b, int) and b not in read:
+                    shifted[x] = None
     credited = {b for b in (*withdrawn.values(), *reinstated.values()) if b is not None}
-    return {"changed": sorted(set(new) | credited),
+    changed = sorted(set(new) | credited)
+    if read is not None and not set(changed) <= set(read):
+        changed = sorted(read)  # credited by the log's chains, not by the server's prefixes
+    shifts = [*withdrawn.values(), *reinstated.values()]
+    if changed is not None and len(changed) == 1 and None not in shifts:
+        # The fit's whole change would be one record's: only where the server's own rule confirms
+        # it (:meth:`Prefixes.alone`); else the records this fit read since the fit before moved
+        # together, and where those are not known, neither is the change.
+        ok, between = prefixes.alone(before, fit, changed[0])
+        if not ok:
+            changed = sorted(between) if between else None
+    return {"changed": changed,
             "withdrawn": [{"seq": x, "by": b} for x, b in withdrawn.items()],
             "reinstated": [{"seq": x, "by": b} for x, b in reinstated.items()]}
 
@@ -536,9 +720,10 @@ def attempts_of(fits: Sequence[Mapping[str, Any]], records: Sequence[Mapping[str
     """Each fit record as served, with its change from the fit before it (:func:`change_of`) and
     the notes of the records credited with it (``reasons``)."""
     notes = {r["seq"]: r.get("note") for r in records}
+    prefixes = Prefixes(records)
     out: list[dict[str, Any]] = []
     for i, rec in enumerate(fits):
-        change = change_of(fits[i - 1] if i else None, rec, records)
+        change = change_of(fits[i - 1] if i else None, rec, records, prefixes)
         reasons = [{"seq": s, "note": notes[s]} for s in change["changed"] or () if notes.get(s)]
         keep = {k: rec.get(k) for k in R.Attempt.model_fields if k not in (*CHANGE, "reasons")}
         out.append({**keep, **change, "reasons": reasons})
@@ -589,7 +774,8 @@ def examined_of(rec: Mapping[str, Any], records: Sequence[Mapping[str, Any]],
                 out.append({"question": question, "value": value, "how": "preview", "at": p["at"],
                             "refused": p.get("refused"),
                             "alternative": p.get("refused") is None
-                            and not same_option(value, chosen[question])})
+                            and not same_answer(question, p["decision"], value, rec["decision"],
+                                                chosen[question])})
     for earlier in records:
         if earlier["seq"] >= rec["seq"]:
             continue
@@ -601,7 +787,8 @@ def examined_of(rec: Mapping[str, Any], records: Sequence[Mapping[str, Any]],
             if question in chosen and once(question, value, "fit"):
                 out.append({"question": question, "value": value, "how": "fit",
                             "at": fitted["at"], "seq": earlier["seq"], "attempt": fitted["id"],
-                            "alternative": not same_option(value, chosen[question])})
+                            "alternative": not same_answer(question, earlier["decision"], value,
+                                                           rec["decision"], chosen[question])})
     return out
 
 
@@ -610,12 +797,21 @@ def fits_materiality(rec: Mapping[str, Any], attempts: Sequence[Mapping[str, Any
     """The paired movement of the first fit ``rec`` was in force in (a revert, which is never in
     force: the first fit whose change holds it), where the fit's whole change from the fit before
     is ``rec`` alone (:func:`change_of`); else why there is none. ``records``: the decision log, to
-    name what a revert withdrew."""
+    name what a revert withdrew. A record is said to be in no fit (a revert: in no fit's change)
+    only where every fit's records are served; otherwise whether it was is not known, and the
+    engine's why says so (:func:`unserved_why`). Where the first fit's change from the fit before
+    is not known, the why says which (the fit before's records are not served, or the log does not
+    account for the change, :data:`UNACCOUNTED`)."""
     seq = rec["seq"]
     decision = rec.get("decision") or {}
+    unserved = [a for a in attempts if a.get("decisions") is None]
     if decision.get("kind") == "revert":
         first = next((i for i, a in enumerate(attempts) if seq in (a.get("changed") or ())), None)
         if first is None:
+            if unserved:
+                return {"source": None, "why": _not_known_in(unserved, revert=True)}
+            if any(a.get("changed") is None for a in attempts):
+                return {"source": None, "why": UNACCOUNTED}
             target = next((r["seq"] for r in records if r["id"] == decision.get("decision_id")),
                           None)
             return {"source": None, "why": _unseen_revert(target)}
@@ -623,14 +819,16 @@ def fits_materiality(rec: Mapping[str, Any], attempts: Sequence[Mapping[str, Any
         first = next((i for i, a in enumerate(attempts) if seq in (a.get("decisions") or ())),
                      None)
         if first is None:
-            return {"source": None, "why": NOT_IN_A_FIT}
+            return {"source": None, "why": _not_known_in(unserved) if unserved else NOT_IN_A_FIT}
     fit = attempts[first]
     if first == 0:
         return {"source": None, "attempt": fit["id"], "why": fit.get("movement_why") or FIRST_FIT}
     changed = fit.get("changed")
     if changed is None:
+        before = attempts[first - 1]
         return {"source": None, "attempt": fit["id"],
-                "why": fit.get("movement_why") or fit.get("withheld") or NO_MOVEMENT}
+                "why": _before_unserved(before) if before.get("decisions") is None
+                else UNACCOUNTED}
     if seq not in changed:  # restored by a revert, which is credited with it
         by = next((s.get("by") for s in fit.get("reinstated") or () if s.get("seq") == seq), None)
         return {"source": None, "attempt": fit["id"], "why": _restored(fit["seq"], by)}
@@ -845,11 +1043,18 @@ def _bundle(data: bytes) -> dict[str, Any]:
             "checklist": json.loads(files[checklist]) if checklist else None}
 
 
+def _summary(command: Mapping[str, Any]) -> Mapping[str, Any]:
+    summary = command.get("summary")
+    return summary if isinstance(summary, Mapping) else {}
+
+
 def export_of(served: Served, commands: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any],
                                                                                dict[str, Any]]:
-    """The record's export, and the bundle's provenance (empty when the export is refused)."""
-    reached = any(c.get("command") == "export" and _refusal(c.get("output")) is None
-                  for c in commands)
+    """The record's export, and the bundle's provenance (empty when the export is refused).
+    ``reached``: an ``export`` command of the run returned the bundle (its summary's
+    ``exported``, exit status 0)."""
+    reached = any(c.get("command") == "export" and _summary(c).get("exit") == 0
+                  and _summary(c).get("exported") and _refusal(c) is None for c in commands)
     if not served.export.ok:
         error = (served.export.body or {}).get("error") or {}
         return ({"reached": reached, "sha256": None, "methods": None, "checklist": None,
@@ -861,24 +1066,29 @@ def export_of(served: Served, commands: Sequence[Mapping[str, Any]]) -> tuple[di
             parts["provenance"])
 
 
-def _refusal(output: Any) -> Mapping[str, Any] | None:
-    error = output.get("error") if isinstance(output, Mapping) else None
-    if isinstance(error, Mapping) and "code" in error and "message" in error:
+def _refusal(command: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """The refusal a command met, as its summary keeps it (the server's or the driver's), or
+    None."""
+    error = _summary(command).get("refused")
+    if isinstance(error, Mapping) and error.get("code") and error.get("message") is not None:
         return error
     return None
 
 
 def surfacings_of(commands: Sequence[Mapping[str, Any]], ledger: Read) -> dict[str, Any]:
+    """Each refusal the run met, with its ways forward by their labels (by their ids where the
+    summary keeps none), and the command that followed it; the materiality ledger's rows."""
     refusals = []
     for i, c in enumerate(commands):
-        error = _refusal(c.get("output"))
+        error = _refusal(c)
         if error is None:
             continue
         nxt = commands[i + 1] if i + 1 < len(commands) else None
+        exits = [e.get("label") or e.get("id") if isinstance(e, Mapping) else e
+                 for e in error.get("exits") or []]
         refusals.append({"at": c.get("at"), "command": str(c.get("command")),
                          "code": str(error["code"]), "message": str(error["message"]),
-                         "exits": [str(e.get("label")) for e in error.get("exits") or []
-                                   if isinstance(e, Mapping)],
+                         "exits": [str(e) for e in exits if e is not None],
                          "then": str(nxt.get("command")) if nxt is not None else None})
     return {"refusals": refusals, "concerns": (ledger.body or {}).get("rows") or []}
 
@@ -944,13 +1154,13 @@ def run_of(run: RunDir, meta: Mapping[str, Any], attempts: Sequence[Mapping[str,
     engine = provenance.get("engine") or {}
     h = health.body if health.ok else {}
     return {
-        "id": d.get("run_id"), "design": meta.get("design"),
+        "id": d.get("run") or run.path.name, "design": meta.get("design"),
         "engine_commit": engine.get("commit"), "engine_modified": engine.get("modified"),
         "engine_version": (h or {}).get("version"), "analyst_model": meta.get("analyst_model"),
         "effort": meta.get("effort"), "prompt_version": meta.get("prompt_version"),
-        "started": d.get("start"), "ended": d.get("end"), "spend": spent, "spend_why": why,
+        "started": d.get("started"), "ended": d.get("ended"), "spend": spent, "spend_why": why,
         "fits": len(attempts), "fit_seconds": float(sum(seconds)),
-        "fits_unseen": len(attempts) - len(seconds), "fit_budget": d.get("fit_budget"),
+        "fits_unseen": len(attempts) - len(seconds), "fit_budget": d.get("budget"),
         "help": [str(h_) if not isinstance(h_, Mapping) else json.dumps(h_, sort_keys=True)
                  for h_ in meta.get("help") or []],
         "server": {"pid": d.get("pid"), "port": d.get("port"), "mode": (h or {}).get("mode"),
@@ -1044,8 +1254,8 @@ def assemble(run_dir: str | Path, *, meta: Mapping[str, Any] | None = None, clie
     ``client``: an HTTP client on the server's root; by default one on ``127.0.0.1`` at the
     run's port."""
     run = read_run_dir(run_dir)
-    run_id = str(run.driver.get("run_id") or Path(run_dir).name)
-    pid = run.driver.get("project_id")
+    run_id = str(run.driver.get("run") or Path(run_dir).name)
+    pid = run.driver.get("project")
     own = None
     if client is None:
         import httpx

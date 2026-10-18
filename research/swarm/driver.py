@@ -1344,12 +1344,15 @@ def trim(obj: Any, limit: int = TRIM) -> Any:
 
 
 def summary(name: str, code: int, payload: dict[str, Any]) -> dict[str, Any]:
-    """What ``commands.jsonl`` keeps of a response: enough to follow the run, not the whole."""
+    """What ``commands.jsonl`` keeps of a response: enough to follow the run, not the whole (the
+    record's assembler reads its ``refused``, each way forward by its id and label, and its
+    ``exported``)."""
     out: dict[str, Any] = {"exit": code}
     if "refused" in payload:
         r = payload["refused"]
         out["refused"] = {k: r.get(k) for k in ("by", "status", "code", "message")}
-        out["refused"]["exits"] = [e.get("id") for e in r.get("exits") or []]
+        out["refused"]["exits"] = [{"id": e.get("id"), "label": e.get("label")}
+                                   for e in r.get("exits") or [] if isinstance(e, dict)]
     if name == "ask":
         q = payload.get("question") or {}
         out.update({"question": q.get("key"), "status": q.get("status"),

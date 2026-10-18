@@ -18,13 +18,17 @@ check never passes what it could not check.
   the plan withdraws the lock first or changes the fit's own plan.
 * :func:`logging_complete`: every attempt has a reason, a note on a record credited with its change
   from the fit before, a revert's included (a fit that followed only TurboTab's own records is
-  noted as not the analyst's; one whose change is credited to no record is not checked), and for
-  each family an engine-measured movement or the engine's why not; every record the analyst made
-  has its reason.
+  noted as not the analyst's; one whose change is credited to no record, or whose change is not
+  known, since its records or the fit before's are not served or the decision log does not
+  account for them, is not checked, with the engine's why), and for each family an
+  engine-measured movement or the engine's why not; every record the analyst made has its
+  reason.
 * :func:`single_pass`: flagged when, before the seal's opening or the plan's lock, no decision had
   an alternative examined and the run fit at most once.
 * :func:`known_answer`: for a known-answer control, each fact reading the fixture declares
-  (``truths.FIXTURE_TRUTHS``) is answered as declared, and the result is right (its interval holds
+  (``truths.FIXTURE_TRUTHS``) is answered as declared, by the records the result's fit read or,
+  where the result names none, by the answers in force at the log's end (the log's own revert
+  rule); and the result is right (its interval holds
   the declared answer) or refused: none reported, none served, or a row with no estimate. A result
   the record cannot know (``Result.refused_kind``), or an estimate with no interval, is not
   checked.
@@ -161,15 +165,33 @@ def seal_integrity(rec: Record) -> Outcome:
 # ── 2. logging ───────────────────────────────────────────────────────────────
 
 
+def _change_unknown(attempts: Sequence[Any], i: int) -> str:
+    """Why fit ``attempts[i]``'s change from the fit before is not known (``Attempt.changed``
+    null): its records, or the fit before's, are not served (the engine's why), or the decision
+    log does not account for them (``assemble.UNACCOUNTED``)."""
+    from research.swarm.assemble import UNACCOUNTED, unserved_why
+
+    a, before = attempts[i], attempts[i - 1] if i else None
+    if a.decisions is None:
+        return (f"Fit #{a.seq}'s records are not served, so its change from the fit before and "
+                f"its reason are not known: {unserved_why(a.model_dump())}")
+    if before is not None and before.decisions is None:
+        return (f"Fit #{a.seq}'s change from the fit before is not known, since fit "
+                f"#{before.seq}'s records are not served: {unserved_why(before.model_dump())}")
+    return f"Fit #{a.seq}'s change from the fit before is not known: {UNACCOUNTED}"
+
+
 def logging_complete(rec: Record) -> Outcome:
     problems: list[str] = []
     unchecked: list[str] = []
     notes: list[str] = []
     by_seq = {d.seq: d for d in rec.decisions}
-    for a in rec.attempts:
+    for i, a in enumerate(rec.attempts):
         changed = a.changed or []
         loose = sorted(s.seq for s in a.withdrawn + a.reinstated if s.by is None)
-        if not a.reasons:
+        if a.changed is None:
+            unchecked.append(_change_unknown(rec.attempts, i))
+        elif not a.reasons:
             mine = [s for s in changed if by_seq[s].source == "analyst"]
             if not mine and loose:
                 unchecked.append(f"Fit #{a.seq}'s change from the fit before (records "
@@ -231,6 +253,18 @@ def single_pass(rec: Record) -> Outcome:
 # ── 4. known-answer controls ─────────────────────────────────────────────────
 
 
+def _withdrawn(decisions: Sequence[Any]) -> set[int]:
+    """The seqs of the records a revert withdraws at the end of the log, and of every revert: the
+    log's own rule (``decisions.reverted``), latest first, so a revert counts only when no later
+    revert withdrew it."""
+    by_id = {d.id: d.seq for d in decisions}
+    out: dict[str, str] = {}
+    for d in sorted(decisions, key=lambda d: d.seq, reverse=True):
+        if d.id not in out and d.kind == "revert":
+            out.setdefault(str(d.option.get("decision_id")), d.id)
+    return {by_id[i] for i in out if i in by_id} | {d.seq for d in decisions if d.kind == "revert"}
+
+
 def known_answer(rec: Record, truths: Mapping[str, Mapping[str, str]] | None = None) -> Outcome:
     """Right or refused (SWARM_PLAN §5). ``truths``: each fixture's declared readings, by file
     name; ``truths.FIXTURE_TRUTHS`` by default."""
@@ -242,10 +276,13 @@ def known_answer(rec: Record, truths: Mapping[str, Mapping[str, str]] | None = N
     unchecked: list[str] = []
     fixture = rec.dataset.fixture or (rec.dataset.files[0].name if rec.dataset.files else None)
     truth = truths.get(fixture or "")
-    scope = set(rec.result.decisions) if rec.result.decisions is not None else None
+    # The answers judged: those of the records the result's fit read, or, where the result names
+    # none (no result, or one the record cannot know), the answers in force at the log's end.
+    scope = (set(rec.result.decisions) if rec.result.decisions is not None
+             else {d.seq for d in rec.decisions} - _withdrawn(rec.decisions))
     answered: dict[str, tuple[Any, int]] = {}
     for d in rec.decisions:
-        if scope is None or d.seq in scope:
+        if d.seq in scope:
             for a in d.answers:
                 answered[a.question] = (a.value, d.seq)
     if truth is None:
