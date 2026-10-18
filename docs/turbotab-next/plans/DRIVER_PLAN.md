@@ -60,9 +60,19 @@ run.
 ### D2. The analyst agent type
 - **Where:** `.claude/agents/analyst.md`. It has no Edit, Write or web tool. Its Bash runs only
   the driver's commands.
-- **The mechanism is checked first:** the agent frontmatter's tools list and the permission rules
-  are checked against Claude Code's documentation (the claude-code-guide agent) before anything
-  relies on them.
+- **The mechanism, checked against Claude Code's documentation (2026-10-18):**
+  - A subagent's `tools:` field takes tool names only. A command pattern such as
+    `Bash(python -m research.swarm.driver:*)` exists only in permission rules, and a permission
+    rule cannot be scoped to one agent type.
+  - So the definition sets `tools: Bash`, a `disallowedTools` list (Edit, Write, NotebookEdit,
+    WebFetch, WebSearch, Agent and the MCP tools), `model:` and `effort:`.
+  - A PreToolUse hook, which is told the caller's `agent_type`, denies any Bash command from an
+    `analyst` that does not start with the driver's command. Denied calls in a background run are
+    refused, not prompted.
+  - The hook's script is committed (`research/swarm/analyst_hook.py`, tested both ways).
+  - Wiring it into settings stays local on Nolan's machine, as his guard hook does (his ruling of
+    2026-10-17: "Let's not make those public"). The orchestrator wires it, and no settings file is
+    committed.
 - **A run refuses to start** where the restriction cannot be enforced.
 - **The prompt holds:**
   - the dataset's question card;
