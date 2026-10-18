@@ -1,0 +1,190 @@
+{
+ "id": "bang2009",
+ "kind": "replication",
+ "about": "The development analysis's numbers (NHANES 1999–2004), as the replication notes quote the paper. The validation's (NHANES 2005–2006, ARIC and CHS) are left out: this table holds neither.",
+ "notes": "docs/turbotab-next/notes/replication/bang2009.md",
+ "truths": [
+  {
+   "name": "the development sample, unweighted (Table 1)",
+   "source": "docs/turbotab-next/notes/replication/bang2009.md §5 (the paper's PMC author manuscript, PMC3633111)",
+   "value": {
+    "normal fasting glucose": 3396,
+    "impaired fasting glucose": 1652,
+    "undiagnosed diabetes": 210,
+    "in the model": 5258,
+    "known diabetes, not in the model": 482
+   }
+  },
+  {
+   "name": "the final model (Table 2): odds ratio, its 95% CI, P and points",
+   "source": "docs/turbotab-next/notes/replication/bang2009.md §5 (the paper's PMC author manuscript, PMC3633111)",
+   "value": [
+    {
+     "factor": "age 40-49, against under 40",
+     "odds_ratio": 2.6,
+     "ci95": [
+      1.3,
+      5.0
+     ],
+     "p": "0.004",
+     "points": 1
+    },
+    {
+     "factor": "age 50-59",
+     "odds_ratio": 4.8,
+     "ci95": [
+      2.2,
+      10.6
+     ],
+     "p": "0.0001",
+     "points": 2
+    },
+    {
+     "factor": "age 60 or older",
+     "odds_ratio": 8.1,
+     "ci95": [
+      3.9,
+      16.9
+     ],
+     "p": "<0.0001",
+     "points": 3
+    },
+    {
+     "factor": "male",
+     "odds_ratio": 2.6,
+     "ci95": [
+      1.8,
+      3.7
+     ],
+     "p": "<0.0001",
+     "points": 1
+    },
+    {
+     "factor": "family history of diabetes",
+     "odds_ratio": 2.0,
+     "ci95": [
+      1.5,
+      2.6
+     ],
+     "p": "<0.0001",
+     "points": 1
+    },
+    {
+     "factor": "history of hypertension",
+     "odds_ratio": 1.9,
+     "ci95": [
+      1.2,
+      2.9
+     ],
+     "p": "0.004",
+     "points": 1
+    },
+    {
+     "factor": "overweight, against not overweight or obese",
+     "odds_ratio": 1.3,
+     "ci95": [
+      0.6,
+      2.8
+     ],
+     "p": "0.47",
+     "points": 1
+    },
+    {
+     "factor": "obese",
+     "odds_ratio": 3.1,
+     "ci95": [
+      1.6,
+      5.8
+     ],
+     "p": "0.0006",
+     "points": 2
+    },
+    {
+     "factor": "extremely obese",
+     "odds_ratio": 7.3,
+     "ci95": [
+      4.0,
+      13.4
+     ],
+     "p": "<0.0001",
+     "points": 3
+    },
+    {
+     "factor": "physically active",
+     "odds_ratio": 0.7,
+     "ci95": [
+      0.5,
+      1.0
+     ],
+     "p": "0.06",
+     "points": -1
+    }
+   ]
+  },
+  {
+   "name": "the final model's AUC in development",
+   "source": "docs/turbotab-next/notes/replication/bang2009.md §5 (the paper's PMC author manuscript, PMC3633111)",
+   "value": 0.79
+  },
+  {
+   "name": "the score: the sum of the points; high risk at 5 or more",
+   "source": "docs/turbotab-next/notes/replication/bang2009.md §5 (the paper's PMC author manuscript, PMC3633111)",
+   "value": {
+    "range": [
+     -1,
+     9
+    ],
+    "high_risk_at_or_above": 5
+   }
+  },
+  {
+   "name": "the score's cutpoints in development (Table 3)",
+   "source": "docs/turbotab-next/notes/replication/bang2009.md §5 (the paper's PMC author manuscript, PMC3633111)",
+   "value": [
+    {
+     "score_at_or_above": 6,
+     "pct_high_risk": 23,
+     "sensitivity": 61,
+     "specificity": 79,
+     "ppv": 11,
+     "npv": 98,
+     "lr_positive": 2.9,
+     "lr_negative": 0.49
+    },
+    {
+     "score_at_or_above": 5,
+     "pct_high_risk": 39,
+     "sensitivity": 82,
+     "specificity": 63,
+     "ppv": 8,
+     "npv": 99,
+     "lr_positive": 2.22,
+     "lr_negative": 0.29
+    },
+    {
+     "score_at_or_above": 4,
+     "pct_high_risk": 55,
+     "sensitivity": 93,
+     "specificity": 46,
+     "ppv": 7,
+     "npv": 99,
+     "lr_positive": 1.72,
+     "lr_negative": 0.15
+    },
+    {
+     "score_at_or_above": 3,
+     "pct_high_risk": 71,
+     "sensitivity": 98,
+     "specificity": 30,
+     "ppv": 5,
+     "npv": 100,
+     "lr_positive": 1.4,
+     "lr_negative": 0.07
+    }
+   ]
+  }
+ ],
+ "compare": {
+  "weighting": "Table 3 and the counts look unweighted (the notes' §5.3): compare a run's unweighted sample metrics first."
+ }
+}

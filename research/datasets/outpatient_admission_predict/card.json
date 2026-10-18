@@ -1,0 +1,18 @@
+{
+ "id": "outpatient_admission_predict",
+ "design": "analysts",
+ "purpose": "Predict",
+ "question": "How well do the table's measures predict a hospital admission within two years of the visit?",
+ "population": "A generated (synthetic) cohort of adult outpatients, one row per patient at a clinic visit.",
+ "outcome": {
+  "column": "admitted_2y",
+  "meaning": "admitted to hospital within two years of the visit (1 yes, 0 no)"
+ },
+ "table": {
+  "path": "research/data/datasets/outpatient_admission_predict/outpatient_visits.csv",
+  "format": "csv"
+ },
+ "source": "A generated (synthetic) table.",
+ "prepared": [],
+ "manifest": "research/datasets/outpatient_admission_predict/manifest.json"
+}

@@ -1,0 +1,23 @@
+{
+ "about": "A sample fixture of this repository, copied as tracked.",
+ "dataset": "survey_support_estimate",
+ "license": "MIT",
+ "basis": "the repository's LICENSE: the table is generated here",
+ "files": [
+  {
+   "file": "turbotab/sample_data/survey_instrument.csv",
+   "origin": "this repository",
+   "generator": "turbotab/sample_data/make_fixtures.py::survey",
+   "bytes": 32974,
+   "sha256": "b646927ae2019317d7441cb4b3b93da41fde70955d908021bed8aca8e55f1729"
+  }
+ ],
+ "table": {
+  "file": "research/data/datasets/survey_support_estimate/survey_instrument.csv",
+  "format": "csv",
+  "rows": 300,
+  "columns": 45,
+  "bytes": 32974,
+  "sha256": "b646927ae2019317d7441cb4b3b93da41fde70955d908021bed8aca8e55f1729"
+ }
+}

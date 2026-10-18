@@ -1,0 +1,87 @@
+{
+ "id": "clinical_readmission_predict",
+ "kind": "known_answer",
+ "fixture_key": "clinical_risk.csv",
+ "about": "A generated cohort whose outcome is drawn from a logistic model of its columns (make_fixtures.py::clinical_risk): the true risk of every row is known.",
+ "truths": [
+  {
+   "name": "the outcome's generating model",
+   "source": "turbotab/sample_data/make_fixtures.py::clinical_risk",
+   "value": {
+    "link": "logit",
+    "intercept": -1.35,
+    "terms": [
+     {
+      "column": "age",
+      "coef": 0.03,
+      "center": 68,
+      "transform": "identity"
+     },
+     {
+      "column": "charlson_index",
+      "coef": 0.26,
+      "center": 2.2,
+      "transform": "identity"
+     },
+     {
+      "column": "prior_admissions_12mo",
+      "coef": 0.5,
+      "center": 0.9,
+      "transform": "identity"
+     },
+     {
+      "column": "albumin_g_dl",
+      "coef": -0.95,
+      "center": 3.6,
+      "transform": "identity"
+     },
+     {
+      "column": "creatinine_mg_dl",
+      "coef": 0.45,
+      "center": 1.05,
+      "transform": "log_ratio"
+     },
+     {
+      "column": "hemoglobin_g_dl",
+      "coef": -0.16,
+      "center": 11.9,
+      "transform": "identity"
+     },
+     {
+      "column": "length_of_stay_days",
+      "coef": 0.075,
+      "center": 4.6,
+      "transform": "identity"
+     }
+    ],
+    "no_signal": [
+     "encounter_id",
+     "sex",
+     "sodium_mmol_l"
+    ]
+   }
+  },
+  {
+   "name": "the C-statistic of ranking every row by its true risk",
+   "source": "the generating model on the table's rows, by scikit-learn's roc_auc_score",
+   "value": 0.7419448757763976
+  },
+  {
+   "name": "leakage",
+   "source": "turbotab/sample_data/clinical_risk.md (Must NOT surface)",
+   "value": "none: no column is measured after the outcome or stands in for it"
+  },
+  {
+   "name": "the readings a user who knows the table gives",
+   "source": "turbotab/core/tests/truths.py FIXTURE_TRUTHS",
+   "value": {
+    "code_or_count:age": "amount",
+    "code_or_count:charlson_index": "amount",
+    "code_or_count:prior_admissions_12mo": "amount",
+    "code_or_count:sodium_mmol_l": "amount",
+    "code_or_count:length_of_stay_days": "amount",
+    "sex_coding:sex": "female=F,male=M"
+   }
+  }
+ ]
+}

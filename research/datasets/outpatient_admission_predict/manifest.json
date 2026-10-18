@@ -1,0 +1,21 @@
+{
+ "about": "A null decoy, generated from its seed.",
+ "dataset": "outpatient_admission_predict",
+ "license": "MIT",
+ "basis": "the repository's LICENSE: the table is generated here",
+ "files": [],
+ "generator": {
+  "module": "research/swarm/decoys.py",
+  "function": "generate",
+  "seed": 20261018,
+  "rows": 1600
+ },
+ "table": {
+  "file": "research/data/datasets/outpatient_admission_predict/outpatient_visits.csv",
+  "format": "csv",
+  "rows": 1600,
+  "columns": 17,
+  "bytes": 123595,
+  "sha256": "e3b11600ffd1cdf1ab70817929b7ae800b82f86ea1240a2b39b9ab1e5d3b3a11"
+ }
+}
