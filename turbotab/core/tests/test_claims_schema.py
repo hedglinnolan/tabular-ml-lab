@@ -100,6 +100,18 @@ BROKEN = {
     "basis audit fingerprint not twelve hex digits": dict(parts=(Part(
         "value", grade="judgment", basis=Basis(reason="r"),
         audited_by=Audit("a basis audit, 2026-10-18", "not a hash")),)),
+    "basis audits given as an empty tuple": dict(parts=(Part(
+        "value", grade="judgment", basis=Basis(reason="r"), audited_by=()),)),
+    "basis audits holding a string": dict(parts=(Part(
+        "value", grade="judgment", basis=Basis(reason="r"),
+        audited_by=(Audit("a basis audit, 2026-10-18", SEEN), "a domain reviewer, 2026-10-19")),)),
+    "a later basis audit with no date": dict(parts=(Part(
+        "value", grade="judgment", basis=Basis(reason="r"),
+        audited_by=(Audit("a basis audit, 2026-10-18", SEEN), Audit("a domain reviewer", SEEN))),)),
+    "basis audits out of date order": dict(parts=(Part(
+        "value", grade="judgment", basis=Basis(reason="r"),
+        audited_by=(Audit("a basis audit, 2026-10-19", SEEN),
+                    Audit("a domain reviewer, 2026-10-18", SEEN))),)),
     "referee with no date": dict(parts=(Part(
         "value", grade="judgment", basis=Basis(reason="r"),
         referees=(Referee("referee A", "upheld", grade="judgment", checked=SEEN),)),)),
@@ -155,6 +167,22 @@ def test_a_dated_basis_audit_and_dated_referees_register():
                           Referee("referee B, 2026-10-18", "not_upheld",
                                   fork_of="the orchestrator", grade="sourced", checked=SEEN)))
     assert Registry([rule(parts=(part,))])["planted.few_clusters"].parts == (part,)
+
+
+def test_basis_audits_appended_in_date_order_register_and_the_last_is_in_force():
+    """Audits are append-only, as referees are (R1_PLAN R1-M's package, item 3): a tuple of them,
+    oldest first, each dated no earlier than the one before; the last is the audit in force. A
+    part that names none, or one audit in today's form, is as it was."""
+    first = Audit("theorist A, 2026-10-18", SEEN)
+    later = Audit("a basis audit, 2026-10-18", SEEN)
+    last = Audit("a domain reviewer, 2026-10-19", SEEN)
+    part = Part("value", grade="judgment", basis=Basis(reason="r"), audited_by=(first, later, last))
+    assert Registry([rule(parts=(part,))])["planted.few_clusters"].parts == (part,)
+    assert claims.audits(part) == (first, later, last) and claims.audit_in_force(part) == last
+    one = Part("value", grade="judgment", basis=Basis(reason="r"), audited_by=first)
+    assert claims.audits(one) == (first,) and claims.audit_in_force(one) == first
+    none = Part("value", grade="judgment", basis=Basis(reason="r"))
+    assert claims.audits(none) == () and claims.audit_in_force(none) is None
 
 
 def test_a_retired_part_registers_beside_one_asserted_and_the_grade_is_the_asserted_one_s():

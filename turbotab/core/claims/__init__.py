@@ -10,7 +10,8 @@ its evidence covers, and the tests that hold the code to it.
   swarm. A swarm claim enters proposed with every part unsupported and renders nowhere; a part
   leaves unsupported only as graded by someone other than its author, and above judgment only
   through the two-referee gate (:func:`referee_gate`, its :class:`Referee` s), its grade's own
-  requirement and a basis audit (an :class:`Audit`, ``Part.audited_by``), meta-test 7. Each
+  requirement and a basis audit (an :class:`Audit`, ``Part.audited_by``; audits are appended, as
+  referees are, and the last is the one in force, :func:`audit_in_force`), meta-test 7. Each
   referee and audit names the part's fingerprint as it read it (:func:`checked`), and counts only
   while the part stands so. Every grade change is a line of the history with its date, grader and
   reason, which the generator writes, and meta-test 8 refuses a grade that differs from its last
@@ -50,16 +51,17 @@ from turbotab.core.claims._digits import (ALLOWLIST, CITATIONS, TAGS, citation_k
                                           citation_spans, load_allowlist, stale_allowlist)
 from turbotab.core.claims._meta import (GRADE_LINE, META_TESTS, digit_gate, grades_met,
                                         grades_recorded, no_conflicts, no_self_pinning,
-                                        none_proposed_renders, swarm_gate, tests_exist)
+                                        none_proposed_renders, review_edits, swarm_gate,
+                                        tests_exist)
 from turbotab.core.claims._registry import (FROZEN, GENERATOR, HISTORY, REPO, STRICT_ENV,
                                             ClaimError, NotRenderable, OutsideRegime, Registry,
                                             frozen_records, frozen_text, strict_mode)
 from turbotab.core.claims._schema import (ABOVE_JUDGMENT, CHECKED_DIGITS, GRADED_FORM, GRADES,
                                           KINDS, ORIGINS, PURPOSES, REFEREE_VERDICTS, RETIRED,
                                           RUNGS, TRUTHS, VERDICTS, Audit, Basis, Claim, Fires,
-                                          HeldOut, Param, Part, Referee, Regime, Silent, checked,
-                                          content, content_hash, dated, fill, grader,
-                                          referee_gate, same_person)
+                                          HeldOut, Param, Part, Referee, Regime, Silent,
+                                          audit_in_force, audits, checked, content, content_hash,
+                                          dated, fill, grader, referee_gate, same_person)
 
 REGISTRY = Registry()
 _loaded = False
@@ -112,11 +114,13 @@ __all__ = [
     "ClaimError", "FROZEN", "Fires", "GENERATOR", "GRADED_FORM", "GRADES", "GRADE_LINE", "HISTORY",
     "HeldOut", "KINDS", "META_TESTS", "NotRenderable", "ORIGINS", "OutsideRegime", "PURPOSES",
     "Param", "Part", "REFEREE_VERDICTS", "REGISTRY", "REPO", "RETIRED", "RUNGS", "Referee",
-    "Regime", "Registry", "STRICT_ENV", "Silent", "TAGS", "TRUTHS", "VERDICTS", "card", "checked",
+    "Regime", "Registry", "STRICT_ENV", "Silent", "TAGS", "TRUTHS", "VERDICTS", "audit_in_force",
+    "audits", "card", "checked",
     "citation_keys", "citation_spans", "content",
     "content_hash", "dated", "digit_gate", "fill", "frozen_records", "frozen_text", "grader",
     "grades_met", "grades_recorded", "load_allowlist", "methods", "no_conflicts",
     "no_self_pinning", "none_proposed_renders", "referee_gate", "register", "registry",
+    "review_edits",
     "same_person", "scan", "stale_allowlist", "status", "strict_mode", "swarm_gate",
     "tests_exist", "value",
 ]

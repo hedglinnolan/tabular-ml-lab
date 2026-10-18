@@ -15,8 +15,9 @@ that break and keep it.
    test its file defines, whether or not the claim is built yet); above judgment its grader (the
    "<who>" of "<who>, YYYY-MM-DD") is not its author, compared as ``_schema.same_person`` does,
    which refuses in doubt, and its claim has regime predicates (§2.2). A part that names a basis
-   audit (who checked its basis against the source, and when) names someone other than its
-   author, who checked the part as it stands (its fingerprint, ``_schema.checked``). A retired
+   audit (who checked its basis against the source, and when) has, as the audit in force (the
+   last appended, ``_schema.audit_in_force``), one by someone other than its author, who checked
+   the part as it stands (its fingerprint, ``_schema.checked``). A retired
    part asserts nothing, so has no requirement.
 4. :func:`none_proposed_renders` — no built claim falls back to one that cannot render, and no
    proposed or retracted claim's sentence is among the strings the app shows.
@@ -29,8 +30,8 @@ that break and keep it.
    two-referee gate (``_schema.referee_gate``: two distinct referees who upheld it, neither its
    author nor a fork, a name any of the part's records marks a fork or possibly its author
    counting in none of them, and none who counts against it), meets its grade's own requirement
-   (§2.4, as meta-test 3 reads it) and names a basis audit by someone other than its author (§8).
-   A referee
+   (§2.4, as meta-test 3 reads it) and names a basis audit, the one in force, by someone other
+   than its author (§8). A referee
    or the audit counts only where it was on the part as it stands: the referee judged the grade
    the part holds, and each read the part's fingerprint now (``_schema.checked``). An uphold and
    the audit also count only where dated no earlier than the day the part took its previous
@@ -48,9 +49,12 @@ that break and keep it.
    review also stays as the history's version lines recorded it, since meta-test 7 reads only the
    claim as it now stands: its author is the one the first version that names an author gives; a
    part graded above unsupported names the grader and date of its last grade line while it holds
-   that line's grade; and every referee a version recorded on a part it still names is still
-   named, each field as recorded, so a later verdict is a referee added beside the others. What
-   was edited before the generator wrote it, the history never saw. A part the history holds that
+   that line's grade; and every referee and every basis audit a version recorded on a part it
+   still names is still named, each field as recorded, so a later verdict is a referee added
+   beside the others, and a re-audit an audit appended after them (the last is in force, which
+   meta-tests 3 and 7 read). The generator makes this check before it appends a line
+   (:func:`review_edits`), so no history it writes holds such an edit. What was edited before the
+   generator wrote it, the history never saw. A part the history holds that
    its claim no longer names left it through a line that retires it, never dropped or renamed; a
    swarm claim's part is retired by someone other than its author.
 """
@@ -69,8 +73,8 @@ from turbotab.core.claims._digits import (CITATIONS, citation_keys, citation_spa
                                           stray_digits)
 from turbotab.core.claims._registry import GENERATOR, Registry, tree
 from turbotab.core.claims._schema import (ABOVE_JUDGMENT, GRADED_FORM, GRADES, RETIRED, Audit,
-                                          Claim, Referee, checked, dated, fill, grader, literal,
-                                          referee_gate, same_person)
+                                          Claim, Referee, audit_in_force, audits, checked, dated,
+                                          fill, grader, literal, referee_gate, same_person)
 
 _NEVER_RUNS = "is marked to skip or xfail unconditionally, so it never asserts"
 
@@ -181,11 +185,12 @@ def _grade_unmet(reg: Registry, c: Claim, part, keys: frozenset[str],
         if same_person(who, c.author):
             return (f"{grade} is graded by {who!r}, which may be its author {c.author!r}; above "
                     "judgment, someone else grades")
-    audit = part.audited_by
-    if with_audit and audit:
-        auditor = grader(audit.who) if isinstance(audit, Audit) else None
+    audit = audit_in_force(part)  # the last audit appended
+    if with_audit and part.audited_by:
+        auditor = grader(audit.who) if audit is not None else None
         if auditor is None:  # registration refuses it, so only a claim set past it
-            return f"its basis audit is an Audit that reads {GRADED_FORM}, not {audit!r}"
+            return (f"its basis audit is an Audit that reads {GRADED_FORM}, not "
+                    f"{part.audited_by!r}")
         if same_person(auditor, c.author):
             return (f"its basis audit is by {auditor!r}, which may be its author {c.author!r}; "
                     "someone else checks a basis against its source")
@@ -340,7 +345,7 @@ def swarm_gate(reg: Registry, citations: Path = CITATIONS,
             unmet = _grade_unmet(reg, c, part, keys, with_audit=False)
             if unmet:
                 out.append(f"{where}, but its grade's own requirement is unmet: {unmet}")
-            audit = part.audited_by if isinstance(part.audited_by, Audit) else None
+            audit = audit_in_force(part)  # the last audit appended
             when = dated(audit.who) if audit is not None else None
             if when is None:
                 out.append(f"{where}, but it names no basis audit, an Audit reading {GRADED_FORM}: "
@@ -384,18 +389,35 @@ def _referee(record: Mapping[str, Any]) -> dict[str, Any]:
     return {name: record.get(name, default) for name, default in _REFEREE}
 
 
+# A basis audit's fields as a version line holds them, as for a referee.
+_AUDIT = tuple((f.name, f.default) for f in dataclasses.fields(Audit))
+
+
+def _audit(record: Mapping[str, Any]) -> dict[str, Any]:
+    return {name: record.get(name, default) for name, default in _AUDIT}
+
+
+def _audits_held(audited_by: Any) -> list[dict[str, Any]]:
+    """The basis audits a version line's part holds: none for "", one for an object, each object
+    of a list (an :class:`Audit`, or a tuple of them, as ``_schema.content`` writes them)."""
+    found = audited_by if isinstance(audited_by, list) else [audited_by]
+    return [_audit(a) for a in found if isinstance(a, dict)]
+
+
 class _History:
     """What a history holds: each part's grade lines with their line numbers, oldest first, in
     the order the history first names each part; each claim's origin in its first version line,
-    and its author in the first that names one, with its line number; each part's referees, as
-    its versions recorded them, each with the line of the first version that recorded it; and
-    what does not read, one sentence each. ``missing`` is the path where there is none."""
+    and its author in the first that names one, with its line number; each part's referees and
+    basis audits, as its versions recorded them, each with the line of the first version that
+    recorded it; and what does not read, one sentence each. ``missing`` is the path where there is
+    none."""
 
     def __init__(self) -> None:
         self.parts: dict[tuple[str, str], list[tuple[int, dict[str, Any]]]] = {}
         self.born: dict[str, str] = {}
         self.author: dict[str, tuple[int, str]] = {}
         self.referees: dict[tuple[str, str], list[tuple[int, dict[str, Any]]]] = {}
+        self.audits: dict[tuple[str, str], list[tuple[int, dict[str, Any]]]] = {}
         self.unread: list[str] = []
         self.missing: Path | None = None
 
@@ -413,6 +435,10 @@ class _History:
             for r in referees if isinstance(referees, list) else ():
                 if isinstance(r, dict) and _referee(r) not in (x for _, x in held):
                     held.append((n, _referee(r)))
+            audited = self.audits.setdefault((id, p["name"]), [])
+            for a in _audits_held(p.get("audited_by")):
+                if a not in (x for _, x in audited):
+                    audited.append((n, a))
 
 
 def _read_history(path: Path) -> _History:
@@ -483,11 +509,15 @@ def _line_faults(n: int, record: dict[str, Any], prev: dict[str, Any] | None) ->
 
 _KEPT = ("a swarm claim's review stays as the history recorded it, so meta-test 7 reads the "
          "verdicts as they were given: a later verdict is a referee added beside them")
+_KEPT_AUDIT = ("a swarm claim's basis audits stay as the history recorded them, so the trail "
+               "keeps who checked first: a later audit is one appended after them, and the last is "
+               "the audit in force")
 
 
 def _review_edits(c: Claim, h: _History) -> list[str]:
     """How swarm claim ``c`` edits what the history recorded of its review: its author, a part's
-    grader while the part holds the grade that grader gave, or a referee, dropped or changed."""
+    grader while the part holds the grade that grader gave, or a referee or basis audit, dropped
+    or changed."""
     out = []
     first = h.author.get(c.id)
     if first is not None and c.author != first[1]:
@@ -525,7 +555,41 @@ def _review_edits(c: Claim, h: _History) -> list[str]:
                                   f"recorded {was[k]!r}" for k, _ in _REFEREE if same[k] != was[k])
                 out.append(f"{c.id}: part {part.name!r}: the referee {was['who']!r} now gives "
                            f"{moved}: {_KEPT}")
+        made = [dataclasses.asdict(a) for a in audits(part)]
+        for n, was in h.audits.get(key, []):
+            if was in made:
+                continue
+            same = next((a for a in made if a["who"] == was["who"]), None)
+            if same is None:
+                out.append(f"{c.id}: part {part.name!r}: history line {n} recorded the basis audit "
+                           f"by {was['who']!r}, but the part no longer names it: {_KEPT_AUDIT}")
+            else:
+                out.append(f"{c.id}: part {part.name!r}: the basis audit by {was['who']!r} now "
+                           f"gives the fingerprint it read as {same['checked']!r}, where history "
+                           f"line {n} recorded {was['checked']!r}: {_KEPT_AUDIT}")
     return out
+
+
+def _swarm_edits(c: Claim, h: _History) -> list[str]:
+    """How ``c`` edits what the history recorded of a swarm claim: its origin relabeled away from
+    the swarm, or its review (:func:`_review_edits`); nothing for a claim never the swarm's."""
+    out = []
+    if h.born.get(c.id) == "swarm" and c.origin != "swarm":
+        out.append(f"{c.id}: the history first recorded it as the swarm's, but it now names "
+                   f"its origin {c.origin}: a swarm claim stays the swarm's, and is graded "
+                   "through meta-test 7's gate")
+    if c.origin == "swarm" or h.born.get(c.id) == "swarm":
+        out += _review_edits(c, h)
+    return out
+
+
+def review_edits(reg: Registry, history: Path | None = None) -> list[str]:
+    """What the registry's swarm claims edit of what ``history`` (the registry's own unless given)
+    recorded of them, one sentence each (:func:`_swarm_edits`): meta-test 8's own check, which the
+    generator also makes before it appends any line, so that no history it writes holds such an
+    edit."""
+    h = _read_history(Path(history) if history is not None else reg.history_path)
+    return [v for c in reg for v in _swarm_edits(c, h)]
 
 
 def grades_recorded(reg: Registry, history: Path | None = None) -> list[str]:
@@ -545,14 +609,9 @@ def grades_recorded(reg: Registry, history: Path | None = None) -> list[str]:
     first = {key: lines[0][1] for key, lines in h.parts.items()}
     last = {key: lines[-1][1] for key, lines in h.parts.items()}
     for c in reg:
-        if h.born.get(c.id) == "swarm" and c.origin != "swarm":
-            out.append(f"{c.id}: the history first recorded it as the swarm's, but it now names "
-                       f"its origin {c.origin}: a swarm claim stays the swarm's, and is graded "
-                       "through meta-test 7's gate")
+        out += _swarm_edits(c, h)
         named = {p.name for p in c.parts}
         swarm = c.origin == "swarm" or h.born.get(c.id) == "swarm"
-        if swarm:
-            out += _review_edits(c, h)
         for (id, name), lines in h.parts.items():
             if id != c.id:
                 continue

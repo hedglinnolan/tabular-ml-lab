@@ -4,7 +4,8 @@ meets when it registers.
 A claim's vocabulary is checked at registration, as a method contract's is: its kind, its origin,
 its parts' grades, its verdict, its purposes, each test's declared truth, the form of every name it
 gives as a string (a test's path stays inside the repository), the grader of each part above
-judgment, its basis audit (an :class:`Audit`) and each of its referees ("<who>, YYYY-MM-DD"), the
+judgment, its basis audits (each an :class:`Audit`, in the order they were made) and each of its
+referees ("<who>, YYYY-MM-DD"), the
 grade each referee judged and the fingerprint each referee and audit read, each referee's verdict,
 that a claim keeps one part it asserts, and that its parameters fill both its templates. What the
 vocabulary cannot settle (whether a test exists, whether a citation key resolves, whether the
@@ -148,7 +149,9 @@ class Audit:
     """A part's basis audit (CLAIMS_REGISTRY.md §8): ``who`` reads "<who>, YYYY-MM-DD", who checked
     the basis against its source, and when; ``checked`` is the fingerprint (:func:`checked`) of
     the part they checked, which registration requires. An audit stands only while the part is as
-    they checked it (meta-tests 3 and 7)."""
+    they checked it (meta-tests 3 and 7). A part's audits are append-only, as its referees are: a
+    later audit is added after those recorded (``Part.audited_by``), and the last is the one in
+    force (:func:`audit_in_force`)."""
 
     who: str
     checked: str = ""
@@ -163,10 +166,14 @@ class Part:
     ``grade`` is one of :data:`GRADES`, or :data:`RETIRED` for a part its sentence no longer
     asserts.
 
-    ``audited_by`` is the basis audit, an :class:`Audit` ("" names none): who checked the basis
-    against its source, and when, someone other than the author, on the part as it stands
-    (meta-test 3). A swarm claim's part above judgment names one, and the ``referees`` who upheld
-    it (meta-test 7). An engine or audit claim's part may name one; where it does not, its grader
+    ``audited_by`` is the basis audit, an :class:`Audit` ("" names none), or the audits made,
+    oldest first, as a tuple of them, each dated no earlier than the one before: append-only, as
+    the referees are, so a re-audit is added after the audit it follows, never written over it,
+    and the last is the audit in force (:func:`audit_in_force`), which the meta-tests read. The
+    audit in force is by someone other than the author, on the part as it stands (meta-test 3). A
+    swarm claim's part above judgment names one, and the ``referees`` who upheld it (meta-test 7);
+    once the history records a swarm claim's audit, it stays (meta-test 8). An engine or audit
+    claim's part may name one; where it does not, its grader
     stands as its basis audit, since each grade's requirement (§2.4) has the grader quote the
     passage, re-derive the derivation or read the test against its reference, and meta-test 3
     holds that grader apart from the author. ``regraded`` is why the part moved to the grade it
@@ -178,8 +185,25 @@ class Part:
     basis: Basis = Basis()
     graded_by: str = ""
     referees: tuple[Referee, ...] = ()
-    audited_by: Audit | str = ""
+    audited_by: Audit | tuple[Audit, ...] | str = ""
     regraded: str = ""
+
+
+def audits(part: Part) -> tuple[Audit, ...]:
+    """The part's basis audits, oldest first: none for "", one for an :class:`Audit`, and each
+    :class:`Audit` of a tuple (registration refuses anything else in one)."""
+    audit = part.audited_by
+    if isinstance(audit, Audit):
+        return (audit,)
+    if isinstance(audit, tuple):
+        return tuple(a for a in audit if isinstance(a, Audit))
+    return ()
+
+
+def audit_in_force(part: Part) -> Audit | None:
+    """The part's last basis audit, the one in force, or None where it names none."""
+    made = audits(part)
+    return made[-1] if made else None
 
 
 @dataclass(frozen=True)
@@ -403,15 +427,29 @@ def check(c: Claim) -> None:
             fail(f"part {p.name!r} is graded {p.grade}, so its grader reads {GRADED_FORM} (§2.4), "
                  f"not {by!r}")
         audit = p.audited_by
-        if isinstance(audit, Audit):
-            if grader(audit.who) is None:
-                fail(f"part {p.name!r}: its basis audit reads {GRADED_FORM}, not {audit.who!r}")
-            if not _CHECKED.fullmatch(audit.checked):
-                fail(f"part {p.name!r}: its basis audit names the part it checked as its "
-                     f"fingerprint, {fingerprint}, not {audit.checked!r}")
-        elif audit != "":
+        made = audit if isinstance(audit, tuple) else (audit,) if isinstance(audit, Audit) else ()
+        if isinstance(audit, tuple) and not audit:
+            fail(f"part {p.name!r}: its basis audits are one Audit or more; a part that names "
+                 "none names ''")
+        if audit != "" and not made:
             fail(f"part {p.name!r}: a basis audit is an Audit, naming who checked the basis and "
                  f"the part they checked, not {audit!r}")
+        day = ""
+        for a in made:
+            if not isinstance(a, Audit):
+                fail(f"part {p.name!r}: a basis audit is an Audit, naming who checked the basis "
+                     f"and the part they checked, not {a!r}")
+            when = dated(a.who)
+            if when is None:
+                fail(f"part {p.name!r}: its basis audit reads {GRADED_FORM}, not {a.who!r}")
+            if not _CHECKED.fullmatch(a.checked):
+                fail(f"part {p.name!r}: its basis audit names the part it checked as its "
+                     f"fingerprint, {fingerprint}, not {a.checked!r}")
+            if when[1] < day:
+                fail(f"part {p.name!r}: its basis audits are appended in the order they were "
+                     f"made, each dated no earlier than the one before, so the last is in force: "
+                     f"{a.who!r} follows one dated {day}")
+            day = when[1]
         for r in p.referees:
             if not isinstance(r, Referee):
                 fail(f"part {p.name!r}: a referee is a Referee, not {r!r}")

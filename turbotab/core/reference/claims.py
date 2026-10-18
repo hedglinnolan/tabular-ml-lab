@@ -34,11 +34,12 @@ any other, and once its line is written the claim may leave it out; a part the h
 the claim no longer names, and whose last line does not retire it, is dropped or renamed, and is
 refused. A part the history never recorded cannot enter retired, and a swarm claim's part is
 retired only by someone other than its author. A change without what it needs is refused, and so
-is a swarm claim's part entering above unsupported; where any is refused, the generator writes
-nothing and it and ``--check`` exit 1. Meta-test 8 refuses a grade that differs from its part's
-last line, a part dropped without a line that retires it, and a swarm claim whose author, a
-referee, or the grader of a part above unsupported while its grade stands differs from what the
-history recorded.
+is a swarm claim's part entering above unsupported, and a version of a swarm claim that edits
+what the history recorded of its review (``claims.review_edits``: its origin or author, a
+referee or a basis audit dropped or changed, or the grader of a part above unsupported while its
+grade stands); where any is refused, the generator writes nothing and it and ``--check`` exit 1.
+Meta-test 8 refuses a grade that differs from its part's last line, a part dropped without a line
+that retires it, and such an edited review, where a history written otherwise holds one.
 
 ``turbotab/core/claims/status.json``, the frozen status file, holds each claim's id, derived status
 and content hash. The shipped app holds no tests, so a status cannot be derived there: a sentence
@@ -67,9 +68,9 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from turbotab.core import claims as registry_module
-from turbotab.core.claims import (FROZEN, GENERATOR, GRADED_FORM, GRADES, ORIGINS, RETIRED, Audit,
-                                  Claim, Registry, checked, content, content_hash, dated, fill,
-                                  frozen_records, frozen_text, same_person)
+from turbotab.core.claims import (FROZEN, GENERATOR, GRADED_FORM, GRADES, ORIGINS, RETIRED, Claim,
+                                  Registry, audits, checked, content, content_hash, dated, fill,
+                                  frozen_records, frozen_text, review_edits, same_person)
 from turbotab.core.claims import HISTORY as HISTORY_PATH
 
 REPO = Path(__file__).resolve().parents[3]
@@ -113,9 +114,9 @@ def _part(p: Any, c: Claim) -> str:
     now = checked(c, p)
     changed = ", on a version of the part since changed"
     checks = []
-    if isinstance(p.audited_by, Audit):
-        checks.append(f"basis checked against its source by {p.audited_by.who}"
-                      + ("" if p.audited_by.checked == now else changed))
+    for audit in audits(p):  # oldest first; the last is in force
+        checks.append(f"basis checked against its source by {audit.who}"
+                      + ("" if audit.checked == now else changed))
     groups: dict[tuple[str, bool, str], list[str]] = {}  # (verdict, read since, grade): who
     for r in p.referees:
         stale = r.checked != now
@@ -209,8 +210,9 @@ def render(reg: Registry) -> str:
         "against the source. Each of them read the part as it now stands (its sentence, regime, "
         "decision, grade and basis), on or after the day it took its previous grade. Once the "
         "history records a version of a swarm claim, its author stays as recorded, the grader of "
-        "a part above unsupported changes only with its grade, and every referee stays as "
-        "recorded: a later verdict is a referee added, never one edited or removed.",
+        "a part above unsupported changes only with its grade, and every referee and basis audit "
+        "stays as recorded: a later verdict is a referee added, and a re-audit an audit appended "
+        "after the others, the last in force, never one edited or removed.",
         "- **Grade**: each part of a sentence is graded on its own (" + ", ".join(
             f"*{g}*" for g in GRADES) + ", strongest first), and the sentence shows its weakest "
         "part's. Above judgment, someone other than the author grades. A part's grade moves "
@@ -375,6 +377,7 @@ def main(argv: Sequence[str] | None = None, registry: Registry | None = None) ->
     gone = dropped(reg, history)
     graded, refused = grade_lines(reg, read_grades(args.history),
                                   args.date or date.today().isoformat())
+    edited = review_edits(reg, args.history)
     if gone:
         print(f"{args.history} holds {', '.join(gone)}, which the registry no longer registers: "
               "an id is never dropped or reused (CLAIMS_REGISTRY.md §1), so restore the claim "
@@ -384,7 +387,9 @@ def main(argv: Sequence[str] | None = None, registry: Registry | None = None) ->
     for message in refused:
         print(f"{message}: a grade moves only through a history line with its date, grader and "
               "reason", file=sys.stderr)
-    if refused and not args.check:
+    for message in edited:
+        print(f"{message}; so no version that edits it is written", file=sys.stderr)
+    if (refused or edited) and not args.check:
         return 1
     if args.check:
         current = args.out.read_text(encoding="utf-8") if args.out.is_file() else ""
@@ -405,7 +410,7 @@ def main(argv: Sequence[str] | None = None, registry: Registry | None = None) ->
                          + f": run {COMMAND}")
         for message in stale:
             print(message, file=sys.stderr)
-        if stale or gone or refused:
+        if stale or gone or refused or edited:
             return 1
         print(f"{args.out}, {args.history} and {frozen_path} are current")
         return 0
