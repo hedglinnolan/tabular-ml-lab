@@ -1,4 +1,7 @@
-"""Build the referee batches and the sealed key (PLAN.md phases 2-4, Amendment 1)."""
+"""Build the referee batches and the sealed key (PLAN.md phases 2-4, Amendment 1).
+
+Kept as the backtest ran it. A new queue, with decoys generated from its candidates, is built by
+research/registry/decoy_queue.py (python -m research.registry.decoy_queue), which reads and writes only the paths it is given."""
 import json, random, hashlib, os
 from sample import draw, load
 

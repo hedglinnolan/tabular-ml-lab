@@ -1,4 +1,6 @@
 # Decoys for area B, written by the orchestrator only (PLAN.md phase 3).
+# Kept as the backtest ran it. A new queue's decoys are generated from its candidates by
+# research/registry/decoys.py, after these kinds.
 DECOYS_B = [
  dict(key="DB1", sibling="B-270", type="direction", goal="estimate",
       regime="randomized trial with non-adherence",
