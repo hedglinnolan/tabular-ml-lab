@@ -10811,6 +10811,20 @@
             ],
             "title": "Record Id"
           },
+          "record_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Ids"
+          },
           "seq": {
             "anyOf": [
               {
@@ -10861,6 +10875,7 @@
           "source",
           "text",
           "record_id",
+          "record_ids",
           "seq",
           "kind",
           "in_force",
@@ -10868,7 +10883,7 @@
           "post_seal"
         ],
         "title": "MethodsEntry",
-        "description": "One sentence or paragraph of the methods: the record's (with its decision), a paragraph the\nanalysis wrote (its stage), or the export's own reproducibility sentence."
+        "description": "One sentence or paragraph of the methods: the record's (with its decision), a paragraph the\nanalysis wrote (its stage), or the export's own reproducibility sentence. A sentence that\nfolds single confirmations (:func:`_together`) names every record it says in ``record_ids``,\nin the order it lists their columns; one record's sentence, and a paragraph, name none."
       },
       "MethodsLine": {
         "properties": {
@@ -22908,6 +22923,20 @@
             ],
             "title": "Record Id"
           },
+          "record_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Ids"
+          },
           "seq": {
             "anyOf": [
               {
@@ -22938,11 +22967,12 @@
           "file",
           "quote",
           "record_id",
+          "record_ids",
           "seq",
           "kind"
         ],
         "title": "Where",
-        "description": "Where an item is answered: a record sentence, an analysis paragraph, or a bundle file."
+        "description": "Where an item is answered: a record sentence, an analysis paragraph, or a bundle file. A\nsentence the methods fold from several records names each of them, as its methods entry does\n(``record_ids``, in order; ``methods._together``)."
       },
       "AdjustmentCard": {
         "description": "WP17 (MODELING_SEQUENCE §1 step 3): the disjunctive cause criterion, asked per covariate.",

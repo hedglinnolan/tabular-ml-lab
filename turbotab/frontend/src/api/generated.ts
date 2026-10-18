@@ -3648,7 +3648,9 @@ export interface components {
         /**
          * MethodsEntry
          * @description One sentence or paragraph of the methods: the record's (with its decision), a paragraph the
-         *     analysis wrote (its stage), or the export's own reproducibility sentence.
+         *     analysis wrote (its stage), or the export's own reproducibility sentence. A sentence that
+         *     folds single confirmations (:func:`_together`) names every record it says in ``record_ids``,
+         *     in the order it lists their columns; one record's sentence, and a paragraph, name none.
          */
         MethodsEntry: {
             /**
@@ -3660,6 +3662,8 @@ export interface components {
             text: string;
             /** Record Id */
             record_id: string | null;
+            /** Record Ids */
+            record_ids: string[] | null;
             /** Seq */
             seq: number | null;
             /** Kind */
@@ -8288,7 +8292,9 @@ export interface components {
         };
         /**
          * Where
-         * @description Where an item is answered: a record sentence, an analysis paragraph, or a bundle file.
+         * @description Where an item is answered: a record sentence, an analysis paragraph, or a bundle file. A
+         *     sentence the methods fold from several records names each of them, as its methods entry does
+         *     (``record_ids``, in order; ``methods._together``).
          */
         Where: {
             /**
@@ -8302,6 +8308,8 @@ export interface components {
             quote: string;
             /** Record Id */
             record_id: string | null;
+            /** Record Ids */
+            record_ids: string[] | null;
             /** Seq */
             seq: number | null;
             /** Kind */

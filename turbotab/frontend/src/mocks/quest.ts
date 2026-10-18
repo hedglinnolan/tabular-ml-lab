@@ -488,6 +488,7 @@ export function mockSections(view: ProjectView): MethodsSections {
           source: "record" as const,
           text: l.sentence,
           record_id: l.record_id,
+          record_ids: null, // the mock folds no confirmations: each line is one record's
           seq: l.seq,
           kind: l.kind,
           in_force: true,

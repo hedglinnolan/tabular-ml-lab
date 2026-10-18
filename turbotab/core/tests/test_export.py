@@ -154,6 +154,50 @@ def test_single_confirmations_alike_but_for_their_column_are_said_in_one_sentenc
         said[flags[0]], said["bp_sys"]]
 
 
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_a_folded_confirmation_names_every_record_it_says_and_the_checklist_quotes_them(tmp_path,
+                                                                                       purpose):
+    """W1-X's cap, ruling R2 (its P1, option b): a methods entry that folds single confirmations
+    names every folded record, in the order its columns are listed (``record_ids``), so the union
+    of the entries' records is the methods route's records; one alone names none and is the
+    route's sentence verbatim. The checklist's place for the folded sentence names them too. The
+    folded records are the three flags' confirmations, in the order they were recorded."""
+    flags = ["imputed_weight", "imputed_height", "imputed_bmi"]
+    log = DecisionLog(tmp_path / "decisions.jsonl")
+    roles = {"SEQN": "identifier", "age": "covariate", "bp_sys": "covariate", "waist": "covariate",
+             **{c: "flag" for c in flags}}
+    for decision in (d.SetLens(lenses=["clinical"]), d.SetTarget(column="glucose"),
+                     d.SetPurpose(purpose=purpose),
+                     d.SetRoles(roles=roles, unconfirmed=[*flags, "bp_sys"]),
+                     *(d.ConfirmRole(column=c, role="flag") for c in flags),
+                     d.ConfirmRole(column="bp_sys", role="covariate")):
+        log.append(decision, sentence=_say)
+    records = log.records()
+    confirmed = [r for r in records if r.decision.kind == "confirm_role"]
+    folded = [r.id for r in confirmed[:3]]
+    source = _source(records, purpose=purpose)
+    route = {line.record_id: line.sentence for line in source.methods.lines}
+    doc = methods.methods_section(source, {"engine": {}, "inputs": [], "decisions":
+                                           {"n": len(records)}, "analysis_plan": {}})
+    said = [e for s in doc.sections for e in s.entries if e.source == "record"]
+    [merged] = [e for e in said if e.record_ids]
+    assert merged.record_ids == folded and merged.record_id in folded
+    rest = route[folded[0]].removeprefix(f"`{flags[0]}` was ")
+    assert merged.text == "`imputed_weight`, `imputed_height` and `imputed_bmi` were each " + rest
+    # Silent on every entry that is one record's: it names none, and says the route's sentence.
+    for e in said:
+        if e is not merged:
+            assert e.record_ids is None and e.text == route[e.record_id], e
+    assert {i for e in said for i in (e.record_ids or [e.record_id])} == set(route)
+    report = checklists.fill(checklists.checklist_of(purpose), methods=doc, records=records,
+                             state=source.state, files={})
+    places = [w for item in report.items for w in item.where if w.source == "record"]
+    quoting = [w for w in places if w.quote == merged.text]
+    assert quoting and all(w.record_ids == folded for w in quoting)
+    assert all(w.record_ids is None and w.quote == route[w.record_id] for w in places
+               if w.quote != merged.text)
+
+
 # ── the tables ───────────────────────────────────────────────────────────────
 
 EFFECTS = {

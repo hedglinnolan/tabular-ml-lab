@@ -53,12 +53,15 @@ class _Model(BaseModel):
 
 
 class Where(_Model):
-    """Where an item is answered: a record sentence, an analysis paragraph, or a bundle file."""
+    """Where an item is answered: a record sentence, an analysis paragraph, or a bundle file. A
+    sentence the methods fold from several records names each of them, as its methods entry does
+    (``record_ids``, in order; ``methods._together``)."""
 
     source: Literal["record", "analysis", "file"]
     file: str  # the bundle file that holds it (the methods for a sentence or paragraph)
     quote: str  # the sentence, the paragraph, or the file's caption
     record_id: str | None = None
+    record_ids: list[str] | None = None
     seq: int | None = None
     kind: str | None = None  # the decision kind, or the stage that wrote the paragraph
 
@@ -282,7 +285,8 @@ def fill(checklist: Checklist, *, methods: Any, records: Sequence[Any], state: A
                     if rule.when is not None and (record is None or not rule.when(record.decision)):
                         continue
                     where.append(Where(source="record", file=METHODS, quote=e.text,
-                                       record_id=e.record_id, seq=e.seq, kind=e.kind))
+                                       record_id=e.record_id, record_ids=e.record_ids, seq=e.seq,
+                                       kind=e.kind))
                 elif e.source == "analysis" and e.kind in rule.analysis:
                     where.append(Where(source="analysis", file=METHODS, quote=e.text, kind=e.kind))
             for name in rule.files:

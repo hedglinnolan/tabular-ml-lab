@@ -140,11 +140,14 @@ class _Model(BaseModel):
 
 class MethodsEntry(_Model):
     """One sentence or paragraph of the methods: the record's (with its decision), a paragraph the
-    analysis wrote (its stage), or the export's own reproducibility sentence."""
+    analysis wrote (its stage), or the export's own reproducibility sentence. A sentence that
+    folds single confirmations (:func:`_together`) names every record it says in ``record_ids``,
+    in the order it lists their columns; one record's sentence, and a paragraph, name none."""
 
     source: Literal["record", "analysis", "export"]
     text: str
     record_id: str | None = None
+    record_ids: list[str] | None = None
     seq: int | None = None
     kind: str | None = None  # the decision kind, or the stage that wrote the paragraph
     in_force: bool | None = None
@@ -301,7 +304,8 @@ def _together(entries: Sequence[MethodsEntry]) -> list[MethodsEntry]:
     their column ("`a` was …", the rest word for word, in force alike) said once, where the first
     of them stands, as "`a`, `b` and `c` were each …" with every column named, under the newest
     of their records' id and seq (so the manuscript's newest line is the sentence a confirmation
-    just grew). One alone keeps its own sentence."""
+    just grew), and naming every one of their records in ``record_ids``, in the order of their
+    columns (ruling R2 at W1-X's cap). One alone keeps its own sentence."""
     from turbotab.core.voice import listing
 
     groups: dict[tuple[Any, ...], list[int]] = {}
@@ -319,7 +323,8 @@ def _together(entries: Sequence[MethodsEntry]) -> list[MethodsEntry]:
         newest = max((entries[i] for i in at), key=lambda e: e.seq or 0)
         said[at[0]] = entries[at[0]].model_copy(update={
             "text": f"{listing(columns, limit=len(columns))} were each {rest}",
-            "record_id": newest.record_id, "seq": newest.seq})
+            "record_id": newest.record_id, "seq": newest.seq,
+            "record_ids": [entries[i].record_id for i in at]})
         folded.update(at[1:])
     return [said.get(i, e) for i, e in enumerate(entries) if i not in folded]
 

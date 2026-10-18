@@ -345,22 +345,45 @@ def test_1_the_analysis_plan_is_the_lock_s_with_its_sha256(inference):
     assert prov["analysis_plan"]["plan_sha256"] == doc["plan_sha256"]
 
 
+# A record's sentence the methods may fold with others alike but for its column (W1-W's N10).
+ONE_COLUMN = re.compile(r"^`(?P<column>[^`]+)` was (?P<rest>.+)$", re.S)
+
+
+def _said_for(entry: dict[str, Any], sentences: dict[str, str]) -> str:
+    """What a methods entry, or a checklist's place, says, built from the methods route's
+    sentences (ruling R2 at W1-X's cap): one record's sentence verbatim, or, where it folds several
+    records (``record_ids``, in order), each record's column listed with the rest they all share
+    word for word ("`a`, `b` and `c` were each ...")."""
+    ids = entry.get("record_ids")
+    if not ids:
+        return sentences[entry["record_id"]]
+    parts = [ONE_COLUMN.match(sentences[i]) for i in ids]
+    assert len(ids) >= 2 and all(parts), ids
+    rests = {p["rest"] for p in parts}
+    assert len(rests) == 1, rests
+    named = [f"`{p['column']}`" for p in parts]
+    return f"{', '.join(named[:-1])} and {named[-1]} were each {rests.pop()}"
+
+
 @needs_nhanes
 def test_1_the_methods_are_the_records_sentences_by_strobe_section(inference):
     """The record's sentences in force, by STROBE section; the first exclusions answer folded out;
     Model 1, declared after the estimates were seen, kept in a section of its own after the lock;
-    every sentence verbatim from the methods route; never "prespecified" or "preregistered"."""
+    every sentence verbatim from the methods route, or single confirmations alike but for their
+    column folded into one sentence that names each of their records; never "prespecified" or
+    "preregistered"."""
     doc = json.loads(inference["files"]["methods.json"])
     route = {line["record_id"]: line for line in inference["methods_route"]["lines"]}
     records = inference["view"]["decisions"]
     exclusions = [r for r in records if r["decision"]["kind"] == "set_exclusions"]
     assert len(exclusions) == 2
     said = [e for s in doc["sections"] for e in s["entries"] if e["source"] == "record"]
-    ids = [e["record_id"] for e in said]
+    ids = [i for e in said for i in (e.get("record_ids") or [e["record_id"]])]
     assert exclusions[0]["id"] not in ids and exclusions[1]["id"] in ids  # folded out, then kept
     assert set(ids) == set(route)  # every line of the record's methods text, and only those
+    sentences = {i: line["sentence"] for i, line in route.items()}
     for e in said:
-        assert e["text"] == route[e["record_id"]]["sentence"]  # verbatim
+        assert e["text"] == _said_for(e, sentences)  # verbatim, or its records' sentences folded
     keys = [s["key"] for s in doc["sections"]]
     # (wave 2b, FORM) the form question's answer says how each continuous term enters (STROBE 11)
     assert keys == ["design", "participants", "variables", "measurement", "quantitative",
@@ -728,8 +751,8 @@ def test_3_each_checklist_lists_every_item_with_where_or_unanswered(inference, p
                 continue
             assert item["where"]
             for w in item["where"]:
-                if w["source"] == "record":  # the quoted sentence and its decision
-                    assert w["quote"] == sentences[w["record_id"]]
+                if w["source"] == "record":  # the quoted sentence and its decisions
+                    assert w["quote"] == _said_for(w, sentences)
                 elif w["source"] == "file":
                     assert w["file"] in seen["files"] or w["file"] == "provenance.json"
             if item["status"] == "partly answered":
