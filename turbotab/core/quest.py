@@ -1800,7 +1800,11 @@ def role_line_reason(column: str, role: str, purpose: str | None = None,
     A flag enters no model, waiting or confirmed, so its line never says it cannot set the
     predictors (the re-walk's N2): what waiting holds back is the fit, which asks every role that
     rode along (``readings.predictors_or_ask``), since recorded as a press's role instead the column
-    would enter the model."""
+    would enter the model. So for a time, a design column and a cluster, which also change only to
+    a predictor role (W1-W round 2, P4), in words true of each: it is not among the model's
+    predictors, never that it enters no model, since a cluster groups the clustered intervals and a
+    design column is the weight, strata or PSU a design-based answer reads. A column proposed as
+    left out keeps the fit's words, its clause offering to put it in the model."""
     from turbotab.core.readings import PREDICTOR_ROLES, role_line_words, unsettled_message
 
     choices = role_choices(role, purpose, lenses)
@@ -1814,9 +1818,12 @@ def role_line_reason(column: str, role: str, purpose: str | None = None,
     else:
         instead = ""
     waits = f", so it cannot set {ROLE_WAITS_FOR} yet."
-    if role == "flag" and choices and all(c in PREDICTOR_ROLES for c in choices):
-        waits = (f". As {role_line_words(role, purpose, lenses)} it enters no model, but the fit "
-                 f"waits for it, since as {said} it would.")
+    if role not in (*PREDICTOR_ROLES, "excluded") and choices \
+            and all(c in PREDICTOR_ROLES for c in choices):
+        held, would = (("enters no model", "would") if role == "flag" else
+                       (f"is not among {ROLE_WAITS_FOR}", "would be"))
+        waits = (f". As {role_line_words(role, purpose, lenses)} it {held}, but the fit waits for "
+                 f"it, since as {said} it {would}.")
     return (f"`{column}` was proposed below high confidence and recorded with the other roles, not "
             f"confirmed on its own{waits} Confirm it after reading why it was proposed{instead}.")
 
