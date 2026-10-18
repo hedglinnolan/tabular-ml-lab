@@ -552,3 +552,49 @@ def test_the_predict_roles_card_fits_the_teaching_budgets():
         assert voice.words(t.definition) <= B["term_definition"], t.term
         assert t.definition.endswith(".")
     assert not voice.machinery(entry.one_liner)
+
+
+# W1-R round 3 (SE-B3): what the card says the omics steps skip.
+SKIP = "the omics screen, normalization and batch correction skip"
+
+
+def test_under_predict_the_roles_card_says_the_omics_steps_skip_a_covariate():
+    """Under Predict a covariate does not enter the models "like any other": the card says which
+    steps skip it, of a covariate and of the energy column, and nothing else changes."""
+    entry = _roles_entry("prediction")
+    options = {o["value"]: o["consequence"] for o in entry["options"]}
+    terms = {t["term"]: t["definition"] for t in entry["terms"]}
+    for text in (options["covariate"], options["energy"], terms["covariate"]):
+        assert "like any other" not in text, text
+        assert SKIP in text, text
+    # silent: the Predictor column, which those steps act on, is said as before
+    assert options["exposure"] == "A column the model reads to predict the outcome."
+    assert SKIP not in terms["predictor"]
+
+
+def test_the_omics_steps_the_card_names_act_on_predictor_columns_alone():
+    """Each claim of the card, read from the code on one constructed state: the screened elastic
+    net's screen (prediction only), the omics normalization an applied ``omics_scale`` repair
+    records, and reference ComBat each take the Predictor columns (role ``exposure``) and skip a
+    covariate and the energy column."""
+    from types import SimpleNamespace
+
+    import turbotab.core.methods.omics  # noqa: F401 - registers the screened family
+    from turbotab.core.decisions import BatchSpec, FindingDisposition
+    from turbotab.core.methods.batch import design_batch
+    from turbotab.core.methods.omics import FINDING, design_normalization
+    from turbotab.core.models.base import get_family
+
+    roles = {"g1": "exposure", "g2": "exposure", "age": "covariate", "kcal": "energy",
+             "plate": "design"}
+    predictors = ["g1", "g2", "age", "kcal"]
+    [(_name, screen)] = get_family("screened_elastic_net").preprocess(
+        SimpleNamespace(predictors=predictors, roles=roles))
+    assert list(screen.columns) == ["g1", "g2"]
+    scale = {FINDING: FindingDisposition(action="applied", option="log_cpm",
+                                         params={"kind": "counts", "columns": predictors})}
+    state = ProjectState(lens=["genomics"], target="y", purpose="prediction", roles=roles,
+                         findings=scale, batch=BatchSpec(column="plate", method="reference_combat"))
+    inputs = [*predictors, "plate"]
+    assert design_normalization(state, inputs)["columns"] == ["g1", "g2"]
+    assert design_batch(state, inputs, predictors, None)["columns"] == ["g1", "g2"]
