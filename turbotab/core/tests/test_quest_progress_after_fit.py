@@ -295,7 +295,7 @@ def test_the_aggregation_answer_that_makes_calibration_apply_says_why_in_models(
     journey 26 reached this through the energy question under Predict, which BEATS_PREDICT §9
     ruling 5 no longer asks."""
     journey = path_fuzzer.run_journey(758)
-    prev, snap = journey.snapshots[35], journey.snapshots[36]
+    prev, snap = journey.snapshots[37], journey.snapshots[38]
     assert (snap.action, snap.kind) == ("answer", "set_aggregation")
     assert path_fuzzer.i11_monotone_progress(prev, snap) == []
     before = next(s for s in prev.log.stages if s.key == "models")
@@ -350,7 +350,7 @@ def test_a_first_answer_given_while_the_stage_still_asked_is_not_named_later():
     calibration question apply, so answering the sequence later (8/9) does not turn that answer
     into a reopening of Models."""
     journey = path_fuzzer.run_journey(758)
-    snap = journey.snapshots[36]
+    snap = journey.snapshots[38]
     records = list(snap.records)
     [sequence] = [i for i, r in enumerate(records) if r.decision.kind == "set_model_sequence"]
     assert records[-1].decision.kind == "set_aggregation" and sequence < len(records) - 1

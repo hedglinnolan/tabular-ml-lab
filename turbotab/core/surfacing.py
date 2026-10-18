@@ -504,8 +504,9 @@ def _result_fires(name: str) -> Callable[[Any, Facts], bool]:
 
 @lru_cache(maxsize=None)
 def _writer_of(slot: str) -> str:
-    """The question (or the declaration) whose answer writes ``slot``."""
-    from turbotab.core.decisions import SLOTS
+    """The question (or the declaration, or the system kind the server records) whose answer
+    writes ``slot``."""
+    from turbotab.core.decisions import SLOTS, SYSTEM_KINDS
     from turbotab.core.interview import QUESTION_KEYS, SLOT_OF
     from turbotab.core.quest import DECLARATIONS
 
@@ -515,6 +516,9 @@ def _writer_of(slot: str) -> str:
     for decl in DECLARATIONS:
         if SLOTS[decl.kind] == slot:
             return decl.kind
+    for kind in SYSTEM_KINDS:  # the plan lock (``plan_locked``), which the mattered stage reads
+        if SLOTS[kind] == slot:
+            return kind
     return slot
 
 
