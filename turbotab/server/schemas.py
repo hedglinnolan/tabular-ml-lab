@@ -118,8 +118,10 @@ class StageResult(Model):
 class ServedFit(Model):
     """One fit's record (``turbotab/core/runs.py``'s ``FitRecord``) as a client is served it: its
     numbers are the fit's at ``fit_key`` as ``GET /stages/fit`` would serve that fit now, its gate
-    read for the record's own goal, outcome, plan and held-out rows, and ``withheld`` and
-    ``holdout_why`` say why a number is not served."""
+    read for the record's own goal, outcome, fit under the plan's lock and held-out rows, and
+    ``withheld`` and ``holdout_why`` say why a number is not served. ``plan_digest`` is the plan
+    when the fit completed: a lock recorded later on this same fit can record another digest, when
+    an answer the fit does not read (the model sequence) came in between."""
 
     id: str
     seq: int  # completion order, from 1
@@ -127,7 +129,8 @@ class ServedFit(Model):
     purpose: Purpose | None
     target: str | None
     fit_key: str
-    plan_digest: str | None  # plan_lock.digest(plan_lock.plan_of(state)) of the answers it read
+    # plan_lock.digest(plan_lock.plan_of(state)) of the answers when it completed (the docstring)
+    plan_digest: str | None
     decisions: list[int] | None  # the seqs of the records in force when it completed
     press: dict[str, Any] | None  # the press of Fit in force, as kept beside the project
     families: list[str]
@@ -145,6 +148,13 @@ class ServedFit(Model):
     # ``holdout_why`` says why.
     holdout: dict[str, dict[str, float | None] | None] | None
     holdout_why: str | None
+    # Predict, beside the held-out scores, each the fit's as the stage route would serve it: whether
+    # this fit is not the one the seal's opening was recorded on; and, where its held-out scores
+    # are served or it is the current fit, the scores the first opening recorded (the reported
+    # result) with whether the scores served are those, and the final model's note.
+    changed_after_seal: bool
+    at_opening: AtOpening | None
+    final_note: str | None
     # Estimate: each family's rows of the exposure, with their intervals, under the estimand the
     # fit was computed for; null while withheld.
     effects: dict[str, list[dict[str, Any]] | None]

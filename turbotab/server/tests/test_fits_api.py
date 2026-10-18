@@ -10,10 +10,13 @@
   pressed for the record's own outcome, and every one after it, the fit's own; no held-out score
   before the seal and, after it, the sealed frame's scores of a record scored on the rows the
   opening opened, and none of a record scored on rows drawn with another seed (the sealed frame's
-  row ids, hashed here with hashlib); under Estimate no estimate before the plan's lock, and after
-  it the exposure's rows of the fit whose plan the lock recorded, with the lock's own digest, and
-  none of a fit computed before the lock under another plan, until it is the fit the stage route
-  serves. What is served counts as shown, as on the stage route.
+  row ids, hashed here with hashlib); on the opened rows, the opened fit's unmarked, a fit
+  computed after the opening and the current fit's with the marks the stage route served beside
+  them, and none of a fit computed before the opening until it is the current fit. Under Estimate
+  no estimate before the plan's lock, and after it the exposure's rows of the fit the lock was
+  recorded on, whether or not an answer it does not read came between it and the lock, and none of
+  a fit computed before the lock under another plan, until it is the fit the stage route serves.
+  What is served counts as shown, as on the stage route.
 * **The movement under Predict** is ``|mean Δ| / SD(Δ)`` of the primary metric's fold scores,
   computed here with numpy on the two records' served fold scores, where the two fits' splits draw
   the same assignment; across a split drawn with another seed there is none, and the record says so.
@@ -345,6 +348,109 @@ def test_held_out_scores_are_the_opened_rows_only_and_other_folds_carry_no_movem
     assert_split_as_served(client, pid, document)
 
 
+RECORD_MARKS = ("at_opening", "final_note", "changed_after_seal")
+
+
+@pytest.mark.slow  # three fits and two reverts on the dietary recalls: about 40 s
+def test_after_the_opening_a_records_held_out_scores_carry_the_marks_the_stage_route_puts(client):
+    """One draw of held-out rows, fits that differ in their predictors only. After the opening a
+    record serves its held-out scores where the stage route has served that fit's: the opened fit's
+    unmarked, a fit computed after the opening (by a recorded change) marked as the stage route
+    marked it while it was current, and the current fit's exactly the stage route's. A fit computed
+    before the opening that is not the opened one serves none and says why, until a recorded change
+    makes it the current fit, when its record is marked as the stage route marks it."""
+    service = service_of(client)
+    pid = sealed_project(client)
+    cache = service.workspace.cache_dir(pid)
+    decide(client, pid, {"kind": "select_models", "models": ["linear"]})
+    wait_for(client, pid, {"fit": "fresh"}, timeout=180)
+    assert client.post(f"/api/projects/{pid}/fit").status_code == 200
+    settled(client, pid, 1)
+    roles = client.get(f"/api/projects/{pid}").json()["state"]["roles"]
+    decide(client, pid, {"kind": "set_roles", "roles": {**roles, "sodium_mg": "excluded"}})
+    sodium = kinds(client, pid, "set_roles")[-1]
+    wait_for(client, pid, {"fit": "fresh"}, timeout=180)
+    prepare(client, pid, {"kind": "open_seal", "family": "linear"})
+    wait_for(client, pid, {"fit": "fresh"}, timeout=180)
+    opened_key = fit_key(client, pid)
+    decide(client, pid, {"kind": "open_seal", "family": "linear"})
+    opening = kinds(client, pid, "open_seal")[-1]
+    one, two = settled(client, pid, 2)
+    assert two["fit_key"] == opened_key != one["fit_key"]
+    assert one["held_out"] == two["held_out"] is not None  # one draw: the same held-out rows
+    sealed_one = seal.read_sealed_scores(cache, one["fit_key"])["linear"]
+    sealed_two = seal.read_sealed_scores(cache, two["fit_key"])["linear"]
+    assert sealed_one != sealed_two
+
+    # At the opening: the opened fit's record is the stage route's, unmarked.
+    at_opening = stage(client, pid, "fit")
+    assert two["holdout"] == {"linear": sealed_two} and two["holdout_why"] is None
+    for k in RECORD_MARKS:
+        assert two[k] == at_opening[k], k
+    assert two["changed_after_seal"] is False and two["at_opening"]["current"] is True
+    assert two["at_opening"]["scores"]["linear"] == sealed_two
+    # The fit computed before the opening, on the same rows: no held-out score, and why.
+    before = (f"This fit was computed before the opening at decision #{opening['seq']}, which "
+              f"opened another fit's held-out scores, so this fit's are not served.")
+    assert one["holdout"] is None and one["holdout_why"] == before
+    assert one["changed_after_seal"] is True
+    assert one["at_opening"] is None and one["final_note"] is None
+    assert_nothing_held_out_in([one], {"1:linear": sealed_one})
+
+    # A change after the opening (fiber left out too): the current fit's record is the stage
+    # route's, marked post-seal; the opened fit's stays unmarked; the earlier fit's still withheld.
+    roles = client.get(f"/api/projects/{pid}").json()["state"]["roles"]
+    decide(client, pid, {"kind": "set_roles", "roles": {**roles, "fiber_g": "excluded"}})
+    fiber = kinds(client, pid, "set_roles")[-1]
+    wait_for(client, pid, {"fit": "fresh"}, timeout=180)
+    one, two, three = settled(client, pid, 3)
+    post_seal = stage(client, pid, "fit")
+    assert three["fit_key"] == fit_key(client, pid) and three["held_out"] == two["held_out"]
+    assert three["holdout"] == {"linear": by_family(post_seal)["linear"]["holdout"]}
+    assert three["holdout"]["linear"] == seal.read_sealed_scores(cache, three["fit_key"])["linear"]
+    for k in RECORD_MARKS:
+        assert three[k] == post_seal[k], k
+    assert three["changed_after_seal"] is True and three["at_opening"]["current"] is False
+    assert three["final_note"] == three["at_opening"]["note"]
+    assert two["holdout"] == {"linear": sealed_two}
+    for k in RECORD_MARKS:
+        assert two[k] == at_opening[k], k
+    assert one["holdout"] is None and one["holdout_why"] == before
+
+    # Reverted: the opened fit is current again. The post-seal fit's record keeps the marks the
+    # stage route served beside its scores while it was current.
+    back = client.post(f"/api/projects/{pid}/decisions",
+                       json={"kind": "revert", "decision_id": fiber["id"]})
+    assert back.status_code == 200, back.text
+    wait_for(client, pid, {"fit": "fresh"}, timeout=180)
+    assert fit_key(client, pid) == two["fit_key"]
+    one, two, three = settled(client, pid, 3)
+    assert three["holdout"] == {"linear": by_family(post_seal)["linear"]["holdout"]}
+    for k in RECORD_MARKS:
+        assert three[k] == post_seal[k], k
+    served = stage(client, pid, "fit")
+    for k in RECORD_MARKS:
+        assert two[k] == served[k], k
+    assert one["holdout"] is None and one["holdout_why"] == before
+
+    # The sodium change reverted too: the fit computed before the opening is the current one, so
+    # its record serves its held-out scores as the stage route does, marked as it marks them.
+    back = client.post(f"/api/projects/{pid}/decisions",
+                       json={"kind": "revert", "decision_id": sodium["id"]})
+    assert back.status_code == 200, back.text
+    wait_for(client, pid, {"fit": "fresh"}, timeout=180)
+    assert fit_key(client, pid) == one["fit_key"]
+    one, two, three = settled(client, pid, 3)
+    served = stage(client, pid, "fit")
+    assert one["holdout"] == {"linear": sealed_one} == {
+        "linear": by_family(served)["linear"]["holdout"]}
+    assert one["holdout_why"] is None
+    for k in RECORD_MARKS:
+        assert one[k] == served[k], k
+    assert one["changed_after_seal"] is True and one["at_opening"]["current"] is False
+    assert two["holdout"] == {"linear": sealed_two} and two["at_opening"]["current"] is True
+
+
 def stored_estimates(client, pid: str, record_id: str) -> dict[str, float]:
     """The exposure's estimates and interval ends a record kept, as written in its line."""
     path = service_of(client).workspace.project_dir(pid) / RUNS_FILE
@@ -354,17 +460,15 @@ def stored_estimates(client, pid: str, record_id: str) -> dict[str, float]:
             for row in rows for k in ("estimate", "ci_low", "ci_high")}
 
 
-@pytest.mark.slow  # three NHANES fits under Estimate: over a minute
-@needs_nhanes
-def test_under_estimate_no_estimate_before_the_lock_and_only_the_locked_plans_after_it(client):
+def nhanes_under_estimate(client):
+    """The NHANES fixture under Estimate up to a fresh fit of the linear family: glucose by sugar,
+    energy-adjusted, kcal kept within 500–5000, no rows held out. Returns the drive."""
     from turbotab.core.tests.acceptance.server_drive import answer_plan, open_project
     from turbotab.core.tests.stage_harness import NHANES
     from turbotab.core.tests.truths import fixture_truth
     from turbotab.server.tests.test_quest_api import ROLES, rule
 
-    service = service_of(client)
     drive = open_project(client, NHANES, fixture_truth("_tt_tmp_nhanes.csv"))
-    pid = drive.pid
     drive.decide({"kind": "set_lens", "lenses": ["dietary"]})
     drive.reach("target")
     drive.decide({"kind": "set_target", "column": "glucose"})
@@ -380,7 +484,18 @@ def test_under_estimate_no_estimate_before_the_lock_and_only_the_locked_plans_af
     drive.answer("energy_adjustment", {"kind": "set_energy_adjustment", "method": "standard",
                                        "energy_column": "kcal", "nutrients": ["sugar"]})
     drive.decide({"kind": "select_models", "models": ["linear"]})
-    wait_for(client, pid, {"fit": "fresh", "effects": "fresh"}, timeout=240)
+    wait_for(client, drive.pid, {"fit": "fresh", "effects": "fresh"}, timeout=240)
+    return drive
+
+
+@pytest.mark.slow  # three NHANES fits under Estimate: over a minute
+@needs_nhanes
+def test_under_estimate_no_estimate_before_the_lock_and_only_the_locked_plans_after_it(client):
+    from turbotab.server.tests.test_quest_api import rule
+
+    service = service_of(client)
+    drive = nhanes_under_estimate(client)
+    pid = drive.pid
     first_key = fit_key(client, pid)
     [record] = settled(client, pid, 1)
     assert record["purpose"] == "inference" and record["fit_key"] == first_key
@@ -478,6 +593,53 @@ def test_under_estimate_no_estimate_before_the_lock_and_only_the_locked_plans_af
     assert {f"linear:{r['feature']}:{k}": r[k] for r in rows_back
             for k in ("estimate", "ci_low", "ci_high")} == unlocked
     assert second["effects"] == {"linear": rows} and third["effects"] == {"linear": rows_third}
+
+
+@pytest.mark.slow  # three NHANES fits under Estimate: over a minute
+@needs_nhanes
+def test_under_estimate_the_lock_covers_the_fit_it_was_recorded_on_whatever_else_is_answered(
+        client):
+    """An answer the fit does not read (the model sequence, which the effects stage reads) lands
+    between the fit and the press of Fit: the lock's plan then holds it and the fit's record, whose
+    plan is the one it completed under, does not, though the lock was recorded on that fit (its
+    key is the one the answers at the lock give). After a change made after the lock, that fit's
+    record serves the estimates the stage route served while it was current; a fit computed before
+    the lock under another exclusion rule serves none, and says why."""
+    from turbotab.server.tests.test_quest_api import rule
+
+    drive = nhanes_under_estimate(client)
+    pid = drive.pid
+    drive.decide(rule(800, 4000))
+    wait_for(client, pid, {"fit": "fresh", "effects": "fresh"}, timeout=240)
+    first, second = settled(client, pid, 2)
+    assert second["fit_key"] == fit_key(client, pid) != first["fit_key"]
+    assert second["plan_digest"] == plan_sha(client, pid)
+
+    drive.decide({"kind": "set_model_sequence", "exposure": "sugar", "model_1": ["age", "gender"]})
+    wait_for(client, pid, {"fit": "fresh", "effects": "fresh"}, timeout=240)
+    assert fit_key(client, pid) == second["fit_key"]  # the fit does not read the sequence
+    assert client.post(f"/api/projects/{pid}/fit").status_code == 200
+    lock = kinds(client, pid, "lock_plan")[-1]
+    first, second = settled(client, pid, 2)  # Fit computed nothing new
+    assert lock["decision"]["digest"] == plan_sha(client, pid) != second["plan_digest"]
+    assert lock["seq"] not in second["decisions"]
+    rows = by_family(stage(client, pid, "fit"))["linear"]["coefficients"]
+    assert rows and all(r["estimate"] is not None and r["ci_low"] < r["ci_high"] for r in rows)
+    assert second["effects"] == {"linear": rows} and second["withheld"] is None
+
+    # A change after the lock: the locked fit is no longer current; its record serves the same rows.
+    drive.decide(rule(600, 4500))
+    wait_for(client, pid, {"fit": "fresh", "effects": "fresh"}, timeout=240)
+    first, second, third = settled(client, pid, 3)
+    assert third["fit_key"] == fit_key(client, pid) != second["fit_key"]
+    assert second["effects"] == {"linear": rows} and second["withheld"] is None
+    assert first["effects"] == {"linear": None}
+    assert first["withheld"] == (
+        f"No estimate of this fit is served: its plan is not the one the analysis-plan lock at "
+        f"decision #{lock['seq']} recorded, and it was computed before that lock.")
+    body = json.dumps(client.get(f"/api/projects/{pid}/fits").json())
+    for value in stored_estimates(client, pid, first["id"]).values():
+        assert json.dumps(value) not in body, value
 
 
 def test_a_records_exposure_rows_are_its_own_whatever_the_plan_names_now():
@@ -608,11 +770,13 @@ def test_a_records_gate_is_the_stage_routes_read_for_its_own_goal_outcome_and_pl
     """From construction, each case both ways: the gate ``_record_gate`` serves a record under,
     against the stage's own rule for it (``fit_press``: the goal first, then under Predict a press
     for the record's outcome, under Estimate the lock), and the lock in force covering the
-    record's plan or being among its records."""
+    record: its plan the lock's, its fit the one the answers at the lock key, or the lock among
+    its records."""
     from types import SimpleNamespace
 
     from turbotab.core import fit_press
     from turbotab.core.runs import FitRecord
+    from turbotab.server.service import FIT_ANSWERS_UNREAD
 
     def record(purpose, target="hba1c", plan="p1", decisions=(1, 2)):
         return FitRecord(id="r" * 32, seq=1, at="2026-10-18T00:00:00Z", purpose=purpose,
@@ -620,10 +784,11 @@ def test_a_records_gate_is_the_stage_routes_read_for_its_own_goal_outcome_and_pl
                          press=None, families=["linear"], seconds=1.0, workers=2,
                          primary_metric="mse", folds=None, seed=0)
 
-    def gate(rec, *, purpose, locked=None, press=None, lock=None, question=None):
+    def gate(rec, *, purpose, locked=None, press=None, lock=None, question=None,
+             locked_key=None):
         state = SimpleNamespace(purpose=purpose, plan_locked=locked, target="bmi")
         return ProjectService._record_gate(SimpleNamespace(replay=False), rec, state, question,
-                                           press, lock)
+                                           press, lock, locked_key)
 
     def reason(found):
         return None if found is None else found["reason"]
@@ -631,8 +796,10 @@ def test_a_records_gate_is_the_stage_routes_read_for_its_own_goal_outcome_and_pl
     # No goal now: the goal's own gate, whatever the record.
     assert reason(gate(record("prediction"), purpose=None)) == fit_press.PURPOSE_FIRST
     # The record's answers unread, or another goal: everything withheld, and why.
-    assert gate(record(None), purpose="prediction")["reason"].startswith(
-        "No prefix of the decision log keys this fit")
+    assert gate(record(None), purpose="prediction")["reason"] == FIT_ANSWERS_UNREAD == (
+        "This fit cannot be matched to your recorded decisions: at no point in your decision "
+        "log, up to when the fit completed, were the answers those it was computed from, so none "
+        "of its numbers is served.")
     other = gate(record("prediction"), purpose="inference", locked=True)
     assert other["reason"] == ("This fit was computed under prediction, and the goal is now "
                                "inference: a fit's numbers are served only under the goal it was "
@@ -654,26 +821,79 @@ def test_a_records_gate_is_the_stage_routes_read_for_its_own_goal_outcome_and_pl
     assert gate(record("inference"), purpose="inference", locked=True, lock=lock) is None
     assert gate(record("inference", plan="p2", decisions=(1, 7)), purpose="inference",
                 locked=True, lock=lock) is None
+    # The fit the lock was recorded on, though an answer it does not read came between the fit
+    # and the press (its plan is not the lock's): covered by its key.
+    assert gate(record("inference", plan="p2"), purpose="inference", locked=True, lock=lock,
+                locked_key="k") is None
+    refused = ("No estimate of this fit is served: its plan is not the one the analysis-plan lock "
+               "at decision #7 recorded, and it was computed before that lock.")
     assert reason(gate(record("inference", plan="p2"), purpose="inference", locked=True,
-                       lock=lock)) == (
-        "No estimate of this fit is served: its plan is not the one the analysis-plan lock at "
-        "decision #7 recorded, and it was computed before that lock.")
+                       lock=lock)) == refused
+    assert reason(gate(record("inference", plan="p2"), purpose="inference", locked=True,
+                       lock=lock, locked_key="another")) == refused
+    # The digest's case rests on this: the fit reads only slots the plan holds, so two plans alike
+    # are two fits alike under one engine (the graph's own reads, not the gate's).
+    from turbotab.core import plan_lock, seal
+    from turbotab.core.graph import load_graph
+    from turbotab.core.stages import GRAPH_FACTORY
+
+    reads = seal.slots_read_by(load_graph(GRAPH_FACTORY), "fit")
+    assert reads and reads <= set(plan_lock.plan_slots()) - set(plan_lock.LOOKS)
+
+
+def test_a_fit_no_recorded_decisions_match_is_refused_in_plain_words():
+    """The three refusals served when no point in the decision log gives a fit's answers (in
+    /fits' withheld and movement_why, and /results' withheld) say so in the reader's words, not
+    the engine's (a prefix of the log, a key)."""
+    from turbotab.core import runs
+    from turbotab.server.service import FIT_ANSWERS_UNREAD
+
+    assert runs.ANSWERS_UNREAD == (
+        "This fit cannot be matched to your recorded decisions: at no point in your decision log, "
+        "up to when the fit completed, were the answers those it was computed from, so its folds "
+        "are not known and no movement is measured.")
+    assert STALE_OUTCOME_UNREAD == (
+        "This fit is not the current one, and neither its record nor any point in your decision "
+        "log gives the answers it was computed from, so the outcome its scores are for is not "
+        "known and none of them is served.")
+    for text in (FIT_ANSWERS_UNREAD, runs.ANSWERS_UNREAD, STALE_OUTCOME_UNREAD):
+        assert "prefix" not in text and "keys" not in text, text
 
 
 def test_a_records_held_out_scores_are_served_only_on_the_rows_the_opening_opened():
     """From construction, each case both ways: ``_held_out_why`` against the stage route's terms
-    (rows held out, the seal opened, the record's outcome the opened seal's, the same rows)."""
+    (rows held out, the seal opened, the record's outcome the opened seal's, the same rows), and
+    the fit's own: the opened one, one computed after the opening (the opening among its
+    records), or the current one; never another computed before the opening."""
     from turbotab.core.runs import FitRecord
     from turbotab.server.service import _held_out_why
 
-    def record(target="hba1c", held_out="rows-a"):
+    def record(target="hba1c", held_out="rows-a", key="k", decisions=(1, 24)):
         return FitRecord(id="r" * 32, seq=1, at="2026-10-18T00:00:00Z", purpose="prediction",
-                         target=target, fit_key="k", plan_digest="p", decisions=[1], press=None,
-                         families=["linear"], seconds=1.0, workers=2, primary_metric="mse",
-                         folds=None, seed=0, held_out=held_out)
+                         target=target, fit_key=key, plan_digest="p", decisions=list(decisions),
+                         press=None, families=["linear"], seconds=1.0, workers=2,
+                         primary_metric="mse", folds=None, seed=0, held_out=held_out)
 
-    opened_fit, opened = {"n_holdout": 150, "holdout_sealed": False}, (24, "rows-a")
+    opened_fit, opened = {"n_holdout": 150, "holdout_sealed": False}, (24, "rows-a", "k")
     assert _held_out_why(record(), opened_fit, opened, "hba1c") is None
+    # Computed before the opening (it is not among its records): the opened fit's own, the
+    # current fit's, and no other's.
+    before = record(key="k0", decisions=(1, 2))
+    assert _held_out_why(before, opened_fit, (24, "rows-a", "k0"), "hba1c") is None
+    assert _held_out_why(before, opened_fit, opened, "hba1c", current="k0") is None
+    assert _held_out_why(before, opened_fit, opened, "hba1c", current="k") == (
+        "This fit was computed before the opening at decision #24, which opened another fit's "
+        "held-out scores, so this fit's are not served.")
+    assert _held_out_why(before, opened_fit, (24, "rows-a", None), "hba1c").startswith(
+        "This fit was computed before the opening at decision #24")
+    assert _held_out_why(record(key="k2"), opened_fit, opened, "hba1c", current="k") is None
+    # A record whose fit is no longer kept: whether it is the opened fit, from the keys alone.
+    from turbotab.server.service import _served_record
+
+    gone = _served_record(before, None, opened=opened)
+    assert gone["changed_after_seal"] is True and gone["at_opening"] is None
+    assert _served_record(record(), None, opened=opened)["changed_after_seal"] is False
+    assert _served_record(before, None, opened=None)["changed_after_seal"] is False
     assert _held_out_why(record(), {"n_holdout": 0}, opened, "hba1c") == (
         "No rows are held out of this fit's split, so it has no held-out score.")
     assert _held_out_why(record(), {"n_holdout": 150, "holdout_sealed": True}, None,
@@ -683,7 +903,7 @@ def test_a_records_held_out_scores_are_served_only_on_the_rows_the_opening_opene
         "served only on the rows the opening in force opened.")
     assert _held_out_why(record(held_out=None), opened_fit, opened, "hba1c").startswith(
         "The held-out rows this fit was scored on")
-    assert _held_out_why(record(), opened_fit, (24, None), "hba1c").startswith(
+    assert _held_out_why(record(), opened_fit, (24, None, "k"), "hba1c").startswith(
         "The held-out rows this fit was scored on")
     assert _held_out_why(record(held_out="rows-b"), opened_fit, opened, "hba1c") == (
         "This fit was scored on other held-out rows than those the opening at decision #24 "

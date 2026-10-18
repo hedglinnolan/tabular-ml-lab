@@ -178,10 +178,15 @@ def fits(request: Request, pid: str) -> dict:
     (Estimate). Each number is the fit's as ``GET /stages/fit`` would serve that fit now, read for
     the record's own scope: none under another goal than the goal now; under Predict none before
     Fit is pressed for the record's outcome; under Estimate none before the plan's lock, nor for a
-    fit computed before the lock under a plan other than the one it recorded, unless it is the fit
-    the stage route serves now; a held-out score only once the record's outcome's seal is opened,
-    and only where the fit was scored on the rows that opening opened. ``withheld`` and
-    ``holdout_why`` say why a number is not served. Under Predict, a record scored on the same
+    fit computed before the lock that is not the fit the lock was recorded on (the plan's digest
+    is the plan when the fit completed, so the lock can record another for the same fit), unless
+    it is the fit the stage route serves now; a held-out score only once the record's outcome's
+    seal is opened, only where the fit was scored on the rows that opening opened, and only for
+    the fit the opening was recorded on, a fit computed after it or the current fit, with what the
+    stage route says beside them: whether the fit is not the opened one, the scores the opening
+    recorded (the reported result) and whether those are the scores served, and the final
+    model's note. ``withheld`` and ``holdout_why`` say why a number is not served. Under Predict,
+    a record scored on the same
     folds as the one before it carries each family's paired movement against it; otherwise
     ``movement_why`` says why it has none."""
     return get_service(request).fits(pid)

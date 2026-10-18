@@ -8,7 +8,9 @@ a fit already recorded, writes nothing (:class:`RunLog`).
 Each record holds what the fit was, read from the engine and the decision log when it completed:
 
 * the purpose and outcome, the fit key, the plan's digest (``plan_lock.digest(plan_lock.plan_of
-  (state))``, defined under either goal), the records in force (their seqs;
+  (state))``, defined under either goal: the plan when the fit completed, which can differ from
+  the digest a later lock records for the same fit, since the plan holds answers the fit does not
+  read, such as the model sequence), the records in force (their seqs;
   ``provenance.in_force``), the press of Fit in force (``fit_press.read_press`` while it is for the
   outcome and not withdrawn), the families fitted, the seconds the server saw the fit run and the
   runner's workers;
@@ -23,9 +25,9 @@ Each record holds what the fit was, read from the engine and the decision log wh
   served only where they are the opened draw's.
 
 The server serves the records (``GET /projects/{pid}/fits``) through the fit's own serving gate,
-read for each record's own scope (its goal, its outcome's press of Fit, the lock over its plan, the
-draw its held-out rows came from), so each number is withheld wherever the stage route would
-withhold it for that fit.
+read for each record's own scope (its goal, its outcome's press of Fit, whether the lock in force
+covers its fit, the draw its held-out rows came from and whether the opening opened its fit's
+scores), so each number is withheld wherever the stage route would withhold it for that fit.
 """
 from __future__ import annotations
 
@@ -58,8 +60,10 @@ NOT_PREDICT = ("This fit is under Estimate: movement by paired folds compares th
 PREVIOUS_NOT_PREDICT = ("The previous fit is under Estimate: movement by paired folds compares the "
                         "cross-validated scores of two fits under Predict.")
 FOLDS_UNREAD = "The folds a fit was scored on could not be read, so no paired movement is measured."
-ANSWERS_UNREAD = ("No prefix of the decision log keys this fit, so the answers it was computed from, "
-                  "and its folds, are not known.")
+# No prefix of the decision log appended by the fit's completion keys it (:func:`keyed_prefix`).
+ANSWERS_UNREAD = ("This fit cannot be matched to your recorded decisions: at no point in your "
+                  "decision log, up to when the fit completed, were the answers those it was "
+                  "computed from, so its folds are not known and no movement is measured.")
 OTHER_FOLDS = "The previous fit's training rows or their folds differ from this one's."
 
 
@@ -130,7 +134,9 @@ class FitRecord(BaseModel):
     target: str | None
     fit_key: str
     # The plan's digest and the records in force (their seqs) of the decision log as it stood when
-    # the fit completed, checked to key this fit; null when no record prefix keys it.
+    # the fit completed, checked to key this fit; null when no record prefix keys it. The digest is
+    # of the plan when the fit completed: a lock recorded later on this same fit can record another
+    # digest, when an answer the fit does not read (the model sequence) came in between.
     plan_digest: str | None
     decisions: list[int] | None
     press: dict[str, Any] | None  # the press of Fit in force, as kept beside the project

@@ -873,7 +873,7 @@
           "projects"
         ],
         "summary": "Fits",
-        "description": "Every fit that completed, one record per fit key in the order the keys turned fresh, each\nwritten once and never rewritten (SWARM_ENGINE_PLAN E1): its purpose, outcome and key, the\nplan's digest and the records in force it was computed from, the press of Fit in force, its\nfamilies, the seconds its job ran and the server's workers, the rows its split held out, and\nper family the cross-validated summary (Predict) or the exposure's rows with their intervals\n(Estimate). Each number is the fit's as ``GET /stages/fit`` would serve that fit now, read for\nthe record's own scope: none under another goal than the goal now; under Predict none before\nFit is pressed for the record's outcome; under Estimate none before the plan's lock, nor for a\nfit computed before the lock under a plan other than the one it recorded, unless it is the fit\nthe stage route serves now; a held-out score only once the record's outcome's seal is opened,\nand only where the fit was scored on the rows that opening opened. ``withheld`` and\n``holdout_why`` say why a number is not served. Under Predict, a record scored on the same\nfolds as the one before it carries each family's paired movement against it; otherwise\n``movement_why`` says why it has none.",
+        "description": "Every fit that completed, one record per fit key in the order the keys turned fresh, each\nwritten once and never rewritten (SWARM_ENGINE_PLAN E1): its purpose, outcome and key, the\nplan's digest and the records in force it was computed from, the press of Fit in force, its\nfamilies, the seconds its job ran and the server's workers, the rows its split held out, and\nper family the cross-validated summary (Predict) or the exposure's rows with their intervals\n(Estimate). Each number is the fit's as ``GET /stages/fit`` would serve that fit now, read for\nthe record's own scope: none under another goal than the goal now; under Predict none before\nFit is pressed for the record's outcome; under Estimate none before the plan's lock, nor for a\nfit computed before the lock that is not the fit the lock was recorded on (the plan's digest\nis the plan when the fit completed, so the lock can record another for the same fit), unless\nit is the fit the stage route serves now; a held-out score only once the record's outcome's\nseal is opened, only where the fit was scored on the rows that opening opened, and only for\nthe fit the opening was recorded on, a fit computed after it or the current fit, with what the\nstage route says beside them: whether the fit is not the opened one, the scores the opening\nrecorded (the reported result) and whether those are the scores served, and the final\nmodel's note. ``withheld`` and ``holdout_why`` say why a number is not served. Under Predict,\na record scored on the same\nfolds as the one before it carries each family's paired movement against it; otherwise\n``movement_why`` says why it has none.",
         "operationId": "fits_api_projects__pid__fits_get",
         "parameters": [
           {
@@ -14400,6 +14400,31 @@
             ],
             "title": "Holdout Why"
           },
+          "changed_after_seal": {
+            "type": "boolean",
+            "title": "Changed After Seal"
+          },
+          "at_opening": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AtOpening"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "final_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Note"
+          },
           "effects": {
             "additionalProperties": {
               "anyOf": [
@@ -14469,13 +14494,16 @@
           "scores",
           "holdout",
           "holdout_why",
+          "changed_after_seal",
+          "at_opening",
+          "final_note",
           "effects",
           "movement",
           "movement_why",
           "withheld"
         ],
         "title": "ServedFit",
-        "description": "One fit's record (``turbotab/core/runs.py``'s ``FitRecord``) as a client is served it: its\nnumbers are the fit's at ``fit_key`` as ``GET /stages/fit`` would serve that fit now, its gate\nread for the record's own goal, outcome, plan and held-out rows, and ``withheld`` and\n``holdout_why`` say why a number is not served."
+        "description": "One fit's record (``turbotab/core/runs.py``'s ``FitRecord``) as a client is served it: its\nnumbers are the fit's at ``fit_key`` as ``GET /stages/fit`` would serve that fit now, its gate\nread for the record's own goal, outcome, fit under the plan's lock and held-out rows, and\n``withheld`` and ``holdout_why`` say why a number is not served. ``plan_digest`` is the plan\nwhen the fit completed: a lock recorded later on this same fit can record another digest, when\nan answer the fit does not read (the model sequence) came in between."
       },
       "SetAdjustment-Input": {
         "properties": {

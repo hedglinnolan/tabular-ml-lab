@@ -76,16 +76,17 @@ _GATE_UNREAD = object()
 FIT_NOT_KEPT = "This fit's artifact is no longer kept, so none of its numbers is served."
 # E1: why a record's numbers, or its held-out scores, are not served beyond the stage route's own
 # gate (``ProjectService._record_gate``, ``_held_out_why``); each says what the server checked.
-FIT_ANSWERS_UNREAD = ("No prefix of the decision log keys this fit, so the answers it was computed "
-                      "from are not known, and none of its numbers is served.")
+FIT_ANSWERS_UNREAD = ("This fit cannot be matched to your recorded decisions: at no point in your "
+                      "decision log, up to when the fit completed, were the answers those it was "
+                      "computed from, so none of its numbers is served.")
 NONE_HELD_OUT = "No rows are held out of this fit's split, so it has no held-out score."
 HOLDOUT_SEALED = ("The held-out rows are sealed: no held-out score is served until the seal is "
                   "opened.")
 DRAW_UNREAD = ("The held-out rows this fit was scored on, or those the seal's opening opened, could "
                "not be read, so this fit's held-out scores are not served.")
 # E2: a fit served that is not the current one, whose outcome no record or prefix of the log names.
-STALE_OUTCOME_UNREAD = ("This fit is not the current one, and neither its record nor any prefix of "
-                        "the decision log gives the answers it was computed from, so the outcome "
+STALE_OUTCOME_UNREAD = ("This fit is not the current one, and neither its record nor any point in "
+                        "your decision log gives the answers it was computed from, so the outcome "
                         "its scores are for is not known and none of them is served.")
 MAX_REMEMBERED_JOBS = 10_000
 # How long a sentence waits for a stage it states to settle for the answers as they stand (the
@@ -503,29 +504,44 @@ def _record_withheld(state: Any, reason: str) -> dict[str, Any]:
             "exits": []}
 
 
+def _before_the_opening(seq: int) -> str:
+    return (f"This fit was computed before the opening at decision #{seq}, which opened another "
+            f"fit's held-out scores, so this fit's are not served.")
+
+
 def _held_out_why(rec: runs.FitRecord, fit: Mapping[str, Any],
-                  opened: tuple[int, str | None] | None, target: str | None) -> str | None:
+                  opened: tuple[int, str | None, str | None] | None, target: str | None, *,
+                  current: str | None = None) -> str | None:
     """E1: why a record's held-out scores are not served, or None when they may be. The stage route
     serves the current fit's once its outcome's seal is opened, and the opened rows hold still
-    until a recorded re-seal (``seal.py``), so it serves only the opened draw's. A record's are
-    served on the same terms: the seal opened (``opened``: the opening in force, as its seq and
-    :func:`runs.held_out_digest` of the rows it opened), the record's outcome the opened seal's
-    (``target``, the outcome now), and its fit scored on the rows that opening opened."""
+    until a recorded re-seal (``seal.py``), so it serves only the opened draw's: the opened fit's,
+    and after a recorded change the changed fit's, marked as post-seal. A record's are served on
+    the same terms: the seal opened (``opened``: the opening in force, as its seq,
+    :func:`runs.held_out_digest` of the rows it opened and the key of the fit the log keyed when it
+    was recorded), the record's outcome the opened seal's (``target``, the outcome now), its fit
+    scored on the rows that opening opened, and its fit one the stage route has served them for:
+    the opened fit, a fit computed after the opening (the opening among its records in force: a
+    recorded change made it), or the current fit (``current``, its key). A fit computed before the
+    opening that is not the opened one serves none until a recorded change makes it current."""
     if not int(fit.get("n_holdout") or 0):
         return NONE_HELD_OUT
     if fit.get("holdout_sealed") or opened is None:
         return HOLDOUT_SEALED
     if rec.target != target:
         return _other_seal(rec.target, target)
-    seq, rows = opened
+    seq, rows, key = opened
     if rec.held_out is None or rows is None:
         return DRAW_UNREAD
-    return _other_draw(seq) if rec.held_out != rows else None
+    if rec.held_out != rows:
+        return _other_draw(seq)
+    if rec.fit_key in (key, current) or seq in (rec.decisions or []):
+        return None
+    return _before_the_opening(seq)
 
 
 def _served_record(rec: runs.FitRecord, fit: dict[str, Any] | None, *,
-                   opened: tuple[int, str | None] | None = None,
-                   target: str | None = None) -> dict[str, Any]:
+                   opened: tuple[int, str | None, str | None] | None = None,
+                   target: str | None = None, current: str | None = None) -> dict[str, Any]:
     """E1: a fit's record with its numbers as ``fit`` serves them: ``fit`` is the stage route's
     serving of the fit at the record's key under the record's own gate
     (:meth:`ProjectService._record_gate`). Each family's cross-validated summary is the served
@@ -534,11 +550,18 @@ def _served_record(rec: runs.FitRecord, fit: dict[str, Any] | None, *,
     kept (the fit's own coefficient rows, annotated by the estimand it was computed under) wherever
     the served fit shows its coefficients, so a later change of what you study leaves them this
     fit's. ``withheld`` is the served fit's reason when its scores or estimates are withheld; the
-    movement is the caller's (:meth:`ProjectService.fits`)."""
+    movement is the caller's (:meth:`ProjectService.fits`).
+
+    Beside the held-out scores, as the stage route marks them: ``changed_after_seal`` (the served
+    fit's: whether this fit is not the one the seal's opening was recorded on), and the scores the
+    first opening recorded (``at_opening``) and the final model's note (``final_note``), each the
+    served fit's, where its held-out scores are served or it is the current fit (``current``, its
+    key); elsewhere none, since each speaks of the held-out scores served beside it."""
     out = rec.model_dump(mode="json", exclude={"scores", "effects", "movement"})
-    if fit is None:
+    if fit is None:  # whether it is the opened fit, by the stage route's rule on the keys alone
         return {**out, "scores": {}, "holdout": None, "holdout_why": FIT_NOT_KEPT, "effects": {},
-                "withheld": FIT_NOT_KEPT}
+                "withheld": FIT_NOT_KEPT, "at_opening": None, "final_note": None,
+                "changed_after_seal": opened is not None and rec.fit_key != opened[2]}
     models = {str(m.get("family")): m for m in fit.get("models") or [] if isinstance(m, dict)}
     out["scores"] = {f: dict(models.get(f, {}).get("cv") or {}) for f in rec.scores}
     withheld = fit.get("withheld")
@@ -546,11 +569,15 @@ def _served_record(rec: runs.FitRecord, fit: dict[str, Any] | None, *,
         withheld = fit.get("cv_definition")  # under Estimate no score is shown: the fit says why
     # As the fit serves them (M2_CONTRACT §3), on the opened draw only: null otherwise, and why.
     held_out = {f: models.get(f, {}).get("holdout") for f in rec.families}
-    why = _held_out_why(rec, fit, opened, target)
+    why = _held_out_why(rec, fit, opened, target, current=current)
     if why is None and withheld is not None and not any(v is not None for v in held_out.values()):
         why = withheld  # the gate withheld them with the rest
     out["holdout"] = held_out if why is None else None
     out["holdout_why"] = why
+    out["changed_after_seal"] = bool(fit.get("changed_after_seal"))
+    marked = why is None or rec.fit_key == current
+    out["at_opening"] = fit.get("at_opening") if marked else None
+    out["final_note"] = fit.get("final_note") if marked else None
     out["effects"] = {family: None if models.get(family, {}).get("coefficients") is None
                       else [dict(r) for r in rows] for family, rows in rec.effects.items()}
     out["withheld"] = withheld
@@ -2126,33 +2153,57 @@ class ProjectService:
                           split_key, pid)
             return None
 
-    def _opened_draw(self, pid: str, records: list[Any]) -> tuple[int, str | None] | None:
+    def _opened_draw(self, pid: str, records: list[Any]
+                     ) -> tuple[int, str | None, str | None] | None:
         """E1: the opening in force (``seal.opening``: the current outcome's latest, unless a
-        re-seal came after it) as its seq and the rows it opened, :meth:`_held_out` of the split the
-        log keyed when it was recorded; None while the seal is sealed."""
+        re-seal came after it) as its seq, the rows it opened (:meth:`_held_out` of the split the
+        log keyed when it was recorded) and the fit it was recorded on (the fit key the log keyed
+        then, as ``seal.changed_after_seal`` reads it); None while the seal is sealed."""
         opened = seal.opening(records)
         if opened is None:
             return None
         then = seal.state_at_opening(records)
-        key = (seal.keys_for(self.engine.graph, then, self.fingerprint(pid)).get("split")
-               if then is not None else None)
-        return opened.seq, self._held_out(pid, key)
+        keys = (seal.keys_for(self.engine.graph, then, self.fingerprint(pid))
+                if then is not None else {})
+        return opened.seq, self._held_out(pid, keys.get("split")), keys.get("fit")
+
+    def _locked_fit(self, pid: str, records: list[Any], lock: Any) -> str | None:
+        """E1: the fit the plan's lock in force was recorded on: the fit key the answers at the
+        lock give (``seal.keys_for`` of the log folded through the lock's record, the engine's own
+        rule); None with no lock, or when the log through it cannot be folded."""
+        if lock is None:
+            return None
+        try:
+            then = decisions.fold([r for r in records if r.seq <= lock.seq])
+        except Refusal:
+            return None
+        return seal.keys_for(self.engine.graph, then, self.fingerprint(pid)).get("fit")
 
     def _record_gate(self, rec: runs.FitRecord, state: ProjectState, question: Any,
-                     press: dict[str, Any] | None, lock: Any) -> Any:
+                     press: dict[str, Any] | None, lock: Any,
+                     locked_key: str | None = None) -> Any:
         """E1: the gate a record's numbers are served under (``estimand.withhold`` reads it), or None
         when it is clear: the stage route's gate (:meth:`_estimate_gate`) read for the record's own
         scope. ``question`` is the question an estimate rests on now (:meth:`_question_gate`),
-        ``press`` the press of Fit kept, ``lock`` the plan's lock in force.
+        ``press`` the press of Fit kept, ``lock`` the plan's lock in force and ``locked_key`` the
+        fit it was recorded on (:meth:`_locked_fit`).
 
         * No goal now: the goal's gate, as on the stage route.
         * The record's answers unread, or its goal not the goal now: everything withheld, and why.
         * Predict: as the stage route, but read for the record's outcome: no score unless Fit was
           pressed for it (``fit_press.pressed_for``).
         * Estimate: as the stage route (no estimate before the lock), and then only where the
-          lock in force covers the record: its plan's digest is the lock's, or the lock is among
-          the records in force when it was computed (a change made after the lock is recorded as
-          made after the estimates, ``plan_lock``)."""
+          lock in force covers the record: its fit is the one the lock was recorded on (its key is
+          ``locked_key``), its plan's digest is the lock's, or the lock is among the records in
+          force when it was computed (a change made after the lock is recorded as made after the
+          estimates, ``plan_lock``). The fit is decided by its key, not its plan: a record's plan
+          is the plan when the fit completed, and an answer the fit does not read (the model
+          sequence, the substitution) recorded between its completion and the press of Fit is in
+          the lock's plan and not the record's. The fit reads only slots the plan holds (it is an
+          estimate stage, ``plan_lock.plan_slots``, and reads no look), so a record whose plan is
+          the lock's is keyed by the lock's answers too; its digest covers that fit when the
+          engine has keyed it anew since (a stage's version changed). Where none covers it, its
+          plan is not the lock's and it was computed before the lock: the refusal says so."""
         if state.purpose is None:
             return fit_press.gate(question, state, False)
         if rec.purpose is None:
@@ -2167,8 +2218,8 @@ class ProjectService:
             return gate
         if lock is None:  # the state says locked, the log holds no lock: the strict case
             return _record_withheld(state, fit_press.LOCK_FIRST)
-        if rec.plan_digest == getattr(lock.decision, "digest", None) or lock.seq in (
-                rec.decisions or []):
+        if (locked_key is not None and rec.fit_key == locked_key) or rec.plan_digest == getattr(
+                lock.decision, "digest", None) or lock.seq in (rec.decisions or []):
             return None
         return _record_withheld(state, _not_the_locked_plan(lock.seq))
 
@@ -2179,10 +2230,12 @@ class ProjectService:
         :meth:`_record_gate`, that gate read for the record's own goal, outcome and plan. So none
         at all under another goal than the goal now; under Predict no score unless Fit was
         pressed for the record's outcome; under Estimate no cross-validated score, and no
-        estimate before the plan's lock, nor after it for a plan the lock in force does not
-        cover; none while a question an estimate rests on is open. Its held-out scores only once
-        its outcome's seal is opened, and only where it was scored on the rows that opening
-        opened (:func:`_held_out_why`). A movement only where both fits' scores are served. What
+        estimate before the plan's lock, nor after it for a fit the lock in force does not
+        cover (:meth:`_record_gate`); none while a question an estimate rests on is open. Its
+        held-out scores only once its outcome's seal is opened, only where it was scored on the
+        rows that opening opened, and only for the opened fit, a fit computed after the opening or
+        the current fit (:func:`_held_out_why`), with the marks the stage route puts beside them
+        (:func:`_served_record`). A movement only where both fits' scores are served. What
         is served counts as shown, as on the stage route: each family whose cross-validated
         scores are served is kept as seen for the record's outcome, and an estimate served under
         the plan's lock makes the lock stand (:meth:`_note_shown`)."""
@@ -2197,6 +2250,7 @@ class ProjectService:
         state = decisions.fold(records)
         question = self._question_gate(pid, state, records)
         press, lock = self._press(pid), plan_lock.current_lock(records)
+        locked = self._locked_fit(pid, records, lock) if state.purpose != "prediction" else None
         opened = self._opened_draw(pid, records)
         # The current fit's record is gated as the stage route gates that fit now, exactly.
         status = self.engine.status(pid).get("fit")
@@ -2209,10 +2263,11 @@ class ProjectService:
             except (OSError, ValueError, KeyError):
                 data = None
             gate = (now if rec.fit_key == current
-                    else self._record_gate(rec, state, question, press, lock))
+                    else self._record_gate(rec, state, question, press, lock, locked))
             fit = self._serve(pid, "fit", data, rec.fit_key, gate=gate) if isinstance(
                 data, dict) else None
-            served.append(_served_record(rec, fit, opened=opened, target=state.target))
+            served.append(_served_record(rec, fit, opened=opened, target=state.target,
+                                         current=current))
         scored = {rec.id: {f for f, cv in out["scores"].items() if cv}
                   for rec, out in zip(stored, served)}
         by_id = {rec.id: rec for rec in stored}
