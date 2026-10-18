@@ -232,7 +232,8 @@ def fits(request: Request, pid: str) -> dict:
     model's note. ``withheld`` and ``holdout_why`` say why a number is not served. Under Predict,
     a record scored on the same
     folds as the one before it carries each family's paired movement against it; otherwise
-    ``movement_why`` says why it has none."""
+    ``movement_why`` says why it has none. Under Estimate, ``locked`` marks the record of the fit
+    the plan's lock in force was recorded on (its key is the one the answers at the lock give)."""
     return get_service(request).fits(pid)
 
 

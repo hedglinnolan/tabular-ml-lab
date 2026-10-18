@@ -2430,7 +2430,10 @@ class ProjectService:
         held-out scores only once its outcome's seal is opened, only where it was scored on the
         rows that opening opened, and only for the opened fit, a fit computed after the opening or
         the current fit (:func:`_held_out_why`), with the marks the stage route puts beside them
-        (:func:`_served_record`). A movement only where both fits' scores are served. What
+        (:func:`_served_record`). A movement only where both fits' scores are served. Under
+        Estimate, ``locked`` marks the record of the fit the plan's lock in force was recorded on
+        (:meth:`_locked_fit`, its key), so a reader need not match plans' digests, which differ
+        when an answer the fit does not read came between the fit and the press. What
         is served counts as shown, as on the stage route: each family whose cross-validated
         scores are served is kept as seen for the record's outcome, and an estimate served under
         the plan's lock makes the lock stand (:meth:`_note_shown`)."""
@@ -2461,8 +2464,9 @@ class ProjectService:
                     else self._record_gate(rec, state, question, press, lock, locked))
             fit = self._serve(pid, "fit", data, rec.fit_key, gate=gate) if isinstance(
                 data, dict) else None
-            served.append(_served_record(rec, fit, opened=opened, target=state.target,
-                                         current=current))
+            served.append({**_served_record(rec, fit, opened=opened, target=state.target,
+                                            current=current),
+                           "locked": locked is not None and rec.fit_key == locked})
         scored = {rec.id: {f for f, cv in out["scores"].items() if cv}
                   for rec, out in zip(stored, served)}
         by_id = {rec.id: rec for rec in stored}

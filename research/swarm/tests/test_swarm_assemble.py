@@ -782,17 +782,18 @@ def test_under_predict_the_result_is_the_openings_scores_once():
 
 
 def test_under_estimate_the_result_is_the_fit_the_lock_in_force_was_recorded_on():
-    """A fit the scheduler held for Fit completes after the lock (its records hold it); a fit
-    after a change made with the estimates in view holds another plan."""
+    """A fit the scheduler held for Fit completes after the lock (its records hold it), and GET
+    …/fits marks it the one the lock was recorded on (``locked``); a fit after a change made with
+    the estimates in view holds another plan."""
     effect = [{"feature": "x", "estimate": 0.3, "ci_low": 0.1, "ci_high": 0.5}]
     records = [_rec(1, 1, {"kind": "set_estimand"}), _rec(2, 2, {"kind": "set_adjustment"}),
                _rec(3, 3, {"kind": "lock_plan", "digest": "lockdigest"}),
                _rec(4, 6, {"kind": "set_exclusions", "rules": []})]
-    fits = [{"id": "fit1", "plan_digest": "d1", "decisions": [1], "effects": {}},
+    fits = [{"id": "fit1", "plan_digest": "d1", "decisions": [1], "effects": {}, "locked": False},
             {"id": "fit2", "plan_digest": "lockdigest", "decisions": [1, 2, 3],
-             "effects": {"linear": effect}},
+             "effects": {"linear": effect}, "locked": True},
             {"id": "fit3", "plan_digest": "d3", "decisions": [1, 2, 3, 4],
-             "effects": {"linear": effect}}]
+             "effects": {"linear": effect}, "locked": False}]
     got = A.result_of("inference", records, fits, A.Read(200, {}))
     assert (got["attempt"], got["lock"], got["plan_digest"], got["effects"]) == (
         "fit2", 3, "lockdigest", {"linear": effect})
@@ -804,15 +805,16 @@ B_ROWS = [{"feature": "sugar", "estimate": -0.0262, "ci_low": -0.0384, "ci_high"
 TRIED = [_rec(1, 1, {"kind": "set_estimand"}), _rec(2, 2, _rule(500)), _rec(3, 4, _rule(600)),
          _rec(4, 6, _rule(500)), _rec(5, 7, {"kind": "lock_plan", "digest": "plan-A"})]
 TRIED_FITS = [{"id": "fit1", "plan_digest": "plan-A", "decisions": [1, 2],
-               "effects": {"linear": A_ROWS}},
+               "effects": {"linear": A_ROWS}, "locked": True},
               {"id": "fit2", "plan_digest": "plan-B", "decisions": [1, 3],
-               "effects": {"linear": B_ROWS}}]
+               "effects": {"linear": B_ROWS}, "locked": False}]
 
 
 def test_under_estimate_the_result_is_the_fit_whose_plan_is_the_locks_not_the_last_before_it():
     """DB-V1's E1: rule A fitted (fit 1), rule B fitted (fit 2), rule A again (#4, no new fit:
     its key was recorded), then the lock on rule A's plan. Its E3: a revert of #4 after the lock
-    makes rule B's fit current again. The result is fit 1 both times, by its plan's digest."""
+    makes rule B's fit current again. The result is fit 1 both times, the fit GET …/fits marks
+    as the one the lock was recorded on."""
     got = A.result_of("inference", TRIED, TRIED_FITS, A.Read(200, {}))
     assert (got["attempt"], got["decisions"], got["effects"], got["plan_digest"]) == (
         "fit1", [1, 2], {"linear": A_ROWS}, "plan-A")
@@ -821,18 +823,30 @@ def test_under_estimate_the_result_is_the_fit_whose_plan_is_the_locks_not_the_la
     assert (got["attempt"], got["effects"]) == ("fit1", {"linear": A_ROWS})
 
 
-def test_under_estimate_a_lock_whose_plan_no_fit_record_holds_is_refused():
-    """No fit record holds the lock's plan (an answer the fit does not read changed between the
-    fit and the press, say): the result is refused, never the last fit before the lock."""
+def test_under_estimate_the_result_is_the_locked_fit_whatever_its_plans_digest():
+    """DRV-INT (DB's [next, engine] line): an answer the fit does not read (the model sequence,
+    the sensitivity analyses) came between the fit and the press, so the lock records a digest no
+    fit record holds; GET …/fits marks the fit the lock was recorded on all the same (its key), and
+    the result is that fit's, under the lock's digest. Before, it was refused as not known."""
     other = [*TRIED[:4], _rec(5, 7, {"kind": "lock_plan", "digest": "plan-C"})]
     got = A.result_of("inference", other, TRIED_FITS, A.Read(200, {}))
+    assert (got["attempt"], got["lock"], got["plan_digest"], got["effects"]) == (
+        "fit1", 5, "plan-C", {"linear": A_ROWS})
+    assert got.get("refused") is None
+
+
+def test_under_estimate_a_lock_no_fit_record_is_marked_with_is_refused():
+    """No fit record is marked as the one the lock was recorded on (that fit never completed, say):
+    the result is refused, never the fit whose plan's digest is the lock's, nor the last fit before
+    the lock; nor where two are marked."""
+    unmarked = [{**f, "locked": False} for f in TRIED_FITS]
+    got = A.result_of("inference", TRIED, unmarked, A.Read(200, {}))
     assert (got["attempt"], got["lock"], got["plan_digest"], got.get("effects")) == (
-        None, 5, "plan-C", None)
+        None, 5, "plan-A", None)
     assert (got["refused"], got["refused_kind"]) == (A.no_locked_fit(5), "not_known")
-    twice = [*TRIED_FITS, {"id": "fit3", "plan_digest": "plan-A", "decisions": [1, 4],
-                           "effects": {"linear": B_ROWS}}]
+    twice = [{**f, "locked": True} for f in TRIED_FITS]
     got = A.result_of("inference", TRIED, twice, A.Read(200, {}))
-    assert got["attempt"] is None and got["refused"] == A.locked_twice(5, ["fit1", "fit3"])
+    assert got["attempt"] is None and got["refused"] == A.locked_twice(5, ["fit1", "fit2"])
     assert got["refused_kind"] == "not_known"
 
 
@@ -1729,26 +1743,31 @@ def test_on_the_server_each_adjustment_group_is_credited_with_its_own_choices(lo
             assert (d.seq in held) == (d.seq in in_force), d.seq
 
 
-def test_on_the_server_a_result_the_record_cannot_identify_is_not_judged(lone_e2e):
-    """DB-V5: the lock's digest is no fit record's (the sensitivity answer came after the fit), so
-    the record cannot identify the locked fit, although the server served its estimate: the
-    known answer and the null decoy are not checked, and no note says no result was reported."""
+def test_on_the_server_the_locked_fit_is_the_result_whatever_its_plans_digest(lone_e2e):
+    """DRV-INT (DB's [next, engine] line): the lock's digest is no fit record's (the sensitivity
+    answer came after the fit), but GET …/fits marks the fit the lock was recorded on, the one the
+    server's own rule names (``_locked_fit``, its key), and the result is that fit's estimate.
+    Before, the record could not identify it and the known answer and the decoy went unjudged.
+    Now they are judged: the known answer 9.0 (constructed: no interval near it) fails, and the
+    decoy check reads the served interval; seal integrity passes."""
     rec, decoy, served = lone_e2e["rec"], lone_e2e["decoy"], lone_e2e["served"]
     lock = next(r for r in served["view"]["decisions"] if r["decision"]["kind"] == "lock_plan")
     fits = served["fits"]["records"]
     assert all(f["plan_digest"] != lock["decision"]["digest"] for f in fits)
-    locked = next(f for f in fits if f["fit_key"] == lone_e2e["locked_key"])
-    assert any(row["estimate"] is not None for rows in locked["effects"].values()
-               for row in rows or [])  # the engine served the locked fit's estimate
+    [locked] = [f for f in fits if f["locked"]]
+    assert locked["fit_key"] == lone_e2e["locked_key"]  # the server's own rule names it
+    rows = {f: rows for f, rows in locked["effects"].items() if rows}
+    assert any(row["estimate"] is not None for rs in rows.values() for row in rs)
     r = rec.result
-    assert (r.refused, r.refused_kind, r.lock) == (A.no_locked_fit(lock["seq"]), "not_known",
-                                                   lock["seq"])
+    assert (r.refused, r.lock, r.plan_digest) == (None, lock["seq"], lock["decision"]["digest"])
+    assert (r.attempt, r.decisions, r.effects) == (locked["id"], locked["decisions"], rows)
     known = C.known_answer(rec)
-    assert (known.outcome, known.problems) == ("not_checked", [])
-    assert any(u.startswith("The record cannot say what result") for u in known.unchecked)
-    null = C.null_decoy(decoy)
-    assert (null.outcome, null.notes) == ("not_checked", [])
-    assert C.seal_integrity(rec).outcome == "not_checked"
+    assert known.outcome == "fail" and all("excludes the known answer 9.0" in p
+                                           for p in known.problems), known
+    excludes = any(row["ci_low"] > 0 or row["ci_high"] < 0 for rs in rows.values() for row in rs
+                   if row["estimate"] is not None)
+    assert C.null_decoy(decoy).outcome == ("fail" if excludes else "pass")
+    assert C.seal_integrity(rec).outcome == "pass"
 
 
 # ── end to end: a revert the fit before read, with its revert (DB-V6) ─────────

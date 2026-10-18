@@ -45,7 +45,8 @@ def attempt(seq: int, decisions: list[int], changed: list[int], *, minute: int,
             changed_after_seal: bool = False, plan_digest: str | None = None,
             holdout: dict[str, Any] | None = None,
             withdrawn: list[tuple[int, int | None]] | None = None,
-            reinstated: list[tuple[int, int | None]] | None = None) -> dict[str, Any]:
+            reinstated: list[tuple[int, int | None]] | None = None,
+            locked: bool = False) -> dict[str, Any]:
     notes = notes or {s: f"reason for record #{s}" for s in changed}
     out = {"id": f"fit{seq}", "seq": seq, "at": at(minute), "purpose": purpose, "target": "y",
            "fit_key": f"key{seq}", "plan_digest": plan_digest or f"digest{seq}",
@@ -57,7 +58,7 @@ def attempt(seq: int, decisions: list[int], changed: list[int], *, minute: int,
            "holdout_why": None if holdout is not None else "constructed: none served",
            "changed_after_seal": changed_after_seal,
            "at_opening": at_opening, "effects": effects or {}, "movement": moved or [],
-           "movement_why": movement_why, "withheld": None}
+           "movement_why": movement_why, "withheld": None, "locked": locked}
     out["withdrawn"] = [{"seq": s, "by": b} for s, b in withdrawn or ()]
     out["reinstated"] = [{"seq": s, "by": b} for s, b in reinstated or ()]
     return out
@@ -146,7 +147,7 @@ YES = {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "no"
 
 def estimate_record(control: str | None = None) -> dict[str, Any]:
     """Under Estimate: the plan locked at record #4 (TurboTab's own), the locked fit (its plan
-    the lock's) read records #1–#4, and a secondary analysis after the estimates were seen (record
+    the lock's, marked locked) read records #1–#4, and a secondary analysis after the estimates were seen (record
     #5, a second fit)."""
     decisions = [
         decision(1, "set_purpose", {"purpose": "inference"},
@@ -166,7 +167,7 @@ def estimate_record(control: str | None = None) -> dict[str, Any]:
     attempts = [
         attempt(1, [1, 2, 3, 4], [1, 2, 3, 4], minute=6, purpose="inference",
                 notes={1: "r1", 2: "r2", 3: "r3"}, effects={"linear": copy.deepcopy(EFFECT)},
-                plan_digest="lockdigest",
+                plan_digest="lockdigest", locked=True,
                 movement_why="This fit is under Estimate."),
         attempt(2, [1, 2, 3, 4, 5], [5], minute=10, purpose="inference",
                 effects={"linear": [{**EFFECT[0], "estimate": 0.31}]},

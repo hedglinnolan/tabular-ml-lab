@@ -12,10 +12,11 @@ check never passes what it could not check.
   mark), is among the records the result or the fit it names read, whether or not it names an
   opening or a lock; the result's records and numbers are those its fit read and serves; held-out
   scores name their opening and are the ones it recorded, from the fit it was recorded on;
-  estimates name their lock, hold the lock's plan and come from a fit whose own plan is the lock's
-  (else not checked). A record after the lock is not judged by its seq: one that changes no plan
-  (a look, say) is recorded unmarked and may be among a held fit's records, and one that changes
-  the plan withdraws the lock first or changes the fit's own plan.
+  estimates name their lock, hold the lock's plan and come from the fit ``GET …/fits`` marks as
+  the one the lock was recorded on (``Attempt.locked``, whatever that fit's own plan's digest). A
+  record after the lock is not judged by its seq: one that changes no plan (a look, say) is
+  recorded unmarked and may be among a held fit's records, and one that changes the plan
+  withdraws the lock first or changes the fit's own plan.
 * :func:`logging_complete`: every attempt has a reason, a note on a record credited with its change
   from the fit before, a revert's included (a fit that followed only TurboTab's own records is
   noted as not the analyst's; one whose change is credited to no record, or whose change is not
@@ -153,12 +154,12 @@ def seal_integrity(rec: Record) -> Outcome:
             if (r.effects or {}) != {f: rows for f, rows in fit.effects.items() if rows}:
                 problems.append(f"The result's estimates are not those its fit #{fit.seq} "
                                 f"serves.")
-            if fit.plan_digest != digest:
-                # A fit and its lock can differ in an answer the fit does not read: not failed,
-                # and never passed.
-                unchecked.append(f"The result's fit #{fit.seq} holds a plan whose digest is not "
-                                 f"the lock's, so whether the lock at record #{r.lock} was "
-                                 f"recorded on it is not known from the record.")
+            if not fit.locked:
+                # GET …/fits marks the fit the lock was recorded on (its key, the server's rule);
+                # a fit and its lock can differ in an answer the fit does not read, so the digest
+                # does not decide it.
+                problems.append(f"The result's fit #{fit.seq} is not the fit the lock at record "
+                                f"#{r.lock} was recorded on.")
     return _outcome("seal_integrity", rec, problems, unchecked)
 
 

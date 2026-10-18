@@ -63,8 +63,8 @@ Control = Literal["known_answer", "null_decoy"]
 # seal never opened, the plan never locked, no goal); "not_served", the engine served none (the
 # opening recorded no held-out scores and its fit serves none, or the locked fit serves no exposure
 # rows and withholds none); "not_known", the record cannot say what the run reported (no fit record,
-# or several, holds the lock's plan; the route withholds the locked fit's rows now; the opening
-# recorded no scores while its fit serves held-out scores).
+# or several, is marked the one the lock was recorded on; the route withholds the locked fit's rows
+# now; the opening recorded no scores while its fit serves held-out scores).
 RefusedKind = Literal["not_reported", "not_served", "not_known"]
 
 
@@ -302,6 +302,8 @@ class Attempt(_Strict):
     movement: list[dict[str, Any]]
     movement_why: str | None
     withheld: str | None
+    # Estimate: GET …/fits marks this the fit the plan's lock in force was recorded on.
+    locked: bool = False
 
 
 # ── result, claims, surfacings, export, replication ──────────────────────────
@@ -312,7 +314,7 @@ class Result(_Strict):
     opening of the seal recorded (``open_seal``'s ``scores``), from the fit it was recorded on, with
     the intervals beside them only while the scores served are the opening's; under Estimate each
     family's exposure rows of the fit the plan's lock in force was recorded on, the one fit record
-    whose own plan digest is the lock's, under the lock's digest. ``refused`` says why there is
+    ``GET …/fits`` marks so (``Attempt.locked``), under the lock's digest. ``refused`` says why there is
     none, and ``refused_kind`` which kind of none it is (:data:`RefusedKind`): a check judges a
     result none was reported or served for as refused, and does not judge one it cannot know."""
 

@@ -68,10 +68,11 @@ not known (no prefix holds a fit's records), neither is the change (``changed`` 
 * otherwise none, and why: the route's own words where it gave them.
 
 **The result** under Estimate is the fit the lock in force was recorded on: the one fit record
-whose own plan digest is the lock's. ``GET …/fits`` does not serve the fit key the lock was
-recorded on, so where no record, or more than one, holds the lock's plan, the result is refused
-and says so, as a result the record cannot know (``refused_kind``), never as one the run did not
-report; it is never the last fit before the lock.
+``GET …/fits`` marks so (``locked``: its key is the one the answers at the lock give, the server's
+own rule, whatever its plan's digest, which differs when an answer the fit does not read came
+between the fit and the press). Where no record, or more than one, is marked, the result is
+refused and says so, as a result the record cannot know (``refused_kind``), never as one the run
+did not report; it is never the last fit before the lock, nor a fit matched by its digest.
 
 **Examined options.** A decision answers one or more questions (:func:`answers_of`: each answer
 the server keeps apart is its own question, so a preview of another covariate's adjustment answer
@@ -206,14 +207,14 @@ def _unseen_revert(target: int | None) -> str:
 
 
 def no_locked_fit(lock: int) -> str:
-    return (f"No fit record holds the plan the lock at record #{lock} recorded (its digest), so "
-            f"the fit the lock was recorded on is not known from the fit records.")
+    return (f"No fit record is marked as the fit the lock at record #{lock} was recorded on, so "
+            f"that fit is not known from the fit records.")
 
 
 def locked_twice(lock: int, ids: Sequence[str]) -> str:
     listed = ", ".join(f"`{i}`" for i in ids)
-    return (f"Fit records {listed} each hold the plan the lock at record #{lock} recorded, so "
-            f"which one the lock was recorded on is not known from the fit records.")
+    return (f"Fit records {listed} are each marked as the fit the lock at record #{lock} was "
+            f"recorded on, so which one it was is not known from the fit records.")
 
 
 def _superseded(seqs: Sequence[int]) -> str:
@@ -966,8 +967,8 @@ def result_of(purpose: str | None, records: Sequence[Mapping[str, Any]],
     never locked, no goal); ``not_served``, the engine served none (the opening recorded no
     held-out scores and its fit serves none; the locked fit serves no exposure rows and withholds
     none); ``not_known``, the record cannot say what the run reported (no fit record, or several,
-    holds the lock's plan; the route withholds the locked fit's rows now; the opening recorded no
-    scores while its fit serves held-out scores)."""
+    is marked the one the lock was recorded on; the route withholds the locked fit's rows now; the
+    opening recorded no scores while its fit serves held-out scores)."""
     base: dict[str, Any] = {"purpose": purpose, "attempt": None, "plan_digest": None,
                             "decisions": None}
     if purpose == "prediction":
@@ -1011,7 +1012,7 @@ def result_of(purpose: str | None, records: Sequence[Mapping[str, Any]],
                     "refused_kind": "not_reported"}
         digest = lock["decision"].get("digest")
         out = {**base, "lock": lock["seq"], "plan_digest": digest}
-        held = [a for a in attempts if digest is not None and a.get("plan_digest") == digest]
+        held = [a for a in attempts if a.get("locked")]
         if not held:
             return {**out, "refused": no_locked_fit(lock["seq"]),
                     "refused_kind": "not_known"}

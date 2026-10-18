@@ -113,17 +113,19 @@ def test_seal_integrity_fires_on_a_named_fit_that_read_a_change_made_with_the_es
         "#5)."]
 
 
-def test_seal_integrity_does_not_pass_a_locked_result_whose_fit_holds_another_plan():
-    """Its fit's own plan is not the lock's: whether the lock was recorded on it is not known
-    from the record (a fit and a lock can differ in an answer the fit does not read), so it is
-    not passed, and not failed."""
+def test_seal_integrity_reads_the_locked_fit_from_the_servers_mark_not_the_plans_digest():
+    """DRV-INT: a fit and its lock can differ in an answer the fit does not read, so the fit the
+    lock was recorded on is the one GET …/fits marks (``locked``), whatever its own plan's
+    digest: such a result passes. A result whose fit is not marked fails, digest or not."""
     data = estimate_record()
     data["attempts"][0]["plan_digest"] = "another plan"
-    got = outcome(C.seal_integrity, data)
-    assert (got.outcome, got.problems) == ("not_checked", [])
-    assert got.unchecked == ["The result's fit #1 holds a plan whose digest is not the lock's, so "
-                             "whether the lock at record #4 was recorded on it is not known from "
-                             "the record."]
+    assert outcome(C.seal_integrity, data).outcome == "pass"
+    unmarked = estimate_record()
+    unmarked["attempts"][0]["locked"] = False
+    got = outcome(C.seal_integrity, unmarked)
+    assert got.outcome == "fail"
+    assert got.problems == ["The result's fit #1 is not the fit the lock at record #4 was "
+                            "recorded on."]
 
 
 def test_seal_integrity_fires_on_held_out_scores_its_named_fit_does_not_serve():

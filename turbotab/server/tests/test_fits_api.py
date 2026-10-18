@@ -191,6 +191,7 @@ def test_one_record_per_distinct_fit_withheld_as_the_stage_route_and_never_rewri
     assert report["scores"]["linear"] == by_family(computed)["linear"]["cv"]
     assert report["scores"]["linear"] == by_family(served)["linear"]["cv"] != {}
     assert report["withheld"] is None and report["holdout"] is None  # still sealed
+    assert report["locked"] is False  # under Predict a press records no plan's lock (DRV-INT)
     assert {k: report[k] for k in STORED} == {k: first[k] for k in STORED}
     document = results(client, pid)
     assert document["families"][0]["cv"] == by_family(served)["linear"]["cv"]
@@ -618,11 +619,15 @@ def test_under_estimate_the_lock_covers_the_fit_it_was_recorded_on_whatever_else
     drive.decide({"kind": "set_model_sequence", "exposure": "sugar", "model_1": ["age", "gender"]})
     wait_for(client, pid, {"fit": "fresh", "effects": "fresh"}, timeout=240)
     assert fit_key(client, pid) == second["fit_key"]  # the fit does not read the sequence
+    assert [r["locked"] for r in (first, second)] == [False, False]  # no lock yet
     assert client.post(f"/api/projects/{pid}/fit").status_code == 200
     lock = kinds(client, pid, "lock_plan")[-1]
     first, second = settled(client, pid, 2)  # Fit computed nothing new
     assert lock["decision"]["digest"] == plan_sha(client, pid) != second["plan_digest"]
     assert lock["seq"] not in second["decisions"]
+    # DRV-INT: the record served says which fit the lock was recorded on (its key is the one the
+    # answers at the lock give), so a reader need not match the plan's digest, which differs here.
+    assert [r["locked"] for r in (first, second)] == [False, True]
     rows = by_family(stage(client, pid, "fit"))["linear"]["coefficients"]
     assert rows and all(r["estimate"] is not None and r["ci_low"] < r["ci_high"] for r in rows)
     assert second["effects"] == {"linear": rows} and second["withheld"] is None
@@ -632,6 +637,7 @@ def test_under_estimate_the_lock_covers_the_fit_it_was_recorded_on_whatever_else
     wait_for(client, pid, {"fit": "fresh", "effects": "fresh"}, timeout=240)
     first, second, third = settled(client, pid, 3)
     assert third["fit_key"] == fit_key(client, pid) != second["fit_key"]
+    assert [r["locked"] for r in (first, second, third)] == [False, True, False]
     assert second["effects"] == {"linear": rows} and second["withheld"] is None
     assert first["effects"] == {"linear": None}
     assert first["withheld"] == (
