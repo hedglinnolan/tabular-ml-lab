@@ -131,11 +131,22 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
     return line ? idOf(line) : openId;
   };
   const [expanded, setExpanded] = useState<string | null>(() => targetOf(request));
-  // A new open line (the last one was answered) is the one expanded.
-  const [seenOpen, setSeenOpen] = useState(openId);
-  if (seenOpen !== openId) {
-    setSeenOpen(openId);
-    setExpanded(openId);
+  // A new open line is the one expanded once the last one was answered (or is gone), and where
+  // nothing is expanded. Only an answer moves the expansion: an open line that went waiting while
+  // its stage computes and comes back with no answer leaves the line the person has expanded as it
+  // is (a noticing's card collapsed under the Enter of its previewed repair, which then recorded
+  // nothing: the own-csv journey's race).
+  const openRecord = open?.decision_id ?? null;
+  const [seenOpen, setSeenOpen] = useState({ id: openId, record: openRecord });
+  if (seenOpen.id !== openId || seenOpen.record !== openRecord) {
+    setSeenOpen({ id: openId, record: openRecord });
+    if (seenOpen.id !== openId) {
+      const was = seenOpen.id === null ? null : (stage.lines.find((l) => idOf(l) === seenOpen.id) ?? null);
+      const answered =
+        seenOpen.id !== null &&
+        (was === null || (was.status !== "open" && was.status !== "waiting") || (was.decision_id ?? null) !== seenOpen.record);
+      if (answered || expanded === null) setExpanded(openId);
+    }
   }
   // A new request, in the stage already shown (a lever whose question is here): its line.
   const [seenRequest, setSeenRequest] = useState(request?.n ?? null);

@@ -577,6 +577,77 @@ describe("a recorded card (finding 24)", () => {
   });
 });
 
+describe("an open line that only comes back from a recompute (the own-csv race)", () => {
+  const expanded = (card: HTMLElement) => card.querySelector("[data-expanded]")?.getAttribute("data-line") ?? null;
+  /** Who's in in a StageCard, re-rendered with each log in turn, as GET /quest serves them. */
+  function whosIn(first: QuestLog) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    qc.setQueryData(keys.view(PID), VIEW);
+    qc.setQueryData(keys.record(PID), RECORD);
+    const ui = (log: QuestLog) => (
+      <QueryClientProvider client={qc}>
+        <StageFocusProvider>
+          <StageCard pid={PID} log={log} stage={stageIn(log, "whos_in")} answers={new Map()} fit={{ kind: "none" }} onOpenStage={() => {}} arrival={null} onOpenManuscript={() => {}} />
+        </StageFocusProvider>
+      </QueryClientProvider>
+    );
+    const r = render(ui(first));
+    return { card: screen.getByTestId("card-whos_in"), next: (log: QuestLog) => r.rerender(ui(log)) };
+  }
+  const NOTICING = "finding:pack::dietary::implausible_intake#1";
+  const GRAIN = "question:grain";
+  const EXCLUSIONS = "question:exclusions";
+  const WAITS = { key: "grain", stage: "whos_in", name: CONTRACT.questions.grain?.name ?? "grain" };
+  /** Who's in by construction: the grain question and the exclusions question as `grain` and
+   *  `exclusions` set them, the noticing open, the rest answered as the engine served them. */
+  const at = (grain: (l: QuestLine) => QuestLine, exclusions: (l: QuestLine) => QuestLine) =>
+    patched(REACHED, { whos_in: (l) => (l.key === "grain" ? grain(l) : l.key === "exclusions" ? exclusions(l) : l) });
+  const open = (l: QuestLine): QuestLine => ({ ...l, status: "open", decision_id: null, waiting_for: [] });
+  const waiting = (l: QuestLine): QuestLine => ({ ...l, status: "waiting", decision_id: null, waiting_for: [WAITS] });
+  const answered = (id: string) => (l: QuestLine): QuestLine => ({ ...l, status: "answered", decision_id: id, waiting_for: [] });
+
+  it("keeps the line expanded where the open line went waiting and came back with no answer", () => {
+    // The grain is the open line, and expanded; its answer is recorded, and the exclusions wait
+    // while their stage computes again: the noticing is the open line now, and expanded.
+    const { card, next } = whosIn(at(open, open));
+    expect(expanded(card)).toBe(GRAIN);
+    next(at(answered("r-grain"), waiting));
+    expect(expanded(card)).toBe(NOTICING);
+    // The exclusions are open again with no answer of anyone's between: the noticing stays.
+    next(at(answered("r-grain"), open));
+    expect(expanded(card)).toBe(NOTICING);
+    expect(lineEl(card, "exclusions")).not.toHaveAttribute("data-expanded");
+  });
+
+  it("keeps the line the person expanded through its own line's wait, with no answer", () => {
+    const { card, next } = whosIn(at(answered("r-grain"), open));
+    expect(expanded(card)).toBe(EXCLUSIONS);
+    // Its line waits while it computes: the noticing, open, is not expanded in its place.
+    next(at(answered("r-grain"), waiting));
+    expect(expanded(card)).toBeNull();
+    next(at(answered("r-grain"), open));
+    expect(expanded(card)).toBe(EXCLUSIONS);
+  });
+
+  it("moves to the next open line once the open line is answered", () => {
+    const { card, next } = whosIn(at(open, open));
+    expect(expanded(card)).toBe(GRAIN);
+    next(at(answered("r-grain"), open));
+    expect(expanded(card)).toBe(EXCLUSIONS);
+    next(at(answered("r-grain"), answered("r-exclusions")));
+    expect(expanded(card)).toBe(NOTICING);
+  });
+
+  it("opens the open line where nothing was open, and so nothing expanded", () => {
+    const { card, next } = whosIn(
+      patched(REACHED, { whos_in: (l) => (l.source === "finding" ? waiting(l) : l) }),
+    );
+    expect(expanded(card)).toBeNull();
+    next(REACHED);
+    expect(expanded(card)).toBe(NOTICING);
+  });
+});
+
 /** Fit's foot beside a noticing in Models under Predict (ruling R-a): it names Results' triage. */
 describe("the fit's foot (ruling R-a)", () => {
   it("names the noticings that wait for the triage in Results", () => {
