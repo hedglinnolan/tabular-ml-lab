@@ -143,7 +143,10 @@ def never_applied(records: Sequence[Any], since: int) -> set[str]:
     whatever the goal was when it was recorded (W1-R round 2, ruling R-d: the energy model recorded
     under Estimate after the opening, the goal then prediction again), and a revert of one. Held,
     such an answer is no change made to the analysis now, so it writes no methods sentence; it
-    does once its condition holds. An opening and a re-seal are events, never one."""
+    does once its condition holds. A revert of an answer recorded by ``since`` that applied when
+    it was recorded withdraws an answer of the plan as declared, which is a change made whatever
+    the goal is now, so it is not one (W1-R round 3, SE-m5). An opening and a re-seal are events,
+    never one."""
     ordered = sorted(records, key=lambda r: r.seq)
     try:
         now = decisions.fold(ordered).model_dump()
@@ -163,7 +166,8 @@ def never_applied(records: Sequence[Any], since: int) -> set[str]:
         holds = decisions._HOLDS.get(answer.decision.kind)
         if holds is None or holds(answer.decision, now):
             continue
-        if held_by_goal(answer.decision, now):
+        declared = answer is not record and answer.seq <= since
+        if held_by_goal(answer.decision, now) and not declared:
             out.add(record.id)
             continue
         try:
@@ -260,15 +264,16 @@ def methods_text(records: Sequence[Any], ctx: Any = None) -> MethodsText:
 
 def _held_now(ordered: Sequence[Any], ids: set[str]) -> dict[str, str]:
     """Of the records ``ids``, each the goal holds now (:func:`held_by_goal`), with the sentence
-    that says so."""
+    that says so; not one reverted since, which the revert withdrew (W1-R round 3, SE-m5)."""
     if not ids:
         return {}
     try:
         slots = decisions.fold(ordered).model_dump()
+        withdrawn = decisions.reverted(ordered)
     except Refusal:
         return {}
     return {r.id: not_applied_sentence(slots) for r in ordered
-            if r.id in ids and held_by_goal(r.decision, slots)}
+            if r.id in ids and r.id not in withdrawn and held_by_goal(r.decision, slots)}
 
 
 def _with(sentence: str, added: str | None) -> str:
