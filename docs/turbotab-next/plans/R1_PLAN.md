@@ -108,6 +108,9 @@ named by grep before launch.
 - RG runs first, beside the engine packages.
 - RB waits for W1 part 2's landing, and RM for EC's merge.
 - The RF batches run two at a time, after RG, since they register claims under its rules.
+- **Before the pilot:** SWARM_PLAN §9's gates ask for RG and RB, not R1-F. RF-1, the teaching and
+  card defects an analyst reads, still runs before the pilot, so no analyst decides on a false
+  sentence. RF-2, RF-3 and the conventions may run beside the pilot.
 
 **Out of scope:**
 - the mutation check (R2, CI-only);
