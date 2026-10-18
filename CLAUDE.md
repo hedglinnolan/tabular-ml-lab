@@ -18,9 +18,9 @@ turn, so it holds only the rules any agent can break.
    report, not into the change.
 
 ## Never
-On the owner's machine a local hook blocks four of these outright: a hand-edit of a generated file,
-`--no-verify`, a pattern kill, and an email address in a web request. Its message says what to do
-instead.
+On the owner's machine a local hook blocks five of these outright: a hand-edit of a generated file,
+`--no-verify`, a pattern kill, an email address in a web request, and `rm` with a glob. Its message
+says what to do instead.
 - Install or upgrade anything in the shared environment (`pip`, `npm install`, a browser, an R
   package outside a scratch library). If something is missing, report it.
 - Start a heavy run: a command over about ten minutes, more than two workers, a sweep, T1, T12, a
