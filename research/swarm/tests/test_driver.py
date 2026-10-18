@@ -1076,10 +1076,15 @@ def test_the_budget_bounds_the_fits_the_analyst_gets(tmp_path):
         assert analyst.cmd("ask")["decisions"] == before["decisions"]
         time.sleep(2.0)
         assert records_of(meta) == records
-        # the roles taken back leave no fit, and are recorded; the roles answered again as before
-        # are keyed as the server records them, on the first fit, and no fit is made, while a
-        # roles answer that changes one column's role would make a new fit, and is refused
+        # the roles taken back leave no fit, and are recorded; a roles answer that changes one
+        # column's role would make a new fit, and is refused. So is the same roles answered again
+        # (DRV-INT, 2h): each column that rode along unconfirmed at the first answer was confirmed
+        # on its own since, so the server records none riding along now, a plan no fit holds. The
+        # revisit's own revert taken back restores the first roles answer, the first fit's plan:
+        # recorded, keyed on the first fit, and no fit is made.
         roles = next(d["id"] for d in reversed(before["decisions"]) if d["kind"] == "set_roles")
+        _, logged = http(meta["port"], f"/projects/{meta['project']}")
+        assert next(r for r in logged["decisions"] if r["id"] == roles)["decision"]["unconfirmed"]
         back = analyst.cmd("revisit", roles, "--reason", "The roles, looked at again.")
         assert back["recorded"]["decision"] == {"kind": "revert", "decision_id": roles}
         q = analyst.cmd("ask")
@@ -1089,8 +1094,14 @@ def test_the_budget_bounds_the_fits_the_analyst_gets(tmp_path):
         refused = analyst.cmd("answer", "proposed", "--set", f"{column['name']}=excluded",
                               "--reason", "Without this column.", expect=1)["refused"]
         assert refused["by"] == "driver" and refused["code"] == "fit_budget", refused
+        again = analyst.cmd("answer", "proposed", "--reason", "The proposed roles, as before.",
+                            expect=1)["refused"]
+        assert again["by"] == "driver" and again["code"] == "fit_budget", again
         assert analyst.cmd("ask")["decisions"] == q["decisions"]
-        analyst.answer(["proposed"], why="The proposed roles, as answered before.")
+        undo = analyst.cmd("revisit", back["recorded"]["id"], "--reason",
+                           "Back to the first roles answer, whose fit was made.")
+        assert undo["recorded"]["decision"] == {"kind": "revert",
+                                                "decision_id": back["recorded"]["id"]}
         same = analyst.cmd("results", "--wait", "120")["results"]
         assert same["fit"]["key"] == first["fit_key"]
         time.sleep(2.0)
