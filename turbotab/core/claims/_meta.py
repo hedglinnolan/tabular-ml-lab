@@ -27,8 +27,10 @@ that break and keep it.
 7. :func:`swarm_gate` — a part of a live claim the research swarm proposed is graded (or retired)
    by someone other than its author once it leaves unsupported; above judgment it passes the
    two-referee gate (``_schema.referee_gate``: two distinct referees who upheld it, neither its
-   author nor a fork, and none who counts against it), meets its grade's own requirement (§2.4, as
-   meta-test 3 reads it) and names a basis audit by someone other than its author (§8). A referee
+   author nor a fork, a name any of the part's records marks a fork or possibly its author
+   counting in none of them, and none who counts against it), meets its grade's own requirement
+   (§2.4, as meta-test 3 reads it) and names a basis audit by someone other than its author (§8).
+   A referee
    or the audit counts only where it was on the part as it stands: the referee judged the grade
    the part holds, and each read the part's fingerprint now (``_schema.checked``). An uphold and
    the audit also count only where dated no earlier than the day the part took its previous

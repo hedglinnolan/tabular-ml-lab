@@ -293,7 +293,10 @@ def referee_gate(referees: Iterable[Referee], author: str | None, grade: str | N
     one sentence each; ``[]`` once it passes.
 
     A referee counts unless it may be the author (``same_person``, which refuses in doubt) or is a
-    fork, of the author or of anyone (ORCHESTRATOR.md §3). For a registered part, ``grade`` is the
+    fork, of the author or of anyone (ORCHESTRATOR.md §3). Being a fork, or the author, is the
+    agent's, not one verdict's: a name any of the part's records marks a fork, or names as
+    possibly its author, counts in none of them, each record's name compared with the marked ones
+    by ``same_person``. For a registered part, ``grade`` is the
     grade it holds, ``fingerprint`` the part as it stands (:func:`checked`) and ``since`` the day
     it took its previous grade (its history's line before this grade). A referee then counts only
     where it judged that grade and read that fingerprint: a verdict on another grade, or on an
@@ -309,8 +312,10 @@ def referee_gate(referees: Iterable[Referee], author: str | None, grade: str | N
     upheld: list[str] = []
     lacks: list[str] = []
     uncounted: list[str] = []
-    for r in referees:
-        name = grader(r.who) or r.who.strip()
+    named = [(r, grader(r.who) or r.who.strip()) for r in referees]
+    marked = [name for r, name in named
+              if r.fork_of.strip() or (author is not None and same_person(name, author))]
+    for r, name in named:
         if author is not None and same_person(name, author):
             uncounted.append(f"{name!r} may be its author")
             continue
@@ -318,6 +323,10 @@ def referee_gate(referees: Iterable[Referee], author: str | None, grade: str | N
             whose = ("its author" if author is not None and same_person(r.fork_of, author)
                      else repr(r.fork_of.strip()))
             uncounted.append(f"{name!r} is a fork of {whose}")
+            continue
+        if any(same_person(name, m) for m in marked):
+            uncounted.append(f"{name!r} is marked a fork, or possibly its author, by another "
+                             "record of the part")
             continue
         if grade is not None and r.grade != grade:
             uncounted.append(f"{name!r} judged it as {r.grade or 'no grade'}, not {grade}")

@@ -555,6 +555,18 @@ GATE_UNMET = {
         _promoted(referees=(FRESH_A, Referee("referee C, 2026-10-18", "upheld",
                                              fork_of="the orchestrator"))),
         "a fork of 'the orchestrator'"),
+    # Fork status and authorship are the agent's, not one verdict's (RG's verifier, P1): a name
+    # one record marks stops counting in every record of the part, compared as same_person does.
+    "an upholder another of the part's records declares a fork of its author": (
+        _promoted(referees=(FRESH_A, FRESH_B, _as(FRESH_A, fork_of="theorist A"))),
+        "'referee A' is marked a fork, or possibly its author, by another record of the part"),
+    "an upholder another of the part's records declares a fork of another agent": (
+        _promoted(referees=(FRESH_A, FRESH_B, _as(FRESH_B, fork_of="the orchestrator"))),
+        "'referee B' is marked a fork, or possibly its author, by another record of the part"),
+    "an upholder whose name another record of the part gives as possibly its author's": (
+        _promoted(referees=(Referee("theorist B, 2026-10-18", "upheld"), FRESH_A,
+                            Referee("theorist, 2026-10-18", "upheld"))),
+        "'theorist B' is marked a fork, or possibly its author, by another record of the part"),
     "two upholders and a third referee who did not uphold": (
         _promoted(referees=(FRESH_A, FRESH_B, Referee("referee C, 2026-10-18", "not_upheld"))),
         "did not uphold"),
@@ -602,6 +614,9 @@ GATE_MET = {
     "two fresh upholders beside the author's and a fork's dissent, which do not count": _promoted(
         referees=(FRESH_A, FRESH_B, Referee("theorist A, 2026-10-18", "not_upheld"),
                   Referee("referee C, 2026-10-18", "not_upheld", fork_of="theorist A"))),
+    "two fresh upholders beside a fork of its author who is neither of them": _promoted(
+        referees=(FRESH_A, FRESH_B, Referee("referee F, 2026-10-18", "upheld",
+                                            fork_of="theorist A"))),
     "referees and a basis audit dated the day the part entered": _promoted(
         referees=(Referee(f"referee A, {ENTERED}", "upheld"),
                   Referee(f"referee B, {ENTERED}", "upheld")),
@@ -1038,3 +1053,29 @@ def test_8_is_silent_where_an_engine_or_audit_claim_s_author_or_grader_is_edited
     reg = _through(tmp_path, rule(origin=origin),
                    rule(origin=origin, author="the R0b builder", parts=(edited,)))
     assert claims.grades_recorded(reg) == []
+
+
+# ── 7 again, through the generator: a later record that marks an upholder a fork ─────────────
+
+@pytest.mark.parametrize("added, counts", [
+    (_as(FRESH_A, fork_of="theorist A"), False),
+    (FORK, True),
+], ids=["a record marking referee A a fork of its author", "a fork of its author named apart"])
+def test_7_holds_a_name_one_record_marks_a_fork_to_every_record_of_the_part(tmp_path, added,
+                                                                            counts):
+    """RG's verifier's probe (INBOX, open: RM): referees A and B uphold the part fresh, through
+    the generator, and a later version adds a record of A as a fork of its author. A fork is the
+    agent's, not one verdict's, so A stops counting in every record of the part and the gate
+    refuses; a fork named apart from A and B leaves both counting. The record added is a referee
+    added, so meta-test 8 and the generator keep it either way."""
+    reg = _through(tmp_path, swarm(), _reviewed((FRESH_A, FRESH_B)))
+    assert claims.swarm_gate(reg) == []
+    reg = registry(tmp_path, _reviewed((FRESH_A, FRESH_B, added)))
+    assert _generate(reg, "2026-10-19") == 0 and claims.grades_recorded(reg) == []
+    found = claims.swarm_gate(reg)
+    if counts:
+        assert found == []
+    else:
+        assert len(found) == 1 and "two distinct referees" in found[0], found
+        assert ("'referee A' is marked a fork, or possibly its author, by another record of the "
+                "part") in found[0]
