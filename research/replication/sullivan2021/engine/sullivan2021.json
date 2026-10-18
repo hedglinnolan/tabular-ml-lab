@@ -1,0 +1,113 @@
+{
+ "about": "Sullivan et al. 2021 (Am J Prev Med 61:563) as a replication plan: the table and its joins, the readings and answers a researcher gives the engine from the paper and the CDC codebooks, the models of Table 4 and Appendix Table 2, and the variants that measure the unstated decisions (SULLIVAN_PLAN §3) and the alternatives. run.py turns each run into a journey through the server's API. Every value here is the paper's stated decision, or is marked as an unstated one (`stated: false`) with the option chosen.",
+ "paper": {
+  "citation": "Sullivan VK, Johnston EA, Firestone MJ, Yi SS, Beasley JM. Self-Rated Diet Quality and Cardiometabolic Health Among U.S. Adults, 2011-2018. Am J Prev Med 2021;61(4):563-575. doi:10.1016/j.amepre.2021.04.033",
+  "flow": [["Start (four cycles combined)", 39156], ["Age < 20", -16539], ["Pregnant", -247], ["No self-rating", -10], ["No dietary recall", -2982], ["Only one recall", -2445], ["Only water reported on a recall day", -20], ["Analytic sample", 16913]],
+  "table4": {
+   "glucose": {"beta": -2.0, "se": 0.4, "n": 6832, "p": "<0.001"},
+   "insulin": {"beta": -0.6, "se": 0.2, "n": 6655, "p": "0.003"},
+   "hba1c": {"beta": -0.05, "se": 0.01, "n": 14795, "p": "<0.001"},
+   "bmi": {"beta": -1.6, "se": 0.1, "n": 15278, "p": "<0.001"}
+  },
+  "ladder": {
+   "glucose": {"M0": [-2.7, 0.37], "M1": [-4.1, 0.36], "M2": [-3.7, 0.44], "M3": [-3.6, 0.45], "M4": [-1.1, 0.36, "p = 0.004"]},
+   "insulin": {"M0": [-2.3, 0.22], "M1": [-2.5, 0.21], "M2": [-2.2, 0.23], "M3": [-2.1, 0.23], "M4": [-0.4, 0.19, "p = 0.03"]},
+   "hba1c": {"M0": [-0.08, 0.01], "M1": [-0.13, null], "M2": [-0.10, null], "M3": [-0.09, null], "M4": [-0.03, 0.01]}
+  },
+  "precision": {"about": "decimal places the paper prints, [beta, SE]", "table4": {"glucose": [1, 1], "insulin": [1, 1], "hba1c": [2, 2], "bmi": [1, 1]}, "ladder": {"glucose": [1, 2], "insulin": [1, 2], "hba1c": [2, 2]}},
+  "direction": "The paper scores the rating poor = 1 to excellent = 5; NHANES codes DBQ700 excellent = 1 to poor = 5. The engine fits the raw codes (SULLIVAN_PLAN ruling 3), so the paper's beta is compared with -beta."
+ },
+ "table": {
+  "main": "research/data/derived/prep/DEMO.parquet",
+  "joins": ["DBQ", "DR1TOT", "DR2TOT", "GLU", "INS", "GHB", "BMX", "DIQ", "derived"],
+  "join_folder": "research/data/derived/prep",
+  "on": "SEQN",
+  "how": "left"
+ },
+ "lens": ["dietary"],
+ "exposure": {"column": "DBQ700", "form": "linear", "measure": "mean_difference", "stated": "a continuous 1-5 score, by survey-weighted linear regression"},
+ "outcomes": {
+  "glucose": {"column": "LBXGLU", "unit": "mg/dL", "weight": "WTSAF2YR"},
+  "insulin": {"column": "LBXIN", "unit": "uU/mL", "weight": "WTSAF2YR"},
+  "hba1c": {"column": "LBXGH", "unit": "%", "weight": "WTDR2D"},
+  "bmi": {"column": "BMXBMI", "unit": "kg/m2", "weight": "WTDR2D"}
+ },
+ "covariates": {
+  "age": {"column": "RIDAGEYR", "form": "linear", "stated": false, "note": "age is stated; its form is not (SULLIVAN_PLAN §3)"},
+  "sex": {"column": "RIAGENDR", "categorical": true},
+  "race": {"column": "race5", "categorical": true, "note": "5 groups with non-Hispanic Asian: RIDRETH3 with 1 and 2 merged in the prep"},
+  "education": {"column": "educ4", "categorical": true, "note": "4 groups: DMDEDUC2 1-2, 3, 4, 5, merged in the prep"},
+  "pir": {"column": "INDFMPIR", "form": "linear", "stated": false, "note": "PIR is stated; its form is not (Table 1 shows three bands)"},
+  "smoking": {"column": "smoke_now", "categorical": true, "note": "current smoking, derived in the prep from SMQ020 and SMQ040"},
+  "activity": {"column": "pa_rec_min", "form": "linear", "stated": false, "note": "weekly moderate + 2 x vigorous recreational minutes, derived in the prep; its form is not stated"},
+  "bmi": {"column": "BMXBMI", "form": "linear", "stated": false},
+  "energy": {"column": "kcal_mean", "form": "linear", "stated": false, "note": "total calorie intake; the mean of the two days is not stated"},
+  "energy_day1": {"column": "DR1TKCAL", "form": "linear", "stated": false, "note": "total calorie intake read as the first day's alone (the energy_day1 variant)"},
+  "medication": {"column": "glu_med", "categorical": true, "stated": false, "note": "glucose-lowering medication; which variables define it is not stated (DIQ050 or DIQ070 here)"}
+ },
+ "models": {
+  "table4": ["age", "sex", "race", "education", "pir", "smoking", "activity", "bmi"],
+  "M0": [],
+  "M1": ["age", "sex"],
+  "M2": ["age", "sex", "race", "education", "pir"],
+  "M3": ["age", "sex", "race", "education", "pir", "smoking", "activity", "energy"],
+  "M4": ["age", "sex", "race", "education", "pir", "medication"],
+  "M4_table4": ["age", "sex", "race", "education", "pir", "smoking", "activity", "bmi", "medication"]
+ },
+ "exclusions": [
+  {"key": "age", "rule": {"kind": "range", "column": "RIDAGEYR", "low": 20, "reason": "younger than 20 (the paper excludes age < 20)"}},
+  {"key": "pregnant", "rule": {"kind": "range", "column": "RIDEXPRG", "low": 2, "high": 3, "missing": "keep", "reason": "pregnant at the exam (RIDEXPRG 1, a positive test; men, and women not tested, are kept)"}},
+  {"key": "rating", "rule": {"kind": "range", "column": "DBQ700", "low": 1, "high": 5, "reason": "having no self-rating of the diet (no answer, 7 refused, or 9 don't know)"}},
+  {"key": "recall1", "rule": {"kind": "range", "column": "DR1DRSTZ", "high": 1, "reason": "having no reliable first-day recall (DR1DRSTZ 2, 4 or 5, or no recall)"}},
+  {"key": "recall2", "rule": {"kind": "range", "column": "DR2DRSTZ", "high": 1, "reason": "having no reliable second-day recall (DR2DRSTZ 2, 4 or 5, or no recall)"}},
+  {"key": "water1", "stated": false, "rule": {"kind": "range", "column": "DR1TKCAL", "low": 1, "reason": "reporting only water on the first recall day, read as zero energy (NHANES energy is in whole kcal)"}},
+  {"key": "water2", "stated": false, "rule": {"kind": "range", "column": "DR2TKCAL", "low": 1, "reason": "reporting only water on the second recall day, read as zero energy (NHANES energy is in whole kcal)"}}
+ ],
+ "survey": {"estimand": "population", "strata": "SDMVSTRA", "psu": "SDMVPSU", "cycle": "SDDSRVYR", "stated": "day-2 dietary weights (WTDR2D), fasting subsample weights (WTSAF2YR) for fasting laboratory data; the division across cycles is not stated"},
+ "missing": {"strategy": "complete_case", "stated": false, "note": "SAS survey procedures drop a row with a missing covariate"},
+ "model_family": "linear",
+ "readings": {
+  "code_or_count:DBQ700": "amount",
+  "code_or_count:RIAGENDR": "code",
+  "code_or_count:race5": "code",
+  "code_or_count:educ4": "code",
+  "code_or_count:smoke_now": "code",
+  "code_or_count:glu_med": "code",
+  "code_or_count:SDDSRVYR": "code",
+  "code_or_count:RIDAGEYR": "amount",
+  "code_or_count:pa_rec_min": "amount",
+  "code_or_count:kcal_mean": "amount",
+  "code_or_count:DR1TKCAL": "amount",
+  "sex_coding:RIAGENDR": "female=2,male=1",
+  "unit:RIDAGEYR": "years",
+  "unit:kcal_mean": "kcal",
+  "day_count:kcal_mean": "1",
+  "unit:DR1TKCAL": "kcal",
+  "day_count:DR1TKCAL": "1",
+  "unit:DR2TKCAL": "kcal",
+  "day_count:DR2TKCAL": "1"
+ },
+ "causal": "Each covariate the paper adjusts for is answered as a confounder (it could cause the rating and the outcome, and the rating does not change it): the paper adjusts for it and states no causal reading of its own.",
+ "variants": {
+  "age_bands": {"about": "age in three bands, 20-39, 40-59, 60 and over (an unstated form)", "forms": {"RIDAGEYR": {"form": "categories", "cuts": [39, 59]}}},
+  "age_spline": {"about": "age as a restricted cubic spline, k by the engine's rule (an unstated form)", "forms": {"RIDAGEYR": {"form": "spline"}}},
+  "pir_bands": {"about": "PIR in the paper's Table 1 bands, <1.30, 1.30-1.85, >1.85 (an unstated form; the cut 1.295 places 1.30 in the middle band, PIR being recorded to two decimals)", "forms": {"INDFMPIR": {"form": "categories", "cuts": [1.295, 1.85]}}},
+  "pir_missing": {"about": "PIR continuous with its blanks as their own category (the missing-indicator method; the engine applies it to every covariate with a blank)", "missing": {"strategy": "impute", "indicators": true}},
+  "pir_bands_missing": {"about": "PIR in three bands with its blanks as their own category", "forms": {"INDFMPIR": {"form": "categories", "cuts": [1.295, 1.85]}}, "missing": {"strategy": "impute", "indicators": true}},
+  "weights_undivided": {"about": "each cycle's 2-year weight as it is, not divided by the 4 cycles (the survey answer names no cycle column)", "survey": {"cycle": null}},
+  "water_none": {"about": "no only-water exclusion", "drop_exclusions": ["water1", "water2"]},
+  "water_alt": {"about": "only water = a zero-energy day with plain water reported (DRx_320Z > 0), flagged in the prep", "drop_exclusions": ["water1", "water2"], "add_exclusions": [{"key": "water_alt", "rule": {"kind": "range", "column": "water_only_alt", "high": 0, "reason": "reporting only plain water on a recall day (zero energy, and plain water reported)"}}]},
+  "pir_bands_M2": {"about": "PIR in the Table 1 bands, in Model 2 (the ladder's first model with PIR)", "model": "M2", "forms": {"INDFMPIR": {"form": "categories", "cuts": [1.295, 1.85]}}, "outcomes": ["glucose", "insulin", "hba1c"]},
+  "pir_bands_M3": {"about": "PIR in the Table 1 bands, in Model 3", "model": "M3", "forms": {"INDFMPIR": {"form": "categories", "cuts": [1.295, 1.85]}}, "outcomes": ["glucose", "insulin", "hba1c"]},
+  "pir_bands_M4": {"about": "PIR in the Table 1 bands, in Model 4 as the paper states it (Model 2 plus the medication)", "model": "M4", "forms": {"INDFMPIR": {"form": "categories", "cuts": [1.295, 1.85]}}, "outcomes": ["glucose", "insulin", "hba1c"]},
+  "pir_bands_M4t4": {"about": "PIR in the Table 1 bands, in Model 4 as its printed numbers suggest (the Table 4 model plus the medication)", "model": "M4_table4", "forms": {"INDFMPIR": {"form": "categories", "cuts": [1.295, 1.85]}}, "outcomes": ["glucose", "insulin", "hba1c"]},
+  "age_bands_M2": {"about": "age in three bands, in Model 2", "model": "M2", "forms": {"RIDAGEYR": {"form": "categories", "cuts": [39, 59]}}, "outcomes": ["glucose", "insulin", "hba1c"]},
+  "age_bands_M3": {"about": "age in three bands, in Model 3", "model": "M3", "forms": {"RIDAGEYR": {"form": "categories", "cuts": [39, 59]}}, "outcomes": ["glucose", "insulin", "hba1c"]},
+  "energy_day1": {"about": "Model 3's total energy as the first recall day's (DR1TKCAL) in place of the mean of the two days (an unstated definition)", "model": "M3", "drop_covariates": ["energy"], "add_covariates": ["energy_day1"], "outcomes": ["glucose", "insulin", "hba1c"]},
+  "insulin_crosswalk": {"about": "insulin with 2011-2012's Roche values on the Tosoh scale (the INS_H codebook's forward Deming equation)", "outcome_column": "LBXIN_xw", "outcomes": ["insulin"]},
+  "alt_no_bmi": {"alternative": true, "about": "the Table 4 model without BMI", "drop_covariates": ["bmi"], "outcomes": ["glucose", "insulin", "hba1c"]},
+  "alt_no_diabetes": {"alternative": true, "about": "diagnosed diabetes excluded (DIQ010 = 1)", "add_exclusions": [{"key": "diabetes", "rule": {"kind": "range", "column": "DIQ010", "low": 2, "missing": "keep", "reason": "with diagnosed diabetes (DIQ010 1: a doctor said so)"}}]},
+  "alt_energy_alone": {"alternative": true, "about": "Model 2 plus total energy alone", "model": "M2", "add_covariates": ["energy"], "outcomes": ["glucose", "insulin", "hba1c"]},
+  "alt_log_insulin": {"alternative": true, "about": "insulin on the log scale (a difference in mean log insulin per step)", "outcome_scale": "log", "outcomes": ["insulin"]}
+ }
+}
