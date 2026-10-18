@@ -796,6 +796,7 @@
         "one": "One column holds a predictor role.",
         "many": "{n} columns hold a predictor role, whichever group holds them."
       },
+      "one_liner": "Three roles are predictor roles; every other role stays out of the predictors.",
       "options": {
         "exposure": {
           "label": "Predictor",

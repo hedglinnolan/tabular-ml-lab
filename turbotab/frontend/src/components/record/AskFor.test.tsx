@@ -302,7 +302,7 @@ describe("the roles card, by the project's goal (finding 3c)", () => {
     e.key === "roles"
       ? {
           ...e,
-          one_liner: "Three roles enter the models as predictors; every other role stays out of them.",
+          one_liner: ROLE_FIXTURE.under.prediction.one_liner,
           options: e.options.map((o) => (OPTIONS[o.value] ? { ...o, ...OPTIONS[o.value] } : o)),
         }
       : e,

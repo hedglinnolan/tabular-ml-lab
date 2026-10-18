@@ -704,6 +704,8 @@ def _fixture() -> dict:
         "kinds": {k: kind(v) for k, v in lenses.items()},
         "sentence": {"one": readings.predictors_sentence(1),
                      "many": readings.predictors_sentence("{n}")},
+        # the card's one-liner, which the shell's tests serve as the teaching says it
+        "one_liner": roles_card["one_liner"],
         "options": {o["value"]: {"label": o["label"], "consequence": o["consequence"]}
                     for o in roles_card["options"] if o["value"] in readings.PREDICTOR_ROLES},
         # a group's shared reason, quoted without its study clause (``readings.role_evidence``;

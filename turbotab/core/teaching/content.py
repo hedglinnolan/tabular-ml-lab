@@ -21,6 +21,7 @@ from typing import Any
 
 from turbotab.core import claims
 from turbotab.core.methods.missing import RULE
+from turbotab.core.readings import PREDICTOR_ROLES
 
 _NUT = "research/NUTRITION_PACK.md"
 _CLIN = "research/CLINICAL_SURVEY_PACK.md"
@@ -767,7 +768,9 @@ ROLES = {
 # "predictors" and names no study factor, and no energy model reads the roles (BEATS_PREDICT §9
 # ruling 5). The roles themselves stay as they are, each with a label of its own (the card's
 # buttons are named by them). The roles ruling of 2026-10-17: every predictor role is a predictor,
-# so the card says three roles enter the models as predictors, and names each group in the
+# so the card's one-liner says how many roles are predictor roles (``readings.PREDICTOR_ROLES``,
+# its count in words; under the ruling at W1-X's cap, never that they enter the models, since
+# the missing-values answer can drop a role's only column), and names each group in the
 # project's own words (``readings.predictor_groups``, which the server serves with the roles
 # stage's artifact). The engine still reads the Predictor role apart in some preparation and
 # screening steps, and four rounds named them here and on the groups; each round produced a false
@@ -791,13 +794,16 @@ _PREDICT_OPTIONS = {
     "covariate": option("covariate", "Covariate",
                         "A predictor that describes the person, such as age or sex."),
 }
+# How many roles are predictor roles, in words (the Predict roles card's one-liner).
+_HOW_MANY = {2: "Two", 3: "Three", 4: "Four", 5: "Five"}
 _ROLE_UNITS_UNDER_PREDICT = section(
     "Energy units",
     "1 kcal = 4.184 kJ, and a column ending `_pct_kcal` is a share of energy, not an amount.",
     "SETTLED", NUT01)
 ROLES_UNDER_PREDICT = {
     **ROLES,
-    "one_liner": "Three roles enter the models as predictors; every other role stays out of them.",
+    "one_liner": f"{_HOW_MANY[len(PREDICTOR_ROLES)]} roles are predictor roles; every other role "
+                 "stays out of the predictors.",
     "why": "An identifier names a person and cannot generalize. Survey weights and design columns "
            "describe how people were sampled, and a flag such as `imputed_weight` marks which "
            "values were imputed. None of them measures the participant, so each stays out of the "

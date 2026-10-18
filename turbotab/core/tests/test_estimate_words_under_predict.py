@@ -620,9 +620,9 @@ def test_under_predict_the_roles_card_names_no_study_factor():
              *(f"{t['term']} {t['definition']}" for t in entry["terms"])]
     for text in texts:
         assert not any(w in text.lower() for w in STUDY_WORDS), text
-    # the roles ruling of 2026-10-17: every predictor role is a predictor
-    assert entry["one_liner"] == ("Three roles enter the models as predictors; every other role "
-                                  "stays out of them.")
+    # the roles ruling of 2026-10-17: every predictor role is a predictor; the one-liner says which
+    # roles are predictor roles, never that they enter the models (the ruling at W1-X's cap)
+    assert entry["one_liner"] == ONE_LINER
     options = {o["value"]: o for o in entry["options"]}
     assert options["exposure"]["label"] == "Predictor"
     # each role keeps a label of its own: the card's buttons are named by them
@@ -915,6 +915,41 @@ def test_under_predict_the_roles_card_says_what_the_roles_hold_not_what_the_mode
                 "Records every column's role. Only exposures, covariates and energy become "
                 "predictors."):
         assert SAYS_WHAT_THE_MODELS_GET.search(old), old
+
+
+# The Predict roles card's one-liner, under the ruling at W1-X's cap as its line is (the land-1
+# verifier's P1): how many roles are predictor roles, never that they enter the models, since the
+# missing-values answer can leave a role's only column out of them.
+ONE_LINER = "Three roles are predictor roles; every other role stays out of the predictors."
+# The one-liner of the roles ruling of 2026-10-17: true only while each of the three keeps a column
+# in the models.
+MODELS_ONE_LINER = "Three roles enter the models as predictors; every other role stays out of them."
+
+
+@pytest.mark.parametrize("drop", [[], ["kcal"]], ids=["no drop", "energy's only column dropped"])
+def test_under_predict_the_roles_one_liner_says_which_roles_are_predictor_roles(drop):
+    """The land-1 verifier's P1, under the ruling at W1-X's cap. ``HELD`` is built with a column in
+    each of the three predictor roles, energy's only one `kcal`. With no drop the models get a
+    column of each of the three; the missing-values answer that drops `kcal` leaves energy none, so
+    two roles reach the models while three are still predictor roles. The card's one-liner is the
+    same in both and true in both; the 2026-10-17 one-liner was true only with no drop, and the
+    guard on what the models get fires on it and is silent on the card's. With or without the
+    drop, every column the models get holds one of the three."""
+    from turbotab.core.decisions import MissingSpec, left_out
+    from turbotab.core.models.pipeline import model_predictors
+
+    state = ProjectState(target="glucose", purpose="prediction", roles=HELD,
+                         missing=MissingSpec(strategy="complete_case", drop_columns=drop))
+    assert left_out(state) == drop
+    reaching = {HELD[c] for c in model_predictors(state)}
+    built = {"exposure", "energy", "covariate"}
+    assert reaching == (built - {"energy"} if drop else built)
+    assert set(readings.PREDICTOR_ROLES) == built
+    one_liner = _roles_entry("prediction")["one_liner"]
+    assert one_liner == ONE_LINER
+    assert not SAYS_WHAT_THE_MODELS_GET.search(one_liner)
+    assert SAYS_WHAT_THE_MODELS_GET.search(MODELS_ONE_LINER)
+    assert (len(reaching) == len(built)) is (not drop)
 
 
 @pytest.mark.parametrize("lenses, names", [
