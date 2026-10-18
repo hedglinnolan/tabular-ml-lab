@@ -30,8 +30,10 @@ that break and keep it.
 8. :func:`grades_recorded` — every part's grade is the grade of its last line in the history
    (``history.jsonl``, which the generator writes): a grade moves only through a line with its
    date, its grader and its reason, which says the grade it moved from, downgrades included. Each
-   grade line reads so, the first for a part moving from no grade; and a swarm claim's every part
-   entered unsupported.
+   grade line reads so, the first for a part moving from no grade; a swarm claim's every part
+   entered unsupported; and a claim whose first version line the history holds as the swarm's is
+   still the swarm's, so no relabeling takes it out of meta-test 7's gate (a version written
+   before claims named an origin holds none, and is no swarm's).
 """
 from __future__ import annotations
 
@@ -341,6 +343,7 @@ def grades_recorded(reg: Registry, history: Path | None = None) -> list[str]:
     out: list[str] = []
     first: dict[tuple[str, str], dict[str, Any]] = {}
     last: dict[tuple[str, str], dict[str, Any]] = {}
+    born: dict[str, str] = {}  # each claim's origin in its first version line
     for n, raw in enumerate(text.splitlines(), 1):
         if not raw.strip():
             continue
@@ -352,8 +355,11 @@ def grades_recorded(reg: Registry, history: Path | None = None) -> list[str]:
         if not isinstance(record, dict):
             out.append(f"history line {n} is not one JSON object")
             continue
-        if "part" not in record:
-            continue  # a version line
+        if "part" not in record:  # a version line
+            claim = record.get("claim")
+            if isinstance(record.get("id"), str) and isinstance(claim, dict):
+                born.setdefault(record["id"], str(claim.get("origin") or ""))
+            continue
         lacking = [k for k in GRADE_LINE if not isinstance(record.get(k), str)]
         if lacking:
             out.append(f"history line {n}: a grade line gives {', '.join(GRADE_LINE)} as text, "
@@ -364,6 +370,10 @@ def grades_recorded(reg: Registry, history: Path | None = None) -> list[str]:
         first.setdefault(key, record)
         last[key] = record
     for c in reg:
+        if born.get(c.id) == "swarm" and c.origin != "swarm":
+            out.append(f"{c.id}: the history first recorded it as the swarm's, but it now names "
+                       f"its origin {c.origin}: a swarm claim stays the swarm's, and is graded "
+                       "through meta-test 7's gate")
         for part in c.parts:
             key = (c.id, part.name)
             line = last.get(key)

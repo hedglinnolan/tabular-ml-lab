@@ -18,7 +18,8 @@ must name the violation) and on a planted registry that keeps it (it must name n
    distinct referees who upheld it, neither its author nor a fork (ORCHESTRATOR.md §3), its grade's
    own requirement and a basis audit by someone other than its author (CLAIMS_REGISTRY.md §8);
 8. every part's grade is its last history line's, each line giving its date, grader and reason and
-   the grade it moved from, and a swarm claim's every part entered unsupported.
+   the grade it moved from, and a swarm claim's every part entered unsupported; a claim the history
+   first recorded as the swarm's is still the swarm's.
 
 On the default registry, the meta-tests that read the app's strings (4 and 6) read every
 ``Relation.says`` and teaching string, as ``test_claims_digits.py`` collects them.
@@ -660,4 +661,30 @@ def test_8_is_silent_where_a_swarm_part_entered_unsupported_and_was_graded_after
     reg = _history(registry(tmp_path, swarm(parts=(graded,))),
                    _line("unsupported", id=SWARM, grader="theorist A"),
                    _line("judgment", was="unsupported", id=SWARM, grader="the orchestrator"))
+    assert claims.grades_recorded(reg) == []
+
+
+def _version(origin=None, id=SWARM):
+    claim = {"id": id} if origin is None else {"id": id, "origin": origin}
+    return {"id": id, "version": 1, "hash": "0" * 64, "claim": claim}
+
+
+SWARM_LINES = (_line("unsupported", id=SWARM, grader="theorist A"),)
+
+
+@pytest.mark.parametrize("now", ["engine", "audit"])
+def test_8_fires_where_a_claim_first_recorded_as_the_swarm_s_is_relabeled(tmp_path, now):
+    """Relabeled, a swarm claim would leave meta-test 7's gate; the history keeps its origin."""
+    reg = _history(registry(tmp_path, swarm(origin=now)), _version("swarm"), *SWARM_LINES,
+                   _version(now))
+    found = claims.grades_recorded(reg)
+    assert len(found) == 1 and found[0].startswith(SWARM) and "swarm" in found[0]
+    assert now in found[0]
+
+
+@pytest.mark.parametrize("first, now", [("swarm", "swarm"), (None, "engine"),
+                                        ("engine", "audit"), ("audit", "engine")])
+def test_8_is_silent_where_a_claim_s_origin_never_left_the_swarm(tmp_path, first, now):
+    """A version written before claims named an origin (R0's) holds none, and is no swarm's."""
+    reg = _history(registry(tmp_path, swarm(origin=now)), _version(first), *SWARM_LINES)
     assert claims.grades_recorded(reg) == []
