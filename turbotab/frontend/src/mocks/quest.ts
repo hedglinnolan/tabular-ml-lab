@@ -85,6 +85,7 @@ function roleWords(purpose: string | null | undefined, lenses: readonly string[]
     choices: ROLES.choices as Record<string, string[]>,
     change: (_role: string, other: string) => T.change.replaceAll("{other}", (ROLES.words as Record<string, string>)[other] ?? other),
     group: ROLES.group as GroupWords,
+    evidence: (reason: string) => reason,
   };
   if (purpose !== "prediction") return estimate;
   const k = ROLES.under.prediction.kinds[predictKind(lenses)];
@@ -95,6 +96,9 @@ function roleWords(purpose: string | null | undefined, lenses: readonly string[]
     choices: k.choices as Record<string, string[]>,
     change: (role: string, other: string) => changes[role]?.[other] ?? T.change.replaceAll("{other}", other),
     group: k.group as GroupWords,
+    // A group's shared reason without its study clause (core/readings.py `role_evidence`).
+    evidence: (reason: string) =>
+      (ROLES.under.prediction.study_clauses as [string, string][]).reduce((said, [estimate, predict]) => said.replaceAll(estimate, predict), reason),
   };
 }
 
@@ -207,7 +211,7 @@ export function mockRoleLines(view: ProjectView, proposed: Proposed = {}): Quest
           decision_id: waiting.length ? null : (confirmedBy(members[0]!)?.id ?? null),
           reason: waiting.length ? (why ?? null) : null,
           items: [
-            { kind: G.item, column: members[0]!, value: role, words: head, evidence: p.reason, options: press },
+            { kind: G.item, column: members[0]!, value: role, words: head, evidence: W.evidence(p.reason), options: press },
             ...members.map((c) => {
               const settled = (state.role_confirmations?.[c] ?? null) !== null;
               return {

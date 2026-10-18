@@ -1889,15 +1889,17 @@ def _role_lines(state: Any, steps: Sequence[Any], log: _Log,
     group whole (its count, role and confidence, and the shared reason as its evidence) and carries
     that press; each column follows as a role item whose presses record it alone as another role
     (:func:`role_choices`), so moving one column is one press on that column and the rest stay one
-    group. A column settled on its own press leaves the group for a line of its own; a group of one
-    is a column's own line, whose ways forward are one ``confirm_role`` each: the role as proposed,
-    or another the ledger offers (:func:`role_choices`), and why it waits names only what those
-    presses do (:func:`role_line_reason`). The evidence is the roles stage's own reason for the
-    proposal, where its artifact is at hand; without it each column is a line of its own. While the
-    roles question is asked again (its answer no longer holds) the columns wait with it and are not
-    listed."""
+    group. The shared reason is said in the goal's words (``readings.role_evidence``: under Predict
+    without its study clause). A column settled on its own press leaves the group for a line of its
+    own; a group of one is a column's own line, whose ways forward are one ``confirm_role`` each:
+    the role as proposed, or another the ledger offers (:func:`role_choices`), and why it waits
+    names only what those presses do (:func:`role_line_reason`). The evidence is the roles stage's
+    own reason for the proposal, where its artifact is at hand; without it each column is a line of
+    its own. While the roles question is asked again (its answer no longer holds) the columns wait
+    with it and are not listed."""
     from turbotab.core.readings import (fill_runs, group_press, group_press_label, proposals_of,
-                                        role_group_words, role_groups, role_reading)
+                                        role_evidence, role_group_words, role_groups,
+                                        role_reading)
 
     roles = getattr(state, "roles", None) or {}
     named = set(getattr(state, "roles_unconfirmed", None) or ())
@@ -1936,7 +1938,7 @@ def _role_lines(state: Any, steps: Sequence[Any], log: _Log,
         many = role_group_words(g.role, purpose, lenses)
         head = ReadItem(kind=ROLE_GROUP_ITEM, column=members[0], value=g.role,
                         words=role_group_head(len(members), many, g.confidence, bool(waiting)),
-                        evidence=g.reason, options=press)
+                        evidence=role_evidence(g.reason, purpose), options=press)
         items = [head]
         for c in members:
             text = role_line_text(c, g.role, purpose=purpose, lenses=lenses)

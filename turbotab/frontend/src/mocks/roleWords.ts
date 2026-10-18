@@ -31,13 +31,21 @@ export function screenOnShelf(task: string | null | undefined): boolean {
 const ENERGY_BEARING = /^(protein|carb|carbohydrate|sugar|fat|fat_total|fat_sat|fat_mon|fat_poly|alcohol|fiber)(_g)?$/i;
 
 /** The predictor groups the server serves beside the roles stage's proposals
- *  (core/readings.py `served_groups`), for a mock project's lenses, task and columns. */
+ *  (core/readings.py `served_groups`), for a mock project's lenses, task and columns. Under a lens
+ *  that asks the pooled-QC question (metabolomics), a characteristic's and total energy's notes say
+ *  that the pooled-QC steps may adjust or drop them (`predictor_groups`). */
 export function mockPredictorGroups(
   lenses: readonly string[] | null | undefined,
   task: string | null | undefined,
   columns: readonly string[],
 ): PredictorGroups {
-  const shelf = ROLES.under.prediction.kinds[predictKind(lenses)].groups[screenOnShelf(task) ? "screen" : "no screen"];
+  const kind = predictKind(lenses);
+  const { pooled_qc, kinds } = ROLES.under.prediction;
+  const groups =
+    (kind === "both" || kind === "assay") && pooled_qc.lenses.some((k) => (lenses ?? []).includes(k))
+      ? pooled_qc.groups[kind]
+      : kinds[kind].groups;
+  const shelf = groups[screenOnShelf(task) ? "screen" : "no screen"];
   return {
     fill: shelf.fill as PredictorGroups["fill"],
     no_fill: shelf.no_fill as PredictorGroups["no_fill"],

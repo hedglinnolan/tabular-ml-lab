@@ -797,11 +797,12 @@ def _role_move(column: str, before: str, after: str, state: Any) -> str:
 
 
 def _role_line_change(column: str, before: str | None, after: str, state: Any) -> str:
-    """A role line's press under Predict, said as the line's own label says it (``quest.role_line_text``,
-    W1-T's V2): its confirmation as the role it was recorded with, in the roles card's group's words
-    ("a characteristic"); a move between the card's groups as a move (:func:`_role_move`); the
-    energy column's move as leaving the energy role; a move into a group from a role that enters no
-    model as a move into it; and any other role as recorded in that role's words."""
+    """A role line's press under Predict, and a values' reading's (:func:`_confirm_reading`), said
+    as the line's own label says it (``quest.role_line_text``, W1-T's V2): its confirmation as the
+    role it was recorded with, in the roles card's group's words ("a characteristic"); a move
+    between the card's groups as a move (:func:`_role_move`); the energy column's move as leaving
+    the energy role; a move into a group from a role that enters no model as a move into it; and
+    any other role as recorded in that role's words."""
     from turbotab.core.readings import PREDICTOR_ROLES, predictor_groups, role_line_words
 
     lenses = getattr(state, "lens", None)
@@ -907,9 +908,18 @@ _UNIT_WORDS = {"kj": "kJ", "pct_energy": "percent of energy", "m": "meters", "in
 
 @register_sentence("confirm_reading")
 def _confirm_reading(d: Any, state: Any, ctx: Any) -> str:
-    """BLUEPRINT §14.1: one reading of the data, confirmed on its own and recorded as one."""
-    return (f"{_confirmed(d.reading, d.column, d.value, state)}, on its own, after the evidence "
-            f"for its reading was read")
+    """BLUEPRINT §14.1: one reading of the data, confirmed on its own and recorded as one. Under
+    Predict a role's press is said as its label says it (the presses of a reading the values
+    settled are the role lines', ``readings.read_from_data``; the W1-U verifier's P3), read against
+    the role recorded before it, as a role line's press is (:func:`_role_line_change`): a move
+    between the roles card's groups as a move, the energy column's as leaving the energy role, and
+    the role recorded as a confirmation."""
+    if d.reading == "role" and _under_predict(state):
+        before = (getattr(state, "roles", None) or {}).get(d.column)
+        said = _role_line_change(d.column, before, str(d.value), state)
+    else:
+        said = _confirmed(d.reading, d.column, d.value, state)
+    return f"{said}, on its own, after the evidence for its reading was read"
 
 
 @register_sentence("confirm_readings")

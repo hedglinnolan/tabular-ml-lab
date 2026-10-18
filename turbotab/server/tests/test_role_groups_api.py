@@ -3,8 +3,8 @@
 A table built here: three lab values the roles stage reads alike (one role, one confidence, one
 reason word for word), a nutrient that carries energy and total energy. Under Predict the roles answer records the proposals; Your data's quest log then lists the
 three lab values as one line whose one press the server accepts, after which each is settled and
-the record and the methods say the press in one sentence, the reason read from the served roles
-stage. The roles stage is served with the project's predictor groups (W1 part 2's U6): named by the
+the record and the methods say the press in one sentence, the reason the served roles stage gives
+quoted without its study clause. The roles stage is served with the project's predictor groups (W1 part 2's U6): named by the
 lens, as the roles ruling of 2026-10-17 names them, and with the columns that carry energy.
 """
 from __future__ import annotations
@@ -91,7 +91,11 @@ def test_a_groups_one_press_is_accepted_settles_each_column_and_is_said_in_one_s
     assert proposals["lab_a"]["confidence"] != "high"
     labs = [c for c in proposals if judged(c) == judged("lab_a")]
     assert {"lab_a", "lab_b", "lab_c"} <= set(labs)
-    reason = proposals["lab_a"]["reason"]
+    # under Predict the shared reason is quoted without its study clause (the W1-U verifier's P4),
+    # in the words written out here
+    assert proposals["lab_a"]["reason"] == ("A measured column: read as what you study until you "
+                                            "say otherwise.")
+    reason = "A measured column: read as a predictor until you say otherwise."
     answer(client, pid, "roles", {"kind": "set_roles", "roles": {
         c["column"]: c["proposed"] for c in served["columns"] if c["proposed"]}})
     log = client.get(f"/api/projects/{pid}/quest").json()

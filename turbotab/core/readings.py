@@ -1419,12 +1419,22 @@ def role_words(role: str | None, purpose: str | None = None) -> str:
 # * the omics normalization (``methods.omics.design_normalization``) and reference ComBat
 #   (``methods.batch.design_batch``), which adjust the Predictor columns alone; named under an
 #   assay lens, where their questions are asked.
+# The pooled-QC steps of the metabolomics pack's pooled-QC answer (``methods.qc_drift``: QC-RLSC's
+# drift and batch correction with its detection and RSD filters, PQN to the pooled QCs, and the
+# in-fold D-ratio filter) read no role: their features are every column the answer reads as one by
+# name and type (``omics.candidate_columns``), a covariate or total energy too, and a feature a
+# filter drops leaves the predictors. They set no predictor role apart, so they are no step here;
+# under a lens that asks the pooled-QC question (:data:`POOLED_QC_LENSES`) the notes of the other
+# two roles say that those steps may adjust or drop them, beside the normalization and batch
+# correction that leave them (the W1-U verifier's P2).
 # The group names follow the lenses alone, so the record's sentences, which read only the answers,
 # name a move as the card does (``voice._role_move``). Under Estimate, and with no goal, the words
 # are ``role_words``'s, unchanged.
 FILL, SCREEN, NORMALIZATION, BATCH = ("the energy-aware fill", "the screened elastic net's screen",
                                       "normalization", "batch correction")
+QC_STEPS = "the pooled-QC steps"
 DIETARY_LENSES = ("dietary",)
+POOLED_QC_LENSES = ("metabolomics",)  # the lenses whose pack asks the pooled-QC question
 SCREENED_FAMILY = "screened_elastic_net"
 
 
@@ -1507,13 +1517,16 @@ def predictor_groups(lenses: Iterable[str] | None, task: str | None = None,
                      roles: Mapping[str, str] | None = None) -> dict[str, PredictorGroup]:
     """The three predictor roles under Predict in a project with these lenses, this task and these
     roles: each named by the lenses, its note saying what treats it differently there
-    (:func:`predict_steps`)."""
+    (:func:`predict_steps`), and, where the pooled-QC question is asked, that its steps, which read
+    no role, may adjust or drop a characteristic and total energy (:data:`QC_STEPS`)."""
     steps = predict_steps(lenses, task, roles)
     assay = NORMALIZATION in steps
     fill = FILL in steps
     screen = SCREEN in steps
+    pooled = bool({str(k) for k in lenses or ()} & set(POOLED_QC_LENSES))
     one, head = _PREDICTOR_NAMES[predict_kind(lenses)]
     adjust = f"{NORMALIZATION} and {BATCH}"
+    qc = f", but {QC_STEPS}, which read no role, may adjust or drop" if pooled else ""
     predictor = [
         *([f"{FILL} fills a missing amount of one that carries energy from total energy"]
           if fill else []),
@@ -1523,12 +1536,13 @@ def predictor_groups(lenses: Iterable[str] | None, task: str | None = None,
     characteristic = [
         *([f"{FILL} fills them without total energy"] if fill else []),
         *([f"{SCREEN} keeps every one"] if screen else []),
-        *([f"{adjust} leave them as they are"] if assay else []),
+        *([f"{adjust} leave them as they are" + (f"{qc} any of them" if qc else "")]
+          if assay else []),
     ]
     energy = [
         *([f"{FILL} fills the {head[1].lower()} that carry energy from it"] if fill else []),
         *([f"{SCREEN} keeps it"] if screen else []),
-        *([f"{adjust} leave it as it is"] if assay else []),
+        *([f"{adjust} leave it as it is" + (f"{qc} it" if qc else "")] if assay else []),
     ]
     return {
         "exposure": PredictorGroup("exposure", one, head, _sentence(predictor)),
@@ -1650,9 +1664,10 @@ def role_groups(state: Any, artifact: Any) -> list[RoleGroup]:
 def with_proposals(readings: Iterable[Reading], state: Any, artifact: Any) -> list[Reading]:
     """The readings an ask lists, each waiting role of a group the ask lists whole (every one of
     its waiting columns, two or more) marked with its group's judgment and read with its proposal:
-    its confidence and its reason as the evidence. :func:`families` then lists the group as one line
-    and :func:`ask_exits` confirms it in one press (ruling R-g), its columns in the proposals' order
-    where the first of them was listed, so its press is the press its role line offers
+    its confidence and its reason as the evidence, in the goal's words (:func:`role_evidence`; the
+    judgment keeps the reason as the stage said it). :func:`families` then lists the group as one
+    line and :func:`ask_exits` confirms it in one press (ruling R-g), its columns in the proposals'
+    order where the first of them was listed, so its press is the press its role line offers
     (:func:`group_press`). A role whose group the ask lists only in part keeps a line and a press of
     its own; no proposals at hand, every one does."""
     listed = [r for r in readings if r is not None]
@@ -1666,6 +1681,7 @@ def with_proposals(readings: Iterable[Reading], state: Any, artifact: Any) -> li
                 whole[c] = g
     out: list[Reading] = []
     done: set[int] = set()  # each group once, by identity (hashing 20,000 columns per gene is not)
+    purpose = _get(state, "purpose")
     for r in listed:
         g = whole.get(r.column) if r.kind == "role" and not r.settled else None
         if g is None:
@@ -1674,7 +1690,8 @@ def with_proposals(readings: Iterable[Reading], state: Any, artifact: Any) -> li
         if id(g) in done:
             continue
         done.add(id(g))
-        out += [Reading(waiting[c].subject, "role", waiting[c].value, g.confidence, g.reason, False,
+        said = role_evidence(g.reason, purpose)
+        out += [Reading(waiting[c].subject, "role", waiting[c].value, g.confidence, said, False,
                         "proposed", judgment=f"{g.role}\n{g.confidence}\n{g.reason}")
                 for c in g.waiting]
     return out
@@ -1742,24 +1759,33 @@ def first_columns(columns: Sequence[str]) -> str:
 def group_phrase(columns: Sequence[str], role: str, confidence: str, reason: str,
                  purpose: str | None = None, lenses: Iterable[str] | None = None) -> str:
     """One group named in a sentence: how many, its first columns, the role in the goal's words,
-    the confidence, below high, and the shared reason ("the 300 columns `a`, `b` and 298 more,
-    proposed as assay features at medium confidence, below high, for one reason ("…")"); a group of
-    one, its column and its proposal."""
+    the confidence, below high, and the shared reason in the goal's words (:func:`role_evidence`:
+    under Predict without its study clause; the W1-U verifier's P4) ("the 300 columns `a`, `b` and
+    298 more, proposed as assay features at medium confidence, below high, for one reason
+    ("…")"); a group of one, its column and its proposal."""
     if len(columns) == 1:
         return (f"`{columns[0]}`, proposed as {role_line_words(role, purpose, lenses)} at "
                 f"{confidence} confidence, below high")
     return (f"the {len(columns):,} columns {first_columns(columns)}, proposed as "
             f"{role_group_words(role, purpose, lenses)} at {confidence} confidence, below high, "
-            f"for one reason (\"{reason}\")")
+            f"for one reason (\"{role_evidence(reason, purpose)}\")")
 
 
-# The same finding, in a role's evidence: two of the roles stage's high-confidence reasons
-# (``stages.rows.propose_roles``) say why a column reads as its role in Estimate's words, a
-# nutrient "what you study" and a person's characteristic "usually adjusted for rather than
-# studied". Under Predict a reading the values settled keeps what the values showed and leaves the
-# study clause out; the stage's reasons stay as they are. The tests hold these clauses to the
-# stage's own reasons (``tests/test_estimate_words_under_predict.py``), so a reworded reason fails.
-_STUDY_CLAUSES = ((": what you study;", ";"), (", usually adjusted for rather than studied.", "."))
+# The same finding, in a role's evidence: the roles stage's reasons (``stages.rows.propose_roles``)
+# say why a column reads as its role in Estimate's words, a nutrient "what you study" and a
+# person's characteristic "usually adjusted for rather than studied". Under Predict a reading the
+# values settled keeps what the values showed and leaves the study clause out, and so does a
+# group's shared reason below high wherever it is quoted (the W1-U verifier's P4: its line, the
+# fit's ask, the record and the methods): a measured feature "under the omics lens", a measured
+# column or a rate "read as a predictor", fasting status, a nutrient by a ratio unit and an intake
+# by its unit. The stage's reasons stay as they are. The tests hold these clauses to the stage's
+# own reasons (``tests/test_estimate_words_under_predict.py``), so a reworded reason fails.
+_STUDY_CLAUSES = (
+    (": what you study;", ";"), (", usually adjusted for rather than studied.", "."),
+    (", adjusted for rather than studied.", "."),
+    (": what you study under the omics lens.", " under the omics lens."),
+    (": what you study under the dietary lens.", ", under the dietary lens."),
+    (": what you study, not", ", not"), ("read as what you study", "read as a predictor"))
 
 
 def role_evidence(reason: str, purpose: str | None = None) -> str:
@@ -1952,7 +1978,20 @@ def confirm_exits(state: Any, columns: Sequence[str]) -> list[dict[str, Any]]:
     return out
 
 
-def unsettled_message(columns: Sequence[str], what: str) -> str:
+def unsettled_message(columns: Sequence[str], what: str,
+                      judged: Iterable[Reading] | None = None) -> str:
+    """Why the roles of ``columns`` cannot set ``what`` yet. Where the ask lists whole groups
+    (``judged``, the readings :func:`with_proposals` marks: one judgment's columns, two or more;
+    ruling R-g), each group is named by how many and its first columns (:func:`first_columns`),
+    and a group is confirmed in its one press (the W1-U verifier's P5: the refusal named all 300
+    genes and asked to confirm each); with none, each column is named, as before."""
+    groups: dict[str, list[str]] = {}
+    for r in judged or ():
+        if r is not None and r.kind == "role" and not r.settled and r.judgment is not None:
+            groups.setdefault(r.judgment, []).append(r.column)
+    grouped = {c: j for j, cols in groups.items() if len(cols) > 1 for c in cols}
+    if grouped:
+        return _groups_message(columns, what, groups, grouped)
     listed = listing(columns)
     one = len(columns) == 1
     return (f"{listed} {'was' if one else 'were'} proposed below high confidence and recorded "
@@ -1960,6 +1999,39 @@ def unsettled_message(columns: Sequence[str], what: str) -> str:
             f"{'it' if one else 'they'} cannot set {what} yet. Confirm "
             f"{'it' if one else 'each'} after reading why it was proposed, or leave "
             f"{'it' if one else 'them'} out.")
+
+
+def _groups_message(columns: Sequence[str], what: str, groups: Mapping[str, list[str]],
+                    grouped: Mapping[str, str]) -> str:
+    """:func:`unsettled_message` where some of ``columns`` wait as whole groups (``grouped``:
+    column -> its judgment in ``groups``): each group by its count and first columns, each other
+    column by name, in the order the columns wait."""
+    from turbotab.core.voice import listing as words
+
+    parts: list[str] = []
+    done: set[str] = set()
+    for c in columns:
+        j = grouped.get(c)
+        if j is None:
+            parts.append(f"`{c}`")
+        elif j not in done:
+            done.add(j)
+            parts.append(f"{len(groups[j]):,} for {'another' if len(done) > 1 else 'one reason'} "
+                         f"({first_columns(groups[j])})")
+    if len(parts) == 1:
+        [members] = [groups[j] for j in done]
+        return (f"The {len(members):,} columns {first_columns(members)} were proposed below high "
+                f"confidence for one reason and recorded with the other roles, not confirmed on "
+                f"their own, so they cannot set {what} yet. Confirm them in their one press after "
+                f"reading why they were proposed, or leave them out.")
+    lone = len(parts) - len(done)
+    each = "the group" if len(done) == 1 else "each group"
+    others = ("" if not lone else " and the other column on its own" if lone == 1
+              else " and each other column on its own")
+    return (f"{len(columns):,} columns were proposed below high confidence and recorded with the "
+            f"other roles, not confirmed on their own, so they cannot set {what} yet: "
+            f"{words(parts, len(parts), ticked=False)}. Confirm {each} in its one press{others}, "
+            f"after reading why each was proposed, or leave them out.")
 
 
 def listing(columns: Sequence[str]) -> str:
@@ -2261,9 +2333,9 @@ def predictors_or_ask(state: Any, info: Mapping[str, Any] | None = None,
         if artifact is not None:  # ruling R-g: one judgment's roles, one line and one press
             needed = with_proposals(needed, state, artifact)
         if role_readings:
-            message = (unsettled_message(waiting, "the model's predictors") + " The fit waits for "
-                       "them: a column whose role nobody confirmed would enter or leave the model "
-                       "on a guess.")
+            message = (unsettled_message(waiting, "the model's predictors", needed)
+                       + " The fit waits for them: a column whose role nobody confirmed would "
+                       "enter or leave the model on a guess.")
         else:
             names = [r.column for r in codes]
             text = [c for c in names if (facts.get(c) or {}).get("text_numbers")]
@@ -3529,9 +3601,11 @@ def ask_text(readings: Iterable[Reading], state: Any = None) -> str:
     for group in families(readings):
         r = group[0]
         if len(group) > 1 and r.judgment is not None:
+            # the shared reason as a clause, its sentence's period left to the ask's (P4: ".;")
             words = role_group_words(r.value, _get(state, "purpose"), _get(state, "lens"))
-            lines.append(f"{len(group):,} columns like `{r.column}`: {words}? ({r.evidence}; one "
-                         f"reason for all {len(group):,}, at {r.confidence} confidence)")
+            lines.append(f"{len(group):,} columns like `{r.column}`: {words}? "
+                         f"({str(r.evidence or '').rstrip('.')}; one reason for all "
+                         f"{len(group):,}, at {r.confidence} confidence)")
         elif len(group) > 1:
             lines.append(f"{len(group):,} columns like `{r.column}`: {guess_words(r, state)}?")
         else:

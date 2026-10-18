@@ -776,18 +776,24 @@ ROLES = {
 # (``readings.predictor_groups``, which the server serves with the roles stage's artifact). Each
 # clause names its step (U7's repair): "screened out" is the screened elastic net's screen and
 # "assay-normalized" the assay normalization (log-CPM, PQN), never the standardizing every penalized
-# family runs on all its inputs (``models.pipeline``), which no clause denies. Each clause is read
-# from the code by ``tests/test_estimate_words_under_predict.py``.
+# family runs on all its inputs (``models.pipeline``), which no clause denies. The W1-U verifier's
+# P2: a metabolomics project's pooled-QC steps (QC-RLSC with its detection and RSD filters, PQN to
+# the pooled QCs and the in-fold D-ratio filter, ``methods.qc_drift``) read no role: they correct,
+# normalize or drop every column the pooled-QC answer reads as a feature, by name and type, a
+# covariate or total energy too. So a covariate and total energy are "assay-processed only by
+# pooled-QC steps", never "never assay-normalized or batch-corrected" (a project's own notes say
+# it where those steps can run: ``readings.predictor_groups``). Each clause is read from the code
+# by ``tests/test_estimate_words_under_predict.py``.
 _PREDICT_OPTIONS = {
     "exposure": option("exposure", "Predictor",
                        "A predictor: may be screened out, assay-normalized, batch-corrected, filled "
                        "from total energy if it carries energy."),
     "energy": option("energy", "Energy",
-                     "Total energy, a predictor: filled by its median, fills nutrients; never "
-                     "screened out, assay-normalized or batch-corrected."),
+                     "Total energy, a predictor: median-filled, fills nutrients; kept by the "
+                     "screen; assay-processed only by pooled-QC steps."),
     "covariate": option("covariate", "Covariate",
-                        "A predictor such as age: filled without total energy; never screened out, "
-                        "assay-normalized or batch-corrected."),
+                        "A predictor: filled without total energy; kept by the screen; "
+                        "assay-processed only by pooled-QC steps."),
 }
 ROLES_UNDER_PREDICT = {
     **ROLES,
@@ -797,9 +803,8 @@ ROLES_UNDER_PREDICT = {
     "terms": [
         term("predictor", "A column the model reads to predict the outcome, such as a nutrient "
                           "intake or age."),
-        term("covariate", "A predictor such as age or sex. Every model reads it; it is filled "
-                          "without total energy, never screened out, assay-normalized or "
-                          "batch-corrected."),
+        term("covariate", "A predictor such as age or sex: filled without total energy, kept by "
+                          "the screen, and assay-processed only by pooled-QC steps."),
         *(t for t in ROLES["terms"] if t["term"] == "identifier"),
     ],
 }

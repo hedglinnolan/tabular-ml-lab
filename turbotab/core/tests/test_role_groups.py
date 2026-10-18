@@ -51,6 +51,15 @@ PROPOSALS = {"columns": [
 ]}
 ROLES = {p["column"]: p["proposed"] for p in PROPOSALS["columns"]}
 WAITING = [p["column"] for p in PROPOSALS["columns"] if p["confidence"] != "high"]
+# The W1-U verifier's P4: under Predict a group's shared reason is quoted without its study clause,
+# as a role's evidence is (``readings.role_evidence``); under Estimate as the roles stage said it.
+# The words are written out here.
+UNDER_PREDICT = {FEATURE: "A measured feature under the omics lens.",
+                 TRAIT: "A person's characteristic."}
+
+
+def _said(reason: str, purpose: str | None) -> str:
+    return UNDER_PREDICT.get(reason, reason) if purpose == "prediction" else reason
 
 
 def _records(lenses=("genomics",), purpose="prediction", *later: dict) -> list:
@@ -147,7 +156,8 @@ def test_a_block_of_two_groups_is_refused_and_names_each_with_its_own_press():
     message = refused.value.message
     assert f"the {len(GENES)} columns `g00`, `g01` and 3 more" in message
     assert "the 2 columns `bp_sys` and `weight`" in message
-    assert FEATURE in message and TRAIT in message
+    # each group's shared reason, in the goal's words (Predict here; the W1-U verifier's P4)
+    assert UNDER_PREDICT[FEATURE] in message and UNDER_PREDICT[TRAIT] in message
 
 
 def test_a_group_beside_another_reading_is_refused_and_the_other_reading_stays_its_own():
@@ -232,7 +242,7 @@ def test_each_judgment_is_one_line_and_a_group_of_one_is_a_columns_own_line():
     genes, traits, waist = lines
     assert genes.key == quest.role_group_key("g00") and waist.key == quest.role_line_key("waist")
     head = genes.items[0]
-    assert head.kind == quest.ROLE_GROUP_ITEM and head.evidence == FEATURE
+    assert head.kind == quest.ROLE_GROUP_ITEM and head.evidence == UNDER_PREDICT[FEATURE]
     # the line says how many, which role in the goal's words, the confidence and the reason
     assert head.words == (f"{len(GENES)} columns proposed as assay features at medium confidence, "
                           f"below high, for one reason")
@@ -311,7 +321,7 @@ def test_the_models_ask_card_lists_a_whole_group_as_one_line_with_one_press():
     roles = [g for g in card.groups if g.kind == "role"]
     assert sorted(len(g.columns) for g in roles) == [1, 2, 5]
     genes = next(g for g in roles if len(g.columns) == 5)
-    assert genes.guess_words == "assay features" and genes.evidence == FEATURE
+    assert genes.guess_words == "assay features" and genes.evidence == UNDER_PREDICT[FEATURE]
     presses = [e.decision for e in card.exits if e.decision and e.decision["kind"] ==
                "confirm_readings" and len(e.decision["items"]) > 1]
     assert sorted(len(d["items"]) for d in presses) == [2, 5]
@@ -387,7 +397,7 @@ def test_the_quest_logs_ask_line_lists_each_judgment_as_one_item_with_its_one_pr
         assert press.decision == _press(columns, role)
         assert press.label == readings.group_press_label(len(columns), role, "prediction",
                                                          ["genomics"])
-        assert head.evidence == reason
+        assert head.evidence == UNDER_PREDICT[reason]
         assert head.words.startswith(readings.first_columns(columns) + ": ")
         assert f"{len(columns)} columns proposed as" in head.words and confidence in head.words
         at = line.items.index(head)
@@ -420,6 +430,106 @@ def test_silent_a_judgment_asked_only_in_part_or_without_the_proposals_keeps_a_p
     assert not [i for i in items if i.kind == quest.ROLE_GROUP_ITEM]
 
 
+# ── the shared reason in the goal's words (the W1-U verifier's P4) ────────────
+
+
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_a_groups_reason_is_quoted_in_the_goals_words_on_every_surface(purpose):
+    """The verifier's journeys: under Predict a group's line, the fit's ask and the record quoted
+    the roles stage's reason in Estimate's words ("what you study under the omics lens", "usually
+    adjusted for rather than studied"), and the ask joined it as "…studied.; one reason". Each
+    surface quotes it once, in the goal's words, and the ask's clause follows it without its
+    period."""
+    from turbotab.core import ask
+
+    records = _records(("genomics",), purpose)
+    state = decisions.fold(records)
+    log = _log(records)
+    heads = {l.items[0].column: l.items[0] for l in _role_lines(log)
+             if l.items[0].kind == quest.ROLE_GROUP_ITEM}
+    asked = quest.fit_waits(state, artifact=PROPOSALS)
+    items = {i.column: i for i in quest._ask_items(asked, state)
+             if i.kind == quest.ROLE_GROUP_ITEM}
+    card = ask.card("models", ask.AskContext(state, {"roles": PROPOSALS}))
+    groups = {g.columns[0]: g for g in card.groups if g.kind == "role" and len(g.columns) > 1}
+    assert ".;" not in asked.message
+    for (role, confidence, reason), columns in _judgments(PROPOSALS).items():
+        if len(columns) < 2:
+            continue
+        said = _said(reason, purpose)
+        assert heads[columns[0]].evidence == said
+        assert items[columns[0]].evidence == said
+        assert groups[columns[0]].evidence == said
+        assert (f"({said.rstrip('.')}; one reason for all {len(columns)}, at {confidence} "
+                f"confidence)") in asked.message
+        sentence = voice.sentence_for(_press(columns, role), state, {"roles": PROPOSALS})
+        assert f"for one reason (\"{said}\")" in sentence
+    if purpose == "prediction":
+        for text in (asked.message, *(h.evidence for h in heads.values())):
+            for word in ("what you study", "studied", "adjusted for"):
+                assert word not in text, (word, text)
+
+
+# ── the fit's refusal names each group by its first columns (the W1-U verifier's P5) ──
+
+
+def test_the_fits_refusal_names_each_group_by_its_first_columns_and_its_one_press():
+    """The fit's refusal named every waiting column and said "Confirm each", though each group has
+    one press (300 columns named on the depth table, 20,000 on an expression table). It names each
+    group by how many and its first columns, the lone column by name, and says that a group is
+    confirmed in its one press; select_models's refusal says the same."""
+    state = decisions.fold(_records())
+    with pytest.raises(readings.Unsettled) as waiting:
+        readings.predictors_or_ask(state, artifact=PROPOSALS)
+    lead = str(waiting.value).split(" The fit waits for them", 1)[0]
+    assert lead == (
+        f"{len(WAITING)} columns were proposed below high confidence and recorded with the other "
+        f"roles, not confirmed on their own, so they cannot set the model's predictors yet: 5 for "
+        f"one reason (`g00`, `g01` and 3 more), 2 for another (`bp_sys` and `weight`) and "
+        f"`waist`. Confirm each group in its one press and the other column on its own, after "
+        f"reading why each was proposed, or leave them out.")
+    for g in GENES[2:]:
+        assert f"`{g}`" not in lead, g
+    with pytest.raises(Refusal) as refused:
+        decisions._models_read_settled_readings(decisions.SelectModels(models=["linear"]),
+                                                _ctx(state))
+    assert refused.value.message.startswith(lead)
+    asked = quest.fit_waits(state, artifact=PROPOSALS)
+    assert asked.message.startswith(lead)
+
+
+def test_a_refusal_that_asks_one_group_alone_names_it_once():
+    """One judgment waiting alone: the refusal names it by its count and first columns, and its
+    one press."""
+    proposals = {"columns": [p for p in PROPOSALS["columns"]
+                             if p["confidence"] == "high" or p["column"] in GENES]}
+    roles = {p["column"]: p["proposed"] for p in proposals["columns"]}
+    records = [record(1, {"kind": "set_lens", "lenses": ["genomics"]}),
+               record(2, {"kind": "set_target", "column": "y"}),
+               record(3, {"kind": "set_purpose", "purpose": "prediction"}),
+               record(4, {"kind": "set_roles", "roles": roles, "unconfirmed": list(GENES)})]
+    with pytest.raises(readings.Unsettled) as waiting:
+        readings.predictors_or_ask(decisions.fold(records), artifact=proposals)
+    assert str(waiting.value).startswith(
+        f"The {len(GENES)} columns `g00`, `g01` and 3 more were proposed below high confidence for "
+        f"one reason and recorded with the other roles, not confirmed on their own, so they cannot "
+        f"set the model's predictors yet. Confirm them in their one press after reading why they "
+        f"were proposed, or leave them out. The fit waits for them")
+
+
+def test_silent_a_refusal_without_a_group_names_each_column_as_before():
+    """The other way: without the roles stage's proposals each waiting column is asked on its own,
+    so the refusal names each and asks to confirm each, as before."""
+    state = decisions.fold(_records())
+    with pytest.raises(readings.Unsettled) as waiting:
+        readings.predictors_or_ask(state)
+    listed = ", ".join(f"`{c}`" for c in WAITING[:-1]) + f" and `{WAITING[-1]}`"
+    assert str(waiting.value).startswith(
+        f"{listed} were proposed below high confidence and recorded with the other roles, not "
+        f"confirmed on their own, so they cannot set the model's predictors yet. Confirm each "
+        f"after reading why it was proposed, or leave them out. The fit waits for them")
+
+
 # ── the record and the methods: one sentence per group ───────────────────────
 
 
@@ -430,8 +540,9 @@ def test_a_groups_press_is_recorded_and_stated_in_one_sentence(purpose, words):
     before = decisions.fold(records)
     press = _press(GENES, "exposure")
     said = voice.sentence_for(press, before, {"roles": PROPOSALS})
+    reason = _said(FEATURE, purpose)
     assert said == (f"The {len(GENES)} columns `g00`, `g01` and 3 more, proposed as {words} at "
-                    f"medium confidence, below high, for one reason (\"{FEATURE}\"), were "
+                    f"medium confidence, below high, for one reason (\"{reason}\"), were "
                     f"confirmed together as one group, after the evidence for their proposal was "
                     f"read.")
     # silent: another block is said as a block, reading by reading
@@ -484,6 +595,12 @@ def test_on_the_omics_depth_table_the_genes_are_one_line_and_one_press(tmp_path)
     asked = quest.fit_waits(decisions.fold(records), artifact=out)
     offered = _confirms(asked.exits)
     assert offered.count(_press(below, "exposure")) == 1
+    # and it names the genes by how many and the first two, never each (the W1-U verifier's P5)
+    lead = asked.message.split(" The fit waits for them", 1)[0]
+    assert lead.startswith(f"The {len(below):,} columns `{below[0]}`, `{below[1]}` and "
+                           f"{len(below) - 2:,} more were proposed below high confidence for one "
+                           f"reason"), lead
+    assert not [c for c in below[2:] if f"`{c}`" in lead]
     assert not [d for d in offered if d["kind"] == "confirm_reading" and d["column"] in below]
     [head] = [i for i in quest._ask_items(asked, decisions.fold(records))
               if i.kind == quest.ROLE_GROUP_ITEM]

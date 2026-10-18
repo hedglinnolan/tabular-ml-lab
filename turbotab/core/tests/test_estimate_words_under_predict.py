@@ -453,6 +453,62 @@ def test_under_estimate_the_values_readings_say_the_roles_stages_evidence_as_it_
                                           f"rises with total energy (r = {r:.2f}).")
 
 
+# The W1-U verifier's P4: the reasons the roles stage gives below high confidence, which a group's
+# line, the fit's ask and the record quote (ruling R-g), say Estimate's study clause too. Under
+# Predict each is quoted without it; the words are written out here.
+BELOW_HIGH_UNDER_PREDICT = {
+    "A measured feature: what you study under the omics lens.":
+        "A measured feature under the omics lens.",
+    "A measured column: read as what you study until you say otherwise.":
+        "A measured column: read as a predictor until you say otherwise.",
+    "An amount per day or week: a rate, read as what you study for now.":
+        "An amount per day or week: a rate, read as a predictor for now.",
+    "Fasting status: a known influence on other measures, adjusted for rather than studied.":
+        "Fasting status: a known influence on other measures.",
+    "A nutrient intake per kg of body weight: what you study, not a day's amount.":
+        "A nutrient intake per kg of body weight, not a day's amount.",
+    "An intake by its unit, not a nutrient: what you study under the dietary lens.":
+        "An intake by its unit, not a nutrient, under the dietary lens.",
+}
+
+
+def _below_high_reasons(tmp_path) -> dict[str, str]:
+    """The roles stage's own reasons below high on three tables built here, by column: two
+    measured features under the genomics lens; a score, a rate and a fasting flag under the
+    clinical lens; a nutrient per kg of body weight and a food in grams under the dietary lens."""
+    rng = np.random.default_rng(3)
+    n = 120
+    tables = {
+        "genomics": {"gene_a": rng.gamma(4, 50, n).round(1), "gene_b": rng.gamma(4, 50, n).round(1)},
+        "clinical": {"x_score": rng.normal(10, 2, n), "steps_per_day": rng.normal(7000, 900, n),
+                     "fasting": rng.integers(0, 2, n)},
+        "dietary": {"fat_g_kg": rng.normal(1.2, 0.2, n), "fatty_fish_g": rng.gamma(2, 20, n)},
+    }
+    out: dict[str, str] = {}
+    for lens, columns in tables.items():
+        path = tmp_path / f"{lens}.csv"
+        pd.DataFrame({**columns, "y": rng.normal(size=n)}).to_csv(path, index=False)
+        found = Ingested(path, tmp_path / f"work_{lens}").run(
+            roles_stage, ProjectState(lens=[lens], target="y", purpose="prediction"))
+        out.update({p["column"]: p["reason"] for p in found["columns"]
+                    if p["confidence"] != "high"})
+    return out
+
+
+def test_under_predict_each_reason_below_high_is_quoted_without_its_study_clause(tmp_path):
+    """Each reason the roles stage gave on the tables built here is one this test words, so a
+    reworded reason fails; under Predict ``readings.role_evidence`` quotes each without a study
+    word, under Estimate as the stage said it."""
+    reasons = _below_high_reasons(tmp_path)
+    assert set(reasons.values()) == set(BELOW_HIGH_UNDER_PREDICT)
+    for reason, said in BELOW_HIGH_UNDER_PREDICT.items():
+        assert readings.role_evidence(reason, "prediction") == said
+        for word in (*STUDY_WORDS, "studied", "adjusted for"):
+            assert word not in said.lower(), (word, said)
+        for purpose in ("inference", None):
+            assert readings.role_evidence(reason, purpose) == reason
+
+
 def test_under_predict_a_left_out_column_offers_one_way_into_the_models():
     proposals = {"columns": [{"column": "note", "proposed": "excluded", "confidence": "high",
                               "reason": "free text"}]}
@@ -630,15 +686,21 @@ SHELF_HAS_SCREEN = {"regression": True, "binary": True, "multiclass": False, "or
 
 # What the served card says each step does to each predictor role (U7), clause by clause, each
 # step named (U7's repair, P3: "assay-normalized", never a bare "normalized" that would deny the
-# standardizing every penalized family runs): each is read from the code by the test after it.
+# standardizing every penalized family runs): each is read from the code by the tests after it.
+# The W1-U verifier's P2 (repair round 2): the pooled-QC steps of a metabolomics project (QC-RLSC,
+# its detection and RSD filters, PQN to the pooled QCs and the in-fold D-ratio filter) read no
+# role, so a covariate or total energy is "assay-processed only by pooled-QC steps", never "never
+# assay-normalized or batch-corrected".
+QC_CLAUSE = "assay-processed only by pooled-QC steps"
 SAID = {
     "exposure": ("A predictor: may be screened out, assay-normalized, batch-corrected, filled from "
                  "total energy if it carries energy."),
-    "energy": ("Total energy, a predictor: filled by its median, fills nutrients; never screened "
-               "out, assay-normalized or batch-corrected."),
-    "covariate": ("A predictor such as age: filled without total energy; never screened out, "
-                  "assay-normalized or batch-corrected."),
+    "energy": f"Total energy, a predictor: median-filled, fills nutrients; kept by the screen; "
+              f"{QC_CLAUSE}.",
+    "covariate": f"A predictor: filled without total energy; kept by the screen; {QC_CLAUSE}.",
 }
+COVARIATE_TERM = (f"A predictor such as age or sex: filled without total energy, kept by the "
+                  f"screen, and {QC_CLAUSE}.")
 
 
 def test_under_predict_the_served_roles_card_names_every_step_that_reads_the_predictor_role():
@@ -650,9 +712,7 @@ def test_under_predict_the_served_roles_card_names_every_step_that_reads_the_pre
     options = {o["value"]: o["consequence"] for o in entry["options"] if o["value"] in SAID}
     terms = {t["term"]: t["definition"] for t in entry["terms"]}
     assert options == SAID
-    assert terms["covariate"] == ("A predictor such as age or sex. Every model reads it; it is "
-                                  "filled without total energy, never screened out, "
-                                  "assay-normalized or batch-corrected.")
+    assert terms["covariate"] == COVARIATE_TERM
     for text in (*options.values(), *terms.values()):
         assert "omics screen" not in text and "like any other" not in text, text
         assert "skip" not in text, text
@@ -668,11 +728,12 @@ def test_each_step_the_served_roles_card_names_does_to_each_role_what_it_says():
     Predictor column that carries energy from its line on total energy (carbohydrate is an exact
     line, 0.1 of 2,800), a Predictor column that carries none and a covariate by their medians
     ("filled without total energy"), and total energy by its median; the screened elastic net's
-    screen takes the Predictor columns alone ("may be screened out"; the others are "never
-    screened out"); the assay normalization and reference ComBat adjust the Predictor columns
-    alone ("assay-normalized", "batch-corrected"). U7's repair (P3): the standardizing a penalized
-    family runs reads every input, a covariate and total energy too, so no clause denies it: each
-    names the assay normalization, never a bare "normalized"."""
+    screen takes the Predictor columns alone ("may be screened out"; the others are "kept by the
+    screen"); the assay normalization and reference ComBat adjust the Predictor columns alone
+    ("assay-normalized", "batch-corrected"; the others are assay-processed only by the pooled-QC
+    steps, which read no role: ``test_the_pooled_qc_steps_read_no_role…``). U7's repair (P3): the
+    standardizing a penalized family runs reads every input, a covariate and total energy too, so
+    no clause denies it: each names the assay normalization, never a bare "normalized"."""
     from types import SimpleNamespace
 
     import turbotab.core.methods.omics  # noqa: F401 - registers the screened family
@@ -699,7 +760,7 @@ def test_each_step_the_served_roles_card_names_does_to_each_role_what_it_says():
     assert out.loc[3, "g1"] == pytest.approx(float(observed["g1"].median()))
     assert "filled without total energy" in SAID["covariate"]
     assert out.loc[3, "age"] == pytest.approx(float(observed["age"].median()))
-    assert "filled by its median, fills nutrients" in SAID["energy"]
+    assert "median-filled, fills nutrients" in SAID["energy"]
     assert out.loc[5, "kcal"] == pytest.approx(float(frame["kcal"].dropna().median()))
     [(_name, screen)] = get_family("screened_elastic_net").preprocess(
         SimpleNamespace(predictors=predictors, roles=roles))
@@ -713,7 +774,10 @@ def test_each_step_the_served_roles_card_names_does_to_each_role_what_it_says():
     assert design_batch(state, [*predictors, "plate"], predictors, None)["columns"] == [
         "carb_g", "g1"]
     for role in ("energy", "covariate"):
-        assert "never screened out, assay-normalized or batch-corrected" in SAID[role]
+        # the screen keeps it, and the assay normalization and ComBat leave it (the pooled-QC
+        # steps, which do not, are read from the code by
+        # ``test_the_pooled_qc_steps_read_no_role_and_the_served_card_never_denies_them``)
+        assert f"kept by the screen; {QC_CLAUSE}" in SAID[role]
     assert "may be screened out, assay-normalized, batch-corrected" in SAID["exposure"]
     # The standardizing: a penalized family's steps end by scaling every column it is handed, the
     # covariate and total energy among them (numpy's mean and population SD of the filled values),
@@ -908,6 +972,112 @@ def test_normalization_and_batch_correction_the_assay_card_names_act_on_predicto
     assert design_batch(state, inputs, predictors, None)["columns"] == ["g1", "g2"]
 
 
+# ── the W1-U verifier's P2: the pooled-QC steps read no role ─────────────────
+
+
+def _pooled_qc_run() -> pd.DataFrame:
+    """A metabolomics run built here: 61 injections in order, a pooled QC every fifth from the
+    first to the last, and three measured columns whose every value drifts by the same factor,
+    1 + 0.01 × the injection's place, times a small noise (log-normal, SD 0.02): two metabolites
+    and creatinine. Total energy and an age were recorded for the study samples alone, so the QC
+    injections hold none."""
+    rng = np.random.default_rng(5)
+    n = 61
+    order = np.arange(1, n + 1)
+    qc = (order - 1) % 5 == 0
+    drift = 1 + 0.01 * order
+
+    def measured(level: float) -> np.ndarray:
+        return level * drift * rng.lognormal(0.0, 0.02, n)
+
+    return pd.DataFrame({
+        "sample_type": np.where(qc, "QC", "sample"), "run_order": order,
+        "m1": measured(100.0), "m2": measured(50.0), "creatinine": measured(80.0),
+        "kcal": np.where(qc, np.nan, rng.normal(2000.0, 300.0, n)),
+        "age": np.where(qc, np.nan, rng.integers(20, 80, n)).astype(float),
+        "y": rng.normal(size=n)})
+
+
+def _rsd(values: np.ndarray) -> float:
+    return float(100 * np.std(values, ddof=1) / np.mean(values))
+
+
+def test_the_pooled_qc_steps_read_no_role_and_the_served_card_never_denies_them():
+    """The verifier's probe: the served card said a covariate and total energy are "never screened
+    out, assay-normalized or batch-corrected", while the pooled-QC answer's features are chosen by
+    name and type alone (``omics.candidate_columns``), and its steps (QC-RLSC, the detection and
+    RSD filters, PQN to the QCs, the in-fold D-ratio filter) run over them whatever their role. Read
+    from the code on the run built here, with a covariate and total energy in the roles: the
+    covariate that has QC values (creatinine) is drift-corrected, its QCs' RSD falling below half
+    the raw one (numpy's, on the QC rows), and enters the D-ratio filter; total energy, which has
+    none, is dropped by the detection filter (its QCs detect it 0 times in 13) and leaves the
+    predictors. So the served clauses and a metabolomics project's notes say that the pooled-QC
+    steps may adjust or drop either; nothing else of the assay steps reaches them (the tests
+    above)."""
+    from turbotab.core.decisions import FindingDisposition
+    from turbotab.core.methods import qc_drift
+
+    frame = _pooled_qc_run()
+    roles = {"m1": "exposure", "m2": "exposure", "creatinine": "covariate", "kcal": "energy",
+             "age": "covariate"}
+    features = qc_drift._features(frame, "y", ["sample_type", "run_order"])
+    # a characteristic by its name (age) is no feature; the roles are not read
+    assert features == ["m1", "m2", "creatinine", "kcal"]
+    plan = qc_drift.QCPlan("sample_type", ("QC",), tuple(features), "run_order", None)
+    result = qc_drift.run_reference_rows(frame, plan)
+    qc = frame["sample_type"].eq("QC").to_numpy()
+    assert int(qc.sum()) == 13
+    assert result.record["dropped"]["detection"] == ["kcal"]
+    raw = _rsd(frame.loc[qc, "creatinine"].to_numpy())
+    corrected = _rsd(result.values[qc, features.index("creatinine")])
+    assert corrected < raw / 2, (raw, corrected)
+    params = {"column": "sample_type", "order_column": "run_order",
+              "dropped": result.record["dropped"]}
+    assert "kcal" in qc_drift._columns_out("qc_rlsc_lc", params)  # it leaves the predictors
+    fid = f"{qc_drift.FINDING}#1"
+    state = ProjectState(lens=["metabolomics"], target="y", purpose="prediction", roles=roles,
+                         findings={fid: FindingDisposition(
+                             action="applied", option="qc_rlsc_lc_dratio",
+                             params={**params, "features": features, "d_ratio_max": 0.5})})
+    sds = {c: float(s) for c, s in zip(features, result.qc_sd) if np.isfinite(s)}
+    assert "creatinine" in qc_drift.design_d_ratio(state, list(roles), sds)["columns"]
+    # the served words: no clause denies them, and each names them
+    entry = _roles_entry("prediction")
+    options = {o["value"]: o["consequence"] for o in entry["options"]}
+    for text in (options["covariate"], options["energy"], _covariate_term()):
+        assert QC_CLAUSE in text, text
+        assert "never" not in text, text
+    # a metabolomics project's notes: the pooled-QC steps may adjust or drop a characteristic and
+    # total energy, beside the normalization and batch correction that leave them
+    for lenses in (["metabolomics"], ["dietary", "metabolomics"]):
+        groups = readings.predictor_groups(lenses, "regression", roles)
+        assert groups["covariate"].note.endswith(
+            f"leave them as they are, but {readings.QC_STEPS}, which read no role, may adjust or "
+            f"drop any of them."), groups["covariate"].note
+        assert groups["energy"].note.endswith(
+            f"leave it as it is, but {readings.QC_STEPS}, which read no role, may adjust or drop "
+            f"it."), groups["energy"].note
+
+
+def test_silent_without_pooled_qcs_no_note_names_the_pooled_qc_steps():
+    """The other way: the pooled-QC finding is the metabolomics pack's alone, so a genomics,
+    dietary or clinical project has no pooled-QC steps, and its notes name none; under the
+    genomics lens the normalization and batch correction leave a characteristic and total energy
+    as they are (read from the code by
+    ``test_normalization_and_batch_correction_the_assay_card_names_act_on_predictor_columns_alone``)."""
+    from turbotab.core.methods import qc_drift
+
+    assert qc_drift.FINDING.startswith("pack::metabolomics::")
+    assert readings.POOLED_QC_LENSES == ("metabolomics",)
+    roles = {"g1": "exposure", "age": "covariate", "kcal": "energy"}
+    for lenses in (["genomics"], ["dietary", "genomics"], ["dietary"], ["clinical"]):
+        for group in readings.predictor_groups(lenses, "regression", roles).values():
+            assert readings.QC_STEPS not in group.note, (lenses, group.note)
+    genomics = readings.predictor_groups(["genomics"], "regression", roles)
+    assert genomics["covariate"].note.endswith("leave them as they are.")
+    assert genomics["energy"].note.endswith("leave it as it is.")
+
+
 # ── W1-T's V3: the energy-aware fill is named only where it would run ─────────
 
 
@@ -993,6 +1163,80 @@ def test_under_estimate_a_role_lines_press_is_recorded_as_before():
         assert voice.sentence_for({"kind": "confirm_role", "column": "bp_sys", "role": role},
                                   state) == (f"`bp_sys` was confirmed as {words} on its own, after "
                                              f"the evidence for its proposal was read.")
+
+
+# ── the W1-U verifier's P3 (U8a): a values' reading's press is recorded as it says it ──
+
+VALUE_ROLES = {"kcal": "energy", "fat_g": "exposure", "age": "covariate"}
+
+
+def _value_presses(purpose: str | None) -> tuple[ProjectState, dict[tuple[str, str], dict]]:
+    """The presses the readings the values settled offer (``readings.read_from_data``, each a
+    ``confirm_reading`` of a role), by column and role, on roles every one of which was proposed
+    high: total energy, a nutrient that carries energy and an age, under the dietary lens."""
+    proposals = {"columns": [{"column": c, "proposed": r, "confidence": "high", "reason": "read"}
+                             for c, r in VALUE_ROLES.items()]}
+    state = ProjectState(lens=["dietary"], target="y", purpose=purpose, roles=dict(VALUE_ROLES))
+    presses = {(e["decision"]["column"], e["decision"]["value"]): e
+               for i in readings.read_from_data(state, roles=proposals) for e in i["change"]}
+    return state, presses
+
+
+@pytest.mark.parametrize("column, role, label, said", [
+    ("age", "exposure", "Move `age` to the nutrients",
+     "`age` moved from the Characteristic role to the Nutrient role"),
+    ("fat_g", "covariate", "Move `fat_g` to the characteristics",
+     "`fat_g` moved from the Nutrient role to the Characteristic role"),
+    ("kcal", "covariate",
+     "Move `kcal` to the characteristics (the energy-aware fill no longer reads it)",
+     "`kcal` left the energy role for the Characteristic role"),
+    ("age", "excluded", "`age` is left out of the models",
+     "`age` was recorded as left out of the models")])
+def test_under_predict_a_values_readings_press_is_recorded_as_its_label_says_it(column, role,
+                                                                               label, said):
+    """The verifier's probe: the press "Move `age` to the nutrients" on a reading the values
+    settled was recorded as "`age` was confirmed as a nutrient", and the energy column's press as a
+    confirmation as a characteristic, never as leaving the energy role. Under Predict the record
+    says the press as the label says it, as a role line's press is said (the test above): a move
+    between the roles card's groups, the energy column's as leaving the energy role."""
+    from turbotab.core import voice
+
+    state, presses = _value_presses("prediction")
+    press = presses[(column, role)]
+    assert press["label"] == label
+    assert press["decision"]["kind"] == "confirm_reading"
+    assert voice.sentence_for(press["decision"], state) == (
+        f"{said}, on its own, after the evidence for its reading was read.")
+
+
+def test_silent_under_predict_a_values_reading_confirmed_as_recorded_is_a_confirmation():
+    """The other way: a confirmation of the role the answer recorded is still said as one, in the
+    roles card's group's words."""
+    from turbotab.core import voice
+
+    state, _presses = _value_presses("prediction")
+    for column, words in (("age", "a characteristic"), ("fat_g", "a nutrient"),
+                          ("kcal", "total energy")):
+        decision = {"kind": "confirm_reading", "reading": "role", "column": column,
+                    "value": VALUE_ROLES[column]}
+        assert voice.sentence_for(decision, state) == (
+            f"`{column}` was confirmed as {words}, on its own, after the evidence for its reading "
+            f"was read.")
+
+
+@pytest.mark.parametrize("purpose", ["inference", None])
+def test_under_estimate_a_values_readings_press_is_recorded_as_before(purpose):
+    """Under Estimate a values' reading's press names what the column is ("`age` is what you
+    study"), and the record says it so, as before."""
+    from turbotab.core import voice
+
+    state, presses = _value_presses(purpose)
+    for (column, role), words in ((("age", "exposure"), "an exposure"),
+                                  (("kcal", "covariate"), "a covariate"),
+                                  (("fat_g", "covariate"), "a covariate")):
+        assert voice.sentence_for(presses[(column, role)]["decision"], state) == (
+            f"`{column}` was confirmed as {words}, on its own, after the evidence for its reading "
+            f"was read.")
 
 
 # ── U7: the explanations' default curves under Predict ────────────────────────

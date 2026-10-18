@@ -1131,7 +1131,264 @@
             }
           }
         }
-      }
+      },
+      "pooled_qc": {
+        "lenses": [
+          "metabolomics"
+        ],
+        "groups": {
+          "both": {
+            "screen": {
+              "fill": {
+                "exposure": {
+                  "one": "a nutrient or assay feature",
+                  "head": [
+                    "Nutrient or assay feature",
+                    "Nutrients and assay features"
+                  ],
+                  "note": "The energy-aware fill fills a missing amount of one that carries energy from total energy; the screened elastic net's screen may leave any of them out; normalization and batch correction adjust them."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The energy-aware fill fills the nutrients and assay features that carry energy from it; the screened elastic net's screen keeps it; normalization and batch correction leave it as it is, but the pooled-QC steps, which read no role, may adjust or drop it."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The energy-aware fill fills them without total energy; the screened elastic net's screen keeps every one; normalization and batch correction leave them as they are, but the pooled-QC steps, which read no role, may adjust or drop any of them."
+                }
+              },
+              "no_fill": {
+                "exposure": {
+                  "one": "a nutrient or assay feature",
+                  "head": [
+                    "Nutrient or assay feature",
+                    "Nutrients and assay features"
+                  ],
+                  "note": "The screened elastic net's screen may leave any of them out; normalization and batch correction adjust them."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The screened elastic net's screen keeps it; normalization and batch correction leave it as it is, but the pooled-QC steps, which read no role, may adjust or drop it."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The screened elastic net's screen keeps every one; normalization and batch correction leave them as they are, but the pooled-QC steps, which read no role, may adjust or drop any of them."
+                }
+              }
+            },
+            "no screen": {
+              "fill": {
+                "exposure": {
+                  "one": "a nutrient or assay feature",
+                  "head": [
+                    "Nutrient or assay feature",
+                    "Nutrients and assay features"
+                  ],
+                  "note": "The energy-aware fill fills a missing amount of one that carries energy from total energy; normalization and batch correction adjust them."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The energy-aware fill fills the nutrients and assay features that carry energy from it; normalization and batch correction leave it as it is, but the pooled-QC steps, which read no role, may adjust or drop it."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The energy-aware fill fills them without total energy; normalization and batch correction leave them as they are, but the pooled-QC steps, which read no role, may adjust or drop any of them."
+                }
+              },
+              "no_fill": {
+                "exposure": {
+                  "one": "a nutrient or assay feature",
+                  "head": [
+                    "Nutrient or assay feature",
+                    "Nutrients and assay features"
+                  ],
+                  "note": "Normalization and batch correction adjust them."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "Normalization and batch correction leave it as it is, but the pooled-QC steps, which read no role, may adjust or drop it."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "Normalization and batch correction leave them as they are, but the pooled-QC steps, which read no role, may adjust or drop any of them."
+                }
+              }
+            }
+          },
+          "assay": {
+            "screen": {
+              "fill": {
+                "exposure": {
+                  "one": "an assay feature",
+                  "head": [
+                    "Assay feature",
+                    "Assay features"
+                  ],
+                  "note": "The energy-aware fill fills a missing amount of one that carries energy from total energy; the screened elastic net's screen may leave any of them out; normalization and batch correction adjust them."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The energy-aware fill fills the assay features that carry energy from it; the screened elastic net's screen keeps it; normalization and batch correction leave it as it is, but the pooled-QC steps, which read no role, may adjust or drop it."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The energy-aware fill fills them without total energy; the screened elastic net's screen keeps every one; normalization and batch correction leave them as they are, but the pooled-QC steps, which read no role, may adjust or drop any of them."
+                }
+              },
+              "no_fill": {
+                "exposure": {
+                  "one": "an assay feature",
+                  "head": [
+                    "Assay feature",
+                    "Assay features"
+                  ],
+                  "note": "The screened elastic net's screen may leave any of them out; normalization and batch correction adjust them."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The screened elastic net's screen keeps it; normalization and batch correction leave it as it is, but the pooled-QC steps, which read no role, may adjust or drop it."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The screened elastic net's screen keeps every one; normalization and batch correction leave them as they are, but the pooled-QC steps, which read no role, may adjust or drop any of them."
+                }
+              }
+            },
+            "no screen": {
+              "fill": {
+                "exposure": {
+                  "one": "an assay feature",
+                  "head": [
+                    "Assay feature",
+                    "Assay features"
+                  ],
+                  "note": "The energy-aware fill fills a missing amount of one that carries energy from total energy; normalization and batch correction adjust them."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The energy-aware fill fills the assay features that carry energy from it; normalization and batch correction leave it as it is, but the pooled-QC steps, which read no role, may adjust or drop it."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The energy-aware fill fills them without total energy; normalization and batch correction leave them as they are, but the pooled-QC steps, which read no role, may adjust or drop any of them."
+                }
+              },
+              "no_fill": {
+                "exposure": {
+                  "one": "an assay feature",
+                  "head": [
+                    "Assay feature",
+                    "Assay features"
+                  ],
+                  "note": "Normalization and batch correction adjust them."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "Normalization and batch correction leave it as it is, but the pooled-QC steps, which read no role, may adjust or drop it."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "Normalization and batch correction leave them as they are, but the pooled-QC steps, which read no role, may adjust or drop any of them."
+                }
+              }
+            }
+          }
+        }
+      },
+      "study_clauses": [
+        [
+          ": what you study;",
+          ";"
+        ],
+        [
+          ", usually adjusted for rather than studied.",
+          "."
+        ],
+        [
+          ", adjusted for rather than studied.",
+          "."
+        ],
+        [
+          ": what you study under the omics lens.",
+          " under the omics lens."
+        ],
+        [
+          ": what you study under the dietary lens.",
+          ", under the dietary lens."
+        ],
+        [
+          ": what you study, not",
+          ", not"
+        ],
+        [
+          "read as what you study",
+          "read as a predictor"
+        ]
+      ]
     }
   },
   "lines": [

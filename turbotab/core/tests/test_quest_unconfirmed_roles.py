@@ -524,10 +524,20 @@ def _fixture() -> dict:
             "press": {r: readings.group_press_label("{n}", r, purpose, lens) for r in every},
         }
 
+    # Under a lens that asks the pooled-QC question the notes of a characteristic and total energy
+    # say that the pooled-QC steps may adjust or drop them (the W1-U verifier's P2): the groups of
+    # the kinds that hold an assay lens, with metabolomics as it.
+    pooled = {k: [*(c for c in v if c not in readings.ASSAY_LENSES),
+                  *readings.POOLED_QC_LENSES] for k, v in lenses.items() if k in ("both", "assay")}
     goals = {"prediction": {
         "lenses": {"dietary": list(readings.DIETARY_LENSES), "assay": list(readings.ASSAY_LENSES)},
         "screen_tasks": screen_tasks,
-        "kinds": {k: kind(v) for k, v in lenses.items()}}}
+        "kinds": {k: kind(v) for k, v in lenses.items()},
+        "pooled_qc": {"lenses": list(readings.POOLED_QC_LENSES),
+                      "groups": {k: kind(v)["groups"] for k, v in pooled.items()}},
+        # a group's shared reason, quoted without its study clause (``readings.role_evidence``;
+        # the W1-U verifier's P4): each clause as the stage says it and as Predict quotes it
+        "study_clauses": [list(c) for c in readings._STUDY_CLAUSES]}}
     return {
         "about": "Written by turbotab/core/tests/test_quest_unconfirmed_roles.py from core/quest.py "
                  "(_role_lines): never edit by hand.",
