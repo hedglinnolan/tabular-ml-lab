@@ -2098,9 +2098,12 @@ def _finding_lines(state: Any, findings: Any, steps: Mapping[str, Any],
         if log is not None and not answered:
             reopened = _finding_withdrawal(log, str(f.get("id")))
             if (reopened is None and question is not None
-                    and (disposition is None or disposition.action == "deferred")):
+                    and (disposition is None or disposition.action == "deferred")
+                    and _settled_by_an_answer(log, f, question)):
                 # Decided by its question (held for it, or answered by it): a question whose
-                # answer was withdrawn or stopped holding is why it is open again.
+                # answer was withdrawn or stopped holding is why it is open again. Only an answer
+                # that settled it when given closed it; one no answer settled was open all along,
+                # so nothing reopened it (the re-walk's N7).
                 reopened = _reopened_by(log, answering_kinds(question), question_reads(question),
                                         answer_holds(question))
         lines.append((place.stage, QuestLine(
@@ -2110,6 +2113,23 @@ def _finding_lines(state: Any, findings: Any, steps: Mapping[str, Any],
             status="answered" if answered else "open", counted=decide, order=place.order,
             decision_id=answered_by, reopened_by=reopened)))
     return lines
+
+
+def _settled_by_an_answer(log: _Log, finding: Mapping[str, Any], question: str) -> bool:
+    """Whether an answer to ``question`` settled ``finding`` when it was given: on the log as it
+    stood just after that answer (one withdrawn since included), the answer matched it
+    (``repairs.matching_answer``: an eligibility rule names one of its columns, the roles give its
+    columns the role it asks for). A finding no answer ever settled was never closed."""
+    from turbotab.core.repairs import matching_answer
+
+    kinds = answering_kinds(question)
+    probe = {**finding, "routes_to": question}
+    for r in log.ordered:
+        if r.decision.kind in kinds:
+            state = log.state_at(r.seq)
+            if state is not None and matching_answer(probe, state):
+                return True
+    return False
 
 
 FINDING_DISPOSITIONS = ("apply_repair", "defer_finding", "dismiss_finding")
