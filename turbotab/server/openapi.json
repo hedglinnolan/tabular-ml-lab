@@ -1079,6 +1079,69 @@
         }
       }
     },
+    "/api/projects/{pid}/mattered": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Mattered",
+        "description": "Which decisions mattered, under Estimate (SWARM_ENGINE_PLAN E3): the exposure's estimate\nrefit with each recorded choice changed, one at a time (each exclusion rule dropped, each\nadjusted covariate dropped, each covariate the adjustment answers left out added), a\nspecification curve the ``mattered`` stage computes after the plan's lock. Its primary is the\nreported estimate, which stays the result whatever the curve shows. Refused under a goal or an\neffect measure that does not offer it (a marginal risk difference or ratio), and before the\nlock with the line saying when it opens; while the stage computes, its status and no curve; a\ncurve that cannot be drawn is refused with why, quoting no estimate. Serving a curve marks its\nestimates as shown.",
+        "operationId": "mattered_api_projects__pid__mattered_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mattered"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not offered for this goal or effect measure, the plan not locked yet, a question the estimates rest on open, or the curve cannot be drawn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{pid}/triage": {
       "get": {
         "tags": [
@@ -9697,6 +9760,628 @@
         ],
         "title": "Mark",
         "description": "A labeled value on a distribution's axis, e.g. an exclusion cut-off (\"500 kcal\")."
+      },
+      "Mattered": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "fresh": {
+            "type": "boolean",
+            "title": "Fresh"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "plan_lock": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Lock"
+          },
+          "curve": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatteredCurve"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "says": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Says"
+          },
+          "methods": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Methods"
+          },
+          "reported": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatteredReported"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "examined": {
+            "items": {
+              "$ref": "#/components/schemas/MatteredExamined"
+            },
+            "type": "array",
+            "title": "Examined"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "fresh",
+          "key",
+          "plan_lock",
+          "curve",
+          "says",
+          "methods",
+          "reported",
+          "examined",
+          "error"
+        ],
+        "title": "Mattered",
+        "description": "``GET /projects/{pid}/mattered``: the stage's status and, once it is fresh for the current\nanswers, its curve. ``plan_lock`` is the lock in force, by its record id."
+      },
+      "MatteredChoice": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "primary": {
+            "type": "string",
+            "title": "Primary"
+          },
+          "decision": {
+            "type": "string",
+            "title": "Decision"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/MatteredOption"
+            },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "primary",
+          "decision",
+          "options"
+        ],
+        "title": "MatteredChoice"
+      },
+      "MatteredCurve": {
+        "properties": {
+          "estimate_label": {
+            "type": "string",
+            "title": "Estimate Label"
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/MatteredChoice"
+            },
+            "type": "array",
+            "title": "Choices"
+          },
+          "specs": {
+            "items": {
+              "$ref": "#/components/schemas/MatteredSpec"
+            },
+            "type": "array",
+            "title": "Specs"
+          },
+          "not_estimated": {
+            "items": {
+              "$ref": "#/components/schemas/MatteredNotEstimated"
+            },
+            "type": "array",
+            "title": "Not Estimated"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "drawn": {
+            "type": "integer",
+            "title": "Drawn"
+          },
+          "sampled": {
+            "type": "boolean",
+            "title": "Sampled"
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule"
+          },
+          "crossing": {
+            "type": "string",
+            "title": "Crossing"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatteredSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "sealed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sealed"
+          },
+          "plan_lock": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Lock"
+          },
+          "weighted": {
+            "type": "boolean",
+            "title": "Weighted"
+          },
+          "clustered": {
+            "type": "boolean",
+            "title": "Clustered"
+          },
+          "exits": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Exits"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "estimate_label",
+          "choices",
+          "specs",
+          "not_estimated",
+          "total",
+          "drawn",
+          "sampled",
+          "rule",
+          "crossing",
+          "summary",
+          "level",
+          "sealed",
+          "plan_lock",
+          "weighted",
+          "clustered",
+          "exits"
+        ],
+        "title": "MatteredCurve",
+        "description": "``spec_curve.SpecCurve`` as data (its ``to_dict``)."
+      },
+      "MatteredExamined": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Label"
+          },
+          "add": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Add",
+            "default": []
+          },
+          "drop": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Drop",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "add",
+          "drop"
+        ],
+        "title": "MatteredExamined",
+        "description": "An alternative the analyst declared as examined: the adjustment set with ``add`` added and\n``drop`` dropped, beside the primary (one departure of its own)."
+      },
+      "MatteredNotEstimated": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "picks": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Picks"
+          },
+          "primary": {
+            "type": "boolean",
+            "title": "Primary"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "picks",
+          "primary",
+          "reason"
+        ],
+        "title": "MatteredNotEstimated"
+      },
+      "MatteredOption": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "MatteredOption"
+      },
+      "MatteredReported": {
+        "properties": {
+          "family": {
+            "type": "string",
+            "title": "Family"
+          },
+          "feature": {
+            "type": "string",
+            "title": "Feature"
+          },
+          "estimate": {
+            "type": "number",
+            "title": "Estimate"
+          },
+          "ci_low": {
+            "type": "number",
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "type": "number",
+            "title": "Ci High"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Se"
+          },
+          "n_rows": {
+            "type": "integer",
+            "title": "N Rows"
+          },
+          "covariance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Covariance"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "family",
+          "feature",
+          "estimate",
+          "ci_low",
+          "ci_high",
+          "se",
+          "n_rows",
+          "covariance",
+          "ratio"
+        ],
+        "title": "MatteredReported",
+        "description": "The reported estimate the primary specification reproduces: the fit stage's own row.\n``ratio``: the row's odds ratio exp(β) for a yes/no outcome, the number the fit reports beside\nthe log odds; None for a difference."
+      },
+      "MatteredSpec": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "picks": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Picks"
+          },
+          "primary": {
+            "type": "boolean",
+            "title": "Primary"
+          },
+          "estimate": {
+            "type": "number",
+            "title": "Estimate"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Se"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P"
+          },
+          "df": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Df"
+          },
+          "estimator": {
+            "type": "string",
+            "title": "Estimator",
+            "default": ""
+          },
+          "covariance": {
+            "type": "string",
+            "title": "Covariance",
+            "default": ""
+          },
+          "scale_key": {
+            "type": "string",
+            "title": "Scale Key",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "picks",
+          "primary",
+          "estimate",
+          "low",
+          "high",
+          "n",
+          "se",
+          "p",
+          "df",
+          "estimator",
+          "covariance",
+          "scale_key"
+        ],
+        "title": "MatteredSpec"
+      },
+      "MatteredSummary": {
+        "properties": {
+          "k": {
+            "type": "integer",
+            "title": "K"
+          },
+          "median": {
+            "type": "number",
+            "title": "Median"
+          },
+          "lowest": {
+            "type": "number",
+            "title": "Lowest"
+          },
+          "highest": {
+            "type": "number",
+            "title": "Highest"
+          },
+          "above": {
+            "type": "integer",
+            "title": "Above"
+          },
+          "below": {
+            "type": "integer",
+            "title": "Below"
+          },
+          "spanning": {
+            "type": "integer",
+            "title": "Spanning"
+          },
+          "primary_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Rank"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "k",
+          "median",
+          "lowest",
+          "highest",
+          "above",
+          "below",
+          "spanning",
+          "primary_rank"
+        ],
+        "title": "MatteredSummary"
       },
       "MeasurementErrorSpec": {
         "properties": {

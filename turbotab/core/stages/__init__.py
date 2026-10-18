@@ -150,6 +150,15 @@ interaction.py):
     under inference it is an estimate stage. ``cohort`` reads the forms: a consumers-only domain
     leaves the non-consumers on a line of their own.
 
+SWARM_ENGINE_PLAN E3 (turbotab/core/mattered.py), which decisions mattered under Estimate:
+
+    mattered     heavy   deps: working, cohort, split,           reads the lock, the exclusions, the
+                               target_info, design, fit          adjustment answers …; requires
+                                                                 plan_locked, estimand, models, purpose
+
+    ``mattered`` refits the exposure's estimate with each recorded choice changed, one at a time
+    (``methods.spec_curve``), once the plan is locked; its primary is the fit's reported estimate.
+
 Each stage is a pure function of its inputs and the slots it reads. The
 statistics are the data layer's and the legacy domain code's; the stages only
 call them and shape the result into the contract's artifact.
@@ -188,6 +197,7 @@ from turbotab.core.stages.time_varying import TIME_VARYING_READS, time_varying_s
 from turbotab.core.stages.working import oriented_stage, structure_stage, working_stage
 from turbotab.core.methods.exposure_form import FORMS_READS, forms_stage  # FORM
 from turbotab.core.methods.interaction import MODIFICATION_READS, modification_stage  # FORM
+from turbotab.core.mattered import MATTERED_READS, MATTERED_REQUIRES, mattered_stage  # E3
 
 GRAPH_FACTORY = "turbotab.core.stages:build_graph"
 # What an estimate stage serves (``Stage.serves``): withheld while a question it rests on is open,
@@ -910,6 +920,14 @@ def build_graph() -> Graph:
                   (*EVALUATION_READS, *ROLE_READS, *WP17_READS), evaluation_stage, heavy=True,
                   requires=("models", "purpose"),
                   label="Fitting the benchmark and weighing the models", serves=ESTIMATE),
+            # ── SWARM_ENGINE_PLAN E3: which decisions mattered, under Estimate ──
+            # mattered 1: the specification curve over the recorded choices, one at a time, after
+            # the lock (``core/mattered.py``). It requires the lock, so nothing is fitted before
+            # it. It serves no estimate of its own kind (``serves`` is unset), so it adds no slot
+            # to the plan the lock records; its routes withhold it as the estimates are withheld.
+            Stage("mattered", 1, ("working", "cohort", "split", "target_info", "design", "fit"),
+                  MATTERED_READS, mattered_stage, heavy=True, requires=MATTERED_REQUIRES,
+                  label="Refitting the estimate with each recorded choice changed"),
         ]
     ))
 
