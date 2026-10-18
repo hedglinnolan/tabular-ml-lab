@@ -1800,35 +1800,64 @@ def role_line_reason(column: str, role: str, purpose: str | None = None,
     flag, a time, a design column or a cluster changes only to a covariate), in a role line's words
     under the declared ``purpose`` for a project with these ``lenses``.
 
-    A flag enters no model, waiting or confirmed, so its line never says it cannot set the
-    predictors (the re-walk's N2): what waiting holds back is the fit, which asks every role that
-    rode along (``readings.predictors_or_ask``), since recorded as a press's role instead the column
-    would enter the model. So for a time, a design column and a cluster, which also change only to
-    a predictor role (W1-W round 2, P4), in words true of each: it is not among the model's
-    predictors, never that it enters no model, since a cluster groups the clustered intervals and a
-    design column is the weight, strata or PSU a design-based answer reads. A column proposed as
-    left out keeps the fit's words, its clause offering to put it in the model."""
+    Only a predictor role's line says it cannot set the predictors yet: a role none of the
+    model's predictors holds says what waiting holds back for it (:func:`_held_back`), the fit."""
     from turbotab.core.readings import PREDICTOR_ROLES, role_line_words, unsettled_message
 
     choices = role_choices(role, purpose, lenses)
-    if "excluded" in choices:
+    held = _held_back(role, purpose, lenses)
+    if "excluded" in choices and held is None:
         return unsettled_message([column], ROLE_WAITS_FOR)
     said = " or ".join(role_line_words(c, purpose, lenses) for c in choices)
-    if role == "excluded" and choices and all(c in PREDICTOR_ROLES for c in choices):
+    if "excluded" in choices:
+        instead = ", or leave it out"
+    elif role == "excluded" and choices and all(c in PREDICTOR_ROLES for c in choices):
         instead = ", or put it in the model"
     elif choices:
         instead = f", or record it as {said}"
     else:
         instead = ""
-    waits = f", so it cannot set {ROLE_WAITS_FOR} yet."
-    if role not in (*PREDICTOR_ROLES, "excluded") and choices \
-            and all(c in PREDICTOR_ROLES for c in choices):
-        held, would = (("enters no model", "would") if role == "flag" else
-                       (f"is not among {ROLE_WAITS_FOR}", "would be"))
-        waits = (f". As {role_line_words(role, purpose, lenses)} it {held}, but the fit waits for "
-                 f"it, since as {said} it {would}.")
+    waits = f". {held}" if held is not None else f", so it cannot set {ROLE_WAITS_FOR} yet."
     return (f"`{column}` was proposed below high confidence and recorded with the other roles, not "
             f"confirmed on its own{waits} Confirm it after reading why it was proposed{instead}.")
+
+
+def _held_back(role: str, purpose: str | None = None, lenses: Sequence[str] | None = None,
+               many: bool = False) -> str | None:
+    """What waiting holds back for a column (``many``: a group's columns) whose ``role`` is none of
+    the model's predictors, an identifier, a flag, a time, a design column, a cluster or one left
+    out, which a press makes a predictor: the fit, which asks every role that rode along
+    (``readings.predictors_or_ask``), since recorded as that press's role the column would enter the
+    model. None for a predictor role, whose line keeps the fit's words (it cannot set the model's
+    predictors yet), and for a role no press makes a predictor.
+
+    A flag enters no model, waiting or confirmed (the re-walk's N2), nor does a column left out
+    while it waits. A time, a design column, a cluster and an identifier are said to be not among
+    the model's predictors, never to enter no model (W1-W round 2, P4): a cluster groups the
+    clustered intervals, a design column is the weight, strata or PSU a design-based answer reads,
+    and an identifier may name the unit whose rows repeat. The ruling at W1-W's cap, M1: no waiting
+    line of these roles says it cannot set the model's predictors yet."""
+    from turbotab.core.readings import PREDICTOR_ROLES, role_group_words, role_line_words
+
+    if role in PREDICTOR_ROLES:
+        return None
+    into = [c for c in role_choices(role, purpose, lenses) if c in PREDICTOR_ROLES]
+    if not into:
+        return None
+    words = role_group_words if many else role_line_words
+    it, them, enters, is_ = (("they", "them", "enter", "are") if many else
+                             ("it", "it", "enters", "is"))
+    as_other = " or ".join(words(c, purpose, lenses) for c in into)
+    if role == "excluded":
+        held, since = (f"As {'columns' if many else 'a column'} left out {it} {enters} no model",
+                       f"put in the model {it} would")
+    elif role == "flag":
+        held, since = (f"As {words(role, purpose, lenses)} {it} {enters} no model",
+                       f"as {as_other} {it} would")
+    else:
+        held, since = (f"As {words(role, purpose, lenses)} {it} {is_} not among {ROLE_WAITS_FOR}",
+                       f"as {as_other} {it} would be")
+    return f"{held}, but the fit waits for {them}, since {since}."
 
 
 def role_line_text(column: str, role: str, other: str = "",
@@ -1902,9 +1931,11 @@ def role_group_reason(n: int | str, role: str, purpose: str | None = None,
                       lenses: Sequence[str] | None = None) -> str:
     """Why one group's line waits (:func:`_role_lines`): its columns were proposed below high
     confidence for one reason and recorded unconfirmed, so they cannot set the model's predictors
-    yet; its one press confirms them all, and each column's own presses record it as another role
-    (:func:`role_choices`), in a role line's words under the declared ``purpose``. ``n`` may be a
-    template's placeholder (two columns read "both")."""
+    yet, or, for a role none of the model's predictors holds, what waiting holds back for them, the
+    fit (:func:`_held_back`, the ruling at W1-W's cap, M1); its one press confirms them all, and each
+    column's own presses record it as another role (:func:`role_choices`), in a role line's words
+    under the declared ``purpose``. ``n`` may be a template's placeholder (two columns read
+    "both")."""
     from turbotab.core.readings import PREDICTOR_ROLES, role_line_words
 
     choices = role_choices(role, purpose, lenses)
@@ -1919,8 +1950,10 @@ def role_group_reason(n: int | str, role: str, purpose: str | None = None,
     else:
         instead = ""
     every = "both" if n == 2 else f"all {_count(n)}"
+    held = _held_back(role, purpose, lenses, many=True)
+    waits = f". {held}" if held is not None else f", so they cannot set {ROLE_WAITS_FOR} yet."
     return (f"These {_count(n)} columns were proposed below high confidence for one reason and "
-            f"recorded with the other roles, not confirmed, so they cannot set {ROLE_WAITS_FOR} yet. "
+            f"recorded with the other roles, not confirmed{waits} "
             f"Confirm {every} in one press after reading why they were proposed{instead}.")
 
 

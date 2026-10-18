@@ -300,10 +300,120 @@ def test_a_waiting_time_design_or_cluster_line_says_it_is_no_predictor_and_the_f
             f"not among the model's predictors, but the fit waits for it, since as {instead} it "
             f"would be. Confirm it after reading why it was proposed, or record it as {instead}.")
         assert "cannot set" not in lines[column].reason
-    # Silent where the role is a predictor's, or the proposal leaves the column out.
+    # Silent where the role is a predictor's: its line keeps the fit's words.
     for column in ("bp_sys", "diet"):
         assert lines[column].reason == readings.unsettled_message([column], quest.ROLE_WAITS_FOR)
-    assert "cannot set the model's predictors yet" in lines["cycle"].reason
+
+
+# ── no line of a role no predictor holds says it cannot set the predictors (W1-W's cap, M1) ──
+
+# The roles that are none of the model's predictors, each changing to a predictor role by a press
+# (``readings.ROLE_CHANGES``): what waiting holds back for each is the fit, never the predictors.
+NO_PREDICTOR = ("identifier", "flag", "time", "design", "cluster", "excluded")
+
+
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_an_identifiers_and_a_left_out_columns_lines_say_the_fit_waits_for_them(purpose):
+    """The ruling at W1-W's cap (M1): an identifier and a column proposed as left out are none of
+    the model's predictors, so their lines never say they "cannot set the model's predictors yet";
+    each says what waiting holds back, the fit, as the flag's line does. The facts are the
+    engine's, on this log, before the sentence is: neither is a predictor while it waits nor once
+    confirmed, the fit asks for each while it waits, and for neither once confirmed. Each line
+    keeps its own last clause: an identifier's press leaves it out, a left-out column's puts it in
+    the model."""
+    records = [*_kinds_records()[:2], record(3, {"kind": "set_purpose", "purpose": purpose}),
+               record(4, {"kind": "set_roles", "roles": dict(EVERY_KIND),
+                          "unconfirmed": list(EVERY_KIND)})]
+    state = decisions.fold(records)
+    lines = {l.items[0].column: l for l in _role_lines(
+        quest.quest_log(state, records, steps_until("exclusions")))}
+    words = {r: readings.role_line_words(r, purpose, ["clinical"]) for r in EVERY_KIND.values()}
+    with pytest.raises(readings.Unsettled) as asked:
+        readings.predictors_or_ask(state)
+    for column in ("SEQN", "cycle"):
+        role = EVERY_KIND[column]
+        assert column not in readings.predictor_columns(state)
+        assert column in {r.column for r in asked.value.readings}
+        confirmed = decisions.fold([*records, record(5, _confirm(column, role))])
+        assert column not in readings.unsettled(confirmed)
+        assert column not in readings.predictor_columns(confirmed)
+    head = ("was proposed below high confidence and recorded with the other roles, not confirmed "
+            "on its own.")
+    assert lines["SEQN"].reason == (
+        f"`SEQN` {head} As {words['identifier']} it is not among the model's predictors, but the "
+        f"fit waits for it, since as {words['covariate']} it would be. Confirm it after reading why "
+        f"it was proposed, or leave it out.")
+    assert lines["cycle"].reason == (
+        f"`cycle` {head} As a column left out it enters no model, but the fit waits for it, since "
+        f"put in the model it would. Confirm it after reading why it was proposed, or put it in "
+        f"the model.")
+    for column, role in EVERY_KIND.items():
+        said = lines[column].reason or ""
+        if role in readings.PREDICTOR_ROLES:  # silent: a predictor role keeps the fit's words
+            assert said == readings.unsettled_message([column], quest.ROLE_WAITS_FOR), column
+        else:
+            assert "cannot set" not in said and "the fit waits for it" in said, (column, said)
+
+
+@pytest.mark.parametrize("purpose", ["prediction", "inference", None])
+@pytest.mark.parametrize("lenses", [["clinical"], ["dietary"], ["genomics"]])
+def test_no_waiting_role_line_or_group_line_of_a_role_no_predictor_holds_says_cannot_set(
+        purpose, lenses):
+    """Every role line and group line of a role that is none of the model's predictors says that
+    the fit waits for it, never that it cannot set the model's predictors yet; a predictor role's
+    line and group keep those words. A group says it of all its columns, in the group's words."""
+    for role in typing.get_args(decisions.Role):
+        if role == "outcome":
+            continue
+        one = quest.role_line_reason("x", role, purpose, lenses)
+        many = [quest.role_group_reason(n, role, purpose, lenses) for n in (2, 7, "{n}")]
+        if role in readings.PREDICTOR_ROLES:
+            assert "so it cannot set the model's predictors yet" in one, role
+            assert all("so they cannot set the model's predictors yet" in m for m in many), role
+            continue
+        assert role in NO_PREDICTOR
+        assert "cannot set" not in one and "the fit waits for it," in one, (role, one)
+        for m in many:
+            assert "cannot set" not in m and "the fit waits for them," in m, (role, m)
+
+
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_a_group_of_flags_or_identifiers_says_the_fit_waits_for_them(purpose):
+    """A group line (ruling R-g) of a role that is none of the model's predictors says what waiting
+    holds back for its columns, as one column's line does, in the group's words: flags enter no
+    model; identifiers and the time of each row are not among the model's predictors; columns left
+    out enter no model. The words are written out here from the ruling."""
+    reason = "an imputation marker, read from its name"
+    proposals = {"columns": [
+        {"column": c, "proposed": r, "confidence": "medium", "reason": f"{reason} ({r})"}
+        for c, r in (("imp_a", "flag"), ("imp_b", "flag"), ("id_a", "identifier"),
+                     ("id_b", "identifier"), ("note_a", "excluded"), ("note_b", "excluded"))]}
+    roles = {p["column"]: p["proposed"] for p in proposals["columns"]}
+    records = [record(1, {"kind": "set_lens", "lenses": ["clinical"]}),
+               record(2, {"kind": "set_target", "column": "glucose"}),
+               record(3, {"kind": "set_purpose", "purpose": purpose}),
+               record(4, {"kind": "set_roles", "roles": roles, "unconfirmed": list(roles)})]
+    log = quest.quest_log(decisions.fold(records), records, steps_until("exclusions"),
+                          artifacts={"roles": proposals})
+    groups = {l.items[0].value: l for l in _role_lines(log)}
+    assert {k: l.items[0].kind for k, l in groups.items()} == {
+        r: quest.ROLE_GROUP_ITEM for r in ("flag", "identifier", "excluded")}
+    char = readings.role_group_words("covariate", purpose, ["clinical"])
+    one = readings.role_line_words("covariate", purpose, ["clinical"])
+    head = ("These 2 columns were proposed below high confidence for one reason and recorded with "
+            "the other roles, not confirmed.")
+    assert groups["flag"].reason == (
+        f"{head} As flags on other columns they enter no model, but the fit waits for them, since "
+        f"as {char} they would. Confirm both in one press after reading why they were proposed, or "
+        f"record any one of them as {one} on its own.")
+    assert groups["identifier"].reason == (
+        f"{head} As the unit's identifiers they are not among the model's predictors, but the fit "
+        f"waits for them, since as {char} they would be. Confirm both in one press after reading "
+        f"why they were proposed, or leave any one of them out on its own.")
+    assert groups["excluded"].reason == (
+        f"{head} As columns left out they enter no model, but the fit waits for them, since put in "
+        f"the model they would. Confirm both in one press after reading why they were proposed, or "
+        f"put any one of them in the model on its own.")
 
 
 def test_an_exclusion_lines_reason_offers_putting_it_in_the_model():
