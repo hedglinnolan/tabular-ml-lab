@@ -4,9 +4,11 @@ A planted root is a temporary directory laid out as the repository is: an engine
 enforcer and a constant, a test file whose two functions exist, and a derivation note. A claim
 built against it is ``built``; one that names a missing piece is ``proposed``. :func:`registry`
 also writes the root's frozen status file, as the generator does where the source is complete, so
-its claims render (``test_claims_frozen.py``). The predicates
-below are real functions, named as ``"module:function"`` strings, so a regime check imports them
-as it would an engine predicate.
+its claims render (``test_claims_frozen.py``), and :func:`write_history` writes its history as the
+generator does, so meta-test 8 has the grade lines it reads. The predicates below are real
+functions, named as ``"module:function"`` strings, so a regime check imports them as it would an
+engine predicate. :func:`swarm` is a claim the research swarm proposed, as it enters: every part
+unsupported.
 
 This module holds no test; the claims tests import it.
 """
@@ -102,6 +104,7 @@ def rule(**over: Any) -> Claim:
         tests=(FIRES, SILENT),
         enforced_by=("planted.engine:act",),
         author="the R0a builder",
+        origin="engine",
     )
     return dataclasses.replace(base, **over)
 
@@ -116,7 +119,16 @@ def teaching(**over: Any) -> Claim:
         regime=Regime("any design"),
         parts=(Part("scope", grade="judgment", basis=Basis(reason="a planted judgment")),),
         author="the R0a builder",
+        origin="engine",
     )
+    return dataclasses.replace(base, **over)
+
+
+def swarm(**over: Any) -> Claim:
+    """A rule the research swarm proposed, as it enters the registry (R1_PLAN.md R1-G): its code
+    and tests are the planted root's, and its one part is unsupported."""
+    base = rule(id="planted.swarm_found", origin="swarm", author="theorist A",
+                parts=(Part("value", grade="unsupported"),))
     return dataclasses.replace(base, **over)
 
 
@@ -133,3 +145,17 @@ def registry(tmp_path: Path, *claims: Claim, freeze: bool = True) -> Registry:
     False."""
     reg = Registry(claims, root=planted_root(tmp_path))
     return write_frozen(reg) if freeze else reg
+
+
+def write_history(reg: Registry, today: str = "2026-10-18") -> Path:
+    """Append the history the generator would for ``reg``, at the registry's own history path, with
+    ``today`` as the day a line is recorded on where the source names none; the reference it also
+    writes lands beside the history."""
+    from turbotab.core.reference import claims as reference
+
+    path = reg.history_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    code = reference.main(["--out", str(path.with_name("CLAIMS_REFERENCE.md")), "--history",
+                           str(path), "--date", today], registry=reg)
+    assert code == 0, "the generator refused the planted registry"
+    return path

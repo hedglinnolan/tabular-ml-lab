@@ -202,6 +202,7 @@ SMALL_SAMPLE_STANDARD = register(Claim(
                  "turbotab.core.models.tuning:make_plan"),
     fallback="tuning.small_sample_standard_estimate",
     author=AUTHOR,
+    origin="audit",
     ruled="RECIPES_AND_TUNING.md §4.6, ruled 2026-10-11 (built 2026-10-15)",
 ))
 
@@ -259,6 +260,7 @@ SMALL_SAMPLE_STANDARD_ESTIMATE = register(Claim(
                  "turbotab.core.stages.modeling:tuning_plans"),
     fallback="tuning.small_sample_standard_classes",
     author=AUTHOR,
+    origin="engine",
 ))
 
 SMALL_SAMPLE_STANDARD_CLASSES = register(Claim(
@@ -317,6 +319,7 @@ SMALL_SAMPLE_STANDARD_CLASSES = register(Claim(
                  "turbotab.core.stages.modeling:tuning_plans"),
     fallback="tuning.small_sample_no_search",
     author=AUTHOR,
+    origin="engine",
 ))
 
 SMALL_SAMPLE_NO_SEARCH = register(Claim(
@@ -381,6 +384,7 @@ SMALL_SAMPLE_NO_SEARCH = register(Claim(
                  "turbotab.core.models.tuning:searched_size",
                  "turbotab.core.models.tuning:make_plan"),
     author=FINISH_AUTHOR,
+    origin="engine",
     ruled="RECIPES_AND_TUNING.md §4.6, ruled 2026-10-11: the forest keeps its standard",
 ))
 
@@ -426,6 +430,7 @@ BOOSTED_TREES_SMALL_ROWS = register(Claim(
     ),
     enforced_by=("turbotab.core.models.boosted_trees:BoostedTrees.assess",),
     author=AUTHOR,
+    origin="engine",
 ))
 
 FOREST_SMALL_ROWS = register(Claim(
@@ -465,6 +470,7 @@ FOREST_SMALL_ROWS = register(Claim(
     ),
     enforced_by=("turbotab.core.models.forest:RandomForest.assess",),
     author=AUTHOR,
+    origin="engine",
 ))
 
 
@@ -519,6 +525,7 @@ BASELINE_FLOOR = register(Claim(
     enforced_by=("turbotab.core.models.baseline:min_gain",
                  "turbotab.core.models.baseline:versus_baseline"),
     author=AUTHOR,
+    origin="audit",
 ))
 
 
@@ -577,6 +584,7 @@ ROWS_SMD_FLOOR = register(Claim(
                  "turbotab.core.materiality:recommend"),
     fallback="materiality.rows_smd_floor_prediction",
     author=AUTHOR,
+    origin="audit",
 ))
 
 ROWS_SMD_FLOOR_PREDICTION = register(Claim(
@@ -625,6 +633,7 @@ ROWS_SMD_FLOOR_PREDICTION = register(Claim(
     ),
     enforced_by=("turbotab.core.materiality:band_of", "turbotab.core.materiality:recommend"),
     author=AUTHOR,
+    origin="engine",
 ))
 
 COLLINEAR_UNDER_PREDICTION = register(Claim(
@@ -679,6 +688,7 @@ COLLINEAR_UNDER_PREDICTION = register(Claim(
                  "turbotab.core.stages.explore:_collinear_lever",
                  "turbotab.core.stages.explore:_keep_both"),
     author=AUTHOR,
+    origin="audit",
     ruled="calm/BEATS_PREDICT.md M4, its fourth line (near-collinear predictors, all kept; the "
           "grouped importance it rules for Results is not built)",
 ))

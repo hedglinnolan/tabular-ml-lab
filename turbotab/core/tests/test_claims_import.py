@@ -4,12 +4,24 @@ Importing ``turbotab.core.claims``, and loading its claims modules, loads no oth
 ``turbotab.core`` module: a fresh interpreter is asked which modules it holds afterward. The claims
 modules are found by a package scan, so no list of them exists: a public module in a scanned
 package is imported, a private one is not.
+
+The research tools beside the app (``research/``, the decoy queue among them) may import the
+registry, and no module under ``turbotab/`` imports them: each module's import statements are read
+with ``ast``.
+
+R0b's claims name their origin as their history shows (R1_PLAN.md R1-G): *audit* for the claims
+that state one of the claims backtest's S1 findings (``notes/claims-backtest/FIXES.md``), as R0b
+registered them, and *engine* for the splits of a shared constant and the fallbacks their regimes
+needed, which R0b's builders wrote from the engine's own code. None is the swarm's.
 """
 from __future__ import annotations
 
+import ast
 import json
 import subprocess
 import sys
+
+import pytest
 
 from turbotab.core import claims
 from turbotab.core.claims import Registry
@@ -91,3 +103,70 @@ def test_the_default_registry_holds_r0bs_claims():
         "turbotab.core.claims.data", "turbotab.core.claims.inference",
         "turbotab.core.claims.models"]
     assert {c.id for c in claims.registry()} == R0B_IDS
+
+
+# The S1 findings of the claims backtest (README.md's table, FIXES.md), each with the claims R0b
+# registered for it.
+BACKTEST_S1 = {
+    "A-001": {"tuning.small_sample_standard"},
+    "A-029": {"baseline.min_gain"},
+    "A-102": {"ordinal.cluster_robust_intervals"},
+    "A-124": {"materiality.rows_smd_floor"},
+    "B-211": {"designs.observational_default", "designs.sampled_by_outcome"},
+    "B-281": {"trials.separation"},
+    "B-416": {"causal.numeric_exposure_r2"},
+    "B-435": {"survival.monotone_likelihood"},
+    "BX-040": {"data.ul_share"},
+    "C-123": {"data.constant_column"},
+    "C-143": {"data.nhanes_weight"},
+    "C-170": {"materiality.collinear_under_prediction"},
+    "C-193": {"data.omics_raw_scale"},
+    "D-058": {"data.clusters_adjust"},
+    "D-086": {"data.tail_share", "results.tail_share"},
+}
+
+
+def test_r0bs_claims_are_audit_where_they_state_a_backtest_finding_and_engine_otherwise():
+    audit = set().union(*BACKTEST_S1.values())
+    assert len(BACKTEST_S1) == 15 and len(audit) == 17
+    origin = {c.id: c.origin for c in claims.registry()}
+    assert {i for i, o in origin.items() if o == "audit"} == audit
+    assert {i for i, o in origin.items() if o == "engine"} == R0B_IDS - audit
+    assert "swarm" not in origin.values()
+
+
+def _imports_research(module: ast.Module) -> list[str]:
+    """The ``research`` imports ``module`` makes, as written."""
+    found = []
+    for node in ast.walk(module):
+        if isinstance(node, ast.Import):
+            found += [a.name for a in node.names if a.name.split(".")[0] == "research"]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            if node.module.split(".")[0] == "research":
+                found.append(node.module)
+    return found
+
+
+def test_no_module_under_turbotab_imports_the_research_tools():
+    found = {}
+    for path in sorted((REPO / "turbotab").rglob("*.py")):
+        if "node_modules" in path.parts:
+            continue
+        hits = _imports_research(ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
+        if hits:
+            found[str(path.relative_to(REPO))] = hits
+    assert found == {}
+
+
+@pytest.mark.parametrize("source, seen", [
+    ("import research\n", True),
+    ("import research.registry.decoy_queue as queue\n", True),
+    ("from research.registry import decoy_queue\n", True),
+    ("from research import registry\n", True),
+    ("import researcher\n", False),
+    ("from turbotab.core import research_notes\n", False),
+    ("from .research import notes\n", False),
+    ("NAME = 'research'\n", False),
+])
+def test_the_scan_sees_a_research_import_and_nothing_else(source, seen):
+    assert bool(_imports_research(ast.parse(source))) is seen

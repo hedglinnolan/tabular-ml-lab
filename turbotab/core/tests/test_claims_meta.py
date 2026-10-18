@@ -1,6 +1,6 @@
-"""The six meta-tests (CLAIMS_REGISTRY.md §6; R0_PLAN.md R0a acceptance 1), each run three ways: on
-the default registry (no claim is registered yet, so each must pass), on a planted registry that
-breaks it (it must name the violation) and on a planted registry that keeps it (it must name none).
+"""The eight meta-tests (CLAIMS_REGISTRY.md §6; R0_PLAN.md R0a acceptance 1; R1_PLAN.md R1-G), each
+run three ways: on the default registry (each must pass), on a planted registry that breaks it (it
+must name the violation) and on a planted registry that keeps it (it must name none).
 
 1. every claim's tests exist and declare their truth (once its code is live, or at once where it
    names no code), and none is marked to skip or xfail unconditionally;
@@ -9,10 +9,16 @@ breaks it (it must name the violation) and on a planted registry that keeps it (
 3. every part's grade meets §2.4's requirement (a certified part's test is declared and written),
    with a grader other than the author above judgment, however the author's name is written (its
    case, spacing, a leading "the" or a parenthetical), and regime predicates wherever a part is
-   graded above judgment (§2.2);
+   graded above judgment (§2.2), and a basis audit, where a part names one, by someone other than
+   the author;
 4. no proposed claim renders: no built claim falls back to one, and none is shown;
 5. no two live claims conflict on one decision in overlapping regimes;
-6. the digit gate, over every claim's templates outside their placeholders.
+6. the digit gate, over every claim's templates outside their placeholders;
+7. a swarm claim's part is graded by someone other than its author, and above judgment it has two
+   distinct referees who upheld it, neither its author nor a fork (ORCHESTRATOR.md §3), its grade's
+   own requirement and a basis audit by someone other than its author (CLAIMS_REGISTRY.md §8);
+8. every part's grade is its last history line's, each line giving its date, grader and reason and
+   the grade it moved from, and a swarm claim's every part entered unsupported.
 
 On the default registry, the meta-tests that read the app's strings (4 and 6) read every
 ``Relation.says`` and teaching string, as ``test_claims_digits.py`` collects them.
@@ -22,13 +28,15 @@ Every planted case is built here from files the test writes, so its truth is the
 from __future__ import annotations
 
 import dataclasses
+import json
 
 import pytest
 
 from turbotab.core import claims
-from turbotab.core.claims import Basis, Fires, HeldOut, Param, Part, Regime, Silent
+from turbotab.core.claims import (Basis, Fires, HeldOut, Param, Part, Referee, Regime, Registry,
+                                  Silent)
 from turbotab.core.tests.test_claims_fixtures import (DERIVATION, FIRES, HERE, SILENT, registry,
-                                                       rule, teaching)
+                                                       rule, swarm, teaching, write_history)
 from turbotab.core.tests.test_claims_digits import relation_says, teaching_strings
 
 ID = "planted.few_clusters"
@@ -52,10 +60,10 @@ def test_each_meta_test_passes_on_the_default_registry(meta):
     assert meta(claims.registry(), **app_strings(meta)) == []
 
 
-def test_there_are_six_meta_tests_in_the_order_section_6_gives():
+def test_there_are_eight_meta_tests_in_the_order_section_6_and_r1_g_give():
     assert [m.__name__ for m in claims.META_TESTS] == [
         "tests_exist", "no_self_pinning", "grades_met", "none_proposed_renders", "no_conflicts",
-        "digit_gate"]
+        "digit_gate", "swarm_gate", "grades_recorded"]
 
 
 # ── 1. every claim's tests exist and declare their truth ─────────────────────────────────────
@@ -210,6 +218,9 @@ UNMET = {
              graded_by="the R0a builder, 2026-10-16")),
     "above judgment with no regime predicate": _graded(
         Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3")), requires=()),
+    "a basis audit by its author": _graded(
+        Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3"),
+             audited_by="the R0a builder, 2026-10-16")),
 }
 MET = {
     "proved by a theorem": _graded(Part("value", "proved", Basis(theorem="Lean: planted.thm"))),
@@ -229,6 +240,9 @@ MET = {
     "a part graded by another over its author's claim-level grade": _graded(
         Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3"), graded_by=OTHER),
         graded_by="the R0a builder, 2026-10-16"),
+    "a basis audit by someone else": _graded(
+        Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3"),
+             audited_by="a domain reviewer, 2026-10-18")),
 }
 
 
@@ -443,3 +457,207 @@ def test_6_is_silent_on_a_template_allowlisted_with_its_tag(tmp_path):
     reg = registry(tmp_path, teaching(card=text))
     assert claims.digit_gate(reg, allowlist={text: "name"}) == []
     assert len(claims.digit_gate(reg, allowlist={})) == 1
+
+
+# ── 7. a swarm claim's grade above judgment passes the two-referee gate (§8) ──────────────────
+
+SWARM = "planted.swarm_found"
+GRADER = "the orchestrator, 2026-10-18"
+AUDIT = "a basis audit, 2026-10-18"
+FRESH_A = Referee("referee A, 2026-10-18", "upheld")
+FRESH_B = Referee("referee B, 2026-10-18", "upheld")
+PASSAGE = Basis(cites=("friedman2001",), where="§10.10, p. 1203")
+
+
+def _promoted(**over):
+    """A swarm claim whose one part is graded sourced through the whole gate, a field replaced."""
+    fields = dict(name="value", grade="sourced", basis=PASSAGE, graded_by=GRADER,
+                  referees=(FRESH_A, FRESH_B), audited_by=AUDIT)
+    return swarm(parts=(Part(**{**fields, **over}),))
+
+
+# Each case breaks one piece of the gate; the phrase is how the violation names that piece.
+GATE_UNMET = {
+    "no referee": (_promoted(referees=()), "two distinct referees"),
+    "one referee": (_promoted(referees=(FRESH_A,)), "two distinct referees"),
+    "two upholders who are one person, written twice": (
+        _promoted(referees=(FRESH_A, Referee("Referee  a, 2026-10-19", "upheld"))),
+        "two distinct referees"),
+    "a referee who is its author": (
+        _promoted(referees=(FRESH_A, Referee("theorist A, 2026-10-18", "upheld"))),
+        "may be its author"),
+    "a referee named as its author's fork": (
+        _promoted(referees=(FRESH_A, Referee("theorist A (fork 2), 2026-10-18", "upheld"))),
+        "may be its author"),
+    "a referee declared a fork of its author": (
+        _promoted(referees=(FRESH_A, Referee("referee C, 2026-10-18", "upheld",
+                                             fork_of="theorist A"))),
+        "a fork of its author"),
+    "a referee declared a fork of another agent": (
+        _promoted(referees=(FRESH_A, Referee("referee C, 2026-10-18", "upheld",
+                                             fork_of="the orchestrator"))),
+        "a fork of 'the orchestrator'"),
+    "two upholders and a third referee who did not uphold": (
+        _promoted(referees=(FRESH_A, FRESH_B, Referee("referee C, 2026-10-18", "not_upheld"))),
+        "did not uphold"),
+    "a pair, one of whom did not uphold": (
+        _promoted(referees=(FRESH_A, Referee("referee B, 2026-10-18", "not_upheld"))),
+        "did not uphold"),
+    "its grade's own requirement unmet": (
+        _promoted(basis=Basis(cites=("friedman2001",))), "requirement"),
+    "no basis audit": (_promoted(audited_by=""), "basis audit"),
+    "a basis audit by its author": (_promoted(audited_by="theorist A, 2026-10-18"), "basis audit"),
+    "proved by a derivation, with no referee": (
+        _promoted(grade="proved", basis=Basis(derivation=DERIVATION), referees=()),
+        "two distinct referees"),
+    "judgment graded by its author": (
+        swarm(parts=(Part("value", "judgment", Basis(reason="r"),
+                          graded_by="theorist A, 2026-10-18"),)),
+        "someone other than its author"),
+    "judgment naming no grader": (
+        swarm(parts=(Part("value", "judgment", Basis(reason="r")),)),
+        "someone other than its author"),
+}
+GATE_MET = {
+    "the whole gate": _promoted(),
+    "the whole gate, proved by a derivation another re-derived": _promoted(
+        grade="proved", basis=Basis(derivation=DERIVATION)),
+    "two fresh upholders beside the author's and a fork's dissent, which do not count": _promoted(
+        referees=(FRESH_A, FRESH_B, Referee("theorist A, 2026-10-18", "not_upheld"),
+                  Referee("referee C, 2026-10-18", "not_upheld", fork_of="theorist A"))),
+    "judgment graded by someone else": swarm(parts=(
+        Part("value", "judgment", Basis(reason="r"), graded_by=GRADER),)),
+    "unsupported, as it entered": swarm(),
+    "an engine claim's sourced part, with no referee": swarm(
+        origin="engine", parts=(Part("value", "sourced", PASSAGE, graded_by=GRADER),)),
+    "an audit claim's sourced part, with no referee": swarm(
+        origin="audit", parts=(Part("value", "sourced", PASSAGE, graded_by=GRADER),)),
+    "a retracted swarm claim, which renders nowhere": swarm(
+        parts=(Part("value", "sourced", PASSAGE, graded_by=GRADER),),
+        retracted="2026-10-18: withdrawn by the swarm"),
+}
+
+
+@pytest.mark.parametrize("case", sorted(GATE_UNMET))
+def test_7_fires_where_a_swarm_part_misses_a_piece_of_the_gate(tmp_path, case):
+    claim, phrase = GATE_UNMET[case]
+    found = claims.swarm_gate(registry(tmp_path, claim))
+    assert found and all(v.startswith(f"{SWARM}: part 'value'") for v in found)
+    assert any(phrase in v for v in found), found
+
+
+@pytest.mark.parametrize("case", sorted(GATE_MET))
+def test_7_is_silent_where_a_swarm_part_passes_the_gate_or_no_gate_applies(tmp_path, case):
+    assert claims.swarm_gate(registry(tmp_path, GATE_MET[case])) == []
+
+
+def test_7_s_planted_pass_meets_meta_test_3_too(tmp_path):
+    """The planted pass meets meta-test 3 as well, so 7's silence on it is not a planted error."""
+    assert claims.grades_met(registry(tmp_path, _promoted())) == []
+
+
+# ── 8. no grade differs from its last history line ───────────────────────────────────────────
+
+def _line(grade, was="", *, id=ID, part="value", date="2026-10-18", grader="a basis audit",
+          reason="a planted reason"):
+    return {"id": id, "part": part, "grade": grade, "was": was, "date": date, "grader": grader,
+            "reason": reason}
+
+
+def _history(reg, *lines):
+    reg.history_path.parent.mkdir(parents=True, exist_ok=True)
+    reg.history_path.write_text("".join(json.dumps(x) + "\n" for x in lines), encoding="utf-8")
+    return reg
+
+
+def test_8_is_silent_on_the_history_the_generator_wrote(tmp_path):
+    reg = registry(tmp_path, rule(), teaching(), swarm())
+    write_history(reg)
+    assert claims.grades_recorded(reg) == []
+
+
+def test_8_fires_where_a_grade_is_edited_after_its_history_line(tmp_path):
+    reg = registry(tmp_path, rule())
+    write_history(reg)
+    edited = Registry([rule(parts=(Part("value", "unsupported"),))], root=reg.root)
+    found = claims.grades_recorded(edited)
+    assert len(found) == 1 and found[0].startswith(f"{ID}: part 'value' is graded unsupported")
+    assert "judgment" in found[0]
+
+
+def test_8_fires_where_a_part_has_no_grade_line(tmp_path):
+    reg = registry(tmp_path, rule())
+    write_history(reg)
+    more = Registry([rule(parts=(*rule().parts, Part("scope", "judgment", Basis(reason="r"))))],
+                    root=reg.root)
+    found = claims.grades_recorded(more)
+    assert len(found) == 1 and "part 'scope'" in found[0] and "no grade line" in found[0]
+
+
+def test_8_fires_where_there_is_no_history(tmp_path):
+    found = claims.grades_recorded(registry(tmp_path, rule()))
+    assert len(found) == 1 and "no history" in found[0]
+
+
+HAND_EDITS = {
+    "a reason left blank": {"reason": ""},
+    "a grader left blank": {"grader": ""},
+    "a date that is no day": {"date": "2026-13-40"},
+    "a date in another form": {"date": "18 October 2026"},
+    "a grade outside the vocabulary": {"grade": "settled"},
+    "a line that moves to the grade it moved from": {"was": "judgment"},
+}
+
+
+@pytest.mark.parametrize("case", sorted(HAND_EDITS))
+def test_8_fires_on_a_grade_line_edited_by_hand(tmp_path, case):
+    reg = _history(registry(tmp_path, rule()), {**_line("judgment"), **HAND_EDITS[case]})
+    found = claims.grades_recorded(reg)
+    assert found and any("history line 1" in v for v in found), found
+
+
+def test_8_is_silent_on_the_same_line_as_the_generator_writes_it(tmp_path):
+    """The other side of the hand edits: the unedited planted line passes."""
+    assert claims.grades_recorded(_history(registry(tmp_path, rule()), _line("judgment"))) == []
+
+
+def test_8_fires_on_a_line_that_does_not_read_or_lacks_a_field(tmp_path):
+    reg = _history(registry(tmp_path, rule()), _line("judgment"))
+    with reg.history_path.open("a", encoding="utf-8") as f:
+        f.write("not json\n")
+        f.write(json.dumps({"id": ID, "part": "value", "grade": "judgment"}) + "\n")
+    found = claims.grades_recorded(reg)
+    assert any("history line 2" in v for v in found) and any("history line 3" in v for v in found)
+
+
+def test_8_fires_where_a_line_moves_from_a_grade_the_line_before_did_not_give(tmp_path):
+    reg = _history(registry(tmp_path, rule(parts=(Part("value", "unsupported"),))),
+                   _line("judgment"), _line("unsupported", was="certified"))
+    found = claims.grades_recorded(reg)
+    assert len(found) == 1 and "history line 2" in found[0] and "certified" in found[0]
+
+
+def test_8_is_silent_on_a_chain_of_moves_whose_last_is_the_grade_in_force(tmp_path):
+    """A downgrade is a line like any other; the last line for a part is the one in force, and a
+    version line between grade lines is not read as one."""
+    reg = registry(tmp_path, rule(parts=(Part("value", "unsupported"),)))
+    version = {"id": ID, "version": 1, "hash": "0" * 64, "claim": {}}
+    _history(reg, version, _line("judgment"), _line("sourced", was="judgment"), version,
+             _line("unsupported", was="sourced"))
+    assert claims.grades_recorded(reg) == []
+
+
+def test_8_fires_where_a_swarm_part_entered_above_unsupported(tmp_path):
+    graded = Part("value", "judgment", Basis(reason="r"), graded_by=GRADER)
+    reg = _history(registry(tmp_path, swarm(parts=(graded,))), _line("judgment", id=SWARM))
+    found = claims.grades_recorded(reg)
+    assert len(found) == 1 and found[0].startswith(f"{SWARM}: part 'value'")
+    assert "enters unsupported" in found[0]
+
+
+def test_8_is_silent_where_a_swarm_part_entered_unsupported_and_was_graded_after(tmp_path):
+    graded = Part("value", "judgment", Basis(reason="r"), graded_by=GRADER)
+    reg = _history(registry(tmp_path, swarm(parts=(graded,))),
+                   _line("unsupported", id=SWARM, grader="theorist A"),
+                   _line("judgment", was="unsupported", id=SWARM, grader="the orchestrator"))
+    assert claims.grades_recorded(reg) == []

@@ -5,7 +5,9 @@ Status is derived from the source, read with ``ast`` and never imported, relativ
 registry's ``root`` (the repository, or a planted one in a test): a claim is **built** when every
 ``enforced_by`` names a function, class or name its module defines at top level and every test it
 names is a function its file defines (at top level, or in a class there) that pytest runs to its
-assertions, so not one marked to skip or xfail unconditionally; otherwise it is **proposed**.
+assertions, so not one marked to skip or xfail unconditionally; otherwise it is **proposed**. A
+claim the research swarm proposed stays proposed while any part it asserts is unsupported, as
+every part is when it enters (R1_PLAN.md R1-G), so it renders nowhere until its parts are graded.
 **Retracted** is declared.
 
 The shipped app holds no tests (the image and the release zip leave them out), so a status is
@@ -38,6 +40,8 @@ STRICT_ENV = "TURBOTAB_CLAIMS_STRICT"
 GENERATOR = "python -m turbotab.core.reference.claims"
 # The frozen status file, relative to a registry's root: beside this module in the repository.
 FROZEN = Path("turbotab", "core", "claims", "status.json")
+# The claims' history (every version, and every grade change), relative to a registry's root.
+HISTORY = Path("turbotab", "core", "claims", "history.jsonl")
 
 
 class ClaimError(Exception):
@@ -188,12 +192,13 @@ def _frozen(data: bytes) -> dict[str, tuple[str, str]] | None:
 
 class Registry:
     """Claims by id, checked at registration (``_schema.check``), with the repository they are
-    read against."""
+    read against, its frozen status file and its history."""
 
     def __init__(self, claims: Iterable[Claim] = (), *, root: Path | None = None,
-                 frozen: Path | None = None) -> None:
+                 frozen: Path | None = None, history: Path | None = None) -> None:
         self.root = Path(root) if root is not None else REPO
         self.frozen_path = Path(frozen) if frozen is not None else self.root / FROZEN
+        self.history_path = Path(history) if history is not None else self.root / HISTORY
         self._claims: dict[str, Claim] = {}
         for c in claims:
             self.register(c)
@@ -253,11 +258,14 @@ class Registry:
         return self.test_state(test) == "runs"
 
     def status(self, id: str) -> str:
-        """``retracted`` (declared), ``built`` or ``proposed`` (derived from the source, §6).
-        Rendering reads :meth:`frozen_status` instead, except in strict mode."""
+        """``retracted`` (declared), ``built`` or ``proposed`` (derived from the source, §6; a
+        swarm claim with a part still unsupported is proposed, R1_PLAN.md R1-G). Rendering reads
+        :meth:`frozen_status` instead, except in strict mode."""
         c = self[id]
         if c.retracted:
             return "retracted"
+        if c.origin == "swarm" and any(p.grade == "unsupported" for p in c.parts):
+            return "proposed"
         if all(self.resolves(e) for e in c.enforced_by) and all(
                 self.test_exists(t.test) for t in c.tests):
             return "built"

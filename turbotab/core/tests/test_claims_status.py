@@ -9,6 +9,10 @@ and counts). Both are read from the source with ``ast``, never imported: a test 
 fail on import still defines its functions, and nothing a status check reads is executed. Each
 case is planted in a temporary repository whose files the test writes, so the truth is the
 construction; which planted tests never assert is also checked against pytest's own run of them.
+
+A claim the research swarm proposed is held proposed while any part it asserts is unsupported,
+whatever its code and tests (R1_PLAN.md R1-G): it enters so, every part unsupported, and so
+renders nowhere until its parts are graded.
 """
 from __future__ import annotations
 
@@ -19,8 +23,9 @@ from xml.etree import ElementTree
 
 import pytest
 
-from turbotab.core.claims import Fires, Silent
-from turbotab.core.tests.test_claims_fixtures import FIRES, SILENT, registry, rule, teaching
+from turbotab.core.claims import Basis, Fires, NotRenderable, Part, Silent
+from turbotab.core.tests.test_claims_fixtures import (FIRES, SILENT, registry, rule, swarm,
+                                                       teaching)
 
 ID = "planted.few_clusters"
 
@@ -345,3 +350,40 @@ def test_which_planted_tests_never_assert_is_what_pytest_itself_reports(tmp_path
     for test in sorted(ran | never):
         expected = "proposed" if test in never else "built"
         assert _marked(tmp_path, test).status(ID) == expected, test
+
+
+# ── a swarm claim enters proposed, every part unsupported (R1_PLAN.md R1-G) ───────────────────
+
+SWARM = "planted.swarm_found"
+JUDGED = Part("value", grade="judgment", basis=Basis(reason="a planted judgment"),
+              graded_by="the orchestrator, 2026-10-18")
+
+
+def test_a_swarm_claim_with_an_unsupported_part_is_proposed_though_its_code_and_tests_exist(
+        tmp_path):
+    reg = registry(tmp_path, swarm(), swarm(id="planted.swarm_half",
+                                            parts=(JUDGED, Part("scope", grade="unsupported"))))
+    assert reg.resolves("planted.engine:act") and reg.test_exists(FIRES.test)
+    assert reg.status(SWARM) == "proposed"
+    assert reg.status("planted.swarm_half") == "proposed"
+
+
+def test_a_swarm_claim_whose_parts_are_all_graded_is_built(tmp_path):
+    assert registry(tmp_path, swarm(parts=(JUDGED,))).status(SWARM) == "built"
+
+
+def test_a_claim_of_another_origin_with_an_unsupported_part_is_built(tmp_path):
+    """The hold is the swarm's alone: an engine or audit claim with an unsupported part renders as
+    a labeled convention (CLAIMS_REGISTRY.md §11, ruling 2)."""
+    for origin in ("engine", "audit"):
+        reg = registry(tmp_path, swarm(origin=origin))
+        assert reg.status(SWARM) == "built", origin
+
+
+def test_a_swarm_claim_as_it_enters_renders_nowhere(tmp_path):
+    reg = registry(tmp_path, swarm())
+    for render in (reg.card, reg.methods):
+        with pytest.raises(NotRenderable, match="proposed"):
+            render(SWARM, strict=False)
+    assert registry(tmp_path, swarm(parts=(JUDGED,))).card(SWARM, strict=False).startswith(
+        "Fewer than 10 clusters")

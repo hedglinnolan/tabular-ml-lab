@@ -1,5 +1,5 @@
 """The claims reference, the claims' history and their frozen status, generated from the claims
-registry (CLAIMS_REGISTRY.md §5, §6).
+registry (CLAIMS_REGISTRY.md §5, §6; R1_PLAN.md R1-G).
 
     python -m turbotab.core.reference.claims          # writes the reference and the frozen status,
                                                       # and appends the history
@@ -7,14 +7,28 @@ registry (CLAIMS_REGISTRY.md §5, §6).
 
 writes ``docs/turbotab-next/reference/CLAIMS_REFERENCE.md``: every claim the registry
 (``turbotab.core.claims``) holds, by status (built; ruled, not built; retracted), each with its
-sentences in both registers, its parameters, its regime, its decision, its parts and their grades,
-its tests and their truth, the code that enforces it, its version and its content hash.
+sentences in both registers, its origin, its parameters, its regime, its decision, its parts and
+their grades, basis audits and referees, its tests and their truth, the code that enforces it, its
+version and its content hash.
 
 ``turbotab/core/claims/history.jsonl`` keeps every version of every claim the generator has
 written, oldest first, one JSON object a line (``id``, ``version``, ``hash``, ``claim``). When a
 claim's content hash changes, its old version stays where it is and the new one is appended after
 it, so an old project's claims-in-force manifest resolves its hash to the words and grade it ran
 under (§5).
+
+The history also keeps every grade change, a **grade line** per part (``id``, ``part``, ``grade``,
+``was``, ``date``, ``grader``, ``reason``), each after its claim's version line. A part's first
+line records the grade it holds, moving from no grade (``was`` is empty), with its reason
+:data:`FIRST_RECORDED` unless its ``regraded`` gives one; after that, a line is written only when
+the part's grade differs from its last line's, upgrades and downgrades alike, saying the grade it
+moved from. A line's grader and date are the "<who>, YYYY-MM-DD" of the part's grader in force;
+only a first line whose part names no dated grader (one its author graded judgment or unsupported)
+takes the author as its grader and the day it is recorded as its date (``--date``, today unless
+given). A change needs a dated grader and a reason in ``regraded`` other than the last line's: one
+without them is refused, and so is a swarm claim's part entering above unsupported; where any is
+refused, the generator writes nothing and it and ``--check`` exit 1. Meta-test 8 refuses a grade
+that differs from its part's last line.
 
 ``turbotab/core/claims/status.json``, the frozen status file, holds each claim's id, derived status
 and content hash. The shipped app holds no tests, so a status cannot be derived there: a sentence
@@ -26,34 +40,40 @@ when the history's newest version of a claim is not the one in force. An id the 
 never dropped (§1: a retired id stays, marked retracted), so where the registry no longer registers
 one, the generator writes nothing and it and ``--check`` both exit 1.
 
-The text is a pure function of the registry and the files its status is derived from: nothing
-reads the clock, and claims are listed by id. ``turbotab/core/tests/test_claims_reference.py``
-regenerates it and fails when the committed copy is stale.
+The reference and the frozen file are pure functions of the registry and the files its status is
+derived from: nothing they hold reads the clock, and claims are listed by id. Only a first grade
+line with no dated grader reads the day it is recorded on, and ``--check`` reads none.
+``turbotab/core/tests/test_claims_reference.py`` regenerates the reference and fails when the
+committed copy is stale.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any, Sequence
 
 from turbotab.core import claims as registry_module
-from turbotab.core.claims import (FROZEN, GENERATOR, GRADES, Claim, Registry, content,
-                                  content_hash, fill, frozen_records, frozen_text)
+from turbotab.core.claims import (FROZEN, GENERATOR, GRADED_FORM, GRADES, ORIGINS, Claim, Registry,
+                                  content, content_hash, dated, fill, frozen_records, frozen_text)
+from turbotab.core.claims import HISTORY as HISTORY_PATH
 
 REPO = Path(__file__).resolve().parents[3]
 OUT = REPO / "docs" / "turbotab-next" / "reference" / "CLAIMS_REFERENCE.md"
-HISTORY = REPO / "turbotab" / "core" / "claims" / "history.jsonl"
+HISTORY = REPO / HISTORY_PATH
 COMMAND = GENERATOR
 HASH_SHOWN = 12  # hex digits of a content hash the reference prints
+# The reason on a part's first grade line, where its source gives none.
+FIRST_RECORDED = "first recorded: the grade the part held when the history first recorded it"
 SECTIONS = (
     ("built", "Built",
      "Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6)."),
     ("proposed", "Ruled, not built",
-     "Claims whose code or tests do not exist yet. Each is a ruling, or a claim on its way in; "
-     "none renders a sentence until it is built, and a doc that describes one as current is "
-     "ahead of the code."),
+     "Claims whose code or tests do not exist yet, and swarm claims with a part still "
+     "unsupported. Each is a ruling, or a claim on its way in; none renders a sentence until it "
+     "is built, and a doc that describes one as current is ahead of the code."),
     ("retracted", "Retracted",
      "Claims withdrawn, each with its date and reason. A retired id stays, and is never reused."),
 )
@@ -78,15 +98,26 @@ def _part(p: Any, c: Claim) -> str:
     basis += [f"test {code(t)}" for t in b.tests]
     basis += [f"held out on {h.fixture}: {h.rate:g} over {h.cases} cases" for h in b.heldout]
     grader = p.graded_by or c.graded_by or "not graded"
+    checks = []
+    if p.audited_by:
+        checks.append(f"basis checked against its source by {p.audited_by}")
+    for verdict, label in (("upheld", "upheld by"), ("not_upheld", "not upheld by")):
+        who = [r.who + (f" (a fork of {r.fork_of})" if r.fork_of else "") for r in p.referees
+               if r.verdict == verdict]
+        if who:
+            checks.append(f"{label} {', '.join(who)}")
+    if p.regraded:
+        checks.append(f"regraded: {p.regraded}")
     return (f"  - {p.name}: *{p.grade}*, graded by {grader}"
-            + (f" ({'; '.join(basis)})" if basis else ""))
+            + (f" ({'; '.join(basis)})" if basis else "")
+            + (f"; {'; '.join(checks)}" if checks else ""))
 
 
 def claim_section(c: Claim, status: str) -> list[str]:
     """One claim's entry."""
     lines = [f"### {code(c.id)}", "",
-             f"*{c.kind}* · weakest part *{c.grade}* · {status} · version {c.version} · "
-             f"hash {code(content_hash(c)[:HASH_SHOWN])}", "",
+             f"*{c.kind}* · from *{c.origin}* · weakest part *{c.grade}* · {status} · "
+             f"version {c.version} · hash {code(content_hash(c)[:HASH_SHOWN])}", "",
              f"- **Card:** {_sentence(c, 'card')}",
              f"- **Methods:** {_sentence(c, 'methods')}"]
     if c.params:
@@ -134,9 +165,9 @@ def render(reg: Registry) -> str:
         f"*Generated by `{COMMAND}` from the claims registry (`turbotab/core/claims/`, "
         "CLAIMS_REGISTRY.md). Do not edit it by hand: "
         "`turbotab/core/tests/test_claims_reference.py` regenerates it and fails when this copy "
-        "is stale. Every version of every claim is kept in "
-        "`turbotab/core/claims/history.jsonl`, and the status each renders with in "
-        f"`{FROZEN.as_posix()}`.*", "",
+        "is stale. Every version of every claim, and every change of a part's grade with its "
+        "date, grader and reason, is kept in `turbotab/core/claims/history.jsonl`, and the "
+        f"status each renders with in `{FROZEN.as_posix()}`.*", "",
     ]
     if not len(reg):
         lines += ["No claim is registered yet.", ""]
@@ -148,13 +179,21 @@ def render(reg: Registry) -> str:
         "## How to read an entry", "",
         "- **Kind**: a *rule* (a guardrail, refusal, routing or default), a *parameter* (a number "
         "with a unit) or *teaching* (a statement of fact about a method).",
+        "- **Origin** (" + ", ".join(f"*{o}*" for o in ORIGINS) + "): written by the engine's "
+        "builders from its own code, registered for a finding an audit made, or proposed by the "
+        "research swarm. A swarm claim enters with every part unsupported; each of its parts "
+        "leaves unsupported only as graded by someone other than its author, and rises above "
+        "judgment only once two distinct referees upheld it, neither its author nor a fork, and "
+        "someone other than its author checked its basis against the source.",
         "- **Grade**: each part of a sentence is graded on its own (" + ", ".join(
             f"*{g}*" for g in GRADES) + ", strongest first), and the sentence shows its weakest "
-        "part's. Above judgment, someone other than the author grades.",
+        "part's. Above judgment, someone other than the author grades. A part's grade moves "
+        "only through a line of the history that gives its date, grader and reason.",
         "- **Status** is derived: *built* once every enforcer resolves and every test exists and "
-        "is not marked to skip or xfail unconditionally, *ruled, not built* until then; "
-        "*retracted* is the only status anyone declares. The app ships without its tests, so it "
-        "renders a claim from the status and hash the generator froze, never from the source.",
+        "is not marked to skip or xfail unconditionally, *ruled, not built* until then, as is a "
+        "swarm claim with a part still unsupported; *retracted* is the only status anyone "
+        "declares. The app ships without its tests, so it renders a claim from the status and "
+        "hash the generator froze, never from the source.",
         "- **Card** and **Methods**: the sentence in its two registers, filled from its "
         "parameters.",
         f"- **Hash**: the first {HASH_SHOWN} hex digits of the SHA-256 of the claim's content; a "
@@ -170,12 +209,57 @@ def render(reg: Registry) -> str:
     return "\n".join(lines)
 
 
-def read_history(path: Path = HISTORY) -> list[dict[str, Any]]:
-    """The history's versions, oldest first."""
+def _lines(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
             if line.strip()]
+
+
+def read_history(path: Path = HISTORY) -> list[dict[str, Any]]:
+    """The history's versions, oldest first (its grade lines left out)."""
+    return [r for r in _lines(path) if "part" not in r]
+
+
+def read_grades(path: Path = HISTORY) -> list[dict[str, Any]]:
+    """The history's grade lines, oldest first."""
+    return [r for r in _lines(path) if "part" in r]
+
+
+def grade_lines(reg: Registry, grades: list[dict[str, Any]],
+                today: str) -> tuple[list[dict[str, Any]], list[str]]:
+    """The grade lines the history lacks, in id order, and the changes refused, one sentence each.
+    ``today`` dates a first line whose part names no dated grader."""
+    last = {(g["id"], g["part"]): g for g in grades}
+    lines, refused = [], []
+    for c in reg:
+        for p in c.parts:
+            prev = last.get((c.id, p.name))
+            if prev is not None and prev["grade"] == p.grade:
+                continue
+            graded = dated(p.graded_by or c.graded_by)
+            if prev is None:
+                if c.origin == "swarm" and p.grade != "unsupported":
+                    refused.append(f"{c.id}: part {p.name!r} is graded {p.grade}, but a swarm "
+                                   "claim's part enters unsupported (R1_PLAN.md R1-G): register "
+                                   "it so, and grade it after")
+                    continue
+                who, when = graded if graded else (c.author, today)
+                reason, was = p.regraded.strip() or FIRST_RECORDED, ""
+            else:
+                missing = []
+                if graded is None:
+                    missing.append(f"a dated grader, {GRADED_FORM}")
+                if not p.regraded.strip() or p.regraded.strip() == prev["reason"]:
+                    missing.append("a reason in its regraded other than its last line's")
+                if missing:
+                    refused.append(f"{c.id}: part {p.name!r} moves from {prev['grade']} to "
+                                   f"{p.grade}, so it names {' and '.join(missing)}")
+                    continue
+                (who, when), reason, was = graded, p.regraded.strip(), prev["grade"]
+            lines.append({"id": c.id, "part": p.name, "grade": p.grade, "was": was, "date": when,
+                          "grader": who, "reason": reason})
+    return lines, refused
 
 
 def pending(reg: Registry, history: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -205,26 +289,46 @@ def line(record: dict[str, Any]) -> str:
     return json.dumps(record, sort_keys=True, ensure_ascii=False, separators=(",", ":")) + "\n"
 
 
+def _day(text: str) -> str:
+    try:
+        return date.fromisoformat(text).isoformat()
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a day written YYYY-MM-DD") from None
+
+
 def main(argv: Sequence[str] | None = None, registry: Registry | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true",
                         help="exit 1 when the reference or the history is stale, or the history "
                              "holds an id the registry dropped; write nothing")
     parser.add_argument("--out", type=Path, default=OUT)
-    parser.add_argument("--history", type=Path, default=HISTORY)
+    parser.add_argument("--history", type=Path, default=None,
+                        help="the history to read and append to (the registry's own unless given)")
+    parser.add_argument("--date", type=_day, default=None,
+                        help="the day a first grade line with no dated grader is recorded on "
+                             "(YYYY-MM-DD; today unless given)")
     args = parser.parse_args(argv)
     reg = registry_module.registry() if registry is None else registry
+    if args.history is None:
+        args.history = reg.history_path
     frozen_path = reg.frozen_path  # where rendering reads it
     text, frozen = render(reg), frozen_text(reg)
     history = read_history(args.history)
     todo = pending(reg, history)
     gone = dropped(reg, history)
+    graded, refused = grade_lines(reg, read_grades(args.history),
+                                  args.date or date.today().isoformat())
     if gone:
         print(f"{args.history} holds {', '.join(gone)}, which the registry no longer registers: "
               "an id is never dropped or reused (CLAIMS_REGISTRY.md §1), so restore the claim "
               "and retract it", file=sys.stderr)
         if not args.check:
             return 1
+    for message in refused:
+        print(f"{message}: a grade moves only through a history line with its date, grader and "
+              "reason", file=sys.stderr)
+    if refused and not args.check:
+        return 1
     if args.check:
         current = args.out.read_text(encoding="utf-8") if args.out.is_file() else ""
         stale = []
@@ -233,6 +337,10 @@ def main(argv: Sequence[str] | None = None, registry: Registry | None = None) ->
         if todo:
             stale.append(f"{args.history} lacks the version in force of "
                          f"{', '.join(r['id'] for r in todo)}: run {COMMAND}")
+        if graded:
+            moved = sorted({g["id"] for g in graded})
+            stale.append(f"{args.history} lacks the grade lines of {', '.join(moved)}: run "
+                         f"{COMMAND}")
         frozen_now = frozen_path.read_text(encoding="utf-8") if frozen_path.is_file() else ""
         if frozen_now != frozen:
             moved = frozen_differs(reg, frozen_now)
@@ -240,7 +348,7 @@ def main(argv: Sequence[str] | None = None, registry: Registry | None = None) ->
                          + f": run {COMMAND}")
         for message in stale:
             print(message, file=sys.stderr)
-        if stale or gone:
+        if stale or gone or refused:
             return 1
         print(f"{args.out}, {args.history} and {frozen_path} are current")
         return 0
@@ -248,11 +356,14 @@ def main(argv: Sequence[str] | None = None, registry: Registry | None = None) ->
     args.out.write_text(text, encoding="utf-8")
     args.history.parent.mkdir(parents=True, exist_ok=True)
     with args.history.open("a", encoding="utf-8") as f:
-        f.writelines(line(r) for r in todo)
+        for c in reg:  # each claim's version line, then its grade lines
+            f.writelines(line(r) for r in todo if r["id"] == c.id)
+            f.writelines(line(g) for g in graded if g["id"] == c.id)
     frozen_path.parent.mkdir(parents=True, exist_ok=True)
     frozen_path.write_text(frozen, encoding="utf-8")
     print(f"wrote {args.out} ({len(text.encode('utf-8')):,} bytes) and {frozen_path} ({len(reg)} "
-          f"claim(s)); appended {len(todo)} version(s) to {args.history}")
+          f"claim(s)); appended {len(todo)} version(s) and {len(graded)} grade line(s) to "
+          f"{args.history}")
     return 0
 
 

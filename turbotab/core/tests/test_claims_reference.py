@@ -12,15 +12,21 @@
 * An id the history holds stays registered (§1: a retired id stays, marked retracted): where the
   registry drops one, the generator writes nothing and it and ``--check`` exit 1.
 * Proposed claims are listed under "Ruled, not built" (§6).
+* Every grade change is a history line the generator writes, with its date, grader and reason and
+  the grade it moved from, downgrades included (R1_PLAN.md R1-G): a part's first line records the
+  grade it holds; a change whose source names no dated grader, or no reason other than the last
+  line's, is refused and nothing is written; a swarm claim's part enters unsupported or is refused.
 """
 from __future__ import annotations
 
 import json
 
+import pytest
+
 from turbotab.core import claims
 from turbotab.core.reference import claims as reference
-from turbotab.core.claims import Fires
-from turbotab.core.tests.test_claims_fixtures import registry, rule, teaching
+from turbotab.core.claims import Basis, Fires, Part
+from turbotab.core.tests.test_claims_fixtures import registry, rule, swarm, teaching
 
 REPO = reference.REPO
 
@@ -158,7 +164,7 @@ def test_generating_twice_appends_nothing_the_second_time(tmp_path):
     once = history.read_bytes()
     assert reference.main(args, registry=reg) == 0
     assert history.read_bytes() == once
-    assert len(once.decode("utf-8").splitlines()) == 2
+    assert len(once.decode("utf-8").splitlines()) == 4, "a version and a grade line per claim"
 
 
 def test_a_status_change_alone_makes_the_reference_stale_but_not_the_history(tmp_path):
@@ -174,12 +180,14 @@ def test_a_status_change_alone_makes_the_reference_stale_but_not_the_history(tmp
 
 
 def test_each_history_line_is_one_json_object_naming_its_claim(tmp_path):
+    """A claim's version line comes first, then a grade line for each of its parts."""
     out, history, args = _paths(tmp_path)
     assert reference.main(args, registry=registry(tmp_path, rule())) == 0
-    (line,) = history.read_text(encoding="utf-8").splitlines()
-    record = json.loads(line)
-    assert set(record) == {"id", "version", "hash", "claim"}
-    assert record["id"] == "planted.few_clusters" and record["claim"]["id"] == record["id"]
+    version, grade = (json.loads(x) for x in history.read_text(encoding="utf-8").splitlines())
+    assert set(version) == {"id", "version", "hash", "claim"}
+    assert version["id"] == "planted.few_clusters" and version["claim"]["id"] == version["id"]
+    assert set(grade) == {"id", "part", "grade", "was", "date", "grader", "reason"}
+    assert grade["id"] == version["id"] and grade["part"] == "value"
 
 
 def test_a_claim_deleted_from_the_registry_fails_the_check_and_the_generator(tmp_path, capsys):
@@ -208,3 +216,136 @@ def test_a_retracted_claim_stays_and_passes_the_check(tmp_path):
     assert [h["id"] for h in reference.read_history(history)] == [
         "planted.few_clusters", "planted.your_call", "planted.your_call"]
     assert "`planted.your_call`" in out.read_text(encoding="utf-8").split("\n## Retracted\n")[1]
+
+
+# ── every grade change is a history line (R1_PLAN.md R1-G) ───────────────────────────────────
+
+ID = "planted.few_clusters"
+PASSAGE = Basis(cites=("friedman2001",), where="§10.10, p. 1203")
+
+
+def _moves(history):
+    return [(g["was"], g["grade"], g["date"], g["grader"], g["reason"])
+            for g in reference.read_grades(history)]
+
+
+def test_the_first_run_records_each_part_s_grade_its_grader_and_date(tmp_path):
+    """A part's grader and date are its own dated grader's; where it names none, its author's
+    grade on the day the generator records it."""
+    out, history, args = _paths(tmp_path)
+    graded = rule(parts=(Part("value", "sourced", PASSAGE, graded_by="a basis audit, 2026-10-16"),
+                         Part("scope", "judgment", Basis(reason="r"))))
+    assert reference.main([*args, "--date", "2026-10-18"],
+                          registry=registry(tmp_path, graded)) == 0
+    assert reference.read_grades(history) == [
+        {"id": ID, "part": "value", "grade": "sourced", "was": "", "date": "2026-10-16",
+         "grader": "a basis audit", "reason": reference.FIRST_RECORDED},
+        {"id": ID, "part": "scope", "grade": "judgment", "was": "", "date": "2026-10-18",
+         "grader": "the R0a builder", "reason": reference.FIRST_RECORDED}]
+    assert [h["id"] for h in reference.read_history(history)] == [ID]
+
+
+def test_an_upgrade_and_a_downgrade_are_each_a_line_with_the_grade_it_moved_from(tmp_path):
+    out, history, args = _paths(tmp_path)
+    assert reference.main([*args, "--date", "2026-10-18"],
+                          registry=registry(tmp_path, rule())) == 0
+    up = rule(parts=(Part("value", "sourced", PASSAGE, graded_by="a basis audit, 2026-10-19",
+                          regraded="the passage says it in this regime"),))
+    assert reference.main(["--check", *args], registry=registry(tmp_path, up)) == 1
+    assert reference.main([*args, "--date", "2026-10-20"], registry=registry(tmp_path, up)) == 0
+    down = rule(parts=(Part("value", "judgment", Basis(reason="r"),
+                            graded_by="a domain reviewer, 2026-10-21",
+                            regraded="the passage is about another design"),))
+    assert reference.main([*args, "--date", "2026-10-22"], registry=registry(tmp_path, down)) == 0
+    assert _moves(history) == [
+        ("", "judgment", "2026-10-18", "the R0a builder", reference.FIRST_RECORDED),
+        ("judgment", "sourced", "2026-10-19", "a basis audit",
+         "the passage says it in this regime"),
+        ("sourced", "judgment", "2026-10-21", "a domain reviewer",
+         "the passage is about another design")]
+    assert reference.main(["--check", *args], registry=registry(tmp_path, down)) == 0
+
+
+UNRECORDED = {
+    "no reason": Part("value", "unsupported", graded_by="a basis audit, 2026-10-19"),
+    "the last line's reason again": Part("value", "unsupported",
+                                         graded_by="a basis audit, 2026-10-19",
+                                         regraded=reference.FIRST_RECORDED),
+    "no dated grader": Part("value", "unsupported", regraded="the reason no longer holds"),
+}
+
+
+@pytest.mark.parametrize("case", sorted(UNRECORDED))
+def test_a_grade_change_without_its_grader_date_or_reason_is_refused_and_nothing_is_written(
+        tmp_path, capsys, case):
+    out, history, args = _paths(tmp_path)
+    reg = registry(tmp_path, rule())
+    assert reference.main(args, registry=reg) == 0
+    before = (out.read_bytes(), history.read_bytes(), reg.frozen_path.read_bytes())
+    moved = registry(tmp_path, rule(parts=(UNRECORDED[case],)), freeze=False)
+    capsys.readouterr()
+    assert reference.main(args, registry=moved) == 1
+    assert reference.main(["--check", *args], registry=moved) == 1
+    assert (out.read_bytes(), history.read_bytes(), moved.frozen_path.read_bytes()) == before
+    assert f"{ID}: part 'value' moves from judgment to unsupported" in capsys.readouterr().err
+
+
+def test_a_grade_change_with_its_grader_date_and_reason_is_recorded(tmp_path):
+    """The other side of the refusals: the same move, with all three, is one line."""
+    out, history, args = _paths(tmp_path)
+    assert reference.main(args, registry=registry(tmp_path, rule())) == 0
+    moved = rule(parts=(Part("value", "unsupported", graded_by="a basis audit, 2026-10-19",
+                             regraded="the reason no longer holds"),))
+    assert reference.main(args, registry=registry(tmp_path, moved)) == 0
+    assert _moves(history)[-1] == ("judgment", "unsupported", "2026-10-19", "a basis audit",
+                                   "the reason no longer holds")
+
+
+def test_a_swarm_claim_enters_unsupported_or_is_refused(tmp_path, capsys):
+    out, history, args = _paths(tmp_path)
+    judged = Part("value", "judgment", Basis(reason="r"), graded_by="the orchestrator, 2026-10-19",
+                  regraded="the orchestrator's call, on the swarm's runs")
+    capsys.readouterr()
+    assert reference.main(args, registry=registry(tmp_path, swarm(parts=(judged,)),
+                                                  freeze=False)) == 1
+    assert not history.exists() and not out.exists()
+    assert "enters unsupported" in capsys.readouterr().err
+    assert reference.main([*args, "--date", "2026-10-18"],
+                          registry=registry(tmp_path, swarm())) == 0
+    assert reference.main(args, registry=registry(tmp_path, swarm(parts=(judged,)))) == 0
+    assert _moves(history) == [
+        ("", "unsupported", "2026-10-18", "theorist A", reference.FIRST_RECORDED),
+        ("unsupported", "judgment", "2026-10-19", "the orchestrator",
+         "the orchestrator's call, on the swarm's runs")]
+
+
+def test_check_exits_1_on_a_history_with_versions_but_no_grade_lines_and_the_generator_adds_them(
+        tmp_path):
+    """The history as R0 left it: every version written, no grade line; the generator records the
+    grade each part holds and appends no version."""
+    out, history, args = _paths(tmp_path)
+    reg = registry(tmp_path, rule(), teaching())
+    assert reference.main(args, registry=reg) == 0
+    versions = [x for x in history.read_text(encoding="utf-8").splitlines()
+                if '"hash"' in x]
+    history.write_text("".join(x + "\n" for x in versions), encoding="utf-8")
+    assert reference.main(["--check", *args], registry=reg) == 1
+    assert reference.main([*args, "--date", "2026-10-18"], registry=reg) == 0
+    assert reference.main(["--check", *args], registry=reg) == 0
+    assert len(reference.read_history(history)) == 2
+    assert [(g["id"], g["grade"]) for g in reference.read_grades(history)] == [
+        (ID, "judgment"), ("planted.your_call", "judgment")]
+
+
+def test_each_part_s_first_grade_line_is_the_grade_its_claim_s_first_version_held():
+    """In the committed history, the grade lines begin where the versions written before them left
+    each part, so recording them moved no grade."""
+    first_version, first_line = {}, {}
+    for v in reference.read_history(reference.HISTORY):
+        first_version.setdefault(v["id"], v)
+    for g in reference.read_grades(reference.HISTORY):
+        first_line.setdefault((g["id"], g["part"]), g)
+    assert len(first_line) == sum(len(c.parts) for c in claims.registry())
+    for (id, part), g in first_line.items():
+        held = {p["name"]: p["grade"] for p in first_version[id]["claim"]["parts"]}
+        assert g["grade"] == held[part], (id, part)

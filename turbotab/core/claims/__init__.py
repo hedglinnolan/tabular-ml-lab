@@ -6,6 +6,13 @@ its evidence covers, and the tests that hold the code to it.
   :class:`Basis`, its :class:`Regime` in words and as predicates, its :class:`Param` s, and its
   known-truth tests, :class:`Fires` and :class:`Silent`, each declaring where its truth comes from.
   A claim is checked against the vocabulary when it registers, as a method contract is.
+* **Its origin** (R1_PLAN.md R1-G): every claim names one of :data:`ORIGINS`, engine, audit or
+  swarm. A swarm claim enters proposed with every part unsupported and renders nowhere; a part
+  leaves unsupported only as graded by someone other than its author, and above judgment only
+  through the two-referee gate (:func:`referee_gate`, its :class:`Referee` s), its grade's own
+  requirement and a basis audit (``Part.audited_by``), meta-test 7. Every grade change is a line
+  of the history with its date, grader and reason, which the generator writes, and meta-test 8
+  refuses a grade that differs from its last line.
 * **The registry** (``_registry``): :class:`Registry`, and the default one, :data:`REGISTRY`, which
   :func:`registry` fills by scanning this package. Each public module here, ``claims/<area>.py``,
   declares one area's claims with :func:`register`; a private module (``_name``) is the registry's
@@ -21,14 +28,14 @@ its evidence covers, and the tests that hold the code to it.
   where the frozen status is not the one the source now derives; otherwise the named fallback
   claim renders. :func:`value` reads a parameter, so a module constant can take its value from its
   claim.
-* **The meta-tests** (``_meta``, :data:`META_TESTS`) and **the digit gate's allowlist**
-  (``digit_allowlist.json``).
+* **The meta-tests** (``_meta``, :data:`META_TESTS`, eight of them) and **the digit gate's
+  allowlist** (``digit_allowlist.json``).
 
 The registry stands alone: importing it, and loading its claims modules, loads no other
 ``turbotab.core`` module. Predicates and enforcers are named as ``"module:function"`` strings and
 resolved only when they are checked. ``python -m turbotab.core.reference.claims`` writes
 ``docs/turbotab-next/reference/CLAIMS_REFERENCE.md`` and ``status.json``, and keeps every claim's
-versions in ``history.jsonl``.
+versions and every part's grade changes in ``history.jsonl``.
 """
 from __future__ import annotations
 
@@ -38,14 +45,17 @@ from typing import Any
 
 from turbotab.core.claims._digits import (ALLOWLIST, CITATIONS, TAGS, citation_keys,
                                           citation_spans, load_allowlist, stale_allowlist)
-from turbotab.core.claims._meta import (META_TESTS, digit_gate, grades_met, no_conflicts,
-                                        no_self_pinning, none_proposed_renders, tests_exist)
-from turbotab.core.claims._registry import (FROZEN, GENERATOR, REPO, STRICT_ENV, ClaimError,
-                                            NotRenderable, OutsideRegime, Registry, frozen_records,
-                                            frozen_text, strict_mode)
-from turbotab.core.claims._schema import (ABOVE_JUDGMENT, GRADES, KINDS, PURPOSES, RUNGS, TRUTHS,
-                                          VERDICTS, Basis, Claim, Fires, HeldOut, Param, Part,
-                                          Regime, Silent, content, content_hash, fill)
+from turbotab.core.claims._meta import (GRADE_LINE, META_TESTS, digit_gate, grades_met,
+                                        grades_recorded, no_conflicts, no_self_pinning,
+                                        none_proposed_renders, swarm_gate, tests_exist)
+from turbotab.core.claims._registry import (FROZEN, GENERATOR, HISTORY, REPO, STRICT_ENV,
+                                            ClaimError, NotRenderable, OutsideRegime, Registry,
+                                            frozen_records, frozen_text, strict_mode)
+from turbotab.core.claims._schema import (ABOVE_JUDGMENT, GRADED_FORM, GRADES, KINDS, ORIGINS,
+                                          PURPOSES, REFEREE_VERDICTS, RUNGS, TRUTHS, VERDICTS,
+                                          Basis, Claim, Fires, HeldOut, Param, Part, Referee,
+                                          Regime, Silent, content, content_hash, dated, fill,
+                                          grader, referee_gate, same_person)
 
 REGISTRY = Registry()
 _loaded = False
@@ -95,11 +105,13 @@ def status(id: str) -> str:
 
 __all__ = [
     "ABOVE_JUDGMENT", "ALLOWLIST", "Basis", "CITATIONS", "Claim", "ClaimError", "FROZEN", "Fires",
-    "GENERATOR", "GRADES", "HeldOut", "KINDS", "META_TESTS", "NotRenderable", "OutsideRegime",
-    "PURPOSES", "Param", "Part", "REGISTRY", "REPO", "RUNGS", "Regime", "Registry", "STRICT_ENV",
+    "GENERATOR", "GRADED_FORM", "GRADES", "GRADE_LINE", "HISTORY", "HeldOut", "KINDS",
+    "META_TESTS", "NotRenderable", "ORIGINS", "OutsideRegime", "PURPOSES", "Param", "Part",
+    "REFEREE_VERDICTS", "REGISTRY", "REPO", "RUNGS", "Referee", "Regime", "Registry", "STRICT_ENV",
     "Silent", "TAGS", "TRUTHS", "VERDICTS", "card", "citation_keys", "citation_spans", "content",
-    "content_hash", "digit_gate", "fill", "frozen_records", "frozen_text", "grades_met",
-    "load_allowlist", "methods", "no_conflicts", "no_self_pinning", "none_proposed_renders",
-    "register", "registry", "scan", "stale_allowlist", "status", "strict_mode", "tests_exist",
-    "value",
+    "content_hash", "dated", "digit_gate", "fill", "frozen_records", "frozen_text", "grader",
+    "grades_met", "grades_recorded", "load_allowlist", "methods", "no_conflicts",
+    "no_self_pinning", "none_proposed_renders", "referee_gate", "register", "registry",
+    "same_person", "scan", "stale_allowlist", "status", "strict_mode", "swarm_gate",
+    "tests_exist", "value",
 ]

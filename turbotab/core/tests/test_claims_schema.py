@@ -4,9 +4,11 @@
 Each guard is tested both ways: the conforming planted claim registers, and the same claim with one
 field broken is refused, naming the field. Among them: above judgment, a part's grader reads
 "<who>, YYYY-MM-DD"; both templates fill from the claim's own parameters (Python's ``format`` is
-the truth); and a test's path is neither absolute nor leaves the repository root. The registry's
-copies of the leash rungs and the purposes are held to the contracts' own, since the registry may
-not import them.
+the truth); and a test's path is neither absolute nor leaves the repository root. Every claim
+names its origin (engine, audit or swarm; R1_PLAN.md R1-G), a part's basis audit and each of its
+referees read "<who>, YYYY-MM-DD" as a grader does, and a referee's verdict is upheld or not. The
+registry's copies of the leash rungs and the purposes are held to the contracts' own, since the
+registry may not import them.
 """
 from __future__ import annotations
 
@@ -15,7 +17,8 @@ import dataclasses
 import pytest
 
 from turbotab.core import claims
-from turbotab.core.claims import Basis, Claim, Fires, HeldOut, Param, Part, Regime, Registry, Silent
+from turbotab.core.claims import (Basis, Claim, Fires, HeldOut, Param, Part, Referee, Regime,
+                                  Registry, Silent)
 from turbotab.core.tests.test_claims_fixtures import FIRES, SILENT, rule, teaching
 
 
@@ -75,6 +78,17 @@ BROKEN = {
         heldout=(HeldOut("a", cases=10, rate=1.5), HeldOut("b", cases=10, rate=0.5)))),)),
     "held-out fixture with no case": dict(parts=(Part("value", grade="replicated", basis=Basis(
         heldout=(HeldOut("a", cases=0, rate=0.5), HeldOut("b", cases=10, rate=0.5)))),)),
+    "origin outside the vocabulary": dict(origin="agent"),
+    "origin left blank": dict(origin=""),
+    "basis audit with no date": dict(parts=(Part("value", grade="judgment", basis=Basis(reason="r"),
+                                                 audited_by="a basis audit"),)),
+    "referee with no date": dict(parts=(Part("value", grade="judgment", basis=Basis(reason="r"),
+                                             referees=(Referee("referee A", "upheld"),)),)),
+    "referee verdict outside the vocabulary": dict(parts=(Part(
+        "value", grade="judgment", basis=Basis(reason="r"),
+        referees=(Referee("referee A, 2026-10-18", "probably"),)),)),
+    "referee given as a string": dict(parts=(Part(
+        "value", grade="judgment", basis=Basis(reason="r"), referees=("referee A, 2026-10-18",)),)),
 }
 
 
@@ -82,6 +96,30 @@ BROKEN = {
 def test_a_claim_outside_the_vocabulary_is_refused_at_registration(broken):
     with pytest.raises(ValueError):
         Registry([rule(**BROKEN[broken])])
+
+
+def test_a_claim_that_names_no_origin_cannot_be_written():
+    """``origin`` has no default: a claim written without one is a ``TypeError`` before it can
+    register, so no claim lacks one."""
+    fields = {f.name: getattr(rule(), f.name) for f in dataclasses.fields(Claim)
+              if f.name != "origin"}
+    with pytest.raises(TypeError, match="origin"):
+        Claim(**fields)
+
+
+@pytest.mark.parametrize("origin", ["engine", "audit", "swarm"])
+def test_each_origin_registers(origin):
+    assert claims.ORIGINS == ("engine", "audit", "swarm")
+    assert Registry([rule(origin=origin)])["planted.few_clusters"].origin == origin
+
+
+def test_a_dated_basis_audit_and_dated_referees_register():
+    part = Part("value", grade="judgment", basis=Basis(reason="r"),
+                audited_by="a basis audit, 2026-10-18",
+                referees=(Referee("referee A, 2026-10-18", "upheld"),
+                          Referee("referee B, 2026-10-18", "not_upheld",
+                                  fork_of="the orchestrator")))
+    assert Registry([rule(parts=(part,))])["planted.few_clusters"].parts == (part,)
 
 
 def test_a_teaching_claim_needs_no_test_enforcer_or_verdict():
@@ -120,7 +158,14 @@ def test_equal_content_hashes_equal_and_any_change_moves_the_hash():
                rule(params={"few": Param(11, unit="clusters", constant="planted.engine:FEW")}),
                rule(parts=(Part("value", grade="unsupported"),)),
                rule(tests=(FIRES, Silent(FIRES.test, truth="construction"))),
-               rule(version=2)]
+               rule(version=2),
+               rule(origin="audit"),
+               rule(parts=(Part("value", grade="judgment", basis=Basis(reason="a planted judgment"),
+                                audited_by="a basis audit, 2026-10-18"),)),
+               rule(parts=(Part("value", grade="judgment", basis=Basis(reason="a planted judgment"),
+                                referees=(Referee("referee A, 2026-10-18", "upheld"),)),)),
+               rule(parts=(Part("value", grade="judgment", basis=Basis(reason="a planted judgment"),
+                                regraded="a planted reason"),))]
     hashes = {claims.content_hash(c) for c in changed}
     assert len(hashes) == len(changed)
     assert claims.content_hash(rule()) not in hashes
@@ -153,7 +198,7 @@ def test_a_claim_with_its_fields_named_as_the_spec_example_names_them():
                Part("scope", grade="judgment", basis=Basis(reason="simulated binary only"))),
         params={"few_clusters": Param(10, unit="clusters")},
         tests=(FIRES, SILENT), enforced_by=("planted.engine:act",), supersedes=(),
-        graded_by="basis audit, 2026-10-15", author="the R0a builder", version=1)
+        graded_by="basis audit, 2026-10-15", author="the R0a builder", origin="engine", version=1)
     assert Registry([c])["trials.few_clusters_example"].grade == "judgment"
 
 
