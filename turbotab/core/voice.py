@@ -2726,11 +2726,17 @@ def _defer_finding(d: Any, state: Any, ctx: Any) -> str:
 
 @register_sentence("dismiss_finding")
 def _dismiss_finding(d: Any, state: Any, ctx: Any) -> str:
-    """A dismissal with its reason; with none, what the shell's "Keep as is" did (R-f 18)."""
+    """A dismissal with its reason; with none, what the shell's "Keep as is" did (R-f 18): where a
+    repair was applied, the dismissal replaces it, so the repair is withdrawn (W1-R round 3,
+    SE-m4); else nothing changes."""
     name = _finding_name(d.finding_id, _get(ctx, "finding"))
     named = f"{name[:1].upper()}{name[1:]}"
     if d.reason and d.reason.strip():
         return f"{named} was dismissed: {_as_reason(d.reason)}"
+    held = (getattr(state, "findings", None) or {}).get(d.finding_id)
+    if _attr(held, "action") == "applied":
+        return (f"The repair applied for {name} was withdrawn, so what it changed is as the table "
+                f"has it again; the finding stays in the record")
     return f"{named} was kept as is, with nothing changed; it stays in the record"
 
 

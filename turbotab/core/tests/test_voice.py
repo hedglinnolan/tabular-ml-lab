@@ -275,6 +275,30 @@ def test_findings_answered_name_their_columns_and_timing():
         "the record.")
 
 
+def test_keep_as_is_on_an_applied_repair_says_the_repair_was_withdrawn():
+    """W1-R round 3 (SE-m4): the shell reopens an applied repair and offers "Keep as is", which
+    records a dismissal with no reason. The dismissal replaces the applied disposition (the fold
+    holds the finding dismissed, its repair gone), so the record says the repair was withdrawn;
+    where no repair was applied (none, or one set aside for a question) it is kept as is."""
+    finding = {"id": "pack::survey::sentinel_codes", "title": "5 items carry values outside 1–5",
+               "affected_columns": ["item_03", "item_14"]}
+    keep = d.DismissFinding(finding_id=finding["id"])
+    applied = REPEATED.model_copy(update={"findings": {finding["id"]: d.FindingDisposition(
+        action="applied", option="to_missing", params={"code": 9})}})
+    after = d.fold_onto(applied, keep).findings[finding["id"]]
+    assert (after.action, after.option) == ("dismissed", None)
+    assert say(keep, state=applied, finding=finding) == (
+        "The repair applied for the finding on `item_03` and `item_14` was withdrawn, so what it "
+        "changed is as the table has it again; the finding stays in the record.")
+    # silent: with no repair applied, nothing is withdrawn
+    deferred = REPEATED.model_copy(update={"findings": {finding["id"]: d.FindingDisposition(
+        action="deferred", to="missing")}})
+    for state in (REPEATED, deferred):
+        assert say(keep, state=state, finding=finding) == (
+            "The finding on `item_03` and `item_14` was kept as is, with nothing changed; it stays "
+            "in the record.")
+
+
 def test_a_repair_family_may_speak_for_itself():
     voice.register_repair_sentence(
         "test::family", lambda dec, state, ctx: "`bp_di` values of `5.4e-79` were set to `0`")
