@@ -5,7 +5,8 @@
 each decision in force, the ones superseded before anything was seen folded out, every change made
 after the estimates were seen (or the held-out rows opened) kept and marked, and a sentence that
 counts rows restated on the participant flow as it stands (``voice.restated_counts``; the server
-gives the counts). Beside those, the
+gives the counts), and single confirmations alike but for their column said once, together
+(:func:`_together`). Beside those, the
 paragraphs the analysis itself wrote on these answers (the declared model sequence's, multiple
 imputation's, cross-validation's), each marked with the stage that wrote it, the readings the values
 settled with no question asked (one sentence among the predictors), and one sentence the export
@@ -27,6 +28,7 @@ export's own (MODELING_SEQUENCE §1 row 12).
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Literal, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict
@@ -288,6 +290,40 @@ def _never_said(text: str) -> None:
         raise RuntimeError("the export never calls the plan prespecified or preregistered")
 
 
+# The single confirmations said together where their sentences differ only in their column (the
+# re-walk's N10: six flags' confirmations were six near-identical sentences).
+TOGETHER_KINDS = ("confirm_role", "confirm_reading")
+_ONE_COLUMN = re.compile(r"^`(?P<column>[^`]+)` was (?P<rest>.+)$", re.S)
+
+
+def _together(entries: Sequence[MethodsEntry]) -> list[MethodsEntry]:
+    """``entries`` with the single confirmations of one kind whose sentences are alike but for
+    their column ("`a` was …", the rest word for word, in force alike) said once, where the first
+    of them stands, as "`a`, `b` and `c` were each …" with every column named, under the newest
+    of their records' id and seq (so the manuscript's newest line is the sentence a confirmation
+    just grew). One alone keeps its own sentence."""
+    from turbotab.core.voice import listing
+
+    groups: dict[tuple[Any, ...], list[int]] = {}
+    for i, e in enumerate(entries):
+        found = (_ONE_COLUMN.match(e.text) if e.source == "record" and e.kind in TOGETHER_KINDS
+                 else None)
+        if found is not None:
+            groups.setdefault((e.kind, e.in_force, found["rest"]), []).append(i)
+    said: dict[int, MethodsEntry] = {}
+    folded: set[int] = set()
+    for (_kind, _in_force, rest), at in groups.items():
+        if len(at) < 2:
+            continue
+        columns = [_ONE_COLUMN.match(entries[i].text)["column"] for i in at]  # type: ignore[index]
+        newest = max((entries[i] for i in at), key=lambda e: e.seq or 0)
+        said[at[0]] = entries[at[0]].model_copy(update={
+            "text": f"{listing(columns, limit=len(columns))} were each {rest}",
+            "record_id": newest.record_id, "seq": newest.seq})
+        folded.update(at[1:])
+    return [said.get(i, e) for i, e in enumerate(entries) if i not in folded]
+
+
 def _after_title(lines: Sequence[MethodsEntry]) -> str:
     est = any(e.after_estimates for e in lines)
     seal = any(e.post_seal for e in lines)
@@ -328,7 +364,7 @@ def methods_section(source: Any, provenance: Mapping[str, Any]) -> MethodsDocume
     last = "analysis" if guideline == "TRIPOD+AI" else "statistical"
     by_key[last].extend(analysis_paragraphs(source))
     by_key[last].extend(closing)
-    sections = [MethodsSection(key=key, title=title, item=item, entries=by_key[key])
+    sections = [MethodsSection(key=key, title=title, item=item, entries=_together(by_key[key]))
                 for key, title, item in layout if by_key[key]]
     if after:
         sections.append(MethodsSection(key="after", title=_after_title(after), item="",
@@ -342,9 +378,10 @@ def methods_section(source: Any, provenance: Mapping[str, Any]) -> MethodsDocume
 
 INTRO = ("Each sentence below is the decision record's own, as it stood when this bundle was "
          "exported: answers changed before anything was seen are folded out, every change made "
-         "after {seen} is kept and marked, and a sentence that counts rows counts them as they "
-         "stand. Sections follow {guideline}; a paragraph that is not the record's was written by "
-         "the analysis on these answers.")
+         "after {seen} is kept and marked, a sentence that counts rows counts them as they "
+         "stand, and confirmations alike but for their column are said once, together. Sections "
+         "follow {guideline}; a paragraph that is not the record's was written by the analysis on "
+         "these answers.")
 
 
 def render(sections: Sequence[MethodsSection], name: str, guideline: Guideline) -> str:

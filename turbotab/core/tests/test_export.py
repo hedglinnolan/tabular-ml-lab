@@ -113,6 +113,47 @@ def test_a_prediction_plan_says_no_plan_was_locked_and_never_that_nothing_was_sh
     assert not any(w in doc.text.lower() for w in plan_lock.NEVER_SAID)
 
 
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_single_confirmations_alike_but_for_their_column_are_said_in_one_sentence(tmp_path,
+                                                                                  purpose):
+    """The re-walk's N10: the methods listed each flag's confirmation as its own near-identical
+    sentence, six of them. Single confirmations of one kind whose sentences differ only in their
+    column are said once, with every column named; one alone, or one whose sentence differs
+    otherwise (another role), keeps its own. The merged sentence is built here by the rule, from
+    the records' own sentences."""
+    flags = ["imputed_weight", "imputed_height", "imputed_bmi"]
+    log = DecisionLog(tmp_path / "decisions.jsonl")
+    roles = {"SEQN": "identifier", "age": "covariate", "bp_sys": "covariate", "waist": "covariate",
+             **{c: "flag" for c in flags}}
+    for decision in (d.SetLens(lenses=["clinical"]), d.SetTarget(column="glucose"),
+                     d.SetPurpose(purpose=purpose),
+                     d.SetRoles(roles=roles, unconfirmed=[*flags, "bp_sys"]),
+                     *(d.ConfirmRole(column=c, role="flag") for c in flags),
+                     d.ConfirmRole(column="bp_sys", role="covariate")):
+        log.append(decision, sentence=_say)
+    records = log.records()
+    said = {r.decision.column: r.sentence for r in records if r.decision.kind == "confirm_role"}
+    rest = said[flags[0]].removeprefix(f"`{flags[0]}` was ")
+    assert all(said[c] == f"`{c}` was {rest}" for c in flags)  # alike but for the column
+    assert said["bp_sys"] != f"`bp_sys` was {rest}"
+    doc = methods.methods_section(_source(records, purpose=purpose),
+                                  {"engine": {}, "inputs": [], "decisions": {"n": len(records)},
+                                   "analysis_plan": {}})
+    texts = [e.text for s in doc.sections for e in s.entries if e.kind == "confirm_role"]
+    together = "`imputed_weight`, `imputed_height` and `imputed_bmi` were each " + rest
+    assert texts == [together, said["bp_sys"]]
+    merged = next(e for s in doc.sections for e in s.entries if e.text == together)
+    # Under the newest of its records: the manuscript's newest line is the sentence just grown.
+    last = [r for r in records if r.decision.kind == "confirm_role"][len(flags) - 1]
+    assert (merged.record_id, merged.seq) == (last.id, last.seq)
+    # Silent where only one is alike: two flags confirmed, the third left out, one stays its own.
+    alone = methods.methods_section(_source(records[:5] + records[7:], purpose=purpose),
+                                    {"engine": {}, "inputs": [], "decisions": {"n": 6},
+                                     "analysis_plan": {}})
+    assert [e.text for s in alone.sections for e in s.entries if e.kind == "confirm_role"] == [
+        said[flags[0]], said["bp_sys"]]
+
+
 # ── the tables ───────────────────────────────────────────────────────────────
 
 EFFECTS = {
