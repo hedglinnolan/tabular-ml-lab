@@ -118,8 +118,8 @@ STEP_WORDS = {
 }
 NOT_OFFERED_YET = ("The curve is offered under Estimate an effect, once the goal is chosen and what "
                    "you study is declared.")
-ONE_EXPOSURE = ("The curve follows one exposure's estimate; under an exposure family each exposure "
-                "would need a curve of its own, which this curve does not draw yet.")
+ONE_EXPOSURE = ("The curve follows one study factor's estimate; under a family of study factors "
+                "each would need a curve of its own, which this curve does not draw yet.")
 ONE_EXPOSURE_EXIT = {"label": "Declare one column you study instead of the family",
                      "stage": "question"}
 # Under a marginal measure (``estimand.MARGINAL``), in its words (``estimand.MEASURE_WORDS``).
