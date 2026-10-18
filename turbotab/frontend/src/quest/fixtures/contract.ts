@@ -48,6 +48,9 @@ export interface Contract {
   };
   /** The floor a score's gain over the no-predictor baseline must reach (core/models/baseline.py). */
   min_gain: number;
+  /** The decision kinds each question that can carry the ledger's ask card records (core/ask.py
+   *  `CONSUMERS`, each kind's question by core/sequence.py `question_of`). */
+  asked_by: Record<string, string[]>;
 }
 
 export const CONTRACT = raw as unknown as Contract;

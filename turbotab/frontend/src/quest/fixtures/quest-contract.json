@@ -1,4 +1,31 @@
 {
+ "asked_by": {
+  "adjustment": [
+   "set_adjustment"
+  ],
+  "aggregation": [
+   "set_aggregation"
+  ],
+  "energy_adjustment": [
+   "set_energy_adjustment"
+  ],
+  "estimand": [
+   "set_estimand"
+  ],
+  "exclusions": [
+   "set_exclusions"
+  ],
+  "form": [
+   "set_exposure_form",
+   "set_forms"
+  ],
+  "models": [
+   "select_models"
+  ],
+  "survey": [
+   "set_survey"
+  ]
+ },
  "datasets": [
   "nhanes",
   "metabolomics"

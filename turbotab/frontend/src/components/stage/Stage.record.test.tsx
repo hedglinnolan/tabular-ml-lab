@@ -6,7 +6,9 @@
  * action) passes `recordHere={false}`: the stage draws neither, so the tapestry never offers a
  * second record button that disagrees with the card's, nor the refusal's readings again as a wall
  * of buttons beside the card that asks them. A refusal for the readings the card asks is the card's
- * to say, once (the re-walk's N4); any other refusal still says why there is no preview.
+ * to say, once (the re-walk's N4): the card asks them where its question is the open step with the
+ * ledger's ask card (record/besideAsk.ts `askedBeside`; W1-W round 1, P4). Any other refusal, a
+ * declaration card's among them, still says why there is no preview.
  *
  * The refusal is the families press's while four whole-number columns' readings are unconfirmed, as
  * core/decisions.py `_models_read_settled_readings` raises it: the fit's reason, then the ledger's
@@ -84,14 +86,42 @@ const VIEW = {
   stages: {},
 } as unknown as ProjectView;
 
-function mount(recordHere?: boolean) {
+/**
+ * The families question open with the ledger's ask card on it, which lists the four readings the
+ * refusal waits on (core/ask.py `card`: the fit's consumer, its question "models"): where AskFor
+ * draws that card and says a refusal for those readings beside it (`besideAsk`).
+ */
+const ASKING = {
+  ...VIEW,
+  interview: [
+    {
+      key: "models",
+      status: "open",
+      decision_id: null,
+      reason: null,
+      waiting_on: [],
+      deferred_findings: [],
+      followup: null,
+      ask: {
+        question: "models",
+        consumer: "the fit",
+        text: ASK_TEXT,
+        groups: [{ kind: "code_or_count", columns: COLUMNS, guess: "amount", guess_words: "an amount", evidence: "whole numbers" }],
+        exits: REFUSAL.error.exits,
+        read_from_data: [],
+      },
+    },
+  ],
+} as unknown as ProjectView;
+
+function mount(recordHere?: boolean, { view = VIEW, focus = FOCUS }: { view?: ProjectView; focus?: StageFocus } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
       <Stage
         pid={PID}
-        view={VIEW}
-        focus={FOCUS}
+        view={view}
+        focus={focus}
         onFocus={() => {}}
         {...(recordHere === undefined ? {} : { recordHere })}
       />
@@ -134,9 +164,9 @@ describe("a refused preview on the stage", () => {
 
   it("draws none of it where the card records and asks those readings: the card says it, once (N4)", async () => {
     // The re-walk's N4: the families refusal was said twice, on the card and again here. Where the
-    // card asks the readings a refusal waits on, the card's answer to the press is the one place it
-    // is said; the stage stays on the recorded pipeline.
-    mount(false);
+    // card asks the readings a refusal waits on (its question the open step with the ask card), the
+    // card's answer to the press is the one place it is said; the stage stays on the pipeline.
+    mount(false, { view: ASKING });
     await waitFor(() => expect(api.preview).toHaveBeenCalled());
     // The refused preview is answered (Classic's stage draws it by now, above); this one draws none.
     await act(async () => {
@@ -147,6 +177,48 @@ describe("a refused preview on the stage", () => {
     expect(document.body).not.toHaveTextContent("the fit waits for the answer for each");
     for (const c of COLUMNS) expect(document.body).not.toHaveTextContent(asked(c));
     expect(screen.queryByTestId("stage-record")).toBeNull();
+    expect(screen.queryAllByTestId("refusal-exit")).toHaveLength(0);
+  });
+
+  /**
+   * W1-W round 1, P4: the stage kept quiet for any refusal with a reading's confirmation among its
+   * ways forward, whichever card set the focus. Intended use is a declaration card with no ask card
+   * (quest/cards/predict), so a use refused for a subgroup whose code-or-amount reading is unsettled
+   * (core/models/decision_curve.py `_subgroups_read_settled_readings`: its reason, then the
+   * ledger's question for that one column, one confirmation per reading) was said nowhere while
+   * chosen. It is said on the stage, its reason up to the ledger's question, even while the families
+   * question is open with an ask card listing that column: that card is not the one beside it.
+   */
+  it("still says a refusal for readings where the card that set the focus asks none (P4)", async () => {
+    const subgroups: Refusal = {
+      error: {
+        code: "reading_unsettled",
+        message:
+          "Subgroup performance groups a column by its levels when its numbers are codes and by its thirds when they are an amount, and this one is not settled. " +
+          `Tell me about this column: \`bp_sys\`: an amount? (${EVIDENCE.bp_sys})`,
+        exits: [confirm("bp_sys", "amount"), confirm("bp_sys", "code")],
+      },
+    };
+    vi.mocked(api.preview).mockRejectedValue(new RefusalError(subgroups));
+    const use = { kind: "set_intended_use", use: "risk_estimation", subgroups: ["bp_sys"] } as unknown as Decision;
+    mount(false, { view: ASKING, focus: { kind: "option", decision: use, label: "Risk estimation" } });
+    await waitFor(() => expect(screen.getByTestId("stage")).toHaveAttribute("data-scene", "refusal"));
+    const said = screen.getByTestId("refusal");
+    expect(said).toHaveTextContent(
+      "Not available: Subgroup performance groups a column by its levels when its numbers are codes and by its thirds when they are an amount, and this one is not settled.",
+    );
+    expect(said).not.toHaveTextContent("Tell me about");
+    expect(screen.queryAllByTestId("refusal-exit")).toHaveLength(0);
+  });
+
+  it("says the families refusal where the families question is not the open step with the ask card", async () => {
+    // No card beside it says the refusal for those readings (AskFor trims a refusal only beside its
+    // own open ask card), so the stage says why there is no preview, up to the ledger's question.
+    mount(false, { view: VIEW });
+    await waitFor(() => expect(screen.getByTestId("stage")).toHaveAttribute("data-scene", "refusal"));
+    const said = screen.getByTestId("refusal");
+    expect(said).toHaveTextContent("the fit waits for the answer for each");
+    expect(said).not.toHaveTextContent("Tell me about");
     expect(screen.queryAllByTestId("refusal-exit")).toHaveLength(0);
   });
 

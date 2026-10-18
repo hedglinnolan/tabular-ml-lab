@@ -6,9 +6,38 @@
  * column's role together with other readings (`oneRoleAtATime`), wherever it is said, but in one
  * group's press (ruling R-g).
  */
-import type { Refusal } from "../../api/schema";
+import type { Decision, ProjectView, Refusal } from "../../api/schema";
 
 type Exit = Refusal["error"]["exits"][number];
+
+/**
+ * The decision kinds each question that can carry the ledger's ask card records: core/ask.py
+ * `CONSUMERS` (with exposure_form's "form"), each kind's question as core/sequence.py `question_of`
+ * reads it. The shell's contract fixture holds the engine's own (`asked_by`), which besideAsk.test
+ * pins this to.
+ */
+export const ASKED_BY: Readonly<Record<string, readonly string[]>> = {
+  aggregation: ["set_aggregation"],
+  survey: ["set_survey"],
+  exclusions: ["set_exclusions"],
+  estimand: ["set_estimand"],
+  adjustment: ["set_adjustment"],
+  energy_adjustment: ["set_energy_adjustment"],
+  form: ["set_exposure_form", "set_forms"],
+  models: ["select_models"],
+};
+
+/**
+ * Whether the card that records `decision` asks, beside it, the readings a refusal of it waits on:
+ * its question is the open step with the ledger's ask card, where AskFor draws that card and says
+ * such a refusal `besideAsk` (W1-W round 1, P4). Any other card (a declaration's, or a question
+ * that is not the open step with an ask) asks no readings.
+ */
+export function askedBeside(view: Pick<ProjectView, "interview">, decision: Decision): boolean {
+  const question = Object.keys(ASKED_BY).find((q) => ASKED_BY[q]!.includes(decision.kind));
+  const step = question ? view.interview.find((s) => s.key === question) : undefined;
+  return step?.status === "open" && !!step.ask;
+}
 
 const confirms = (d: Record<string, unknown> | null) =>
   d?.kind === "confirm_reading" || d?.kind === "confirm_readings";

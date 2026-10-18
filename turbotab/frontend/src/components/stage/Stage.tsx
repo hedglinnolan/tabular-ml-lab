@@ -22,7 +22,7 @@ import { useDecide } from "../../api/queries";
 import type { Decision, ProjectView, Refusal } from "../../api/schema";
 import { useMotionPrefs, useTransitions } from "../../motion/prefs";
 import { servedGroups } from "../../quest/cards/roles/roles";
-import { besideAsk } from "../record/besideAsk";
+import { askedBeside, besideAsk } from "../record/besideAsk";
 import { stateSeq, useEvidence, useM1Stage, usePreview, type Answer } from "./data";
 import { ColumnsScene, ModelsScene, NowScene, ResultsScene, RowsScene, type LiveData } from "./LiveScenes";
 import { FitHeld } from "./results/Results";
@@ -57,9 +57,11 @@ export interface StageProps {
    * FOUNDATION §1, the card's foot is the one action) passes false: the stage draws none of them
    * (a caution keeps its words, W1-R R3 P2), so no second record button
    * disagrees with the card's and a refusal's readings are not drawn again beside the card that
-   * asks them. A refusal for the readings the card asks (record/besideAsk.ts) is the card's to say,
-   * in its answer to the press, so the stage stays on the recorded pipeline and the refusal is said
-   * once (the re-walk's N4); any other refusal still says why there is no preview.
+   * asks them. A refusal for the readings the card asks beside it (record/besideAsk.ts
+   * `askedBeside`: the focused decision's question is the open step with the ledger's ask card) is
+   * the card's to say, in its answer to the press, so the stage stays on the recorded pipeline and
+   * the refusal is said once (the re-walk's N4); any other refusal, a declaration card's among them,
+   * still says why there is no preview.
    */
   recordHere?: boolean;
   /**
@@ -166,13 +168,17 @@ export function Stage({
   const fitted = !!live.fit.artifact;
   const segment = focus.kind === "banner" ? focus.segment : null;
   const findingList = findings.artifact?.findings;
+  const interview = view.interview;
+  const focused = focus.kind === "option" ? focus.decision : null;
   const target = useMemo<Scene | null>(() => {
     if (focus.kind === "option") {
       if (!preview.answer) return null;
-      // Where the card records and asks the readings a refused option waits on, the card's answer
-      // to its press says the refusal, once (the re-walk's N4): the stage stays on the pipeline.
+      // Where the card records and asks, beside it, the readings a refused option waits on (its
+      // question the open step with the ask card), the card's answer to its press says the refusal,
+      // once (the re-walk's N4): the stage stays on the pipeline. Any other refusal is said here.
       const refused = preview.answer.refusal;
-      if (!recordHere && refused && besideAsk(refused) !== refused) return liveScene(fitted ? "results" : "now");
+      if (!recordHere && refused && besideAsk(refused) !== refused && focused && askedBeside({ interview }, focused))
+        return liveScene(fitted ? "results" : "now");
       return answerScene(preview.answer);
     }
     if (focus.kind === "finding") {
@@ -188,7 +194,7 @@ export function Stage({
     }
     if (segment) return liveScene(segment === "result" ? "results" : segment);
     return liveScene(fitted ? "results" : "now");
-  }, [focus.kind, preview.answer, evidence.answer, findingList, segment, fitted, recordHere]);
+  }, [focus.kind, focused, preview.answer, evidence.answer, findingList, segment, fitted, recordHere, interview]);
   const loading =
     focus.kind === "option" ? preview.loading : focus.kind === "finding" ? evidence.loading : false;
 
