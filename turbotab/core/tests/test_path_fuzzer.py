@@ -323,6 +323,99 @@ def test_confirm_all_fires_in_its_own_stage_only_where_a_default_is_stated():
     assert not registry["decision:confirm_sweep:question"].fires(designed, facts)
 
 
+# ── what the full tier found on the W1 part 2 landing (CI run 39169596231) ────────────────────
+
+ACQUISITION = "pack::metabolomics::acquisition_design#1"
+
+
+def _goal_left_predict(journey: path_fuzzer.Journey) -> list[int]:
+    """The steps at which the goal changed from Predict while a stage before them was complete
+    with an open noticing in it: the case the three seeds below met."""
+    out = []
+    for prev, snap in zip(journey.snapshots, journey.snapshots[1:]):
+        if (snap.reopening and prev.state.purpose == "prediction"
+                and snap.state.purpose != "prediction"
+                and any(s.progress is not None and s.progress.complete and any(
+                    l.source == "finding" and l.status == "open" for l in s.lines)
+                    for s in prev.log.stages if s.key != "results")):
+            out.append(snap.index)
+    return out
+
+
+@pytest.mark.parametrize("seed,step", [(475, 26), (1181, 15), (1221, 18)])
+def test_the_goal_changed_from_predict_in_the_full_tiers_journeys_holds_the_invariants(seed, step):
+    # I11 at each seed's step: the goal changed from Predict to Estimate under the metabolomics
+    # lens, and Your data, complete at 3 of 3 with the acquisition-design noticing open, read 3 of
+    # 4 with no Reopened record.
+    journey = path_fuzzer.run_journey(seed)
+    assert step in _goal_left_predict(journey), "the seed no longer meets the case it pins"
+    found = path_fuzzer.check(journey)
+    assert not found, "\n".join(str(v) for v in found)
+
+
+def test_a_goal_changed_from_predict_says_why_its_noticings_count_in_their_stage_again():
+    # I11, on the smallest state the three seeds showed: under Predict an open noticing counts
+    # toward the triage in Results (ruling R-a), so Your data is complete with the
+    # acquisition-design noticing open in it; under Estimate it counts in Your data again, and
+    # Your data, complete before, said nothing of why it asks one more.
+    fx = path_fuzzer.METABOLOMICS
+    state, _artifacts, records = path_fuzzer.answered_through(fx, "prediction", stop="exclusions")
+    data, line = _line(_log_of(state, records, fx=fx), ACQUISITION)
+    assert data.key == "data" and line.status == "open" and line.reopened_by is None
+    assert data.progress.complete and not data.reopened
+    answered, required = data.progress.answered, data.progress.required
+    state = _decide(records, {"kind": "set_purpose", "purpose": "inference"})
+    data, line = _line(_log_of(state, records, fx=fx), ACQUISITION)
+    assert (data.progress.answered, data.progress.required) == (answered, required + 1)
+    assert (line.reopened_by.kind, line.reopened_by.decision_id, line.reopened_by.stage) == (
+        "set_purpose", records[-1].id, "question")
+    assert [(r.decision_id, r.questions) for r in data.reopened] == [(records[-1].id, [line.id])]
+    assert data.reopened[0].sentence == "Your change to Your question reopened 1 question in Your data."
+
+
+def test_a_withdrawn_predict_says_why_its_noticings_count_in_their_stage_again():
+    # The same with the goal withdrawn rather than changed: with no goal the triage is Models'
+    # again, and the revert is the cause.
+    fx = path_fuzzer.METABOLOMICS
+    state, _artifacts, records = path_fuzzer.answered_through(fx, "prediction", stop="exclusions")
+    goal = next(r for r in records if r.decision.kind == "set_purpose")
+    state = _decide(records, {"kind": "revert", "decision_id": goal.id})
+    assert state.purpose is None
+    data, line = _line(_log_of(state, records, fx=fx), ACQUISITION)
+    assert (line.reopened_by.kind, line.reopened_by.decision_id) == ("revert", records[-1].id)
+    assert any(line.id in r.questions for r in data.reopened)
+
+
+def test_a_goal_that_was_never_predict_or_is_predict_now_reopens_no_noticing():
+    fx = path_fuzzer.METABOLOMICS
+    # a first answer of Estimate is the journey going forward: Your data counts the noticing from
+    # the start, and nothing reopened it
+    state, _artifacts, records = path_fuzzer.answered_through(fx, "inference", stop="exclusions")
+    data, line = _line(_log_of(state, records, fx=fx), ACQUISITION)
+    assert line.status == "open" and line.reopened_by is None and not data.reopened
+    assert not data.progress.complete
+    # changed to Predict: the noticing counts toward Results' triage, and Your data is complete
+    state = _decide(records, {"kind": "set_purpose", "purpose": "prediction"})
+    data, line = _line(_log_of(state, records, fx=fx), ACQUISITION)
+    assert line.reopened_by is None and not data.reopened and data.progress.complete
+    # Predict, then Estimate, then Predict again: the goal standing is Predict's
+    state = _decide(records, {"kind": "set_purpose", "purpose": "inference"})
+    assert _line(_log_of(state, records, fx=fx), ACQUISITION)[1].reopened_by is not None
+    state = _decide(records, {"kind": "set_purpose", "purpose": "prediction"})
+    data, line = _line(_log_of(state, records, fx=fx), ACQUISITION)
+    assert line.reopened_by is None and not data.reopened and data.progress.complete
+
+
+def test_a_noticing_disposed_of_before_the_goal_changed_from_predict_is_not_reopened():
+    fx = path_fuzzer.METABOLOMICS
+    state, _artifacts, records = path_fuzzer.answered_through(fx, "prediction", stop="exclusions")
+    _decide(records, {"kind": "dismiss_finding", "finding_id": ACQUISITION})
+    state = _decide(records, {"kind": "set_purpose", "purpose": "inference"})
+    data, line = _line(_log_of(state, records, fx=fx), ACQUISITION)
+    assert line.status == "answered" and line.reopened_by is None
+    assert data.progress.complete and not data.reopened
+
+
 # ── each new check bites ─────────────────────────────────────────────────────
 
 
@@ -373,3 +466,10 @@ def test_a_reopening_that_names_no_cause_is_caught(monkeypatch):
     monkeypatch.setattr(quest, "_declaration_asked_again", lambda *args: None)
     monkeypatch.setattr(quest, "_asked_again", lambda *args: None)
     assert _found(fuzz(40), "I11")
+
+
+def test_a_goal_change_from_predict_that_names_no_cause_is_caught(monkeypatch):
+    monkeypatch.setattr(quest, "_goal_moved_the_triage", lambda *args: None)
+    found = path_fuzzer.check(path_fuzzer.run_journey(1181))
+    assert any(v.invariant == "I11" and v.index == 15 and "data was complete" in v.message
+               for v in found), found

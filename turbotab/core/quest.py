@@ -62,7 +62,9 @@ question reopened by another answer in its own stage says so too ("Your change t
 in Your data reopened 1 question.", FOUNDATION §3's "the join added 12 columns, so what each new
 column is gets read again"; ``within``); a result its own stage's answers left out of date is not
 a drop-back (each answer redraws its stage's cards). A result whose stage is blocked (the analysis
-was withdrawn) is never computed again, so it is not out of date.
+was withdrawn) is never computed again, so it is not out of date. Under Predict an open noticing
+counts toward the triage in Results, not toward the stage it sits in (ruling R-a); a change of the
+goal from Predict makes it count there again, so each open noticing there names that change.
 
 **While a reading recomputes.** A question whose applicability or answer is read from a stage
 (the outcome's reading, the rows' structure, the form card) waits while that stage recomputes.
@@ -1406,6 +1408,29 @@ def _goal_changed_to_predict(log: _Log) -> ReopenedBy | None:
     return None
 
 
+def _goal_moved_the_triage(log: _Log) -> ReopenedBy | None:
+    """The latest goal change (or revert) that made the goal other than Predict after Predict, if
+    the goal is still the one it set. Under Predict an open noticing counts toward the triage in
+    Results (ruling R-a), not toward the stage it is placed in; under any other goal, or none, it
+    counts there, so that stage, complete before perhaps, asks one more and says why (§7.2 I11:
+    the path fuzzer's seeds 475, 1181 and 1221)."""
+    from turbotab.core.sweep import gate_stage
+
+    for record in reversed(log.live):
+        if record.decision.kind not in ("set_purpose", FOLLOWS_WHAT_IT_UNDOES):
+            continue
+        before, after = log.state_at(record.seq - 1), log.state_at(record.seq)
+        purposes = (getattr(before, "purpose", None), getattr(after, "purpose", None))
+        if purposes[0] == purposes[1]:
+            continue
+        stage = log.stage_of(record)
+        if (before is None or after is None or gate_stage(before) != "results"
+                or gate_stage(after) == "results" or stage is None):
+            return None
+        return ReopenedBy(decision_id=record.id, kind=record.decision.kind, stage=stage)
+    return None
+
+
 def _stated_reason(key: str) -> str | None:
     """Why a default TurboTab recorded itself holds (the split under Estimate)."""
     if key == "split":
@@ -2538,6 +2563,15 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     # the goal becomes Predict (the path fuzzer's I11). Under Estimate (and with no goal) the
     # triage is Models' own, and nothing changes.
     gate = sweeps.gate_stage(state)
+    # The other side of R-a (the path fuzzer's I11): once the goal moves from Predict, an open
+    # noticing counts in the stage it is placed in again, so that stage, complete before
+    # perhaps, says the goal's change is why it asks one more.
+    moved = _goal_moved_the_triage(log) if gate != "results" else None
+    if moved is not None:
+        for home, line in placed:
+            if (home != "results" and line.source == "finding" and line.label == DECIDE
+                    and line.counted and line.status == "open" and line.reopened_by is None):
+                line.reopened_by = moved
     out = []
     for key, name in STAGES:
         mine = sorted((l for stage, l in placed if stage == key),
