@@ -258,6 +258,22 @@ export async function confirmAskCard(_page: Page, scope: Locator): Promise<numbe
   return confirmAsk(scope);
 }
 
+/** Whether a line is a column's own role line (core/quest.py `_role_lines`; W1-R R1): a role the
+ *  roles answer recorded below high confidence, waiting for its own confirmation. */
+export const isRoleLine = (line: QuestLine) => line.source === "reading" && line.key.startsWith("confirm_role:");
+
+/**
+ * A column's own role line answered on its card as a researcher confirms the app's proposal: the
+ * press that records the role as proposed (the role card's `role-option-<role>`, the line's role
+ * item's value), one column per press (BLUEPRINT §14 rule 2).
+ */
+export async function confirmRole(page: Page, li: Locator, line: QuestLine): Promise<void> {
+  const role = line.items.find((i) => i.kind === "role")!.value;
+  const press = li.getByTestId(`role-option-${role}`);
+  await controlReady(page, press, `the confirmation of ${line.name}`);
+  await press.click();
+}
+
 /**
  * A noticing answered on its own card: a repair's first option, as the card lists it (the engine's
  * default order), focused and recorded with Enter; a noticing with no repair is kept as it is

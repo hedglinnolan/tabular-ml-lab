@@ -36,6 +36,8 @@ import { onMock } from "./backend";
 import { nhanesExport } from "./nhanes";
 import {
   answerFinding,
+  confirmRole,
+  isRoleLine,
   askExplanations,
   calibrationDifferences,
   comparisonsCatchWhatDiffers,
@@ -96,6 +98,9 @@ const answers: Answers = {
   unavailable: ["join_files", "import_codebook"],
   async answer(page, li, line) {
     if (line.source === "finding") return answerFinding(page, li, line);
+    // A role proposed below high confidence waits in Your data for its own confirmation (W1-R R1):
+    // the researcher confirms each as the app proposed it, one column per press.
+    if (isRoleLine(line)) return confirmRole(page, li, line);
     switch (lineId(line)) {
       case "question:lens":
         return pickOption(page, li, "option-clinical", { space: true });
