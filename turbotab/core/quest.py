@@ -91,7 +91,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Literal, Mapping, Sequence
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from turbotab.core.fit_press import FitLock
 
@@ -1096,6 +1096,14 @@ class QuestLog(BaseModel):
     stages: list[QuestStage]
     kinds: dict[str, str]
     fit: FitLock | None = None  # Fit and the plan's lock (SIZING P0.8)
+    # The questions still to come that no line lists (:func:`unlisted_to_come`), which the triage
+    # reads as the quest log does (W1-W round 2, P1); never served.
+    _unlisted: frozenset[str] = PrivateAttr(default_factory=frozenset)
+
+    @property
+    def unlisted(self) -> frozenset[str]:
+        """The questions still to come that no line lists (:func:`unlisted_to_come`)."""
+        return self._unlisted
 
 
 def _get(obj: Any, name: str, default: Any = None) -> Any:
@@ -2273,6 +2281,15 @@ def not_known_until_the_outcome_is_read(step: Any, state: Any) -> bool:
             and "target_info" in (_get(step, "waiting_on") or ()) and not _holding(step, state))
 
 
+def unlisted_to_come(steps: Sequence[Any], state: Any) -> frozenset[str]:
+    """The questions still to come that the quest log does not list: an event or follow-up question
+    with no answer, waiting while the outcome is read (:func:`not_known_until_the_outcome_is_read`).
+    Not listed is not answered: a noticing such a question decides is still to come at it, never
+    left as it is under an answer that stands (the re-walk's N9 beside N5; W1-W round 2, P1)."""
+    return frozenset(str(_get(s, "key")) for s in steps
+                     if not_known_until_the_outcome_is_read(s, state))
+
+
 def _unknown_while_read(step: Any, state: Any) -> bool:
     """A step with no answer standing that waits only for the reading that says whether it is
     asked at all (``READ_BY_GATE``): what it will be is not known until that reading is back, so a
@@ -2461,7 +2478,8 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     _reopened_only_if_complete(placed, log)
     _hold_the_families(placed)
     sweeps.weigh(placed, state, facts)
-    sweeps.cover_noticings(placed, state, log, findings)
+    unlisted = unlisted_to_come(steps, state)
+    sweeps.cover_noticings(placed, state, log, findings, unlisted)
     frontier = _frontier(steps, stages, shown_at, fit, state)
     # Under Estimate and Describe the exhibits are Results' objectives, none placed yet (C7a adds
     # placement): Results reads 0 of N, and Write-up is not reached until Results is placed.
@@ -2506,7 +2524,9 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
                                          served_exhibits(state))
         out.append(QuestStage(key=key, name=name, reached=reached, progress=progress, sweep=sweep,
                               lines=mine, reopened=reasons))
-    return QuestLog(stages=out, kinds=kind_stages(), fit=fit)
+    made = QuestLog(stages=out, kinds=kind_stages(), fit=fit)
+    made._unlisted = unlisted
+    return made
 
 
 __all__ = [
@@ -2520,7 +2540,7 @@ __all__ = [
     "exhibits_waiting",
     "asks", "explore_label", "explore_place", "finding_place", "fit_waits", "goal_of", "kind_place",
     "kind_stages", "noticing_place",
-    "OUTCOME_KIND_QUESTIONS", "not_known_until_the_outcome_is_read",
+    "OUTCOME_KIND_QUESTIONS", "not_known_until_the_outcome_is_read", "unlisted_to_come",
     "noticing_places", "noticing_stage", "noticing_stages", "quest_log", "question_reads",
     "ROLE_GROUP_ITEM", "record_stage", "record_steps", "role_choices", "role_group_head",
     "role_group_key", "role_group_name", "role_group_reason", "role_line_key", "role_line_reason",

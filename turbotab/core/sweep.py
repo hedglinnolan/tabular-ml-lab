@@ -548,10 +548,11 @@ def recommend(state: Any, finding: Mapping[str, Any], open_questions: set[str]
        reach the focal estimate only as adjustment terms (:func:`adjustment_only`) changes no
        number here, exactly: the model matrix spans the same space either way
        (Frisch–Waugh–Lovell; ``materiality.invariance``).
-    3. A finding routed to a question still to come is acted on at that question. One routed to
-       a question already answered is left as it is, since that answer stands: rule 4 says what
-       that means (a limitation where it could bias), and its reason names the question, where
-       changing the answer is how to act on it instead (the re-walk's N9). A finding with a repair
+    3. A finding routed to a question still to come (``open_questions``: open, waiting, or not
+       listed yet with no answer) is acted on at that question. One routed to a question already
+       answered is left as it is, since that answer stands: rule 4 says what that means (a
+       limitation where it could bias), and its reason names the question, where changing the
+       answer is how to act on it instead (the re-walk's N9). A finding with a repair
        is decided in Your data, where the repair is chosen: it is acted on there. The reason names
        the stage and the question.
     4. A note (info) changes no number, nor does a finding about columns no analysis reads.
@@ -616,8 +617,12 @@ def reparameterized(state: Any, finding: Mapping[str, Any]) -> Movement | None:
                       f"stay exactly as they are.")
 
 
-def _open_questions(lines: Iterable[QuestLine]) -> set[str]:
-    return {l.key for l in lines if l.source == "question" and l.status in ("open", "waiting")}
+def _open_questions(lines: Iterable[QuestLine], unlisted: Iterable[str] = ()) -> set[str]:
+    """The questions still to come: each listed open or waiting, and each the quest log does not
+    list yet with no answer (``unlisted``, ``quest.unlisted_to_come``: the event question while the
+    outcome is read). A question is already answered only where its own line says so."""
+    return {l.key for l in lines if l.source == "question" and l.status in ("open", "waiting")} \
+        | set(unlisted)
 
 
 def basis(disposition: str, reason: str) -> str:
@@ -717,7 +722,7 @@ def triage(state: Any, log: QuestLog, findings: Any, records: Sequence[Any] = ()
     stage = gate_stage(state)
     by_id = {str(f.get("id")): f for f in _get(findings, "findings") or []}
     lines = {l.key: (s.key, l) for s in log.stages for l in s.lines if l.source == "finding"}
-    open_questions = _open_questions(l for s in log.stages for l in s.lines)
+    open_questions = _open_questions((l for s in log.stages for l in s.lines), log.unlisted)
     held = _held_noticings(state)
     writer = _writer(_Log(list(records)), stage, "noticings") if held else None
     items, changed = [], []
@@ -764,16 +769,17 @@ def triage(state: Any, log: QuestLog, findings: Any, records: Sequence[Any] = ()
 
 
 def cover_noticings(placed: Sequence[tuple[str, QuestLine]], state: Any, log: _Log,
-                    findings: Any = None) -> None:
+                    findings: Any = None, unlisted: Iterable[str] = ()) -> None:
     """A noticing the triage disposed of (it changes no number here, or it is left as a
     limitation) is answered by the triage's record while that disposition stands (the triage
     still recommends what, and why, it did then); one to act on stays open for its decision.
-    A noticing that blocks, or is no longer among ``findings``, is never answered by it."""
+    A noticing that blocks, or is no longer among ``findings``, is never answered by it.
+    ``unlisted``: the questions still to come that no line lists, as :func:`triage` reads them."""
     held = _held_noticings(state)
     if not held:
         return
     by_id = {str(f.get("id")): f for f in _get(findings, "findings") or []}
-    open_questions = _open_questions(l for _s, l in placed)
+    open_questions = _open_questions((l for _s, l in placed), unlisted)
     writer = _writer(log, gate_stage(state), "noticings")
     for _stage, line in placed:
         if line.source != "finding" or line.status != "open" or line.key not in by_id:

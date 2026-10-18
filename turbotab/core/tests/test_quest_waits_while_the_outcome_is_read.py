@@ -14,7 +14,7 @@ its reading fresh), the lines after it wait for it by name, as before.
 """
 from __future__ import annotations
 
-from turbotab.core import decisions, quest
+from turbotab.core import decisions, quest, sweep
 from turbotab.core.interview import QUESTION_KEYS, InterviewStep
 from turbotab.core.tests.test_stage_registry import line, record, stage
 
@@ -81,3 +81,63 @@ def test_an_event_question_that_is_asked_is_waited_for_by_name():
     assert line(log, "event").status == "open"
     assert "event" in _named(log)["models"]
     assert _named(log)["task"] == ["event"]
+
+
+# ── N9 beside N5: a noticing the unlisted event question decides (W1-W round 2, P1) ──────────
+#
+# The triage proposes a noticing routed to a question as a limitation only where that question is
+# already answered and its answer stands (the re-walk's N9). While the outcome's reading recomputes
+# the event question is not listed (N5), but it is not answered: a noticing it decides is still to
+# come, as it was while the event line was listed as waiting. Built by construction: a finding
+# routed to the event question, on the steps above.
+POSITIVE_CLASS = {"findings": [
+    {"id": "positive_class", "severity": "warning", "summary": "Which class is the event?",
+     "affected_columns": ["glucose"], "routes_to": "event", "repairs": [], "answered_by": None}]}
+STILL_TO_COME = "It is decided at the event question in Your question, still to come."
+
+
+def _event_answered() -> list[InterviewStep]:
+    return [InterviewStep(key="event", status="answered", decision_id="answer-event")
+            if s.key == "event" else s for s in _steps("models", [])]
+
+
+def _triaged(steps: list[InterviewStep], records: list = RECORDS):
+    state = decisions.fold(records)
+    log = quest.quest_log(state, records, steps, findings=POSITIVE_CLASS)
+    [item] = sweep.triage(state, log, POSITIVE_CLASS, records).items
+    return log, item
+
+
+def test_a_noticing_the_unlisted_event_question_decides_is_still_to_come():
+    log, item = _triaged(_steps("event", ["target_info"]))
+    assert "event" not in {l.key for s in log.stages for l in s.lines}  # N5: not listed yet
+    assert (item.recommended, item.blocker, item.limitation) == ("act_on_it", False, False)
+    assert item.reason == STILL_TO_COME
+    # The same while the event question is listed and open.
+    _log_open, listed = _triaged(_steps("event", []))
+    assert (listed.recommended, listed.reason) == ("act_on_it", STILL_TO_COME)
+
+
+def test_a_noticing_the_answered_event_question_decides_is_left_as_a_limitation():
+    # The guard's other side: the event question answered, its answer standing.
+    log, item = _triaged(_event_answered())
+    assert line(log, "event").status == "answered"
+    assert (item.recommended, item.limitation) == ("could_bias", True)
+    assert item.reason.startswith("It is decided at the event question in Your question, already "
+                                  "answered, and that answer stands.")
+
+
+def test_the_quest_log_and_the_triage_read_the_unlisted_question_alike():
+    # A disposition the person chose against the recommendation while the event question is not
+    # listed (a limitation, though it is still to come) stands while that recommendation does: the
+    # triage reads it as recorded, and the quest log's noticing line is answered by the same record.
+    steps = _steps("event", ["target_info"])
+    log, item = _triaged(steps)
+    d = {"kind": "confirm_sweep", "stage": "results", "sweep": "noticings",
+         "lines": [{"id": item.line, "key": item.id, "value": "could_bias",
+                    "basis": sweep.basis(item.recommended, item.reason)}]}
+    records = [*RECORDS, record(5, d)]
+    after_log, after = _triaged(steps, records)
+    assert after.recorded == "could_bias"
+    noticing = line(after_log, "positive_class")
+    assert (noticing.status, noticing.decision_id) == ("answered", "r5")
