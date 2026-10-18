@@ -123,7 +123,11 @@ def test_a_departure_whose_own_rows_repeat_is_cr2_by_the_unit_the_rest_hc3(tmp_p
     assert {k for k, r in ref.items() if r["repeats"] > 0} == {dropped}  # the construction
     _held_to_r(art["curve"], ref)
     assert art["reported"]["covariance"] == "HC3"  # the primary's rows do not repeat
-    assert "cluster-robust (CR2) intervals by that unit" in art["methods"]
+    # The methods say both intervals, each where the fit gives it (R's above), not the primary's.
+    assert ("Each specification's interval is the one the fit gives its rows: heteroskedasticity-"
+            "robust (HC3) where they do not repeat within a unit; cluster-robust (CR2) by the unit "
+            "where they repeat within one.") in art["methods"]
+    assert "as the primary" not in art["methods"]
     # The plan with the age rule dropped, through the fit stage: CR2 by `pid`, R's interval.
     plan = Run(revisits(inside=False), tmp_path / "plan",
                state(exclusions=[d.ExclusionRule(**RULES[1])]))

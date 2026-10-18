@@ -27,8 +27,10 @@ The methods sentence names these alternatives as the engine derived them
 **The primary stays the reported estimate.** The curve follows the linear family's coefficient of
 the declared exposure, the fit stage's own table. Each specification is refit by
 ``spec_curve.linear_fitter`` on the table's own columns (complete cases on each specification's
-columns), as the fit would fit the plan that specification is: its intervals HC3, or CR2 by the
-unit its own rows repeat in, or design-based under the surveyed population (below). The primary
+columns), as the fit would fit the plan that specification is: its intervals HC3 (for a yes/no
+outcome Wald, or Firth's profile interval where a column separates the outcome), or CR2 by the
+unit its own rows repeat in, or design-based under the surveyed population (below), so they need
+not be the primary's, and the methods sentence names each kind where the fit gives it. The primary
 specification must reproduce the reported estimate (its estimate and interval within
 :data:`AGREEMENT` of its standard error, on the same rows); otherwise no specification is shown and
 the curve is refused, since the others would not be fitted as the primary is. That refusal quotes
@@ -44,8 +46,9 @@ no estimate: it is served where no estimate is.
 * **Readings.** A departure that adds a column is judged by the fit's own reading gate
   (``readings.predictors_or_ask``, as the design stage calls it) with that column no longer left
   out: a role or a code-or-amount reading the plan would wait for leaves the departure not
-  estimated, with the fit's ask as its reason. A column whose role puts it in no model (an
-  examined alternative may add one) is asked its code-or-amount reading as a predictor is.
+  estimated, its reason which reading is not answered and where it is answered, without the fit's
+  question, which the curve cannot take. A column whose role puts it in no model (an examined
+  alternative may add one) is asked its code-or-amount reading as a predictor is.
 * **What it cannot vary.** The alternatives are derived from the record, so each refusal of what
   cannot be varied says why with no exit to declare more or fewer: no recorded choice at all
   (:data:`NOTHING_TO_VARY`), more one-at-a-time specifications than ``spec_curve.CAP``
@@ -133,13 +136,14 @@ NOTHING_TO_VARY = ("The plan records no exclusion rule, no covariate the adjustm
 CAP_REFUSAL = ("Changing each recorded choice one at a time gives {n:,} specifications, more than "
                "the {cap:,} the curve fits at most, so it is not drawn.")
 # The outcomes whose model the refit does not follow (``spec_curve.linear_fitter`` refits least
-# squares or logistic regression), each named in words.
+# squares or logistic regression), each named in words. ``{outcome}`` is the outcome column, and
+# under a time to an event the event column with its follow-up (:func:`outcome_refused`).
 OUTCOME_WORDS = {"multiclass": "an outcome of several classes",
                  "ordinal": "an outcome of ordered levels",
                  "time_to_event": "a time to an event"}
 OUTCOME_REFUSAL = ("The curve refits one coefficient of what you study per specification, by least "
                    "squares for a numeric outcome or logistic regression for a yes/no one; "
-                   "`{target}` is {words}, so the curve is not drawn for it.")
+                   "{outcome} is {words}, so the curve is not drawn for it.")
 # The alternatives each kind of choice derives (its key's prefix), as the methods sentence says.
 KIND_WORDS: tuple[tuple[str, str], ...] = (
     ("exclusion:", "each exclusion rule dropped"),
@@ -147,6 +151,21 @@ KIND_WORDS: tuple[tuple[str, str], ...] = (
     ("left_out:", "each covariate the adjustment answers left out added"),
     ("examined:", "each alternative the analyst declared as examined taken instead"),
 )
+# The estimator every specification is refitted by (``spec_curve.linear_fitter``), by the task.
+ESTIMATOR_WORDS = {"regression": "least squares", "binary": "logistic regression"}
+# Each interval the refit gives a specification, by its ``covariance`` (``models.inference``), and
+# where the fit gives it: on rows that repeat within a unit CR2 by it (a separated logistic model
+# there reports none, so that specification is not estimated), else HC3, or for a yes/no outcome
+# Wald, or Firth's profile interval where a column separates the outcome. Under a survey design
+# every one is design-based instead (``design``), which the design's own sentence says.
+INTERVAL_WORDS = {
+    "HC3": "heteroskedasticity-robust (HC3) where they do not repeat within a unit",
+    "model": ("the logistic model's Wald interval where they do not repeat within a unit and no "
+              "column separates the outcome"),
+    "profile": ("the profile penalized-likelihood interval of Firth's logistic regression where a "
+                "column separates the outcome"),
+    "CR2": "cluster-robust (CR2) by the unit where they repeat within one",
+}
 
 
 class _Model(BaseModel):
@@ -332,19 +351,31 @@ def offered(state: Any) -> S.Eligibility:
     measure = getattr(current_estimand(state), "measure", None)
     if measure in MARGINAL:
         return S.Eligibility(False, MARGINAL_REFUSAL.format(words=MEASURE_WORDS[measure]), ())
-    outcome = outcome_refused(getattr(state, "task", None), getattr(state, "target", None))
+    outcome = outcome_refused(getattr(state, "task", None), getattr(state, "target", None),
+                              follow_up_of(state))
     if outcome is not None:
         return S.Eligibility(False, outcome, ())
     return eligibility
 
 
-def outcome_refused(task: str | None, target: str | None) -> str | None:
+def follow_up_of(state: Any) -> str | None:
+    """The follow-up time column of a time-to-event outcome (``set_follow_up``), None unanswered."""
+    return getattr(getattr(state, "follow_up", None), "time_column", None)
+
+
+def outcome_refused(task: str | None, target: str | None,
+                    follow_up: str | None = None) -> str | None:
     """Why the refit does not follow an outcome of this ``task`` (:data:`OUTCOME_REFUSAL`); None
-    for a numeric or yes/no outcome, or one whose task is not known yet."""
+    for a numeric or yes/no outcome, or one whose task is not known yet. Under a time to an event
+    the outcome column is the event, so the outcome is named as the event with its follow-up
+    (``follow_up``, its time column, when it is answered)."""
     if task in (None, "regression", "binary"):
         return None
     words = OUTCOME_WORDS.get(str(task), f"a {str(task).replace('_', ' ')} outcome")
-    return OUTCOME_REFUSAL.format(target=target, words=words)
+    outcome = f"`{target}`"
+    if task == "time_to_event":
+        outcome += f" with its follow-up `{follow_up}`" if follow_up else " with its follow-up"
+    return OUTCOME_REFUSAL.format(outcome=outcome, words=words)
 
 
 def varied(choices: Sequence[S.Choice]) -> None:
@@ -421,31 +452,74 @@ def not_refitted(spec: Any, *, gaps: bool) -> list[str]:
 
 def reading_wait(state: Any, added: Sequence[str], summaries: Mapping[str, Any],
                  store: Any) -> str | None:
-    """Why the fit would wait before fitting the plan with ``added`` among its predictors, in the
-    fit's own words; None when every reading that plan rests on is settled. The gate is the fit's
-    (``readings.predictors_or_ask`` over the column summaries, as the design stage calls it) with
-    ``added`` no longer left out. A column the gate does not count as a predictor (its role puts it
-    in no model) is asked its code-or-amount reading as the gate asks a predictor's
-    (``readings.unsettled_codes``)."""
+    """Why the fit would wait before fitting the plan with ``added`` among its predictors: which
+    reading is not answered and where it is answered (:func:`unanswered`), never the fit's question,
+    which the curve cannot take; None when every reading that plan rests on is settled. The gate is
+    the fit's (``readings.predictors_or_ask`` over the column summaries, as the design stage calls
+    it) with ``added`` no longer left out. A column the gate does not count as a predictor (its
+    role puts it in no model) is asked its code-or-amount reading as the gate asks a predictor's
+    (``readings.unsettled_codes``). Two answers that disagree (codes against the energy or scales
+    answer) wait on no unanswered reading, and are said in the fit's own words."""
     from turbotab.core.decisions import left_out
-    from turbotab.core.readings import (ask_text, listing, predictors_or_ask, unsettled_codes,
+    from turbotab.core.readings import (Unsettled, ask_exits, predictors_or_ask, unsettled_codes,
                                         whole_facts)
 
     wanted = set(added)
     try:
         preds = predictors_or_ask(state, summaries, drop=[c for c in left_out(state)
                                                           if c not in wanted], store=store)
-    except ValueError as exc:  # ``readings.Unsettled``: the fit asks, never guesses
+    except Unsettled as exc:  # the fit asks, never guesses
+        return unanswered(exc.readings, exc.exits) or str(exc)
+    except ValueError as exc:
         return str(exc)
     extra = [c for c in added if c not in preds]
     codes = unsettled_codes(state, extra, whole_facts(extra, summaries, store)) if extra else []
     if not codes:
         return None
-    names = [r.column for r in codes]
-    one = len(names) == 1
-    return (f"Whether {listing(names)} {'holds' if one else 'hold'} codes for categories (one "
-            f"indicator per level) or amounts (one slope) is not answered, and the fit waits for "
-            f"the answer. {ask_text(codes, state)}")
+    return unanswered(codes, ask_exits(codes, state))
+
+
+def _reading_words(r: Any, commas: set[str]) -> str:
+    """Which reading ``r`` is, in words (``commas``: the columns whose ask is how their commas
+    read, a text-number reading the user answered as amounts)."""
+    column = f"`{r.column}`"
+    if r.kind == "role":
+        return f"the role of {column}"
+    if r.kind == "code_or_count" and r.column in commas:
+        return f"how the commas in {column} read"
+    if r.kind == "code_or_count":
+        return f"whether {column} holds codes for categories or amounts"
+    if r.kind == "detection_limit":
+        return f"how the values of {column} below a detection limit read"
+    return f"how {column} reads"
+
+
+def unanswered(readings: Sequence[Any], exits: Sequence[Mapping[str, Any]]) -> str | None:
+    """The readings of ``readings`` that wait for an answer, in words, and the quest stage where
+    each is answered: where the decisions of the fit's ``exits`` are placed (``quest.kind_place``);
+    no question. None when none waits (two answers that disagree)."""
+    from turbotab.core.quest import STAGE_NAMES, kind_place
+
+    decided = [e["decision"] for e in exits if isinstance(e.get("decision"), Mapping)]
+    commas = {str(x.get("finding_id"))[len("text_numbers__"):] for x in decided
+              if x.get("kind") == "apply_repair"
+              and str(x.get("finding_id") or "").startswith("text_numbers__")}
+    what = list(dict.fromkeys(_reading_words(r, commas) for r in readings if not r.settled))
+    if not what:
+        return None
+    where: list[str] = []
+    for x in decided:
+        try:
+            stage = STAGE_NAMES[kind_place(str(x.get("kind"))).stage]
+        except KeyError:
+            continue
+        if stage not in where:
+            where.append(stage)
+    one = len(what) == 1
+    text = f"{_listing(what)} {'is' if one else 'are'} not answered yet"
+    if where:
+        text += f"; {'it is' if one else 'they are'} answered in {_listing(where)}"
+    return text + "."
 
 
 # ── the reported estimate ────────────────────────────────────────────────────
@@ -532,18 +606,25 @@ def says_of(curve: S.SpecCurve, reported: MatteredReported | None, task: str) ->
 def methods_sentence(curve: S.SpecCurve, *, task: str) -> str:
     """The methods sentence of the stage's curve (one choice at a time, :data:`CROSSING`): the
     alternatives named as the engine derived them from the recorded choices (:data:`KIND_WORDS`,
-    the kinds the curve holds), the primary the reported estimate."""
+    the kinds the curve holds), each specification refitted by the primary's estimator on its own
+    rows (:data:`ESTIMATOR_WORDS`), the primary the reported estimate. Each specification's interval
+    is the one the fit gives its own rows, which need not be the primary's: the sentence names the
+    intervals the estimated specifications have, each where the fit gives it
+    (:data:`INTERVAL_WORDS`, by each specification's own ``covariance``); under a survey design
+    every one is design-based."""
     keys = [str(c["key"]) for c in curve.choices]
     kinds = [words for prefix, words in KIND_WORDS if any(k.startswith(prefix) for k in keys)]
     sentence = ("As a sensitivity analysis after the analysis plan was locked, the exposure's "
                 "estimate was refitted with each recorded analytic choice changed, one at a time"
                 + (": " + _listing(kinds) if kinds else "") + "; each specification estimated "
-                "was fitted as the primary analysis was, and the primary remains the reported "
-                "estimate"
+                "was refitted by " + ESTIMATOR_WORDS.get(task, "the primary's estimator")
+                + (" on its own domain of the design" if curve.weighted else " on its own rows")
+                + ", and the primary remains the reported estimate"
                 + (" (the log of its odds ratio)" if task == "binary" else "") + ".")
-    if curve.clustered:
-        sentence += (" A specification whose rows repeat within a unit has cluster-robust (CR2) "
-                     "intervals by that unit, as the fit gives such rows.")
+    covariances = {s.covariance for s in curve.specs} - {"design"}
+    if covariances and covariances <= set(INTERVAL_WORDS):
+        sentence += (" Each specification's interval is the one the fit gives its rows: "
+                     + "; ".join(w for k, w in INTERVAL_WORDS.items() if k in covariances) + ".")
     if curve.weighted:
         sentence += (" Every specification was design-based, an exclusion rule defining a domain "
                      "of the full design.")
@@ -613,7 +694,8 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
     exposure = str(estimand.exposure)
     target = str(state.target)
     task = _task(ctx)
-    outcome = outcome_refused(task, target)  # the task as the fit reads it, recorded or detected
+    # the task as the fit reads it, recorded or detected
+    outcome = outcome_refused(task, target, follow_up_of(state))
     if outcome is not None:
         raise S.SpecCurveRefused(outcome, ())
     spec = DesignSpec.from_dict(ctx.inputs["design"].objects["spec"])
@@ -911,11 +993,12 @@ def served(artifact: Any, *, status: str, fresh: bool, key: str | None, lock_id:
         error=error)
 
 
-__all__ = ["AGREEMENT", "CAP_REFUSAL", "CROSSING", "EXAMINED", "FAMILY", "KIND_WORDS", "LOCKED",
-           "MARGINAL_REFUSAL", "MATTERED_READS", "MATTERED_REQUIRES", "Mattered",
-           "MatteredArtifact", "MatteredCurve", "MatteredExamined", "MatteredReported",
-           "NOTHING_TO_VARY", "OUTCOME_REFUSAL", "OUTCOME_WORDS", "RECORDED", "STAGE",
-           "adjustment_choices", "agrees", "curve_for", "examined_choices", "examined_of",
-           "exclusion_choices", "goal_of", "mattered_stage", "methods_sentence", "not_refitted",
-           "offered", "outcome_refused", "reading_wait", "reported_of", "says_of", "served",
-           "shows_estimates", "varied", "with_lock", "withheld"]
+__all__ = ["AGREEMENT", "CAP_REFUSAL", "CROSSING", "ESTIMATOR_WORDS", "EXAMINED", "FAMILY",
+           "INTERVAL_WORDS", "KIND_WORDS", "LOCKED", "MARGINAL_REFUSAL", "MATTERED_READS",
+           "MATTERED_REQUIRES", "Mattered", "MatteredArtifact", "MatteredCurve",
+           "MatteredExamined", "MatteredReported", "NOTHING_TO_VARY", "OUTCOME_REFUSAL",
+           "OUTCOME_WORDS", "RECORDED", "STAGE", "adjustment_choices", "agrees", "curve_for",
+           "examined_choices", "examined_of", "exclusion_choices", "follow_up_of", "goal_of",
+           "mattered_stage", "methods_sentence", "not_refitted", "offered", "outcome_refused",
+           "reading_wait", "reported_of", "says_of", "served", "shows_estimates", "unanswered",
+           "varied", "with_lock", "withheld"]

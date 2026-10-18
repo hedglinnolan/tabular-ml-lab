@@ -475,16 +475,25 @@ def eth_fit(table: pd.DataFrame, *, codes: bool) -> tuple[float, float, float, i
 # plan adjusting for `eth` refuses with it.
 ETH_ASK = ("`eth` holds whole numbers, which may be codes for categories (one indicator per level) "
            "or amounts (one slope); the fit waits for the answer for each.")
+# A departure adding `eth` waits as that plan would, and says which reading is unanswered and where
+# it is answered (Your data's readings card), never the fit's question, which the curve cannot take.
+ETH_WAITS = ("With this choice changed, the fit would first wait for an answer, so it is not "
+             "estimated: whether `eth` holds codes for categories or amounts is not answered yet; "
+             "it is answered in Your data.")
 
 
 @pytest.mark.parametrize("answer", [None, "code", "amount"])
 def test_an_added_column_of_whole_numbers_waits_for_its_code_or_amount_reading(tmp_path, answer):
     """`eth` is a covariate the adjustment answers leave out (after the exposure), its whole numbers
     never answered as codes or amounts. A plan adjusting for it waits for that answer, so the
-    departure adding it does too: unanswered it is not estimated, with the fit's ask as its reason;
-    answered as codes it is six groups, as an amount one straight line, each statsmodels' fit. An
-    examined alternative adding it is judged the same way, and so is one adding it while its role
-    puts it in no model (`eth` with no role)."""
+    departure adding it does too: unanswered it is not estimated, its reason the reading that is
+    unanswered and where it is answered, with no question; answered as codes it is six groups, as
+    an amount one straight line, each statsmodels' fit. An examined alternative adding it is judged
+    the same way, and so is one adding it while its role puts it in no model (`eth` with no
+    role)."""
+    from turbotab.core.decisions import left_out
+    from turbotab.core.readings import Unsettled, predictors_or_ask
+
     amounts = {**ef.AMOUNTS, **({"code_or_count:eth": answer} if answer else {})}
     st = state(roles={**ef.ROLES, "eth": "covariate"},
                answers={**ef.ANSWERS, "eth": AFTER_EXPOSURE}, amounts=amounts)
@@ -510,9 +519,8 @@ def test_an_added_column_of_whole_numbers_waits_for_its_code_or_amount_reading(t
         held = [x for x in missing if x["picks"].get(key) == option]
         if want is None:
             assert not got and len(held) == 1, key
-            assert "`eth`" in held[0]["reason"] and "codes for categories" in held[0]["reason"]
-            if key == "left_out:eth":
-                assert ETH_ASK in held[0]["reason"]
+            assert held[0]["reason"] == ETH_WAITS, key
+            assert "?" not in held[0]["reason"] and "Tell me" not in held[0]["reason"], key
         else:
             assert not held and len(got) == 1, (key, held)
             est, low, high, n = want
@@ -521,6 +529,20 @@ def test_an_added_column_of_whole_numbers_waits_for_its_code_or_amount_reading(t
             assert got[0]["high"] == pytest.approx(high, rel=1e-9) and got[0]["n"] == n, key
     # Every other departure is drawn either way (the guard is silent where nothing waits).
     assert len(curve["specs"]) == len(curve["choices"]) + (0 if answer is None else 1)
+    # The fit's own gate over the plan adjusting for `eth` waits exactly where the departure does,
+    # and asks the question the departure's reason leaves to Your data.
+    from turbotab.core.datastore import DataStore
+
+    with DataStore(Path(run.paths["data"]), 1 << 30) as store:
+        summaries = {c.name: {"dtype": c.dtype, "n_unique": c.n_unique}
+                     for c in store.info().columns}
+        drop = [c for c in left_out(st) if c != "eth"]
+        if answer is None:
+            with pytest.raises(Unsettled) as asked:
+                predictors_or_ask(st, summaries, drop=drop, store=store)
+            assert str(asked.value).startswith(ETH_ASK) and "?" in str(asked.value)
+        else:
+            assert "eth" in predictors_or_ask(st, summaries, drop=drop, store=store)
 
 
 def test_a_plan_with_no_recorded_choice_is_refused_with_no_exit(tmp_path, numeric):
@@ -537,11 +559,15 @@ def test_a_plan_with_no_recorded_choice_is_refused_with_no_exit(tmp_path, numeri
     assert numeric.mattered()["refused"] is None
 
 
-@pytest.mark.parametrize("task, measure, words", [
-    ("multiclass", "relative_risk_ratio", "an outcome of several classes"),
-    ("ordinal", "cumulative_odds_ratio", "an outcome of ordered levels"),
-    ("time_to_event", "hazard_ratio", "a time to an event")])
-def test_an_outcome_the_refit_does_not_follow_is_refused_by_name(task, measure, words):
+REFIT_FOLLOWS = ("The curve refits one coefficient of what you study per specification, by least "
+                 "squares for a numeric outcome or logistic regression for a yes/no one; ")
+
+
+@pytest.mark.parametrize("task, measure, said", [
+    ("multiclass", "relative_risk_ratio", "`grade` is an outcome of several classes"),
+    ("ordinal", "cumulative_odds_ratio", "`grade` is an outcome of ordered levels"),
+    ("time_to_event", "hazard_ratio", "`grade` with its follow-up is a time to an event")])
+def test_an_outcome_the_refit_does_not_follow_is_refused_by_name(task, measure, said):
     """The refit follows least squares or logistic regression only, so a multiclass, ordinal or
     time-to-event outcome is refused by naming it, with no exit (the outcome is the question),
     before the lock too; a numeric or yes/no outcome is offered."""
@@ -552,9 +578,22 @@ def test_an_outcome_the_refit_does_not_follow_is_refused_by_name(task, measure, 
 
     refused = M.offered(estimate(task=task, measure=measure))
     assert not refused.offered and refused.exits == ()
-    assert refused.says == M.OUTCOME_REFUSAL.format(target="grade", words=words)
+    assert refused.says == REFIT_FOLLOWS + said + ", so the curve is not drawn for it."
     assert M.offered(estimate(task="regression", measure="mean_difference")).offered
     assert M.offered(estimate(task="binary", measure="odds_ratio")).offered
+
+
+def test_a_time_to_event_outcome_is_named_with_its_follow_up_never_as_the_event_column_alone():
+    """Under a time-to-event outcome the outcome column is the event and its follow-up is its own
+    answer (``set_follow_up``), so the refusal names the two together as the time to an event;
+    the event column alone is not one."""
+    st = d.ProjectState(purpose="inference", target="died", task="time_to_event",
+                        follow_up=d.FollowUpSpec(time_column="years"),
+                        estimand=d.EstimandSpec(exposure="fiber", measure="hazard_ratio"))
+    refused = M.offered(st)
+    assert refused.says == (REFIT_FOLLOWS + "`died` with its follow-up `years` is a time to an "
+                            "event, so the curve is not drawn for it.")
+    assert "`died` is" not in refused.says
 
 
 def test_a_multiclass_outcome_is_refused_in_the_stage_with_no_scale_exit(tmp_path):
@@ -565,7 +604,8 @@ def test_a_multiclass_outcome_is_refused_in_the_stage_with_no_scale_exit(tmp_pat
     frame["grade"] = pd.cut(frame["glucose"], 3, labels=["low", "mid", "high"]).astype(str)
     st = state(target="grade", task="multiclass", measure="relative_risk_ratio")
     run = Run(frame, tmp_path, st)
-    line = M.OUTCOME_REFUSAL.format(target="grade", words="an outcome of several classes")
+    line = (REFIT_FOLLOWS + "`grade` is an outcome of several classes, so the curve is not drawn "
+            "for it.")
     for s in (st, st.model_copy(update={"task": None})):
         art = run.mattered(s)
         assert art["curve"] is None and art["refused"] == {"message": line, "exits": []}
@@ -695,6 +735,43 @@ def test_the_methods_sentence_names_each_alternative_the_curve_derived(numeric):
                                                                add=["bmi"])]))
     assert "each alternative the analyst declared as examined" in examined
     assert "exclusion rule" not in examined and "adjustment set dropped" not in examined
+
+
+def test_the_methods_sentence_gives_each_specification_the_interval_the_fit_gives_its_rows(
+        numeric, binary):
+    """Each specification is refitted by the primary's estimator on its own rows, with the interval
+    the fit gives those rows, which need not be the primary's: HC3 (a yes/no outcome: Wald) where
+    they do not repeat within a unit, CR2 by the unit where they do. So the sentence says which
+    intervals the specifications have, and never that each was fitted as the primary was. Every
+    numeric specification here is HC3 and every yes/no one Wald (statsmodels' fits above); a curve
+    whose specifications are HC3 and CR2 names both, each where the fit gives it."""
+    said = numeric.mattered()["methods"]
+    assert "as the primary" not in said and "CR2" not in said
+    assert ("; each specification estimated was refitted by least squares on its own rows, and "
+            "the primary remains the reported estimate. Each specification's interval is the one "
+            "the fit gives its rows: heteroskedasticity-robust (HC3) where they do not repeat "
+            "within a unit. No joint test") in said
+    said = binary.mattered()["methods"]
+    assert "as the primary" not in said and "CR2" not in said
+    assert ("; each specification estimated was refitted by logistic regression on its own rows, "
+            "and the primary remains the reported estimate (the log of its odds ratio). Each "
+            "specification's interval is the one the fit gives its rows: the logistic model's Wald "
+            "interval where they do not repeat within a unit and no column separates the "
+            "outcome. No joint test") in said
+
+    def sentence(covariances: list[str]) -> str:
+        kinds = iter(covariances)
+        curve = S.specification_curve(
+            M.adjustment_choices(["age", "sex"], []),
+            lambda picks: S.SpecFit(1.0, 0.5, 1.5, 50, covariance=next(kinds)),
+            lock="r1", estimate_label="x", crossing=M.CROSSING)
+        return M.methods_sentence(curve, task="regression")
+
+    assert ("Each specification's interval is the one the fit gives its rows: heteroskedasticity-"
+            "robust (HC3) where they do not repeat within a unit; cluster-robust (CR2) by the unit "
+            "where they repeat within one.") in sentence(["CR2", "HC3", "CR2"])
+    assert ("Each specification's interval is the one the fit gives its rows: cluster-robust "
+            "(CR2) by the unit where they repeat within one.") in sentence(["CR2"] * 3)
 
 
 # ── the stage: registered, keyed on what it reads, recomputed when a choice changes ──

@@ -129,6 +129,10 @@ def test_under_the_surveyed_population_each_specification_is_svyglm_on_its_domai
     assert primary["estimate"] == pytest.approx(reported["estimate"], rel=1e-12)
     assert reported["estimate"] == pytest.approx(ref[primary["key"]][0], rel=1e-9)
     assert "design-based" in art["methods"] and "domain of the full design" in art["methods"]
+    # Each specification's domain, not its rows alone, and no other interval kind beside the design.
+    assert "refitted by least squares on its own domain of the design" in art["methods"]
+    assert "on its own rows" not in art["methods"] and "Each specification's interval" not in (
+        art["methods"])
 
 
 def test_the_population_s_curve_is_not_the_participants(tmp_path):
