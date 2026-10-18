@@ -43,9 +43,10 @@ by :mod:`research.swarm.options`.
 * ``fit`` past the run's fit budget: its count of fits and their seconds, read from
   ``GET /fits``'s records (SWARM_ENGINE_PLAN E1), with the fit under way counted among them;
 * once those meet the budget, an ``answer`` or ``revisit`` that would make a new fit, since the
-  server makes and serves it without another press (the fit budget's section below); one that
-  makes none (the triage, which the fit does not read; a revisit that leaves the models
-  unanswered; going back to answers already fitted) is still recorded;
+  server makes and serves it without another press, and one the driver cannot tell makes none
+  (the fit budget's section below); one it can tell makes none (the triage, which the fit does
+  not read; a revisit that leaves the models unanswered; going back to answers already fitted)
+  is still recorded;
 * once the held-out rows are opened, any change or attempt (``preview``, ``answer``, ``revisit``,
   ``fit``): the reported result is the opening's score, and nothing more is tried (SWARM_PLAN §3).
   ``seal`` again goes to the server, which refuses a second opening.
@@ -822,9 +823,11 @@ def cmd_revisit(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | No
 # once Fit is pressed for the outcome, every fit the scheduler makes is served without another
 # press (``fit_press.serving_gate``), and a fit expected under about two minutes runs without one
 # (``fit_press.holds``); under Estimate a change after the lock refits too. So once the fits made
-# meet the budget, an ``answer`` or ``revisit`` is recorded only when it makes no new fit: the
-# fit it leaves is none, one already made, or the one under way. Which fit it leaves is told by
-# the engine's own key rule (:func:`fit_key_after`), trusted only where it gives the server's keys.
+# meet the budget, an ``answer`` or ``revisit`` is recorded only when the driver can tell it makes
+# no new fit: each fit it may leave is none, one already made, or the one under way. Which fits
+# it may leave is told by the engine's own key rule over the answer as the server would record it
+# (:func:`fits_after`), trusted only where it gives the server's keys; where the driver cannot
+# tell, it says so, and nothing is recorded.
 
 FIT_UNDER_WAY_NOT = ("error", "blocked")
 RECORD_WAIT = 10.0  # a fit just made is recorded by the server's recorder a moment later
@@ -887,8 +890,8 @@ def over_budget(spent: dict[str, Any], fit_key: str | None) -> str | None:
     return None
 
 
-AFTER_BUDGET = ("An answer that makes no new fit is still recorded, and results, seal and export "
-                "still run.")
+AFTER_BUDGET = ("An answer the driver can tell makes no new fit is still recorded, and results, "
+                "seal and export still run.")
 
 
 def attempt_over_budget(spent: dict[str, Any], after: str | None) -> str | None:
@@ -897,22 +900,248 @@ def attempt_over_budget(spent: dict[str, Any], after: str | None) -> str | None:
     already made, or the one under way."""
     if not budget_met(spent) or after is None or after in spent["keys"] or after == spent["running_key"]:
         return None
-    return f"Not recorded: this would make a new fit, and {budget_words(spent)}. {AFTER_BUDGET}"
+    return (f"Not recorded: this would make a new fit if recorded, and {budget_words(spent)}. "
+            f"{AFTER_BUDGET}")
 
 
 class CannotTell(Exception):
     """The fit an answer would leave cannot be told here, with why."""
 
 
-def fit_key_after(run: Run, view: dict[str, Any], decision: dict[str, Any]) -> str | None:
-    """The fit's key once ``decision`` is recorded, or None when the fit would not compute then.
+# What the server records is not the answer as posted. ``decisions.validate`` runs the kind's
+# completions under the server's decision context (``service.DecisionContext``): a roles answer
+# records which proposals below high rode along unconfirmed, a fill the not-asked level, a triage
+# its lines. And ``ProjectService.decide`` records with it what TurboTab then records itself
+# (``ProjectService._complete``, P0.6): the roles once every one was confirmed on its own, and the
+# split under Estimate. The driver runs the completions under :func:`served_context`, that context
+# as the server serves it; a part of it the driver cannot read as the server holds it, once a
+# completion reads it, means the driver cannot tell.
+
+# The stages whose artifact ``GET …/stages/{stage}`` serves as the server's context reads it: the
+# public artifact (``graph.read_artifact``), and the roles' with the predictor groups the route
+# adds (``ProjectService._served_roles``) taken off again.
+AS_KEPT = ("roles", "proposals", "target_info")
+# The parts of the server's context the driver cannot read as the server holds it, as a refusal
+# names them. The quest log, the triage and the stages' statuses are read only for the log as it
+# stands.
+UNSERVED = {
+    "store": "the table's values", "bundle": "a stage's files", "sealed": "the held-out rows",
+    "analyzed": "the rows analyzed", "interview": "the Router's steps",
+    "settled": "a stage as it settles", "fit_gate": "the gate on the estimates",
+    "sealed_scores": "the held-out scores", "project_dir": "the project's folder",
+    "columns": "the table's columns", "column_info": "the table's columns",
+    "n_rows": "the table's rows", "ingest_status": "the table's reading",
+    "ingest_error": "the table's reading", "quest": "the quest log", "triage": "the triage",
+    "stage": "a stage's status",
+}
+# What TurboTab records itself under Estimate when the Router reaches the split with none recorded
+# (``ProjectService._completion_due``): no rows held out.
+INFERENCE_SPLIT = {"kind": "set_split", "holdout": 0.0, "seed": 0}
+
+
+def reader(run: Run, client: Client) -> Callable[[str], Any]:
+    """``read(path)``: the JSON ``GET /projects/{pid}/{path}`` serves, or None when it refuses."""
+    def read(path: str) -> Any:
+        r = client.get(f"/projects/{run.project}/{path}")
+        return r.json() if r.status == 200 else None
+
+    return read
+
+
+def served_context(view: dict[str, Any], records: list[Any], state: Any, keys: dict[str, Any],
+                   read: Callable[[str], Any] | None, *, now: bool) -> tuple[Any, list[str]]:
+    """The server's decision context for the log ``records`` (``ProjectService.decision_context``)
+    as the driver reads it from the server, and the list in which each read of a part it cannot
+    read as the server holds it is named (:data:`UNSERVED`; a stage's artifact outside
+    :data:`AS_KEPT`). ``keys``: the stage keys for ``records``; a stage's artifact is fresh only at
+    its key. ``now``: ``records`` is the log as the server holds it (``view``'s), so the stages'
+    statuses, the quest log and the triage are read; for a log with an answer folded in, they are
+    not the server's yet."""
+    from turbotab.core.graph import StageStatus
+    from turbotab.core.quest import QuestLog
+    from turbotab.core.sweep import Triage
+    from turbotab.server.service import DecisionContext
+
+    unread: list[str] = []
+    got: dict[str, Any] = {}
+    stages = view.get("stages") or {}
+
+    def result(path: str) -> Any:
+        if path not in got:
+            got[path] = read(path) if read is not None else None
+        return got[path]
+
+    def fresh(stage: str) -> dict[str, Any] | None:
+        """``GET …/stages/{stage}`` when it serves the stage fresh at its key here, else None."""
+        served = result(f"stages/{stage}") or {}
+        ok = served.get("fresh") and served.get("key") and served.get("key") == keys.get(stage)
+        return served if ok else None
+
+    def kept(stage: str, only_fresh: bool) -> Any:
+        if stage not in AS_KEPT or read is None:
+            unread.append(f"the {stage} stage's artifact")
+            return None
+        served = fresh(stage) if only_fresh else result(f"stages/{stage}")
+        artifact = (served or {}).get("artifact")
+        if stage == "roles" and isinstance(artifact, dict):
+            artifact = {k: v for k, v in artifact.items() if k != "predictor_groups"}
+        return artifact
+
+    def settled(stage: str) -> Any:
+        """The stage's artifact once it settles (``ProjectService._settled``): fresh at its key, it
+        is that artifact; blocked, none. One still computing the server waits for, unread here."""
+        if stage in AS_KEPT and read is not None and fresh(stage) is not None:
+            return kept(stage, True)
+        if now and (stages.get(stage) or {}).get("status") == "blocked":
+            return None
+        unread.append(UNSERVED["settled"])
+        return None
+
+    def facts() -> tuple[Any, Any, Any, Any, Any] | None:
+        """``(ingest status, its error, columns, column info, rows)`` as the server reads them
+        (``ProjectService._table_facts``): none before the table is read; the working table's once
+        it is fresh. Otherwise the server's table is one the driver does not read."""
+        if "facts" not in got:
+            ingest = stages.get("ingest") or {}
+            same = ingest.get("key") == keys.get("ingest")
+            if read is None or not same or (not now and ingest.get("status") != "fresh"):
+                got["facts"] = None
+            elif ingest.get("status") != "fresh":
+                got["facts"] = (ingest.get("status"), ingest.get("error"), None, None, None)
+            else:
+                table = (fresh("working") or {}).get("artifact")
+                cols = table.get("columns") if isinstance(table, dict) else None
+                got["facts"] = None if not isinstance(cols, list) else (
+                    "fresh", None, [str(c["name"]) for c in cols],
+                    {str(c["name"]): {"dtype": c["dtype"], "n_unique": int(c["n_unique"]),
+                                      "n_missing": int(c["n_missing"])} for c in cols},
+                    int(table["n_rows"]))
+        return got["facts"]
+
+    def task() -> Any:
+        if state.task is not None:
+            return state.task
+        info = kept("target_info", True)
+        return info.get("task") if isinstance(info, dict) and info.get("column") == state.target \
+            else None
+
+    def fact(i: int, name: str) -> Callable[[], Any]:
+        def value() -> Any:
+            found = facts()
+            if found is None:
+                unread.append(UNSERVED[name])
+                return None
+            return found[i]
+
+        return value
+
+    lazy: dict[str, Callable[[], Any]] = {
+        "ingest_status": fact(0, "ingest_status"), "ingest_error": fact(1, "ingest_error"),
+        "columns": fact(2, "columns"), "column_info": fact(3, "column_info"),
+        "n_rows": fact(4, "n_rows"), "task": task}
+    unserved = {name for name in UNSERVED if name not in lazy and name != "settled"}
+    if now:
+        unserved -= {"stage", "quest", "triage"}
+
+    class Served(DecisionContext):
+        def __getattribute__(self, name: str) -> Any:
+            if name in lazy:
+                return lazy[name]()
+            if name in unserved:
+                unread.append(UNSERVED[name])
+            return super().__getattribute__(name)
+
+    def stage(name: str) -> Any:
+        found = stages.get(name)
+        return StageStatus.model_validate(found) if isinstance(found, dict) else None
+
+    def model(path: str, cls: Any) -> Callable[[], Any]:
+        def value() -> Any:
+            found = result(path)
+            return cls.model_validate(found) if found is not None else None
+
+        return value
+
+    ctx = Served(columns=None, ingest_status="", target=state.target, state=state,
+                 records=lambda: list(records), artifact=lambda s: kept(s, True),
+                 shown=lambda s: kept(s, False), settled=settled, analyst=True, early=False,
+                 stage=stage if now else None, quest=model("quest", QuestLog) if now else None,
+                 triage=model("triage", Triage) if now else None)
+    return ctx, unread
+
+
+def completed(decision: Any, ctx: Any, unread: list[str]) -> Any | None:
+    """``decision`` as the server records it: its kind's completions run under ``ctx``
+    (``decisions.validate`` runs them after the validators, which only refuse). None when a
+    completion refuses it, as the server then does: nothing is recorded."""
+    from turbotab.core import decisions
+
+    try:
+        for fn in decisions._COMPLETIONS.get(decision.kind, ()):
+            decision = fn(decision, ctx)
+    except decisions.Refusal:
+        decision = None
+    except Exception as exc:  # noqa: BLE001 - a completion that fails here keys nothing
+        raise CannotTell(f"what TurboTab records for this answer does not compute here "
+                         f"({type(exc).__name__})") from None
+    if unread:
+        raise CannotTell("what TurboTab records for this answer reads "
+                         + ", ".join(dict.fromkeys(unread)) + ", which the driver cannot read as "
+                         "the server holds it")
+    return decision
+
+
+def recorded_itself(state: Any, ctx: Any, keys: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """What TurboTab may record itself with an answer that leaves ``state``
+    (``ProjectService._complete``, P0.6), in the order it would, each with its name: nothing once
+    the roles are answered, unless under Estimate no split is; the roles once every predictor's
+    was confirmed on its own (``readings.roles_completion`` over the roles' proposals fresh at
+    ``keys``), and then the split under Estimate. Whether the Router has reached them is not read
+    here, so each may or may not be recorded."""
+    from turbotab.core.readings import roles_completion
+
+    split = state.purpose == "inference" and state.split is None
+    if state.roles and not split:
+        return []
+    if not state.roles:
+        roles = ctx.artifact("roles")
+        if roles is None and keys.get("roles") is not None:
+            raise CannotTell("with no roles answered, TurboTab records the roles itself where each "
+                             "was confirmed on its own, read from the roles' proposals as they are "
+                             "computed again after this answer, which the driver cannot read yet")
+        body = roles_completion(state, roles) if roles is not None else None
+        if body is None:
+            return []  # the Router holds at the roles
+        return [("the roles", body)] + ([("the split", dict(INFERENCE_SPLIT))] if split else [])
+    return [("the split", dict(INFERENCE_SPLIT))]
+
+
+def fits_after(run: Run, view: dict[str, Any], decision: dict[str, Any],
+               read: Callable[[str], Any] | None = None) -> list[tuple[str | None, str | None]]:
+    """Each fit key the server may leave once ``decision`` is recorded (None: the fit would not
+    compute then), with what TurboTab records itself before it leaves that key (None: nothing);
+    an empty list when the answer is refused, as the server refuses it (:func:`keys_after`)."""
+    return [(keys.get("fit"), by) for keys, by in keys_after(run, view, decision, read)]
+
+
+def keys_after(run: Run, view: dict[str, Any], decision: dict[str, Any],
+               read: Callable[[str], Any] | None = None) -> list[tuple[dict[str, Any], str | None]]:
+    """Each set of stage keys the server may leave once ``decision`` is recorded, with what
+    TurboTab records itself before it leaves them (None: nothing); an empty list when the answer
+    is refused, as the server refuses it.
 
     Told by the engine's own rule, as the server keys every stage (``graph.stage_keys`` over the
     stage graph the server runs, ``workspace.stage_graph``): the decision log as ``GET
-    /projects/{pid}`` serves it, folded with ``decision`` as ``decisions.state_after`` folds a
-    probe, on the data file's fingerprint (``datastore.fingerprint_file``). The rule is trusted
-    only where the keys it gives the log as it stands are every key the server serves for it now;
-    otherwise, or when ``decision`` does not read or fold, :class:`CannotTell` says why."""
+    /projects/{pid}`` serves it, folded with ``decision`` as the server records it
+    (:func:`completed`) and with what TurboTab records itself then (:func:`recorded_itself`), on
+    the data file's fingerprint (``datastore.fingerprint_file``). ``read`` reads the server
+    (:func:`reader`). The rule is trusted only where the keys it gives the log as it stands are
+    every key the server serves for it now; otherwise, or when ``decision`` does not read or fold,
+    or what the server records for it is not read here, :class:`CannotTell` says why. A plan's
+    lock no estimate was served under, which a change to the plan withdraws first
+    (``ProjectService._append``), is not folded: of the stages only ``mattered`` reads the lock,
+    and the fit does not."""
+    from turbotab.server import app  # noqa: F401 - what the server imports registers every completion
     from turbotab.core import decisions
     from turbotab.core.datastore import fingerprint_file
     from turbotab.core.graph import stage_keys
@@ -928,9 +1157,14 @@ def fit_key_after(run: Run, view: dict[str, Any], decision: dict[str, Any]) -> s
         if (run.folder / "driver.json").exists():
             run.save()
     order = stage_graph().order()
+
+    def keyed(log: list[Any]) -> tuple[Any, dict[str, Any]]:
+        state = decisions.fold(log)
+        return state, stage_keys(order, state.model_dump(mode="json"), fingerprint)
+
     try:
         records = [decisions.DecisionRecord.model_validate(r) for r in view.get("decisions") or []]
-        now_keys = stage_keys(order, decisions.fold(records).model_dump(mode="json"), fingerprint)
+        state, now_keys = keyed(records)
     except Exception as exc:  # noqa: BLE001 - a log this cannot read is a log it cannot key
         raise CannotTell(f"the decision log does not read here ({type(exc).__name__})") from None
     served = {name: (s or {}).get("key") for name, s in (view.get("stages") or {}).items()}
@@ -939,31 +1173,59 @@ def fit_key_after(run: Run, view: dict[str, Any], decision: dict[str, Any]) -> s
         raise CannotTell("the keys it computes are not the server's, for "
                          + (", ".join(differ[:4]) if differ else "any stage"))
     try:
-        probe = decisions.DecisionRecord(
-            id="__probe__", seq=max((r.seq for r in records), default=0) + 1,
-            at=datetime.now(timezone.utc), decision=decisions.parse_decision(decision))
-        after = decisions.fold([*records, probe])
-    except Exception as exc:  # noqa: BLE001 - not a decision, or one the log refuses
-        raise CannotTell(f"the answer does not read as a decision the log takes "
-                         f"({type(exc).__name__})") from None
-    return stage_keys(order, after.model_dump(mode="json"), fingerprint).get("fit")
+        parsed = decisions.parse_decision(decision)
+    except Exception as exc:  # noqa: BLE001 - not a decision
+        raise CannotTell(f"the answer does not read as a decision ({type(exc).__name__})") from None
+    ctx, unread = served_context(view, records, state, now_keys, read, now=True)
+    answer = completed(parsed, ctx, unread)
+    if answer is None:
+        return []
+    seq = max((r.seq for r in records), default=0)
+    at = datetime.now(timezone.utc)
+
+    def probe(d: Any, n: int) -> Any:
+        return decisions.DecisionRecord(id=f"__probe{n}__", seq=seq + n + 1, at=at, decision=d)
+
+    try:
+        log = [*records, probe(answer, 0)]
+        state, keys = keyed(log)
+    except Exception as exc:  # noqa: BLE001 - one the log refuses
+        raise CannotTell(f"the answer does not fold into the log ({type(exc).__name__})") from None
+    out: list[tuple[dict[str, Any], str | None]] = [(keys, None)]
+    ctx, unread = served_context(view, log, state, keys, read, now=False)
+    names: list[str] = []
+    for n, (name, body) in enumerate(recorded_itself(state, ctx, keys), start=1):
+        own = completed(decisions.parse_decision(body), ctx, unread)
+        if own is None:
+            break
+        log = [*log, probe(own, n)]
+        names.append(name)
+        out.append((keyed(log)[1], " and ".join(names)))
+    return out
 
 
 def guard_budget(run: Run, client: Client, view: dict[str, Any], decision: dict[str, Any]) -> None:
-    """Refuse ``decision`` when the budget is met and it would make a new fit (the section's
-    rule); a decision is told only once the budget is met."""
+    """Refuse ``decision`` when the budget is met and it would make a new fit, or the driver cannot
+    tell (the section's rule); a decision is told only once the budget is met."""
     spent = budget_now(run, client, view)
     if not budget_met(spent):
         return
     try:
-        after = fit_key_after(run, view, decision)
+        afters = fits_after(run, view, decision, reader(run, client))
     except CannotTell as exc:
         raise DriverError("fit_budget_unknown", f"Not recorded: {budget_words(spent)}, and the driver "
                                                 f"cannot tell whether this would make a new fit: "
                                                 f"{exc}.", spent=public_budget(spent)) from None
-    why = attempt_over_budget(spent, after)
-    if why:
-        raise DriverError("fit_budget", why, spent=public_budget(spent))
+    new = [key for key, _ in afters if attempt_over_budget(spent, key)]
+    if not new:
+        return
+    if len(new) < len(afters):  # some of the ways the server may record it make a new fit
+        raise DriverError("fit_budget_unknown", f"Not recorded: {budget_words(spent)}, and the driver "
+                                                f"cannot tell whether this would make a new fit: "
+                                                f"that depends on whether TurboTab records "
+                                                f"{afters[-1][1]} itself with it.",
+                          spent=public_budget(spent))
+    raise DriverError("fit_budget", attempt_over_budget(spent, new[0]), spent=public_budget(spent))
 
 
 def wait_fit(run: Run, client: Client, seconds: float) -> dict[str, Any]:

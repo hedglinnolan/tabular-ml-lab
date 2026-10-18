@@ -109,19 +109,19 @@ def test_past_the_budget_an_answer_that_makes_a_new_fit_is_refused():
     for after in (None, "a", "b"):
         assert driver.attempt_over_budget(met, after) is None, after
     assert driver.attempt_over_budget(met, "new") == (
-        "Not recorded: this would make a new fit, and the run's fit budget is 2 fits, and 2 were "
-        "made already. An answer that makes no new fit is still recorded, and results, seal and "
-        "export still run.")
+        "Not recorded: this would make a new fit if recorded, and the run's fit budget is 2 "
+        "fits, and 2 were made already. An answer the driver can tell makes no new fit is still "
+        "recorded, and results, seal and export still run.")
     running = spent(1, 9.0, keys=["a"], running="b")
     assert driver.attempt_over_budget(running, "b") is None
     assert driver.attempt_over_budget(running, "new").startswith(
-        "Not recorded: this would make a new fit, and the run's fit budget is 2 fits, and 1 was "
-        "made and 1 is under way.")
+        "Not recorded: this would make a new fit if recorded, and the run's fit budget is 2 "
+        "fits, and 1 was made and 1 is under way.")
     seconds = spent(1, 100.0, keys=["a"])
     assert driver.attempt_over_budget(seconds, "a") is None
     assert driver.attempt_over_budget(seconds, "new").startswith(
-        "Not recorded: this would make a new fit, and the run's fit budget is 100 seconds of "
-        "fitting, and 100 were spent already.")
+        "Not recorded: this would make a new fit if recorded, and the run's fit budget is 100 "
+        "seconds of fitting, and 100 were spent already.")
 
 
 def test_the_fit_an_answer_would_make_is_told_only_where_the_servers_keys_are_matched(tmp_path):
@@ -136,13 +136,167 @@ def test_the_fit_an_answer_would_make_is_told_only_where_the_servers_keys_are_ma
     run = driver.Run(tmp_path, {"fingerprint": "f" * 32, "data": {"path": str(FIXTURE)}})
     keys = stage_keys(stage_graph().order(), decisions.fold([]).model_dump(mode="json"), "f" * 32)
     view = {"decisions": [], "stages": {name: {"key": key} for name, key in keys.items()}}
-    assert driver.fit_key_after(run, view, {"kind": "set_purpose", "purpose": "prediction"}) is None
+    assert driver.fits_after(run, view, {"kind": "set_purpose", "purpose": "prediction"}) == [
+        (None, None)]
     wrong = {**view, "stages": {**view["stages"], "ingest": {"key": "0" * 64}}}
     with pytest.raises(driver.CannotTell) as caught:
-        driver.fit_key_after(run, wrong, {"kind": "set_purpose", "purpose": "prediction"})
+        driver.fits_after(run, wrong, {"kind": "set_purpose", "purpose": "prediction"})
     assert "ingest" in str(caught.value)
     with pytest.raises(driver.CannotTell):  # not a decision
-        driver.fit_key_after(run, view, {"kind": "no_such_kind"})
+        driver.fits_after(run, view, {"kind": "no_such_kind"})
+
+
+# A log that reaches the fit, built here: the lenses, the outcome, the goal, the split, the models
+# (the fit's required answers, ``graph.unmet_requires``), and the roles where a test needs them.
+FINGERPRINT = "f" * 32
+LOG = [{"kind": "set_lens", "lenses": ["clinical"]}, {"kind": "set_target", "column": "y"},
+       {"kind": "set_purpose", "purpose": "prediction"},
+       {"kind": "set_split", "holdout": 0.2, "seed": 0}, {"kind": "select_models", "models": ["linear"]}]
+ROLES = {"a": "covariate", "b": "covariate", "c": "covariate"}
+# The roles stage's proposals: one high, one medium and one low, each proposed a covariate.
+PROPOSED = {"columns": [{"column": "a", "proposed": "covariate", "confidence": "high"},
+                        {"column": "b", "proposed": "covariate", "confidence": "medium"},
+                        {"column": "c", "proposed": "covariate", "confidence": "low"}],
+            "predictor_groups": [{"label": "added by the route"}]}
+
+
+def logged(answers: list[dict[str, Any]]) -> list[Any]:
+    from datetime import datetime, timezone
+
+    from turbotab.core import decisions
+
+    at = datetime(2026, 10, 18, tzinfo=timezone.utc)
+    return [decisions.DecisionRecord(id=f"r{i}", seq=i, at=at, decision=decisions.parse_decision(d))
+            for i, d in enumerate(answers, start=1)]
+
+
+def keyed(answers: list[dict[str, Any]]) -> dict[str, Any]:
+    from turbotab.core import decisions
+    from turbotab.core.graph import stage_keys
+    from turbotab.core.workspace import stage_graph
+
+    state = decisions.fold(logged(answers)).model_dump(mode="json")
+    return stage_keys(stage_graph().order(), state, FINGERPRINT)
+
+
+def served_view(answers: list[dict[str, Any]]) -> dict[str, Any]:
+    """``GET /projects/{pid}``'s decisions and stages for ``answers``, each stage fresh at its key."""
+    keys = keyed(answers)
+    return {"decisions": [r.model_dump(mode="json") for r in logged(answers)],
+            "stages": {n: {"stage": n, "status": "fresh" if k else "blocked", "key": k}
+                       for n, k in keys.items()}}
+
+
+def serving(answers: list[dict[str, Any]], artifacts: dict[str, Any]):
+    """``read(path)`` for a server holding ``answers``: each stage in ``artifacts`` served fresh at
+    its key, as ``GET …/stages/{stage}`` serves it; anything else refused."""
+    keys = keyed(answers)
+
+    def read(path: str) -> Any:
+        stage = path.removeprefix("stages/")
+        if path.startswith("stages/") and stage in artifacts:
+            return {"stage": stage, "key": keys[stage], "fresh": True, "status": "fresh",
+                    "artifact": artifacts[stage]}
+        return None
+
+    return read
+
+
+def test_an_answer_is_keyed_as_the_server_records_it(tmp_path):
+    """A roles answer is recorded with the proposals below high that it took exactly as proposed
+    (``SetRoles.unconfirmed``, the server's completion; BLUEPRINT §14 rule 2), and the fit is keyed
+    on that record, not on the answer as posted. Built here: b (medium) and c (low) each taken as
+    proposed ride along; a (high) does not; b given another role is the answer's own. With no
+    proposals served, nothing rode along. The fit the posted answer would key is not the one the
+    server keys, so keying the answer as posted tells another fit."""
+    run = driver.Run(tmp_path, {"fingerprint": FINGERPRINT})
+    read = serving(LOG, {"roles": PROPOSED})
+    rode = keyed([*LOG, {"kind": "set_roles", "roles": ROLES, "unconfirmed": ["b", "c"]}])["fit"]
+    posted = keyed([*LOG, {"kind": "set_roles", "roles": ROLES}])["fit"]
+    assert rode is not None and rode != posted
+    assert driver.fits_after(run, served_view(LOG), {"kind": "set_roles", "roles": ROLES}, read) \
+        == [(rode, None)]
+    changed = {**ROLES, "b": "excluded"}
+    own = keyed([*LOG, {"kind": "set_roles", "roles": changed, "unconfirmed": ["c"]}])["fit"]
+    assert driver.fits_after(run, served_view(LOG), {"kind": "set_roles", "roles": changed},
+                             read) == [(own, None)]
+    assert driver.fits_after(run, served_view(LOG), {"kind": "set_roles", "roles": ROLES},
+                             serving(LOG, {})) == [(posted, None)]
+
+
+def test_where_what_the_server_records_is_not_read_here_the_driver_cannot_tell(tmp_path):
+    """A fill in each fold under Predict is recorded with the not-asked level when the proposals'
+    missing reading names a column whose blanks mean not asked, read against the table's columns
+    (``methods.missing``). With a missing reading served and the working table not, the driver
+    cannot read what the server would record, and says what it lacks; with no missing reading
+    (the proposals fresh, so nothing settles later) it reads that nothing is filled in."""
+    run = driver.Run(tmp_path, {"fingerprint": FINGERPRINT})
+    answers = [*LOG, {"kind": "set_roles", "roles": ROLES}]
+    impute = {"kind": "set_missing", "strategy": "impute"}
+    with pytest.raises(driver.CannotTell) as caught:
+        driver.fits_after(run, served_view(answers), impute,
+                          serving(answers, {"proposals": {"missing": {"not_asked": ["a"]}}}))
+    assert "the table's columns" in str(caught.value)
+    assert driver.fits_after(run, served_view(answers), impute,
+                             serving(answers, {"proposals": {}})) == [
+        (keyed([*answers, impute])["fit"], None)]
+
+
+def test_what_turbotab_records_itself_with_an_answer_is_keyed_too(tmp_path):
+    """With the roles answer reverted, TurboTab records the roles itself where each was confirmed
+    on its own (P0.6, ``readings.roles_completion``): each fit the server may then leave is told,
+    the one with no roles (none) and the one with the roles as confirmed, completed as the server
+    completes them (with no roles recorded before it, no confirmed role is kept as the person's
+    word, so b and c, below high and taken as proposed, are recorded unconfirmed). With one column
+    not confirmed the Router holds at the roles, and only the first is left. Under Estimate with no
+    split, TurboTab records its split of no rows held out, so that fit is told too."""
+    run = driver.Run(tmp_path, {"fingerprint": FINGERPRINT})
+    confirmed = [{"kind": "confirm_role", "column": c, "role": r} for c, r in ROLES.items()]
+    answers = [*LOG, *confirmed, {"kind": "set_roles", "roles": ROLES}]
+    revert = {"kind": "revert", "decision_id": f"r{len(answers)}"}
+    read = serving(answers, {"roles": PROPOSED})
+    by_itself = keyed([*answers, revert,
+                       {"kind": "set_roles", "roles": ROLES, "unconfirmed": ["b", "c"]}])["fit"]
+    assert by_itself is not None
+    assert driver.fits_after(run, served_view(answers), revert, read) == [
+        (None, None), (by_itself, "the roles")]
+    some = [*LOG, *confirmed[:2], {"kind": "set_roles", "roles": ROLES}]
+    assert driver.fits_after(run, served_view(some), {"kind": "revert", "decision_id": f"r{len(some)}"},
+                             serving(some, {"roles": PROPOSED})) == [(None, None)]
+
+    estimate = [{**d, "purpose": "inference"} if d["kind"] == "set_purpose" else d
+                for d in LOG if d["kind"] != "set_split"] + [{"kind": "set_roles", "roles": ROLES}]
+    models = {"kind": "select_models", "models": ["ridge"]}
+    split = {"kind": "set_split", "holdout": 0.0, "seed": 0}
+    assert driver.fits_after(run, served_view(estimate), models, serving(estimate, {})) == [
+        (None, None), (keyed([*estimate, models, split])["fit"], "the split")]
+
+
+def test_past_the_budget_an_answer_is_refused_unless_every_way_it_is_recorded_makes_no_new_fit(
+        tmp_path, monkeypatch):
+    """Once the budget is met, an answer passes when every fit the server may leave for it was
+    made; it is refused as making a new fit when every one is new; and when only some are, the
+    driver cannot tell, and says on what it turns."""
+    run = driver.Run(tmp_path, {"budget": {"fits": 1, "seconds": 900.0}})
+    monkeypatch.setattr(driver, "budget_now", lambda *a: spent(1, 5.0, budget_fits=1, keys=["a"]))
+    for afters, code in [([(None, None), ("a", "the roles")], None),
+                         ([("new", None), ("other", "the roles")], "fit_budget"),
+                         ([(None, None), ("new", "the roles")], "fit_budget_unknown")]:
+        monkeypatch.setattr(driver, "fits_after", lambda *a, _afters=afters: _afters)
+        if code is None:
+            driver.guard_budget(run, None, {}, {"kind": "revert"})
+            continue
+        with pytest.raises(driver.DriverError) as caught:
+            driver.guard_budget(run, None, {}, {"kind": "revert"})
+        assert caught.value.code == code, afters
+        if code == "fit_budget_unknown":
+            assert caught.value.message == (
+                "Not recorded: the run's fit budget is 1 fit, and 1 was made already, and the "
+                "driver cannot tell whether this would make a new fit: that depends on whether "
+                "TurboTab records the roles itself with it.")
+        else:
+            assert caught.value.message.startswith(
+                "Not recorded: this would make a new fit if recorded")
 
 
 @pytest.mark.parametrize("kind", ["reseal", "lock_plan", "revert", "open_seal"])
@@ -343,7 +497,7 @@ class Analyst:
     """A scripted analyst working one run through the driver's command line."""
 
     def __init__(self, runs: Path, run_id: str, plan: Plan | None = None,
-                 before: dict[str, Any] | None = None):
+                 before: dict[str, Any] | None = None, keys: bool = False):
         self.runs, self.run = runs, run_id
         self.plan = {k: list(v) for k, v in (plan or PREDICT).items()}
         self.before = dict(before or {})  # question -> a check run on its ask before answering
@@ -351,6 +505,10 @@ class Analyst:
         self.proposed: dict[str, str] = {}
         self.reasons: list[str] = []  # every reason given, in order
         self.asked: list[str] = []
+        # With ``keys``, each answer's stage keys are told by the driver before it is posted and
+        # read from the server after: (the decision's kind, the keys told or why not, the server's).
+        self.keys = keys
+        self.told: list[tuple[str, Any, dict[str, Any]]] = []
 
     def drv(self, *args: str, expect: int | None = 0) -> dict[str, Any]:
         env = {**os.environ, driver.RUNS_ENV: str(self.runs), "OMP_NUM_THREADS": "2",
@@ -369,10 +527,42 @@ class Analyst:
     def answer(self, ids: list[str], sets: list[str] = (), why: str = "") -> dict[str, Any]:
         reason = why or f"Scripted analyst, answer {len(self.reasons) + 1}: {' '.join(ids)}."
         self.reasons.append(reason)
+        told = self.tell(ids, sets) if self.keys else None
         out = self.cmd("answer", *ids, *[a for s in sets for a in ("--set", s)], "--reason", reason)
         assert set(out) == {"recorded", "next"}, out
         assert out["recorded"]["note"] == reason and out["recorded"]["id"]
+        if self.keys:
+            meta = json.loads((self.runs / self.run / "driver.json").read_text())
+            _, view = http(meta["port"], f"/projects/{meta['project']}")
+            self.told.append((out["recorded"]["decision"]["kind"], told,
+                              {name: st.get("key") for name, st in view["stages"].items()}))
         return out
+
+    def tell(self, ids: list[str], sets: list[str]) -> Any:
+        """The stage keys the driver tells this answer may leave (``driver.keys_after``, by which
+        its guard tells the fit past the budget), or why it cannot tell; read in this process,
+        nothing posted."""
+        meta = json.loads((self.runs / self.run / "driver.json").read_text())
+        run = driver.Run(self.runs / self.run, meta)
+        client = run.client()
+        decision, q = driver.chosen(run, client, list(ids), list(sets))
+        try:
+            return [keys for keys, _ in driver.keys_after(run, q["_view"], decision,
+                                                          driver.reader(run, client))]
+        except driver.CannotTell as exc:
+            return str(exc)
+
+    def check_told(self) -> list[str]:
+        """Every answer the driver told was keyed by the server as told: the key the server serves
+        for each stage after the answer is the key told for it, by one of the ways told. Returns
+        the kinds it could not tell."""
+        for kind, told, served in self.told:
+            if isinstance(told, list):
+                assert any(all(keys.get(name) == key for name, key in served.items())
+                           for keys in told), (kind, [
+                    {n: (k, served[n]) for n, k in keys.items() if n in served and k != served[n]}
+                    for keys in told])
+        return [kind for kind, told, _ in self.told if not isinstance(told, list)]
 
     # what the fixture's author answers, from what the server offers
 
@@ -537,7 +727,7 @@ def test_a_run_from_start_to_export_through_the_driver(tmp_path):
     * ``export`` saves the bundle under the run, its provenance echoing the file's source;
     * ``stop`` leaves no process and no listener behind.
     """
-    analyst = Analyst(tmp_path, "full")
+    analyst = Analyst(tmp_path, "full", keys=True)
     meta = start(analyst, budget_fits=2)
     try:
         q = analyst.until_fit()
@@ -613,6 +803,13 @@ def test_a_run_from_start_to_export_through_the_driver(tmp_path):
         assert "https://example.org/data/clinical_risk.csv" in json.dumps(provenance)
         for reason in analyst.reasons:  # a reason is the record's, never the methods'
             assert reason not in methods
+        # every answer's stage keys, told by the driver before it was posted, are the server's
+        # after it; and the driver tells each answer from the roles on (before them, the roles'
+        # proposals are computed again, and TurboTab may record the roles itself from them)
+        analyst.check_told()
+        kinds = [kind for kind, _, _ in analyst.told]
+        from_roles = analyst.told[kinds.index("set_roles"):]
+        assert all(isinstance(told, list) for _, told, _ in from_roles), from_roles
 
         logged = [json.loads(line) for line in
                   (analyst.runs / analyst.run / "commands.jsonl").read_text().splitlines()]
@@ -673,7 +870,11 @@ def test_the_budget_bounds_the_fits_the_analyst_gets(tmp_path):
       cross-validated scores, the same as its record in ``GET /fits``;
     * past it a third model is refused before anything is recorded, and ``/fits`` does not grow;
       going back to the first model, whose fit was made, is recorded and serves that fit's scores;
-      a press for it, the triage and the seal still pass.
+    * past it a revisit that would refit (the missing values' answer) is refused, and neither the
+      log nor ``/fits`` changes; the roles taken back, which leave no fit, are recorded; the roles
+      answered again as proposed are recorded, keyed on the first fit as the server records them,
+      and ``/fits`` does not grow, while a roles answer that excludes a column is refused;
+    * a press for the first fit, the triage and the seal still pass.
     """
     def exclusions_card(q: dict[str, Any]) -> None:
         assert [o["id"] for o in q["options"]] == ["none", "custom"]
@@ -728,8 +929,9 @@ def test_the_budget_bounds_the_fits_the_analyst_gets(tmp_path):
         refused = analyst.cmd("answer", "elastic_net", "--reason", "Elastic net may do better.",
                               expect=1)["refused"]
         assert refused["by"] == "driver" and refused["code"] == "fit_budget", refused
-        assert refused["message"].startswith("Not recorded: this would make a new fit, and the "
-                                             "run's fit budget is 2 fits, and 2 were made already.")
+        assert refused["message"].startswith("Not recorded: this would make a new fit if recorded, "
+                                             "and the run's fit budget is 2 fits, and 2 were made "
+                                             "already.")
         assert refused["spent"] == {"fits": 2, "running": 0, "budget_fits": 2,
                                     "budget_seconds": 900.0,
                                     "seconds": round(sum(r["seconds"] or 0 for r in records), 3)}
@@ -743,6 +945,40 @@ def test_the_budget_bounds_the_fits_the_analyst_gets(tmp_path):
         assert [f["family"] for f in again["families"]] == ["linear"]
         assert again["families"][0]["cv"] == first["scores"]["linear"]
         assert again["fit"]["key"] == first["fit_key"]
+
+        # past it, a revisit that would refit is refused, and nothing is recorded: the missing
+        # values' answer taken back leaves the working table unfilled, a fit not made yet
+        before = analyst.cmd("ask")
+        missing = next(d["id"] for d in reversed(before["decisions"]) if d["kind"] == "set_missing")
+        refused = analyst.cmd("revisit", missing, "--reason", "Complete cases may do as well.",
+                              expect=1)["refused"]
+        assert refused["by"] == "driver" and refused["code"] == "fit_budget", refused
+        assert refused["message"].startswith("Not recorded: this would make a new fit if recorded, "
+                                             "and the run's fit budget is 2 fits, and 2 were made "
+                                             "already.")
+        assert analyst.cmd("ask")["decisions"] == before["decisions"]
+        time.sleep(2.0)
+        assert records_of(meta) == records
+        # the roles taken back leave no fit, and are recorded; the roles answered again as before
+        # are keyed as the server records them, on the first fit, and no fit is made, while a
+        # roles answer that changes one column's role would make a new fit, and is refused
+        roles = next(d["id"] for d in reversed(before["decisions"]) if d["kind"] == "set_roles")
+        back = analyst.cmd("revisit", roles, "--reason", "The roles, looked at again.")
+        assert back["recorded"]["decision"] == {"kind": "revert", "decision_id": roles}
+        q = analyst.cmd("ask")
+        assert q["question"]["key"] == "roles", q["question"]
+        column = next(f for f in q["fields"] if f["initial"] != "excluded")
+        assert "excluded" in [c["value"] for c in column["choices"]]
+        refused = analyst.cmd("answer", "proposed", "--set", f"{column['name']}=excluded",
+                              "--reason", "Without this column.", expect=1)["refused"]
+        assert refused["by"] == "driver" and refused["code"] == "fit_budget", refused
+        assert analyst.cmd("ask")["decisions"] == q["decisions"]
+        analyst.answer(["proposed"], why="The proposed roles, as answered before.")
+        same = analyst.cmd("results", "--wait", "120")["results"]
+        assert same["fit"]["key"] == first["fit_key"]
+        time.sleep(2.0)
+        assert records_of(meta) == records
+
         pressed = analyst.cmd("fit")
         assert pressed["spent"]["fits"] == 2
         unknown = analyst.cmd("revisit", "no-such-id", "--reason", "x", expect=1)["refused"]
@@ -772,7 +1008,7 @@ def test_an_estimate_run_through_the_driver(tmp_path):
     lock, which decisions mattered, each the server's own document; past the budget of one fit a
     secondary analysis that would refit is refused; the run exports; and ``seal`` is refused by
     the server, nothing being held out."""
-    analyst = Analyst(tmp_path, "estimate", ESTIMATE)
+    analyst = Analyst(tmp_path, "estimate", ESTIMATE, keys=True)
     meta = start(analyst, budget_fits=1)
     try:
         q = analyst.until_fit()
@@ -788,6 +1024,13 @@ def test_an_estimate_run_through_the_driver(tmp_path):
             "causes_exposure": "no", "causes_outcome": "yes", "after_exposure": "yes"}
         assert state["exposure_forms"]["age"]["form"] == "linear"
         assert [n for n in (r.get("note") for r in view["decisions"]) if n] == analyst.reasons
+        # every answer's stage keys, told by the driver before it was posted, are the server's
+        # after it, the split TurboTab records itself among the ways told; and the driver tells
+        # the grouping, the exposure, the adjustment and the forms, whose records the server
+        # completes
+        untold = analyst.check_told()
+        assert not {"set_roles", "set_clusters", "set_missing", "set_estimand", "set_adjustment",
+                    "set_forms", "select_models"} & set(untold), untold
 
         fit = analyst.cmd("fit")
         assert fit["pressed"]["locked"] is True and fit["fit"]["status"] == "fresh"

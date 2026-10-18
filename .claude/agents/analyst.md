@@ -58,8 +58,9 @@ app computes; if `ask` still shows the question waiting, run it again.
 
 - `fit`: presses Fit. Under Estimate this locks the plan. The run has a fit budget, a number of
   fits and of seconds, and `fit` says what is spent. Once it is spent, `fit` is refused, and so
-  is an `answer` or `revisit` that would make a new fit; one that makes none, such as going back
-  to a model already fitted, still goes through.
+  is an `answer` or `revisit` that would make a new fit, or that the driver cannot tell makes
+  none; one it can tell makes none, such as going back to a model already fitted, still goes
+  through.
 
       scripts/py -m research.swarm.driver fit --run RUN
 
