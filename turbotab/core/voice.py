@@ -914,12 +914,16 @@ def _confirm_reading(d: Any, state: Any, ctx: Any) -> str:
     the role recorded before it, as a role line's press is (:func:`_role_line_change`): a move
     between the roles card's groups as a move, the energy column's as leaving the energy role, and
     the role recorded as a confirmation."""
+    return f"{_reading_said(d, state)}, on its own, after the evidence for its reading was read"
+
+
+def _reading_said(d: Any, state: Any) -> str:
+    """One reading's confirmation as :func:`_confirm_reading` says it: under Predict a role as the
+    press that recorded it (:func:`_role_line_change`), else :func:`_confirmed`."""
     if d.reading == "role" and _under_predict(state):
         before = (getattr(state, "roles", None) or {}).get(d.column)
-        said = _role_line_change(d.column, before, str(d.value), state)
-    else:
-        said = _confirmed(d.reading, d.column, d.value, state)
-    return f"{said}, on its own, after the evidence for its reading was read"
+        return _role_line_change(d.column, before, str(d.value), state)
+    return _confirmed(d.reading, d.column, d.value, state)
 
 
 @register_sentence("confirm_readings")
@@ -929,9 +933,12 @@ def _confirm_readings(d: Any, state: Any, ctx: Any) -> str:
     R-g: the block lists exactly one judgment's waiting columns, read against the roles stage's
     proposals, ``ctx``'s ``roles``) is said in one sentence: the count, the first columns, the role
     in the goal's words, its confidence below high, the shared reason, and that it was confirmed as
-    a group."""
+    a group. A block of one reading confirmed it on its own (the ruling of 2026-10-18), and is said
+    so, as that reading's own confirmation says it (:func:`_reading_said`), never "together"."""
     from turbotab.core.decisions import group_confirmed
 
+    if len(d.items) == 1:
+        return f"{_reading_said(d.items[0], state)}, on its own, as the question showed it"
     group = group_confirmed(d, state, _get(ctx, "roles"))
     if group is not None:
         from turbotab.core.readings import group_phrase

@@ -317,16 +317,15 @@ def labels_of(line: quest.QuestLine) -> list[str]:
 
 
 # The same columns in a dietary project with total energy waiting: the Predictor role is a
-# nutrient, and the energy column's move says what it changes, that the energy-aware fill no
-# longer reads it (under Predict only).
+# nutrient, and the energy column's move is a move between the card's groups that names no step
+# (the ruling of 2026-10-18; under the complete-cases answer no energy-aware fill is built).
 DIET_KINDS = {"SEQN": "identifier", "kcal": "energy", "carb": "exposure", "bp_sys": "covariate"}
 
 
 @pytest.mark.parametrize("purpose, want", [
     ("prediction", {
         "kcal": ("proposed as total energy",
-                 ["Confirm `kcal` as total energy",
-                  "Move `kcal` to the characteristics (the energy-aware fill no longer reads it)",
+                 ["Confirm `kcal` as total energy", "Move `kcal` to the characteristics",
                   "`kcal` is left out of the models"]),
         "carb": ("proposed as a nutrient",
                  ["Confirm `carb` as a nutrient", "Move `carb` to the characteristics",
@@ -354,26 +353,26 @@ def test_a_dietary_role_line_names_the_nutrients_and_the_energy_columns_change(p
 # The W1-T verifier's P3: "`kcal` is a characteristic, not total energy" read as a claim that kcal
 # is not total energy, and "`bp_sys` is a nutrient" as a claim about blood pressure. Under Predict
 # each press that records another predictor role is a move between the card's groups, named by the
-# ruling's words for each lens, and only the energy column's says what else it changes: the
-# energy-aware fill, which reads the column with the energy role, no longer reads it.
+# ruling's words for each lens; none names a step, the energy column's included (the ruling of
+# 2026-10-18).
 GROUPS_BY_LENS = {("clinical",): "measures", ("dietary",): "nutrients",
                   ("genomics",): "assay features",
                   ("dietary", "metabolomics"): "nutrients and assay features"}
 
 
 @pytest.mark.parametrize("lenses", sorted(GROUPS_BY_LENS))
-def test_under_predict_a_change_is_a_move_and_only_the_energy_columns_names_the_fill(lenses):
+def test_under_predict_a_change_is_a_move_and_names_no_step(lenses):
     many = GROUPS_BY_LENS[lenses]
     labels = {c: [o.label for o in line.items[0].options]
               for c, line in _kinds_under("prediction", lenses, DIET_KINDS).items()}
-    fill = "(the energy-aware fill no longer reads it)"
-    assert labels["kcal"][1] == f"Move `kcal` to the characteristics {fill}"
+    fill = "fill"
+    assert labels["kcal"][1] == "Move `kcal` to the characteristics"
     assert labels["kcal"][2] == "`kcal` is left out of the models"  # out of every model: no move
     assert labels["carb"][1] == "Move `carb` to the characteristics"
     assert labels["bp_sys"][1] == f"Move `bp_sys` to the {many}"
     for column, said in labels.items():
         assert not any(" is a " in label or " is an " in label for label in said), (column, said)
-        assert sum(fill in label for label in said) == (column == "kcal"), (column, said)
+        assert not any(fill in label or "(" in label for label in said), (column, said)
     # under Estimate the presses are as they were
     for column, line in _kinds_under("inference", lenses, DIET_KINDS).items():
         said = [o.label for o in line.items[0].options]
@@ -481,36 +480,26 @@ def _fixture() -> dict:
     # project (the roles ruling of 2026-10-17), so they differ by what the lenses make differ
     # (``readings.predict_kind``), and a choice that reads as the proposal is not offered. Each
     # kind holds its lines' whole words by role, the changes' labels included (a move between the
-    # card's groups; the energy column's says the energy-aware fill no longer reads it), and the
-    # roles card's groups. A group's note names a step only where the project can run it: the
-    # screen where the screened elastic net is on the shelf of the project's task
-    # (``screen_tasks``), the energy-aware fill where a column holds the energy role. The lines are
-    # this log's, a dietary project's, under prediction.
+    # card's groups, which names no step: the ruling of 2026-10-18), and the roles card's groups as
+    # the server serves them (``readings.served_groups``: by the lenses alone, their notes empty).
+    # The card's one sentence, its count a placeholder, and the Predict roles card's predictor
+    # options are the engine's too. The lines are this log's, a dietary project's, under
+    # prediction.
     lenses = {"both": ["dietary", "genomics"], "dietary": ["dietary"], "assay": ["genomics"],
               "neither": ["clinical"]}
     assert {k: readings.predict_kind(v) for k, v in lenses.items()} == {k: k for k in lenses}
-    tasks = typing.get_args(decisions.Task)
-    screen_tasks = [t for t in tasks if readings.screen_on_shelf(t)]
-    shelves = {"screen": screen_tasks[0],
-               "no screen": next(t for t in tasks if t not in screen_tasks)}
 
     def kind(lens: list[str]) -> dict:
         def changes(r: str) -> dict[str, str]:
             return {o: quest.role_line_text("{column}", r, o, "prediction", lens)["change"]
                     for o in quest.role_choices(r, "prediction", lens)}
 
-        def groups(task: str) -> dict:
-            # The groups the server serves beside the proposals (``readings.served_groups``), for
-            # roles where the energy-aware fill runs and where it does not.
-            served = readings.served_groups(lens, task, ())
-            return {"fill": served["fill"], "no_fill": served["no_fill"]}
-
         return {
             "reasons": {r: quest.role_line_reason("{column}", r, "prediction", lens) for r in every},
             "words": {r: readings.role_line_words(r, "prediction", lens) for r in every},
             "choices": {r: quest.role_choices(r, "prediction", lens) for r in every},
             "changes": {r: changes(r) for r in every},
-            "groups": {s: groups(task) for s, task in shelves.items()},
+            "groups": readings.served_groups(lens, None, ())["no_fill"],
             "group": group_words("prediction", lens),
         }
 
@@ -524,17 +513,16 @@ def _fixture() -> dict:
             "press": {r: readings.group_press_label("{n}", r, purpose, lens) for r in every},
         }
 
-    # Under a lens that asks the pooled-QC question the notes of a characteristic and total energy
-    # say that the pooled-QC steps may adjust or drop them (the W1-U verifier's P2): the groups of
-    # the kinds that hold an assay lens, with metabolomics as it.
-    pooled = {k: [*(c for c in v if c not in readings.ASSAY_LENSES),
-                  *readings.POOLED_QC_LENSES] for k, v in lenses.items() if k in ("both", "assay")}
+    from turbotab.core.teaching.content import entries_now
+
+    roles_card = next(e for e in entries_now("prediction") if e["key"] == "roles")
     goals = {"prediction": {
         "lenses": {"dietary": list(readings.DIETARY_LENSES), "assay": list(readings.ASSAY_LENSES)},
-        "screen_tasks": screen_tasks,
         "kinds": {k: kind(v) for k, v in lenses.items()},
-        "pooled_qc": {"lenses": list(readings.POOLED_QC_LENSES),
-                      "groups": {k: kind(v)["groups"] for k, v in pooled.items()}},
+        "sentence": {"one": readings.predictors_sentence(1),
+                     "many": readings.predictors_sentence("{n}")},
+        "options": {o["value"]: {"label": o["label"], "consequence": o["consequence"]}
+                    for o in roles_card["options"] if o["value"] in readings.PREDICTOR_ROLES},
         # a group's shared reason, quoted without its study clause (``readings.role_evidence``;
         # the W1-U verifier's P4): each clause as the stage says it and as Predict quotes it
         "study_clauses": [list(c) for c in readings._STUDY_CLAUSES]}}

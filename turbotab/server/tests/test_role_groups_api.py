@@ -5,7 +5,9 @@ reason word for word), a nutrient that carries energy and total energy. Under Pr
 three lab values as one line whose one press the server accepts, after which each is settled and
 the record and the methods say the press in one sentence, the reason the served roles stage gives
 quoted without its study clause. The roles stage is served with the project's predictor groups (W1 part 2's U6): named by the
-lens, as the roles ruling of 2026-10-17 names them, and with the columns that carry energy.
+lens, as the roles ruling of 2026-10-17 names them, with no step named (the ruling of 2026-10-18),
+and with the columns that carry energy. A block of two judgments that share a role and a confidence
+is refused with each one's own press.
 """
 from __future__ import annotations
 
@@ -69,13 +71,74 @@ def test_the_roles_stage_is_served_with_the_projects_predictor_groups(client, tm
     assert (groups["no_fill"]["exposure"]["one"], groups["no_fill"]["exposure"]["head"]) == (
         "a measure", ["Measure", "Measures"])
     assert groups["fill"]["covariate"]["one"] == "a characteristic"
-    # the fill is named only in the groups where it runs
-    assert "energy-aware fill" in groups["fill"]["exposure"]["note"]
-    assert "energy-aware fill" not in groups["no_fill"]["exposure"]["note"]
+    # the ruling of 2026-10-18: no group's note names a step, where the fill would run or not
+    for shelf in ("fill", "no_fill"):
+        assert {r: g["note"] for r, g in groups[shelf].items()} == {
+            "exposure": "", "energy": "", "covariate": ""}, shelf
     # of the table's columns, the nutrient carries energy; total energy and the lab values do not
     assert groups["energy_bearing"] == ["fat_g"]
     genomics, served = _opened(client, tmp_path / "g", "genomics")
     assert served["predictor_groups"]["no_fill"]["exposure"]["one"] == "an assay feature"
+
+
+def _traits_table(tmp_path):
+    """Three body measures the roles stage reads as a person's characteristic for one reason, and
+    a fasting flag it reads as a covariate at the same confidence for another."""
+    rng = np.random.default_rng(7)
+    n = 160
+    frame = pd.DataFrame({"pid": np.arange(n), "y": rng.normal(100, 12, n),
+                          "bp_sys": rng.normal(120, 15, n).round(0),
+                          "weight": rng.normal(80, 12, n).round(1),
+                          "waist": rng.normal(95, 10, n).round(1),
+                          "fasting": rng.integers(0, 2, n)})
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    path = tmp_path / "traits.csv"
+    frame.to_csv(path, index=False)
+    return path
+
+
+def test_a_block_of_two_judgments_with_one_role_and_confidence_is_refused(client, tmp_path):
+    """The M1 run's major, over HTTP: two judgments with the same role and confidence whose
+    reasons differ are two groups, so one block of both is refused with each group's own press,
+    naming each; each press is then accepted. The judgments are read from the served proposals."""
+    pid = open_by_path(client, _traits_table(tmp_path))
+    wait_for(client, pid, {"ingest": "fresh"})
+    answer(client, pid, "lens", {"kind": "set_lens", "lenses": ["clinical"]})
+    answer(client, pid, "target", {"kind": "set_target", "column": "y"})
+    answer(client, pid, "purpose", {"kind": "set_purpose", "purpose": "prediction"})
+    wait_for(client, pid, {"roles": "fresh"}, timeout=180)
+    served = client.get(f"/api/projects/{pid}/stages/roles").json()["artifact"]
+    proposals = {p["column"]: p for p in served["columns"]}
+    traits, fasting = ["bp_sys", "weight", "waist"], proposals["fasting"]
+    for c in traits:
+        assert (proposals[c]["proposed"], proposals[c]["confidence"]) == (
+            fasting["proposed"], fasting["confidence"]) == ("covariate", "medium")
+        assert proposals[c]["reason"] == proposals["bp_sys"]["reason"] != fasting["reason"]
+    answer(client, pid, "roles", {"kind": "set_roles", "roles": {
+        c["column"]: c["proposed"] for c in served["columns"] if c["proposed"]}})
+
+    def block(columns):
+        return {"kind": "confirm_readings", "items": [
+            {"reading": "role", "column": c, "value": "covariate"} for c in columns]}
+
+    refused = post(client, pid, block([*traits, "fasting"]))
+    assert refused.status_code == 409, refused.text[:900]
+    error = refused.json()["error"]
+    assert error["code"] == "roles_one_at_a_time"
+    assert [e["decision"] for e in error["exits"]] == [
+        block(traits), {"kind": "confirm_reading", "reading": "role", "column": "fasting",
+                        "value": "covariate"}]
+    assert [e["label"] for e in error["exits"]] == ["Confirm these 3 as characteristics",
+                                                    "Confirm `fasting` as a characteristic"]
+    assert ("the 3 columns `bp_sys`, `weight` and `waist`, proposed as characteristics at medium "
+            "confidence, below high, for one reason") in error["message"]
+    assert "`fasting`, proposed as a characteristic at medium confidence" in error["message"]
+    for e in error["exits"]:  # the other way: each group's own press is accepted
+        response = post(client, pid, e["decision"])
+        assert response.status_code == 200, response.text[:900]
+    view = client.get(f"/api/projects/{pid}").json()
+    assert {c: view["state"]["role_confirmations"][c] for c in [*traits, "fasting"]} == {
+        c: "covariate" for c in [*traits, "fasting"]}
 
 
 def test_a_groups_one_press_is_accepted_settles_each_column_and_is_said_in_one_sentence(

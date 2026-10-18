@@ -112,9 +112,32 @@ def test_under_predict_each_confirmation_names_its_group(tmp_path):
     assert _recorded(log, "confirm_reading") == [
         "`protein_g` was confirmed as a nutrient, on its own, after the evidence for its reading "
         "was read."]
+    # one reading in a block is confirmed on its own (the ruling of 2026-10-18), never "together"
     assert _recorded(log, "confirm_readings") == [
-        "Confirmed together, each as the question showed it: `waist` was confirmed as a "
-        "characteristic."]
+        "`waist` was confirmed as a characteristic, on its own, as the question showed it."]
+
+
+@pytest.mark.parametrize("purpose, role", [("prediction", "a characteristic"),
+                                           ("inference", "a covariate")])
+def test_a_block_of_one_reading_is_recorded_as_confirmed_on_its_own(tmp_path, purpose, role):
+    """The M1 run recorded six one-item blocks as "Confirmed together, each as the question showed
+    it: …". One reading is said as confirmed on its own, a role and a unit alike, in the goal's
+    words; a block of two is still said together (the other way)."""
+    log = _log(tmp_path, *HEAD, SetPurpose(purpose=purpose),
+               SetRoles(roles=ROLES, unconfirmed=WAITING),
+               ConfirmReadings(items=[ReadingItem(reading="role", column="waist",
+                                                  value="covariate")]),
+               ConfirmReadings(items=[ReadingItem(reading="unit", column="energy_kcal",
+                                                  value="kcal")]),
+               ConfirmReadings(items=[ReadingItem(reading="role", column="bp_sys",
+                                                  value="covariate"),
+                                      ReadingItem(reading="unit", column="fat_g", value="g")]))
+    assert _recorded(log, "confirm_readings") == [
+        f"`waist` was confirmed as {role}, on its own, as the question showed it.",
+        "`energy_kcal` was confirmed to be in kcal, on its own, as the question showed it.",
+        f"Confirmed together, each as the question showed it: `bp_sys` was confirmed as {role}; "
+        f"`fat_g` was confirmed to be in g."]
+    assert _said(log, "confirm_readings") == _recorded(log, "confirm_readings")
 
 
 def test_under_estimate_each_confirmation_names_the_role_as_before(tmp_path):

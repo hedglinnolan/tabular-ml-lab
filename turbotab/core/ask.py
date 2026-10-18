@@ -348,7 +348,7 @@ def card(question: str, ctx: AskContext) -> AskCard | None:
     one proposal (ruling R-g) that the card asks whole are one line, read with that proposal's
     reason and confirmed in one press (``readings.with_proposals``, ``readings.judged_exits``)."""
     from turbotab.core.readings import (ask_exits, ask_text, families, guess_words, judged_exits,
-                                        labeled, role_group_words, with_proposals)
+                                        judged_reason, labeled, role_group_words, with_proposals)
 
     entry = CONSUMERS.get(question)
     if entry is None:
@@ -367,9 +367,15 @@ def card(question: str, ctx: AskContext) -> AskCard | None:
                                     getattr(ctx.state, "lens", None))
         return guess_words(g[0], ctx.state)
 
+    def evidence(g: list[Any]) -> str:
+        # a judged group's shared reason alone (``readings.judged_reason``)
+        if len(g) > 1 and g[0].judgment is not None:
+            return judged_reason(g[0], getattr(ctx.state, "purpose", None))
+        return g[0].evidence
+
     groups = [AskGroup(kind=g[0].kind, columns=[r.column for r in g],
                        guess=None if g[0].value is None else str(g[0].value),
-                       guess_words=words(g), evidence=g[0].evidence)
+                       guess_words=words(g), evidence=evidence(g))
               for g in families(readings)]
     # The consumer's own ways forward where its refusal names them, else the ledger's ask.
     own = judged_exits(needed.exits or (ask_exits(readings, ctx.state) if readings else []),

@@ -13,7 +13,7 @@ import { CONTRACT } from "../../fixtures/contract";
 import FIXTURE from "./fixture.json";
 import { Readings } from "../Readings";
 import { RoleCard } from "./RoleCard";
-import { predictKind } from "../../../mocks/roleWords";
+import { mockPredictorGroups, predictKind } from "../../../mocks/roleWords";
 import {
   groupItem,
   groupPress,
@@ -22,9 +22,11 @@ import {
   memberItems,
   ownOptions,
   ownRefusal,
+  predictorsSentence,
   readingBlocks,
   roleItem,
   ROLE_LINE_ID,
+  servedGroups,
   waitingClause,
   waitingPredictorColumns,
   waitingPredictors,
@@ -273,5 +275,24 @@ describe("the fit's ask line lists a group as one row (ruling R-g)", () => {
     for (const m of memberItems(group)) expect(screen.getByText(`${m.column} ${m.words}`)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: press.label }));
     await waitFor(() => expect(posted()).toEqual([press.decision]));
+  });
+});
+
+describe("the Predict roles card's one sentence (the ruling of 2026-10-18)", () => {
+  it("is the engine's, its count interpolated, one column said as one", () => {
+    const { one, many } = FIXTURE.under.prediction.sentence;
+    expect(predictorsSentence(12, "12")).toBe(many.replace("{n}", "12"));
+    expect(predictorsSentence(1_234, "1,234")).toBe(many.replace("{n}", "1,234"));
+    expect(predictorsSentence(1, "1")).toBe(one);
+  });
+
+  it("reads served groups that name no step, the same under fill and no fill", () => {
+    for (const kind of Object.values(FIXTURE.under.prediction.kinds)) {
+      for (const g of Object.values(kind.groups)) expect(g.note).toBe("");
+    }
+    const served = mockPredictorGroups(["dietary"], "regression", ["fat_g", "kcal"]);
+    expect(served.fill).toEqual(served.no_fill);
+    expect(servedGroups(served)!.exposure).toEqual({ one: "a nutrient", head: ["Nutrient", "Nutrients"] });
+    expect(servedGroups(null)).toBeNull();
   });
 });

@@ -1544,8 +1544,9 @@ def _ask_items(asked: Asked, state: Any) -> list[ReadItem]:
     R-g, ``readings.with_proposals``). Then the group is one item (:data:`ROLE_GROUP_ITEM`, as a
     group's role line reads it: how many, the role, the confidence and the shared reason, its first
     columns named) carrying the group's one press, and each of its columns follows as a role item
-    with its own presses, which move it alone."""
-    from turbotab.core.readings import first_columns, guess_words, role_group_words
+    with its own presses, which move it alone. The group's evidence is its shared reason alone
+    (``readings.judged_reason``: a codebook's label of its first column is that column's)."""
+    from turbotab.core.readings import first_columns, guess_words, judged_reason, role_group_words
 
     def decided(exit_: Mapping[str, Any]) -> Any:
         decision = exit_.get("decision")
@@ -1616,7 +1617,7 @@ def _ask_items(asked: Asked, state: Any) -> list[ReadItem]:
                 kind=ROLE_GROUP_ITEM, column=columns[0], value=str(group[0].value),
                 words=f"{first_columns(columns)}: "
                       f"{role_group_head(len(columns), many, str(group[0].confidence))}",
-                evidence=str(group[0].evidence or ""),
+                evidence=judged_reason(group[0], purpose),
                 options=[option(e) for e in asked.exits if press_of(e) == j]))
             # each column as a group's role line lists it ("proposed as …", ``role_line_text``),
             # worded once for the group: 20,000 genes are one role
@@ -1708,7 +1709,7 @@ def role_choices(role: str, purpose: str | None = None,
     as ``role`` or as one offered before it, in a role line's words for a project with these
     ``lenses`` (``readings.role_line_words``), is no change the person can read, so it is not
     offered (W1-R round 3, SE-m2). Under Predict the three predictor roles read apart, each named
-    by the steps that treat it differently (the roles ruling of 2026-10-17)."""
+    by the roles card's group for it (the roles ruling of 2026-10-17)."""
     from turbotab.core.readings import ROLE_ALTERNATIVES, ROLE_CHANGES, role_line_words
 
     others = [*ROLE_CHANGES.get(str(role), ("covariate",)),
@@ -1751,7 +1752,7 @@ def role_line_reason(column: str, role: str, purpose: str | None = None,
 
 def role_line_text(column: str, role: str, other: str = "",
                    purpose: str | None = None,
-                   lenses: Sequence[str] | None = None, fill: bool = True) -> dict[str, str]:
+                   lenses: Sequence[str] | None = None) -> dict[str, str]:
     """The words of one column's role line (:func:`_role_lines`): its name, why it waits
     (:func:`role_line_reason`), its reading while it waits (``proposed``) and once settled
     (``settled``), and the labels of its confirmation (``confirm``) and of a change to ``other``
@@ -1759,18 +1760,15 @@ def role_line_text(column: str, role: str, other: str = "",
     these ``lenses`` (``readings.role_line_words``: under Predict each predictor role by the roles
     card's group for it, the roles ruling of 2026-10-17). Under Predict a change to another
     predictor role is a move between the card's groups ("Move `bp_sys` to the nutrients"), never a
-    claim about what the column is, and the energy column's move says what it changes: the
-    energy-aware fill no longer reads it, where the project's roles let it run (``fill``:
-    ``readings.fill_runs``, W1-T's V3)."""
-    from turbotab.core.readings import FILL, PREDICTOR_ROLES, predictor_groups, role_line_words
+    claim about what the column is, and it names no step, the energy column's included (the ruling
+    of 2026-10-18: the energy-aware fill it named is built under a single fill alone)."""
+    from turbotab.core.readings import PREDICTOR_ROLES, predictor_groups, role_line_words
 
     def words(r: str) -> str:
         return role_line_words(r, purpose, lenses)
 
     if purpose == "prediction" and other in PREDICTOR_ROLES and other != role:
         change = f"Move `{column}` to the {predictor_groups(lenses)[other].head[1].lower()}"
-        if role == "energy" and fill:
-            change += f" ({FILL} no longer reads it)"
     else:
         change = f"`{column}` is {words(other)}"
     return {
@@ -1897,7 +1895,7 @@ def _role_lines(state: Any, steps: Sequence[Any], log: _Log,
     own reason for the proposal, where its artifact is at hand; without it each column is a line of
     its own. While the roles question is asked again (its answer no longer holds) the columns wait
     with it and are not listed."""
-    from turbotab.core.readings import (fill_runs, group_press, group_press_label, proposals_of,
+    from turbotab.core.readings import (group_press, group_press_label, proposals_of,
                                         role_evidence, role_group_words, role_groups,
                                         role_reading)
 
@@ -1914,7 +1912,6 @@ def _role_lines(state: Any, steps: Sequence[Any], log: _Log,
     target = getattr(state, "target", None)
     purpose = getattr(state, "purpose", None)
     lenses = [str(k) for k in getattr(state, "lens", None) or ()]
-    fill = fill_runs(roles)
     order = {c: i for i, c in enumerate(roles)}
     found = {c: role_reading(state, c) for c in roles if c in named and c != target}
     held = {c: r for c, r in found.items() if r is not None}
@@ -1946,7 +1943,7 @@ def _role_lines(state: Any, steps: Sequence[Any], log: _Log,
                 kind="role", column=c, value=g.role,
                 words=text["proposed" if not held[c].settled else "settled"], evidence="",
                 options=[_role_option(c, other, role_line_text(c, g.role, other, purpose,
-                                                               lenses, fill)["change"])
+                                                               lenses)["change"])
                          for other in role_choices(g.role, purpose, lenses)]))
         lines.append((order[members[0]], QuestLine(
             id=ROLE_LINE.item, key=role_group_key(g.rode[0]), source="reading", label=DECIDE,
@@ -1961,8 +1958,7 @@ def _role_lines(state: Any, steps: Sequence[Any], log: _Log,
         role = str(roles[column])
         text = role_line_text(column, role, purpose=purpose, lenses=lenses)
         options = [_role_option(column, other,
-                                role_line_text(column, role, other, purpose, lenses,
-                                               fill)["change"])
+                                role_line_text(column, role, other, purpose, lenses)["change"])
                    for other in role_choices(role, purpose, lenses)]
         waiting = not reading.settled
         if waiting:

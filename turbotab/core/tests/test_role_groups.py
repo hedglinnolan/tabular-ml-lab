@@ -160,6 +160,40 @@ def test_a_block_of_two_groups_is_refused_and_names_each_with_its_own_press():
     assert UNDER_PREDICT[FEATURE] in message and UNDER_PREDICT[TRAIT] in message
 
 
+TRAITS = ["bp_sys", "weight"]
+WAIST = next(p["reason"] for p in PROPOSALS["columns"] if p["column"] == "waist")
+
+
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_two_judgments_alike_but_for_their_reason_are_refused_in_one_block(purpose):
+    """The M1 run's block: `bp_sys` and `weight` proposed as covariates at medium confidence for one
+    reason, and `waist` proposed so for another, the same role and confidence. Each reason is a
+    judgment of its own (ruling R-g), so the block of all three is refused, offering each group's
+    own press (the pair's ``confirm_readings``, `waist`'s own confirmation) and naming each group;
+    each press is accepted on its own. A guard that read only the role and the confidence would
+    accept the block (the mutation this test is run against)."""
+    assert [p["confidence"] for p in PROPOSALS["columns"] if p["column"] in (*TRAITS, "waist")] \
+        == ["medium"] * 3 and WAIST != TRAIT
+    state = decisions.fold(_records(("dietary",), purpose))
+    with pytest.raises(Refusal) as refused:
+        validate(_press([*TRAITS, "waist"], "covariate"), _ctx(state))
+    assert refused.value.code == "roles_one_at_a_time"
+    exits = [_decided(e["decision"]) for e in refused.value.exits]
+    assert exits == [_press(TRAITS, "covariate"),
+                     {"kind": "confirm_reading", "reading": "role", "column": "waist",
+                      "value": "covariate"}]
+    for e in exits:  # the other way: each group's own press is accepted on its own
+        validate(e, _ctx(state))
+    message = refused.value.message
+    many, one = (("characteristics", "a characteristic") if purpose == "prediction"
+                 else ("covariates", "a covariate"))
+    assert (f"the 2 columns `bp_sys` and `weight`, proposed as {many} at medium confidence, below "
+            f"high, for one reason (\"{_said(TRAIT, purpose)}\")") in message
+    assert f"`waist`, proposed as {one} at medium confidence, below high" in message
+    labels = [e["label"] for e in refused.value.exits]
+    assert labels == [f"Confirm these 2 as {many}", f"Confirm `waist` as {one}"]
+
+
 def test_a_group_beside_another_reading_is_refused_and_the_other_reading_stays_its_own():
     state = decisions.fold(_records())
     with pytest.raises(Refusal) as refused:
@@ -468,6 +502,64 @@ def test_a_groups_reason_is_quoted_in_the_goals_words_on_every_surface(purpose):
         for text in (asked.message, *(h.evidence for h in heads.values())):
             for word in ("what you study", "studied", "adjusted for"):
                 assert word not in text, (word, text)
+
+
+# The researcher's own data dictionary, imported: a label for the first column of each group and
+# for the column proposed alone.
+CODEBOOK = {"kind": "import_codebook", "codebook": "c0123456789", "name": "dictionary.csv",
+            "form": "table", "labels": {"g00": "Gene zero, read counts",
+                                        "bp_sys": "Systolic blood pressure (mmHg)",
+                                        "waist": "Waist circumference (cm)"}}
+
+
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_a_groups_clause_quotes_only_its_shared_reason_beside_a_codebook(purpose):
+    """The ruling of 2026-10-18 (m2): with a codebook imported, the ask's clause for a judged group
+    quoted its first column's label inside "one reason for all N" ("…; your codebook labels it
+    "…"; one reason for all 5"), though the label is that column's alone. Under either goal the
+    clause, the fit's ask line's group item and the ask card quote the shared reason alone; the
+    column proposed alone keeps its own label beside its evidence (the other way)."""
+    from turbotab.core import ask
+
+    records = _records(("genomics",), purpose, CODEBOOK)
+    state = decisions.fold(records)
+    for column, label in CODEBOOK["labels"].items():
+        assert readings.codebook_label(state, column) == label
+    asked = quest.fit_waits(state, artifact=PROPOSALS)
+    items = {i.column: i for i in quest._ask_items(asked, state)
+             if i.kind == quest.ROLE_GROUP_ITEM}
+    card = ask.card("models", ask.AskContext(state, {"roles": PROPOSALS}))
+    judged = [(k, v) for k, v in _judgments(PROPOSALS).items() if len(v) > 1]
+    assert [v[0] for _k, v in judged] == ["g00", "bp_sys"]
+    for text in (asked.message, card.text):
+        for (role, confidence, reason), columns in judged:
+            said = _said(reason, purpose)
+            many = readings.role_group_words(role, purpose, ["genomics"])
+            assert (f"{len(columns)} columns like `{columns[0]}`: {many}? ({said.rstrip('.')}; one "
+                    f"reason for all {len(columns)}, at {confidence} confidence)") in text, text
+            assert items[columns[0]].evidence == said
+            assert CODEBOOK["labels"][columns[0]] not in text, text
+        assert f"your codebook labels it \"{CODEBOOK['labels']['waist']}\"" in text, text
+
+
+def test_an_ask_of_one_group_of_several_columns_says_these_columns():
+    """The ruling of 2026-10-18 (m2): one group asked alone is one line of the ask, and the ask said
+    "Tell me about this column: 5 columns like `g00`…". A line holding several columns is said of
+    "these columns"; a column asked on its own of "this column" (the other way)."""
+    genes = {"columns": [p for p in PROPOSALS["columns"]
+                         if p["confidence"] == "high" or p["column"] in GENES]}
+    lone = {"columns": [p for p in PROPOSALS["columns"]
+                        if p["confidence"] == "high" or p["column"] == "waist"]}
+    for proposals, waiting, lead in ((genes, list(GENES), "these columns: 5 columns like `g00`"),
+                                     (lone, ["waist"], "this column: `waist`")):
+        roles = {p["column"]: p["proposed"] for p in proposals["columns"]}
+        records = [record(1, {"kind": "set_lens", "lenses": ["genomics"]}),
+                   record(2, {"kind": "set_target", "column": "y"}),
+                   record(3, {"kind": "set_purpose", "purpose": "prediction"}),
+                   record(4, {"kind": "set_roles", "roles": roles, "unconfirmed": waiting})]
+        with pytest.raises(readings.Unsettled) as asked:
+            readings.predictors_or_ask(decisions.fold(records), artifact=proposals)
+        assert f" Tell me about {lead}" in str(asked.value), str(asked.value)
 
 
 # ── the fit's refusal names each group by its first columns (the W1-U verifier's P5) ──

@@ -15,39 +15,37 @@ import { PREDICTOR_ROLES, type PredictorGroups, type Role } from "../../../api/m
 import type { QuestLine, QuestLog, ReadItem, ReadOption, Refusal } from "../../../api/schema";
 
 /** One predictor role under Predict as the roles card names it (core/readings.py
- *  `predictor_groups`): `one` in a role line's words, `head` the group's name for one column and
- *  for many, and `note` the steps that treat it differently, as a sentence (empty where the project
- *  runs none). */
+ *  `predictor_groups`): `one` in a role line's words, and `head` the group's name for one column and
+ *  for many. The card names no step that treats a group apart (the ruling of 2026-10-18), so a
+ *  served group's `note`, which the server keeps empty, is not read. */
 export interface PredictorGroup {
   one: string;
   head: readonly [string, string];
-  note: string;
-}
-
-/** Whether the energy-aware fill runs with these roles (core/readings.py `fill_runs`): a column
- *  holds the energy role and a Predictor column carries energy (the columns the server reads as
- *  carrying energy, `energy_bearing`). */
-export function fillRuns(roles: Readonly<Record<string, string>> | null | undefined, energyBearing: readonly string[]): boolean {
-  const all = Object.entries(roles ?? {});
-  const bearing = new Set(energyBearing);
-  return all.some(([, r]) => r === "energy") && all.some(([c, r]) => r === "exposure" && bearing.has(c));
 }
 
 /** The three predictor roles' groups under Predict, as the server serves them for the project's
- *  lenses and task beside the roles stage's proposals (`predictor_groups`; W1 part 2's U6), each
- *  note naming only the steps the project can run with these roles (the energy-aware fill only
- *  where it would run). Null where the server served none. */
+ *  lenses beside the roles stage's proposals (`predictor_groups`; W1 part 2's U6). The served shape
+ *  holds each group twice (`fill`, `no_fill`), the same since the groups read the lenses alone
+ *  (core/readings.py `served_groups`), so either is the card's. Null where the server served none. */
 export function servedGroups(
   served: PredictorGroups | null | undefined,
-  roles: Readonly<Record<string, string>> | null | undefined,
 ): Record<"exposure" | "energy" | "covariate", PredictorGroup> | null {
   if (!served) return null;
-  const g = fillRuns(roles, served.energy_bearing) ? served.fill : served.no_fill;
   const group = (role: string): PredictorGroup => {
-    const x = g[role];
-    return { one: x?.one ?? role, head: [x?.head[0] ?? role, x?.head[1] ?? role], note: x?.note ?? "" };
+    const x = served.no_fill[role];
+    return { one: x?.one ?? role, head: [x?.head[0] ?? role, x?.head[1] ?? role] };
   };
   return { exposure: group("exposure"), energy: group("energy"), covariate: group("covariate") };
+}
+
+/** The Predict roles card's one sentence about its predictor groups (core/readings.py
+ *  `predictors_sentence`, the ruling of 2026-10-18), true in every project: `n` columns enter the
+ *  models as predictors, and a column's group changes only how some preparation and screening steps
+ *  treat it. `count` is `n` as the card prints it. */
+export function predictorsSentence(n: number, count: string): string {
+  return n === 1
+    ? "It enters the models as a predictor; its group changes only how some preparation and screening steps treat it."
+    : `All ${count} enter the models as predictors; a column's group changes only how some preparation and screening steps treat it.`;
 }
 
 /** Whether a role enters the models as a predictor (core/readings.py PREDICTOR_ROLES). */

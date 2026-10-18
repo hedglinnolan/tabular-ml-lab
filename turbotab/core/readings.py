@@ -1399,56 +1399,46 @@ def role_words(role: str | None, purpose: str | None = None) -> str:
     return words.get(str(role), str(role))
 
 
-# ── the predictor roles under Predict, named by what differs (the roles ruling of 2026-10-17) ──
+# ── the predictor roles under Predict, named by their groups (the rulings of 2026-10-17, -18) ──
 #
-# Under Predict every predictor role is a predictor, yet the engine still reads the Predictor role
-# (``exposure``) apart from the others. The roles card names each of the three by the steps that
-# treat it differently in the project, and a role line by the card's group names. Each step is read
-# from the code by ``tests/test_estimate_words_under_predict.py``, and each is named only where the
-# project can run it:
-# * the energy-aware fill (``methods.missing.energy_fill``): under a single fill, a Predictor column
-#   that carries energy is filled from its line on the column with the energy role, and every
-#   other column by its median; named, under any lens (the roles stage proposes total energy under
-#   every lens), only where it would run: a column holds the energy role and a Predictor column
-#   carries energy (:func:`fill_runs`, W1-T's V3);
-# * the screened elastic net's screen (``methods.omics``, ``ScreenedElasticNet.preprocess``): it
-#   screens the Predictor columns and passes every other; named where that family is on the Predict
-#   shelf, which holds every family that can model the task (``models.base.rank``,
-#   :func:`screen_on_shelf`): a regression or a yes/no outcome's, not a multiclass, ordinal or
-#   time-to-event outcome's;
-# * the omics normalization (``methods.omics.design_normalization``) and reference ComBat
-#   (``methods.batch.design_batch``), which adjust the Predictor columns alone; named under an
-#   assay lens, where their questions are asked.
-# The pooled-QC steps of the metabolomics pack's pooled-QC answer (``methods.qc_drift``: QC-RLSC's
-# drift and batch correction with its detection and RSD filters, PQN to the pooled QCs, and the
-# in-fold D-ratio filter) read no role: their features are every column the answer reads as one by
-# name and type (``omics.candidate_columns``), a covariate or total energy too, and a feature a
-# filter drops leaves the predictors. They set no predictor role apart, so they are no step here;
-# under a lens that asks the pooled-QC question (:data:`POOLED_QC_LENSES`) the notes of the other
-# two roles say that those steps may adjust or drop them, beside the normalization and batch
-# correction that leave them (the W1-U verifier's P2).
+# Under Predict every predictor role is a predictor, and the roles card names each of the three by
+# its group in the project, by the lenses alone (a nutrient, a measure or an assay feature; a
+# characteristic; total energy), and a role line by the card's group names. The engine still reads
+# the Predictor role (``exposure``) apart in some preparation and screening steps: the energy-aware
+# fill under a single fill (``methods.missing.energy_fill``), the screened elastic net's screen
+# (``ScreenedElasticNet.preprocess``), the omics normalization and reference ComBat
+# (``methods.omics.design_normalization``, ``methods.batch.design_batch``). Four rounds named those
+# steps on the card, and each produced a false sentence (the last, the energy-aware fill named under
+# the complete-cases answer, where ``models.pipeline`` builds no fill), so under the ruling of
+# 2026-10-18 the card, its groups, its options and terms and every role press name no step. The
+# card says one sentence that holds in every project (:func:`predictors_sentence`), and
+# ``tests/test_estimate_words_under_predict.py`` reads its claim from the code on a frame it builds.
 # The group names follow the lenses alone, so the record's sentences, which read only the answers,
 # name a move as the card does (``voice._role_move``). Under Estimate, and with no goal, the words
 # are ``role_words``'s, unchanged.
-FILL, SCREEN, NORMALIZATION, BATCH = ("the energy-aware fill", "the screened elastic net's screen",
-                                      "normalization", "batch correction")
-QC_STEPS = "the pooled-QC steps"
 DIETARY_LENSES = ("dietary",)
-POOLED_QC_LENSES = ("metabolomics",)  # the lenses whose pack asks the pooled-QC question
-SCREENED_FAMILY = "screened_elastic_net"
+GROUP_CHANGES = "group changes only how some preparation and screening steps treat it"
+
+
+def predictors_sentence(n: int | str) -> str:
+    """The Predict roles card's one sentence about its predictor groups, true in every project:
+    ``n`` columns enter the models as predictors, and a column's group changes only how some
+    preparation and screening steps treat it. ``n`` may be a template's placeholder."""
+    if n == 1:
+        return f"It enters the models as a predictor; its {GROUP_CHANGES}."
+    count = f"{n:,}" if isinstance(n, int) else str(n)
+    return f"All {count} enter the models as predictors; a column's {GROUP_CHANGES}."
 
 
 @dataclass(frozen=True)
 class PredictorGroup:
     """One predictor role under Predict, as the roles card and a role line name it: ``one`` in a
-    role line's words ("a nutrient"), ``head`` the card's group, one column and many ("Nutrient",
-    "Nutrients"), and ``note`` the steps that treat it differently, as a sentence (empty where the
-    project runs none of them)."""
+    role line's words ("a nutrient"), and ``head`` the card's group, one column and many
+    ("Nutrient", "Nutrients")."""
 
     role: str
     one: str
     head: tuple[str, str]
-    note: str
 
 
 def predict_kind(lenses: Iterable[str] | None) -> str:
@@ -1460,45 +1450,6 @@ def predict_kind(lenses: Iterable[str] | None) -> str:
     return "both" if dietary and assay else "dietary" if dietary else "assay" if assay else "neither"
 
 
-def screen_on_shelf(task: str | None) -> bool:
-    """Whether the screened elastic net is on the Predict shelf of a project with this ``task``:
-    the shelf holds every family that can model the task (``models.base.rank``). None, the task not
-    read yet: no shelf, so no screen is named."""
-    if task is None:
-        return False
-    import turbotab.core.methods.omics  # noqa: F401 - registers the screened family
-    from turbotab.core.models.base import families
-
-    return any(f.key == SCREENED_FAMILY for f in families(str(task)))
-
-
-def holds_energy(roles: Mapping[str, str] | None) -> bool:
-    """Whether a column holds the energy role in these roles."""
-    return any(str(r) == "energy" for r in (roles or {}).values())
-
-
-def fill_runs(roles: Mapping[str, str] | None) -> bool:
-    """Whether the energy-aware fill can run with these roles (``methods.missing.energy_fill``,
-    W1-T's V3): a column holds the energy role and a Predictor column carries energy
-    (``stages.rows.energy_bearing``, read from its name). Under Predict no energy answer names the
-    nutrients, so these are the ones it fills; with none of them it does not run, whatever holds
-    the energy role."""
-    from turbotab.core.stages.rows import energy_bearing
-
-    found = roles or {}
-    return holds_energy(found) and any(
-        str(r) == "exposure" and energy_bearing(str(c)) for c, r in found.items())
-
-
-def predict_steps(lenses: Iterable[str] | None, task: str | None = None,
-                  roles: Mapping[str, str] | None = None) -> tuple[str, ...]:
-    """The steps that read the Predictor role alone in a project with these lenses, this task and
-    these roles: each only where the project can run it."""
-    kind = predict_kind(lenses)
-    return (((FILL,) if fill_runs(roles) else ()) + ((SCREEN,) if screen_on_shelf(task) else ())
-            + ((NORMALIZATION, BATCH) if kind in ("both", "assay") else ()))
-
-
 _PREDICTOR_NAMES = {
     "both": ("a nutrient or assay feature", ("Nutrient or assay feature",
                                              "Nutrients and assay features")),
@@ -1508,49 +1459,15 @@ _PREDICTOR_NAMES = {
 }
 
 
-def _sentence(clauses: Sequence[str]) -> str:
-    text = "; ".join(clauses)
-    return text[:1].upper() + text[1:] + ("." if text else "")
-
-
-def predictor_groups(lenses: Iterable[str] | None, task: str | None = None,
-                     roles: Mapping[str, str] | None = None) -> dict[str, PredictorGroup]:
-    """The three predictor roles under Predict in a project with these lenses, this task and these
-    roles: each named by the lenses, its note saying what treats it differently there
-    (:func:`predict_steps`), and, where the pooled-QC question is asked, that its steps, which read
-    no role, may adjust or drop a characteristic and total energy (:data:`QC_STEPS`)."""
-    steps = predict_steps(lenses, task, roles)
-    assay = NORMALIZATION in steps
-    fill = FILL in steps
-    screen = SCREEN in steps
-    pooled = bool({str(k) for k in lenses or ()} & set(POOLED_QC_LENSES))
+def predictor_groups(lenses: Iterable[str] | None) -> dict[str, PredictorGroup]:
+    """The three predictor roles under Predict in a project with these lenses, each named by the
+    lenses."""
     one, head = _PREDICTOR_NAMES[predict_kind(lenses)]
-    adjust = f"{NORMALIZATION} and {BATCH}"
-    qc = f", but {QC_STEPS}, which read no role, may adjust or drop" if pooled else ""
-    predictor = [
-        *([f"{FILL} fills a missing amount of one that carries energy from total energy"]
-          if fill else []),
-        *([f"{SCREEN} may leave any of them out"] if screen else []),
-        *([f"{adjust} adjust them"] if assay else []),
-    ]
-    characteristic = [
-        *([f"{FILL} fills them without total energy"] if fill else []),
-        *([f"{SCREEN} keeps every one"] if screen else []),
-        *([f"{adjust} leave them as they are" + (f"{qc} any of them" if qc else "")]
-          if assay else []),
-    ]
-    energy = [
-        *([f"{FILL} fills the {head[1].lower()} that carry energy from it"] if fill else []),
-        *([f"{SCREEN} keeps it"] if screen else []),
-        *([f"{adjust} leave it as it is" + (f"{qc} it" if qc else "")] if assay else []),
-    ]
     return {
-        "exposure": PredictorGroup("exposure", one, head, _sentence(predictor)),
-        "energy": PredictorGroup("energy", "total energy", ("Total energy", "Total energy"),
-                                 _sentence(energy)),
+        "exposure": PredictorGroup("exposure", one, head),
+        "energy": PredictorGroup("energy", "total energy", ("Total energy", "Total energy")),
         "covariate": PredictorGroup("covariate", "a characteristic",
-                                    ("Characteristic", "Characteristics"),
-                                    _sentence(characteristic)),
+                                    ("Characteristic", "Characteristics")),
     }
 
 
@@ -1558,20 +1475,16 @@ def served_groups(lenses: Iterable[str] | None, task: str | None,
                   columns: Iterable[str]) -> dict[str, Any]:
     """The predictor groups a project's roles card draws under Predict, served beside the roles
     stage's proposals (W1 part 2's U6: the card reads them from the server, never from a test's
-    fixture): for the project's ``lenses`` and ``task``, each role's group (:func:`predictor_groups`)
-    where the energy-aware fill would run and where it would not (``fill``, ``no_fill``), and the
-    ``columns`` that carry energy (``stages.rows.energy_bearing``), so the card tells which applies to
-    the roles it draws (:func:`fill_runs`: one holds the energy role, and a Predictor column carries
-    energy)."""
+    fixture), for the project's ``lenses``. The served shape (``server.schemas.PredictorGroups``)
+    still holds each role's group twice, ``fill`` and ``no_fill``, and a ``note`` in each: since the
+    ruling of 2026-10-18 the groups read the lenses alone, so the two are the same and every note is
+    empty (the card names no step). ``task`` is the server's argument, read by none of them;
+    ``energy_bearing`` lists the ``columns`` that carry energy (``stages.rows.energy_bearing``)."""
     from turbotab.core.stages.rows import energy_bearing
 
-    def drawn(roles: Mapping[str, str]) -> dict[str, dict[str, Any]]:
-        return {r: {"one": g.one, "head": list(g.head), "note": g.note}
-                for r, g in predictor_groups(lenses, task, roles).items()}
-
-    # Roles chosen only to make the fill run (an energy column beside a nutrient that carries
-    # energy) and not: the groups read nothing else of the roles.
-    return {"fill": drawn({"energy": "energy", "fat_g": "exposure"}), "no_fill": drawn({}),
+    drawn = {r: {"one": g.one, "head": list(g.head), "note": ""}
+             for r, g in predictor_groups(lenses).items()}
+    return {"fill": drawn, "no_fill": {r: dict(g) for r, g in drawn.items()},
             "energy_bearing": [str(c) for c in columns if energy_bearing(str(c))]}
 
 
@@ -1778,14 +1691,18 @@ def group_phrase(columns: Sequence[str], role: str, confidence: str, reason: str
 # group's shared reason below high wherever it is quoted (the W1-U verifier's P4: its line, the
 # fit's ask, the record and the methods): a measured feature "under the omics lens", a measured
 # column or a rate "read as a predictor", fasting status, a nutrient by a ratio unit and an intake
-# by its unit. The stage's reasons stay as they are. The tests hold these clauses to the stage's
-# own reasons (``tests/test_estimate_words_under_predict.py``), so a reworded reason fails.
+# by its unit. The stage's two low-confidence covariate defaults, a column that is no nutrient or
+# feature and a category that describes the row, read it "as a covariate", which under Predict is
+# a predictor (the ruling of 2026-10-18), so they are quoted "read as a predictor" too. The stage's
+# reasons stay as they are. The tests hold these clauses to the stage's own reasons
+# (``tests/test_estimate_words_under_predict.py``), so a reworded reason fails.
 _STUDY_CLAUSES = (
     (": what you study;", ";"), (", usually adjusted for rather than studied.", "."),
     (", adjusted for rather than studied.", "."),
     (": what you study under the omics lens.", " under the omics lens."),
     (": what you study under the dietary lens.", ", under the dietary lens."),
-    (": what you study, not", ", not"), ("read as what you study", "read as a predictor"))
+    (": what you study, not", ", not"), ("read as what you study", "read as a predictor"),
+    ("read as a covariate", "read as a predictor"))
 
 
 def role_evidence(reason: str, purpose: str | None = None) -> str:
@@ -3292,8 +3209,6 @@ def read_from_data(state: Any, *, roles: Any = None, target_info: Any = None,
 
     purpose = _get(state, "purpose")
     lenses = [str(k) for k in _get(state, "lens") or ()]
-    fill = fill_runs(recorded or {str(p.get("column")): str(p.get("proposed"))
-                                  for p in proposals_of(roles)})
     for p in proposals_of(roles):
         column, role = str(p.get("column")), str(p.get("proposed"))
         if p.get("confidence") != "high" or column in own:
@@ -3303,13 +3218,13 @@ def read_from_data(state: Any, *, roles: Any = None, target_info: Any = None,
         if purpose == "prediction":
             # W1-T's V1: under Predict a role reads as the role lines say it, by the roles card's
             # groups, and each press is a role line's own (``quest.role_line_text``): a move between
-            # the groups, the energy column's naming the fill only where it runs.
+            # the groups, which names no step (the ruling of 2026-10-18).
             from turbotab.core.quest import role_choices, role_line_text
 
             add("role", column, role, f"is {role_line_words(role, purpose, lenses)}",
                 role_evidence(str(p.get("reason") or ""), purpose),
                 [confirm_exit("role", column, alt,
-                              role_line_text(column, role, alt, purpose, lenses, fill)["change"])
+                              role_line_text(column, role, alt, purpose, lenses)["change"])
                  for alt in role_choices(role, purpose, lenses)])
             continue
         # A change that reads as the role it changes is no change the person can read, so it is
@@ -3592,26 +3507,42 @@ def labeled(readings: Iterable[Reading], state: Any = None) -> list[Reading]:
     return out
 
 
+def judged_reason(r: Reading, purpose: str | None = None) -> str:
+    """What a judged role's line quotes as its group's evidence (ruling R-g): the shared reason its
+    judgment carries (:func:`with_proposals`), in the goal's words (:func:`role_evidence`), and
+    nothing a codebook labels one of its columns, which is that column's alone (the ruling of
+    2026-10-18, m2); a reading of no judgment, its own evidence."""
+    if r.judgment is None:
+        return str(r.evidence or "")
+    return role_evidence(r.judgment.split("\n", 2)[-1], purpose)
+
+
 def ask_text(readings: Iterable[Reading], state: Any = None) -> str:
     """The question in words: each reading (or family) once, by consequence, its best guess and its
-    evidence (a codebook's label beside it, :func:`labeled`, when ``state`` holds one)."""
+    evidence (a codebook's label beside it, :func:`labeled`, when ``state`` holds one; a judged
+    group's line quotes its shared reason alone, :func:`judged_reason`). It asks about "this
+    column" where it lists one column, else "these columns", a group of several on one line
+    too."""
     if state is not None:
         readings = labeled(readings, state)
     lines = []
+    columns = 0
     for group in families(readings):
         r = group[0]
+        columns += len(group)
         if len(group) > 1 and r.judgment is not None:
             # the shared reason as a clause, its sentence's period left to the ask's (P4: ".;")
             words = role_group_words(r.value, _get(state, "purpose"), _get(state, "lens"))
+            said = judged_reason(r, _get(state, "purpose"))
             lines.append(f"{len(group):,} columns like `{r.column}`: {words}? "
-                         f"({str(r.evidence or '').rstrip('.')}; one reason for all "
+                         f"({said.rstrip('.')}; one reason for all "
                          f"{len(group):,}, at {r.confidence} confidence)")
         elif len(group) > 1:
             lines.append(f"{len(group):,} columns like `{r.column}`: {guess_words(r, state)}?")
         else:
             why = f" ({r.evidence})" if r.evidence else ""
             lines.append(f"`{r.column}`: {guess_words(r, state)}?{why}")
-    return ("Tell me about " + ("this column" if len(lines) == 1 else "these columns") + ": "
+    return ("Tell me about " + ("this column" if columns == 1 else "these columns") + ": "
             + "; ".join(lines) + ".") if lines else ""
 
 
@@ -4079,8 +4010,8 @@ __all__ = [
     "confirmation", "confirmed_codes", "day_count_candidates", "day_count_reading",
     "is_settled", "key", "listing", "names_several_days", "one_at_a_time",
     "RoleGroup", "group_phrase", "group_press", "group_press_label", "role_group_words",
-    "role_groups", "served_groups", "fill_runs", "first_columns", "judged_exits",
-    "with_proposals",
+    "role_groups", "served_groups", "predictors_sentence", "first_columns", "judged_exits",
+    "judged_reason", "with_proposals",
     "outcome_unit_reading", "predictor_columns", "predictors_or_ask", "proposals_of", "reading",
     "repeat_kind_reading", "rode_along", "stated_reading", "task_reading", "role_evidence",
     "role_reading", "role_words", "settled",
