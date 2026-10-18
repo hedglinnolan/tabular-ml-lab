@@ -1,0 +1,1144 @@
+{
+  "about": "Written by turbotab/core/tests/test_quest_unconfirmed_roles.py from core/quest.py (_role_lines): never edit by hand.",
+  "place": {
+    "stage": "data",
+    "id": "decision:confirm_role",
+    "order": 30
+  },
+  "key": "confirm_role:{column}",
+  "unread_evidence": "proposed below high confidence and recorded with the other roles",
+  "templates": {
+    "name": "the role of `{column}`",
+    "proposed": "proposed as {role}",
+    "settled": "is {role}",
+    "confirm": "Confirm `{column}` as {role}",
+    "change": "`{column}` is {other}"
+  },
+  "group": {
+    "key": "confirm_roles:{column}",
+    "item": "role_group",
+    "name": "the roles of {columns}",
+    "head": {
+      "waiting": "{n} columns proposed as {many} at {confidence} confidence, below high, for one reason",
+      "settled": "{n} columns confirmed as {many} at {confidence} confidence, below high, for one reason"
+    },
+    "many": {
+      "identifier": "the unit's identifiers",
+      "exposure": "what you study",
+      "energy": "total energy intake",
+      "covariate": "covariates",
+      "design": "part of the survey design",
+      "flag": "flags on other columns",
+      "time": "the time of each row",
+      "excluded": "left out of the models",
+      "cluster": "clusters of units"
+    },
+    "reasons": {
+      "identifier": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the unit's identifiers they are not among the model's predictors, but the fit waits for them, since as covariates they would be. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "exposure": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "energy": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "covariate": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "design": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As part of the survey design they are not among the model's predictors, but the fit waits for them, since as covariates they would be. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a covariate on its own.",
+      "flag": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As flags on other columns they enter no model, but the fit waits for them, since as covariates they would. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a covariate on its own.",
+      "time": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the time of each row they are not among the model's predictors, but the fit waits for them, since as covariates they would be. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a covariate on its own.",
+      "excluded": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As columns left out they enter no model, but the fit waits for them, since put in the model they would. Confirm all {n} in one press after reading why they were proposed, or put any one of them in the model on its own.",
+      "cluster": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As clusters of units they are not among the model's predictors, but the fit waits for them, since as covariates they would be. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a covariate on its own."
+    },
+    "reasons_two": {
+      "identifier": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the unit's identifiers they are not among the model's predictors, but the fit waits for them, since as covariates they would be. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "exposure": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "energy": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "covariate": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "design": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As part of the survey design they are not among the model's predictors, but the fit waits for them, since as covariates they would be. Confirm both in one press after reading why they were proposed, or record any one of them as a covariate on its own.",
+      "flag": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As flags on other columns they enter no model, but the fit waits for them, since as covariates they would. Confirm both in one press after reading why they were proposed, or record any one of them as a covariate on its own.",
+      "time": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the time of each row they are not among the model's predictors, but the fit waits for them, since as covariates they would be. Confirm both in one press after reading why they were proposed, or record any one of them as a covariate on its own.",
+      "excluded": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As columns left out they enter no model, but the fit waits for them, since put in the model they would. Confirm both in one press after reading why they were proposed, or put any one of them in the model on its own.",
+      "cluster": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As clusters of units they are not among the model's predictors, but the fit waits for them, since as covariates they would be. Confirm both in one press after reading why they were proposed, or record any one of them as a covariate on its own."
+    },
+    "press": {
+      "identifier": "Confirm these {n} as the unit's identifiers",
+      "exposure": "Confirm these {n} as what you study",
+      "energy": "Confirm these {n} as total energy intake",
+      "covariate": "Confirm these {n} as covariates",
+      "design": "Confirm these {n} as part of the survey design",
+      "flag": "Confirm these {n} as flags on other columns",
+      "time": "Confirm these {n} as the time of each row",
+      "excluded": "Confirm these {n} as left out of the models",
+      "cluster": "Confirm these {n} as clusters of units"
+    }
+  },
+  "reasons": {
+    "identifier": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As the unit's identifier it is not among the model's predictors, but the fit waits for it, since as a covariate it would be. Confirm it after reading why it was proposed, or leave it out.",
+    "exposure": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+    "energy": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+    "covariate": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+    "design": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As part of the survey design it is not among the model's predictors, but the fit waits for it, since as a covariate it would be. Confirm it after reading why it was proposed, or record it as a covariate.",
+    "flag": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a flag on another column it enters no model, but the fit waits for it, since as a covariate it would. Confirm it after reading why it was proposed, or record it as a covariate.",
+    "time": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As the time of each row it is not among the model's predictors, but the fit waits for it, since as a covariate it would be. Confirm it after reading why it was proposed, or record it as a covariate.",
+    "excluded": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a column left out it enters no model, but the fit waits for it, since put in the model it would. Confirm it after reading why it was proposed, or put it in the model.",
+    "cluster": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a cluster of units it is not among the model's predictors, but the fit waits for it, since as a covariate it would be. Confirm it after reading why it was proposed, or record it as a covariate."
+  },
+  "words": {
+    "identifier": "the unit's identifier",
+    "exposure": "what you study",
+    "energy": "total energy intake",
+    "covariate": "a covariate",
+    "design": "part of the survey design",
+    "flag": "a flag on another column",
+    "time": "the time of each row",
+    "excluded": "left out of the models",
+    "cluster": "a cluster of units"
+  },
+  "choices": {
+    "identifier": [
+      "covariate",
+      "excluded"
+    ],
+    "exposure": [
+      "covariate",
+      "excluded"
+    ],
+    "energy": [
+      "covariate",
+      "excluded"
+    ],
+    "covariate": [
+      "exposure",
+      "excluded"
+    ],
+    "design": [
+      "covariate"
+    ],
+    "flag": [
+      "covariate"
+    ],
+    "time": [
+      "covariate"
+    ],
+    "excluded": [
+      "covariate",
+      "exposure"
+    ],
+    "cluster": [
+      "covariate"
+    ]
+  },
+  "under": {
+    "prediction": {
+      "lenses": {
+        "dietary": [
+          "dietary"
+        ],
+        "assay": [
+          "metabolomics",
+          "genomics"
+        ]
+      },
+      "kinds": {
+        "both": {
+          "reasons": {
+            "identifier": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As the unit's identifier it is not among the model's predictors, but the fit waits for it, since as a characteristic it would be. Confirm it after reading why it was proposed, or leave it out.",
+            "exposure": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "energy": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "covariate": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "design": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As part of the survey design it is not among the model's predictors, but the fit waits for it, since as a characteristic it would be. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "flag": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a flag on another column it enters no model, but the fit waits for it, since as a characteristic it would. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "time": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As the time of each row it is not among the model's predictors, but the fit waits for it, since as a characteristic it would be. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "excluded": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a column left out it enters no model, but the fit waits for it, since put in the model it would. Confirm it after reading why it was proposed, or put it in the model.",
+            "cluster": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a cluster of units it is not among the model's predictors, but the fit waits for it, since as a characteristic it would be. Confirm it after reading why it was proposed, or record it as a characteristic."
+          },
+          "words": {
+            "identifier": "the unit's identifier",
+            "exposure": "a nutrient or assay feature",
+            "energy": "total energy",
+            "covariate": "a characteristic",
+            "design": "part of the survey design",
+            "flag": "a flag on another column",
+            "time": "the time of each row",
+            "excluded": "left out of the models",
+            "cluster": "a cluster of units"
+          },
+          "choices": {
+            "identifier": [
+              "covariate",
+              "excluded"
+            ],
+            "exposure": [
+              "covariate",
+              "excluded"
+            ],
+            "energy": [
+              "covariate",
+              "excluded"
+            ],
+            "covariate": [
+              "exposure",
+              "excluded"
+            ],
+            "design": [
+              "covariate"
+            ],
+            "flag": [
+              "covariate"
+            ],
+            "time": [
+              "covariate"
+            ],
+            "excluded": [
+              "covariate",
+              "exposure"
+            ],
+            "cluster": [
+              "covariate"
+            ]
+          },
+          "changes": {
+            "identifier": {
+              "covariate": "Move `{column}` to the characteristics",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "exposure": {
+              "covariate": "Move `{column}` to the characteristics",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "energy": {
+              "covariate": "Move `{column}` to the characteristics",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "covariate": {
+              "exposure": "Move `{column}` to the nutrients and assay features",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "design": {
+              "covariate": "Move `{column}` to the characteristics"
+            },
+            "flag": {
+              "covariate": "Move `{column}` to the characteristics"
+            },
+            "time": {
+              "covariate": "Move `{column}` to the characteristics"
+            },
+            "excluded": {
+              "covariate": "Move `{column}` to the characteristics",
+              "exposure": "Move `{column}` to the nutrients and assay features"
+            },
+            "cluster": {
+              "covariate": "Move `{column}` to the characteristics"
+            }
+          },
+          "groups": {
+            "exposure": {
+              "one": "a nutrient or assay feature",
+              "head": [
+                "Nutrient or assay feature",
+                "Nutrients and assay features"
+              ],
+              "note": ""
+            },
+            "energy": {
+              "one": "total energy",
+              "head": [
+                "Total energy",
+                "Total energy"
+              ],
+              "note": ""
+            },
+            "covariate": {
+              "one": "a characteristic",
+              "head": [
+                "Characteristic",
+                "Characteristics"
+              ],
+              "note": ""
+            }
+          },
+          "group": {
+            "many": {
+              "identifier": "the unit's identifiers",
+              "exposure": "nutrients and assay features",
+              "energy": "total energy",
+              "covariate": "characteristics",
+              "design": "part of the survey design",
+              "flag": "flags on other columns",
+              "time": "the time of each row",
+              "excluded": "left out of the models",
+              "cluster": "clusters of units"
+            },
+            "reasons": {
+              "identifier": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the unit's identifiers they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "exposure": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "energy": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "covariate": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "design": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As part of the survey design they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "flag": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As flags on other columns they enter no model, but the fit waits for them, since as characteristics they would. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "time": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the time of each row they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "excluded": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As columns left out they enter no model, but the fit waits for them, since put in the model they would. Confirm all {n} in one press after reading why they were proposed, or put any one of them in the model on its own.",
+              "cluster": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As clusters of units they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own."
+            },
+            "reasons_two": {
+              "identifier": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the unit's identifiers they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "exposure": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "energy": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "covariate": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "design": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As part of the survey design they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "flag": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As flags on other columns they enter no model, but the fit waits for them, since as characteristics they would. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "time": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the time of each row they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "excluded": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As columns left out they enter no model, but the fit waits for them, since put in the model they would. Confirm both in one press after reading why they were proposed, or put any one of them in the model on its own.",
+              "cluster": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As clusters of units they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own."
+            },
+            "press": {
+              "identifier": "Confirm these {n} as the unit's identifiers",
+              "exposure": "Confirm these {n} as nutrients and assay features",
+              "energy": "Confirm these {n} as total energy",
+              "covariate": "Confirm these {n} as characteristics",
+              "design": "Confirm these {n} as part of the survey design",
+              "flag": "Confirm these {n} as flags on other columns",
+              "time": "Confirm these {n} as the time of each row",
+              "excluded": "Confirm these {n} as left out of the models",
+              "cluster": "Confirm these {n} as clusters of units"
+            }
+          }
+        },
+        "dietary": {
+          "reasons": {
+            "identifier": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As the unit's identifier it is not among the model's predictors, but the fit waits for it, since as a characteristic it would be. Confirm it after reading why it was proposed, or leave it out.",
+            "exposure": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "energy": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "covariate": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "design": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As part of the survey design it is not among the model's predictors, but the fit waits for it, since as a characteristic it would be. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "flag": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a flag on another column it enters no model, but the fit waits for it, since as a characteristic it would. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "time": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As the time of each row it is not among the model's predictors, but the fit waits for it, since as a characteristic it would be. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "excluded": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a column left out it enters no model, but the fit waits for it, since put in the model it would. Confirm it after reading why it was proposed, or put it in the model.",
+            "cluster": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a cluster of units it is not among the model's predictors, but the fit waits for it, since as a characteristic it would be. Confirm it after reading why it was proposed, or record it as a characteristic."
+          },
+          "words": {
+            "identifier": "the unit's identifier",
+            "exposure": "a nutrient",
+            "energy": "total energy",
+            "covariate": "a characteristic",
+            "design": "part of the survey design",
+            "flag": "a flag on another column",
+            "time": "the time of each row",
+            "excluded": "left out of the models",
+            "cluster": "a cluster of units"
+          },
+          "choices": {
+            "identifier": [
+              "covariate",
+              "excluded"
+            ],
+            "exposure": [
+              "covariate",
+              "excluded"
+            ],
+            "energy": [
+              "covariate",
+              "excluded"
+            ],
+            "covariate": [
+              "exposure",
+              "excluded"
+            ],
+            "design": [
+              "covariate"
+            ],
+            "flag": [
+              "covariate"
+            ],
+            "time": [
+              "covariate"
+            ],
+            "excluded": [
+              "covariate",
+              "exposure"
+            ],
+            "cluster": [
+              "covariate"
+            ]
+          },
+          "changes": {
+            "identifier": {
+              "covariate": "Move `{column}` to the characteristics",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "exposure": {
+              "covariate": "Move `{column}` to the characteristics",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "energy": {
+              "covariate": "Move `{column}` to the characteristics",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "covariate": {
+              "exposure": "Move `{column}` to the nutrients",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "design": {
+              "covariate": "Move `{column}` to the characteristics"
+            },
+            "flag": {
+              "covariate": "Move `{column}` to the characteristics"
+            },
+            "time": {
+              "covariate": "Move `{column}` to the characteristics"
+            },
+            "excluded": {
+              "covariate": "Move `{column}` to the characteristics",
+              "exposure": "Move `{column}` to the nutrients"
+            },
+            "cluster": {
+              "covariate": "Move `{column}` to the characteristics"
+            }
+          },
+          "groups": {
+            "exposure": {
+              "one": "a nutrient",
+              "head": [
+                "Nutrient",
+                "Nutrients"
+              ],
+              "note": ""
+            },
+            "energy": {
+              "one": "total energy",
+              "head": [
+                "Total energy",
+                "Total energy"
+              ],
+              "note": ""
+            },
+            "covariate": {
+              "one": "a characteristic",
+              "head": [
+                "Characteristic",
+                "Characteristics"
+              ],
+              "note": ""
+            }
+          },
+          "group": {
+            "many": {
+              "identifier": "the unit's identifiers",
+              "exposure": "nutrients",
+              "energy": "total energy",
+              "covariate": "characteristics",
+              "design": "part of the survey design",
+              "flag": "flags on other columns",
+              "time": "the time of each row",
+              "excluded": "left out of the models",
+              "cluster": "clusters of units"
+            },
+            "reasons": {
+              "identifier": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the unit's identifiers they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "exposure": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "energy": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "covariate": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "design": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As part of the survey design they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "flag": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As flags on other columns they enter no model, but the fit waits for them, since as characteristics they would. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "time": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the time of each row they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "excluded": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As columns left out they enter no model, but the fit waits for them, since put in the model they would. Confirm all {n} in one press after reading why they were proposed, or put any one of them in the model on its own.",
+              "cluster": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As clusters of units they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own."
+            },
+            "reasons_two": {
+              "identifier": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the unit's identifiers they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "exposure": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "energy": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "covariate": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "design": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As part of the survey design they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "flag": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As flags on other columns they enter no model, but the fit waits for them, since as characteristics they would. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "time": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the time of each row they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "excluded": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As columns left out they enter no model, but the fit waits for them, since put in the model they would. Confirm both in one press after reading why they were proposed, or put any one of them in the model on its own.",
+              "cluster": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As clusters of units they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own."
+            },
+            "press": {
+              "identifier": "Confirm these {n} as the unit's identifiers",
+              "exposure": "Confirm these {n} as nutrients",
+              "energy": "Confirm these {n} as total energy",
+              "covariate": "Confirm these {n} as characteristics",
+              "design": "Confirm these {n} as part of the survey design",
+              "flag": "Confirm these {n} as flags on other columns",
+              "time": "Confirm these {n} as the time of each row",
+              "excluded": "Confirm these {n} as left out of the models",
+              "cluster": "Confirm these {n} as clusters of units"
+            }
+          }
+        },
+        "assay": {
+          "reasons": {
+            "identifier": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As the unit's identifier it is not among the model's predictors, but the fit waits for it, since as a characteristic it would be. Confirm it after reading why it was proposed, or leave it out.",
+            "exposure": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "energy": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "covariate": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "design": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As part of the survey design it is not among the model's predictors, but the fit waits for it, since as a characteristic it would be. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "flag": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a flag on another column it enters no model, but the fit waits for it, since as a characteristic it would. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "time": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As the time of each row it is not among the model's predictors, but the fit waits for it, since as a characteristic it would be. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "excluded": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a column left out it enters no model, but the fit waits for it, since put in the model it would. Confirm it after reading why it was proposed, or put it in the model.",
+            "cluster": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a cluster of units it is not among the model's predictors, but the fit waits for it, since as a characteristic it would be. Confirm it after reading why it was proposed, or record it as a characteristic."
+          },
+          "words": {
+            "identifier": "the unit's identifier",
+            "exposure": "an assay feature",
+            "energy": "total energy",
+            "covariate": "a characteristic",
+            "design": "part of the survey design",
+            "flag": "a flag on another column",
+            "time": "the time of each row",
+            "excluded": "left out of the models",
+            "cluster": "a cluster of units"
+          },
+          "choices": {
+            "identifier": [
+              "covariate",
+              "excluded"
+            ],
+            "exposure": [
+              "covariate",
+              "excluded"
+            ],
+            "energy": [
+              "covariate",
+              "excluded"
+            ],
+            "covariate": [
+              "exposure",
+              "excluded"
+            ],
+            "design": [
+              "covariate"
+            ],
+            "flag": [
+              "covariate"
+            ],
+            "time": [
+              "covariate"
+            ],
+            "excluded": [
+              "covariate",
+              "exposure"
+            ],
+            "cluster": [
+              "covariate"
+            ]
+          },
+          "changes": {
+            "identifier": {
+              "covariate": "Move `{column}` to the characteristics",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "exposure": {
+              "covariate": "Move `{column}` to the characteristics",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "energy": {
+              "covariate": "Move `{column}` to the characteristics",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "covariate": {
+              "exposure": "Move `{column}` to the assay features",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "design": {
+              "covariate": "Move `{column}` to the characteristics"
+            },
+            "flag": {
+              "covariate": "Move `{column}` to the characteristics"
+            },
+            "time": {
+              "covariate": "Move `{column}` to the characteristics"
+            },
+            "excluded": {
+              "covariate": "Move `{column}` to the characteristics",
+              "exposure": "Move `{column}` to the assay features"
+            },
+            "cluster": {
+              "covariate": "Move `{column}` to the characteristics"
+            }
+          },
+          "groups": {
+            "exposure": {
+              "one": "an assay feature",
+              "head": [
+                "Assay feature",
+                "Assay features"
+              ],
+              "note": ""
+            },
+            "energy": {
+              "one": "total energy",
+              "head": [
+                "Total energy",
+                "Total energy"
+              ],
+              "note": ""
+            },
+            "covariate": {
+              "one": "a characteristic",
+              "head": [
+                "Characteristic",
+                "Characteristics"
+              ],
+              "note": ""
+            }
+          },
+          "group": {
+            "many": {
+              "identifier": "the unit's identifiers",
+              "exposure": "assay features",
+              "energy": "total energy",
+              "covariate": "characteristics",
+              "design": "part of the survey design",
+              "flag": "flags on other columns",
+              "time": "the time of each row",
+              "excluded": "left out of the models",
+              "cluster": "clusters of units"
+            },
+            "reasons": {
+              "identifier": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the unit's identifiers they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "exposure": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "energy": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "covariate": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "design": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As part of the survey design they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "flag": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As flags on other columns they enter no model, but the fit waits for them, since as characteristics they would. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "time": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the time of each row they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "excluded": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As columns left out they enter no model, but the fit waits for them, since put in the model they would. Confirm all {n} in one press after reading why they were proposed, or put any one of them in the model on its own.",
+              "cluster": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As clusters of units they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own."
+            },
+            "reasons_two": {
+              "identifier": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the unit's identifiers they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "exposure": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "energy": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "covariate": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "design": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As part of the survey design they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "flag": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As flags on other columns they enter no model, but the fit waits for them, since as characteristics they would. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "time": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the time of each row they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "excluded": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As columns left out they enter no model, but the fit waits for them, since put in the model they would. Confirm both in one press after reading why they were proposed, or put any one of them in the model on its own.",
+              "cluster": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As clusters of units they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own."
+            },
+            "press": {
+              "identifier": "Confirm these {n} as the unit's identifiers",
+              "exposure": "Confirm these {n} as assay features",
+              "energy": "Confirm these {n} as total energy",
+              "covariate": "Confirm these {n} as characteristics",
+              "design": "Confirm these {n} as part of the survey design",
+              "flag": "Confirm these {n} as flags on other columns",
+              "time": "Confirm these {n} as the time of each row",
+              "excluded": "Confirm these {n} as left out of the models",
+              "cluster": "Confirm these {n} as clusters of units"
+            }
+          }
+        },
+        "neither": {
+          "reasons": {
+            "identifier": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As the unit's identifier it is not among the model's predictors, but the fit waits for it, since as a characteristic it would be. Confirm it after reading why it was proposed, or leave it out.",
+            "exposure": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "energy": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "covariate": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "design": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As part of the survey design it is not among the model's predictors, but the fit waits for it, since as a characteristic it would be. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "flag": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a flag on another column it enters no model, but the fit waits for it, since as a characteristic it would. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "time": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As the time of each row it is not among the model's predictors, but the fit waits for it, since as a characteristic it would be. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "excluded": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a column left out it enters no model, but the fit waits for it, since put in the model it would. Confirm it after reading why it was proposed, or put it in the model.",
+            "cluster": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a cluster of units it is not among the model's predictors, but the fit waits for it, since as a characteristic it would be. Confirm it after reading why it was proposed, or record it as a characteristic."
+          },
+          "words": {
+            "identifier": "the unit's identifier",
+            "exposure": "a measure",
+            "energy": "total energy",
+            "covariate": "a characteristic",
+            "design": "part of the survey design",
+            "flag": "a flag on another column",
+            "time": "the time of each row",
+            "excluded": "left out of the models",
+            "cluster": "a cluster of units"
+          },
+          "choices": {
+            "identifier": [
+              "covariate",
+              "excluded"
+            ],
+            "exposure": [
+              "covariate",
+              "excluded"
+            ],
+            "energy": [
+              "covariate",
+              "excluded"
+            ],
+            "covariate": [
+              "exposure",
+              "excluded"
+            ],
+            "design": [
+              "covariate"
+            ],
+            "flag": [
+              "covariate"
+            ],
+            "time": [
+              "covariate"
+            ],
+            "excluded": [
+              "covariate",
+              "exposure"
+            ],
+            "cluster": [
+              "covariate"
+            ]
+          },
+          "changes": {
+            "identifier": {
+              "covariate": "Move `{column}` to the characteristics",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "exposure": {
+              "covariate": "Move `{column}` to the characteristics",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "energy": {
+              "covariate": "Move `{column}` to the characteristics",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "covariate": {
+              "exposure": "Move `{column}` to the measures",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "design": {
+              "covariate": "Move `{column}` to the characteristics"
+            },
+            "flag": {
+              "covariate": "Move `{column}` to the characteristics"
+            },
+            "time": {
+              "covariate": "Move `{column}` to the characteristics"
+            },
+            "excluded": {
+              "covariate": "Move `{column}` to the characteristics",
+              "exposure": "Move `{column}` to the measures"
+            },
+            "cluster": {
+              "covariate": "Move `{column}` to the characteristics"
+            }
+          },
+          "groups": {
+            "exposure": {
+              "one": "a measure",
+              "head": [
+                "Measure",
+                "Measures"
+              ],
+              "note": ""
+            },
+            "energy": {
+              "one": "total energy",
+              "head": [
+                "Total energy",
+                "Total energy"
+              ],
+              "note": ""
+            },
+            "covariate": {
+              "one": "a characteristic",
+              "head": [
+                "Characteristic",
+                "Characteristics"
+              ],
+              "note": ""
+            }
+          },
+          "group": {
+            "many": {
+              "identifier": "the unit's identifiers",
+              "exposure": "measures",
+              "energy": "total energy",
+              "covariate": "characteristics",
+              "design": "part of the survey design",
+              "flag": "flags on other columns",
+              "time": "the time of each row",
+              "excluded": "left out of the models",
+              "cluster": "clusters of units"
+            },
+            "reasons": {
+              "identifier": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the unit's identifiers they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "exposure": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "energy": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "covariate": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "design": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As part of the survey design they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "flag": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As flags on other columns they enter no model, but the fit waits for them, since as characteristics they would. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "time": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the time of each row they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "excluded": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As columns left out they enter no model, but the fit waits for them, since put in the model they would. Confirm all {n} in one press after reading why they were proposed, or put any one of them in the model on its own.",
+              "cluster": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As clusters of units they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own."
+            },
+            "reasons_two": {
+              "identifier": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the unit's identifiers they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "exposure": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "energy": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "covariate": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "design": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As part of the survey design they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "flag": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As flags on other columns they enter no model, but the fit waits for them, since as characteristics they would. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "time": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As the time of each row they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "excluded": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As columns left out they enter no model, but the fit waits for them, since put in the model they would. Confirm both in one press after reading why they were proposed, or put any one of them in the model on its own.",
+              "cluster": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed. As clusters of units they are not among the model's predictors, but the fit waits for them, since as characteristics they would be. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own."
+            },
+            "press": {
+              "identifier": "Confirm these {n} as the unit's identifiers",
+              "exposure": "Confirm these {n} as measures",
+              "energy": "Confirm these {n} as total energy",
+              "covariate": "Confirm these {n} as characteristics",
+              "design": "Confirm these {n} as part of the survey design",
+              "flag": "Confirm these {n} as flags on other columns",
+              "time": "Confirm these {n} as the time of each row",
+              "excluded": "Confirm these {n} as left out of the models",
+              "cluster": "Confirm these {n} as clusters of units"
+            }
+          }
+        }
+      },
+      "sentence": {
+        "one": "It enters the models as a predictor, whichever group holds it.",
+        "many": "All {n} enter the models as predictors, whichever group holds them."
+      },
+      "options": {
+        "exposure": {
+          "label": "Predictor",
+          "consequence": "A predictor, such as a nutrient intake, a lab value or an assay feature."
+        },
+        "energy": {
+          "label": "Energy",
+          "consequence": "Total energy intake, a predictor."
+        },
+        "covariate": {
+          "label": "Covariate",
+          "consequence": "A predictor that describes the person, such as age or sex."
+        }
+      },
+      "study_clauses": [
+        [
+          ": what you study;",
+          ";"
+        ],
+        [
+          ", usually adjusted for rather than studied.",
+          "."
+        ],
+        [
+          ", adjusted for rather than studied.",
+          "."
+        ],
+        [
+          ": what you study under the omics lens.",
+          " under the omics lens."
+        ],
+        [
+          ": what you study under the dietary lens.",
+          ", under the dietary lens."
+        ],
+        [
+          ": what you study, not",
+          ", not"
+        ],
+        [
+          "read as what you study",
+          "read as a predictor"
+        ],
+        [
+          "read as a covariate",
+          "read as a predictor"
+        ]
+      ]
+    }
+  },
+  "lines": [
+    {
+      "id": "decision:confirm_role",
+      "key": "confirm_role:bp_sys",
+      "source": "reading",
+      "label": "Decide",
+      "name": "the role of `bp_sys`",
+      "status": "open",
+      "counted": true,
+      "order": 30.0,
+      "decision_id": null,
+      "reason": "`bp_sys` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [
+        {
+          "kind": "role",
+          "column": "bp_sys",
+          "value": "covariate",
+          "words": "proposed as a characteristic",
+          "evidence": "the reason the roles stage gives for `bp_sys`",
+          "options": [
+            {
+              "label": "Confirm `bp_sys` as a characteristic",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "bp_sys",
+                "role": "covariate"
+              }
+            },
+            {
+              "label": "Move `bp_sys` to the nutrients",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "bp_sys",
+                "role": "exposure"
+              }
+            },
+            {
+              "label": "`bp_sys` is left out of the models",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "bp_sys",
+                "role": "excluded"
+              }
+            }
+          ]
+        }
+      ],
+      "changed_since": null
+    },
+    {
+      "id": "decision:confirm_role",
+      "key": "confirm_role:waist",
+      "source": "reading",
+      "label": "Decide",
+      "name": "the role of `waist`",
+      "status": "answered",
+      "counted": true,
+      "order": 30.001,
+      "decision_id": "r5",
+      "reason": null,
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [
+        {
+          "kind": "role",
+          "column": "waist",
+          "value": "covariate",
+          "words": "is a characteristic",
+          "evidence": "the reason the roles stage gives for `waist`",
+          "options": [
+            {
+              "label": "Move `waist` to the nutrients",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "waist",
+                "role": "exposure"
+              }
+            },
+            {
+              "label": "`waist` is left out of the models",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "waist",
+                "role": "excluded"
+              }
+            }
+          ]
+        }
+      ],
+      "changed_since": null
+    },
+    {
+      "id": "decision:confirm_role",
+      "key": "confirm_role:imputed_waist",
+      "source": "reading",
+      "label": "Decide",
+      "name": "the role of `imputed_waist`",
+      "status": "open",
+      "counted": true,
+      "order": 30.002,
+      "decision_id": null,
+      "reason": "`imputed_waist` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a flag on another column it enters no model, but the fit waits for it, since as a characteristic it would. Confirm it after reading why it was proposed, or record it as a characteristic.",
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [
+        {
+          "kind": "role",
+          "column": "imputed_waist",
+          "value": "flag",
+          "words": "proposed as a flag on another column",
+          "evidence": "the reason the roles stage gives for `imputed_waist`",
+          "options": [
+            {
+              "label": "Confirm `imputed_waist` as a flag on another column",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "imputed_waist",
+                "role": "flag"
+              }
+            },
+            {
+              "label": "Move `imputed_waist` to the characteristics",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "imputed_waist",
+                "role": "covariate"
+              }
+            }
+          ]
+        }
+      ],
+      "changed_since": null
+    },
+    {
+      "id": "decision:confirm_role",
+      "key": "confirm_role:cycle_begin_year",
+      "source": "reading",
+      "label": "Decide",
+      "name": "the role of `cycle_begin_year`",
+      "status": "open",
+      "counted": true,
+      "order": 30.003,
+      "decision_id": null,
+      "reason": "`cycle_begin_year` was proposed below high confidence and recorded with the other roles, not confirmed on its own. As a column left out it enters no model, but the fit waits for it, since put in the model it would. Confirm it after reading why it was proposed, or put it in the model.",
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [
+        {
+          "kind": "role",
+          "column": "cycle_begin_year",
+          "value": "excluded",
+          "words": "proposed as left out of the models",
+          "evidence": "the reason the roles stage gives for `cycle_begin_year`",
+          "options": [
+            {
+              "label": "Confirm `cycle_begin_year` as left out of the models",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "cycle_begin_year",
+                "role": "excluded"
+              }
+            },
+            {
+              "label": "Move `cycle_begin_year` to the characteristics",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "cycle_begin_year",
+                "role": "covariate"
+              }
+            },
+            {
+              "label": "Move `cycle_begin_year` to the nutrients",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "cycle_begin_year",
+                "role": "exposure"
+              }
+            }
+          ]
+        }
+      ],
+      "changed_since": null
+    },
+    {
+      "id": "decision:confirm_role",
+      "key": "confirm_roles:hdl",
+      "source": "reading",
+      "label": "Decide",
+      "name": "the roles of `hdl` and `triglycerides`",
+      "status": "open",
+      "counted": true,
+      "order": 30.004,
+      "decision_id": null,
+      "reason": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [
+        {
+          "kind": "role_group",
+          "column": "hdl",
+          "value": "covariate",
+          "words": "2 columns proposed as characteristics at medium confidence, below high, for one reason",
+          "evidence": "A laboratory value named like a person's characteristic.",
+          "options": [
+            {
+              "label": "Confirm these 2 as characteristics",
+              "decision": {
+                "kind": "confirm_readings",
+                "items": [
+                  {
+                    "reading": "role",
+                    "column": "hdl",
+                    "value": "covariate"
+                  },
+                  {
+                    "reading": "role",
+                    "column": "triglycerides",
+                    "value": "covariate"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "kind": "role",
+          "column": "hdl",
+          "value": "covariate",
+          "words": "proposed as a characteristic",
+          "evidence": "",
+          "options": [
+            {
+              "label": "Move `hdl` to the nutrients",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "hdl",
+                "role": "exposure"
+              }
+            },
+            {
+              "label": "`hdl` is left out of the models",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "hdl",
+                "role": "excluded"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "role",
+          "column": "triglycerides",
+          "value": "covariate",
+          "words": "proposed as a characteristic",
+          "evidence": "",
+          "options": [
+            {
+              "label": "Move `triglycerides` to the nutrients",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "triglycerides",
+                "role": "exposure"
+              }
+            },
+            {
+              "label": "`triglycerides` is left out of the models",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "triglycerides",
+                "role": "excluded"
+              }
+            }
+          ]
+        }
+      ],
+      "changed_since": null
+    }
+  ]
+}

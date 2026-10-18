@@ -144,6 +144,7 @@ function orientedArtifact(p: MockProject, state: ProjectState): OrientedArtifact
     n_cols: ds.columns.length,
     columns: ds.columns.map(columnInfo),
     source_bytes: ds.sourceBytes,
+    source_sha256: null,
     parquet_bytes: Math.round(ds.sourceBytes * 0.6),
     ingest_seconds: 0.05,
     fingerprint: p.fingerprint,

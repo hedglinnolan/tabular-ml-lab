@@ -113,6 +113,47 @@ def test_a_prediction_plan_says_no_plan_was_locked_and_never_that_nothing_was_sh
     assert not any(w in doc.text.lower() for w in plan_lock.NEVER_SAID)
 
 
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_single_confirmations_alike_but_for_their_column_are_said_in_one_sentence(tmp_path,
+                                                                                  purpose):
+    """The re-walk's N10: the methods listed each flag's confirmation as its own near-identical
+    sentence, six of them. Single confirmations of one kind whose sentences differ only in their
+    column are said once, with every column named; one alone, or one whose sentence differs
+    otherwise (another role), keeps its own. The merged sentence is built here by the rule, from
+    the records' own sentences."""
+    flags = ["imputed_weight", "imputed_height", "imputed_bmi"]
+    log = DecisionLog(tmp_path / "decisions.jsonl")
+    roles = {"SEQN": "identifier", "age": "covariate", "bp_sys": "covariate", "waist": "covariate",
+             **{c: "flag" for c in flags}}
+    for decision in (d.SetLens(lenses=["clinical"]), d.SetTarget(column="glucose"),
+                     d.SetPurpose(purpose=purpose),
+                     d.SetRoles(roles=roles, unconfirmed=[*flags, "bp_sys"]),
+                     *(d.ConfirmRole(column=c, role="flag") for c in flags),
+                     d.ConfirmRole(column="bp_sys", role="covariate")):
+        log.append(decision, sentence=_say)
+    records = log.records()
+    said = {r.decision.column: r.sentence for r in records if r.decision.kind == "confirm_role"}
+    rest = said[flags[0]].removeprefix(f"`{flags[0]}` was ")
+    assert all(said[c] == f"`{c}` was {rest}" for c in flags)  # alike but for the column
+    assert said["bp_sys"] != f"`bp_sys` was {rest}"
+    doc = methods.methods_section(_source(records, purpose=purpose),
+                                  {"engine": {}, "inputs": [], "decisions": {"n": len(records)},
+                                   "analysis_plan": {}})
+    texts = [e.text for s in doc.sections for e in s.entries if e.kind == "confirm_role"]
+    together = "`imputed_weight`, `imputed_height` and `imputed_bmi` were each " + rest
+    assert texts == [together, said["bp_sys"]]
+    merged = next(e for s in doc.sections for e in s.entries if e.text == together)
+    # Under the newest of its records: the manuscript's newest line is the sentence just grown.
+    last = [r for r in records if r.decision.kind == "confirm_role"][len(flags) - 1]
+    assert (merged.record_id, merged.seq) == (last.id, last.seq)
+    # Silent where only one is alike: two flags confirmed, the third left out, one stays its own.
+    alone = methods.methods_section(_source(records[:5] + records[7:], purpose=purpose),
+                                    {"engine": {}, "inputs": [], "decisions": {"n": 6},
+                                     "analysis_plan": {}})
+    assert [e.text for s in alone.sections for e in s.entries if e.kind == "confirm_role"] == [
+        said[flags[0]], said["bp_sys"]]
+
+
 # ── the tables ───────────────────────────────────────────────────────────────
 
 EFFECTS = {
@@ -294,6 +335,79 @@ def test_the_figures_are_self_contained_greyscale_serif_svg():
     assert re.findall(r'font-weight="700">([^<]+)<', svg).count("a_1") == 1
 
 
+# A lineage over 40 raw columns (``models.lineage.COLLAPSE_AT``), which the design stage folds into
+# one node per role in each lane: 30 nutrients, 12 characteristics and total energy, each kept as
+# it is (no step runs, so no column is drawn alone).
+WIDE_ROLES = {**{f"n{i:02d}": "exposure" for i in range(30)},
+              **{f"c{i:02d}": "covariate" for i in range(12)}, "kcal": "energy"}
+
+
+def _wide_design() -> dict[str, Any]:
+    from turbotab.core.models.lineage import COLLAPSE_AT, trace
+
+    assert len(WIDE_ROLES) > COLLAPSE_AT
+    lineage = trace([], list(WIDE_ROLES), WIDE_ROLES).model_dump(mode="json")
+    return {"matrix": {"n_rows": 90, "n_cols": len(WIDE_ROLES)}, "lineage": lineage}
+
+
+def _texts(svg: str) -> list[str]:
+    import xml.etree.ElementTree as ET
+
+    return [t.text or "" for t in ET.fromstring(svg).iter("{http://www.w3.org/2000/svg}text")]
+
+
+def test_under_predict_the_lineage_figure_names_its_groups_as_the_roles_card_does():
+    """The ruling at W1-W's cap (M2): under Predict the bundle's lineage figure names its collapsed
+    predictor groups in the words the server serves for the roles card (``readings.served_groups``),
+    as the shell's Columns lineage does (LiveScenes.tsx ``inGroupWords``): in the raw lane by the
+    count and the group's name for many, after it by the group's name and its count of columns, and
+    a name that is one word for one or many with its count of columns in every lane. It never says
+    "covariate columns" or "exposure columns". The words for a dietary project are written out here
+    from the ruling of 2026-10-17; the counts are the frame's."""
+    design = _wide_design()
+    state = d.ProjectState(lens=["dietary"], target="y", purpose="prediction",
+                           roles=dict(WIDE_ROLES))
+    svg, caption = figures.lineage(design, groups=figures.predictor_words(state))
+    said = _texts(svg)
+    assert {"30 nutrients", "12 characteristics", "total energy: 1 column"} <= set(said)
+    assert said.count("nutrients: 30 columns") == said.count("characteristics: 12 columns") == 2
+    assert said.count("total energy: 1 column") == 3
+    assert not any(w in t for t in said for w in ("exposure", "covariate", "energy column"))
+    assert "covariate" not in caption and "exposure" not in caption
+    # the clinical lens names the Predictor role's group by its measures
+    clinical = d.ProjectState(lens=["clinical"], target="y", purpose="prediction")
+    svg, _ = figures.lineage(design, groups=figures.predictor_words(clinical))
+    assert "30 measures" in _texts(svg) and "measures: 30 columns" in _texts(svg)
+
+
+@pytest.mark.parametrize("purpose", ["inference", None])
+def test_under_estimate_the_lineage_figure_keeps_the_design_stages_words(purpose):
+    """The other way: under Estimate (and with no goal) the bundle passes no groups, and the figure
+    is the one drawn from the design stage's labels, byte for byte ("30 exposure columns")."""
+    design = _wide_design()
+    state = d.ProjectState(lens=["dietary"], target="y", purpose=purpose, roles=dict(WIDE_ROLES))
+    assert figures.predictor_words(state) is None
+    svg, caption = figures.lineage(design, groups=figures.predictor_words(state))
+    assert (svg, caption) == figures.lineage(design)
+    said = _texts(svg)
+    assert {"30 exposure columns", "12 covariate columns", "1 energy column"} <= set(said)
+
+
+@pytest.mark.parametrize("purpose, want", [("prediction", "30 nutrients"),
+                                           ("inference", "30 exposure columns")])
+def test_the_bundles_lineage_figure_is_worded_by_the_goal(tmp_path, purpose, want):
+    """The bundle itself draws ``figures/lineage.svg`` with the goal's words, from the design
+    stage's artifact over 40 raw columns."""
+    log = DecisionLog(tmp_path / "decisions.jsonl")
+    for x in (d.SetLens(lenses=["dietary"]), d.SetTarget(column="y"),
+              d.SetPurpose(purpose=purpose), d.SetRoles(roles=dict(WIDE_ROLES))):
+        log.append(x, sentence=_say)
+    source = _source(log.records(), purpose=purpose, artifacts={"design": _wide_design()})
+    files = bundle.contents(source, gated=False).files
+    said = _texts(files["figures/lineage.svg"].decode("utf-8"))
+    assert want in said
+
+
 # ── the replay's own refusals ────────────────────────────────────────────────
 
 
@@ -315,6 +429,33 @@ def test_the_replay_refuses_a_file_that_differs_naming_both_hashes(tmp_path):
     assert replay.close(1.0, 1.0 + 1e-13) and not replay.close(1.0, 1.0 + 1e-11)
     assert replay.close(1e6, 1e6 + 1e-7) and replay.close(None, None) and not replay.close(None, 0)
     json.dumps(report.model_dump())
+
+
+PROVENANCE = {"url": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/GLU_J.xpt",
+              "release_date": "2019-11-01", "license": "Public domain (17 U.S.C. 105)"}
+
+
+def test_an_input_echoes_where_it_came_from_only_when_given(tmp_path):
+    """SWARM_ENGINE_PLAN E5: an input's URL, release date and license, as given at upload, are
+    echoed into ``provenance.json``'s inputs; an input given none has exactly the keys it had."""
+    import hashlib
+
+    from turbotab.core.export.source import input_file
+
+    data = tmp_path / "GLU_J.csv"
+    data.write_bytes(b"seqn,lbxglu\n1,98\n2,104\n")
+    sha = hashlib.sha256(data.read_bytes()).hexdigest()
+    given = input_file("table", "GLU_J.csv", data, None, provenance=PROVENANCE).to_json()
+    assert given == {"role": "table", "name": "GLU_J.csv", "path": str(data), "bytes": 23,
+                     "sha256": sha, "file_id": None, **PROVENANCE}
+    some = input_file("joined file", "GLU_J.csv", data, None, file_id="f0123456789",
+                      provenance={"license": PROVENANCE["license"]}).to_json()
+    assert some["license"] == PROVENANCE["license"] and "url" not in some
+    plain = input_file("table", "GLU_J.csv", data, None).to_json()
+    assert set(plain) == {"role", "name", "path", "bytes", "sha256", "file_id"}
+    # The replay checks an input by its SHA-256 alone: the echoed fields change nothing there.
+    [check] = replay.verify_inputs({"inputs": [given]})
+    assert check.matches and check.sha256 == sha
 
 
 def test_the_performance_table_keeps_the_fits_unweighted_label():

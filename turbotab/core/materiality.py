@@ -71,9 +71,10 @@ replay of the log reproduces it.
 
 **The dietary proof** (§9, "The smallest end-to-end proof"): :func:`dietary_noticings` measures the
 three noticings the policy names on a dietary table, each outcome-blind: energy carrying the
-nutrient (r with total energy; it changes the question), implausible reporters (the screen's rows
-times the leavers' largest SMD on the adjustment set), and day-to-day variance (``1 − λ`` from
-replicate recalls, else "not measurable here" on one recall day).
+nutrient (r with total energy; it changes the question, so it fires under Estimate and Describe
+alone: under Predict no energy model is asked, BEATS_PREDICT §9 ruling 5), implausible reporters
+(the screen's rows times the leavers' largest SMD on the adjustment set), and day-to-day variance
+(``1 − λ`` from replicate recalls, else "not measurable here" on one recall day).
 """
 from __future__ import annotations
 
@@ -652,9 +653,13 @@ def _place(thread: str) -> str:
 def energy_noticing(state: Any, frame: Any) -> Noticing | None:
     """``diet-energy-carries-the-nutrient``: the exposure's correlation with total energy (O0,
     outcome-blind). Substitution or addition changes what the coefficient means, so it is never
-    graded by a number; it is answered by the energy model or the contrast."""
+    graded by a number; it is answered by the energy model or the contrast. Under prediction no
+    coefficient is read as an effect and the energy model is not asked (BEATS_PREDICT §9 ruling
+    5), so it does not fire."""
     import pandas as pd
 
+    if getattr(state, "purpose", None) == "prediction":
+        return None
     energy, exposure = _energy_column(state), _exposure(state)
     if not energy or not exposure or exposure == energy or energy not in frame.columns \
             or exposure not in frame.columns:
@@ -676,6 +681,23 @@ def energy_noticing(state: Any, frame: Any) -> Noticing | None:
             f"`{exposure}` moves with `{energy}` at r = {r:.2f}: whether its coefficient means a "
             f"swap at the same energy or eating more changes what the estimate is.", label),
         question="energy_adjustment", answered=answered, verified_by=None)
+
+
+# The dietary pack's energy finding (``turbotab/packs.py``, ``_energy_adjustment``): total energy
+# beside candidate nutrients, the energy noticing read from the table's columns alone.
+ENERGY_FINDING = "pack::dietary::energy_adjustment"
+
+
+def finding_fires(finding: Mapping[str, Any], state: Any) -> bool:
+    """Whether a finding of the findings stage fires on these answers. That stage reads only the
+    lens and the outcome, so its artifact holds the dietary pack's energy finding under any goal;
+    under prediction no energy model is asked (BEATS_PREDICT §9 ruling 5), so that finding does
+    not fire there, as :func:`energy_noticing` does not, and the findings as served leave it out
+    (``repairs.annotate``). Every other finding fires wherever the stage finds it."""
+    from turbotab.core.stages.finding_words import family
+
+    return not (family(str(finding.get("id"))) == ENERGY_FINDING
+                and getattr(state, "purpose", None) == "prediction")
 
 
 def _screen(rule: Any, energy: str | None) -> bool:
@@ -1332,12 +1354,13 @@ def write_calibration(data: Mapping[str, Any], path: Path = CALIBRATION_FILE) ->
 
 __all__ = [
     "BAND_WORDS", "CALIBRATION_FILE", "COLLINEAR_THREAD", "Case", "DISPOSITION_OF_BAND",
-    "FAMILY_NAMES", "INSTRUMENTS",
+    "ENERGY_FINDING", "FAMILY_NAMES", "INSTRUMENTS",
     "Ledger", "LedgerRow", "Movement", "Noticing", "TRIAGE_ROWS", "TriageRow", "adjustment_set",
     "attenuation", "band_of", "belsley", "calibrate", "calibration", "cases_from",
     "changes_question", "collinear_label", "collinear_noticing",
     "correlation_change", "design_imbalance", "dietary_noticings", "disposition",
-    "energy_noticing", "excess_over_chance", "exposure_shift", "finding_done", "in_triage",
+    "energy_noticing", "excess_over_chance", "exposure_shift", "finding_done", "finding_fires",
+    "in_triage",
     "invariance", "ledger",
     "limitation_owed", "movement", "noticing_tier", "noticings_for", "outcome_beside_allowed",
     "paired_folds", "theorem_of",

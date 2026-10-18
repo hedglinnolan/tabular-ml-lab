@@ -29,9 +29,11 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
-import { confirmAsk, confirmStageAsk, firstDrawnPair } from "./ask";
-import { fitOnceComputed, openSealCard } from "./fit";
+import { confirmAsk, confirmStageAsk } from "./ask";
+import { toClassic } from "./classic";
+import { ANY_STAGE, FIT_CAP, FIT_QUIET, attributeWhileComputing, cheapestFamily, fitOnceComputed, openSealCard, shelfEstimates, visibleWhileComputing } from "./fit";
 import { nhanesExport } from "./nhanes";
+import { confirmWaitingRoles, expectDesignHolds } from "./roles";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../../..");
@@ -41,6 +43,11 @@ const SCREENS = resolve(ROOT, "docs/turbotab-next/m2/screens");
 const RESULTS = resolve(HERE, "../test-results");
 const MAX_SCREEN_BYTES = 300 * 1024;
 const FRAMES = [0, 150, 300, 450, 600, 900];
+
+/** The rest of a journey, apart from the waits for a fit: a journey that waits for a fit gets
+ *  this and that wait's cap (``FIT_CAP``) for each, so the wait that goes on while the fit job
+ *  runs is not cut short by the test's own budget. */
+const REST_OF_JOURNEY = 600_000;
 
 interface StageHook {
   manual: (v: boolean) => void;
@@ -174,6 +181,7 @@ async function openPath(page: Page, path: string) {
   await page.getByPlaceholder("/path/to/table.csv").fill(path);
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await expect(page).toHaveURL(/\/p\/[^/]+$/);
+  await toClassic(page);
   await expect(page.getByTestId("question-lens")).toBeVisible({ timeout: 60_000 });
 }
 
@@ -225,27 +233,54 @@ async function confirmRoles(page: Page) {
   await expect(page.getByTestId("decision-roles")).toBeVisible({ timeout: 30_000 });
 }
 
-/** Fit the families (the first `n` on the shelf, else its first three: the shelf now offers a dozen,
- *  some estimated at most of an hour), press Fit once the fit has
- *  computed (SIZING P0.8: no score is served before it), and wait for the Results. */
-async function fit(page: Page, n?: number): Promise<number> {
+/** The light families: the linear ones, which a journey can afford to fit and refit. */
+const LIGHT = ["linear", "ridge", "elastic_net"];
+
+/** Fit the families (the first `n` on the shelf; "cheapest", the light family the shelf estimates
+ *  cheapest to fit, read when it is chosen, since confirming the readings moves the estimates;
+ *  else the three linear ones, else its first three: the shelf now offers a dozen, some estimated
+ *  at most of an hour), press Fit once the fit has computed (SIZING P0.8: no score is served
+ *  before it), and wait for the Results. `onShelf` checks the shelf once the readings the fit
+ *  reads are confirmed (the estimates and the order can move with them), before a family is
+ *  chosen. */
+async function fit(
+  page: Page,
+  pick?: number | "cheapest",
+  onShelf?: (options: Locator) => Promise<void>,
+): Promise<number> {
+  // The shelf ranks the families again after every reading confirmed (from seconds to nearly two
+  // minutes on the 500-column genomics table, 55 s and 108 s on a throttled machine), and the
+  // options wait for it: each wait lasts while it computes.
   const models = page.getByTestId("question-models");
-  await expect(models).toBeVisible({ timeout: 60_000 });
+  await visibleWhileComputing(page, models, ["shelf"]);
   // The shelf's own options (the ask card's selects hold options too); the roles proposed below
   // high confidence are confirmed first, on the ledger's ask card, since the fit reads them.
   const options = models.getByRole("listbox", { name: /Model families/ }).locator(':scope > [role="option"]');
-  await expect(options.first()).toBeVisible({ timeout: 60_000 });
-  await confirmAsk(page.locator('[data-slot="models"]'));
-  await expect(options.first()).toBeVisible({ timeout: 60_000 });
+  await visibleWhileComputing(page, options.first(), ["shelf"]);
+  // Every journey here is a prediction: no coefficient is read as an effect, so the energy model
+  // is not asked, and the models come right after the split.
+  await expect(page.getByTestId("question-energy_adjustment")).toHaveCount(0);
+  // Each waiting group, or column judged on its own, is its own press (ruling R-g), and the card
+  // comes back after each once the shelf has ranked again.
+  await confirmAsk(page.locator('[data-slot="models"]'), ["shelf"]);
+  await visibleWhileComputing(page, options.first(), ["shelf"]);
+  await onShelf?.(options);
   const families = await options.evaluateAll((els) => els.map((e) => e.getAttribute("data-key") ?? ""));
-  // The first `n`; else the three linear families where the shelf has them (the later steps refit
-  // each chosen family), else its first three.
-  const LIGHT = ["linear", "ridge", "elastic_net"];
+  // The first `n`; the cheapest light family by the shelf's estimate (read each time they are
+  // chosen: a refusal's way forward changes the table, and the estimates with it); else the three
+  // linear families where the shelf has them (the later steps refit each chosen family), else its
+  // first three.
   const light = families.filter((k) => LIGHT.includes(k));
-  const chosen = n !== undefined ? families.slice(0, n) : light.length === 3 ? light : families.slice(0, 3);
+  const chosenFamilies = async (): Promise<string[]> => {
+    if (pick === "cheapest") return [(await cheapestFamily(page, LIGHT)) ?? families[0]!];
+    if (pick !== undefined) return families.slice(0, pick);
+    return light.length === 3 ? light : families.slice(0, 3);
+  };
   // Down the list with the arrow keys, Space on each chosen family, Enter to fit them.
   const choose = async () => {
-    await expect(options.first()).toBeVisible({ timeout: 60_000 });
+    await visibleWhileComputing(page, options.first(), ["shelf"]);
+    const chosen = await chosenFamilies();
+    if (pick === "cheapest") console.log("fit:", chosen.join(), "of", JSON.stringify(await shelfEstimates(page)));
     await page.getByTestId(`option-${chosen[0]}`).focus();
     let at = families.indexOf(chosen[0]!);
     for (const key of chosen) {
@@ -259,7 +294,9 @@ async function fit(page: Page, n?: number): Promise<number> {
   };
   await choose();
   const recorded = page.getByTestId("decision-models");
-  for (let tries = 0; tries < 3; tries++) {
+  // A try is spent by each way forward taken and by each refusal whose card confirmed nothing: one
+  // whose readings the card confirmed made progress (each group is its own press, ruling R-g).
+  for (let tries = 0; tries < 3; ) {
     const took = await recorded
       .waitFor({ state: "visible", timeout: 15_000 })
       .then(() => true)
@@ -269,16 +306,20 @@ async function fit(page: Page, n?: number): Promise<number> {
     // with ways forward at the control (raw counts: the first normalization it offers); then the
     // families are chosen again.
     const exit = page.locator('[data-slot="models"] [role="alert"] button', { hasText: / instead$/ }).first();
-    if (await exit.isVisible().catch(() => false)) await exit.click();
-    else await confirmAsk(page.locator('[data-slot="models"]'));
+    if (await exit.isVisible().catch(() => false)) {
+      await exit.click();
+      tries++;
+    } else if (!(await confirmAsk(page.locator('[data-slot="models"]'), ["shelf"]))) tries++;
     await page.waitForTimeout(1_500);
     if (await recorded.isVisible().catch(() => false)) break;
     await choose();
   }
   await expect(recorded).toBeVisible({ timeout: 30_000 });
+  // Fit is pressed on the Results; the wait for the result after it lasts as long as the fit job
+  // runs (fitOnceComputed), so none is kept here.
   return timed(async () => {
     await fitOnceComputed(page);
-    await expect(page.getByTestId("banner-result-value")).toBeVisible({ timeout: 300_000 });
+    await expect(page.getByTestId("banner-result-value")).toBeVisible();
   });
 }
 
@@ -299,27 +340,21 @@ async function seal(page: Page, basis: string, name: string, themes?: ("light" |
   await expect(page.getByTestId("live-seal")).toBeVisible({ timeout: 120_000 });
 }
 
-/** The first substitution the stage's matrix draws (a pair refused outright, such as two shares of
- *  energy, which move in percentage points, gives way to the next). */
-async function substitute(page: Page) {
-  await expect(page.getByTestId("question-substitution")).toBeVisible({ timeout: 60_000 });
-  await firstDrawnPair(page, page.getByTestId("substitution-curves"));
-  await expect(page.getByTestId("decision-substitution")).toBeVisible({ timeout: 30_000 });
-}
-
 /**
  * Open the seal: the Router's last step, a CONSEQUENCE card under the Results. Until it is pressed
  * no held-out score is on screen; after, each family's held-out score is, once.
  */
 async function openSeal(page: Page, journey: string): Promise<number> {
+  // The Results are drawn sealed, and the Record names the opening: the waits for both go on while
+  // the app computes, not for a flat time.
   const results = page.getByTestId("results");
-  await expect(results).toHaveAttribute("data-seal-phase", "sealed", { timeout: 60_000 });
+  await attributeWhileComputing(page, results, "data-seal-phase", "sealed", [ANY_STAGE], { label: "the Results are sealed" });
   const cmp = page.getByTestId("model-comparison");
   await expect(cmp.getByTestId("held-out-cell-sealed").first()).toBeVisible();
   await expect(cmp).not.toContainText(/held out [−\d]/);
   // The Record names the last step and goes to the one card that opens the seal.
   const step = page.getByTestId("open-seal-step");
-  await expect(step).toBeVisible({ timeout: 30_000 });
+  await visibleWhileComputing(page, step, [ANY_STAGE], { label: "the Record names the opening" });
   await step.scrollIntoViewIfNeeded();
   await step.getByTestId("go-open-seal").click();
   const card = page.getByTestId("open-seal-card");
@@ -333,6 +368,9 @@ async function openSeal(page: Page, journey: string): Promise<number> {
     // several families the final model is then named on cross-validation, the card's first way
     // forward (e2e/fit.ts openSealCard).
     await openSealCard(page);
+    // The opening is a record no stage reads (none of the graph's stages reads the seal slot), so
+    // nothing computes after it: the sentence and the opened scores are an answer already served,
+    // and these two waits are for a render, not for work that a computing stage would bound.
     await expect(page.getByTestId("decision-open_seal")).toBeVisible({ timeout: 30_000 });
     await expect(results).toHaveAttribute("data-seal-phase", "opened", { timeout: 60_000 });
   });
@@ -418,7 +456,7 @@ test.describe.configure({ mode: "default" });
 test("dietary recalls: the grain asked, repeats stated, one row per person, the mean, the seal opened once", async ({
   page,
 }) => {
-  test.setTimeout(600_000);
+  test.setTimeout(REST_OF_JOURNEY + FIT_CAP); // the rest, and one fit (held for the press: computed only after it)
   const run = await start(page, "dietary");
   const T = timings.dietary!;
   T.open_s = await timed(() => openPath(page, resolve(SAMPLES, "dietary_recalls.csv")));
@@ -485,11 +523,9 @@ test("dietary recalls: the grain asked, repeats stated, one row per person, the 
     .getAttribute("data-key");
   await answer(page, "missing", firstMissing!);
   await seal(page, "grouped", "dietary-seal", ["light", "dark"]);
-  await answer(page, "energy_adjustment", "residual");
   T.fit_s = await fit(page);
   await expect(page.getByTestId("held-out-sealed")).toBeVisible({ timeout: 30_000 });
   await shot(page, "dietary-results-sealed");
-  await substitute(page);
   T.open_seal_s = await openSeal(page, "dietary");
   finish("dietary", run);
 });
@@ -497,7 +533,7 @@ test("dietary recalls: the grain asked, repeats stated, one row per person, the 
 // ── clinical ─────────────────────────────────────────────────────────────────────────────────
 
 test("clinical longitudinal: an impossible value repaired, time points, temporal, a chronological seal", async ({ page }) => {
-  test.setTimeout(600_000);
+  test.setTimeout(REST_OF_JOURNEY + FIT_CAP); // the rest, and one fit (held for the press: computed only after it)
   const run = await start(page, "clinical");
   const T = timings.clinical!;
   T.open_s = await timed(() => openPath(page, resolve(SAMPLES, "clinical_longitudinal.csv")));
@@ -590,7 +626,7 @@ function featureMajorCopy(): string {
 test("metabolomics exported features-in-rows: orientation first, the turn, then diagnosis on the turned table", async ({
   page,
 }) => {
-  test.setTimeout(600_000);
+  test.setTimeout(REST_OF_JOURNEY); // no fit is waited for
   const run = await start(page, "metabolomics");
   const T = timings.metabolomics!;
   const path = featureMajorCopy();
@@ -641,7 +677,7 @@ test("metabolomics exported features-in-rows: orientation first, the turn, then 
 // ── genomics ─────────────────────────────────────────────────────────────────────────────────
 
 test("genomics expression: the wide path, the roles searched, elastic net first with its cost", async ({ page }) => {
-  test.setTimeout(600_000);
+  test.setTimeout(REST_OF_JOURNEY + FIT_CAP); // the rest, and one fit (held for the press: computed only after it)
   const run = await start(page, "genomics");
   const T = timings.genomics!;
   T.open_s = await timed(() => openPath(page, resolve(SAMPLES, "genomics_expression.csv")));
@@ -685,12 +721,26 @@ test("genomics expression: the wide path, the roles searched, elastic net first 
 
   // Elastic net first on the shelf; a fit long enough to weigh says so before it is chosen.
   const models = page.getByTestId("question-models");
-  await expect(models).toBeVisible({ timeout: 60_000 });
+  await visibleWhileComputing(page, models, ["shelf"]);
   await expect(
     models.getByRole("listbox", { name: /Model families/ }).locator(':scope > [role="option"]').first(),
   ).toHaveAttribute("data-key", "elastic_net", { timeout: 60_000 });
   await shot(page, "genomics-models", { at: models });
-  T.fit_s = await fit(page, 1);
+  // The genes the roles stage proposed alike wait for their confirmation before the families: one
+  // line on the ask card and one press for all of them (ruling R-g), after which the server holds
+  // no role waiting (e2e/roles.ts).
+  const confirmedRoles = await confirmWaitingRoles(page, page.locator('[data-slot="models"]'));
+  T.roles_confirmed = confirmedRoles.length;
+  // The elastic net, first on this shelf, is estimated at minutes once the 497 genes are confirmed
+  // as predictors (the card says so, in the server's words, before a family is chosen), so the
+  // journey fits the cheapest light family by the shelf's estimate instead of waiting out the
+  // elastic net's fit (the plan's ruling 11).
+  T.fit_s = await fit(page, "cheapest", async (options) => {
+    await expect(options.first()).toHaveAttribute("data-key", "elastic_net");
+    await expect(models.getByTestId("cost-elastic_net")).toContainText(/about \d+ (second|minute|hour)s?/);
+  });
+  // The model holds the genes confirmed (the server's design, its count of each role).
+  T.roles_confirmed_in_design = await expectDesignHolds(page, confirmedRoles);
   await expect(page.getByTestId("held-out-sealed")).toBeVisible({ timeout: 30_000 });
   finish("genomics", run);
 });
@@ -698,7 +748,7 @@ test("genomics expression: the wide path, the roles searched, elastic net first 
 // ── survey ───────────────────────────────────────────────────────────────────────────────────
 
 test("survey sentinels: codes set to missing, previewed then applied, and the event level asked", async ({ page }) => {
-  test.setTimeout(600_000);
+  test.setTimeout(REST_OF_JOURNEY); // no fit is waited for
   const run = await start(page, "survey");
   const T = timings.survey!;
   T.open_s = await timed(() => openPath(page, resolve(SAMPLES, "survey_sentinels.csv")));
@@ -746,7 +796,10 @@ test("survey sentinels: codes set to missing, previewed then applied, and the ev
 test("NHANES: SAS zeros repaired, the grain stated, meds_hbp kept as a Missing level, the seal opened once", async ({
   page,
 }) => {
-  test.setTimeout(900_000);
+  // The rest of the journey, and two waits for a fit, each up to its cap while the fit job runs:
+  // the fit (held for the press, it computes only after it: fitOnceComputed) and the refit after
+  // the post-seal change (a whole fit; it took longer than the first one when this was measured).
+  test.setTimeout(REST_OF_JOURNEY + 2 * FIT_CAP);
   const run = await start(page, "nhanes");
   const T = timings.nhanes!;
   T.open_s = await timed(() => openPath(page, NHANES));
@@ -806,29 +859,35 @@ test("NHANES: SAS zeros repaired, the grain stated, meds_hbp kept as a Missing l
   await expect(page.getByTestId("decision-missing")).toContainText("Missing", { timeout: 30_000 });
 
   await seal(page, "one_row_per_unit", "nhanes-seal", ["light", "dark"]);
-  await answer(page, "energy_adjustment", "residual");
   T.fit_s = await fit(page);
   await shot(page, "nhanes-results-sealed");
-  T.substitution_s = await timed(() => substitute(page));
   T.open_seal_s = await openSeal(page, "nhanes");
 
-  // A later change still refits, and is marked post-seal in the Record and the Results.
-  await page.getByRole("button", { name: "Change the energy adjustment" }).click();
+  // A later change still refits, and is marked post-seal in the Record and the Results. Under
+  // prediction no coefficient is read as an effect, so there is no energy model to change: the
+  // eligibility rule is the earlier answer a researcher might revisit after seeing the scores.
+  await page.getByRole("button", { name: /^Change the (eligibility|exclusions)$/ }).click();
   // "change" takes the user to the reopened question's heading; the options follow it.
-  await expect(page.getByTestId("question-energy_adjustment").locator("h2")).toBeFocused();
-  const density = page.getByTestId("option-density");
-  await density.focus();
-  await previewed(page, "Density alone");
-  await expect(density, "the option keeps focus while its preview loads").toBeFocused();
+  await expect(page.getByTestId("question-exclusions").locator("h2")).toBeFocused();
+  const keepEveryRow = page.getByTestId("option-none");
+  await keepEveryRow.focus();
+  await previewed(page, "Keep every row");
+  await expect(keepEveryRow, "the option keeps focus while its preview loads").toBeFocused();
   await page.keyboard.press("Enter");
-  const energy = page.getByTestId("decision-energy_adjustment");
-  await expect(energy).toContainText("density", { timeout: 30_000 });
-  await expect(energy.getByTestId("post-seal-mark")).toBeVisible({ timeout: 30_000 });
+  const exclusions = page.getByTestId("decision-exclusions");
+  // (A post-seal sentence opens with when it was made: "After the held-out rows were opened, no …".)
+  await expect(exclusions).toContainText(/no rows were excluded/i, { timeout: 30_000 });
+  await expect(exclusions.getByTestId("post-seal-mark")).toBeVisible({ timeout: 30_000 });
   await page.keyboard.press("Escape");
+  // The refit's wait lasts while the fit job runs (it is not a flat one).
   T.post_seal_refit_s = await timed(() =>
-    expect(page.getByTestId("results")).toHaveAttribute("data-seal-phase", "post_seal", { timeout: 300_000 }),
+    visibleWhileComputing(page, page.locator('[data-testid="results"][data-seal-phase="post_seal"]'), ["fit"], {
+      quiet: FIT_QUIET,
+      cap: FIT_CAP,
+      label: "the refit is post-seal",
+    }),
   );
-  await expect(page.getByTestId("post-seal")).toContainText("energy adjustment");
+  await expect(page.getByTestId("post-seal")).toContainText("eligibility rules");
   await page.getByTestId("post-seal").scrollIntoViewIfNeeded();
   await shot(page, "nhanes-post-seal", { themes: ["light", "dark"] });
   finish("nhanes", run);

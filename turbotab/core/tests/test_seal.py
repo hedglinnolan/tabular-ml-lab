@@ -19,6 +19,7 @@ from turbotab.core import seal
 from turbotab.core.decisions import (
     DecisionLog, DecisionRecord, GrainSpec, ProjectState, Refusal, RepeatSpec, SplitSpec, TemporalSpec,
 )
+from turbotab.core.events import EventBus
 from turbotab.core.graph import Bundle
 from turbotab.core.models.baseline import MIN_GAIN, versus_baseline
 from turbotab.core.models.inner_cv import inner_splits, with_grouped_inner_cv
@@ -503,6 +504,203 @@ def test_the_seal_opens_once_on_a_fresh_fit_and_is_never_reverted():
     assert undo.value.code == "seal_stays_open"
 
 
+KEEP_THE_DRAW = {"label": "Keep the held-out rows as they were drawn", "decision": None}
+# Analyst mode's keep (SWARM_ENGINE_PLAN E4): true wherever its refusals fire, nothing drawn included.
+KEEP_AS_THEY_ARE = {"label": "Keep the held-out rows as they are", "decision": None}
+RESEAL_EXIT = "Re-seal: withdraw the held-out rows, change this, then draw them again"
+WITHDRAW_EXIT = "Withdraw the held-out rows, change this, then draw them again"
+
+
+def offers_a_withdrawal(refusal: Refusal, records) -> bool:
+    """Whether an exit of ``refusal`` withdraws the held-out rows to draw them again: a re-seal, a
+    revert of a split's record, or words offering either."""
+    splits = {r.id for r in records if r.decision.kind == "set_split"}
+    for exit_ in refusal.exits:
+        decision = exit_["decision"] or {}
+        if decision.get("kind") == "reseal" or (decision.get("kind") == "revert"
+                                                and decision.get("decision_id") in splits):
+            return True
+        label = exit_["label"].lower()
+        if any(w in label for w in ("re-seal", "withdraw", "draw them again", "draw it again")):
+            return True
+    return False
+
+
+def one_split_log(opened: bool):
+    """One split record (``split``), so its revert withdraws the seal; opened at #6 when asked."""
+    records = [record(1, d.SetTarget(column="hba1c")),
+               record(2, d.SetGrain(grain="repeated", id_column="participant_id"), "grain"),
+               record(3, d.SetUnit(unit="row"), "unit"),
+               record(4, d.SetSplit(holdout=0.2, seed=0, folds=5), "split")]
+    if opened:
+        records += [record(5, d.SelectModels(models=["linear"])), record(6, d.OpenSeal(), "open")]
+    return records
+
+
+def test_in_analyst_mode_a_reseal_is_refused_with_no_exit_offering_one():
+    """SWARM_ENGINE_PLAN E4: an agent driving the API (analyst mode) never re-seals. Reference:
+    the same opened log (the seal opened at #7, so a person's re-seal passes every check), with
+    only the context's ``analyst`` differing; the refusal offers no exit whose decision is a
+    re-seal, and says so in words that offer none. Its one exit keeps the held-out rows as they
+    are, which is true before any opening and with nothing drawn at all (no split recorded)."""
+    opened = opened_log()
+    person = {"state": d.fold(opened), "records": opened}
+    assert person["state"].seal_opened is True
+    assert d.validate(d.Reseal(), person).kind == "reseal"  # silent for a person
+    assert d.validate(d.Reseal(), {**person, "analyst": False}).kind == "reseal"
+    with pytest.raises(Refusal) as refused:
+        d.validate(d.Reseal(), {**person, "analyst": True})
+    assert refused.value.code == "no_reseal_in_analyst_mode"
+    assert refused.value.exits == [KEEP_AS_THEY_ARE]
+    assert "not recorded" in refused.value.message
+    # Before any opening, too: analyst mode is the reason, not the seal's own check.
+    sealed = sealed_log()
+    with pytest.raises(Refusal) as early:
+        d.validate(d.Reseal(), {"state": d.fold(sealed), "records": sealed, "analyst": True})
+    assert early.value.code == "no_reseal_in_analyst_mode"
+    assert early.value.exits == [KEEP_AS_THEY_ARE]
+    # And on a project with no split: nothing is drawn, and the exit says none was.
+    with pytest.raises(Refusal) as bare:
+        d.validate(d.Reseal(), {"state": ProjectState(), "records": [], "analyst": True})
+    assert bare.value.code == "no_reseal_in_analyst_mode"
+    assert bare.value.exits == [KEEP_AS_THEY_ARE]
+    assert all("drawn" not in e["label"] for e in bare.value.exits)
+
+
+def test_in_analyst_mode_an_opened_seal_s_refusal_drops_its_reseal_exit():
+    """A new seed after the opening is refused either way; for a person its first exit is the
+    recorded re-seal, as before; in analyst mode no exit offers one and the message does not ask
+    for one."""
+    opened = opened_log()
+    reseed = d.SetSplit(holdout=0.25, seed=1, folds=5)
+    ctx = {"state": d.fold(opened), "records": opened}
+    with pytest.raises(Refusal) as person:
+        seal._an_opened_seal_holds_still(reseed, ctx)
+    assert person.value.code == "seal_opened"
+    assert person.value.exits[0]["decision"]["kind"] == "reseal"
+    assert person.value.exits[1] == KEEP_THE_DRAW
+    assert "needs a recorded re-seal" in person.value.message
+    with pytest.raises(Refusal) as analyst:
+        seal._an_opened_seal_holds_still(reseed, {**ctx, "analyst": True})
+    assert analyst.value.code == "seal_opened"
+    assert analyst.value.exits == [KEEP_AS_THEY_ARE]
+    assert "re-seal" not in analyst.value.message.lower()
+    assert "seed 1 in place of seed 0 would draw other rows" in analyst.value.message
+    # Through the validators the decision meets, as the server's ``decide`` runs them.
+    with pytest.raises(Refusal) as validated:
+        d.validate(reseed, {**ctx, "analyst": True})
+    assert validated.value.code == "seal_opened" and validated.value.exits == [KEEP_AS_THEY_ARE]
+
+
+@pytest.mark.parametrize("decision", [d.SetUnit(unit="unit"), d.SetTarget(column="sbp")],
+                         ids=["decision_a", "what_the_draw_reads"])
+def test_after_the_opening_analyst_mode_offers_no_withdrawal_and_a_person_keeps_it(decision):
+    """Decision A (what a row is) and a change to what the draw reads (the outcome), once the seal
+    is opened. Reference: the opened log's live split record (``split-2``), whose revert is the
+    withdrawal. For a person the refusal's exit is that revert, named the re-seal, and the message
+    asks to withdraw the seal and draw it again, as before. In analyst mode, with only the
+    context's ``analyst`` differing, no exit withdraws the rows or redraws them (no re-seal, no
+    revert of a split's record, no words offering either), and the message says they are not
+    drawn again, which analyst mode holds to: a new draw after the opening is refused."""
+    opened = opened_log()
+    person = {"state": d.fold(opened), "records": opened}
+    with pytest.raises(Refusal) as theirs:
+        d.validate(decision, person)
+    assert theirs.value.code == "sealed"
+    assert theirs.value.exits[-1] == {"label": RESEAL_EXIT,
+                                      "decision": {"kind": "revert", "decision_id": "split-2"}}
+    assert theirs.value.message.endswith("Withdraw the seal first, then draw it again.")
+    assert offers_a_withdrawal(theirs.value, opened)
+
+    analyst = {**person, "analyst": True}
+    with pytest.raises(Refusal) as mine:
+        d.validate(decision, analyst)
+    assert mine.value.code == "sealed"
+    assert not offers_a_withdrawal(mine.value, opened)
+    assert mine.value.exits[-1] == KEEP_AS_THEY_ARE
+    assert "draw it again" not in mine.value.message
+    assert "in analyst mode they are not drawn again" in mine.value.message
+    with pytest.raises(Refusal) as redrawn:  # the words hold: no new draw is recorded
+        d.validate(d.SetSplit(holdout=0.25, seed=1, folds=5), analyst)
+    assert redrawn.value.code == "seal_opened"
+
+
+def test_before_the_opening_analyst_mode_keeps_the_withdrawal_named_for_what_it_does():
+    """No score has been seen before the opening, so analyst mode keeps the withdrawal, named
+    without the word re-seal (it records none), and each step it names is accepted in analyst
+    mode: the revert, the changed answer, and a new draw."""
+    sealed = one_split_log(opened=False)
+    ctx = {"state": d.fold(sealed), "records": sealed, "analyst": True}
+    with pytest.raises(Refusal) as refused:
+        d.validate(d.SetUnit(unit="unit"), ctx)
+    assert refused.value.code == "sealed"
+    assert refused.value.exits == [{"label": WITHDRAW_EXIT,
+                                    "decision": {"kind": "revert", "decision_id": "split"}}]
+    assert refused.value.message.endswith("Withdraw the seal first, then draw it again.")
+    with pytest.raises(Refusal) as person:
+        d.validate(d.SetUnit(unit="unit"), {**ctx, "analyst": False})
+    assert person.value.exits[0]["label"] == RESEAL_EXIT
+
+    steps = [d.Revert(decision_id="split"), d.SetUnit(unit="unit"),
+             d.SetSplit(holdout=0.2, seed=1, folds=5)]
+    records = list(sealed)
+    for step in steps:
+        here = {"state": d.fold(records), "records": records, "analyst": True}
+        records.append(record(len(records) + 1, d.validate(step, here)))
+    assert d.fold(records).unit == "unit" and d.fold(records).split.seed == 1
+
+
+@pytest.fixture(scope="module")
+def labs(tmp_path_factory):
+    """``clinical_labs`` with its findings under the clinical lens, the outcome ``sbp``: four
+    impossible ``sbp`` values (clinical_labs.md), a finding whose repair rewrites the outcome."""
+    from turbotab.core.stages.findings import findings_stage
+
+    table = Ingested(SAMPLES / "clinical_labs.csv", tmp_path_factory.mktemp("labs"))
+    return table.run(findings_stage, ProjectState(lens=["clinical"], target="sbp"))
+
+
+def test_a_settle_first_finding_offers_the_withdrawal_except_in_analyst_mode_after_the_opening(
+        labs):
+    """The settle-first refusal (a finding on the outcome is not settled, and a new draw is asked
+    for while rows are held out) ends with the withdrawal for a person, as before; in analyst mode
+    before the opening it is named without the word re-seal; once opened, it offers none. Through
+    the validators an opened seal's own refusal comes first (it is registered first for a split),
+    so the last case is the refusal's own function, as a later validator order would reach it."""
+    impossible = next(f for f in labs["findings"]
+                      if f["id"] == "pack::clinical::impossible_vs_extreme")
+    assert impossible["repairs"][0]["decision"]["params"]["bands"] == {"sbp": [30.0, 300.0]}
+    reseed = d.SetSplit(holdout=0.2, seed=1, folds=5)
+    drawn_log = [record(1, d.SetLens(lenses=["clinical"])), record(2, d.SetTarget(column="sbp")),
+                 record(3, d.SetSplit(holdout=0.2, seed=0, folds=5), "split")]
+    opened = [*drawn_log, record(4, d.SelectModels(models=["linear"])),
+              record(5, d.OpenSeal(), "open")]
+
+    def settle_first(records, analyst):
+        ctx = {"state": d.fold(records), "records": records, "analyst": analyst,
+               "artifact": lambda stage: labs if stage == "findings" else None}
+        with pytest.raises(Refusal) as refused:
+            seal._the_draw_reads_settled_values(reseed, ctx)
+        assert refused.value.code == "settle_first"
+        return refused.value
+
+    revert = {"kind": "revert", "decision_id": "split"}
+    person = settle_first(drawn_log, analyst=False)
+    assert person.exits[-1] == {"label": RESEAL_EXIT, "decision": revert}
+    early = settle_first(drawn_log, analyst=True)
+    assert early.exits[-1] == {"label": WITHDRAW_EXIT, "decision": revert}
+    late = settle_first(opened, analyst=True)
+    assert not offers_a_withdrawal(late, opened)
+    assert late.exits[-1]["decision"]["kind"] == "dismiss_finding"
+    assert late.exits == early.exits[:-1]  # the repairs and the keep, as before the opening
+    assert settle_first(opened, analyst=False).exits[-1] == {"label": RESEAL_EXIT,
+                                                             "decision": revert}
+    with pytest.raises(Refusal) as first:
+        d.validate(reseed, {"state": d.fold(opened), "records": opened, "analyst": True,
+                            "artifact": lambda stage: labs if stage == "findings" else None})
+    assert first.value.code == "seal_opened" and first.value.exits == [KEEP_AS_THEY_ARE]
+
+
 def test_opening_on_a_failed_fit_says_why_rather_than_to_wait():
     """The zero-row crash: no step waits on a failed fit, so opening the seal is asked of a fit that
     will not finish. It is refused with the first failure on the fit's way, in plain words, never
@@ -566,6 +764,135 @@ def test_every_decision_after_the_opening_is_marked_post_seal(tmp_path):
     assert [r.post_seal for r in DecisionLog(log.path).records()] == [False, False, True, True]
     slots = {"models"}
     assert seal.post_seal_changes(log.records(), slots) == [undo.id]  # `after` is reverted
+
+
+def predict_log() -> list[DecisionRecord]:
+    """A Predict project on dietary_recalls.csv up to its opening: one noticing dismissed and one
+    deferred before it, so the ``findings`` slot holds dispositions that repair nothing."""
+    return [
+        record(1, d.SetLens(lenses=["dietary"])),
+        record(2, d.SetTarget(column="hba1c")),
+        record(3, d.SetPurpose(purpose="prediction")),
+        record(4, d.SetRoles(roles=dict(DIETARY_ROLES))),
+        record(5, d.SetMissing(strategy="complete_case")),
+        record(6, d.SetGrain(grain="repeated", id_column="participant_id")),
+        record(7, d.SetUnit(unit="row")),
+        record(8, d.SetSplit(holdout=0.25, seed=0, folds=5)),
+        record(9, d.SelectModels(models=["linear", "elastic_net"])),
+        record(10, d.DismissFinding(finding_id="pack::dietary::compositional")),
+        record(11, d.DeferFinding(finding_id="pack::dietary::implausible_intake", to="exclusions")),
+        record(12, d.OpenSeal(family="elastic_net", target="hba1c", n_holdout=150, metric="mse",
+                              scores={"linear": {"mse": 0.75}, "elastic_net": {"mse": 0.71}}), "open"),
+    ]
+
+
+@pytest.fixture
+def held_engine(runner, tmp_path):
+    """The real stage graph's engine with every stage held, so it keys a state and computes
+    nothing: ``keys(records)`` is the engine's own key for each stage under their fold."""
+    from turbotab.core.graph import Engine, ProjectContext
+
+    states: dict[str, ProjectState] = {}
+    engine = Engine(graph_factory="turbotab.core.stages:build_graph", runner=runner, bus=EventBus(),
+                    project_ctx=lambda pid: ProjectContext(
+                        project_id=pid, state=states[pid], cache_root=tmp_path / pid / "cache",
+                        paths={}, settings={}, fingerprint="fp-1"),
+                    hold=lambda stage, view: "held")
+
+    def keys(records: list[DecisionRecord]) -> dict[str, str | None]:
+        pid = f"p{len(states)}"
+        states[pid] = d.fold(records)
+        engine.on_decision(pid)
+        return engine.keys(pid)
+
+    yield engine, keys
+    engine.shutdown()
+
+
+def test_the_seal_keys_every_stage_as_the_engine_does(held_engine):
+    """The seal compares its keys with the key of the fit the engine serves, so the two are one
+    rule. A dismissed or deferred noticing repairs nothing: the engine keys the ``findings`` slot
+    by its applied repairs alone (``graph.KEY_VIEWS``), and the seal must too."""
+    engine, keys = held_engine
+    for records in (predict_log(), predict_log()[:9]):
+        state = d.fold(records)
+        assert seal.keys_for(engine.graph, state, "fp-1") == keys(records)
+    # The case discriminates: the fit is keyed, and its slot holds dispositions no repair applied.
+    assert keys(predict_log())["fit"] is not None
+    assert set(d.fold(predict_log()).findings) == {"pack::dietary::compositional",
+                                                   "pack::dietary::implausible_intake"}
+
+
+def test_a_noticing_set_aside_is_no_change_to_the_fit_the_seal_opened_on(held_engine):
+    """Both ways (Predict Results' "from a fit changed after the opening" reads it): with the
+    opening the last record, the fit served is by construction the one it opened on, whatever was
+    dismissed or deferred before it; after it, a dismissal changes only a disposition no repair
+    applied, and a triage of the noticings (the server refuses it there; folded here) only the
+    ``sweeps`` slot, which no stage reads. A new exclusion changes the rows the fit reads, and an
+    applied repair the data: each is a changed fit, among the post-seal decisions that changed it."""
+    engine, keys = held_engine
+    graph = engine.graph
+    opened = predict_log()
+    assert seal.changed_after_seal(graph, opened, "fp-1", keys(opened)["fit"]) is False
+
+    set_aside = [*opened,
+                 record(13, d.DismissFinding(finding_id="binary_text__sex"), post_seal=True),
+                 record(14, d.ConfirmSweep(stage="results", sweep="noticings", lines=[
+                     d.SweptLine(id="finding:voice::repeats__participant_id",
+                                 key="voice::repeats__participant_id", value="no_change")]),
+                        post_seal=True)]
+    changed = seal.changed_after_seal(graph, set_aside, "fp-1", keys(set_aside)["fit"])
+    assert changed is False
+    # The served note, composed as the server composes it (``ProjectService._served_fit``).
+    at = seal.reported_result(set_aside, opened=True, changed=changed)
+    assert at["current"] is True and at["note"].endswith(": the reported result.")
+
+    rule = d.ExclusionRule(column="energy_kcal", low=500, high=5000, reason="implausible intake")
+    excluded = [*set_aside, record(15, d.SetExclusions(rules=[rule]), "exclude", post_seal=True)]
+    changed = seal.changed_after_seal(graph, excluded, "fp-1", keys(excluded)["fit"])
+    assert changed is True
+    assert "exclude" in seal.post_seal_changes(excluded, seal.slots_read_by(graph, "fit"))
+    at = seal.reported_result(excluded, opened=True, changed=changed)
+    assert at["current"] is False and "from a fit changed after it" in at["note"]
+    # A repair applied to a noticing does change the data the fit reads, through the same slot.
+    repaired = [*set_aside, record(15, d.ApplyRepair(finding_id="pack::dietary::implausible_intake",
+                                                     option="exclude_implausible"), "repair",
+                                   post_seal=True)]
+    assert seal.changed_after_seal(graph, repaired, "fp-1", keys(repaired)["fit"]) is True
+    assert "repair" in seal.post_seal_changes(repaired, seal.slots_read_by(graph, "fit"))
+
+
+def test_the_post_seal_changes_list_no_noticing_set_aside_beside_a_real_change(held_engine):
+    """W1-Q's S1 line, both ways: the post-seal changes are the records after the opening that
+    change what the fit reads. Once a new exclusion makes the fit changed after the opening, a
+    dismissal and a deferral after it still repair nothing, so the exclusion is listed alone. A
+    dismissal that withdraws a repair applied before the opening changes the data the fit reads
+    (the engine keys it: a changed fit), so it is listed."""
+    engine, keys = held_engine
+    graph = engine.graph
+    slots = seal.slots_read_by(graph, "fit")
+    rule = d.ExclusionRule(column="energy_kcal", low=500, high=5000, reason="implausible intake")
+    beside = [*predict_log(),
+              record(13, d.DismissFinding(finding_id="binary_text__sex"), "dismiss", post_seal=True),
+              record(14, d.DeferFinding(finding_id="pack::dietary::compositional", to="exclusions"),
+                     "defer", post_seal=True),
+              record(15, d.SetExclusions(rules=[rule]), "exclude", post_seal=True)]
+    assert seal.changed_after_seal(graph, beside, "fp-1", keys(beside)["fit"]) is True
+    assert seal.post_seal_changes(beside, slots) == ["exclude"]
+    # alone, the two set aside leave the fit the one opened on, and nothing is listed
+    alone = beside[:-1]
+    assert seal.changed_after_seal(graph, alone, "fp-1", keys(alone)["fit"]) is False
+    assert seal.post_seal_changes(alone, slots) == []
+
+    # fires: the repair applied before the opening is dismissed after it
+    log = predict_log()
+    repaired = [*log[:11], record(12, d.ApplyRepair(finding_id="pack::dietary::implausible_intake",
+                                                    option="exclude_implausible"), "repair"),
+                record(13, log[11].decision, "open"),
+                record(14, d.DismissFinding(finding_id="pack::dietary::implausible_intake"),
+                       "withdrawn", post_seal=True)]
+    assert seal.changed_after_seal(graph, repaired, "fp-1", keys(repaired)["fit"]) is True
+    assert seal.post_seal_changes(repaired, slots) == ["withdrawn"]
 
 
 def test_the_post_seal_sentence_keeps_a_data_value_or_an_acronym_as_it_is():

@@ -5,7 +5,7 @@
  */
 import { useRef, type FocusEvent, type KeyboardEvent } from "react";
 import { useProjectView } from "../api/queries";
-import { useProjectEvents } from "../api/events";
+import type { StreamState } from "../api/events";
 import type { ProjectView } from "../api/schema";
 import { Banner } from "../components/banner/Banner";
 import { Header } from "../components/Header";
@@ -13,13 +13,15 @@ import { JobChips } from "../components/JobChips";
 import { Record } from "../components/record/Record";
 import { Stage } from "../components/stage/Stage";
 import { NumberTween } from "../motion/NumberTween";
-import { Link } from "../router";
+import q from "../quest/quest.module.css";
+import { Link, projectPath } from "../router";
 import { StageFocusProvider, useStageFocus } from "../state/focus";
 import { readingText } from "../util/format";
 import styles from "./ProjectScreen.module.css";
 
-export function ProjectScreen({ pid }: { pid: string }) {
-  const stream = useProjectEvents(pid);
+/** `stream`: the project's event stream, held by the route above (App.tsx), so the quest shell and
+ *  this screen share one. */
+export function ProjectScreen({ pid, stream }: { pid: string; stream: StreamState }) {
   const viewQ = useProjectView(pid);
 
   if (viewQ.isPending) {
@@ -80,6 +82,10 @@ function Loaded({ pid, view, stream }: { pid: string; view: ProjectView; stream:
             {readingText(stages.ingest)}
           </span>
         )}
+        {/* The way back to the project's quest shell, whose header links here (ruling 8). */}
+        <Link href={projectPath(pid)} className={q.screenLink} data-testid="to-quest">
+          Quest screen
+        </Link>
         {stream === "reconnecting" ? (
           <span className={styles.stream} role="status">
             reconnecting to the server…

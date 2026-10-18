@@ -62,6 +62,11 @@ CLINICAL = SAMPLES / "clinical_risk.csv"
 SPLIT = {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5}
 FAMILIES = ["linear", "boosted_trees"]
 NEVER = ("prespecified", "pre-specified", "preregistered", "pre-registered", "registered")
+# How long a wait on a fit may take. Locally this file's test 3 passes in 54 s with each fit run
+# once, but on CI's runner it took 3.0, 4.3 (passed), 1.9, 3.0, 4.4 (failed) and 4.3 (failed)
+# minutes across six W1 part 2 runs, failing in a 240 s wait with the fit at progress 0.97: a single
+# fit there sits at that edge.
+FIT_WAIT = 600
 
 
 @pytest.fixture(scope="module")
@@ -78,13 +83,13 @@ def view_of(client, pid: str) -> dict:
 
 
 def served_fit(client, pid: str) -> dict:
-    wait_for(client, pid, {"fit": "fresh"}, timeout=240)
+    wait_for(client, pid, {"fit": "fresh"}, timeout=FIT_WAIT)
     return served(client, pid, "fit")
 
 
 def disk_scores(client, pid: str) -> dict[str, dict[str, float]]:
     """The held-out scores the fresh fit holds back, read from its sealed frame on disk."""
-    view = wait_for(client, pid, {"fit": "fresh"}, timeout=240)
+    view = wait_for(client, pid, {"fit": "fresh"}, timeout=FIT_WAIT)
     cache = client.app.state.service.workspace.cache_dir(pid)
     frame = pd.read_parquet(artifact_dir(cache, "fit", view["stages"]["fit"]["key"]) / "frames"
                             / "sealed_scores.parquet")
@@ -163,7 +168,7 @@ def opened_project(client, target: str = "readmit_30d") -> str:
     models = {"kind": "select_models", "models": FAMILIES}
     prepare(client, pid, models)
     accepted(client, pid, models)
-    wait_for(client, pid, {"fit": "fresh"}, timeout=240)
+    wait_for(client, pid, {"fit": "fresh"}, timeout=FIT_WAIT)
     assert press_fit(client, pid)
     return pid
 
@@ -232,8 +237,12 @@ def test_3_the_scores_at_the_opening_are_kept_in_the_record_and_reported(client)
     # MS6: the declared family's held-out score on the strictly proper primary, with the AUC
     # beside it as the customary headline.
     assert opening["decision"]["metric"] == "log_loss" and opening["decision"]["n_holdout"] == 96
-    said = (f"held-out log loss `{at_disk['linear']['log_loss']:.3f}` (AUC `{reference:.3f}`, the "
-            f"customary headline)")
+    # Printed as the results table prints them (R-f 20; the rule written out in
+    # ``test_sentence_precision.table``).
+    from turbotab.core.tests.test_sentence_precision import table
+
+    said = (f"held-out log loss `{table(at_disk['linear']['log_loss'])}` (AUC `{table(reference)}`, "
+            f"the customary headline)")
     assert said in opening["sentence"]
     fit = served_fit(client, pid)
     assert fit["at_opening"]["scores"] == at_disk and fit["at_opening"]["current"] is True
@@ -428,7 +437,7 @@ def test_4_changes_after_the_first_coefficient_is_shown_are_recorded_after_the_e
         prepare(client, pid, decision)
         accepted(client, pid, decision)
     replaced = [r for r in records(client, pid) if r["decision"]["kind"] == "set_exclusions"][0]
-    wait_for(client, pid, {"fit": "fresh"}, timeout=240)
+    wait_for(client, pid, {"fit": "fresh"}, timeout=FIT_WAIT)
     # Computed, not yet displayed: a change now is made before the estimates were seen.
     declared_rule = {"kind": "set_exclusions",
                      "rules": [{"column": "fiber_g", "high": 80, "reason": "a plausible intake"}]}

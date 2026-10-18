@@ -26,7 +26,8 @@ import type { CodebookRequest, JoinPreviewRequest } from "./m3-types";
 
 export const keys = {
   health: () => ["health"] as const,
-  teaching: () => ["teaching"] as const,
+  /** The words for a goal (`purpose`), else the words with no goal named. */
+  teaching: (purpose?: string | null): readonly string[] => (purpose ? ["teaching", purpose] : ["teaching"]),
   projects: () => ["projects"] as const,
   fs: (path: string | null) => ["fs", path ?? ""] as const,
   project: (pid: string) => [pid] as const,
@@ -42,6 +43,10 @@ export const keys = {
   // M3: each is read from the decision log, so a decision event invalidates it (events.ts).
   readings: (pid: string) => [pid, "readings"] as const,
   methods: (pid: string) => [pid, "methods"] as const,
+  // P8: the methods in the bundle's sections, read from the log and the fresh stages as the bundle
+  // reads them, so a decision event invalidates it with the other log-derived keys, and a stage
+  // event changing a stage's state or fresh key invalidates it too (events.ts).
+  methodsSections: (pid: string) => [pid, "methods", "sections"] as const,
   plan: (pid: string) => [pid, "plan"] as const,
   files: (pid: string) => [pid, "files"] as const,
   models: () => ["models"] as const,
@@ -56,7 +61,14 @@ export const keys = {
 
 /** The reads that follow the decision log: stale after any decision. */
 export function logDerivedKeys(pid: string) {
-  return [keys.quest(pid), keys.record(pid), keys.triage(pid), keys.materiality(pid), keys.checklist(pid)];
+  return [
+    keys.quest(pid),
+    keys.record(pid),
+    keys.triage(pid),
+    keys.materiality(pid),
+    keys.checklist(pid),
+    keys.methodsSections(pid),
+  ];
 }
 
 export function makeQueryClient(): QueryClient {
@@ -109,9 +121,11 @@ export function useProjectView(pid: string) {
   });
 }
 
-/** The words every question carries (GET /api/teaching): static, fetched once. */
-export function useTeaching() {
-  return useQuery({ queryKey: keys.teaching(), queryFn: ({ signal }) => api.teaching(signal) });
+/** The words every question carries (GET /api/teaching): static, fetched once per goal. With the
+ *  project's `purpose` the server words the cards it words by goal for that goal (under prediction
+ *  the roles card's predictors, W1-R finding 3c); with none, as they stand with no goal named. */
+export function useTeaching(purpose: string | null = null) {
+  return useQuery({ queryKey: keys.teaching(purpose), queryFn: ({ signal }) => api.teaching(purpose, signal) });
 }
 
 export function useStageResult<S extends AnyStageName>(pid: string, stage: S, enabled = true) {
@@ -323,6 +337,15 @@ export function useMethods(pid: string, enabled = true) {
   return useQuery({
     queryKey: keys.methods(pid),
     queryFn: ({ signal }) => api.methods(pid, signal),
+    enabled,
+  });
+}
+
+/** P8: the methods in the export bundle's own sections and words, for the manuscript rail. */
+export function useMethodsSections(pid: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.methodsSections(pid),
+    queryFn: ({ signal }) => api.methodsSections(pid, signal),
     enabled,
   });
 }

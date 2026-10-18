@@ -20,7 +20,8 @@ CHUNK = 1 << 20
 class InputFile:
     """One file the analysis read. ``changed``: its bytes are no longer those the project read
     (their BLAKE2b differs from the fingerprint recorded when it was read), so no record can name
-    the data the results came from."""
+    the data the results came from. ``provenance``: where it came from (its URL, release date and
+    license, as given with it; SWARM_ENGINE_PLAN E5), echoed beside its hash only when given."""
 
     role: Role
     name: str
@@ -30,10 +31,11 @@ class InputFile:
     file_id: str | None = None
     changed: bool = False
     missing: bool = False  # the file is gone from where it was read
+    provenance: Mapping[str, str] = field(default_factory=dict, hash=False)
 
     def to_json(self) -> dict[str, Any]:
         return {"role": self.role, "name": self.name, "path": self.path, "bytes": self.bytes,
-                "sha256": self.sha256, "file_id": self.file_id}
+                "sha256": self.sha256, "file_id": self.file_id, **dict(self.provenance)}
 
 
 def hash_file(path: str | Path) -> tuple[str, str, int]:
@@ -51,16 +53,19 @@ def hash_file(path: str | Path) -> tuple[str, str, int]:
 
 
 def input_file(role: Role, name: str, path: str | Path, fingerprint: str | None,
-               file_id: str | None = None) -> InputFile:
+               file_id: str | None = None,
+               provenance: Mapping[str, str] | None = None) -> InputFile:
     """The input at ``path``, hashed; ``changed`` when ``fingerprint`` (as recorded when the project
-    read it) is known and its bytes no longer match it."""
+    read it) is known and its bytes no longer match it. ``provenance``: where it came from, as
+    recorded with it (``workspace.source_provenance``)."""
     p = Path(path)
+    kept = dict(provenance or {})
     if not p.is_file():
         return InputFile(role=role, name=name, path=str(p), bytes=0, sha256="", file_id=file_id,
-                         missing=True)
+                         missing=True, provenance=kept)
     sha, blake, size = hash_file(p)
     return InputFile(role=role, name=name, path=str(p), bytes=size, sha256=sha, file_id=file_id,
-                     changed=bool(fingerprint) and blake != fingerprint)
+                     changed=bool(fingerprint) and blake != fingerprint, provenance=kept)
 
 
 @dataclass
@@ -84,6 +89,9 @@ class Source:
     inputs: list[InputFile]
     decisions_jsonl: bytes
     stage_versions: dict[str, int] = field(default_factory=dict)
+    # What the values settled with no question asked, as one sentence (``readings.
+    # read_from_values_sentence``; None: nothing settled, or not read).
+    read_from_values: str | None = None
 
     def status(self, stage: str) -> Any:
         return self.statuses.get(stage)

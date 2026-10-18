@@ -36,6 +36,14 @@ Eavg (the integrated calibration index), E90 and Emax summarize ``|p − smooth(
 does. For a numeric outcome the same three are read on the outcome's scale: the intercept is the
 mean of ``y − ŷ``, the slope is the least-squares slope of ``y`` on ``ŷ``.
 
+**The rows behind the curve** (``support``; the walkthrough of 2026-10-17, finding 10): the count of
+rows whose prediction falls in each of :data:`SUPPORT_BINS` equal-width stretches of the
+predictions' range, the curve's x-range, counted as ``np.histogram`` counts them (each stretch
+half-open, the last closed). Equal widths, because the counts the curve already rests on show no
+sparse tail: its points sit at quantiles of the predictions, so the same share of rows lies between
+each two, and every local fit of the smoother reads two thirds of all the rows. A stretch of equal
+width with few rows in it is where the curve is drawn on little.
+
 **When calibration is flagged.** When the data show miscalibration beyond a tolerance: a slope
 whose whole 95% interval lies outside 0.9–1.1, or an intercept whose whole interval lies beyond
 ±0.1 (log-odds) or ± a tenth of the outcome's standard deviation. The 0.9 is Riley et al.'s target
@@ -91,6 +99,7 @@ LEVEL = 0.95
 SLOPE_TOLERANCE = 0.1  # Riley et al. 2019: shrinkage ≥ 0.9, applied either side of 1
 INTERCEPT_TOLERANCE = 0.1  # log-odds, or a tenth of the outcome's SD: a convention
 CURVE_POINTS = 40
+SUPPORT_BINS = 20  # equal-width stretches of the predictions' range (module docstring)
 SMOOTHER = "lowess, span 2/3, no robustness iterations (as rms val.prob)"
 EPS = 1e-12
 FLAT = 1e-8  # predictions spread less than this (relative to the outcome's) have no slope
@@ -413,8 +422,18 @@ class CurvePoint(_Model):
     y: float  # observed, smoothed
 
 
+class SupportBin(_Model):
+    """One of equal-width stretches of the predictions' range, ``[lo, hi)`` (the last one closed),
+    and how many rows' predictions fall in it: where the calibration curve rests on few rows."""
+
+    lo: float
+    hi: float
+    n: int
+
+
 class Calibration(_Model):
-    """Calibration of one set of predictions: in the large, its slope, and its smoothed curve."""
+    """Calibration of one set of predictions: in the large, its slope, its smoothed curve, and the
+    rows behind each stretch of the curve's x-range (``support``)."""
 
     n: int
     observed: float  # mean outcome (event rate, or the outcome's mean)
@@ -422,6 +441,7 @@ class Calibration(_Model):
     intercept: Interval  # target 0: calibration-in-the-large (log-odds, or outcome units)
     slope: Interval  # target 1: below 1, predictions too extreme
     curve: list[CurvePoint] = []
+    support: list[SupportBin] = []  # the rows behind each stretch of the curve (W1-R finding 10)
     eavg: float | None = None  # mean |prediction − smoothed observed| (the ICI)
     e90: float | None = None
     emax: float | None = None
@@ -501,6 +521,20 @@ def _curve(x: np.ndarray, fitted: np.ndarray, bounds: tuple[float, float] | None
     return out
 
 
+def _support(x: np.ndarray) -> list[SupportBin]:
+    """The rows behind each of :data:`SUPPORT_BINS` equal-width stretches of the predictions' range
+    (module docstring): a row on an inner edge belongs to the stretch it opens, one at the top to the
+    last. Predictions that do not vary are one stretch holding every row."""
+    lo, hi = float(x.min()), float(x.max())
+    if not hi > lo:
+        return [SupportBin(lo=lo, hi=hi, n=len(x))]
+    edges = np.linspace(lo, hi, SUPPORT_BINS + 1)
+    at = np.clip(np.searchsorted(edges, x, side="right") - 1, 0, SUPPORT_BINS - 1)
+    counts = np.bincount(at, minlength=SUPPORT_BINS)
+    return [SupportBin(lo=float(edges[j]), hi=float(edges[j + 1]), n=int(counts[j]))
+            for j in range(SUPPORT_BINS)]
+
+
 def _signed(x: float, places: int = 2) -> str:
     return f"{x:.{places}f}".replace("-", "−")
 
@@ -575,7 +609,8 @@ def calibration(task: str, y: Any, prediction: Any, *, classes: Sequence[Any] | 
         err = np.abs(p - fitted)
         observed, expected = float(event.mean()), float(p.mean())
         cal = Calibration(n=n, observed=observed, expected=expected, intercept=a, slope=b,
-                          curve=_curve(p, fitted, (0.0, 1.0)), eavg=float(err.mean()),
+                          curve=_curve(p, fitted, (0.0, 1.0)), support=_support(p),
+                          eavg=float(err.mean()),
                           e90=float(np.quantile(err, 0.9)), emax=float(err.max()))
         scale = 1.0
     else:
@@ -604,7 +639,8 @@ def calibration(task: str, y: Any, prediction: Any, *, classes: Sequence[Any] | 
         fitted = _smooth(yhat, yy)
         err = np.abs(yhat - fitted)
         cal = Calibration(n=n, observed=float(yy.mean()), expected=float(yhat.mean()), intercept=a,
-                          slope=b, curve=_curve(yhat, fitted, None), eavg=float(err.mean()),
+                          slope=b, curve=_curve(yhat, fitted, None), support=_support(yhat),
+                          eavg=float(err.mean()),
                           e90=float(np.quantile(err, 0.9)), emax=float(err.max()))
         scale = float(np.std(yy, ddof=1)) if n > 1 else 1.0
     concern = _flag(task, cal.intercept, cal.slope, cal.observed, cal.expected, scale, where)
@@ -923,7 +959,8 @@ def random_effects(metric: str, estimates: Sequence[float], ses: Sequence[float]
 
 __all__ = [
     "Calibration", "CurvePoint", "HorizonCalibration", "INTERCEPT_TOLERANCE", "Interval", "LEVEL",
-    "LevelCalibration", "NOT_ASSESSED", "Pooled", "RiskGroup", "SLOPE_TOLERANCE",
+    "LevelCalibration", "NOT_ASSESSED", "Pooled", "RiskGroup", "SLOPE_TOLERANCE", "SUPPORT_BINS",
+    "SupportBin",
     "auc_components", "auc_influence", "auc_interval", "breslow", "brier_at", "brier_rows",
     "calibration", "censoring_survival", "delayed_entry", "delong", "fold_variance",
     "horizon_calibration", "interval", "kaplan_meier", "level_calibration", "log_loss_rows",

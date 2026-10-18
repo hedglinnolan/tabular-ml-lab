@@ -202,27 +202,64 @@
           "projects"
         ],
         "summary": "Upload Project",
-        "description": "Upload a data file (multipart field ``file``). It is streamed to disk as it arrives.",
+        "description": "Upload a data file (multipart field ``file``). It is streamed to disk as it arrives. ``url``, ``release_date`` and ``license`` (each optional, each at most 2,000 characters) say where the file came from: kept on the project's meta and echoed into the export's ``provenance.json`` inputs beside the file's SHA-256 (SWARM_ENGINE_PLAN E5). One that does not read refuses the upload before any of it is kept.",
         "operationId": "upload_project_api_projects_upload_post",
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "properties": {
-                  "file": {
-                    "type": "string",
-                    "format": "binary"
-                  }
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
                 },
-                "type": "object",
-                "required": [
-                  "file"
-                ]
-              }
-            }
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Where the file came from, in full (https://…)",
+              "title": "Url"
+            },
+            "description": "Where the file came from, in full (https://…)"
           },
-          "required": true
-        },
+          {
+            "name": "release_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "When it was released, YYYY-MM-DD",
+              "title": "Release Date"
+            },
+            "description": "When it was released, YYYY-MM-DD"
+          },
+          {
+            "name": "license",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The license it was released under",
+              "title": "License"
+            },
+            "description": "The license it was released under"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -235,11 +272,40 @@
             }
           },
           "400": {
-            "description": "No file, or not a readable data file",
+            "description": "No file, not a readable data file, or a field of where it came from that does not read",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
                 }
               }
             }
@@ -305,7 +371,7 @@
           "projects"
         ],
         "summary": "Decide",
-        "description": "Record a decision. Stages downstream of the slot it writes recompute. ``decide_now``\nanswers a later question ahead of the Router, only where its card is computed and the earlier\nanswers it reads are in (crosswalk disagreement 20); otherwise it is refused with what it is\nwaiting for, and the record names the question it was decided ahead of.",
+        "description": "Record a decision. Stages downstream of the slot it writes recompute. ``decide_now``\nanswers a later question ahead of the Router, only where its card is computed and the earlier\nanswers it reads are in (crosswalk disagreement 20); otherwise it is refused with what it is\nwaiting for, and the record names the question it was decided ahead of. ``note``: the reason,\nin any mode (SWARM_ENGINE_PLAN E4); one past its limit is refused (``note_too_long``) and\nnothing is recorded.",
         "operationId": "decide_api_projects__pid__decisions_post",
         "parameters": [
           {
@@ -326,6 +392,24 @@
               "default": false,
               "title": "Decide Now"
             }
+          },
+          {
+            "name": "note",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Why: the decision's reason, at most 2,000 characters, kept on its record and served in the decision log, never written into the methods",
+              "title": "Note"
+            },
+            "description": "Why: the decision's reason, at most 2,000 characters, kept on its record and served in the decision log, never written into the methods"
           }
         ],
         "requestBody": {
@@ -645,6 +729,69 @@
         }
       }
     },
+    "/api/projects/{pid}/analyst-log": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Analyst Log",
+        "description": "What the analyst saw, in analyst mode only (``--analyst``, or ``TURBOTAB_ANALYST=1``;\nSWARM_ENGINE_PLAN E4), oldest first: each claim rendered for the project (the claim asked for,\nits register, frozen status and grade, the claim that rendered in its place outside its\nregime, and why a render was refused), which is logged in every mode; and each preview asked\nfor in analyst mode, a decision's (``…/preview``) or a join's (``…/join-preview``, as the\n``join_files`` decision it previews), with the refusal's code when it was refused.",
+        "operationId": "analyst_log_api_projects__pid__analyst_log_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalystLog"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TurboTab is not in analyst mode",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{pid}/readings": {
       "get": {
         "tags": [
@@ -867,6 +1014,112 @@
         }
       }
     },
+    "/api/projects/{pid}/fits": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Fits",
+        "description": "Every fit that completed, one record per fit key in the order the keys turned fresh, each\nwritten once and never rewritten (SWARM_ENGINE_PLAN E1): its purpose, outcome and key, the\nplan's digest and the records in force it was computed from, the press of Fit in force, its\nfamilies, the seconds its job ran and the server's workers, the rows its split held out, and\nper family the cross-validated summary (Predict) or the exposure's rows with their intervals\n(Estimate). Each number is the fit's as ``GET /stages/fit`` would serve that fit now, read for\nthe record's own scope: none under another goal than the goal now; under Predict none before\nFit is pressed for the record's outcome; under Estimate none before the plan's lock, nor for a\nfit computed before the lock that is not the fit the lock was recorded on (the plan's digest\nis the plan when the fit completed, so the lock can record another for the same fit), unless\nit is the fit the stage route serves now; a held-out score only once the record's outcome's\nseal is opened, only where the fit was scored on the rows that opening opened, and only for\nthe fit the opening was recorded on, a fit computed after it or the current fit, with what the\nstage route says beside them: whether the fit is not the opened one, the scores the opening\nrecorded (the reported result) and whether those are the scores served, and the final\nmodel's note. ``withheld`` and ``holdout_why`` say why a number is not served. Under Predict,\na record scored on the same\nfolds as the one before it carries each family's paired movement against it; otherwise\n``movement_why`` says why it has none.",
+        "operationId": "fits_api_projects__pid__fits_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitsLog"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/results": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Results",
+        "description": "What the Results screens show, joined into one document, each field the served artifact's\nown value and gated as the stage route gates it (SWARM_ENGINE_PLAN E2). Under Predict: each\nfamily's cross-validated summary, the declared result and, once the seal is opened, its\nheld-out scores with their intervals and calibration, with what the screen says beside them:\nthe scores the opening recorded (the reported result) and whether those are the scores served,\nthe final model's note, whether the fit changed after the opening and the post-seal decisions\nthat changed it, and the split's basis, which can mark the held-out scores exploratory. Under\nEstimate: the estimand, each family's rows of the exposure from the fit, and from the effects\nstage its sequence fits, marginal contrast and E-values. The cross-validated scores served\ncount as seen for the outcome of the fit that holds them, as on the stage route, and also\nwhile that fit is not the current one.",
+        "operationId": "results_api_projects__pid__results_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Results"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{pid}/record": {
       "get": {
         "tags": [
@@ -973,6 +1226,69 @@
         }
       }
     },
+    "/api/projects/{pid}/mattered": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Mattered",
+        "description": "Which decisions mattered, under Estimate (SWARM_ENGINE_PLAN E3): the exposure's estimate\nrefit with each recorded choice changed, one at a time (each exclusion rule dropped, each\nadjusted covariate dropped, each covariate the adjustment answers left out added), a\nspecification curve the ``mattered`` stage computes after the plan's lock. Its primary is the\nreported estimate, which stays the result whatever the curve shows. Refused under a goal or an\neffect measure that does not offer it (a marginal risk difference or ratio), and before the\nlock with the line saying when it opens; while the stage computes, its status and no curve; a\ncurve that cannot be drawn is refused with why, quoting no estimate. Serving a curve marks its\nestimates as shown.",
+        "operationId": "mattered_api_projects__pid__mattered_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mattered"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not offered for this goal or effect measure, the plan not locked yet, a question the estimates rest on open, or the curve cannot be drawn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{pid}/triage": {
       "get": {
         "tags": [
@@ -1052,6 +1368,59 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MethodsText"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/methods/sections": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Methods Sections",
+        "description": "The methods in the sections and words of the export bundle's methods (P8): TRIPOD+AI's\nsections under prediction, STROBE's with STROBE-nut's otherwise, each line with its decision\nrecord's id (null for a paragraph the analysis wrote and for the export's own sentence), and\nhow many lines there are. Built as the bundle builds them, from the decision log and the fresh\nstages as they stand, without its refusal; reading it records nothing.",
+        "operationId": "methods_sections_api_projects__pid__methods_sections_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MethodsSections"
                 }
               }
             }
@@ -2202,19 +2571,51 @@
           "teaching"
         ],
         "summary": "Get Teaching",
-        "description": "One entry per question, in asking order: the question, its one line, each option's\nconsequence, the terms it uses, and the pack content behind it with evidence badges.",
+        "description": "One entry per question, in asking order: the question, its one line, each option's\nconsequence, the terms it uses, and the pack content behind it with evidence badges.\n``purpose``: the project's declared goal; under ``prediction`` the roles card says\n\"predictors\" and names no study factor. Without it, the cards as under Estimate.",
         "operationId": "get_teaching_api_teaching_get",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "prediction",
+                    "inference"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Purpose"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/TeachingEntry"
                   },
-                  "type": "array",
                   "title": "Response Get Teaching Api Teaching Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -2366,7 +2767,7 @@
           "assembly"
         ],
         "summary": "Upload File",
-        "description": "Upload a file to join to the project's table (multipart field ``file``).",
+        "description": "Upload a file to join to the project's table (multipart field ``file``). ``url``, ``release_date`` and ``license`` (each optional, each at most 2,000 characters) say where the file came from: kept on the file's meta and echoed into the export's ``provenance.json`` inputs beside the file's SHA-256 once it is joined (SWARM_ENGINE_PLAN E5). One that does not read refuses the upload before any of it is kept.",
         "operationId": "upload_file_api_projects__pid__files_upload_post",
         "parameters": [
           {
@@ -2377,6 +2778,60 @@
               "type": "string",
               "title": "Pid"
             }
+          },
+          {
+            "name": "url",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Where the file came from, in full (https://…)",
+              "title": "Url"
+            },
+            "description": "Where the file came from, in full (https://…)"
+          },
+          {
+            "name": "release_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "When it was released, YYYY-MM-DD",
+              "title": "Release Date"
+            },
+            "description": "When it was released, YYYY-MM-DD"
+          },
+          {
+            "name": "license",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The license it was released under",
+              "title": "License"
+            },
+            "description": "The license it was released under"
           }
         ],
         "responses": {
@@ -2391,7 +2846,7 @@
             }
           },
           "400": {
-            "description": "No file, or not a readable data file",
+            "description": "No file, not a readable data file, or a field of where it came from that does not read",
             "content": {
               "application/json": {
                 "schema": {
@@ -2827,6 +3282,17 @@
             "type": "string",
             "title": "Fingerprint"
           },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
           "n_rows": {
             "type": "integer",
             "title": "N Rows"
@@ -2861,6 +3327,7 @@
           "name",
           "source_kind",
           "fingerprint",
+          "sha256",
           "n_rows",
           "n_cols",
           "columns",
@@ -3040,6 +3507,31 @@
           "acknowledged"
         ],
         "title": "AggregationSpec"
+      },
+      "AnalystLog": {
+        "properties": {
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimRendered"
+            },
+            "type": "array",
+            "title": "Claims"
+          },
+          "previews": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewLogged"
+            },
+            "type": "array",
+            "title": "Previews"
+          }
+        },
+        "type": "object",
+        "required": [
+          "claims",
+          "previews"
+        ],
+        "title": "AnalystLog",
+        "description": "What the analyst saw, oldest first."
       },
       "ApplyRepair-Input": {
         "properties": {
@@ -3269,6 +3761,85 @@
         ],
         "title": "AskSettled",
         "description": "One reading the values settled for this consumer, no question asked\n(``readings.read_from_data``, the readings endpoint's own item)."
+      },
+      "AtOpening": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
+          },
+          "n_holdout": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Holdout"
+          },
+          "scores": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Scores"
+          },
+          "current": {
+            "type": "boolean",
+            "title": "Current"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "family",
+          "metric",
+          "n_holdout",
+          "scores",
+          "current",
+          "note"
+        ],
+        "title": "AtOpening",
+        "description": "The held-out scores recorded when the current outcome's seal was first opened: the reported\nresult, whatever is drawn, fitted or opened later (audit WP16, RO-05). Set by the server."
       },
       "BatchSpec": {
         "properties": {
@@ -3742,6 +4313,204 @@
           "license"
         ],
         "title": "ChecklistSource"
+      },
+      "Chronology": {
+        "properties": {
+          "drawn": {
+            "type": "boolean",
+            "title": "Drawn"
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Column"
+          },
+          "boundary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Boundary"
+          },
+          "n_units": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Units"
+          },
+          "n_undated": {
+            "type": "integer",
+            "title": "N Undated"
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          },
+          "n_held_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Held Rows"
+          },
+          "n_held_earlier": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Held Earlier"
+          },
+          "earlier": {
+            "items": {
+              "$ref": "#/components/schemas/EarlierRows"
+            },
+            "type": "array",
+            "title": "Earlier",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "drawn",
+          "time_column",
+          "boundary",
+          "n_units",
+          "n_undated",
+          "sentence",
+          "n_held_rows",
+          "n_held_earlier",
+          "earlier"
+        ],
+        "title": "Chronology",
+        "description": "The chronological draw the temporal answer asked for, and whether it was drawn.\n\nWhole units are held out by their last observation, so with repeated rows a held-out unit's\nearlier rows can predate training rows (audit IN-24: 56–71% of held-out rows on visit data).\n``n_held_rows``/``n_held_earlier`` count that for this draw; ``earlier`` for each share the\nsplit question offers, at this draw's seed, so the split's sentence can state it."
+      },
+      "ClaimRendered": {
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "The claim asked for"
+          },
+          "register": {
+            "type": "string",
+            "title": "Register",
+            "description": "card or methods"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status",
+            "description": "Its frozen status as read; null where the render stopped before it was read"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade",
+            "description": "The weakest part's grade of the claim that rendered"
+          },
+          "fallback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback",
+            "description": "The claim that rendered in its place, outside its regime; null when it rendered itself"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hash",
+            "description": "The content hash its frozen status is kept under"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refused",
+            "description": "Why no sentence rendered; null when one did"
+          }
+        },
+        "type": "object",
+        "required": [
+          "at",
+          "id",
+          "register",
+          "status",
+          "grade",
+          "fallback",
+          "version",
+          "hash",
+          "refused"
+        ],
+        "title": "ClaimRendered",
+        "description": "One render of a claim for the project (``claims.render_log``), in any mode."
       },
       "ClusterSpec": {
         "properties": {
@@ -5510,6 +6279,36 @@
         ],
         "title": "DrawerSection"
       },
+      "EarlierRows": {
+        "properties": {
+          "holdout": {
+            "type": "number",
+            "title": "Holdout"
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed"
+          },
+          "n_held_rows": {
+            "type": "integer",
+            "title": "N Held Rows"
+          },
+          "n_earlier": {
+            "type": "integer",
+            "title": "N Earlier"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "holdout",
+          "seed",
+          "n_held_rows",
+          "n_earlier"
+        ],
+        "title": "EarlierRows",
+        "description": "For one held-out share drawn by time: how many held-out rows there are, and how many were\nobserved before the latest training row (audit IN-24)."
+      },
       "EnergyAdjustment": {
         "properties": {
           "method": {
@@ -6732,6 +7531,66 @@
         ],
         "title": "FitLock",
         "description": "Fit and the plan's lock, as the quest log shows them (FOUNDATION §7: \"Plan fixed at 14:02\",\nwith the plan's SHA-256 as its quiet label)."
+      },
+      "FitsLog": {
+        "properties": {
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/ServedFit"
+            },
+            "type": "array",
+            "title": "Records"
+          }
+        },
+        "type": "object",
+        "required": [
+          "records"
+        ],
+        "title": "FitsLog",
+        "description": "Every fit's record, in the order the fits completed."
+      },
+      "FoldMovement": {
+        "properties": {
+          "family": {
+            "type": "string",
+            "title": "Family"
+          },
+          "against": {
+            "type": "string",
+            "title": "Against"
+          },
+          "movement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Movement"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "family",
+          "against",
+          "movement",
+          "why"
+        ],
+        "title": "FoldMovement",
+        "description": "One family's movement against the previous record: ``movement`` from\n:func:`materiality.paired_folds` (``|mean Δ| / SD(Δ)`` of the primary metric's fold scores, this\nfit's less the previous one's), or None and ``why``."
       },
       "FollowUpSpec": {
         "properties": {
@@ -9244,6 +10103,628 @@
         "title": "Mark",
         "description": "A labeled value on a distribution's axis, e.g. an exclusion cut-off (\"500 kcal\")."
       },
+      "Mattered": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "fresh": {
+            "type": "boolean",
+            "title": "Fresh"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "plan_lock": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Lock"
+          },
+          "curve": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatteredCurve"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "says": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Says"
+          },
+          "methods": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Methods"
+          },
+          "reported": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatteredReported"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "examined": {
+            "items": {
+              "$ref": "#/components/schemas/MatteredExamined"
+            },
+            "type": "array",
+            "title": "Examined"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "fresh",
+          "key",
+          "plan_lock",
+          "curve",
+          "says",
+          "methods",
+          "reported",
+          "examined",
+          "error"
+        ],
+        "title": "Mattered",
+        "description": "``GET /projects/{pid}/mattered``: the stage's status and, once it is fresh for the current\nanswers, its curve. ``plan_lock`` is the lock in force, by its record id."
+      },
+      "MatteredChoice": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "primary": {
+            "type": "string",
+            "title": "Primary"
+          },
+          "decision": {
+            "type": "string",
+            "title": "Decision"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/MatteredOption"
+            },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "primary",
+          "decision",
+          "options"
+        ],
+        "title": "MatteredChoice"
+      },
+      "MatteredCurve": {
+        "properties": {
+          "estimate_label": {
+            "type": "string",
+            "title": "Estimate Label"
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/MatteredChoice"
+            },
+            "type": "array",
+            "title": "Choices"
+          },
+          "specs": {
+            "items": {
+              "$ref": "#/components/schemas/MatteredSpec"
+            },
+            "type": "array",
+            "title": "Specs"
+          },
+          "not_estimated": {
+            "items": {
+              "$ref": "#/components/schemas/MatteredNotEstimated"
+            },
+            "type": "array",
+            "title": "Not Estimated"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "drawn": {
+            "type": "integer",
+            "title": "Drawn"
+          },
+          "sampled": {
+            "type": "boolean",
+            "title": "Sampled"
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule"
+          },
+          "crossing": {
+            "type": "string",
+            "title": "Crossing"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatteredSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "sealed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sealed"
+          },
+          "plan_lock": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Lock"
+          },
+          "weighted": {
+            "type": "boolean",
+            "title": "Weighted"
+          },
+          "clustered": {
+            "type": "boolean",
+            "title": "Clustered"
+          },
+          "exits": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Exits"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "estimate_label",
+          "choices",
+          "specs",
+          "not_estimated",
+          "total",
+          "drawn",
+          "sampled",
+          "rule",
+          "crossing",
+          "summary",
+          "level",
+          "sealed",
+          "plan_lock",
+          "weighted",
+          "clustered",
+          "exits"
+        ],
+        "title": "MatteredCurve",
+        "description": "``spec_curve.SpecCurve`` as data (its ``to_dict``)."
+      },
+      "MatteredExamined": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Label"
+          },
+          "add": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Add",
+            "default": []
+          },
+          "drop": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Drop",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "add",
+          "drop"
+        ],
+        "title": "MatteredExamined",
+        "description": "An alternative the analyst declared as examined: the adjustment set with ``add`` added and\n``drop`` dropped, beside the primary (one departure of its own)."
+      },
+      "MatteredNotEstimated": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "picks": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Picks"
+          },
+          "primary": {
+            "type": "boolean",
+            "title": "Primary"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "picks",
+          "primary",
+          "reason"
+        ],
+        "title": "MatteredNotEstimated"
+      },
+      "MatteredOption": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "MatteredOption"
+      },
+      "MatteredReported": {
+        "properties": {
+          "family": {
+            "type": "string",
+            "title": "Family"
+          },
+          "feature": {
+            "type": "string",
+            "title": "Feature"
+          },
+          "estimate": {
+            "type": "number",
+            "title": "Estimate"
+          },
+          "ci_low": {
+            "type": "number",
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "type": "number",
+            "title": "Ci High"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Se"
+          },
+          "n_rows": {
+            "type": "integer",
+            "title": "N Rows"
+          },
+          "covariance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Covariance"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "family",
+          "feature",
+          "estimate",
+          "ci_low",
+          "ci_high",
+          "se",
+          "n_rows",
+          "covariance",
+          "ratio"
+        ],
+        "title": "MatteredReported",
+        "description": "The reported estimate the primary specification reproduces: the fit stage's own row.\n``ratio``: the row's odds ratio exp(β) for a yes/no outcome, the number the fit reports beside\nthe log odds; None for a difference."
+      },
+      "MatteredSpec": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "picks": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Picks"
+          },
+          "primary": {
+            "type": "boolean",
+            "title": "Primary"
+          },
+          "estimate": {
+            "type": "number",
+            "title": "Estimate"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Se"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P"
+          },
+          "df": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Df"
+          },
+          "estimator": {
+            "type": "string",
+            "title": "Estimator",
+            "default": ""
+          },
+          "covariance": {
+            "type": "string",
+            "title": "Covariance",
+            "default": ""
+          },
+          "scale_key": {
+            "type": "string",
+            "title": "Scale Key",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "picks",
+          "primary",
+          "estimate",
+          "low",
+          "high",
+          "n",
+          "se",
+          "p",
+          "df",
+          "estimator",
+          "covariance",
+          "scale_key"
+        ],
+        "title": "MatteredSpec"
+      },
+      "MatteredSummary": {
+        "properties": {
+          "k": {
+            "type": "integer",
+            "title": "K"
+          },
+          "median": {
+            "type": "number",
+            "title": "Median"
+          },
+          "lowest": {
+            "type": "number",
+            "title": "Lowest"
+          },
+          "highest": {
+            "type": "number",
+            "title": "Highest"
+          },
+          "above": {
+            "type": "integer",
+            "title": "Above"
+          },
+          "below": {
+            "type": "integer",
+            "title": "Below"
+          },
+          "spanning": {
+            "type": "integer",
+            "title": "Spanning"
+          },
+          "primary_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Rank"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "k",
+          "median",
+          "lowest",
+          "highest",
+          "above",
+          "below",
+          "spanning",
+          "primary_rank"
+        ],
+        "title": "MatteredSummary"
+      },
       "MeasurementErrorSpec": {
         "properties": {
           "method": {
@@ -9304,6 +10785,91 @@
         ],
         "title": "MeasurementErrorSpec"
       },
+      "MethodsEntry": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "record",
+              "analysis",
+              "export"
+            ],
+            "title": "Source"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Id"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "in_force": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Force"
+          },
+          "after_estimates": {
+            "type": "boolean",
+            "title": "After Estimates",
+            "default": false
+          },
+          "post_seal": {
+            "type": "boolean",
+            "title": "Post Seal",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "text",
+          "record_id",
+          "seq",
+          "kind",
+          "in_force",
+          "after_estimates",
+          "post_seal"
+        ],
+        "title": "MethodsEntry",
+        "description": "One sentence or paragraph of the methods: the record's (with its decision), a paragraph the\nanalysis wrote (its stage), or the export's own reproducibility sentence."
+      },
       "MethodsLine": {
         "properties": {
           "record_id": {
@@ -9348,6 +10914,82 @@
         ],
         "title": "MethodsLine",
         "description": "One record's sentence in the methods text."
+      },
+      "MethodsSection": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "item": {
+            "type": "string",
+            "title": "Item"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/MethodsEntry"
+            },
+            "type": "array",
+            "title": "Entries"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "item",
+          "entries"
+        ],
+        "title": "MethodsSection"
+      },
+      "MethodsSections": {
+        "properties": {
+          "guideline": {
+            "type": "string",
+            "enum": [
+              "STROBE-nut",
+              "TRIPOD+AI"
+            ],
+            "title": "Guideline"
+          },
+          "seen_from": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen From"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/MethodsSection"
+            },
+            "type": "array",
+            "title": "Sections"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "guideline",
+          "seen_from",
+          "sections",
+          "count"
+        ],
+        "title": "MethodsSections",
+        "description": "The methods as the manuscript rail reads them (P8; W1 part 2 ruling 9): the export bundle's\nown sections, in its order and its words (TRIPOD+AI's under prediction, STROBE's with\nSTROBE-nut's otherwise), each line with its decision record's id where it has one. Built from\nthe decision log and the fresh stages as the bundle's methods are, so a read and a download of\nthe same project hold the same lines. ``count``: the lines in every section."
       },
       "MethodsText": {
         "properties": {
@@ -10113,6 +11755,309 @@
         ],
         "title": "PlanExport",
         "description": "The exported analysis plan: the plan, when it was declared, its hash and its text."
+      },
+      "PreviewLogged": {
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/SetLens"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTarget"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTask"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetPurpose"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Revert"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetRoles-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetEnergyAdjustment-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExclusions-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMissing-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSplit-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SelectModels"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSubstitution-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOrientation"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetEvent"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetGrain-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetRepeatKind-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUnit"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetAggregation-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTemporal-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/OpenSeal-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApplyRepair-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DeferFinding"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DismissFinding-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetFeatureTable-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCategorical"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSurvey-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExposureForm-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOutcomeOrder"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetFollowUp-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSensitivity-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMeasurementError-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOutcomeUnit"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetColumnUnit-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmRole"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmReading"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmReadings"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOutcomeScale"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Reseal-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LockPlan-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCensoring-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetClusters-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetEstimand-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetAdjustment-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/JoinFiles-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImportCodebook-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetBatch-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMultiplicity-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetScales-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUsualIntake-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetModelSequence-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RespondDiagnostic"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCausal-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTimeVarying-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExplain-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetForms-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetModification-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ViewOutcome-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetLevers-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSelection-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetIntendedUse-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUpdating-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmSweep-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetDesign-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetValidation-Output"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "kind",
+                  "mapping": {
+                    "apply_repair": "#/components/schemas/ApplyRepair-Output",
+                    "confirm_reading": "#/components/schemas/ConfirmReading",
+                    "confirm_readings": "#/components/schemas/ConfirmReadings",
+                    "confirm_role": "#/components/schemas/ConfirmRole",
+                    "confirm_sweep": "#/components/schemas/ConfirmSweep-Output",
+                    "defer_finding": "#/components/schemas/DeferFinding",
+                    "dismiss_finding": "#/components/schemas/DismissFinding-Output",
+                    "import_codebook": "#/components/schemas/ImportCodebook-Output",
+                    "join_files": "#/components/schemas/JoinFiles-Output",
+                    "lock_plan": "#/components/schemas/LockPlan-Output",
+                    "open_seal": "#/components/schemas/OpenSeal-Output",
+                    "reseal": "#/components/schemas/Reseal-Output",
+                    "respond_diagnostic": "#/components/schemas/RespondDiagnostic",
+                    "revert": "#/components/schemas/Revert",
+                    "select_models": "#/components/schemas/SelectModels",
+                    "set_adjustment": "#/components/schemas/SetAdjustment-Output",
+                    "set_aggregation": "#/components/schemas/SetAggregation-Output",
+                    "set_batch": "#/components/schemas/SetBatch-Output",
+                    "set_categorical": "#/components/schemas/SetCategorical",
+                    "set_causal": "#/components/schemas/SetCausal-Output",
+                    "set_censoring": "#/components/schemas/SetCensoring-Output",
+                    "set_clusters": "#/components/schemas/SetClusters-Output",
+                    "set_column_unit": "#/components/schemas/SetColumnUnit-Output",
+                    "set_design": "#/components/schemas/SetDesign-Output",
+                    "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
+                    "set_estimand": "#/components/schemas/SetEstimand-Output",
+                    "set_event": "#/components/schemas/SetEvent",
+                    "set_exclusions": "#/components/schemas/SetExclusions-Output",
+                    "set_explain": "#/components/schemas/SetExplain-Output",
+                    "set_exposure_form": "#/components/schemas/SetExposureForm-Output",
+                    "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
+                    "set_follow_up": "#/components/schemas/SetFollowUp-Output",
+                    "set_forms": "#/components/schemas/SetForms-Output",
+                    "set_grain": "#/components/schemas/SetGrain-Output",
+                    "set_intended_use": "#/components/schemas/SetIntendedUse-Output",
+                    "set_lens": "#/components/schemas/SetLens",
+                    "set_levers": "#/components/schemas/SetLevers-Output",
+                    "set_measurement_error": "#/components/schemas/SetMeasurementError-Output",
+                    "set_missing": "#/components/schemas/SetMissing-Output",
+                    "set_model_sequence": "#/components/schemas/SetModelSequence-Output",
+                    "set_modification": "#/components/schemas/SetModification-Output",
+                    "set_multiplicity": "#/components/schemas/SetMultiplicity-Output",
+                    "set_orientation": "#/components/schemas/SetOrientation",
+                    "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
+                    "set_outcome_scale": "#/components/schemas/SetOutcomeScale",
+                    "set_outcome_unit": "#/components/schemas/SetOutcomeUnit",
+                    "set_purpose": "#/components/schemas/SetPurpose",
+                    "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
+                    "set_roles": "#/components/schemas/SetRoles-Output",
+                    "set_scales": "#/components/schemas/SetScales-Output",
+                    "set_selection": "#/components/schemas/SetSelection-Output",
+                    "set_sensitivity": "#/components/schemas/SetSensitivity-Output",
+                    "set_split": "#/components/schemas/SetSplit-Output",
+                    "set_substitution": "#/components/schemas/SetSubstitution-Output",
+                    "set_survey": "#/components/schemas/SetSurvey-Output",
+                    "set_target": "#/components/schemas/SetTarget",
+                    "set_task": "#/components/schemas/SetTask",
+                    "set_temporal": "#/components/schemas/SetTemporal-Output",
+                    "set_time_varying": "#/components/schemas/SetTimeVarying-Output",
+                    "set_unit": "#/components/schemas/SetUnit",
+                    "set_updating": "#/components/schemas/SetUpdating-Output",
+                    "set_usual_intake": "#/components/schemas/SetUsualIntake-Output",
+                    "set_validation": "#/components/schemas/SetValidation-Output",
+                    "view_outcome": "#/components/schemas/ViewOutcome-Output"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision",
+            "description": "The decision previewed, as asked; null for a join whose fields do not read as one"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refused",
+            "description": "The refusal's code; null when it previewed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "at",
+          "decision",
+          "refused"
+        ],
+        "title": "PreviewLogged",
+        "description": "One preview asked for in analyst mode: a decision's (``…/preview``), or a join's\n(``…/join-preview``), logged as the ``join_files`` decision it previews."
       },
       "PreviewResult": {
         "properties": {
@@ -12300,6 +14245,351 @@
         "title": "RespondDiagnostic",
         "description": "The recorded response to a failed diagnostic of the primary model (``models/effects.py``)."
       },
+      "ResultEValue": {
+        "properties": {
+          "feature": {
+            "type": "string",
+            "title": "Feature"
+          },
+          "e_value": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "E Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "feature",
+          "e_value"
+        ],
+        "title": "ResultEValue"
+      },
+      "ResultFamily": {
+        "properties": {
+          "family": {
+            "type": "string",
+            "title": "Family"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "cv": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Cv",
+            "default": {}
+          },
+          "holdout": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holdout"
+          },
+          "intervals": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intervals"
+          },
+          "calibration": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibration"
+          },
+          "effect": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effect"
+          },
+          "sequence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Sequence",
+            "default": []
+          },
+          "marginal": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marginal"
+          },
+          "e_values": {
+            "items": {
+              "$ref": "#/components/schemas/ResultEValue"
+            },
+            "type": "array",
+            "title": "E Values",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "family",
+          "label",
+          "cv",
+          "holdout",
+          "intervals",
+          "calibration",
+          "effect",
+          "sequence",
+          "marginal",
+          "e_values"
+        ],
+        "title": "ResultFamily",
+        "description": "One family's results, each field the served artifact's own value."
+      },
+      "Results": {
+        "properties": {
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "prediction",
+                  "inference"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "fit": {
+            "$ref": "#/components/schemas/StageServed"
+          },
+          "effects": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StageServed"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "withheld": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withheld"
+          },
+          "holdout_sealed": {
+            "type": "boolean",
+            "title": "Holdout Sealed"
+          },
+          "final_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Model"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "at_opening": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AtOpening"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "final_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Note"
+          },
+          "changed_after_seal": {
+            "type": "boolean",
+            "title": "Changed After Seal"
+          },
+          "post_seal_decisions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Post Seal Decisions"
+          },
+          "split": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResultsSplit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimand": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimand"
+          },
+          "families": {
+            "items": {
+              "$ref": "#/components/schemas/ResultFamily"
+            },
+            "type": "array",
+            "title": "Families"
+          }
+        },
+        "type": "object",
+        "required": [
+          "purpose",
+          "fit",
+          "effects",
+          "withheld",
+          "holdout_sealed",
+          "final_model",
+          "result",
+          "at_opening",
+          "final_note",
+          "changed_after_seal",
+          "post_seal_decisions",
+          "split",
+          "estimand",
+          "families"
+        ],
+        "title": "Results",
+        "description": "What the Results screens show, as one document (``GET /projects/{pid}/results``)."
+      },
+      "ResultsSplit": {
+        "properties": {
+          "stage": {
+            "$ref": "#/components/schemas/StageServed"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SealBasis"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chronology": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Chronology"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exploratory": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exploratory"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage",
+          "basis",
+          "chronology",
+          "exploratory"
+        ],
+        "title": "ResultsSplit",
+        "description": "How the split drew the held-out rows, as ``GET /stages/split`` serves it: the Results screen\nmarks the held-out scores exploratory beside them from these."
+      },
       "Revert": {
         "properties": {
           "kind": {
@@ -12788,6 +15078,84 @@
         "title": "ScaleSpec",
         "description": "One scale: its items, the instrument's key (the reverse-coded items and the response scale\n``low``–``high`` they are turned over on), how the score is formed, what kind of construct it\nmeasures (``reflective``: the items are caused by it; ``formative``: an index defined by its\ncomponents, such as a diet-quality score), its structure, the role the score takes in the\nmodels, and whether its coefficient is corrected for measurement error, from which reliability."
       },
+      "SealBasis": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "grouped",
+              "one_row_per_unit",
+              "abandoned",
+              "undetermined"
+            ],
+            "title": "State"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          },
+          "exploratory": {
+            "type": "boolean",
+            "title": "Exploratory"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "grain",
+                  "stated",
+                  "roles",
+                  "aggregation"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "n_units": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Units"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "column",
+          "label",
+          "sentence",
+          "exploratory",
+          "source",
+          "n_units"
+        ],
+        "title": "SealBasis",
+        "description": "How the held-out rows were drawn: one of four states, never inferred silently."
+      },
       "SealCells": {
         "properties": {
           "state": {
@@ -13163,6 +15531,309 @@
         ],
         "title": "SensitivityAnalysis",
         "description": "One analysis beside the primary: the same model on the rows these rules keep instead."
+      },
+      "ServedFit": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "prediction",
+                  "inference"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "fit_key": {
+            "type": "string",
+            "title": "Fit Key"
+          },
+          "plan_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Digest"
+          },
+          "decisions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decisions"
+          },
+          "press": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Press"
+          },
+          "families": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Families"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          },
+          "workers": {
+            "type": "integer",
+            "title": "Workers"
+          },
+          "primary_metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Metric"
+          },
+          "folds": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folds"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "held_out": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Out"
+          },
+          "scores": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Scores"
+          },
+          "holdout": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holdout"
+          },
+          "holdout_why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holdout Why"
+          },
+          "changed_after_seal": {
+            "type": "boolean",
+            "title": "Changed After Seal"
+          },
+          "at_opening": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AtOpening"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "final_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Note"
+          },
+          "effects": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Effects"
+          },
+          "movement": {
+            "items": {
+              "$ref": "#/components/schemas/FoldMovement"
+            },
+            "type": "array",
+            "title": "Movement"
+          },
+          "movement_why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Movement Why"
+          },
+          "withheld": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withheld"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "seq",
+          "at",
+          "purpose",
+          "target",
+          "fit_key",
+          "plan_digest",
+          "decisions",
+          "press",
+          "families",
+          "seconds",
+          "workers",
+          "primary_metric",
+          "folds",
+          "seed",
+          "held_out",
+          "scores",
+          "holdout",
+          "holdout_why",
+          "changed_after_seal",
+          "at_opening",
+          "final_note",
+          "effects",
+          "movement",
+          "movement_why",
+          "withheld"
+        ],
+        "title": "ServedFit",
+        "description": "One fit's record (``turbotab/core/runs.py``'s ``FitRecord``) as a client is served it: its\nnumbers are the fit's at ``fit_key`` as ``GET /stages/fit`` would serve that fit now, its gate\nread for the record's own goal, outcome, fit under the plan's lock and held-out rows, and\n``withheld`` and ``holdout_why`` say why a number is not served. ``plan_digest`` is the plan\nwhen the fit completed: a lock recorded later on this same fit can record another digest, when\nan answer the fit does not read (the model sequence) came in between."
       },
       "SetAdjustment-Input": {
         "properties": {
@@ -18474,6 +21145,46 @@
         ],
         "title": "StageResult"
       },
+      "StageServed": {
+        "properties": {
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "fresh": {
+            "type": "boolean",
+            "title": "Fresh"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "queued",
+              "running",
+              "fresh",
+              "stale",
+              "blocked",
+              "error"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "fresh",
+          "status"
+        ],
+        "title": "StageServed",
+        "description": "Which artifact of a stage a document read: its key, and whether it is the current one."
+      },
       "StageStatus": {
         "properties": {
           "stage": {
@@ -18797,7 +21508,7 @@
           "changed"
         ],
         "title": "Sweep",
-        "description": "The stage's one Confirm sweep (P0.5): how many defaults it holds, and whether each is\nanswered, by the person's own answer or by \"Confirm all\" (``confirmed_by``, the\n``confirm_sweep`` record). ``changed``: the lines set for the person anew, or stated otherwise,\nsince that confirmation. ``id`` is the crosswalk's card; ``heading`` and ``action`` are its\nwords (\"Here are the 6 other choices set for you\", \"Confirm all 6\")."
+        "description": "The stage's one Confirm sweep (P0.5): how many defaults it holds, and whether each is\nanswered, by the person's own answer or by \"Confirm all\" (``confirmed_by``, the\n``confirm_sweep`` record). ``changed``: the lines set for the person anew, or stated otherwise,\nsince that confirmation. ``id`` is the crosswalk's card; ``heading`` and ``action`` are its\nwords (\"The 6 choices set for you\", \"Confirm all 6\")."
       },
       "SweepConfirmation": {
         "properties": {
@@ -20965,85 +23676,6 @@
         "title": "AssumptionView",
         "type": "object"
       },
-      "AtOpening": {
-        "additionalProperties": false,
-        "description": "The held-out scores recorded when the current outcome's seal was first opened: the reported\nresult, whatever is drawn, fitted or opened later (audit WP16, RO-05). Set by the server.",
-        "properties": {
-          "seq": {
-            "title": "Seq",
-            "type": "integer"
-          },
-          "family": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Family"
-          },
-          "metric": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Metric"
-          },
-          "n_holdout": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "N Holdout"
-          },
-          "scores": {
-            "additionalProperties": {
-              "additionalProperties": {
-                "anyOf": [
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "type": "object"
-            },
-            "title": "Scores",
-            "type": "object"
-          },
-          "current": {
-            "title": "Current",
-            "type": "boolean"
-          },
-          "note": {
-            "title": "Note",
-            "type": "string"
-          }
-        },
-        "required": [
-          "seq",
-          "family",
-          "metric",
-          "n_holdout",
-          "scores",
-          "current",
-          "note"
-        ],
-        "title": "AtOpening",
-        "type": "object"
-      },
       "BandEstimate": {
         "additionalProperties": false,
         "description": "A measured estimate of what adding a band would cost: one refit per family, timed.",
@@ -21860,7 +24492,7 @@
       },
       "Calibration": {
         "additionalProperties": false,
-        "description": "Calibration of one set of predictions: in the large, its slope, and its smoothed curve.",
+        "description": "Calibration of one set of predictions: in the large, its slope, its smoothed curve, and the\nrows behind each stretch of the curve's x-range (``support``).",
         "properties": {
           "n": {
             "title": "N",
@@ -21886,6 +24518,14 @@
               "$ref": "#/components/schemas/CurvePoint"
             },
             "title": "Curve",
+            "type": "array"
+          },
+          "support": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SupportBin"
+            },
+            "title": "Support",
             "type": "array"
           },
           "eavg": {
@@ -21954,6 +24594,7 @@
           "intercept",
           "slope",
           "curve",
+          "support",
           "eavg",
           "e90",
           "emax",
@@ -22935,102 +25576,6 @@
         "title": "ChainLink",
         "type": "object"
       },
-      "Chronology": {
-        "additionalProperties": false,
-        "description": "The chronological draw the temporal answer asked for, and whether it was drawn.\n\nWhole units are held out by their last observation, so with repeated rows a held-out unit's\nearlier rows can predate training rows (audit IN-24: 56–71% of held-out rows on visit data).\n``n_held_rows``/``n_held_earlier`` count that for this draw; ``earlier`` for each share the\nsplit question offers, at this draw's seed, so the split's sentence can state it.",
-        "properties": {
-          "drawn": {
-            "title": "Drawn",
-            "type": "boolean"
-          },
-          "time_column": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Time Column"
-          },
-          "boundary": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Boundary"
-          },
-          "n_units": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "N Units"
-          },
-          "n_undated": {
-            "title": "N Undated",
-            "type": "integer"
-          },
-          "sentence": {
-            "title": "Sentence",
-            "type": "string"
-          },
-          "n_held_rows": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "N Held Rows"
-          },
-          "n_held_earlier": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "N Held Earlier"
-          },
-          "earlier": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/EarlierRows"
-            },
-            "title": "Earlier",
-            "type": "array"
-          }
-        },
-        "required": [
-          "drawn",
-          "time_column",
-          "boundary",
-          "n_units",
-          "n_undated",
-          "sentence",
-          "n_held_rows",
-          "n_held_earlier",
-          "earlier"
-        ],
-        "title": "Chronology",
-        "type": "object"
-      },
       "ClusterScore": {
         "additionalProperties": false,
         "description": "One held-out cluster: its rows, its scores, and the primary metric's interval.",
@@ -23823,6 +26368,18 @@
             "title": "Source Bytes",
             "type": "integer"
           },
+          "source_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Sha256"
+          },
           "parquet_bytes": {
             "title": "Parquet Bytes",
             "type": "integer"
@@ -23848,6 +26405,7 @@
           "n_cols",
           "columns",
           "source_bytes",
+          "source_sha256",
           "parquet_bytes",
           "ingest_seconds",
           "fingerprint",
@@ -24906,36 +27464,6 @@
           "sd_basis"
         ],
         "title": "EValueResult",
-        "type": "object"
-      },
-      "EarlierRows": {
-        "additionalProperties": false,
-        "description": "For one held-out share drawn by time: how many held-out rows there are, and how many were\nobserved before the latest training row (audit IN-24).",
-        "properties": {
-          "holdout": {
-            "title": "Holdout",
-            "type": "number"
-          },
-          "seed": {
-            "title": "Seed",
-            "type": "integer"
-          },
-          "n_held_rows": {
-            "title": "N Held Rows",
-            "type": "integer"
-          },
-          "n_earlier": {
-            "title": "N Earlier",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "holdout",
-          "seed",
-          "n_held_rows",
-          "n_earlier"
-        ],
-        "title": "EarlierRows",
         "type": "object"
       },
       "EffectsArtifact": {
@@ -29211,9 +31739,39 @@
         "title": "Heterogeneity",
         "type": "object"
       },
+      "HoldoutBaseline": {
+        "additionalProperties": false,
+        "description": "What predicting without the predictors scores on the held-out rows (W1 part 2 ruling 2):\nthe cross-validated baseline's model (``stages.modeling.baseline_model``: the outcome's\ntraining mean, the class prior, one risk for everyone) fit on every training row and scored\non the held-out rows as each family's ``holdout`` is, metric for metric. For a numeric outcome\nits R², measured against the training rows' mean, is 0 by construction.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "scores": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Scores",
+            "type": "object"
+          }
+        },
+        "required": [
+          "label",
+          "scores"
+        ],
+        "title": "HoldoutBaseline",
+        "type": "object"
+      },
       "HoldoutDetail": {
         "additionalProperties": false,
-        "description": "What the held-out rows say beyond their scores: an interval on each, and calibration.",
+        "description": "What the held-out rows say beyond their scores: an interval on each, calibration, and the\nno-predictor baseline beside them.",
         "properties": {
           "intervals": {
             "additionalProperties": {
@@ -29270,6 +31828,28 @@
             ],
             "default": null,
             "title": "Calibration Note"
+          },
+          "baseline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HoldoutBaseline"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "versus_baseline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VersusBaseline"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -29277,7 +31857,9 @@
           "calibration",
           "calibration_levels",
           "calibration_horizon",
-          "calibration_note"
+          "calibration_note",
+          "baseline",
+          "versus_baseline"
         ],
         "title": "HoldoutDetail",
         "type": "object"
@@ -32907,6 +35489,18 @@
             "title": "Source Bytes",
             "type": "integer"
           },
+          "source_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Sha256"
+          },
           "parquet_bytes": {
             "title": "Parquet Bytes",
             "type": "integer"
@@ -32942,6 +35536,7 @@
           "n_cols",
           "columns",
           "source_bytes",
+          "source_sha256",
           "parquet_bytes",
           "ingest_seconds",
           "fingerprint",
@@ -33379,6 +35974,66 @@
           "reason"
         ],
         "title": "PositivityView",
+        "type": "object"
+      },
+      "PredictorGroupWords": {
+        "description": "One predictor role's group on the roles card under Predict (``readings.PredictorGroup``):\n``one`` in a role line's words, ``head`` its name for one column and for many, ``note`` the\nsteps that treat it differently in the project, as a sentence (empty where it runs none).",
+        "properties": {
+          "one": {
+            "title": "One",
+            "type": "string"
+          },
+          "head": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Head",
+            "type": "array"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "one",
+          "head",
+          "note"
+        ],
+        "title": "PredictorGroupWords",
+        "type": "object"
+      },
+      "PredictorGroups": {
+        "description": "The predictor groups the roles card draws under Predict, for the project's lenses and task\n(W1 part 2's U6; ``readings.served_groups``): each role's group where the energy-aware fill\nwould run (``fill``) and where not (``no_fill``), and the columns that carry energy, so the card\ntells which applies to the roles it draws (one holds the energy role and a Predictor column\ncarries energy).",
+        "properties": {
+          "fill": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PredictorGroupWords"
+            },
+            "title": "Fill",
+            "type": "object"
+          },
+          "no_fill": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PredictorGroupWords"
+            },
+            "title": "No Fill",
+            "type": "object"
+          },
+          "energy_bearing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Energy Bearing",
+            "type": "array"
+          }
+        },
+        "required": [
+          "fill",
+          "no_fill",
+          "energy_bearing"
+        ],
+        "title": "PredictorGroups",
         "type": "object"
       },
       "ProfileArtifact": {
@@ -34274,7 +36929,7 @@
         "type": "object"
       },
       "RolesArtifact": {
-        "description": "The ``roles`` artifact: a proposed role for every column but the outcome.",
+        "description": "The ``roles`` artifact: a proposed role for every column but the outcome. The server adds\n``predictor_groups`` as it serves them (the stage does not compute it).",
         "properties": {
           "columns": {
             "items": {
@@ -34299,12 +36954,24 @@
             },
             "title": "Categorical",
             "type": "array"
+          },
+          "predictor_groups": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PredictorGroups"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
           "columns",
           "repeats",
-          "categorical"
+          "categorical",
+          "predictor_groups"
         ],
         "title": "RolesArtifact",
         "type": "object"
@@ -35279,84 +37946,6 @@
           "methods"
         ],
         "title": "ScalesArtifact",
-        "type": "object"
-      },
-      "SealBasis": {
-        "additionalProperties": false,
-        "description": "How the held-out rows were drawn: one of four states, never inferred silently.",
-        "properties": {
-          "state": {
-            "enum": [
-              "grouped",
-              "one_row_per_unit",
-              "abandoned",
-              "undetermined"
-            ],
-            "title": "State",
-            "type": "string"
-          },
-          "column": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Column"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "sentence": {
-            "title": "Sentence",
-            "type": "string"
-          },
-          "exploratory": {
-            "title": "Exploratory",
-            "type": "boolean"
-          },
-          "source": {
-            "anyOf": [
-              {
-                "enum": [
-                  "grain",
-                  "stated",
-                  "roles",
-                  "aggregation"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source"
-          },
-          "n_units": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "N Units"
-          }
-        },
-        "required": [
-          "state",
-          "column",
-          "label",
-          "sentence",
-          "exploratory",
-          "source",
-          "n_units"
-        ],
-        "title": "SealBasis",
         "type": "object"
       },
       "SealFloor": {
@@ -40318,6 +42907,31 @@
         "title": "SubstitutionSupport",
         "type": "object"
       },
+      "SupportBin": {
+        "additionalProperties": false,
+        "description": "One of equal-width stretches of the predictions' range, ``[lo, hi)`` (the last one closed),\nand how many rows' predictions fall in it: where the calibration curve rests on few rows.",
+        "properties": {
+          "lo": {
+            "title": "Lo",
+            "type": "number"
+          },
+          "hi": {
+            "title": "Hi",
+            "type": "number"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "lo",
+          "hi",
+          "n"
+        ],
+        "title": "SupportBin",
+        "type": "object"
+      },
       "SurveyInference": {
         "additionalProperties": false,
         "description": "The survey design a design-based table rests on (AUDIT_REPORT §5 WP10;\n``turbotab/core/models/survey.py``): what weighted it, its PSUs and strata, the domain.",
@@ -42598,6 +45212,18 @@
             "title": "Source Bytes",
             "type": "integer"
           },
+          "source_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Sha256"
+          },
           "parquet_bytes": {
             "title": "Parquet Bytes",
             "type": "integer"
@@ -42676,6 +45302,7 @@
           "n_cols",
           "columns",
           "source_bytes",
+          "source_sha256",
           "parquet_bytes",
           "ingest_seconds",
           "fingerprint",

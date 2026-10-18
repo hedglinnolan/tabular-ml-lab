@@ -131,27 +131,31 @@ class TeachingEntry(_Model):
     evidence: Evidence | None
 
 
-def _entries() -> tuple[TeachingEntry, ...]:
+def _entries(purpose: str | None = None) -> tuple[TeachingEntry, ...]:
     """The entries, rebuilt when the registered families change (the models card lists them)."""
     from turbotab.core.teaching.content import family_options
 
-    return _built(tuple(tuple(o.items()) for o in family_options()))
+    return _built(tuple(tuple(o.items()) for o in family_options()),
+                  "prediction" if purpose == "prediction" else None)
 
 
-@lru_cache(maxsize=4)
-def _built(families: tuple[tuple[tuple[str, str], ...], ...]) -> tuple[TeachingEntry, ...]:
+@lru_cache(maxsize=8)
+def _built(families: tuple[tuple[tuple[str, str], ...], ...],
+           purpose: str | None = None) -> tuple[TeachingEntry, ...]:
     from turbotab.core.teaching.content import entries_now
 
-    built = tuple(TeachingEntry.model_validate(e) for e in entries_now())
+    built = tuple(TeachingEntry.model_validate(e) for e in entries_now(purpose))
     keys = [e.key for e in built]
     if tuple(keys) != TEACHING_KEYS:
         raise RuntimeError(f"teaching entries are {keys}, expected {list(TEACHING_KEYS)}")
     return built
 
 
-def entries() -> list[TeachingEntry]:
-    """One entry per question key (and the repairs and open-the-seal cards), in asking order."""
-    return list(_entries())
+def entries(purpose: str | None = None) -> list[TeachingEntry]:
+    """One entry per question key (and the repairs and open-the-seal cards), in asking order. Under
+    prediction (``purpose``) the roles card names no study factor (``content.ROLES_UNDER_PREDICT``;
+    W1-R round 2, the walkthrough's finding 3c); None, or any other goal, the cards as before."""
+    return list(_entries(purpose))
 
 
 def entry(key: str) -> TeachingEntry:

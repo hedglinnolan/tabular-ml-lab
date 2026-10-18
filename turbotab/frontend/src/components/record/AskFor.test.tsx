@@ -16,11 +16,15 @@ import { keys } from "../../api/queries";
 import {
   QUESTION_KEYS,
   type InterviewStep,
+  type PredictorGroups,
   type QuestionKey,
   type TeachingEntry,
 } from "../../api/m1-types";
 import type { Decision, ProjectView, Refusal } from "../../api/schema";
-import { artifactAt, expandView, viewsOf, type M3Fixture } from "../../mocks/m3";
+import { artifactAt, expandView, servedAt, viewsOf, type M3Fixture } from "../../mocks/m3";
+import { mockPredictorGroups } from "../../mocks/roleWords";
+import ROLE_FIXTURE from "../../quest/cards/roles/fixture.json";
+import { servedGroups } from "../../quest/cards/roles/roles";
 import { StageFocusProvider } from "../../state/focus";
 import { AskFor } from "./AskFor";
 import { Record } from "./Record";
@@ -66,11 +70,38 @@ function openViewFor(key: QuestionKey): { view: ProjectView; f: M3Fixture } {
   throw new Error(`no captured journey reaches ${key}`);
 }
 
+/** The named journey's view with `key` open: as captured, else its latest captured state forced
+ *  open (as `openViewFor`, in one journey). */
+function openViewIn(journey: string, key: QuestionKey): { view: ProjectView; f: M3Fixture } {
+  const { f, views } = JOURNEYS.find((j) => j.name === journey)!;
+  const i = views.findIndex((v) => v.interview.some((s) => s.key === key && s.status === "open"));
+  if (i !== -1) return { view: expandView(f, views[i]!, PID, "2026-10-05T00:00:00Z"), f };
+  for (let k = views.length - 1; k >= 0; k--) {
+    const v = views[k]!;
+    const step = v.interview.find((s) => s.key === key);
+    if (!step || step.status === "not_applicable" || step.status === "waiting") continue;
+    const interview: InterviewStep[] = v.interview.map((s) =>
+      s.key === key
+        ? { ...s, status: "open", waiting_on: [] }
+        : s.status === "open" || s.status === "waiting"
+          ? { ...s, status: "waiting", waiting_on: [key] }
+          : s,
+    );
+    return { view: expandView(f, { ...v, interview }, PID, "2026-10-05T00:00:00Z"), f };
+  }
+  throw new Error(`${journey} never reaches ${key}`);
+}
+
 function client(view: ProjectView, f: M3Fixture) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
   qc.setQueryData(keys.teaching(), SHARED.teaching);
+  // The roles card asks for the project's goal (finding 3c); the server words every card alike
+  // under every goal but prediction (core/teaching/content.py `entries_now`), so the captured words
+  // with no goal named are that goal's words too.
+  const purpose = view.state.purpose;
+  if (purpose && purpose !== "prediction") qc.setQueryData(keys.teaching(purpose), SHARED.teaching);
   qc.setQueryData(keys.view(PID), view);
   const columns = f.endpoints.columns;
   if (columns?.status === 200) qc.setQueryData(keys.columns(PID), columns.body);
@@ -81,7 +112,8 @@ function client(view: ProjectView, f: M3Fixture) {
       key: status.key,
       fresh: status.status === "fresh",
       status: status.status,
-      artifact: artifactAt(f, stage, status.key),
+      // as the server serves it now: the roles stage's with its predictor groups (U6)
+      artifact: servedAt(f, stage, status.key, view),
     });
   }
   return qc;
@@ -239,6 +271,235 @@ describe("the Record holds every stage the cards read while it is mounted, with 
     for (const st of started) expect(observers(keys.stage(PID, st)), st).toBeGreaterThanOrEqual(1);
     expect(view.stages.ingest?.status).toBe("fresh");
     expect(observers(keys.columns(PID)), "columns").toBeGreaterThanOrEqual(1);
+  });
+});
+
+/**
+ * W1-R finding 3c (R2 P3a, the shell's side): the roles card asks for the project's goal, since the
+ * server words it by goal (GET /teaching?purpose=; core/teaching/content.py ROLES_UNDER_PREDICT),
+ * and under prediction its own words say predictors; under any other goal both stand as before.
+ * The Predict entry is the captured one with its one-liner and its predictor options worded as
+ * content.py's ROLES_UNDER_PREDICT and `_PREDICT_OPTIONS` word them (the roles fixture's, written by
+ * the engine), so which entry the card read is seen on the card and its role menu. Under prediction
+ * every predictor role is a predictor (the roles ruling of 2026-10-17): the card names each
+ * predictor role's group, and its button, by the project's lenses (core/readings.py
+ * `predictor_groups`), with its count, and says one sentence that holds in every project
+ * (`predictors_sentence`). It names no step that treats a group apart, on the card or on a button,
+ * whatever the task and the roles (the ruling of 2026-10-18).
+ */
+describe("the roles card, by the project's goal (finding 3c)", () => {
+  const { view: base, f } = openViewFor("roles");
+  /** NHANES glucose under Predict through the dietary lens, as captured: a regression outcome
+   *  (its target_info), total energy `kcal` among the proposed roles. */
+  const nhanes = openViewIn("nhanes-prediction", "roles");
+  /** The steps the four rounds named, the QC chain's words and the energy model's two steps (core/
+   *  tests/test_estimate_words_under_predict.py STEP_NAMES): none is said under Predict. */
+  const STEP_NAMES = /energy-aware|\bscreen(ed)?\b|normaliz|\bbatch|combat|\bqc\b|pooled[- ]qc|assay-process|\bfill|-filled|energy adjust|substitut/i;
+  const OPTIONS = ROLE_FIXTURE.under.prediction.options as Record<string, { label: string; consequence: string }>;
+  const PREDICT = SHARED.teaching.map((e) =>
+    e.key === "roles"
+      ? {
+          ...e,
+          one_liner: "Three roles enter the models as predictors; every other role stays out of them.",
+          options: e.options.map((o) => (OPTIONS[o.value] ? { ...o, ...OPTIONS[o.value] } : o)),
+        }
+      : e,
+  );
+  /** The card's one sentence for `n` predictors, in the engine's words (the fixture's). */
+  const sentence = (n: number) =>
+    n === 1 ? ROLE_FIXTURE.under.prediction.sentence.one : ROLE_FIXTURE.under.prediction.sentence.many.replace("{n}", n.toLocaleString("en-US"));
+  const withGoal = (purpose: string, view: ProjectView = base) => ({ ...view, state: { ...view.state, purpose } }) as ProjectView;
+  const withState = (view: ProjectView, state: Partial<ProjectView["state"]>) => ({ ...view, state: { ...view.state, ...state } }) as ProjectView;
+  /** The roles card, with the words for each goal seeded where the hook would read them. */
+  function renderRoles(view: ProjectView, fixture: M3Fixture = f, served?: (groups: PredictorGroups) => PredictorGroups) {
+    const qc = client(view, fixture);
+    qc.setQueryData(keys.teaching("prediction"), PREDICT);
+    if (served) {
+      // the predictor groups as another server serves them for this project (U6)
+      const key = keys.stage(PID, "roles");
+      const found = qc.getQueryData(key) as { artifact: { predictor_groups: PredictorGroups } };
+      qc.setQueryData(key, { ...found, artifact: { ...found.artifact, predictor_groups: served(found.artifact.predictor_groups) } });
+    }
+    const out = render(
+      <QueryClientProvider client={qc}>
+        <StageFocusProvider>
+          <AskFor pid={PID} view={view} stepKey="roles" />
+        </StageFocusProvider>
+      </QueryClientProvider>,
+    );
+    return within(out.container);
+  }
+  const roles = (view: ProjectView, fixture: M3Fixture = f) => {
+    const art = artifactAt(fixture, "roles", view.stages.roles!.key) as { columns: { column: string; proposed: string }[] };
+    const role = (c: { column: string; proposed: string }) => (view.state.roles as Record<string, string> | null)?.[c.column] ?? c.proposed;
+    const of = (r: string) => art.columns.filter((c) => role(c) === r);
+    const predictors = art.columns.filter((c) => ["exposure", "energy", "covariate"].includes(role(c)));
+    const all = Object.fromEntries(art.columns.map((c) => [c.column, role(c)]));
+    return { exposures: of("exposure"), covariates: of("covariate"), energy: of("energy"), predictors, all };
+  };
+  /** Every text the card says under Predict: its own, and each role button's title once a column's
+   *  menu is open. */
+  const said = (card: ReturnType<typeof renderRoles>, column: string) => {
+    const texts = [card.getByTestId("question-roles").textContent ?? ""];
+    fireEvent.click(card.getByTestId(`role-chip-${column}`));
+    for (const r of ["exposure", "energy", "covariate", "identifier", "excluded"]) {
+      texts.push(card.getByTestId(`role-${r}`).getAttribute("title") ?? "");
+    }
+    return texts;
+  };
+
+  it("reads the words for prediction under Predict: the groups, their counts and one sentence", () => {
+    const view = withGoal("prediction");
+    const { exposures, covariates, predictors, all } = roles(view);
+    expect(exposures.length).toBeGreaterThan(1);
+    // the causal capture's outcome reads as a regression, and no column holds the energy role
+    expect(Object.values(all)).not.toContain("energy");
+    const groups = servedGroups(mockPredictorGroups(view.state.lens, "regression", Object.keys(all)))!;
+    const card = renderRoles(view);
+    const block = card.getByTestId("question-roles");
+    const many = groups.exposure.head[1].toLowerCase();
+    expect(covariates.length).toBeGreaterThan(0);
+    expect(block.textContent).toContain(
+      `${exposures.length} ${many} and ${covariates.length} characteristics. ${sentence(predictors.length)}`,
+    );
+    expect(block.textContent).not.toMatch(/exposures?\b/);
+    const group = block.querySelector('[data-role="exposure"]')!;
+    // the group's head: its name, its count and "predictors", and no note of steps
+    expect(group.querySelector('[class*="groupHead"]')!.textContent).toBe(`${groups.exposure.head[1]}${exposures.length}predictors`);
+    fireEvent.click(card.getByTestId(`role-chip-${exposures[0]!.column}`));
+    expect(card.getByTestId("role-exposure").textContent).toContain(groups.exposure.head[0]);
+    // a role's button says what kind of column holds it, in the served teaching entry's words
+    for (const r of ["exposure", "energy", "covariate"]) {
+      expect(card.getByTestId(`role-${r}`).getAttribute("title")).toBe(OPTIONS[r]!.consequence);
+    }
+  });
+
+  it("names a dietary project's groups as nutrients, total energy and characteristics, naming no step", () => {
+    const { view, f: nf } = nhanes;
+    const { exposures, covariates, energy, predictors } = roles(view, nf);
+    expect(view.state.lens).toEqual(["dietary"]);
+    expect(energy.length).toBe(1);
+    const card = renderRoles(view, nf);
+    const block = card.getByTestId("question-roles");
+    expect(block.textContent).toContain(
+      `${exposures.length} nutrients, total energy ${energy[0]!.column} and ${covariates.length} characteristics. ${sentence(predictors.length)}`,
+    );
+    for (const [r, head] of [["exposure", "Nutrients"], ["energy", "Total energy"], ["covariate", "Characteristics"]] as const) {
+      const group = block.querySelector(`[data-role="${r}"]`)!;
+      expect(group.textContent, r).toContain(head);
+      expect(group.textContent, r).toContain("predictors");
+    }
+    expect(card.getByTestId("record-roles").getAttribute("title")).toBe(
+      "Records every column's role. Nutrients, total energy and characteristics enter the models as predictors.",
+    );
+  });
+
+  /**
+   * The W1-V verifier's P1: a column's menu quotes the roles stage's reason for its proposal. The
+   * stage says it in Estimate's words ("read as a covariate until you say otherwise", "usually
+   * adjusted for rather than studied"); under Predict the menu quotes it in the goal's words, as
+   * core/readings.py `role_evidence` does everywhere else, and under Estimate word for word. Each
+   * reason the capture holds is read on its first column's menu; the Predict quotes of the two
+   * reasons asked about are written out here.
+   */
+  it("quotes each column's reason under Predict in the goal's words, and under Estimate as the stage said it (P1)", () => {
+    const { view, f: nf } = nhanes;
+    const art = artifactAt(nf, "roles", view.stages.roles!.key) as { columns: { column: string; reason: string }[] };
+    expect(view.state.purpose).toBe("prediction");
+    // each reason once, on its first column, and the two columns asked about
+    const first = new Map<string, string>();
+    for (const { column, reason } of art.columns) if (!first.has(reason)) first.set(reason, column);
+    const asked = [...new Set([...first.values(), "hdl", "age"])];
+    const reasonOf = new Map(art.columns.map((c) => [c.column, c.reason]));
+    expect(first.size).toBeGreaterThan(4);
+    /** Each asked column's menu text: its chip pressed open (a press on another chip moves the menu). */
+    const menus = (card: ReturnType<typeof renderRoles>) => {
+      for (const more of card.queryAllByRole("button", { name: /^\d+ more$/ })) fireEvent.click(more);
+      const out = new Map<string, string>();
+      for (const column of asked) {
+        fireEvent.click(card.getByTestId(`role-chip-${column}`));
+        out.set(column, card.getByTestId("role-menu").querySelector("p")!.textContent ?? "");
+      }
+      return out;
+    };
+    const predict = menus(renderRoles(view, nf));
+    expect(predict.size).toBe(asked.length);
+    expect(predict.get("hdl")).toBe(
+      "hdl was read as characteristic, low confidence: Not a nutrient or feature: read as a predictor until you say otherwise.",
+    );
+    expect(predict.get("age")).toBe("age was read as characteristic, high confidence: A person's characteristic.");
+    for (const [column, text] of predict) {
+      for (const word of ["covariate", "studied", "adjusted for", "what you study"]) {
+        expect(text.toLowerCase(), column).not.toContain(word);
+      }
+    }
+    // the other way: under Estimate each reason is the stage's, word for word
+    const estimate = menus(renderRoles(withState(view, { purpose: "inference" }), nf));
+    for (const column of asked) {
+      expect(estimate.get(column), column).toContain(`confidence: ${reasonOf.get(column)!.replace(/`/g, "")}`);
+    }
+    expect(estimate.get("hdl")).toContain("read as a covariate until you say otherwise");
+    expect(estimate.get("age")).toContain("usually adjusted for rather than studied");
+  });
+
+  it("names no step on the card or a role's button, whatever the task and the roles (the ruling of 2026-10-18)", () => {
+    // The guard fires on the words the last round served, and stays silent on the card's sentence.
+    expect("The energy-aware fill fills them without total energy; the screened elastic net's screen keeps every one.").toMatch(STEP_NAMES);
+    expect(sentence(12)).not.toMatch(STEP_NAMES);
+    const { view, f: nf } = nhanes;
+    const { exposures, all } = roles(view, nf);
+    const kcal = Object.keys(all).find((c) => all[c] === "energy")!;
+    const projects = [
+      ...([null, "regression", "binary", "multiclass", "ordinal", "time_to_event"] as const).map((task) => withState(view, { task })),
+      // total energy given another role, and a clinical project's lens
+      withState(view, { roles: { ...all, [kcal]: "covariate" } as ProjectView["state"]["roles"] }),
+      withState(view, { lens: ["clinical"] }),
+      withState(view, { lens: ["metabolomics"] }),
+    ];
+    for (const project of projects) {
+      for (const text of said(renderRoles(project, nf), exposures[0]!.column)) {
+        expect(text, `${project.state.task} ${project.state.lens}`).not.toMatch(STEP_NAMES);
+      }
+    }
+  });
+
+  it("draws the predictor groups the server serves, not the fixture's, and no served note (U6)", () => {
+    // A project whose served groups differ from the ones the fixture holds: the card draws the
+    // served names, on the card and on a role's button, and draws no note a server may serve.
+    const view = withGoal("prediction");
+    const { exposures, covariates, predictors } = roles(view);
+    const word = (one: string, many: string, note: string) => ({ one, head: [one[0]!.toUpperCase() + one.slice(1), many], note });
+    const other = {
+      exposure: word("a served feature", "Served features", "A served note for the features."),
+      energy: word("served energy", "Served energy", "A served note for energy."),
+      covariate: word("a served trait", "Served traits", "A served note for the traits."),
+    };
+    const card = renderRoles(view, f, (g) => ({ ...g, fill: other, no_fill: other }));
+    const block = card.getByTestId("question-roles");
+    expect(block.textContent).toContain(
+      `${exposures.length} served features and ${covariates.length} served traits. ${sentence(predictors.length)}`,
+    );
+    expect(block.textContent).not.toContain("A served note");
+    expect(block.textContent).not.toContain("Measures");
+    fireEvent.click(card.getByTestId(`role-chip-${exposures[0]!.column}`));
+    expect(card.getByTestId("role-exposure").getAttribute("title")).toBe(OPTIONS.exposure!.consequence);
+    expect(card.getByTestId("role-covariate").textContent).toContain("A served trait");
+  });
+
+  it("reads the words with no goal named under any other goal, as before", () => {
+    const view = withGoal("inference");
+    const { exposures, predictors } = roles(view);
+    const card = renderRoles(view);
+    const block = card.getByTestId("question-roles");
+    expect(block.textContent).toContain(`${predictors.length} columns become predictors: ${exposures.length} exposures`);
+    expect(block.textContent).not.toContain("changes only how some preparation");
+    fireEvent.click(card.getByTestId(`role-chip-${exposures[0]!.column}`));
+    const served = SHARED.teaching.find((e) => e.key === "roles")!.options.find((o) => o.value === "exposure")!;
+    expect(card.getByTestId("role-exposure").textContent).toContain(served.label);
+    expect(card.getByTestId("role-exposure").textContent).not.toContain("Predictor");
+    expect(card.getByTestId("role-exposure").getAttribute("title")).toBe(served.consequence);
+    // Estimate's words stand: no group of the Predict roles card is named
+    expect(block.querySelector('[data-role="exposure"]')!.textContent).toContain("Exposures");
   });
 });
 

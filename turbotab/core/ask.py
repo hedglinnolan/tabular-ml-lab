@@ -341,26 +341,47 @@ def settled_for(question: str, ctx: AskContext) -> list[AskSettled]:
 def card(question: str, ctx: AskContext) -> AskCard | None:
     """The card for ``question``: its consumer's unsettled readings, ordered by consequence, a
     homogeneous family as one line, each with its guess and evidence, and the ways to answer
-    them. None when nothing it reads waits."""
-    from turbotab.core.readings import ask_exits, ask_text, families, guess_words
+    them. None when nothing it reads waits. The lines, the question and the ways forward read the
+    same readings, each guess moved as an imported codebook's label points it (``labeled``, as the
+    ways forward always read it), and word a role in the declared goal's words (``guess_words``:
+    under Predict the roles card's group; W1-R round 2, R2's P4). Roles proposed below high with
+    one proposal (ruling R-g) that the card asks whole are one line, read with that proposal's
+    reason and confirmed in one press (``readings.with_proposals``, ``readings.judged_exits``)."""
+    from turbotab.core.readings import (ask_exits, ask_text, families, guess_words, judged_exits,
+                                        judged_reason, labeled, role_group_words, with_proposals)
 
     entry = CONSUMERS.get(question)
     if entry is None:
         return None
     needed = _needed(question, ctx)
-    readings = needed.readings
+    readings = labeled(needed.readings, ctx.state) if ctx.state is not None else needed.readings
+    readings = with_proposals(readings, ctx.state, ctx.artifact("roles"))
     extra_groups, extra_exits = (_energy_unit_lines(ctx) if question == "exclusions"
                                  else ([], []))
     if not readings and not extra_groups:
         return None
+
+    def words(g: list[Any]) -> str:
+        if len(g) > 1 and g[0].judgment is not None:
+            return role_group_words(g[0].value, getattr(ctx.state, "purpose", None),
+                                    getattr(ctx.state, "lens", None))
+        return guess_words(g[0], ctx.state)
+
+    def evidence(g: list[Any]) -> str:
+        # a judged group's shared reason alone (``readings.judged_reason``)
+        if len(g) > 1 and g[0].judgment is not None:
+            return judged_reason(g[0], getattr(ctx.state, "purpose", None))
+        return g[0].evidence
+
     groups = [AskGroup(kind=g[0].kind, columns=[r.column for r in g],
                        guess=None if g[0].value is None else str(g[0].value),
-                       guess_words=guess_words(g[0]), evidence=g[0].evidence)
+                       guess_words=words(g), evidence=evidence(g))
               for g in families(readings)]
     # The consumer's own ways forward where its refusal names them, else the ledger's ask.
-    own = needed.exits or (ask_exits(readings, ctx.state) if readings else [])
+    own = judged_exits(needed.exits or (ask_exits(readings, ctx.state) if readings else []),
+                       readings, ctx.state)
     exits = [AskExit(label=str(e["label"]), decision=e.get("decision")) for e in own]
-    text = ask_text(readings) if readings else (
+    text = ask_text(readings, ctx.state) if readings else (
         f"Tell me about this column: `{extra_groups[0].columns[0]}`: "
         f"{extra_groups[0].guess_words}? ({extra_groups[0].evidence})")
     return AskCard(question=question, consumer=entry[0], text=text,

@@ -144,11 +144,18 @@ def sorted_by_sex(tmp_path_factory: Any) -> Run:
                   energy_adjustment=mf.energy("residual"), explain=ExplainSpec(reseeds=2))
 
 
+# The grouped run's curves, asked by name: an intake the residual energy model adjusts and a
+# covariate it reads on its own scale (under prediction the default curves may be either, U7).
+CURVES_ASKED = ["protein", "age"]
+
+
 @pytest.fixture(scope="module")
 def grouped(tmp_path_factory: Any) -> Run:
-    """Two rows per participant (`SEQN`), the seal and the refits by participant."""
+    """Two rows per participant (`SEQN`), the seal and the refits by participant; the curves of an
+    energy-adjusted intake and of age, asked by name."""
     return _graph(tmp_path_factory.mktemp("grouped"), mf.nhanes_like(600, seed=2, repeats=2),
-                  energy_adjustment=mf.energy("residual"), explain=ExplainSpec(reseeds=2),
+                  energy_adjustment=mf.energy("residual"),
+                  explain=ExplainSpec(reseeds=2, exposures=list(CURVES_ASKED)),
                   grain=GrainSpec(grain="repeated", id_column="SEQN"),
                   repeat_kind=RepeatSpec(repeat_kind="repeats"), unit="row")
 
@@ -795,16 +802,20 @@ def test_3e_the_floor_reads_the_fits_verdict_against_the_baseline(regression):
         assert family["floor"]["passed"] == (verdict == "better")
 
 
-def test_3f_the_top_exposures_are_the_exposures_the_best_family_leans_on(regression):
-    """Under prediction the curves are of the exposures (by role), on their final scale, ordered
-    by mean |SHAP| in the family with the best cross-validated score (ties by its importance
-    table's rank).
+def test_3f_the_top_predictors_are_the_predictor_role_columns_the_best_family_leans_on(regression):
+    """Under prediction the curves are of the columns in a predictor role (W1 part 2's U7: every
+    predictor role is a predictor there, so the curves choose among the energy column and the
+    covariates too, not the Predictor role alone), on their final scale (the residual model's
+    adjusted nutrients), a number each, ordered by mean |SHAP| in the family with the best
+    cross-validated score (ties by its importance table's rank), up to the cap.
 
     The best score is the lowest MSE (MS6's regression primary; lower is better). Taking the
     highest picked the worst passing family, boosted trees, whose top three matched the elastic
     net's on macOS by chance (fat_total_adj 0.438 and carb_adj 0.411 in the elastic net) and not
     on Linux CI."""
     from turbotab.core.models.metrics import higher_is_better
+    from turbotab.core.models.pipeline import DesignSpec
+    from turbotab.core.readings import PREDICTOR_ROLES
 
     fit = regression.out["fit"].data
     primary = fit["primary_metric"]
@@ -815,13 +826,30 @@ def test_3f_the_top_exposures_are_the_exposures_the_best_family_leans_on(regress
     weights = {i["input"]: i["mean_abs"] for i in family["importance"]}
     rank = {i["input"]: i["rank"] for i in family["importance"]}
     shown = [c["input"] for c in regression.art["curves"]]
-    exposures = [f"{n}_adj" if n in ("protein", "carb", "fat_total") else n for n in mf.NUTRIENTS]
-    want = sorted(exposures, key=lambda a: (-weights.get(a, 0.0), rank.get(a, math.inf)))
+    spec = DesignSpec.from_dict(regression.out["design"].objects["spec"])
+    raw = regression.rows(regression.fit_ids()[:20])
+    numbers = set(raw.select_dtypes("number").columns)
+    roles = regression.state.roles
+    final = [f"{c}_adj" if f"{c}_adj" in weights else c for c in spec.predictors
+             if roles.get(c) in PREDICTOR_ROLES and c in numbers]
+    want = sorted(final, key=lambda a: (-weights.get(a, 0.0), rank.get(a, math.inf)))
     assert shown == want[:E.TOP_EXPOSURES]
-    assert E.SCALE_SAYS in regression.art["relations"]
+    # The adjusted scale is said where a curve is on one (the residual model's ``_adj`` columns), in
+    # Predict's words, and only there: both sides are pinned on the grouped run's asked curves (6e).
+    assert (E.PREDICT_SCALE_SAYS in regression.art["relations"]) == any(
+        a.endswith("_adj") for a in shown)
+    assert E.SCALE_SAYS not in regression.art["relations"]
 
 
-def _two_families(purpose: str, versus: dict | None = None):
+def test_3f_the_final_scale_is_said_where_a_curve_is_drawn_on_one(inference):
+    """The declared exposure, protein, is read by the residual energy model as ``protein_adj``: its
+    curve is on that scale, and the explanations say so, in Estimate's words."""
+    assert [c["input"] for c in inference.art["curves"]] == ["protein_adj"]
+    assert E.SCALE_SAYS in inference.art["relations"]
+    assert E.PREDICT_SCALE_SAYS not in inference.art["relations"]
+
+
+def _two_families(purpose: str, versus: dict | None = None, said: list | None = None):
     from sklearn.ensemble import HistGradientBoostingRegressor
     from sklearn.linear_model import LinearRegression
     from sklearn.pipeline import Pipeline
@@ -841,7 +869,22 @@ def _two_families(purpose: str, versus: dict | None = None):
     return E.explain(families, E.Setting(
         task="regression", purpose=purpose, target="glucose", event=None, X=X, y=y,
         declared=["protein"] if purpose == "inference" else [], exposures=["protein", "age"],
-        reseeds=0, metric_label="MSE", baseline_label="the outcome's average"), lambda *a: None)
+        reseeds=0, metric_label="MSE", baseline_label="the outcome's average"), lambda *a: None,
+        progress=(lambda f, m: said.append(m)) if said is not None else None)
+
+
+@pytest.mark.parametrize("purpose, drawing", [
+    ("prediction", "Drawing the predictors' curves per family"),
+    ("inference", "Drawing each study factor's curve per family")])
+def test_3g_the_progress_line_says_whose_curves_are_drawn_in_the_goals_words(purpose, drawing):
+    """U7's repair (P2): under prediction a curve may be a covariate's (here age's), so the stage's
+    progress line says the predictors' curves; under inference, the study factor's, as before."""
+    said: list[str] = []
+    _two_families(purpose, said=said)
+    curving = [m for m in said if "curve" in m]
+    assert curving == [drawing]
+    if purpose == "prediction":
+        assert not any("study factor" in m for m in said), said
 
 
 def test_3g_curves_drawn_by_some_families_name_only_those():
@@ -1286,13 +1329,18 @@ def test_6b_the_declared_scope_is_the_one_the_scope_test_observes():
 
 
 def test_6c_the_decision_sentence_is_verbatim():
+    """Under prediction the default curves are the top predictors' (W1 part 2's U7: they choose
+    among every predictor role, the energy column and the covariates too), under inference the
+    declared exposure's."""
     from turbotab.core.voice import sentence_for
 
-    assert sentence_for(d.SetExplain(), mf.state()) == (
+    predicting = mf.state()
+    assert predicting.purpose == "prediction"
+    assert sentence_for(d.SetExplain(), predicting) == (
         "The fitted models were described by their SHAP values, with their stability over 5 refits "
         "on bootstrap resamples, by a ranking of pairwise interactions (Friedman and Popescu's H "
         "statistic), and by accumulated local effects curves (Apley and Zhu 2020) of the top "
-        "exposures, drawn only for families whose cross-validated score beats the no-predictor "
+        "predictors, drawn only for families whose cross-validated score beats the no-predictor "
         "baseline; these describe the models' predictions, not causal effects.")
     assert sentence_for(d.SetExplain(curves="partial_dependence", exposures=["protein"],
                                      reseeds=0), mf.state(purpose="inference")) == (
@@ -1316,22 +1364,47 @@ def test_6d_one_refit_or_a_column_outside_the_model_is_refused_with_ways_forward
     assert refused.value.exits[0]["decision"]["exposures"] == []
 
 
+def _explained_again(run: Run, explain: ExplainSpec, said: list | None = None) -> dict[str, Any]:
+    """The explain stage once more on ``run``'s fitted models, with another explain answer."""
+    from turbotab.core.stages import build_graph
+    from turbotab.core.stages.explain import explain_stage
+
+    deps = next(s.deps for s in build_graph().order() if s.name == "explain")
+    state = run.state.model_copy(update={"explain": explain})
+    ctx = mf.context(state, {k: run.out[k] for k in deps}, run.graph.paths(), progress=said)
+    return explain_stage(ctx).data
+
+
 def test_6e_the_chain_fires_every_relation_it_declares(grouped, inference):
     """MODELING_SEQUENCE §6: the relations the contract declares fire where the run shows them.
-    Repeated units with the residual energy model under prediction: the floor, the resampling by
-    unit and the transformed scale; under inference also the wait-and-lock and the adjustment
-    terms. Each says what the artifact shows."""
+    Repeated units with the residual energy model under prediction, with an energy-adjusted
+    intake's curve beside age's: the floor, the resampling by unit and the adjusted scale, said in
+    Predict's words of the adjusted curve alone (U7's repair: a covariate's curve is on its own
+    scale); with age's curve alone, no adjusted scale, though the model still reads an adjusted
+    intake. Under inference also the wait-and-lock and the adjustment terms. Each says what the
+    artifact shows."""
     from turbotab.core.contracts import fired
 
     present = {"performance_floor", "unit_resampling", "domain_transform"}
     says = [f.says for f in fired({"explain": "ale"}, "prediction", sorted(present))]
     assert says == grouped.art["relations"]
+    assert E.PREDICT_SCALE_SAYS in says and E.SCALE_SAYS not in says
     assert all(f["stability"]["resampled_by"] == "`SEQN`" for f in grouped.art["families"])
-    # The transformed scale fired because a curve is of an energy-adjusted intake: made from the
-    # raw nutrient and total energy, drawn on the scale the model reads.
-    adjusted = [c for c in grouped.art["curves"] if c["input"].endswith("_adj")]
-    assert adjusted and all(set(c["sources"]) == {c["input"][:-4], "kcal"} and c["unit"] is None
-                            for c in adjusted)
+    # The adjusted scale fired because a curve is of an energy-adjusted intake: made from the raw
+    # nutrient and total energy, drawn on the scale the model reads; age's curve is age's own.
+    curves = {c["input"]: c for c in grouped.art["curves"]}
+    assert list(curves) == ["protein_adj", "age"]
+    assert set(curves["protein_adj"]["sources"]) == {"protein", "kcal"}
+    assert curves["protein_adj"]["unit"] is None
+    assert curves["age"]["sources"] == ["age"]
+    # The silent side: age's curve alone, the model reading protein_adj all the same.
+    said: list = []
+    alone = _explained_again(grouped, ExplainSpec(reseeds=0, exposures=["age"]), said)
+    assert [c["input"] for c in alone["curves"]] == ["age"]
+    assert any(i["input"] == "protein_adj" for f in alone["families"] for i in f["importance"])
+    silent = [f.says for f in fired({"explain": "ale"}, "prediction", ["performance_floor"])]
+    assert alone["relations"] == silent
+    assert "Drawing the predictors' curves per family" in [m for _f, m in said]
     later = {"performance_floor", "domain_transform", "plan_lock", "adjustment_terms"}
     says = [f.says for f in fired({"explain": "ale"}, "inference", sorted(later))]
     assert says == inference.art["relations"]

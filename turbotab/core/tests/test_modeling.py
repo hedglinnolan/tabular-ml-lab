@@ -588,7 +588,10 @@ def test_lineage_is_correct_for_each_energy_method_on_the_nhanes_columns(table, 
             (f"raw:{c}", op) for c in ("kcal", *NUTRIENTS3)}
         assert adjusted["kcal_from_other"].role == "energy"
     assert design.data["matrix"]["n_cols"] == len(matrix)
-    assert design.data["estimand"]
+    # The fixture's goal is prediction, where no coefficient is read, so the design states no
+    # estimand (ruling 5 extended, W1-T); under inference each method's is pinned by the methods
+    # gate (acceptance/test_methods_gate.py) and the percent-energy tests.
+    assert st.purpose == "prediction" and design.data["estimand"] is None
 
 
 def test_imputed_columns_are_named_in_the_lineage_and_only_they(tmp_path):

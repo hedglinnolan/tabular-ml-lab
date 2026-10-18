@@ -789,15 +789,18 @@ def test_d1_grams_read_by_the_identity_are_listed_and_alcohol_is_not(tmp_path):
         drive_unsettled(drive, plan, roles=roles, stop_before="__none__")
         drive.artifact("fit", timeout=600)
         card = client.get(f"/api/projects/{drive.pid}/readings").json()
-        record = next(r for r in drive.view()["decisions"]
-                      if r["decision"]["kind"] == "select_models")
+        methods = client.get(f"/api/projects/{drive.pid}/methods/sections").json()
+    # The readings the values settled are one sentence of their own among the variables, not the
+    # families answer's (W1-R round 2, ruling R-c).
+    [read] = [e["text"] for s in methods["sections"] for e in s["entries"]
+              if e["text"].startswith("Read from the values")]
     units = {i["column"]: i for i in card["read_from_data"] if i["kind"] == "unit"}
     for column in ("protein_g", "fat_g", "carbohydrate_g"):
         assert units[column]["value"] == "g", units
         assert "fails were it in kg" in units[column]["evidence"]
         assert {c["decision"]["value"] for c in units[column]["change"]} >= {"kg", "kcal", "kj"}
     assert "alcohol" not in units
-    assert "`carbohydrate_g` is in grams" in (record.get("sentence") or ""), record.get("sentence")
+    assert "`carbohydrate_g` is in grams" in read, read
 
 
 def test_d2_the_settled_by_values_answer_flows_into_truth_driven_asks():

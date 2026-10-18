@@ -192,7 +192,10 @@ export function RepairsSection({
                 >
                   <div className={f.top}>
                     <span className={f.origin}>{origin(x)}</span>
-                    {x.evidence ? (
+                    {/* The repair is still to decide here: a SETTLED badge reads as the repair
+                        settled (the walkthrough of 2026-10-17, minor 19), so only a convention or a
+                        dispute in the field is badged. */}
+                    {x.evidence && x.evidence.status.toLowerCase() !== "settled" ? (
                       <span className={f.badge} title={x.evidence.source}>
                         {x.evidence.status.toUpperCase()}
                       </span>

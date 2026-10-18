@@ -142,6 +142,30 @@ def test_impossible_values_excluded_leave_the_flow_as_exactly_those_rows(tables)
     assert preds == ["age"] and len(kept) == len(frame)
 
 
+def test_sas_zeros_name_the_columns_count_plainly_and_the_record_keeps_every_column():
+    """R-f 14 (the walkthrough's minor): "152 cells in `bp_di` and 8 more" read as 8 more cells or
+    8 more columns, and the recorded sentence named no column. The counts come from the table
+    built here: 5, 3 and 1 SAS zeros in three columns, and 2 in a table of one."""
+    zero = 5.397605e-79  # a SAS transport zero read back without conversion (16 ** -65)
+    frame = pd.DataFrame({"a": [zero] * 5 + [1.0], "b": [zero] * 3 + [2.0] * 3,
+                          "c": [zero] + [3.0] * 5, "d": [4.0] * 6})
+    _raw, found = repairs.sas_zero_finding(frame)
+    assert found["summary"] == ("`9` cells in `3` columns (`a` and 2 more) hold `5.4e-79`: a zero "
+                                "in a SAS transport file, misread.")
+    [offer] = repairs._offer_sas(found, _raw["params"], repairs.OfferContext(frame))
+    assert offer.consequence == "`9` cells holding `5.4e-79` become `0` in `3` columns (`a` and 2 more)."
+    assert offer.sentence == ("`9` cells holding `5.4e-79`, a misread SAS transport zero, were read "
+                              "as `0` in `3` columns: `a`, `b` and `c`.")
+    # one column: named, and no count of columns
+    one = frame[["b"]].iloc[:4]
+    _raw, found = repairs.sas_zero_finding(one)
+    assert found["summary"] == ("`3` cells in `b` hold `5.4e-79`: a zero in a SAS transport file, "
+                                "misread.")
+    [offer] = repairs._offer_sas(found, _raw["params"], repairs.OfferContext(one))
+    assert offer.sentence == ("`3` cells holding `5.4e-79`, a misread SAS transport zero, were read "
+                              "as `0` in `b`.")
+
+
 @needs_nhanes
 def test_sas_zeros_become_zero_and_compose_with_the_impossible_band(tables):
     table, artifact = tables["nhanes"]
@@ -468,3 +492,31 @@ def test_only_an_applied_repair_changes_a_stage_key():
     assert key_value("findings", deferred) is None
     assert key_value("findings", {**deferred, **dismissed}) is None
     assert key_value("findings", {**deferred, **applied_}) == applied_
+
+
+@pytest.mark.parametrize("finding", ["text_numbers__sbp", "below_detection__crp"])
+def test_setting_aside_a_read_numbers_finding_with_no_repair_changes_no_stage_key(finding):
+    """W1-P11c's S3: a dismissal or a deferral of a finding whose repair reads a text column as
+    numbers also writes ``numbers_read[finding] = None`` (``decisions.register_kind``'s confirms),
+    and that entry changed the key of every stage that reads it, though no repair was applied: the
+    fit read as changed after the opening. Only an applied repair's reading changes a key; one set
+    aside after an applied repair withdraws it."""
+    from turbotab.core import decisions
+    from turbotab.core.seal import keys_for
+    from turbotab.core.stages import build_graph
+    from turbotab.core.tests.test_stage_registry import record
+
+    graph = build_graph()
+
+    def key(*later: dict) -> str | None:
+        records = [record(1, {"kind": "set_lens", "lenses": ["clinical"]}),
+                   *(record(2 + i, d) for i, d in enumerate(later))]
+        return keys_for(graph, decisions.fold(records), "f")["findings"]
+
+    applied = {"kind": "apply_repair", "finding_id": finding, "option": "half_limit",
+               "params": {}}
+    for set_aside in ({"kind": "dismiss_finding", "finding_id": finding},
+                      {"kind": "defer_finding", "finding_id": finding, "to": "missing"}):
+        assert key(set_aside) == key()  # silent: nothing applied, nothing changes
+        assert key(applied) != key()  # fires: an applied repair reads the column as numbers
+        assert key(applied, set_aside) == key()  # set aside after it, the reading is withdrawn

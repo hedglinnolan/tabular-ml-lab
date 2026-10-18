@@ -6,6 +6,7 @@
  */
 import type {
   CohortArtifact,
+  ConsequenceView,
   DesignArtifact,
   FitArtifact,
   Lineage as LineageData,
@@ -15,6 +16,7 @@ import type {
 } from "../../api/m1-stage-types";
 import type { DecisionKind, ProjectView } from "../../api/schema";
 import { StaleVeil, type VeilState } from "../../motion/StaleVeil";
+import { servedGroups, waitingClause, waitingSentence } from "../../quest/cards/roles/roles";
 import { useStageFocus } from "../../state/focus";
 import { StageFailure, rootFailure } from "../Failure";
 import { StageRetry } from "../StageRetry";
@@ -26,7 +28,7 @@ import { Shelf } from "./results/Shelf";
 import { figureSvg, lineagePanel, rowFlowPanel } from "./save/journal";
 import { SaveMenu } from "./save/SaveMenu";
 import { Rich } from "./text";
-import { Lineage } from "./views/Lineage";
+import { Lineage, lineageMinWidth } from "./views/Lineage";
 import { RowFlow } from "./views/RowFlow";
 import s from "./Stage.module.css";
 
@@ -35,6 +37,76 @@ export interface LiveData extends ResultsData {
   cohort: { artifact: CohortArtifact | null; veil: VeilState };
   splitVeil: VeilState;
   designVeil: VeilState;
+  /** Why no fit is shown yet, when the screen withholds it (StageProps `fitWithheld`); the fit's
+   *  artifact is then null here, whether or not it is computed. */
+  fitWithheld?: string | null;
+  /** How many columns proposed as predictors wait for their role's confirmation, as the quest log
+   *  the stage's parent already reads counts them (StageProps `waitingPredictors`; roles.ts
+   *  `waitingPredictorColumns`); null where the parent reads no quest log, so the card says nothing
+   *  of them and asks the server nothing. */
+  waitingPredictors?: number | null;
+  /** Under Predict, the predictor groups the server serves for the project (roles.ts
+   *  `servedGroups`), which the lineage names its groups by, as the roles card does (the re-walk's
+   *  N3); the stage reads them from the roles stage it shares with the roles card. Null under
+   *  Estimate, and under Predict while the roles stage's result is not at hand. */
+  predictorGroups?: ServedGroups;
+}
+
+type ServedGroups = ReturnType<typeof servedGroups>;
+
+/** A predictor role's group named in the predictors' own word, while no group is served. */
+const PREDICTORS: readonly [string, string] = ["predictor", "predictors"];
+
+/**
+ * A lineage's collapsed predictor groups named as the roles card names them under Predict (the
+ * re-walk's N3: never "13 covariate columns" or "7 exposure columns"). A folded node counts its own
+ * lane's columns (core/models/lineage.py `collapse`), one per characteristic only in the raw lane:
+ * there it is `n` and the group's name for many ("13 characteristics"); in every lane after it,
+ * where an encoding can make several columns of one, the group's name and its count of columns
+ * ("characteristics: 12 columns"; W1-W round 1, P1), which is how a name that is one word for one or
+ * many reads in every lane ("total energy: 1 column"). Under Predict with no groups served (the
+ * roles stage's result not yet at hand), a predictor role's group is named in the predictors' word
+ * ("13 predictors"). Any other node, and every node under Estimate (`predict` false), is as drawn.
+ */
+export function inGroupWords(
+  lineage: LineageData,
+  groups: ServedGroups | null | undefined,
+  predict: boolean = !!groups,
+): LineageData {
+  if (!predict) return lineage;
+  const named = (group: string | null): readonly [string, string] | null =>
+    group === "exposure" || group === "energy" || group === "covariate" ? (groups ? groups[group].head : PREDICTORS) : null;
+  return {
+    ...lineage,
+    nodes: lineage.nodes.map((n) => {
+      const head = n.column === null ? named(n.group) : null;
+      if (!head) return n;
+      const [one, many] = [head[0].toLowerCase(), head[1].toLowerCase()];
+      const count = n.count;
+      const columns = `${fmtInt(count)} ${count === 1 ? "column" : "columns"}`;
+      const label =
+        one !== many && n.lane === "raw" ? `${fmtInt(count)} ${count === 1 ? one : many}` : `${count === 1 ? one : many}: ${columns}`;
+      return { ...n, label };
+    }),
+  };
+}
+
+/**
+ * A served view (a preview's, a finding's evidence's) with its lineage's collapsed groups named as
+ * the live Columns card names them (`inGroupWords`): under Predict a lineage's every side, before,
+ * after and each step between, in the roles card's group words, so a focused option's preview never
+ * says "12 covariate columns" beside the roles card (W1-W round 2, P2). Any other view, and every
+ * view under Estimate (`predict` false), is as served.
+ */
+export function viewInGroupWords(view: ConsequenceView, groups: ServedGroups | null | undefined, predict: boolean): ConsequenceView {
+  if (!predict || view.kind !== "lineage") return view;
+  const named = (l: LineageData) => inGroupWords(l, groups, predict);
+  return {
+    ...view,
+    before: view.before ? named(view.before) : null,
+    after: named(view.after),
+    story: view.story.map((f) => ({ ...f, lineage: named(f.lineage) })),
+  };
 }
 
 /** The participant flow as recorded: the cohort's steps, then the split's fork. */
@@ -167,13 +239,26 @@ function Provenance({ text }: { text: string }) {
   );
 }
 
-function ColumnsCard({ view, data, full }: { view: ProjectView; data: LiveData; full: boolean }) {
+/**
+ * The columns as recorded: the lineage of the predictors, and how many columns wait for their own
+ * role confirmation, which are not predictors yet (the walkthrough of 2026-10-17, finding 1): the
+ * count is the quest log's open role lines (core/quest.py `_role_lines`), never one counted here,
+ * of columns proposed in a predictor role (W1-T: a flag never enters the models, so it is not
+ * counted), each column of a group's line among them (ruling R-g). It comes with the stage's data
+ * from the quest log its parent already reads (`LiveData.waitingPredictors`), so a card drawn from
+ * fixtures asks the server nothing (U9). Where no column is a predictor yet, the sentence says
+ * "yet" once.
+ */
+export function ColumnsCard({ view, data, full }: { view: ProjectView; data: LiveData; full: boolean }) {
   const { toggle } = useStageFocus();
+  const nWaiting = data.waitingPredictors ?? 0;
+  const waiting = waitingSentence(nWaiting);
   const warnings = data.design?.warnings ?? [];
-  const lineage =
+  const drawn =
     data.design?.lineage ??
     (data.cohort.artifact ? predictorsLineage(data.cohort.artifact.predictors, view.state.roles) : null);
-  if (!lineage) return null;
+  if (!drawn) return null;
+  const lineage = inGroupWords(drawn, data.predictorGroups, view.state.purpose === "prediction");
   const provenance = recordedSentences(view, COLUMN_KINDS);
   const rawRows = lineage.nodes.filter((n) => n.lane === "raw").length;
   const open = view.interview.find((i) => i.status === "open");
@@ -185,8 +270,10 @@ function ColumnsCard({ view, data, full }: { view: ProjectView; data: LiveData; 
         <header className={s.cardHead}>
           <h3 className={s.kicker}>Columns</h3>
         </header>
-        <p className={s.captionText}>
-          No column is a predictor yet: the roles question decides which columns enter the model.
+        <p className={s.captionText} data-testid={waiting ? "columns-waiting" : undefined}>
+          {waiting
+            ? `No column is a predictor yet: ${waitingClause(nWaiting)}.`
+            : "No column is a predictor yet: the roles question decides which columns enter the model."}
         </p>
       </section>
     );
@@ -222,8 +309,16 @@ function ColumnsCard({ view, data, full }: { view: ProjectView; data: LiveData; 
           className={s.lineageBox}
           style={{ height: full ? Math.max(360, rawRows * 26 + 60) : Math.min(380, Math.max(220, rawRows * 15 + 60)) }}
         >
-          <Lineage lineage={lineage} openLabel={openLabel} />
+          {/* Never narrower than its labels need: a narrow card scrolls the lineage instead. */}
+          <div className={s.lineageWide} style={{ minWidth: lineageMinWidth(lineage) }}>
+            <Lineage lineage={lineage} openLabel={openLabel} />
+          </div>
         </div>
+        {waiting ? (
+          <p className={s.captionText} data-testid="columns-waiting">
+            {waiting}
+          </p>
+        ) : null}
         {full ? (
           <DesignWarnings warnings={warnings} />
         ) : warnings.length ? (
@@ -296,8 +391,9 @@ export function ResultsScene({ pid, view, data }: { pid: string; view: ProjectVi
   return <Results pid={pid} view={view} data={data} />;
 }
 
-/** Why nothing is fitted, truly: a failure or a stop with its levers, the fit under way, or the
- *  questions still to answer before it (never "waits on substitution", which comes after). */
+/** Why nothing is fitted, truly: a failure or a stop with its levers, the fit under way, a fit
+ *  computed but withheld by the screen (its reason), or the questions still to answer before it
+ *  (never "waits on substitution", which comes after). */
 function NotFitted({ view, data }: { view: ProjectView; data: LiveData }) {
   if (rootFailure(view.stages, "fit") || view.stages.fit?.cancelled) {
     return <StageFailure pid={data.pid} view={view} stage="fit" lead="Nothing was fitted." testId="fit-failure" />;
@@ -308,6 +404,13 @@ function NotFitted({ view, data }: { view: ProjectView; data: LiveData }) {
     return (
       <p className={s.captionText}>
         {design === "running" || design === "queued" ? "Building each model's pipeline…" : "Fitting the models…"}
+      </p>
+    );
+  }
+  if (data.fitWithheld && (fit === "fresh" || fit === "stale")) {
+    return (
+      <p className={s.captionText} data-testid="fit-withheld">
+        <Rich text={data.fitWithheld} />
       </p>
     );
   }

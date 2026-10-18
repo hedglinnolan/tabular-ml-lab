@@ -1,0 +1,31 @@
+/* A column's own role card (RoleCard.tsx): today's card idiom (src/styles/tokens.css), beside the
+   dispatcher's other small cards (../cards.module.css). The confirmation of the role as proposed is
+   the stronger of the card's buttons; the other roles stay quiet beside it. */
+.confirm {
+  justify-self: start;
+  /* The shell's one action color (`--record`, quest.module.css), else today's accent. */
+  border: 1px solid var(--record, var(--accent));
+  background: var(--record, var(--accent));
+  color: var(--on-record, var(--on-accent));
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  font-size: var(--fs-control);
+  font-weight: 600;
+}
+.confirm:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+.confirm:disabled {
+  opacity: 0.45;
+}
+/* A group's columns, a click away (ruling R-g): each with its own presses, in a container that
+   scrolls on its own, so 20,000 genes never lengthen the page. */
+.members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}

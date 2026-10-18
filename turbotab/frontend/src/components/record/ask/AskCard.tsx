@@ -8,7 +8,12 @@
  *   readings of the line it confirms, each with the value the line shows — never a reading the
  *   card does not list (§14.1). Each line's value can be changed before it is confirmed. Once the
  *   user has confirmed guesses line by line, one block confirms every line shown (§11.4 rule 4:
- *   a shortcut unlocks with mastery, never with a setting).
+ *   a shortcut unlocks with mastery, never with a setting), but a column's role: a role proposed
+ *   below high confidence never rides along in a block (§14 rule 2), so no block lists one. A
+ *   role line the server serves for several columns is one judgment of the recognizer (ruling R-g:
+ *   the columns the roles stage proposed with one role, one confidence and one reason word for
+ *   word, ask.py `with_proposals`), confirmed whole in its one press, its role as proposed (the
+ *   engine accepts no other block of them); any other role is a line of its own.
  *
  *   The consumer's own ways forward, where its refusal names them (a value below a detection
  *   limit, an energy column's unit and days), are offered as the server words them.
@@ -16,7 +21,7 @@
  *   "Read from your data" (§14.3): the readings the values settled, each with its evidence and
  *   the answers that change it; never a required tap.
  */
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode, type Ref } from "react";
 import type { AskCard as Card, AskGroup, ReadingKind } from "../../../api/m3-types";
 import type { Decision } from "../../../api/schema";
 import { Prose, V } from "../../Prose";
@@ -101,11 +106,25 @@ export function confirmLine(group: AskGroup, value: string): Decision | null {
   };
 }
 
-/** Every line the card shows, each with the value it shows: one block that lists them all. */
+/**
+ * The card's lines, in the server's order, each group as served. The card asks only readings not
+ * settled, and a role reading is unsettled while it was proposed below high confidence and not
+ * confirmed: the server serves such a role as a line of its own, or, where the roles stage proposed
+ * several columns alike, the whole group as one line (ruling R-g), which its one press confirms.
+ */
+export function linesOf(groups: AskGroup[]): AskGroup[] {
+  return groups;
+}
+
+/** A role line for several columns: one judgment, confirmed whole as proposed (ruling R-g). */
+export const isRoleGroup = (group: AskGroup) => group.kind === "role" && group.columns.length > 1;
+
+/** Every line the card shows, each with the value it shows: one block that lists them all, but
+ *  no role, which is confirmed on its own line alone (§14 rule 2; ruling R-b). */
 export function confirmAll(groups: AskGroup[], values: Record<number, string>): Decision | null {
   const items = groups.flatMap((grp, i) => {
     const value = values[i] ?? grp.guess ?? "";
-    if (!confirmLine(grp, value)) return [];
+    if (grp.kind === "role" || !confirmLine(grp, value)) return [];
     return grp.columns.map((column) => ({ reading: grp.kind as ReadingKind, column, value }));
   });
   const seen = new Set<string>();
@@ -127,6 +146,7 @@ export function AskCard({
   record,
   answerAt,
   mastered = false,
+  rootRef,
 }: {
   card: Card;
   pending: boolean;
@@ -136,30 +156,41 @@ export function AskCard({
   /** The user has confirmed guesses line by line before (BLUEPRINT §11.4 rule 4: a shortcut
    *  unlocks with mastery): the card then offers one block that lists every line it settles. */
   mastered?: boolean;
+  /** The card's root, for a refusal's way to its readings to lead to (record/besideAsk.ts
+   *  `READINGS_ABOVE`). */
+  rootRef?: Ref<HTMLElement>;
 }) {
   const titleId = useId();
   const [values, setValues] = useState<Record<number, string>>({});
-  const confirmable = card.groups.filter((grp, i) => confirmLine(grp, values[i] ?? grp.guess ?? ""));
-  const all = useMemo(() => confirmAll(card.groups, values), [card.groups, values]);
+  const lines = useMemo(() => linesOf(card.groups), [card.groups]);
+  // The lines the block may list: never a role (§14 rule 2).
+  const blockable = lines.filter((grp, i) => grp.kind !== "role" && confirmLine(grp, values[i] ?? grp.guess ?? ""));
+  const all = useMemo(() => confirmAll(lines, values), [lines, values]);
   const nReadings = all?.kind === "confirm_readings" ? all.items.length : 0;
   // The consumer's own ways forward: what is not a confirmation (a repair, a unit and its days).
   const own = card.exits.filter((e) => e.decision && !isConfirmation(e.decision));
   const answer = (at: string) => (answerAt?.key === at ? answerAt.node : null);
+  // The heading counts the columns its lines list, not the lines, as core/readings.py `ask_text`
+  // does: one line of one column asks about "this column", one line of a group of six about "these
+  // columns".
+  const oneColumn = lines.reduce((n, grp) => n + grp.columns.length, 0) === 1;
 
   return (
-    <section className={g.ask} aria-labelledby={titleId} data-testid="ask-card">
+    <section ref={rootRef} className={g.ask} aria-labelledby={titleId} data-testid="ask-card">
       <div className={g.askHead}>
         <h3 id={titleId} className={g.askTitle}>
-          {card.groups.length === 1 ? "Tell me about this column" : "Tell me about these columns"}
+          {oneColumn ? "Tell me about this column" : "Tell me about these columns"}
         </h3>
         <span className={g.askConsumer}>
-          <Prose text={card.consumer} /> reads {card.groups.length === 1 ? "it" : "them"}
+          <Prose text={card.consumer} /> reads {oneColumn ? "it" : "them"}
         </span>
       </div>
       <ol className={g.askList}>
-        {card.groups.map((grp, i) => {
+        {lines.map((grp, i) => {
           const value = values[i] ?? grp.guess ?? "";
-          const choices = choicesFor(grp);
+          // A group's columns are confirmed as proposed, in one press; each is moved on its own line
+          // in Your data (ruling R-g), so the group's role is not changed here.
+          const choices = isRoleGroup(grp) ? [] : choicesFor(grp);
           const decision = confirmLine(grp, value);
           const changed = values[i] !== undefined && values[i] !== grp.guess;
           const words = changed ? (choices.find((ch) => ch.value === value)?.label ?? value) : grp.guess_words;
@@ -200,7 +231,11 @@ export function AskCard({
                     data-testid="ask-confirm"
                     title="Records exactly the readings on this line, each with the value it shows."
                   >
-                    {grp.columns.length > 1 ? `Confirm the ${fmtCount(grp.columns.length)}` : "Confirm"}
+                    {isRoleGroup(grp)
+                      ? `Confirm these ${fmtCount(grp.columns.length)} as ${grp.guess_words}`
+                      : grp.columns.length > 1
+                        ? `Confirm the ${fmtCount(grp.columns.length)}`
+                        : "Confirm"}
                   </button>
                 ) : null}
               </span>
@@ -209,7 +244,7 @@ export function AskCard({
           );
         })}
       </ol>
-      {mastered && confirmable.length > 1 && all ? (
+      {mastered && blockable.length > 1 && all ? (
         <div className={g.askAll}>
           <button
             type="button"

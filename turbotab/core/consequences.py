@@ -978,8 +978,9 @@ def registered_kinds() -> set[str]:
 UNPREVIEWED: dict[str, str] = {
     "lock_plan": (
         "Recorded by the server when Fit is pressed, before any estimate is displayed, and refused "
-        "when a client posts it, so it is never an option to preview; it changes no number, only "
-        "how later records are marked."),
+        "when a client posts it, so it is never an option to preview. It changes no number of the "
+        "fit, only how later records are marked, and it opens which decisions mattered: the "
+        "mattered stage refits the recorded choices only once the plan is locked."),
     "reseal": (
         "Withdraws the opening of the held-out rows: their scores are withheld again. No row, column "
         "or value changes until a new split draws the rows, and that answer (set_split) previews "

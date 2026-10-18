@@ -25,7 +25,10 @@ import type {
 } from "../api/m1-types";
 import { isRangeRule } from "../api/m1-types";
 import type { DecisionRecord, Lens, ProjectState, Scalar, Task } from "../api/schema";
+import type { HoldoutDetail } from "../api/m3-types";
+import { CONTRACT } from "../quest/fixtures/contract";
 import type { MockColumn, MockDataset } from "./datasets";
+import { mockPredictorGroups } from "./roleWords";
 import { findColumn, isNumericDtype, nMissing, nUnique } from "./stats";
 
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
@@ -241,7 +244,9 @@ export function rolesArtifact(ds: MockDataset, state: ProjectState): RolesArtifa
     const max = Math.max(...counts.values());
     if (max > 1) repeats = { column: id.column, n_units: counts.size, max_rows_per_unit: max };
   }
-  return { columns, repeats, categorical: [] };
+  // The groups the server serves beside the proposals for the project's lenses and task (U6).
+  const predictor_groups = mockPredictorGroups(lens, state.task ?? null, columns.map((c) => c.column));
+  return { columns, repeats, categorical: [], predictor_groups };
 }
 
 /** The roles in force: the record's, else what the roles stage proposes. */
@@ -1122,6 +1127,85 @@ const METHOD_SHIFT: Record<EnergyMethod, number> = {
   all_components: -0.0035,
 };
 
+/**
+ * The held-out rows' detail for a numeric outcome (W1 part 2, Stage A's fields): an interval on each
+ * score, calibration, the no-predictor baseline and the verdict against it, sealed with the scores
+ * until the opening (the stage handler in m1-record.ts withholds them). The mock's numbers, made to
+ * agree with one another: the baseline's MSE is the model's over 1 − R², and the verdict follows the
+ * engine's rule (core/models/baseline.py `versus_held_out`: better only above the larger of the
+ * floor and the interval's lower half-width; worse below zero) on the floor the engine serves.
+ */
+function holdoutDetail(h: { r2: number; rmse: number; mae: number }, n: number): HoldoutDetail {
+  const iv = (estimate: number, se: number) => ({
+    estimate,
+    se,
+    ci_low: estimate - 1.96 * se,
+    ci_high: estimate + 1.96 * se,
+    level: 0.95,
+    method: "influence function",
+  });
+  const r2 = iv(h.r2, 0.03);
+  const scale = Math.sqrt(1 - h.r2);
+  const floor = CONTRACT.min_gain;
+  const tolerance = Math.max(floor, h.r2 - r2.ci_low);
+  const verdict = h.r2 < 0 ? "worse" : h.r2 > tolerance ? "better" : "no_better";
+  const curve = Array.from({ length: 11 }, (_, i) => {
+    const x = 80 + i * 8;
+    return { x, y: x + 0.06 * (x - 104) + 2 * jitter(`cal:${i}`) };
+  });
+  // The rows behind each stretch of the curve's x-range (core/models/performance.py `support`:
+  // equal-width stretches of the predictions' range): the mock's own counts, right-skewed as
+  // fasting glucose is, the remainder in the fullest stretch so they sum to the held-out rows.
+  const STRETCHES = 20;
+  const [lo, hi] = [curve[0]!.x, curve[curve.length - 1]!.x];
+  const shape = Array.from({ length: STRETCHES }, (_, j) => ((j + 0.5) / STRETCHES) * Math.exp((-6 * (j + 0.5)) / STRETCHES));
+  const total = shape.reduce((a, b) => a + b, 0);
+  const counts = shape.map((v) => Math.floor((v / total) * n));
+  counts[shape.indexOf(Math.max(...shape))]! += n - counts.reduce((a, b) => a + b, 0);
+  const width = (hi - lo) / STRETCHES;
+  const support = counts.map((c, j) => ({ lo: lo + j * width, hi: lo + (j + 1) * width, n: c }));
+  return {
+    intervals: { r2, rmse: iv(h.rmse, 1.4), mae: iv(h.mae, 0.9) },
+    calibration: {
+      n,
+      observed: 105.2,
+      expected: 104.6,
+      intercept: iv(0.6, 1.1),
+      slope: iv(0.94, 0.05),
+      curve,
+      support,
+      eavg: 1.8,
+      e90: 3.6,
+      emax: 7.9,
+      smoother: "lowess, span 2/3, no robustness iterations (as rms val.prob)",
+      flagged: false,
+      concern: null,
+    },
+    calibration_levels: null,
+    calibration_horizon: null,
+    calibration_note: null,
+    baseline: {
+      label: "the training rows' mean",
+      scores: { mse: (h.rmse / scale) ** 2, rmse: h.rmse / scale, mae: h.mae / scale },
+    },
+    versus_baseline: {
+      verdict,
+      metric: "r2",
+      gain: h.r2,
+      tolerance,
+      tolerance_basis:
+        `Better only when the gain's 95% interval lies above zero and the gain is at least ${floor} ` +
+        `(a convention): a gain above ${tolerance.toFixed(3)}. The interval is the held-out R²'s ` +
+        `(influence function; ${n.toLocaleString("en-US")} held-out rows).`,
+      se: r2.se,
+      ci_low: r2.ci_low,
+      ci_high: r2.ci_high,
+      df: null,
+      level: 0.95,
+    },
+  };
+}
+
 export function fit(
   state: ProjectState,
   d: DesignArtifact,
@@ -1215,10 +1299,13 @@ export function fit(
             folds: folds.map((f) => 30.1 * Math.sqrt(1 - f)),
           },
         };
+    const numeric = s.n_holdout && !classification
+      ? { r2: mean - 0.06, rmse: 52.9 * Math.sqrt(1 - mean + 0.06), mae: 33.4 }
+      : null;
     const holdout: Record<string, number | null> | null = s.n_holdout
       ? classification
         ? { [primary]: 0.66 + mean, log_loss: 0.62 - mean }
-        : { r2: mean - 0.06, rmse: 52.9 * Math.sqrt(1 - mean + 0.06), mae: 33.4 }
+        : numeric
       : null;
     const below = !classification && mean < 0;
     const concerns = below
@@ -1273,7 +1360,7 @@ export function fit(
       coefficients_n: null,
       role: null,
       calibration: null,
-      holdout_detail: null,
+      holdout_detail: numeric ? holdoutDetail(numeric, s.n_holdout) : null,
       optimism: null,
       internal_external: null,
       exposure_tests: [],

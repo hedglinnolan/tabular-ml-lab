@@ -15,7 +15,9 @@ writes ``docs/turbotab-next/review-packets/<lens>.md``:
    exist;
 2. **how they chain**: a Mermaid diagram of every relation the lens's own methods take part in
    (from them, or toward them from any contract), and the relations in a table with the sentence
-   the app states when each fires;
+   the app states when each fires; a relation lists the purposes it declares less any under which
+   the Router does not ask the one question that offers its method's options (:func:`chain_intro`
+   names them), and one declared only for such purposes is left out;
 3. **the defaults by purpose**, each with its reason: the option each method offers first for
    prediction and for inference, its rung, and the sound label that justifies it; where the app
    ranks by the data, the first option under each condition, computed by the app's own ranking
@@ -25,7 +27,8 @@ writes ``docs/turbotab-next/review-packets/<lens>.md``:
    checklist's answers item by item, every reading the journey injected, where the bundle
    contradicts itself, and what a stage reports that the bundle does not hold; where a journey
    did not reach the export, what stopped it, and where the lens has no reference fixture, what
-   one would need;
+   one would need; where a capture answered a question its purpose no longer asks
+   (:func:`stale_note`), that it predates the change and how to rerun it;
 5. **the questions the reviewer is asked to answer.**
 
 Everything but the journeys is regenerated in a second from the code, so the reference test can
@@ -123,8 +126,11 @@ def reviewed_in(lenses: Sequence[str]) -> str:
 
 def default_of(c: Any, purpose: str) -> dict[str, Any]:
     """The option ``c`` ranks first for ``purpose`` in the registry: its key, label, rung and
-    reason (where the app ranks by the data, ``defaults.cases`` says what it offers first)."""
-    return c.options_for(purpose)[0]
+    reason (where the app ranks by the data, ``defaults.cases`` says what it offers first), among
+    the options a question asks under it (``methods.unoffered``)."""
+    found = ref.unoffered(c).get(purpose)
+    off = set(found[2]) if found else set()
+    return next(o for o in c.options_for(purpose) if o["key"] not in off)
 
 
 BY_DATA = "ranked by the data: §3.4"
@@ -134,6 +140,9 @@ def default_cell(c: Any, purpose: str) -> str:
     through = defaults.THROUGH.get(c.key)
     if defaults.cases(c.key, purpose) is not None:
         return BY_DATA + (f" ({QUESTION_TITLES[through]}, `{through}`)" if through else "")
+    if ref.wholly_unoffered(c, purpose):  # BEATS_PREDICT §9 ruling 5: the substitution's curves
+        return (f"not asked under {purpose} (the Router's gate): "
+                f"“{ref.cell(ref.unoffered(c)[purpose][1])}”")
     d = default_of(c, purpose)
     if c.key in catalog.NOT_ASKED and d["rung"] not in ("not_offered", "refused"):
         return (f"never asked, so never applied from the app (§1); posted to the API, the "
@@ -160,13 +169,15 @@ def node_label(text: str) -> str:
 
 def chain_relations(lens: str) -> list[tuple[Any, Any]]:
     """``(contract, relation)`` for every relation a lens's own method takes part in: declared by
-    it, or declared by any contract toward it."""
+    it, or declared by any contract toward it; left out is a relation every purpose of which is one
+    under which the Router does not ask the one question that offers the declaring method's
+    options (``methods.relation_purposes`` leaves it none)."""
     own, _ = lens_contracts(lens)
     keys = {c.key for c in own}
     out = []
     for c in ref.ordered_contracts():
         for r in c.relations:
-            if c.key in keys or r.target in keys:
+            if (c.key in keys or r.target in keys) and ref.relation_purposes(c, r):
                 out.append((c, r))
     return out
 
@@ -207,6 +218,27 @@ def mermaid(lens: str) -> list[str]:
     return lines
 
 
+def chain_intro() -> str:
+    """§2's opening paragraph: what the chain holds, which purposes its rows leave out, read from
+    the registry (``methods.dropped_purposes``, the purposes ``methods.relation_purposes`` takes
+    off), and the diagram's key."""
+    said = [f"the `{q}` question under {p}" for q, p in ref.dropped_purposes()]
+    if said:
+        gates = said[0] if len(said) == 1 else ", ".join(said[:-1]) + " and " + said[-1]
+        purposes = (f"Each lists the purposes it declares, less any under which the Router does "
+                    f"not ask the one question that offers the declaring method's options "
+                    f"({gates}), and a relation declared only for such a purpose is left out. Any "
+                    f"other purpose stays listed, even one under which the registry's rungs offer "
+                    f"none of the method's options.")
+    else:
+        purposes = "Each lists every purpose it declares."
+    return ("Every relation this lens's own methods take part in: declared by them, or declared by "
+            f"another method toward them (BLUEPRINT §13). {purposes} Blue: this lens's methods; "
+            "grey: other methods; orange: a named consequence (a state, a concern or a refusal, "
+            "not a method). Solid: implies or precedes; dotted: enables, disables or conflicts; "
+            "thick: invalidates.")
+
+
 def chain_table(lens: str) -> list[str]:
     lines = ["| From | Kind | Toward | Fires for | Purposes | What the app says |",
              "|---|---|---|---|---|---|"]
@@ -222,7 +254,7 @@ def chain_table(lens: str) -> list[str]:
         if r.exits:
             says += " Exits: " + "; ".join(ref.cell(e) for e in r.exits) + "."
         lines.append(f"| `{c.key}` | {r.kind} | `{r.target}` | {fires} | "
-                     f"{', '.join(r.purposes)} | {says} |")
+                     f"{', '.join(ref.relation_purposes(c, r))} | {says} |")
     return lines
 
 
@@ -398,6 +430,42 @@ def beside_section(capture: dict[str, Any], h: str) -> list[str]:
     return lines + rows + [""]
 
 
+STALE = "This capture predates what the app asks today."
+
+
+def unasked_answers(spec: journeys.Journey, capture: dict[str, Any]) -> list[tuple[int, str]]:
+    """Each answer the capture posted (its row in the journey's table, and its question) to a
+    question the Router does not ask under the journey's purpose (``defaults.not_asked``: under
+    prediction, the energy model and the substitution, BEATS_PREDICT §9 ruling 5): a capture run
+    before that, whose methods section quotes the sentences those answers wrote."""
+    from turbotab.core.decisions import SLOTS
+
+    out = []
+    for i, a in enumerate(capture.get("answers") or [], 1):
+        question = SLOTS.get(str(a.get("kind")))
+        if question in defaults.PURPOSE_GATED and defaults.not_asked(question, spec.purpose):
+            out.append((i, question))
+    return out
+
+
+def stale_note(spec: journeys.Journey, capture: dict[str, Any]) -> list[str]:
+    """The note a capture gets when it answered a question its purpose no longer asks."""
+    unasked = unasked_answers(spec, capture)
+    if not unasked:
+        return []
+    questions = list(dict.fromkeys(q for _, q in unasked))
+    said = [f"`{q}` (“{defaults.not_asked(q, spec.purpose)}”)" for q in questions]
+    rows = [str(i) for i, _ in unasked]
+    return ["", f"**{STALE}** Under {spec.purpose} the Router does not ask "
+                f"{said[0] if len(said) == 1 else ', '.join(said[:-1]) + ' or ' + said[-1]}, "
+                f"but this journey answered {'it' if len(said) == 1 else 'them'} "
+                f"(row{'s' if len(rows) > 1 else ''} "
+                f"{rows[0] if len(rows) == 1 else ', '.join(rows[:-1]) + ' and ' + rows[-1]} of "
+                f"the table below), so the methods section below quotes the sentences those "
+                f"answers wrote. Rerun the journey "
+                f"(`python -m turbotab.core.reference.journeys {spec.name}`) to replace it."]
+
+
 def journey_section(spec: journeys.Journey, capture: dict[str, Any] | None,
                     level: int = 3) -> list[str]:
     h = "#" * level
@@ -416,6 +484,7 @@ def journey_section(spec: journeys.Journey, capture: dict[str, Any] | None,
     lines.append(f"- **Run:** at commit `{cap.get('commit')}`{dirty} on {cap.get('date')}, "
                  f"{cap.get('seconds'):,} s on {cap.get('workers')} workers"
                  + (f"; engine {export.get('engine')}" if export.get("engine") else "") + ".")
+    lines += stale_note(spec, capture)
     lines += ["", f"{h}# How the journey answered", "",
               "Every decision posted, in order, with where its answer came from (the journey's "
               "own research question, the app's first-ranked option, the journey's readings, or "
@@ -543,12 +612,7 @@ def render(lens: str, captures: dict[str, dict[str, Any] | None]) -> str:
                   "shown here:", ""]
     for q in labeled:
         lines += ref.question_section(q, QUESTION_TITLES[q], level=4)
-    lines += ["## 2 · How they chain", "",
-              "Every relation this lens's own methods take part in: declared by them, or declared "
-              "by another method toward them (BLUEPRINT §13). Blue: this lens's methods; grey: "
-              "other methods; orange: a named consequence (a state, a concern or a refusal, not "
-              "a method). Solid: implies or precedes; dotted: enables, disables or conflicts; "
-              "thick: invalidates.", ""]
+    lines += ["## 2 · How they chain", "", chain_intro(), ""]
     diagram = mermaid(lens)
     lines += diagram or ["This lens has no methods of its own, so no chain of its own; the shared "
                          "chain is in the methods reference."]

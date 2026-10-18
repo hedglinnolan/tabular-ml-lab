@@ -180,14 +180,15 @@ jobs:
         run: npm run build
 
       - name: Light real-server journeys, each on a fresh server
-        # m1-journey, m2-journeys and m3-no-dead-end, one at a time. Each spec writes its traces to
+        # m1-journey, m2-journeys, m3-no-dead-end and the two quest journeys (quest-nhanes-predict,
+        # quest-own-csv), one at a time. Each spec writes its traces to
         # its own folder (Playwright empties its output folder as it starts, so a shared one would
         # lose the earlier spec's traces), and the servers log outside it, copied in at the end.
         run: |
           logs="$RUNNER_TEMP/servers"
           mkdir -p "$logs"
           status=0
-          for spec in m1-journey m2-journeys m3-no-dead-end; do
+          for spec in m1-journey m2-journeys m3-no-dead-end quest-nhanes-predict quest-own-csv; do
             port=$(python -c "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1])")
             TURBOTAB_HOME="$(mktemp -d)" python -m turbotab.server --port "$port" > "$logs/$spec.log" 2>&1 &
             server=$!

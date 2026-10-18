@@ -551,8 +551,9 @@ def _register_validators() -> None:
 _register_validators()
 
 
-def intended_use_sentence(d: Any, state: Any) -> str:
-    """The ``set_intended_use`` record's sentence."""
+def intended_use_sentence(d: Any, state: Any, task: str | None = None) -> str:
+    """The ``set_intended_use`` record's sentence. ``task``: the outcome's task (answered, else the
+    one the target stage detected); a numeric outcome is classified by no threshold."""
     from turbotab.core.voice import listing, tick
 
     if d.use == "decision_support":
@@ -566,6 +567,9 @@ def intended_use_sentence(d: Any, state: Any) -> str:
         head = (f"The model was declared for decision support: net benefit was assessed by decision "
                 f"curve analysis over threshold probabilities from {tick(f'{low:g}')} to "
                 f"{tick(f'{high:g}')} (Vickers & Elkin 2006), and {chosen}")
+    elif (task or getattr(state, "task", None)) == "regression":
+        head = ("The model was declared for estimating each person's outcome: no decision "
+                "threshold was set")
     else:
         head = "The model was declared for risk estimation: no classification threshold was set"
     if d.subgroups:

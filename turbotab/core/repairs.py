@@ -450,13 +450,22 @@ def sas_zero_finding(frame: pd.DataFrame, target: str | None = None) -> tuple[di
         "source": "structural",
         "lens": None,
         "evidence": None,
-        "summary": (f"{_count(total)} {_plural(total, 'cell')} in {_names(cols)} hold `5.4e-79`: a "
-                    f"zero in a SAS transport file, misread."),
+        "summary": (f"{_count(total)} {_plural(total, 'cell')} in {_in_columns(cols)} hold "
+                    f"`5.4e-79`: a zero in a SAS transport file, misread."),
         "routes_to": None,
         "lever_label": None,
         "group": None,
     }
     return {"params": {"columns": counts}, "confidence": "high"}, finding
+
+
+def _in_columns(cols: Sequence[str]) -> str:
+    """The columns a count of cells is in, their count said plainly (R-f 14: "152 cells in `bp_di`
+    and 8 more" read as 8 more cells or 8 more columns): one named, else ```3` columns (`a` and 2
+    more)``."""
+    if len(cols) == 1:
+        return _tick(cols[0])
+    return f"{_count(len(cols))} columns ({_names(cols)})"
 
 
 def _offer_sas(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) -> list[RepairOption]:
@@ -465,11 +474,15 @@ def _offer_sas(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) -> 
         return []
     cols = list(counts)
     total = sum(counts.values())
+    # The recorded sentence keeps every column it reads as zero (R-f 14).
+    every = _tick(cols[0]) if len(cols) == 1 else \
+        f"{_count(len(cols))} columns: {_names(cols, limit=len(cols))}"
     return [_option(
         finding, "zero", "Read as zero",
-        f"{_count(total)} {_plural(total, 'cell')} holding `5.4e-79` become `0` in {_names(cols)}.",
+        f"{_count(total)} {_plural(total, 'cell')} holding `5.4e-79` become `0` in "
+        f"{_in_columns(cols)}.",
         f"{_count(total)} {_plural(total, 'cell')} holding `5.4e-79`, a misread SAS transport zero, "
-        f"{_plural(total, 'was', 'were')} read as `0`.",
+        f"{_plural(total, 'was', 'were')} read as `0` in {every}.",
         "values", {"columns": cols})]
 
 
@@ -1725,10 +1738,14 @@ def annotate(artifact: Any, state: Any, records: Sequence[Any]) -> Any:
     ``answered_by`` is the record that wrote the finding's disposition; else, the answer to its
     routed question when that answer settles it (:func:`matching_answer`); else, an applied repair
     of another finding that already does what one of this finding's options would.
+
+    A finding that does not fire on these answers is left out (``materiality.finding_fires``: the
+    dietary pack's energy finding under prediction, BEATS_PREDICT §9 ruling 5).
     """
     if not isinstance(artifact, Mapping) or not isinstance(artifact.get("findings"), list):
         return artifact
     from turbotab.core.interview import _live_writer
+    from turbotab.core.materiality import finding_fires
 
     dispositions = _dispositions(state)
     writers = disposition_writers(records)
@@ -1740,6 +1757,8 @@ def annotate(artifact: Any, state: Any, records: Sequence[Any]) -> Any:
                 done.setdefault(mark, writers[fid])
     out = []
     for finding in artifact["findings"]:
+        if isinstance(finding, Mapping) and not finding_fires(finding, state):
+            continue
         f = dict(finding)
         f.setdefault("repairs", [])
         d = dispositions.get(str(f.get("id")))
@@ -1784,10 +1803,21 @@ def _applied_only(value: Any) -> Any:
     return kept or None
 
 
+def _read_only(value: Any) -> Any:
+    """``numbers_read`` as a key reads it: only the readings an applied repair keeps. A dismissal or
+    a deferral writes its finding's entry as None, which reads no column as numbers, so a finding
+    set aside with no repair changes no key (W1-P11c's S3)."""
+    if not isinstance(value, Mapping):
+        return value
+    kept = {k: v for k, v in value.items() if isinstance(v, Mapping)}
+    return kept or None
+
+
 def _register_key_view() -> None:
     from turbotab.core.graph import register_key_view
 
     register_key_view("findings", _applied_only)
+    register_key_view("numbers_read", _read_only)
 
 
 _register_key_view()

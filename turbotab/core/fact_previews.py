@@ -188,11 +188,14 @@ def lens_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     else:
         n_pred = sum(1 for c in order if new[c] in PREDICTOR_ROLES)
         caption = f"Under {lenses}, {fmt_count(n_pred)} columns are read as predictors."
-    adds = []
-    if "dietary" in lens and energy and len(nutrients) >= 1:
-        adds.append("energy adjustment")
-    if "dietary" in lens and len(nutrients) >= 2:
-        adds.append("substitution curves")
+    adds, effects = [], []
+    # W1-R round 2 (R-f 13): the energy model and the substitution are asked only for estimating
+    # effects, never under Predict (BEATS_PREDICT §9 ruling 5).
+    estimating = getattr(ctx.state, "purpose", None) != "prediction"
+    if estimating and "dietary" in lens and energy and len(nutrients) >= 1:
+        effects.append("energy adjustment")
+    if estimating and "dietary" in lens and len(nutrients) >= 2:
+        effects.append("substitution curves")
     table = _small_table(ctx)
     if table is not None and _reads_feature_major(lens, table):
         adds.insert(0, "which way round the table is")
@@ -203,8 +206,11 @@ def lens_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     checks = (f"The {whose} checks raise {fmt_count(found)} "
               f"{'finding' if found == 1 else 'findings'} on this table" if found is not None
               else f"The {whose} checks run on this table")
-    ctx.read["note"] = checks + (f", and {_and(adds)} {'joins' if len(adds) == 1 else 'join'} "
-                                 f"the questions." if adds else ".")
+    joins = [f"{_and(adds)} {'joins' if len(adds) == 1 else 'join'} the questions"] if adds else []
+    if effects:
+        joins.append(f"for estimating effects, {_and(effects)} "
+                     f"{'joins' if len(effects) == 1 else 'join'} the questions")
+    ctx.read["note"] = checks + (f", and {'; and '.join(joins)}." if joins else ".")
     return [LineageView(
         title=clip_words(f"Columns as {lenses} read them" if len(names) > 1
                          else f"Columns as the {noun} lens reads them", TITLE_WORDS),

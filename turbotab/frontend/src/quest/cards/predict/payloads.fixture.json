@@ -1,0 +1,1249 @@
+{
+  "about": "What the W1-F Predict declaration cards post. The vitest in cards.test.tsx presses each option with the fields filled as listed and asserts the card posts exactly this payload; turbotab/core/tests/test_w1_declaration_cards.py validates every payload with parse_decision and checks the choices, the defaults and the bounds against core/decisions.py. A case with no payload is a press the card must not send.",
+  "defaults": {
+    "set_intended_use": {
+      "threshold_low": null,
+      "threshold_high": null,
+      "threshold": null,
+      "subgroups": [],
+      "fairness": "subgroup_performance"
+    },
+    "set_selection": {
+      "method": "none",
+      "where": "in_fold",
+      "keep": null,
+      "threshold": null,
+      "q": null,
+      "pre_selected": null,
+      "sensitivity": false
+    },
+    "set_validation": {
+      "folds": 5,
+      "validation": "kfold",
+      "repeats": 10,
+      "n_boot": 500,
+      "cluster": null,
+      "nested_cv": false,
+      "acknowledged": false
+    },
+    "set_levers": {
+      "forms": "none",
+      "variance_filter": "none",
+      "keep": null,
+      "imbalance": "none"
+    },
+    "set_updating": {
+      "method": "none"
+    },
+    "set_explain": {
+      "curves": "ale",
+      "exposures": [],
+      "reseeds": 5,
+      "as_effect": false
+    }
+  },
+  "fixed": {
+    "set_selection": {
+      "where": "in_fold",
+      "sensitivity": false
+    },
+    "set_validation": {
+      "acknowledged": false
+    },
+    "set_explain": {
+      "as_effect": false
+    }
+  },
+  "bounds": {
+    "set_intended_use": {
+      "threshold_low": {
+        "gt": 0,
+        "lt": 1
+      },
+      "threshold_high": {
+        "gt": 0,
+        "lt": 1
+      },
+      "threshold": {
+        "gt": 0,
+        "lt": 1
+      }
+    },
+    "set_selection": {
+      "keep": {
+        "ge": 1
+      },
+      "threshold": {
+        "gt": 0,
+        "lt": 1
+      },
+      "q": {
+        "ge": 1
+      }
+    },
+    "set_validation": {
+      "folds": {
+        "ge": 2,
+        "le": 10
+      },
+      "repeats": {
+        "ge": 2,
+        "le": 50
+      },
+      "n_boot": {
+        "ge": 20,
+        "le": 2000
+      }
+    },
+    "set_levers": {
+      "keep": {
+        "ge": 1
+      }
+    },
+    "set_explain": {
+      "reseeds": {
+        "ge": 0,
+        "le": 20
+      }
+    }
+  },
+  "choices": {
+    "set_intended_use": {
+      "use": ["risk_estimation", "decision_support"]
+    },
+    "set_selection": {
+      "method": ["none", "elastic_net", "stability", "screening", "stepwise", "univariable", "vip"]
+    },
+    "set_validation": {
+      "validation": ["kfold", "repeated_kfold", "bootstrap", "internal_external"]
+    },
+    "set_levers": {
+      "forms": ["none", "rule", "inner_cv"],
+      "variance_filter": ["none", "near_zero", "top"],
+      "imbalance": ["none", "weights", "undersample", "oversample"]
+    },
+    "set_updating": {
+      "method": ["none", "shrinkage"]
+    },
+    "set_explain": {
+      "curves": ["ale", "partial_dependence"]
+    }
+  },
+  "selects": {
+    "set_intended_use": {
+      "fairness": {
+        "values": ["subgroup_performance", "none"],
+        "blank": false
+      }
+    },
+    "set_selection": {
+      "pre_selected": {
+        "values": ["no", "yes", "other_data", "unknown"],
+        "blank": true
+      }
+    }
+  },
+  "cases": [
+    {
+      "card": "set_intended_use",
+      "press": "use:risk_estimation",
+      "note": "",
+      "payload": {
+        "kind": "set_intended_use",
+        "use": "risk_estimation",
+        "threshold_low": null,
+        "threshold_high": null,
+        "threshold": null,
+        "subgroups": [],
+        "fairness": "subgroup_performance"
+      }
+    },
+    {
+      "card": "set_intended_use",
+      "press": "use:decision_support",
+      "note": "",
+      "payload": {
+        "kind": "set_intended_use",
+        "use": "decision_support",
+        "threshold_low": null,
+        "threshold_high": null,
+        "threshold": null,
+        "subgroups": [],
+        "fairness": "subgroup_performance"
+      }
+    },
+    {
+      "card": "set_intended_use",
+      "press": "use:decision_support",
+      "note": "thresholds typed, decision support: sent",
+      "fill": {
+        "field-threshold_low": "0.05",
+        "field-threshold_high": "0.5",
+        "field-threshold": "0.2"
+      },
+      "payload": {
+        "kind": "set_intended_use",
+        "use": "decision_support",
+        "threshold_low": 0.05,
+        "threshold_high": 0.5,
+        "threshold": 0.2,
+        "subgroups": [],
+        "fairness": "subgroup_performance"
+      }
+    },
+    {
+      "card": "set_intended_use",
+      "press": "use:risk_estimation",
+      "note": "thresholds typed, risk estimation: not sent",
+      "fill": {
+        "field-threshold_low": "0.05",
+        "field-threshold_high": "0.5",
+        "field-threshold": "0.2"
+      },
+      "payload": {
+        "kind": "set_intended_use",
+        "use": "risk_estimation",
+        "threshold_low": null,
+        "threshold_high": null,
+        "threshold": null,
+        "subgroups": [],
+        "fairness": "subgroup_performance"
+      }
+    },
+    {
+      "card": "set_intended_use",
+      "press": "use:risk_estimation",
+      "note": "subgroups go in the table's order",
+      "fill": {
+        "field-fairness": "none"
+      },
+      "toggle": ["pick-subgroups-RIAGENDR", "pick-subgroups-RIDAGEYR"],
+      "payload": {
+        "kind": "set_intended_use",
+        "use": "risk_estimation",
+        "threshold_low": null,
+        "threshold_high": null,
+        "threshold": null,
+        "subgroups": ["RIDAGEYR", "RIAGENDR"],
+        "fairness": "none"
+      }
+    },
+    {
+      "card": "set_intended_use",
+      "press": "use:decision_support",
+      "note": "the recorded fairness and subgroups start the fields",
+      "recorded": {
+        "intended_use": {
+          "use": "risk_estimation",
+          "threshold_low": null,
+          "threshold_high": null,
+          "threshold": null,
+          "subgroups": ["RIDAGEYR"],
+          "fairness": "none"
+        }
+      },
+      "answered": true,
+      "payload": {
+        "kind": "set_intended_use",
+        "use": "decision_support",
+        "threshold_low": null,
+        "threshold_high": null,
+        "threshold": null,
+        "subgroups": ["RIDAGEYR"],
+        "fairness": "none"
+      }
+    },
+    {
+      "card": "set_intended_use",
+      "press": "use:decision_support",
+      "note": "blocked: a threshold is a probability below 1",
+      "fill": {
+        "field-threshold_low": "1"
+      },
+      "payload": null
+    },
+    {
+      "card": "set_intended_use",
+      "press": "use:decision_support",
+      "note": "blocked: a threshold is a probability above 0",
+      "fill": {
+        "field-threshold": "0"
+      },
+      "payload": null
+    },
+    {
+      "card": "set_selection",
+      "press": "method:none",
+      "note": "",
+      "payload": {
+        "kind": "set_selection",
+        "method": "none",
+        "where": "in_fold",
+        "keep": null,
+        "threshold": null,
+        "q": null,
+        "pre_selected": null,
+        "sensitivity": false
+      }
+    },
+    {
+      "card": "set_selection",
+      "press": "method:elastic_net",
+      "note": "",
+      "payload": {
+        "kind": "set_selection",
+        "method": "elastic_net",
+        "where": "in_fold",
+        "keep": null,
+        "threshold": null,
+        "q": null,
+        "pre_selected": null,
+        "sensitivity": false
+      }
+    },
+    {
+      "card": "set_selection",
+      "press": "method:stability",
+      "note": "",
+      "payload": {
+        "kind": "set_selection",
+        "method": "stability",
+        "where": "in_fold",
+        "keep": null,
+        "threshold": null,
+        "q": null,
+        "pre_selected": null,
+        "sensitivity": false
+      }
+    },
+    {
+      "card": "set_selection",
+      "press": "method:screening",
+      "note": "",
+      "payload": {
+        "kind": "set_selection",
+        "method": "screening",
+        "where": "in_fold",
+        "keep": null,
+        "threshold": null,
+        "q": null,
+        "pre_selected": null,
+        "sensitivity": false
+      }
+    },
+    {
+      "card": "set_selection",
+      "press": "method:stepwise",
+      "note": "",
+      "payload": {
+        "kind": "set_selection",
+        "method": "stepwise",
+        "where": "in_fold",
+        "keep": null,
+        "threshold": null,
+        "q": null,
+        "pre_selected": null,
+        "sensitivity": false
+      }
+    },
+    {
+      "card": "set_selection",
+      "press": "method:univariable",
+      "note": "",
+      "payload": {
+        "kind": "set_selection",
+        "method": "univariable",
+        "where": "in_fold",
+        "keep": null,
+        "threshold": null,
+        "q": null,
+        "pre_selected": null,
+        "sensitivity": false
+      }
+    },
+    {
+      "card": "set_selection",
+      "press": "method:vip",
+      "note": "",
+      "payload": {
+        "kind": "set_selection",
+        "method": "vip",
+        "where": "in_fold",
+        "keep": null,
+        "threshold": null,
+        "q": null,
+        "pre_selected": null,
+        "sensitivity": false
+      }
+    },
+    {
+      "card": "set_selection",
+      "press": "method:screening",
+      "note": "screening reads how many to keep",
+      "fill": {
+        "field-keep": "25"
+      },
+      "payload": {
+        "kind": "set_selection",
+        "method": "screening",
+        "where": "in_fold",
+        "keep": 25,
+        "threshold": null,
+        "q": null,
+        "pre_selected": null,
+        "sensitivity": false
+      }
+    },
+    {
+      "card": "set_selection",
+      "press": "method:elastic_net",
+      "note": "a count typed for screening is not sent with another method",
+      "fill": {
+        "field-keep": "25"
+      },
+      "payload": {
+        "kind": "set_selection",
+        "method": "elastic_net",
+        "where": "in_fold",
+        "keep": null,
+        "threshold": null,
+        "q": null,
+        "pre_selected": null,
+        "sensitivity": false
+      }
+    },
+    {
+      "card": "set_selection",
+      "press": "method:stability",
+      "note": "",
+      "fill": {
+        "field-threshold": "0.7",
+        "field-q": "10"
+      },
+      "payload": {
+        "kind": "set_selection",
+        "method": "stability",
+        "where": "in_fold",
+        "keep": null,
+        "threshold": 0.7,
+        "q": 10,
+        "pre_selected": null,
+        "sensitivity": false
+      }
+    },
+    {
+      "card": "set_selection",
+      "press": "method:univariable",
+      "note": "the univariable screen reads the threshold, not q",
+      "fill": {
+        "field-threshold": "0.2",
+        "field-q": "10"
+      },
+      "payload": {
+        "kind": "set_selection",
+        "method": "univariable",
+        "where": "in_fold",
+        "keep": null,
+        "threshold": 0.2,
+        "q": null,
+        "pre_selected": null,
+        "sensitivity": false
+      }
+    },
+    {
+      "card": "set_selection",
+      "press": "method:elastic_net",
+      "note": "",
+      "fill": {
+        "field-pre_selected": "no"
+      },
+      "payload": {
+        "kind": "set_selection",
+        "method": "elastic_net",
+        "where": "in_fold",
+        "keep": null,
+        "threshold": null,
+        "q": null,
+        "pre_selected": "no",
+        "sensitivity": false
+      }
+    },
+    {
+      "card": "set_selection",
+      "press": "method:none",
+      "note": "the recorded answer to the pre-selection question starts its field",
+      "recorded": {
+        "selection": {
+          "method": "none",
+          "where": "in_fold",
+          "keep": null,
+          "threshold": null,
+          "q": null,
+          "pre_selected": "other_data",
+          "sensitivity": false
+        }
+      },
+      "answered": true,
+      "payload": {
+        "kind": "set_selection",
+        "method": "none",
+        "where": "in_fold",
+        "keep": null,
+        "threshold": null,
+        "q": null,
+        "pre_selected": "other_data",
+        "sensitivity": false
+      }
+    },
+    {
+      "card": "set_selection",
+      "press": "method:screening",
+      "note": "blocked: at least one predictor is kept",
+      "fill": {
+        "field-keep": "0"
+      },
+      "payload": null
+    },
+    {
+      "card": "set_selection",
+      "press": "method:stability",
+      "note": "blocked: a threshold is a probability below 1",
+      "fill": {
+        "field-threshold": "1"
+      },
+      "payload": null
+    },
+    {
+      "card": "set_selection",
+      "press": "method:univariable",
+      "note": "blocked: a threshold is a probability above 0",
+      "fill": {
+        "field-threshold": "0"
+      },
+      "payload": null
+    },
+    {
+      "card": "set_selection",
+      "press": "method:screening",
+      "note": "keeping one predictor is accepted",
+      "fill": {
+        "field-keep": "1"
+      },
+      "payload": {
+        "kind": "set_selection",
+        "method": "screening",
+        "where": "in_fold",
+        "keep": 1,
+        "threshold": null,
+        "q": null,
+        "pre_selected": null,
+        "sensitivity": false
+      }
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:kfold",
+      "note": "",
+      "payload": {
+        "kind": "set_validation",
+        "folds": 5,
+        "validation": "kfold",
+        "repeats": 10,
+        "n_boot": 500,
+        "cluster": null,
+        "nested_cv": false,
+        "acknowledged": false
+      }
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:repeated_kfold",
+      "note": "",
+      "payload": {
+        "kind": "set_validation",
+        "folds": 5,
+        "validation": "repeated_kfold",
+        "repeats": 10,
+        "n_boot": 500,
+        "cluster": null,
+        "nested_cv": false,
+        "acknowledged": false
+      }
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:bootstrap",
+      "note": "",
+      "payload": {
+        "kind": "set_validation",
+        "folds": 5,
+        "validation": "bootstrap",
+        "repeats": 10,
+        "n_boot": 500,
+        "cluster": null,
+        "nested_cv": false,
+        "acknowledged": false
+      }
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:internal_external",
+      "note": "blocked: the folds are the groups of a column, and none is chosen",
+      "payload": null
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:internal_external",
+      "note": "",
+      "fill": {
+        "field-cluster": "cycle_begin_year"
+      },
+      "payload": {
+        "kind": "set_validation",
+        "folds": 5,
+        "validation": "internal_external",
+        "repeats": 10,
+        "n_boot": 500,
+        "cluster": "cycle_begin_year",
+        "nested_cv": false,
+        "acknowledged": false
+      }
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:kfold",
+      "note": "",
+      "fill": {
+        "field-folds": "10"
+      },
+      "payload": {
+        "kind": "set_validation",
+        "folds": 10,
+        "validation": "kfold",
+        "repeats": 10,
+        "n_boot": 500,
+        "cluster": null,
+        "nested_cv": false,
+        "acknowledged": false
+      }
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:repeated_kfold",
+      "note": "",
+      "fill": {
+        "field-repeats": "20"
+      },
+      "payload": {
+        "kind": "set_validation",
+        "folds": 5,
+        "validation": "repeated_kfold",
+        "repeats": 20,
+        "n_boot": 500,
+        "cluster": null,
+        "nested_cv": false,
+        "acknowledged": false
+      }
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:bootstrap",
+      "note": "",
+      "fill": {
+        "field-n_boot": "1000"
+      },
+      "payload": {
+        "kind": "set_validation",
+        "folds": 5,
+        "validation": "bootstrap",
+        "repeats": 10,
+        "n_boot": 1000,
+        "cluster": null,
+        "nested_cv": false,
+        "acknowledged": false
+      }
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:kfold",
+      "note": "",
+      "toggle": ["field-nested_cv"],
+      "payload": {
+        "kind": "set_validation",
+        "folds": 5,
+        "validation": "kfold",
+        "repeats": 10,
+        "n_boot": 500,
+        "cluster": null,
+        "nested_cv": true,
+        "acknowledged": false
+      }
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:kfold",
+      "note": "a cluster column is sent with internal-external validation only",
+      "fill": {
+        "field-cluster": "cycle_begin_year"
+      },
+      "payload": {
+        "kind": "set_validation",
+        "folds": 5,
+        "validation": "kfold",
+        "repeats": 10,
+        "n_boot": 500,
+        "cluster": null,
+        "nested_cv": false,
+        "acknowledged": false
+      }
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:bootstrap",
+      "note": "the recorded scheme starts the fields",
+      "recorded": {
+        "split": {
+          "holdout": 0.2,
+          "seed": 0,
+          "folds": 8,
+          "validation": "repeated_kfold",
+          "repeats": 30,
+          "n_boot": 700,
+          "cluster": null,
+          "nested_cv": true
+        }
+      },
+      "answered": true,
+      "payload": {
+        "kind": "set_validation",
+        "folds": 8,
+        "validation": "bootstrap",
+        "repeats": 30,
+        "n_boot": 700,
+        "cluster": null,
+        "nested_cv": true,
+        "acknowledged": false
+      }
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:kfold",
+      "note": "the lowest number of folds is accepted",
+      "fill": {
+        "field-folds": "2"
+      },
+      "payload": {
+        "kind": "set_validation",
+        "folds": 2,
+        "validation": "kfold",
+        "repeats": 10,
+        "n_boot": 500,
+        "cluster": null,
+        "nested_cv": false,
+        "acknowledged": false
+      }
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:repeated_kfold",
+      "note": "the most repeats are accepted",
+      "fill": {
+        "field-repeats": "50"
+      },
+      "payload": {
+        "kind": "set_validation",
+        "folds": 5,
+        "validation": "repeated_kfold",
+        "repeats": 50,
+        "n_boot": 500,
+        "cluster": null,
+        "nested_cv": false,
+        "acknowledged": false
+      }
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:bootstrap",
+      "note": "the fewest resamples are accepted",
+      "fill": {
+        "field-n_boot": "20"
+      },
+      "payload": {
+        "kind": "set_validation",
+        "folds": 5,
+        "validation": "bootstrap",
+        "repeats": 10,
+        "n_boot": 20,
+        "cluster": null,
+        "nested_cv": false,
+        "acknowledged": false
+      }
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:bootstrap",
+      "note": "the most resamples are accepted",
+      "fill": {
+        "field-n_boot": "2000"
+      },
+      "payload": {
+        "kind": "set_validation",
+        "folds": 5,
+        "validation": "bootstrap",
+        "repeats": 10,
+        "n_boot": 2000,
+        "cluster": null,
+        "nested_cv": false,
+        "acknowledged": false
+      }
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:kfold",
+      "note": "blocked: 2 to 10 folds",
+      "fill": {
+        "field-folds": "11"
+      },
+      "payload": null
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:kfold",
+      "note": "blocked: 2 to 10 folds",
+      "fill": {
+        "field-folds": "1"
+      },
+      "payload": null
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:repeated_kfold",
+      "note": "blocked: 2 to 50 repeats",
+      "fill": {
+        "field-repeats": "51"
+      },
+      "payload": null
+    },
+    {
+      "card": "set_validation",
+      "press": "validation:bootstrap",
+      "note": "blocked: 20 to 2,000 resamples",
+      "fill": {
+        "field-n_boot": "19"
+      },
+      "payload": null
+    },
+    {
+      "card": "set_levers",
+      "press": "forms:none",
+      "note": "",
+      "payload": {
+        "kind": "set_levers",
+        "forms": "none",
+        "variance_filter": "none",
+        "keep": null,
+        "imbalance": "none"
+      }
+    },
+    {
+      "card": "set_levers",
+      "press": "forms:rule",
+      "note": "",
+      "payload": {
+        "kind": "set_levers",
+        "forms": "rule",
+        "variance_filter": "none",
+        "keep": null,
+        "imbalance": "none"
+      }
+    },
+    {
+      "card": "set_levers",
+      "press": "forms:inner_cv",
+      "note": "",
+      "payload": {
+        "kind": "set_levers",
+        "forms": "inner_cv",
+        "variance_filter": "none",
+        "keep": null,
+        "imbalance": "none"
+      }
+    },
+    {
+      "card": "set_levers",
+      "press": "variance_filter:none",
+      "note": "",
+      "payload": {
+        "kind": "set_levers",
+        "forms": "none",
+        "variance_filter": "none",
+        "keep": null,
+        "imbalance": "none"
+      }
+    },
+    {
+      "card": "set_levers",
+      "press": "variance_filter:near_zero",
+      "note": "",
+      "payload": {
+        "kind": "set_levers",
+        "forms": "none",
+        "variance_filter": "near_zero",
+        "keep": null,
+        "imbalance": "none"
+      }
+    },
+    {
+      "card": "set_levers",
+      "press": "variance_filter:top",
+      "note": "",
+      "payload": {
+        "kind": "set_levers",
+        "forms": "none",
+        "variance_filter": "top",
+        "keep": null,
+        "imbalance": "none"
+      }
+    },
+    {
+      "card": "set_levers",
+      "press": "imbalance:none",
+      "note": "",
+      "payload": {
+        "kind": "set_levers",
+        "forms": "none",
+        "variance_filter": "none",
+        "keep": null,
+        "imbalance": "none"
+      }
+    },
+    {
+      "card": "set_levers",
+      "press": "imbalance:weights",
+      "note": "",
+      "payload": {
+        "kind": "set_levers",
+        "forms": "none",
+        "variance_filter": "none",
+        "keep": null,
+        "imbalance": "weights"
+      }
+    },
+    {
+      "card": "set_levers",
+      "press": "imbalance:undersample",
+      "note": "",
+      "payload": {
+        "kind": "set_levers",
+        "forms": "none",
+        "variance_filter": "none",
+        "keep": null,
+        "imbalance": "undersample"
+      }
+    },
+    {
+      "card": "set_levers",
+      "press": "imbalance:oversample",
+      "note": "",
+      "payload": {
+        "kind": "set_levers",
+        "forms": "none",
+        "variance_filter": "none",
+        "keep": null,
+        "imbalance": "oversample"
+      }
+    },
+    {
+      "card": "set_levers",
+      "press": "variance_filter:top",
+      "note": "",
+      "fill": {
+        "field-keep": "1000"
+      },
+      "payload": {
+        "kind": "set_levers",
+        "forms": "none",
+        "variance_filter": "top",
+        "keep": 1000,
+        "imbalance": "none"
+      }
+    },
+    {
+      "card": "set_levers",
+      "press": "variance_filter:near_zero",
+      "note": "how many to keep is sent with the most-variable filter only",
+      "fill": {
+        "field-keep": "1000"
+      },
+      "payload": {
+        "kind": "set_levers",
+        "forms": "none",
+        "variance_filter": "near_zero",
+        "keep": null,
+        "imbalance": "none"
+      }
+    },
+    {
+      "card": "set_levers",
+      "press": "imbalance:weights",
+      "note": "a lever changed leaves the other two as they are",
+      "recorded": {
+        "levers": {
+          "forms": "rule",
+          "variance_filter": "top",
+          "keep": 500,
+          "imbalance": "none"
+        }
+      },
+      "answered": true,
+      "payload": {
+        "kind": "set_levers",
+        "forms": "rule",
+        "variance_filter": "top",
+        "keep": 500,
+        "imbalance": "weights"
+      }
+    },
+    {
+      "card": "set_levers",
+      "press": "variance_filter:top",
+      "note": "blocked: at least one predictor is kept",
+      "fill": {
+        "field-keep": "0"
+      },
+      "payload": null
+    },
+    {
+      "card": "set_updating",
+      "press": "method:none",
+      "note": "",
+      "payload": {
+        "kind": "set_updating",
+        "method": "none"
+      }
+    },
+    {
+      "card": "set_updating",
+      "press": "method:shrinkage",
+      "note": "",
+      "payload": {
+        "kind": "set_updating",
+        "method": "shrinkage"
+      }
+    },
+    {
+      "card": "set_explain",
+      "press": "curves:ale",
+      "note": "",
+      "payload": {
+        "kind": "set_explain",
+        "curves": "ale",
+        "exposures": [],
+        "reseeds": 5,
+        "as_effect": false
+      }
+    },
+    {
+      "card": "set_explain",
+      "press": "curves:partial_dependence",
+      "note": "",
+      "payload": {
+        "kind": "set_explain",
+        "curves": "partial_dependence",
+        "exposures": [],
+        "reseeds": 5,
+        "as_effect": false
+      }
+    },
+    {
+      "card": "set_explain",
+      "press": "curves:ale",
+      "note": "",
+      "fill": {
+        "field-reseeds": "0"
+      },
+      "payload": {
+        "kind": "set_explain",
+        "curves": "ale",
+        "exposures": [],
+        "reseeds": 0,
+        "as_effect": false
+      }
+    },
+    {
+      "card": "set_explain",
+      "press": "curves:ale",
+      "note": "",
+      "fill": {
+        "field-reseeds": "20"
+      },
+      "payload": {
+        "kind": "set_explain",
+        "curves": "ale",
+        "exposures": [],
+        "reseeds": 20,
+        "as_effect": false
+      }
+    },
+    {
+      "card": "set_explain",
+      "press": "curves:ale",
+      "note": "one refit is the engine's to refuse, in its words",
+      "fill": {
+        "field-reseeds": "1"
+      },
+      "payload": {
+        "kind": "set_explain",
+        "curves": "ale",
+        "exposures": [],
+        "reseeds": 1,
+        "as_effect": false
+      }
+    },
+    {
+      "card": "set_explain",
+      "press": "curves:partial_dependence",
+      "note": "columns go in the table's order",
+      "toggle": ["pick-exposures-BMXBMI", "pick-exposures-RIDAGEYR"],
+      "payload": {
+        "kind": "set_explain",
+        "curves": "partial_dependence",
+        "exposures": ["RIDAGEYR", "BMXBMI"],
+        "reseeds": 5,
+        "as_effect": false
+      }
+    },
+    {
+      "card": "set_explain",
+      "press": "curves:ale",
+      "note": "blocked: 0 to 20 refits",
+      "fill": {
+        "field-reseeds": "21"
+      },
+      "payload": null
+    }
+  ],
+  "seal": [
+    {
+      "name": "a scheme set with set_validation is kept",
+      "current": {
+        "holdout": 0.2,
+        "seed": 0,
+        "folds": 8,
+        "validation": "repeated_kfold",
+        "repeats": 30,
+        "n_boot": 700,
+        "cluster": null,
+        "nested_cv": true
+      },
+      "press": "0.1",
+      "served": false,
+      "payload": {
+        "kind": "set_split",
+        "holdout": 0.1,
+        "seed": 0,
+        "folds": 8,
+        "validation": "repeated_kfold",
+        "repeats": 30,
+        "n_boot": 700,
+        "cluster": null,
+        "nested_cv": true
+      }
+    },
+    {
+      "name": "cross-validation only keeps it too",
+      "current": {
+        "holdout": 0.2,
+        "seed": 0,
+        "folds": 8,
+        "validation": "repeated_kfold",
+        "repeats": 30,
+        "n_boot": 700,
+        "cluster": null,
+        "nested_cv": true
+      },
+      "press": "0",
+      "served": false,
+      "payload": {
+        "kind": "set_split",
+        "holdout": 0,
+        "seed": 0,
+        "folds": 8,
+        "validation": "repeated_kfold",
+        "repeats": 30,
+        "n_boot": 700,
+        "cluster": null,
+        "nested_cv": true
+      }
+    },
+    {
+      "name": "the options the engine serves keep it",
+      "current": {
+        "holdout": 0.2,
+        "seed": 0,
+        "folds": 8,
+        "validation": "repeated_kfold",
+        "repeats": 30,
+        "n_boot": 700,
+        "cluster": null,
+        "nested_cv": true
+      },
+      "press": "0",
+      "served": true,
+      "payload": {
+        "kind": "set_split",
+        "holdout": 0,
+        "seed": 0,
+        "folds": 8,
+        "validation": "repeated_kfold",
+        "repeats": 30,
+        "n_boot": 700,
+        "cluster": null,
+        "nested_cv": true
+      }
+    },
+    {
+      "name": "internal-external validation keeps its column",
+      "current": {
+        "holdout": 0.2,
+        "seed": 0,
+        "folds": 10,
+        "validation": "internal_external",
+        "repeats": 20,
+        "n_boot": 700,
+        "cluster": "cycle_begin_year",
+        "nested_cv": false
+      },
+      "press": "0.2",
+      "served": false,
+      "payload": {
+        "kind": "set_split",
+        "holdout": 0.2,
+        "seed": 0,
+        "folds": 10,
+        "validation": "internal_external",
+        "repeats": 20,
+        "n_boot": 700,
+        "cluster": "cycle_begin_year",
+        "nested_cv": false
+      }
+    },
+    {
+      "name": "with no split recorded the scheme is the model's default",
+      "current": null,
+      "press": "0.1",
+      "served": false,
+      "payload": {
+        "kind": "set_split",
+        "holdout": 0.1,
+        "seed": 0,
+        "folds": 5,
+        "validation": "kfold",
+        "repeats": 10,
+        "n_boot": 500,
+        "cluster": null,
+        "nested_cv": false
+      }
+    }
+  ]
+}

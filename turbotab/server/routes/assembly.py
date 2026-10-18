@@ -7,10 +7,12 @@ codebook is read and kept in the project, and its preview says what it would set
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from starlette.concurrency import run_in_threadpool
 
 from turbotab.core.codebook import check_suffix
+from turbotab.core.workspace import PROVENANCE_MAX_CHARS, source_provenance
+from turbotab.server.errors import ApiError
 from turbotab.server.routes import get_service, get_settings, refusal, require_local
 from turbotab.server.schemas import (
     AddedFile,
@@ -59,15 +61,34 @@ def add_file(request: Request, pid: str, body: AddFile) -> dict:
 
 
 @router.post("/projects/{pid}/files/upload", response_model=AddedFile,
-             responses={400: refusal("No file, or not a readable data file")},
-             openapi_extra=_UPLOAD_BODY)
-async def upload_file(request: Request, pid: str) -> dict:
-    """Upload a file to join to the project's table (multipart field ``file``)."""
+             responses={400: refusal("No file, not a readable data file, or a field of where it "
+                                     "came from that does not read")},
+             openapi_extra=_UPLOAD_BODY,
+             description=(
+                 "Upload a file to join to the project's table (multipart field ``file``). "
+                 "``url``, ``release_date`` and ``license`` (each optional, each at most "
+                 f"{PROVENANCE_MAX_CHARS:,} characters) say where the file came from: kept on "
+                 "the file's meta and echoed into the export's ``provenance.json`` inputs beside "
+                 "the file's SHA-256 once it is joined (SWARM_ENGINE_PLAN E5). One that does not "
+                 "read refuses the upload before any of it is kept."))
+async def upload_file(
+    request: Request,
+    pid: str,
+    url: str | None = Query(None, description="Where the file came from, in full (https://…)"),
+    release_date: str | None = Query(None, description="When it was released, YYYY-MM-DD"),
+    license: str | None = Query(None, description="The license it was released under"),
+) -> dict:
+    """Upload a file to join to the project's table, with where it came from (the route's
+    description)."""
+    try:
+        provenance = source_provenance(url=url, release_date=release_date, license=license)
+    except ValueError as exc:
+        raise ApiError(400, "bad_provenance", str(exc)) from None
     service = get_service(request)
     await run_in_threadpool(service.workspace.get, pid)
     staged = await receive_upload(request, service.workspace.uploads_dir())
     return await run_in_threadpool(service.add_file_from_upload, pid, staged.path,
-                                   staged.client_name)
+                                   staged.client_name, provenance)
 
 
 @router.post("/projects/{pid}/join-preview", response_model=JoinPreview,

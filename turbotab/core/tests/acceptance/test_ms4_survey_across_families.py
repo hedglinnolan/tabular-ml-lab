@@ -977,9 +977,10 @@ def test_4_the_nhanes_mortality_chain_runs_through_the_server(tmp_path):
         "within `SDMVSTRA` (`31` PSUs in `15` strata), first-stage units taken as sampled with "
         "replacement, with t intervals on the PSUs minus the strata that hold the analysis rows.")
     # The population clause is the sentence's standing clause, last (``voice.restate``), after
-    # the readings the values settled.
+    # the families alone: the readings the values settled are their own sentence (ruling R-c).
     assert said["select_models"].startswith(
-        "One model family was chosen: Cox proportional hazards. Read from the values, ")
+        "One model family was chosen: Cox proportional hazards. For the surveyed population, ")
+    assert "Read from the values" not in said["select_models"]
     assert said["select_models"].endswith(
         " For the surveyed population, Cox regression (Binder's pseudo-likelihood, Efron ties) was "
         "weighted by `WTMEC2YR`, with standard errors by Taylor linearization over the survey "
@@ -1097,9 +1098,10 @@ def test_4_the_methods_text_restates_what_the_survey_answer_does_on_the_answer_a
                      f"design-based estimator, so it was blocked and recorded and the coefficient "
                      f"is not corrected.")
     assert scale.sentence == scale_said
+    # The readings the values settled are their own sentence among the predictors, never the
+    # families answer's (W1-R round 2, ruling R-c), though the recorder's context still holds them.
     head = ("Three model families were chosen: linear regression, elastic net and feature-wise "
-            "least-squares tests with Benjamini–Hochberg false-discovery control. Read from the "
-            "values, no question asked: `age` is a covariate.")
+            "least-squares tests with Benjamini–Hochberg false-discovery control.")
     swap_said = SWAP_SAID.format(held="at the same total energy") + SWAP_SAMPLE_UNSIZED
     assert (chosen.sentence, swap.sentence) == (head, swap_said)
     assert calibration.sentence == CALIBRATION_APPLIED.format(n=200)

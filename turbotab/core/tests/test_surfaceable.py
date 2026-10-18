@@ -91,7 +91,7 @@ def test_every_router_key_decision_kind_finding_and_result_has_an_executable_dec
     assert {k for k in registry if k.startswith("result:")} == {
         f"result:{name}" for name in quest.COMPUTE}
     graph = {s.name for s in surfacing._order()}
-    known = set(QUESTION_KEYS) | {d.kind for d in quest.DECLARATIONS}
+    known = set(QUESTION_KEYS) | {d.kind for d in quest.DECLARATIONS} | set(decisions.SYSTEM_KINDS)
     empty = ProjectState()
     for key, item in registry.items():
         assert isinstance(item, surfacing.Surfaceable), key

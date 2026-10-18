@@ -877,7 +877,7 @@ Under **inference** it is stated, never asked by default (`causal.causal_gate`):
 
 ## 2 · How they chain
 
-Every relation this lens's own methods take part in: declared by them, or declared by another method toward them (BLUEPRINT §13). Blue: this lens's methods; grey: other methods; orange: a named consequence (a state, a concern or a refusal, not a method). Solid: implies or precedes; dotted: enables, disables or conflicts; thick: invalidates.
+Every relation this lens's own methods take part in: declared by them, or declared by another method toward them (BLUEPRINT §13). Each lists the purposes it declares, less any under which the Router does not ask the one question that offers the declaring method's options (the `substitution` question under prediction), and a relation declared only for such a purpose is left out. Any other purpose stays listed, even one under which the registry's rungs offer none of the method's options. Blue: this lens's methods; grey: other methods; orange: a named consequence (a state, a concern or a refusal, not a method). Solid: implies or precedes; dotted: enables, disables or conflicts; thick: invalidates.
 
 ```mermaid
 flowchart LR
@@ -1241,7 +1241,7 @@ Each condition the app ranks by, and what it offers first under it, computed by 
 
 | Method | Purpose | When | What the app offers first |
 |---|---|---|---|
-| A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | prediction | an intake on a table with total energy | `standard`, the energy model's first (the energy-adjustment question) |
+| A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | prediction | an intake on a table with total energy | nothing: the energy-adjustment question, which sets an intake's transform, is not asked (“The energy model decides what a nutrient's coefficient means, and under prediction no coefficient is read as an effect.”) |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | prediction | a multi-item scale | `score`: declared with its items and key (`set_scales`), never ranked; no question asks it, so from the app the items enter on their own (the scales contract) |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | prediction | raw counts or intensities | the omics normalization by the data's kind (`log_cpm_tmm` for counts, `pqn_log2` for intensities) |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | inference | an intake on a table with every source of energy as a column (all components needs each) | `all_components`, the energy model's first (the energy-adjustment question) |

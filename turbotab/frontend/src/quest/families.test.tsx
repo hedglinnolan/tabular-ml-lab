@@ -1,0 +1,401 @@
+/**
+ * The families card in the shell (finding 12 of the 2026-10-17 walkthrough).
+ *
+ * The readings the fit waits on show once: on the card, in the ledger's ask card on the families
+ * question. A families press refused for them says what it waits for, in the consumer's own words,
+ * and leaves the readings to that card (no wall of confirmations again under the press). And a
+ * reading confirmed there keeps the families chosen: the confirmation rebuilds the table, the
+ * families line waits while the shelf is computed again, and the card is drawn anew when it opens,
+ * with the choice as it was. A choice held against a record that has changed since is not restored.
+ *
+ * The view is a real server's captured NHANES walk under Predict where the families question is
+ * open (src/mocks/fixtures), each fresh stage's artifact as captured; the quest log is the engine's
+ * (fixtures/quest-contract.json) with Models' selection answered and the families line open. The ask
+ * card and the refusal are the engine's shapes (core/ask.py, core/decisions.py
+ * `_models_read_settled_readings`: the fit's reason, the ledger's question after it, one block
+ * confirmation, two alternatives per column, and the roles question only where a role waits: the
+ * re-walk's N4), set by construction.
+ */
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, vi } from "vitest";
+import { api, RefusalError } from "../api/client";
+import type { TeachingEntry } from "../api/m1-types";
+import type { AskCard } from "../api/m3-types";
+import { keys } from "../api/queries";
+import type { Decision, ProjectView, QuestLine, QuestLog, Refusal } from "../api/schema";
+import { READINGS_ABOVE, besideAsk, confirmsRoleInBlock, oneRoleAtATime } from "../components/record/besideAsk";
+import { artifactAt, expandView, viewsOf, type M3Fixture } from "../mocks/m3";
+import { CONTRACT } from "./fixtures/contract";
+import { QuestScreen } from "./QuestScreen";
+
+const FIXTURES = import.meta.glob<M3Fixture>("../mocks/fixtures/m3-nhanes-prediction.json", {
+  eager: true,
+  import: "default",
+});
+const JOURNEY = Object.values(FIXTURES)[0]!;
+const SHARED = Object.values(
+  import.meta.glob<{ teaching: TeachingEntry[] }>("../mocks/fixtures/m3-shared.json", {
+    eager: true,
+    import: "default",
+  }),
+)[0]!;
+const PID = "quest-families";
+const VIEWS = viewsOf(JOURNEY);
+const AT = VIEWS.findIndex((v) =>
+  v.interview.some((s) => s.key === "models" && s.status === "open"),
+);
+const VIEW = expandView(JOURNEY, VIEWS[AT]!, PID, "2026-10-17T00:00:00Z");
+const SHELF = artifactAt(JOURNEY, "shelf", VIEW.stages.shelf!.key) as {
+  families: { key: string; label: string; rank: number }[];
+};
+
+const COLUMNS = ["bp_sys", "bp_di", "hdl", "triglycerides"];
+const readings = (pairs: [string, string][]) =>
+  ({
+    kind: "confirm_readings",
+    items: pairs.map(([column, value]) => ({ reading: "code_or_count", column, value })),
+  }) as Extract<Decision, { kind: "confirm_readings" }>;
+const REASON =
+  "`bp_sys`, `bp_di`, `hdl` and `triglycerides` hold whole numbers, which may be codes for categories (one indicator per level) or amounts (one slope); the fit waits for the answer for each.";
+const ASK_TEXT = `Tell me about these columns: ${COLUMNS.map((c) => `\`${c}\`: an amount? (whole numbers from 20 to 230)`).join("; ")}.`;
+const ROLES_EXIT = { label: "Change the roles (the roles question)", decision: null };
+const REFUSAL: Refusal = {
+  error: {
+    code: "reading_unsettled",
+    message: `${REASON} ${ASK_TEXT}`,
+    exits: [
+      {
+        label: "Confirm every best guess as shown",
+        decision: readings(COLUMNS.map((c) => [c, "amount"])),
+      },
+      ...COLUMNS.flatMap((c) => [
+        { label: `\`${c}\`: an amount`, decision: readings([[c, "amount"]]) },
+        { label: `\`${c}\`: codes for categories`, decision: readings([[c, "code"]]) },
+      ]),
+    ],
+  },
+};
+/** The same refusal where a role waits too: the engine offers the roles question after the rest. */
+const WITH_ROLE: Refusal = { error: { ...REFUSAL.error, exits: [...REFUSAL.error.exits, ROLES_EXIT] } };
+const ASK: AskCard = {
+  question: "models",
+  consumer: "The fit",
+  text: ASK_TEXT,
+  groups: COLUMNS.map((c) => ({
+    kind: "code_or_count",
+    columns: [c],
+    guess: "amount",
+    guess_words: "an amount",
+    evidence: "whole numbers from 20 to 230",
+  })),
+  exits: REFUSAL.error.exits.filter((x) => x.decision) as AskCard["exits"],
+  read_from_data: [],
+} as AskCard;
+
+/** The engine's log with Models' selection answered and the families line as `status` makes it. */
+function logWith(status: QuestLine["status"]): QuestLog {
+  const base = CONTRACT.logs.models_open.log;
+  return {
+    ...base,
+    stages: base.stages.map((s) =>
+      s.key === "models"
+        ? {
+            ...s,
+            lines: s.lines.map((l) =>
+              l.key === "set_selection"
+                ? { ...l, status: "answered", decision_id: "r-selection" }
+                : l.key === "models"
+                  ? {
+                      ...l,
+                      status,
+                      waiting_for: [],
+                      computing: status === "waiting" ? ["shelf"] : [],
+                    }
+                  : l,
+            ),
+          }
+        : s,
+    ),
+  };
+}
+
+function shell(view: ProjectView) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  qc.setQueryData(keys.teaching(), SHARED.teaching);
+  qc.setQueryData(keys.quest(PID), logWith("open"));
+  qc.setQueryData(keys.view(PID), view);
+  for (const [name, status] of Object.entries(view.stages)) {
+    if (!status || status.status !== "fresh") continue;
+    qc.setQueryData(keys.stage(PID, name), {
+      stage: name,
+      key: status.key,
+      fresh: true,
+      status: status.status,
+      artifact: artifactAt(JOURNEY, name, status.key),
+    });
+  }
+  render(
+    <QueryClientProvider client={qc}>
+      <QuestScreen pid={PID} stream="open" />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByTestId("stage-models"));
+  return qc;
+}
+
+/** The two families the shelf ranks first, chosen on the card. */
+function chooseTwo() {
+  const two = [...SHELF.families].sort((a, b) => a.rank - b.rank).slice(0, 2);
+  for (const f of two) fireEvent.click(screen.getByTestId(`option-${f.key}`));
+  return two;
+}
+
+beforeEach(() => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => new Promise(() => {})),
+  );
+  // The views measure their box; jsdom has no layout to measure.
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  vi.spyOn(api, "preview").mockReturnValue(new Promise(() => {}));
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+/** The query cache tells its observers on a timer. */
+const notified = () => new Promise((r) => setTimeout(r, 0));
+
+describe("the families chosen, across a confirmation that recomputes the shelf", () => {
+  it("are chosen still when the families line opens again", async () => {
+    expect(AT).toBeGreaterThan(0);
+    expect(VIEW.state.models).toBeNull();
+    const qc = shell(VIEW);
+    const two = chooseTwo();
+    expect(screen.getByTestId("record-models")).toHaveTextContent("Choose these 2 families");
+    // The confirmation rebuilds the table: the line waits while the shelf is computed again.
+    await act(async () => {
+      qc.setQueryData(keys.quest(PID), logWith("waiting"));
+      await notified();
+    });
+    expect(screen.queryByTestId("record-models")).toBeNull();
+    await act(async () => {
+      qc.setQueryData(keys.quest(PID), logWith("open"));
+      await notified();
+    });
+    const button = await screen.findByTestId("record-models");
+    expect(button).toHaveTextContent("Choose these 2 families");
+    expect(button).toBeEnabled();
+    for (const f of two)
+      expect(screen.getByTestId(`option-${f.key}`)).toHaveAttribute("data-chosen");
+  });
+
+  it("start from the record instead where the record changed meanwhile", async () => {
+    const qc = shell(VIEW);
+    chooseTwo();
+    await act(async () => {
+      qc.setQueryData(keys.quest(PID), logWith("waiting"));
+      await notified();
+    });
+    const linear = SHELF.families.find((f) => f.key === "linear")!;
+    await act(async () => {
+      qc.setQueryData<ProjectView>(keys.view(PID), {
+        ...VIEW,
+        state: { ...VIEW.state, models: ["linear"] },
+      });
+      qc.setQueryData(keys.quest(PID), logWith("open"));
+      await notified();
+    });
+    expect(await screen.findByTestId("record-models")).toHaveTextContent(
+      `Choose the ${linear.label.toLowerCase()}`,
+    );
+    expect(document.querySelectorAll('[data-testid="options-models"] [data-chosen]')).toHaveLength(
+      1,
+    );
+  });
+});
+
+describe("a families press refused for the readings the card asks", () => {
+  const asking: ProjectView = {
+    ...VIEW,
+    interview: VIEW.interview.map((s) => (s.key === "models" ? { ...s, ask: ASK } : s)),
+  };
+
+  it("says what it waits for in the fit's words, and leaves the readings to the ask card", async () => {
+    shell(asking);
+    const ask = screen.getByTestId("ask-card");
+    expect(within(ask).getAllByTestId("ask-confirm")).toHaveLength(COLUMNS.length);
+    vi.spyOn(api, "decide").mockRejectedValue(new RefusalError(REFUSAL));
+    chooseTwo();
+    fireEvent.click(screen.getByTestId("record-models"));
+    const note = await screen.findByTestId("refusal");
+    expect(note).toHaveTextContent("the fit waits for the answer for each.");
+    expect(note).not.toHaveTextContent("Tell me about");
+    // The re-walk's N4: its one way through leads to the readings the card lists, never to the
+    // roles question, which asks nothing the fit waits for here.
+    const exits = within(note).getAllByTestId("refusal-exit");
+    expect(exits.map((b) => b.textContent)).toEqual([READINGS_ABOVE.label]);
+    fireEvent.click(exits[0]!);
+    expect(ask).toContainElement(document.activeElement as HTMLElement);
+    // The readings' confirmations are on the card once: the ask card's.
+    expect(screen.getAllByTestId("ask-confirm")).toHaveLength(COLUMNS.length);
+  });
+
+  it("keeps the roles question after the readings where a role waits too", async () => {
+    shell(asking);
+    vi.spyOn(api, "decide").mockRejectedValue(new RefusalError(WITH_ROLE));
+    chooseTwo();
+    fireEvent.click(screen.getByTestId("record-models"));
+    const note = await screen.findByTestId("refusal");
+    expect(
+      within(note)
+        .getAllByTestId("refusal-exit")
+        .map((b) => b.textContent),
+    ).toEqual([READINGS_ABOVE.label, ROLES_EXIT.label]);
+  });
+
+  it("is said whole where the refusal offers no confirmation of a reading", async () => {
+    shell(asking);
+    const other: Refusal = {
+      error: {
+        code: "models_task",
+        message: "These families cannot fit a numeric outcome. Tell me about this column: `x`.",
+        exits: [ROLES_EXIT],
+      },
+    };
+    vi.spyOn(api, "decide").mockRejectedValue(new RefusalError(other));
+    chooseTwo();
+    fireEvent.click(screen.getByTestId("record-models"));
+    const note = await screen.findByTestId("refusal");
+    await waitFor(() => expect(note).toHaveTextContent("Tell me about this column: x."));
+  });
+});
+
+/** An exit's words as its button reads: backticks dropped, " instead" after one that records. */
+const exitText = (x: Refusal["error"]["exits"][number]) => `${x.label.replaceAll("`", "")}${x.decision ? " instead" : ""}`;
+
+/**
+ * AskFor's guard both ways (W1-R R3 P4): a refused press is cut to its own words beside the ledger's
+ * ask card only where the step is open, carries that card, and the press is not the card's own.
+ * Without the card on the step, or for a press from the card, the refusal is answered in full, its
+ * readings and their confirmations with it.
+ */
+describe("a refused press answered in full (W1-R R3 P4)", () => {
+  it("keeps the readings and their confirmations where the families step carries no ask card", async () => {
+    const bare: ProjectView = {
+      ...VIEW,
+      interview: VIEW.interview.map((s) => (s.key === "models" ? { ...s, ask: null } : s)),
+    };
+    shell(bare);
+    expect(screen.queryByTestId("ask-card")).toBeNull();
+    vi.spyOn(api, "decide").mockRejectedValue(new RefusalError(REFUSAL));
+    chooseTwo();
+    fireEvent.click(screen.getByTestId("record-models"));
+    const note = await screen.findByTestId("refusal");
+    expect(note).toHaveTextContent("Tell me about these columns");
+    expect(
+      within(note)
+        .getAllByTestId("refusal-exit")
+        .map((b) => b.textContent),
+    ).toEqual(REFUSAL.error.exits.map(exitText));
+  });
+
+  it("answers a press from the ask card itself in full, at its line", async () => {
+    shell({
+      ...VIEW,
+      interview: VIEW.interview.map((s) => (s.key === "models" ? { ...s, ask: ASK } : s)),
+    });
+    vi.spyOn(api, "decide").mockRejectedValue(new RefusalError(REFUSAL));
+    const line = screen.getAllByTestId("ask-line")[0]!;
+    fireEvent.click(within(line).getByTestId("ask-confirm"));
+    const note = await within(line).findByTestId("refusal");
+    expect(note).toHaveTextContent("Tell me about these columns");
+    expect(
+      within(note)
+        .getAllByTestId("refusal-exit")
+        .map((b) => b.textContent),
+    ).toEqual(REFUSAL.error.exits.map(exitText));
+  });
+});
+
+/**
+ * BLUEPRINT §14 rule 2 (ruling R-g, which replaces R-b's one per column): a role proposed below high
+ * confidence never rides along in a block with other readings, so a refusal's way forward that
+ * confirms several roles of different proposals in one press ("Confirm each of the 7 as shown",
+ * the engine's `_models_read_settled_readings` at W1-R R1's verification) is not offered; one that
+ * confirms a single role, one group's press (roles alone, each as one proposed role: the engine
+ * offers it only for the columns its roles stage proposed alike, and accepts no other), or a block
+ * of readings that are not roles, still is.
+ */
+describe("a refusal's ways forward, one judgment per press (ruling R-g)", () => {
+  const FLAGS = ["imputed_bp", "imputed_hdl"];
+  const roles = (columns: string[], value: string) =>
+    ({ kind: "confirm_readings", items: columns.map((column) => ({ reading: "role", column, value })) }) as Decision;
+  const SINGLE = { label: "Confirm `bp_sys` as a predictor", decision: roles(["bp_sys"], "covariate") };
+  const GROUP = { label: `Confirm these ${FLAGS.length} as flags on other columns`, decision: roles(FLAGS, "flag") };
+  const SEVERAL = {
+    kind: "confirm_readings",
+    items: [{ reading: "role", column: "bp_sys", value: "covariate" }, ...FLAGS.map((column) => ({ reading: "role", column, value: "flag" }))],
+  } as Decision;
+  const ROLE_REFUSAL: Refusal = {
+    error: {
+      code: "reading_unsettled",
+      message: "The fit reads each column's role, and 3 were proposed below high confidence.",
+      exits: [{ label: "Confirm each of the 3 as shown", decision: SEVERAL }, SINGLE, GROUP, ROLES_EXIT],
+    },
+  };
+
+  it("offers no exit that confirms roles of different proposals together, and keeps the rest", async () => {
+    shell({ ...VIEW, interview: VIEW.interview.map((s) => (s.key === "models" ? { ...s, ask: null } : s)) });
+    vi.spyOn(api, "decide").mockRejectedValue(new RefusalError(ROLE_REFUSAL));
+    chooseTwo();
+    fireEvent.click(screen.getByTestId("record-models"));
+    const note = await screen.findByTestId("refusal");
+    expect(
+      within(note)
+        .getAllByTestId("refusal-exit")
+        .map((b) => b.textContent),
+    ).toEqual([exitText(SINGLE), exitText(GROUP), exitText(ROLES_EXIT)]);
+  });
+
+  it("tells a block of roles from one role alone, one group's press and a block of other readings", () => {
+    expect(confirmsRoleInBlock(ROLE_REFUSAL.error.exits[0]!)).toBe(true);
+    expect(confirmsRoleInBlock(GROUP)).toBe(false);
+    expect(confirmsRoleInBlock(SINGLE)).toBe(false);
+    expect(confirmsRoleInBlock(REFUSAL.error.exits[0]!)).toBe(false);
+    expect(confirmsRoleInBlock(ROLES_EXIT)).toBe(false);
+    // A role in a block of other readings rides along all the same.
+    const mixed = { label: "x", decision: { kind: "confirm_readings", items: [{ reading: "role", column: "a", value: "flag" }, { reading: "code_or_count", column: "b", value: "amount" }] } as Decision };
+    expect(confirmsRoleInBlock(mixed)).toBe(true);
+    expect(oneRoleAtATime(REFUSAL)).toBe(REFUSAL);
+  });
+});
+
+describe("besideAsk", () => {
+  it("keeps the refusal's own words up to the ledger's question, and its ways forward but the confirmations", () => {
+    const out = besideAsk(REFUSAL);
+    expect(out.error.message).toBe(REASON);
+    // The confirmations are the card's: one way through leads to them instead (the re-walk's N4).
+    expect(out.error.exits).toEqual([READINGS_ABOVE]);
+    expect(out.error.code).toBe(REFUSAL.error.code);
+    expect(besideAsk(WITH_ROLE).error.exits).toEqual([READINGS_ABOVE, ROLES_EXIT]);
+  });
+
+  it("returns a refusal that offers no confirmation as it is", () => {
+    const plain: Refusal = {
+      error: { code: "c", message: `${REASON} ${ASK_TEXT}`, exits: [ROLES_EXIT] },
+    };
+    expect(besideAsk(plain)).toBe(plain);
+  });
+});

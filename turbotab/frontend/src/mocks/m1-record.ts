@@ -47,6 +47,7 @@ import {
 } from "./m1-stages";
 import { sentenceFor, validateM1, voiceFindings } from "./m1-voice";
 import { FEATURE_MAJOR_NAME, effectiveGrain, m2Mock, metabolomicsFeatureMajor } from "./m2-record";
+import { fitPressed, servedFit } from "./quest";
 
 type M1Stage = keyof M1StageArtifacts;
 
@@ -615,16 +616,19 @@ export function m1RecordHandlers(server: MockServer): HttpHandler[] {
       if (isM1(stage)) {
         const result = stageResult(pid, stage);
         if (result && p && stage === "fit" && result.artifact) {
-          // The held-out scores are computed and withheld until the seal is opened (M2 §3).
+          // The held-out scores are computed and withheld until the seal is opened (M2 §3), and
+          // their detail with them: the intervals, calibration, the baseline and its verdict.
           const state = fold(p.records);
           const fit = result.artifact as M1StageArtifacts["fit"];
           if (!state.seal_opened) {
             result.artifact = {
               ...fit,
               holdout_sealed: true,
-              models: fit.models.map((x) => ({ ...x, holdout: null })),
+              models: fit.models.map((x) => ({ ...x, holdout: null, holdout_detail: null })),
             };
           }
+          // Under prediction no score is served before Fit is pressed, as the real server serves it.
+          result.artifact = servedFit(result.artifact, state.purpose, fitPressed(pid));
         }
         return result ? HttpResponse.json(result) : undefined;
       }

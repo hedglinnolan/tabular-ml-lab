@@ -12,7 +12,9 @@ import pytest
 from turbotab.core.config import (
     WORKER_CAP, Settings, default_workers, parse_bytes, total_memory_bytes,
 )
-from turbotab.core.workspace import PROJECT_ID_RE, ProjectMeta, ProjectNotFound, Workspace
+from turbotab.core.workspace import (
+    PROJECT_ID_RE, ProjectMeta, ProjectNotFound, Workspace, source_provenance,
+)
 
 SAMPLE = Path(__file__).resolve().parents[2] / "sample_data" / "clinical_risk.csv"
 
@@ -58,10 +60,21 @@ def test_settings_defaults(monkeypatch, tmp_path):
     ({"TURBOTAB_WORKERS": "many"}, "TURBOTAB_WORKERS"),
     ({"TURBOTAB_WORKERS": "0"}, "workers"),
     ({"TURBOTAB_MEMORY_BUDGET": "lots"}, "TURBOTAB_MEMORY_BUDGET"),
+    ({"TURBOTAB_ANALYST": "yes"}, "TURBOTAB_ANALYST"),
 ])
 def test_bad_settings_say_which_variable(env, word):
     with pytest.raises(ValueError, match=word):
         Settings.from_env(env)
+
+
+def test_analyst_mode_is_off_unless_turbotab_analyst_is_1(tmp_path):
+    """SWARM_ENGINE_PLAN E4: ``TURBOTAB_ANALYST=1`` switches analyst mode on; unset, or 0, it is
+    off, so nothing changes for a person."""
+    home = {"TURBOTAB_HOME": str(tmp_path / "home")}
+    assert Settings.from_env({**home, "TURBOTAB_ANALYST": "1"}).analyst is True
+    assert Settings.from_env({**home, "TURBOTAB_ANALYST": "0"}).analyst is False
+    assert Settings.from_env(home).analyst is False
+    assert Settings(home=tmp_path).analyst is False
 
 
 # ── workspace ────────────────────────────────────────────────────────────────
@@ -93,6 +106,50 @@ def test_a_project_is_created_with_its_layout(workspace, tmp_path):
                             "source_name"}
     assert workspace.get(meta.id) == meta
     assert ProjectMeta.from_dict(meta.to_dict()) == meta
+
+
+NHANES_DEMO = {"url": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/DEMO_J.xpt",
+               "release_date": "2020-02-01",
+               "license": "Public domain: a work of the U.S. Government (17 U.S.C. 105)"}
+
+
+def test_a_project_keeps_where_its_file_came_from_and_nothing_when_not_given(workspace):
+    """SWARM_ENGINE_PLAN E5: the file's URL, release date and license, as given, are kept on the
+    project's meta; a project given none has no ``provenance`` key at all, so its meta reads as
+    every project's did before."""
+    meta = workspace.create_project("", SAMPLE, "path", provenance=source_provenance(**NHANES_DEMO))
+    on_disk = json.loads((workspace.project_dir(meta.id) / "project.json").read_text())
+    assert on_disk["provenance"] == NHANES_DEMO
+    assert workspace.get(meta.id).provenance == NHANES_DEMO
+    assert ProjectMeta.from_dict(meta.to_dict()) == meta
+
+    some = workspace.create_project("", SAMPLE, "path",
+                                    provenance=source_provenance(url=NHANES_DEMO["url"]))
+    assert workspace.get(some.id).provenance == {"url": NHANES_DEMO["url"]}
+
+    plain = workspace.create_project("", SAMPLE, "path")
+    assert "provenance" not in json.loads((workspace.project_dir(plain.id) / "project.json").read_text())
+    assert workspace.get(plain.id).provenance == {}
+    assert source_provenance(url="  ", release_date="", license=None) == {}  # blank is not given
+
+
+@pytest.mark.parametrize("field, value, word", [
+    ("url", "wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/DEMO_J.xpt", "starting with"),
+    ("url", "https://example.org/" + "a" * 1981, "2,000"),  # 2,001 characters
+    ("release_date", "2020-02-30", "YYYY-MM-DD"),  # no 30 February
+    ("release_date", "February 2020", "YYYY-MM-DD"),
+    ("release_date", "20200201", "YYYY-MM-DD"),  # an ISO form Python reads, but not the one asked
+    ("license", "x" * 2001, "2,000"),
+])
+def test_a_provenance_field_that_does_not_read_is_refused(field, value, word):
+    with pytest.raises(ValueError, match=word):
+        source_provenance(**{field: value})
+
+
+def test_a_provenance_field_at_its_limit_is_kept():
+    url = "https://example.org/" + "a" * 1980  # 2,000 characters, the limit
+    assert len(url) == 2000
+    assert source_provenance(url=url, license="y" * 2000) == {"url": url, "license": "y" * 2000}
 
 
 def test_uploads_keep_the_clients_file_name(workspace):

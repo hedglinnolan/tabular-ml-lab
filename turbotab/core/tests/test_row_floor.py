@@ -142,15 +142,16 @@ def test_explores_thirds_of_a_column_with_no_value_are_one_blank_group():
 # ── at the decision validator ────────────────────────────────────────────────
 
 
-def test_confirming_the_features_under_complete_cases_is_refused_with_a_fill(
+def test_settling_the_features_under_complete_cases_is_refused_with_a_fill(
         frame, store, findings):
     """The INBOX's path: the features rode along unconfirmed when complete cases were recorded;
-    confirming them is refused, naming the blanks, with the censoring-aware fill (the leash's own
-    way for values below detection) as the first way back. Once it is recorded, the same
-    confirmation is accepted."""
+    settling them is refused, naming the blanks, with the censoring-aware fill (the leash's own
+    way for values below detection) as the first way back. Once it is recorded, the same answer is
+    accepted. They are settled here by a roles answer of the person's own, which brings every one
+    of them in at once: a block of their confirmations is refused before it is counted, since each
+    was proposed below high (BLUEPRINT §14 rule 2; ``test_roles_one_per_press.py``)."""
     now = state(frame, roles_unconfirmed=features(frame))
-    confirm = {"kind": "confirm_readings",
-               "items": [{"reading": "role", "column": c, "value": "exposure"} for c in features(frame)]}
+    confirm = {"kind": "set_roles", "roles": roles(frame)}
     ctx = ctx_for(now, store, frame, findings)
     with pytest.raises(Refusal) as refused:
         validate(confirm, ctx)
@@ -330,7 +331,8 @@ def test_a_repair_that_blanks_values_under_complete_cases_is_refused_on_the_valu
 def test_an_outcome_left_one_value_is_refused_where_it_had_two(tmp_path):
     """The verifier's renal_1class table: the 12 complete rows all have `egfr_decline` 0. Settling
     the labs' roles under complete cases was accepted, and the fit crashed with "IndexError: list
-    index out of range". The answer is refused now, saying the outcome is left one value."""
+    index out of range". The answer is refused now, saying the outcome is left one value. The
+    labs are settled by a roles answer of the person's own, as above."""
     frame = renal(complete=12)
     frame.loc[:11, "egfr_decline"] = 0
     store, bundle = toy_store(frame, tmp_path)
@@ -339,8 +341,7 @@ def test_an_outcome_left_one_value_is_refused_where_it_had_two(tmp_path):
         now = renal_state(roles_unconfirmed=labs)
         ctx = {"state": now, "store": store, "columns": list(frame.columns),
                "target": "egfr_decline", "bundle": bundle}
-        confirm = {"kind": "confirm_readings",
-                   "items": [{"reading": "role", "column": c, "value": "exposure"} for c in labs]}
+        confirm = {"kind": "set_roles", "roles": dict(now.roles)}
         with pytest.raises(Refusal) as refused:
             validate(confirm, ctx)
     assert refused.value.code == "one_outcome_value"

@@ -2129,6 +2129,9 @@ class DecisionRecord(BaseModel):
     id: str
     seq: int = Field(ge=1)
     at: AwareDatetime
+    # Why the decision was made, in the decider's words (``POST …/decisions?note=``; at most
+    # :data:`NOTE_MAX_CHARS` characters, :func:`check_note`). Kept in the log and served with it;
+    # never written into the methods, which are the records' sentences.
     note: str | None = None
     # The sentence the Record shows, authored by the server when the decision is
     # recorded (DESIGN_LANGUAGE §05.1: the receipt is a quotation, never a
@@ -2645,14 +2648,25 @@ register_kind(JoinFiles, "joins", key=lambda d: d.file,
 register_kind(ImportCodebook, "codebooks", value=lambda d: None,
               entries=lambda d: [*(reading_entry(i.reading, i.column, i.value) for i in d.items),
                                  ("codebooks", d.codebook, _codebook_spec(d))])
+# BEATS_PREDICT §9 ruling 5: under prediction neither the energy model nor the substitution is
+# asked (``interview._energy_applicability``), so an answer recorded under another goal, or posted
+# directly, stays in the record and is held while the goal is prediction, as an answer whose
+# premise has lapsed is: it shapes no fit and writes no methods sentence there, and stands again
+# once the goal is not prediction.
+def _asked_under_this_goal(decision: Any, slots: Mapping[str, Any]) -> bool:
+    return slots.get("purpose") != "prediction"
+
+
 register_kind(SetEnergyAdjustment, "energy_adjustment",
-              value=lambda d: EnergyAdjustment(**d.model_dump(exclude={"kind"})))
+              value=lambda d: EnergyAdjustment(**d.model_dump(exclude={"kind"})),
+              holds=_asked_under_this_goal)
 register_kind(SetExclusions, "exclusions")
 register_kind(SetMissing, "missing", value=lambda d: MissingSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetSplit, "split", value=lambda d: SplitSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SelectModels, "models")
 register_kind(SetSubstitution, "substitution",
-              value=lambda d: SubstitutionSpec(**d.model_dump(exclude={"kind"})))
+              value=lambda d: SubstitutionSpec(**d.model_dump(exclude={"kind"})),
+              holds=_asked_under_this_goal)
 register_kind(SetOrientation, "orientation")
 register_kind(SetEvent, "event", value=lambda d: d.level,
               holds=lambda d, slots: slots.get("target") == d.column)
@@ -3286,22 +3300,189 @@ def _readings_name_columns(decision: "ConfirmReadings", ctx: Any) -> None:
                           exits=[*exits, *refused.exits]) from None
 
 
+def _below_high_roles(decision: "ConfirmReadings", ctx: Any) -> list[ReadingItem]:
+    """The role readings a block lists that were proposed below high confidence and are not settled
+    since: a recorded role that rode along unconfirmed (``readings.role_reading``), or, with no role
+    recorded for the column, one the roles stage did not propose high. Without the proposals at
+    hand, a column with no settled role is counted among them (the strictest case)."""
+    from turbotab.core.readings import proposals_of, role_reading
+
+    state = _state(ctx)
+    roles = (getattr(state, "roles", None) or {}) if state is not None else {}
+    opener = _ctx(ctx, "artifact")
+    try:
+        artifact = opener("roles") if callable(opener) else None
+    except Exception:  # noqa: BLE001 - no proposals at hand: the strictest case
+        artifact = None
+    high = {str(p.get("column")) for p in proposals_of(artifact) if p.get("confidence") == "high"}
+    out = []
+    for item in decision.items:
+        if item.reading != "role":
+            continue
+        if item.column in roles:
+            reading = role_reading(state, item.column)
+            if reading is not None and not reading.settled:
+                out.append(item)
+        elif item.column not in high:
+            out.append(item)
+    return out
+
+
+def _role_groups_of(decision: "ConfirmReadings", ctx: Any) -> list[Any]:
+    """The judgments of the roles stage (``readings.role_groups``) behind each role a block lists
+    that waits (:func:`_below_high_roles`), each once in the block's order, with its columns that
+    wait: a waiting column no proposal at hand groups is a group of its own (the strictest case)."""
+    from turbotab.core.readings import RoleGroup, role_groups
+
+    waiting = _below_high_roles(decision, ctx)
+    if not waiting:
+        return []
+    opener = _ctx(ctx, "artifact")
+    try:
+        artifact = opener("roles") if callable(opener) else None
+    except Exception:  # noqa: BLE001 - no proposals at hand: each column on its own
+        artifact = None
+    if artifact is None:
+        shown = _ctx(ctx, "shown")  # the newest proposals the client was shown, stale or not
+        try:
+            artifact = shown("roles") if callable(shown) else None
+        except Exception:  # noqa: BLE001 - nothing was shown
+            artifact = None
+    found = {c: g for g in role_groups(_state(ctx), artifact) for c in g.waiting}
+    out: list[Any] = []
+    for item in waiting:
+        group = found.get(item.column) or RoleGroup(item.value, "", "", (item.column,),
+                                                    (item.column,))
+        if group not in out:
+            out.append(group)
+    return out
+
+
+def _one_group(decision: "ConfirmReadings", ctx: Any) -> Any:
+    """The group a block confirms whole, each of its waiting columns with the proposed role and
+    nothing else (ruling R-g), or None."""
+    groups = _role_groups_of(decision, ctx)
+    if len(groups) != 1 or len(groups[0].waiting) < 2:
+        return None
+    group = groups[0]
+    listed = {(i.reading, i.column, i.value) for i in decision.items}
+    whole = {("role", c, group.role) for c in group.waiting}
+    return group if listed == whole and len(decision.items) == len(whole) else None
+
+
+def group_confirmed(decision: Any, state: Any, artifact: Any) -> Any:
+    """The judgment (``readings.RoleGroup``) a ``confirm_readings`` recorded on ``state`` confirmed
+    whole as one group's press, read against the roles stage's proposals in ``artifact``; None for
+    any other block, or with no proposals at hand (the record then says each reading, as a block's
+    sentence does)."""
+    if getattr(decision, "kind", None) != "confirm_readings" or len(decision.items) < 2 \
+            or artifact is None:
+        return None
+    return _one_group(decision, {"state": state, "artifact": lambda stage: (
+        artifact if stage == "roles" else None)})
+
+
+def _roles_confirmed_one_at_a_time(decision: "ConfirmReadings", ctx: Any) -> None:
+    """BLUEPRINT §14 rule 2 and the gate's criterion (ruling R-g, which replaces R-b's one per
+    column): a role proposed below high confidence never rides along in a bulk "confirm all". Roles
+    proposed below high that share one proposal (one role, one confidence, one reason word for word:
+    ``readings.role_groups``) are one judgment of the recognizer, confirmed in one press. So a block
+    that lists exactly one group's waiting columns, each with its proposed role, is accepted; one
+    reading alone is its own confirmation. Any other block that lists a role waiting is refused,
+    whoever posts it: columns of two or more groups, a group beside any other reading, or two or
+    more of a group's columns but not all of them. The way forward is each group's own press (a
+    group of one, its own confirmation; a column listed with another role, its own confirmation as
+    listed), and the other readings still one block. The sentence says what is refused and names
+    each group."""
+    if len(decision.items) < 2:
+        return
+    groups = _role_groups_of(decision, ctx)
+    if not groups or _one_group(decision, ctx) is not None:
+        return
+    from turbotab.core.readings import group_phrase, group_press, group_press_label, \
+        role_line_words
+
+    state = _state(ctx)
+    purpose = getattr(state, "purpose", None)
+    lenses = [str(k) for k in getattr(state, "lens", None) or ()]
+    waiting = _below_high_roles(decision, ctx)
+    listed = {i.column: i for i in waiting}
+    exits: list[dict[str, Any]] = []
+    named: list[str] = []
+    for group in groups:
+        mine = [c for c in group.waiting if c in listed]
+        as_proposed = [c for c in mine if listed[c].value == group.role]
+        whole = group_phrase(group.waiting, group.role, group.confidence, group.reason, purpose,
+                             lenses) if group.confidence else (
+            f"`{group.waiting[0]}`, proposed below high confidence")
+        if len(group.waiting) > 1 and len(mine) < len(group.waiting):
+            named.append(f"{len(mine):,} of {whole}")
+        else:
+            named.append(whole)
+        if as_proposed:
+            if len(group.waiting) == 1:
+                c = group.waiting[0]
+                words = role_line_words(group.role, purpose, lenses)
+                exits.append({"label": f"Confirm `{c}` as {words}",
+                              "decision": ConfirmReading(reading="role", column=c, value=group.role)})
+            else:
+                exits.append({"label": group_press_label(len(group.waiting), group.role, purpose,
+                                                         lenses),
+                              "decision": group_press(group.waiting, group.role)})
+        for c in mine:
+            if listed[c].value != group.role:
+                exits.append({"label": f"Confirm `{c}` as "
+                                       f"{role_line_words(listed[c].value, purpose, lenses)}",
+                              "decision": ConfirmReading(reading="role", column=c,
+                                                         value=listed[c].value)})
+    rest = [i for i in decision.items if i.column not in listed or i.reading != "role"]
+    if len(rest) == 1:
+        exits.append({"label": f"Confirm `{rest[0].column}` as listed",
+                      "decision": ConfirmReading(reading=rest[0].reading, column=rest[0].column,
+                                                 value=rest[0].value)})
+    elif rest:
+        exits.append({"label": f"Confirm the other {len(rest):,} as listed",
+                      "decision": ConfirmReadings(items=rest)})
+    others = f"; and {len(rest):,} other reading{'s' if len(rest) != 1 else ''}" if rest else ""
+    raise Refusal(
+        "roles_one_at_a_time",
+        "One press confirms one whole group of roles proposed below high confidence for one "
+        "reason, or one column on its own, never more, after the evidence for its proposal is "
+        f"read, so this block is refused. It lists {'; '.join(named)}{others}.",
+        exits=exits)
+
+
+def _roles_artifact(ctx: Any) -> Any:
+    """The roles stage's artifact, its proposals, where the context holds it; else None."""
+    opener = _ctx(ctx, "artifact")
+    try:
+        return opener("roles") if callable(opener) else None
+    except Exception:  # noqa: BLE001 - no proposals at hand
+        return None
+
+
 def _models_read_settled_readings(decision: Any, ctx: Any) -> None:
     """BLUEPRINT §14.1: a fit is a number-changing consumer of every role (a column enters the
     model or leaves it by its role) and of each whole-number predictor's code-or-amount reading.
-    While one rode along unconfirmed, the fit asks, one exit per reading."""
-    from turbotab.core.readings import Unsettled, predictors_or_ask
+    While one rode along unconfirmed, the fit asks, one exit per reading, except that the roles of
+    one judgment are confirmed in one press where the roles stage's proposals are at hand (ruling
+    R-g, ``readings.with_proposals``). The roles question is a way through only where a role is
+    among the readings it waits on (the re-walk's N4: refused for codes or amounts alone, it asks
+    nothing the fit waits for)."""
+    from turbotab.core import readings
 
     state = _state(ctx)
     if state is None or not state.roles:
         return
     try:
-        predictors_or_ask(state, _ctx(ctx, "column_info"), drop=left_out(state),
-                          store=_store_of(ctx))
-    except Unsettled as waiting:
+        readings.predictors_or_ask(state, _ctx(ctx, "column_info"), drop=left_out(state),
+                                   store=_store_of(ctx), artifact=_roles_artifact(ctx))
+    except readings.Unsettled as waiting:
+        roles = any(r.kind == "role" for r in waiting.readings)
         raise Refusal("reading_unsettled", str(waiting), exits=[
             *waiting.exits,
-            {"label": "Change the roles (the roles question)", "decision": None}]) from None
+            *([{"label": "Change the roles (the roles question)", "decision": None}] if roles
+              else [])]) from None
 
 
 def _confirmed_role_names_a_column(decision: ConfirmRole, ctx: Any) -> None:
@@ -5376,6 +5557,7 @@ register_completion("set_roles", _roles_record_what_rode_along)
 register_validator("confirm_role", _confirmed_role_names_a_column)
 register_validator("confirm_reading", _reading_names_a_column)
 register_validator("confirm_readings", _readings_name_columns)
+register_validator("confirm_readings", _roles_confirmed_one_at_a_time)
 register_validator("set_exclusions", _screens_read_a_settled_energy_column)
 register_validator("set_feature_table", _feature_table_names_the_files_columns)
 register_validator("set_categorical", _categorical_names_predictors)
@@ -5680,6 +5862,23 @@ RECORD_DEFAULTS: dict[str, Any] = {"recorded_by": "you", "early": None}
 
 # ── the log ──────────────────────────────────────────────────────────────────
 
+# A decision's note (SWARM_ENGINE_PLAN E4): its reason, in at most this many characters.
+NOTE_MAX_CHARS = 2000
+
+
+def check_note(note: str | None) -> str | None:
+    """``note`` without the blanks around it, None for a blank one; refused (``note_too_long``)
+    past :data:`NOTE_MAX_CHARS` characters."""
+    text = (note or "").strip()
+    if len(text) > NOTE_MAX_CHARS:
+        raise Refusal(
+            "note_too_long",
+            f"A decision's note holds at most {NOTE_MAX_CHARS:,} characters, and this one has "
+            f"{len(text):,}: shorten it, and the decision is recorded with it.",
+            exits=[{"label": "Shorten the note", "decision": None}])
+    return text or None
+
+
 class DecisionLog:
     """Append-only ``decisions.jsonl``. Safe across threads and processes.
 
@@ -5726,9 +5925,11 @@ class DecisionLog:
         question a "Decide now" answer was decided ahead of, and its sentence says so.
         ``unless_set`` names a slot: when the log already holds a value there, nothing is recorded
         and ``already_answered`` is raised (a completion never lands over the person's answer,
-        however close the two arrive).
+        however close the two arrive). ``note``: the decision's reason (:func:`check_note`, which
+        refuses one past its limit before anything is written).
         """
         decision = parse_decision(decision)
+        note = check_note(note)
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             fd = os.open(self.path, os.O_RDWR | os.O_CREAT | os.O_APPEND, 0o644)

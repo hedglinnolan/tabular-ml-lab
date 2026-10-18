@@ -192,12 +192,13 @@ QUESTION_READS: dict[str, tuple[str, ...]] = {
     "estimand": ("purpose", "roles"),  # the exposure, under inference
     "adjustment": ("purpose", "roles", "estimand"),  # each covariate, for the exposure
     "time_varying": ("purpose", "grain", "repeat_kind", "unit", "temporal", "roles", "estimand"),
-    "energy_adjustment": ("lens", "roles"),  # the dietary lens, an energy column and an exposure
+    # the dietary lens, an energy column and an exposure; never under prediction (ruling 5)
+    "energy_adjustment": ("lens", "purpose", "roles"),
     "form": ("purpose", "roles", "estimand", "adjustment", "energy_adjustment"),
     "modification": ("purpose", "roles", "estimand"),
     "causal": ("lens", "purpose", "roles", "estimand", "adjustment"),
     "models": ("target", "task", "purpose"),  # the shelf for this outcome's kind and the goal
-    "substitution": ("roles",),  # two exposures that carry energy
+    "substitution": ("purpose", "roles"),  # two exposures that carry energy, never under prediction
     "open_seal": ("split", "models"),  # rows held out, and the fit of the chosen models
 }
 
@@ -503,8 +504,9 @@ def _result_fires(name: str) -> Callable[[Any, Facts], bool]:
 
 @lru_cache(maxsize=None)
 def _writer_of(slot: str) -> str:
-    """The question (or the declaration) whose answer writes ``slot``."""
-    from turbotab.core.decisions import SLOTS
+    """The question (or the declaration, or the system kind the server records) whose answer
+    writes ``slot``."""
+    from turbotab.core.decisions import SLOTS, SYSTEM_KINDS
     from turbotab.core.interview import QUESTION_KEYS, SLOT_OF
     from turbotab.core.quest import DECLARATIONS
 
@@ -514,6 +516,9 @@ def _writer_of(slot: str) -> str:
     for decl in DECLARATIONS:
         if SLOTS[decl.kind] == slot:
             return decl.kind
+    for kind in SYSTEM_KINDS:  # the plan lock (``plan_locked``), which the mattered stage reads
+        if SLOTS[kind] == slot:
+            return kind
     return slot
 
 
