@@ -165,6 +165,8 @@ def test_each_specification_is_least_squares_with_hc3_as_statsmodels_fits_it(num
     assert by[[k for k in got if "adjusted:activity=dropped" in k][0]] > primary["n"]
     assert by[[k for k in got if "left_out:bmi=added" in k][0]] < primary["n"]
     assert "one at a time" in art["methods"] and "No joint test" in art["methods"]
+    # No specification's rows repeat here, so none is clustered and the sentence says none is.
+    assert curve["clustered"] is False and "cluster-robust" not in art["methods"]
 
 
 def test_each_logistic_specification_has_the_wald_interval_statsmodels_gives(binary):
@@ -408,7 +410,11 @@ def test_an_added_column_the_plan_would_code_otherwise_is_not_estimated(tmp_path
     curve = art["curve"]
     assert "left_out:statin" in [c["key"] for c in curve["choices"]]
     statin = [s for s in curve["not_estimated"] if s["picks"]["left_out:statin"] == "added"]
-    assert len(statin) == 1 and "blanks kept as a level of their own" in statin[0]["reason"]
+    assert len(statin) == 1
+    # The step is worded as something the plan applies (EBv2-5: "apply blanks kept as a level").
+    assert statin[0]["reason"] == ("With this choice changed, the plan would apply the coding of "
+                                   "blanks as a level of their own, which the curve's refit does "
+                                   "not repeat, so it is not fitted as the primary is.")
     assert not [s for s in curve["specs"] if s["picks"]["left_out:statin"] == "added"]
     bmi = next(s for s in curve["specs"] if s["picks"]["left_out:bmi"] == "added")
     est, low, high, n = statsmodels_fit(run.table, outcome="glucose", rules=(0, 1),
@@ -436,6 +442,178 @@ def test_an_added_column_with_a_declared_form_is_not_estimated(numeric, tmp_path
     plain = numeric.mattered()["curve"]
     assert plain["not_estimated"] == []
     assert [s for s in plain["specs"] if s["picks"]["left_out:bmi"] == "added"]
+
+
+def with_codes() -> pd.DataFrame:
+    """The cohort with `eth`, whole numbers 1, 2, 3, 4, 6 and 7 (RIDRETH3's codes) whose groups 3
+    and 6 shift glucose, so six groups and one straight line give the fiber slope differently."""
+    frame = cohort()
+    rng = np.random.default_rng(9)
+    eth = rng.choice([1, 2, 3, 4, 6, 7], len(frame))
+    frame["eth"] = eth.astype(float)
+    frame["glucose"] = frame["glucose"] + np.select([eth == 3, eth == 6], [5.0, -4.0], 0.0)
+    return frame
+
+
+def eth_fit(table: pd.DataFrame, *, codes: bool) -> tuple[float, float, float, int]:
+    """statsmodels' fit of the primary's model with `eth` added: one indicator per code (the first
+    the reference) or one slope, HC3 on t(n − p), on both rules' rows with every column present."""
+    keep = rows_of(table, rules=(0, 1), columns=["glucose", "fiber", *ADJUSTED, "eth"])
+    part = table[keep]
+    X = ef.design_matrix(part, ["fiber", *ADJUSTED])
+    if codes:
+        X = X.join(pd.get_dummies(part["eth"].astype(int), prefix="eth", drop_first=True,
+                                  dtype=float))
+    else:
+        X["eth"] = part["eth"].astype(float)
+    fit = sm.OLS(part["glucose"].astype(float), X).fit(cov_type="HC3", use_t=True)
+    low, high = fit.conf_int(alpha=0.05).loc["fiber"]
+    return float(fit.params["fiber"]), float(low), float(high), int(keep.sum())
+
+
+# The fit's own ask for an unanswered whole-number predictor (``readings.predictors_or_ask``), as a
+# plan adjusting for `eth` refuses with it.
+ETH_ASK = ("`eth` holds whole numbers, which may be codes for categories (one indicator per level) "
+           "or amounts (one slope); the fit waits for the answer for each.")
+
+
+@pytest.mark.parametrize("answer", [None, "code", "amount"])
+def test_an_added_column_of_whole_numbers_waits_for_its_code_or_amount_reading(tmp_path, answer):
+    """`eth` is a covariate the adjustment answers leave out (after the exposure), its whole numbers
+    never answered as codes or amounts. A plan adjusting for it waits for that answer, so the
+    departure adding it does too: unanswered it is not estimated, with the fit's ask as its reason;
+    answered as codes it is six groups, as an amount one straight line, each statsmodels' fit. An
+    examined alternative adding it is judged the same way, and so is one adding it while its role
+    puts it in no model (`eth` with no role)."""
+    amounts = {**ef.AMOUNTS, **({"code_or_count:eth": answer} if answer else {})}
+    st = state(roles={**ef.ROLES, "eth": "covariate"},
+               answers={**ef.ANSWERS, "eth": AFTER_EXPOSURE}, amounts=amounts)
+    run = Run(with_codes(), tmp_path, st)
+    art = run.mattered()
+    assert art["refused"] is None, art["refused"]
+    curve = art["curve"]
+    codes, line = eth_fit(run.table, codes=True), eth_fit(run.table, codes=False)
+    assert codes[0] != pytest.approx(line[0], rel=1e-4)  # the coding moves the estimate
+    want = None if answer is None else codes if answer == "code" else line
+    examined = [M.MatteredExamined(key="eth", label="with eth", add=["eth"])]
+    free = st.model_copy(update={
+        "roles": {c: r for c, r in st.roles.items() if c != "eth"},
+        "role_confirmations": {c: r for c, r in st.role_confirmations.items() if c != "eth"},
+        "adjustment": {c: a for c, a in st.adjustment.items() if c != "eth"}})
+    looks = [(curve["specs"], curve["not_estimated"], "left_out:eth", "added")]
+    for s in (st, free):
+        drawn, _ = M.curve_for(run.context(s), examined=examined)
+        looks.append(([vars(x) for x in drawn.specs], [vars(x) for x in drawn.not_estimated],
+                      "examined:eth", "examined"))
+    for specs, missing, key, option in looks:
+        got = [x for x in specs if x["picks"].get(key) == option]
+        held = [x for x in missing if x["picks"].get(key) == option]
+        if want is None:
+            assert not got and len(held) == 1, key
+            assert "`eth`" in held[0]["reason"] and "codes for categories" in held[0]["reason"]
+            if key == "left_out:eth":
+                assert ETH_ASK in held[0]["reason"]
+        else:
+            assert not held and len(got) == 1, (key, held)
+            est, low, high, n = want
+            assert got[0]["estimate"] == pytest.approx(est, rel=1e-9), key
+            assert got[0]["low"] == pytest.approx(low, rel=1e-9), key
+            assert got[0]["high"] == pytest.approx(high, rel=1e-9) and got[0]["n"] == n, key
+    # Every other departure is drawn either way (the guard is silent where nothing waits).
+    assert len(curve["specs"]) == len(curve["choices"]) + (0 if answer is None else 1)
+
+
+def test_a_plan_with_no_recorded_choice_is_refused_with_no_exit(tmp_path, numeric):
+    """No exclusion rule and no covariate: every alternative is derived from the record, so there
+    is nothing to change and nothing to declare (no route accepts a declared one yet), before the
+    lock and after it. The fixture's recorded choices are drawn."""
+    st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                  roles={"pid": "identifier", "fiber": "exposure"}, plan_locked=True)
+    run = Run(cohort()[["pid", "fiber", "glucose"]], tmp_path, st)
+    for s in (st, st.model_copy(update={"plan_locked": None})):
+        art = run.mattered(s)
+        assert art["curve"] is None
+        assert art["refused"] == {"message": M.NOTHING_TO_VARY, "exits": []}
+    assert numeric.mattered()["refused"] is None
+
+
+@pytest.mark.parametrize("task, measure, words", [
+    ("multiclass", "relative_risk_ratio", "an outcome of several classes"),
+    ("ordinal", "cumulative_odds_ratio", "an outcome of ordered levels"),
+    ("time_to_event", "hazard_ratio", "a time to an event")])
+def test_an_outcome_the_refit_does_not_follow_is_refused_by_name(task, measure, words):
+    """The refit follows least squares or logistic regression only, so a multiclass, ordinal or
+    time-to-event outcome is refused by naming it, with no exit (the outcome is the question),
+    before the lock too; a numeric or yes/no outcome is offered."""
+    def estimate(**slots: Any) -> d.ProjectState:
+        return d.ProjectState(purpose="inference", target="grade",
+                              estimand=d.EstimandSpec(exposure="fiber",
+                                                      measure=slots.pop("measure")), **slots)
+
+    refused = M.offered(estimate(task=task, measure=measure))
+    assert not refused.offered and refused.exits == ()
+    assert refused.says == M.OUTCOME_REFUSAL.format(target="grade", words=words)
+    assert M.offered(estimate(task="regression", measure="mean_difference")).offered
+    assert M.offered(estimate(task="binary", measure="odds_ratio")).offered
+
+
+def test_a_multiclass_outcome_is_refused_in_the_stage_with_no_scale_exit(tmp_path):
+    """Through the stage, with the task recorded and with it read from the outcome's detection
+    (``target_info``): the curve's own line, never the reported row's "no single coefficient" with
+    an exit about scales, which cannot help an outcome with one coefficient per class."""
+    frame = cohort()
+    frame["grade"] = pd.cut(frame["glucose"], 3, labels=["low", "mid", "high"]).astype(str)
+    st = state(target="grade", task="multiclass", measure="relative_risk_ratio")
+    run = Run(frame, tmp_path, st)
+    line = M.OUTCOME_REFUSAL.format(target="grade", words="an outcome of several classes")
+    for s in (st, st.model_copy(update={"task": None})):
+        art = run.mattered(s)
+        assert art["curve"] is None and art["refused"] == {"message": line, "exits": []}
+
+
+def test_more_specifications_than_the_cap_are_refused_with_no_exit():
+    """One at a time, k derived choices give 1 + k specifications; past ``spec_curve.CAP`` the
+    curve is refused in its own words with no exit (every alternative is derived, so none can be
+    declared away). At the cap it is silent, as spec_curve's own enumeration is."""
+    under = M.adjustment_choices([f"c{i}" for i in range(S.CAP - 1)], [])
+    over = M.adjustment_choices([f"c{i}" for i in range(S.CAP)], [])
+    M.varied(under)
+    S.enumerate_specs(under, crossing=M.CROSSING)
+    with pytest.raises(S.SpecCurveRefused) as refused:
+        M.varied(over)
+    assert str(refused.value) == M.CAP_REFUSAL.format(n=S.CAP + 1, cap=S.CAP)
+    assert f"{S.CAP + 1:,}" in str(refused.value) and refused.value.exits == []
+    with pytest.raises(S.SpecCurveRefused):
+        S.enumerate_specs(over, crossing=M.CROSSING)
+
+
+def test_a_departure_the_fit_would_not_cluster_is_not_estimated(numeric, monkeypatch):
+    """Which rows belong together is read on each specification's own rows
+    (``inference.resolve_clusters``), and where that reading refuses, the fit reports no interval,
+    so the departure is not estimated with the refusal as its reason. The refusal is constructed
+    here, on the rows the age rule would exclude: today a reading that waits needs a role that
+    waits, which stops the design stage first. The fixture's own curve reads every
+    specification's rows and refuses none."""
+    from turbotab.core.models import inference as I
+
+    real = I.resolve_clusters
+    said = "`pid` repeats here, and whether its rows belong together is asked, not assumed."
+    seen: list[int] = []
+
+    def resolve(st: Any, frame: pd.DataFrame, also: Any = ()) -> Any:
+        seen.append(len(frame))
+        if (~numeric.table.loc[frame.index, "age"].between(30, 75)).any():
+            return I.Clusters(refusal=said)
+        return real(st, frame, also)
+
+    monkeypatch.setattr(I, "resolve_clusters", resolve)
+    curve = numeric.mattered()["curve"]
+    held = [s for s in curve["not_estimated"] if s["picks"]["exclusion:0"] == "dropped"]
+    assert len(held) == 1 and said in held[0]["reason"]
+    assert {s["key"] for s in curve["specs"]} == set(departures()) - {held[0]["key"]}
+    assert len(set(seen)) > 2  # each specification's own rows, not the primary's alone
+    monkeypatch.setattr(I, "resolve_clusters", real)
+    assert numeric.mattered()["curve"]["not_estimated"] == []
 
 
 def test_an_exposure_family_is_refused_and_one_exposure_is_not(numeric):

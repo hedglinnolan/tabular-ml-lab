@@ -149,3 +149,78 @@ def test_the_population_s_curve_is_not_the_participants(tmp_path):
     q = next(s for s in sample["curve"]["specs"] if s["primary"])
     assert p["covariance"] == "design" and q["n"] == p["n"]
     assert p["estimate"] != pytest.approx(q["estimate"], rel=1e-3)
+
+
+SVY_UNITS = """
+suppressPackageStartupMessages(library(survey))
+options(survey.lonely.psu = "adjust")
+df <- read.csv(d_csv)
+by_row <- svydesign(ids = ~1, strata = ~strata, weights = ~wt, data = df)
+by_pid <- svydesign(ids = ~pid, strata = ~strata, weights = ~wt, nest = TRUE, data = df)
+keep <- function(s) {
+  k <- rep(TRUE, nrow(df))
+  if (0 %in% s$r) k <- k & df$age >= 30 & df$age <= 75
+  if (1 %in% s$r) k <- k & (is.na(df$bmi) | df$bmi <= 33)
+  k & complete.cases(df[, c("glucose", "fiber", s$f)])
+}
+fit_in <- function(des, s, k) {
+  sub <- subset(des, k)
+  fit <- svyglm(as.formula(paste("glucose ~", paste(c("fiber", s$f), collapse = " + "))),
+                design = sub)
+  t <- qt(0.975, degf(sub))
+  b <- coef(fit)[["fiber"]]
+  se <- SE(fit)[["fiber"]]
+  c(b, b - t * se, b + t * se)
+}
+res <- lapply(specs, function(s) {
+  k <- keep(s)
+  list(by_row = fit_in(by_row, s, k), by_pid = fit_in(by_pid, s, k), n = sum(k),
+       repeats = sum(duplicated(df$pid[k])))
+})
+out(res)
+"""
+
+
+@needs_r
+def test_without_a_psu_a_departure_whose_rows_repeat_takes_the_unit_as_its_sampling_unit(
+        tmp_path):
+    """With no PSU column the design takes the unit the rows repeat in as its sampling unit
+    (``methods.survey.for_fit``), the unit read on each specification's own rows as the fit reads
+    its plan's. 150 second visits of persons in the table, aged 80 to 85 so the age rule excludes
+    them: the primary's rows do not repeat, so each row is its own sampling unit (``ids = ~1``);
+    with the age rule dropped they repeat, so each `pid` is one (``ids = ~pid``). Each
+    specification is svyglm on its domain of that design over every row; the two designs give the
+    departure different intervals, so the test tells them apart."""
+    if not _r_has("survey"):
+        pytest.skip("R's survey is not installed (set R_LIBS to a library that has it)")
+    frame = surveyed().drop(columns=["psu"])
+    rng = np.random.default_rng(8)
+    pick = rng.choice(frame.index[frame["age"].between(30, 75)], 150, replace=False)
+    again = frame.loc[pick].copy()
+    again["age"] = 80.0 + rng.uniform(0, 5, len(again))
+    again["glucose"] = frame.loc[pick, "glucose"].to_numpy() + rng.normal(0, 1, len(again))
+    frame = pd.concat([frame, again], ignore_index=True)
+    roles = {c: r for c, r in ROLES.items() if c != "psu"}
+    st = ef.state(target="glucose", task="regression", measure="mean_difference", roles=roles,
+                  amounts={k: v for k, v in SHAPES.items() if k != "code_or_count:psu"},
+                  plan_locked=True, exclusions=[d.ExclusionRule(**r) for r in RULES],
+                  survey=d.SurveySpec(estimand="population", weight="wt", strata="strata"))
+    run = Run(frame, tmp_path / "stages", st)
+    art = run.mattered()
+    assert art["refused"] is None, art["refused"]
+    ref = run_r(_r_specs() + SVY_UNITS, {"d": run.table}, tmp_path / "r")
+    dropped = "|".join(f"{c}={'dropped' if c == 'exclusion:0' else 'recorded'}"
+                       for c in [*(f"exclusion:{i}" for i in range(2)),
+                                 *(f"adjusted:{c}" for c in ADJUSTED), "left_out:bmi"])
+    assert {k for k, r in ref.items() if r["repeats"] > 0} == {dropped}  # the construction
+    assert abs(ref[dropped]["by_pid"][1] - ref[dropped]["by_row"][1]) > 1e-3
+    got = {s["key"]: s for s in art["curve"]["specs"]}
+    assert set(got) == set(ref) and art["curve"]["not_estimated"] == []
+    for k, r in ref.items():
+        est, low, high = r["by_pid"] if r["repeats"] > 0 else r["by_row"]
+        s = got[k]
+        assert s["covariance"] == "design", k
+        assert s["estimate"] == pytest.approx(est, rel=1e-9), k
+        assert s["low"] == pytest.approx(low, rel=1e-8), k
+        assert s["high"] == pytest.approx(high, rel=1e-8), k
+        assert s["n"] == int(r["n"]), k

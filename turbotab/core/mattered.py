@@ -27,11 +27,30 @@ The methods sentence names these alternatives as the engine derived them
 **The primary stays the reported estimate.** The curve follows the linear family's coefficient of
 the declared exposure, the fit stage's own table. Each specification is refit by
 ``spec_curve.linear_fitter`` on the table's own columns (complete cases on each specification's
-columns, HC3 or CR2 by the unit, or design-based under the surveyed population). The primary
+columns), as the fit would fit the plan that specification is: its intervals HC3, or CR2 by the
+unit its own rows repeat in, or design-based under the surveyed population (below). The primary
 specification must reproduce the reported estimate (its estimate and interval within
 :data:`AGREEMENT` of its standard error, on the same rows); otherwise no specification is shown and
 the curve is refused, since the others would not be fitted as the primary is. That refusal quotes
 no estimate: it is served where no estimate is.
+
+* **Which rows belong together** is read on each specification's own rows, as the fit reads its
+  plan's (``inference.resolve_clusters`` over that specification's rows and the candidate unit
+  columns): a specification whose rows repeat by a unit is CR2 by it, one whose rows do not repeat
+  is HC3, whatever the primary's rows do. Where that reading refuses, the fit reports no interval,
+  so the specification is not estimated, with the reason. Under the surveyed population a design
+  with no PSU column takes that unit as its sampling unit (``methods.survey.for_fit``), so each
+  specification's design is the one its own unit gives.
+* **Readings.** A departure that adds a column is judged by the fit's own reading gate
+  (``readings.predictors_or_ask``, as the design stage calls it) with that column no longer left
+  out: a role or a code-or-amount reading the plan would wait for leaves the departure not
+  estimated, with the fit's ask as its reason. A column whose role puts it in no model (an
+  examined alternative may add one) is asked its code-or-amount reading as a predictor is.
+* **What it cannot vary.** The alternatives are derived from the record, so each refusal of what
+  cannot be varied says why with no exit to declare more or fewer: no recorded choice at all
+  (:data:`NOTHING_TO_VARY`), more one-at-a-time specifications than ``spec_curve.CAP``
+  (:data:`CAP_REFUSAL`), or an outcome the refit does not follow (:data:`OUTCOME_REFUSAL`:
+  multiclass, ordinal, time to an event), the last before the lock too (:func:`offered`).
 
 * **The measure.** Under a yes/no outcome the coefficient is a log odds ratio. The curve is drawn
   under the odds ratio, and its sentence says the primary is the log of the reported odds ratio,
@@ -93,7 +112,7 @@ STEP_WORDS = {
     "score": "the scores of the declared scales",
     "energy": "the energy model",
     "form": "a declared form other than a straight line",
-    "levels": "blanks kept as a level of their own",
+    "levels": "the coding of blanks as a level of their own",
 }
 NOT_OFFERED_YET = ("The curve is offered under Estimate an effect, once the goal is chosen and what "
                    "you study is declared.")
@@ -106,6 +125,21 @@ MARGINAL_REFUSAL = ("The curve refits the logistic model's coefficient, a condit
                     "ratio, and the estimate reported is a {words}, standardized over the analyzed "
                     "rows from that model (g-computation). The refit does not standardize each "
                     "specification, so the curve is not drawn under this measure.")
+# What the curve cannot vary, in its own words and with no exit: every alternative is derived from
+# the record (no route accepts a declared one yet), so none can be declared to change these.
+NOTHING_TO_VARY = ("The plan records no exclusion rule, no covariate the adjustment answers put in "
+                   "the model, and none they leave out, so no recorded choice has an alternative "
+                   "to refit: the curve would be the primary alone.")
+CAP_REFUSAL = ("Changing each recorded choice one at a time gives {n:,} specifications, more than "
+               "the {cap:,} the curve fits at most, so it is not drawn.")
+# The outcomes whose model the refit does not follow (``spec_curve.linear_fitter`` refits least
+# squares or logistic regression), each named in words.
+OUTCOME_WORDS = {"multiclass": "an outcome of several classes",
+                 "ordinal": "an outcome of ordered levels",
+                 "time_to_event": "a time to an event"}
+OUTCOME_REFUSAL = ("The curve refits one coefficient of what you study per specification, by least "
+                   "squares for a numeric outcome or logistic regression for a yes/no one; "
+                   "`{target}` is {words}, so the curve is not drawn for it.")
 # The alternatives each kind of choice derives (its key's prefix), as the methods sentence says.
 KIND_WORDS: tuple[tuple[str, str], ...] = (
     ("exclusion:", "each exclusion rule dropped"),
@@ -283,19 +317,46 @@ def goal_of(state: Any) -> str | None:
 
 
 def offered(state: Any) -> S.Eligibility:
-    """Whether the goal and the measure offer the curve, with the line and exits that say why not.
-    A marginal measure refuses it (the module docstring), with no exit: the measure is part of
-    the question, never changed to draw a sensitivity analysis."""
+    """Whether the goal, the measure and the outcome offer the curve, with the line and exits that
+    say why not. A marginal measure refuses it (the module docstring), and so does a recorded
+    outcome the refit does not follow (:func:`outcome_refused`), each with no exit: the measure and
+    the outcome are part of the question, never changed to draw a sensitivity analysis."""
     from turbotab.core.estimand import MARGINAL, MEASURE_WORDS, current_estimand
 
     goal = goal_of(state)
     if goal is None:
         return S.Eligibility(False, NOT_OFFERED_YET, (dict(S.ESTIMATE_EXIT),))
     eligibility = S.eligible(goal)
-    measure = getattr(current_estimand(state), "measure", None) if eligibility.offered else None
+    if not eligibility.offered:
+        return eligibility
+    measure = getattr(current_estimand(state), "measure", None)
     if measure in MARGINAL:
         return S.Eligibility(False, MARGINAL_REFUSAL.format(words=MEASURE_WORDS[measure]), ())
+    outcome = outcome_refused(getattr(state, "task", None), getattr(state, "target", None))
+    if outcome is not None:
+        return S.Eligibility(False, outcome, ())
     return eligibility
+
+
+def outcome_refused(task: str | None, target: str | None) -> str | None:
+    """Why the refit does not follow an outcome of this ``task`` (:data:`OUTCOME_REFUSAL`); None
+    for a numeric or yes/no outcome, or one whose task is not known yet."""
+    if task in (None, "regression", "binary"):
+        return None
+    words = OUTCOME_WORDS.get(str(task), f"a {str(task).replace('_', ' ')} outcome")
+    return OUTCOME_REFUSAL.format(target=target, words=words)
+
+
+def varied(choices: Sequence[S.Choice]) -> None:
+    """Refuses, in this curve's words and with no exit, choices it cannot vary one at a time: none
+    (:data:`NOTHING_TO_VARY`), or more specifications than ``spec_curve.CAP``
+    (:data:`CAP_REFUSAL`), before ``spec_curve`` would refuse them with an exit to declare more or
+    fewer alternatives, which the derived choices cannot take."""
+    if not choices:
+        raise S.SpecCurveRefused(NOTHING_TO_VARY, ())
+    n = 1 + sum(len(c.options) - 1 for c in choices)
+    if n > S.CAP:
+        raise S.SpecCurveRefused(CAP_REFUSAL.format(n=n, cap=S.CAP), ())
 
 
 # ── the choices ──────────────────────────────────────────────────────────────
@@ -356,6 +417,35 @@ def not_refitted(spec: Any, *, gaps: bool) -> list[str]:
         if words not in out:
             out.append(words)
     return out
+
+
+def reading_wait(state: Any, added: Sequence[str], summaries: Mapping[str, Any],
+                 store: Any) -> str | None:
+    """Why the fit would wait before fitting the plan with ``added`` among its predictors, in the
+    fit's own words; None when every reading that plan rests on is settled. The gate is the fit's
+    (``readings.predictors_or_ask`` over the column summaries, as the design stage calls it) with
+    ``added`` no longer left out. A column the gate does not count as a predictor (its role puts it
+    in no model) is asked its code-or-amount reading as the gate asks a predictor's
+    (``readings.unsettled_codes``)."""
+    from turbotab.core.decisions import left_out
+    from turbotab.core.readings import (ask_text, listing, predictors_or_ask, unsettled_codes,
+                                        whole_facts)
+
+    wanted = set(added)
+    try:
+        preds = predictors_or_ask(state, summaries, drop=[c for c in left_out(state)
+                                                          if c not in wanted], store=store)
+    except ValueError as exc:  # ``readings.Unsettled``: the fit asks, never guesses
+        return str(exc)
+    extra = [c for c in added if c not in preds]
+    codes = unsettled_codes(state, extra, whole_facts(extra, summaries, store)) if extra else []
+    if not codes:
+        return None
+    names = [r.column for r in codes]
+    one = len(names) == 1
+    return (f"Whether {listing(names)} {'holds' if one else 'hold'} codes for categories (one "
+            f"indicator per level) or amounts (one slope) is not answered, and the fit waits for "
+            f"the answer. {ask_text(codes, state)}")
 
 
 # ── the reported estimate ────────────────────────────────────────────────────
@@ -451,6 +541,9 @@ def methods_sentence(curve: S.SpecCurve, *, task: str) -> str:
                 "was fitted as the primary analysis was, and the primary remains the reported "
                 "estimate"
                 + (" (the log of its odds ratio)" if task == "binary" else "") + ".")
+    if curve.clustered:
+        sentence += (" A specification whose rows repeat within a unit has cluster-robust (CR2) "
+                     "intervals by that unit, as the fit gives such rows.")
     if curve.weighted:
         sentence += (" Every specification was design-based, an exclusion rule defining a domain "
                      "of the full design.")
@@ -520,6 +613,9 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
     exposure = str(estimand.exposure)
     target = str(state.target)
     task = _task(ctx)
+    outcome = outcome_refused(task, target)  # the task as the fit reads it, recorded or detected
+    if outcome is not None:
+        raise S.SpecCurveRefused(outcome, ())
     spec = DesignSpec.from_dict(ctx.inputs["design"].objects["spec"])
     covariates = [c for c in spec.predictors if c != exposure]
     card = adjustment_card(state) or {}
@@ -560,9 +656,23 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
         survey = for_fit(state, store, unit)
         # Every row's column summaries, as the design stage reads them for the levels.
         column_info = {c.name: c for c in store.info().columns}
+        # The fit's own reading gate over each departure that adds a column (:func:`reading_wait`),
+        # read once the plan is locked: why each such departure's fit would wait, by its choice.
+        waits: dict[str, str] = {}
+        if state.plan_locked:
+            summaries = {c.name: {"dtype": c.dtype, "n_unique": c.n_unique}
+                         for c in column_info.values()}
+            adds = {**{f"left_out:{c}": [c] for c in left_out},
+                    **{f"examined:{e.key}": [c for c in e.add if c not in covariates
+                                             and c != exposure] for e in examined}}
+            for choice, cols in adds.items():
+                why = reading_wait(state, cols, summaries, store) if cols else None
+                if why is not None:
+                    waits[choice] = why
 
     choices = [*exclusion_choices(rules, masks), *adjustment_choices(adjusted, left_out),
                *examined_choices(examined)]
+    varied(choices)
     if task == "binary":
         levels = outcome_levels(task, frame[target].to_numpy(), state.event) or {}
         what = (f"Difference in log-odds of `{target}` being `{levels.get(1, 1)}` per unit of "
@@ -641,35 +751,90 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
         raise S.SpecCurveRefused(str(exc), ()) from exc
     for c in coding.categorical:
         frame[c] = frame[c].astype(object).where(frame[c].notna(), np.nan)
-    # The unit the primary's intervals cluster by (the fit's own reading of it), each row's unit
-    # by it, a blank its own unit as the fit keys it; none when the primary's rows do not cluster.
-    units = None
-    if unit is not None and design is None:
-        keys = frame[unit].astype(object).to_numpy().copy()
-        blank = frame[unit].isna().to_numpy()
-        keys[blank] = [f"__missing_{rid}" for rid in np.asarray(frame.index)[blank]]
-        units = pd.Series(keys, index=frame.index)
-    refit = S.linear_fitter(frame, outcome=target, exposure=exposure, covariates=covariates,
-                            choices=choices, task=task, classes=classes, units=units,
-                            unit_name=unit if units is not None else None, design=design)
+    def unit_of(picks: Mapping[str, str]) -> str | None:
+        """The unit this specification's rows repeat in, as the fit reads the rows of the plan it
+        is (``inference.resolve_clusters`` over its own rows: those its rules keep with every
+        column it reads present); None when they do not repeat. Where that reading refuses, the
+        fit reports no interval without a design (the design-based fit does not read it)."""
+        if not unit_columns:
+            return None
+        cols = columns_of(picks)
+        rows = rule_rows(picks) & frame[[target, *cols]].notna().all(axis=1).to_numpy()
+        found = resolve_clusters(state, frame.loc[rows, unit_columns], [grouped_by])
+        if found.refusal and design is None:
+            raise S.SpecCurveRefused(found.refusal, tuple(found.exits))
+        return found.column if found.clustered else None
+
+    # One refit per unit the specifications' rows repeat in: each row's unit by it, a blank its own
+    # unit as the fit keys it; under the surveyed population, the design that unit gives (with no
+    # PSU column the unit is its sampling unit), the primary's own design for the primary's unit.
+    fitters: dict[str | None, Any] = {}
+
+    def fitter_for(u: str | None) -> Any:
+        if u in fitters:
+            return fitters[u]
+        units, by = None, None
+        if design is not None:
+            found = survey
+            if u != unit:
+                with open_store(ctx) as store:
+                    found = for_fit(state, store, u)
+            if found is None or found.refusal or found.design is None:
+                fitters[u] = (found.refusal if found is not None and found.refusal else
+                              "the survey design for these rows could not be built")
+                return fitters[u]
+            by = found.design
+        elif u is not None:
+            keys = frame[u].astype(object).to_numpy().copy()
+            blank = frame[u].isna().to_numpy()
+            keys[blank] = [f"__missing_{rid}" for rid in np.asarray(frame.index)[blank]]
+            units = pd.Series(keys, index=frame.index)
+        fitters[u] = S.linear_fitter(frame, outcome=target, exposure=exposure,
+                                     covariates=covariates, choices=choices, task=task,
+                                     classes=classes, units=units, unit_name=u if units is not None
+                                     else None, design=by)
+        return fitters[u]
+
+    changed_words = "With this choice changed, "
 
     def fit(picks: Mapping[str, str]) -> S.SpecFit:
-        """A departure whose columns the plan would code with a step the refit does not repeat is
-        not estimated, with the step named (the primary was judged above)."""
-        if dict(picks) != recorded:
+        """A departure is fitted as the fit would fit the plan it is: it waits where that fit
+        would wait for a reading (``waits``), and is not estimated where the plan would code its
+        columns with a step the refit does not repeat (the primary was judged above) or where its
+        rows' unit leaves no interval; its intervals cluster by the unit its own rows repeat in."""
+        departure = dict(picks) != recorded
+        if departure:
+            wait = next((waits[k] for k, o in picks.items() if o != recorded[k] and k in waits),
+                        None)
+            if wait is not None:
+                raise S.SpecCurveRefused(changed_words + "the fit would first wait for an answer, "
+                                         "so it is not estimated: " + wait, ())
             try:
                 held = held_by(picks)
             except ValueError as exc:
                 raise S.SpecCurveRefused(str(exc), ()) from exc
             if held:
                 raise S.SpecCurveRefused(
-                    "With this choice changed, the plan would apply " + _listing(held) + ", which "
-                    "the curve's refit does not repeat, so it is not fitted as the primary is.", ())
+                    changed_words + "the plan would apply " + _listing(held) + ", which the "
+                    "curve's refit does not repeat, so it is not fitted as the primary is.", ())
+            try:
+                u = unit_of(picks)
+            except S.SpecCurveRefused as refusal:
+                raise S.SpecCurveRefused(changed_words + "the fit would report no interval: "
+                                         + str(refusal), ()) from refusal
+        else:
+            u = unit_of(picks)
+        refit = fitter_for(u)
+        if isinstance(refit, str):  # the design this specification's unit gives was refused
+            raise S.SpecCurveRefused((changed_words + "the fit would report no interval: "
+                                      if departure else "") + refit, ())
         return refit(picks)
 
     curve = S.specification_curve(choices, fit, lock=LOCKED, estimate_label=what,
                                   scale_key=scale_key, crossing=CROSSING,
-                                  weighted=design is not None, clustered=units is not None)
+                                  weighted=design is not None)
+    # Clustered: some specification's intervals cluster by the unit its rows repeat in.
+    curve.clustered = any(s.covariance == "CR2" for s in curve.specs)
     primary = next(s for s in curve.specs if s.primary)
     if not agrees(primary, reported):
         # No estimate is quoted: the refusal is served where none is (``served``, ``withheld``).
@@ -746,10 +911,11 @@ def served(artifact: Any, *, status: str, fresh: bool, key: str | None, lock_id:
         error=error)
 
 
-__all__ = ["AGREEMENT", "CROSSING", "EXAMINED", "FAMILY", "KIND_WORDS", "LOCKED",
+__all__ = ["AGREEMENT", "CAP_REFUSAL", "CROSSING", "EXAMINED", "FAMILY", "KIND_WORDS", "LOCKED",
            "MARGINAL_REFUSAL", "MATTERED_READS", "MATTERED_REQUIRES", "Mattered",
            "MatteredArtifact", "MatteredCurve", "MatteredExamined", "MatteredReported",
-           "RECORDED", "STAGE", "adjustment_choices", "agrees", "curve_for", "examined_choices",
-           "examined_of", "exclusion_choices", "goal_of", "mattered_stage", "methods_sentence",
-           "not_refitted", "offered", "reported_of", "says_of", "served", "shows_estimates",
-           "with_lock", "withheld"]
+           "NOTHING_TO_VARY", "OUTCOME_REFUSAL", "OUTCOME_WORDS", "RECORDED", "STAGE",
+           "adjustment_choices", "agrees", "curve_for", "examined_choices", "examined_of",
+           "exclusion_choices", "goal_of", "mattered_stage", "methods_sentence", "not_refitted",
+           "offered", "outcome_refused", "reading_wait", "reported_of", "says_of", "served",
+           "shows_estimates", "varied", "with_lock", "withheld"]
