@@ -20,7 +20,7 @@ import pytest
 from turbotab.core import decisions as d
 from turbotab.core.tests.acceptance import estimand_fixtures as ef
 from turbotab.core.tests.acceptance.r_reference import RSCRIPT, needs_r, run_r
-from turbotab.core.tests.test_mattered import ADJUSTED, RULES, Run, departures
+from turbotab.core.tests.test_mattered import ADJUSTED, RULES, Run, departures, rows_of
 
 ROLES = {"pid": "identifier", "strata": "design", "psu": "design", "wt": "design",
          **{c: "covariate" for c in (*ADJUSTED, "bmi")}, "fiber": "exposure"}
@@ -224,3 +224,98 @@ def test_without_a_psu_a_departure_whose_rows_repeat_takes_the_unit_as_its_sampl
         assert s["low"] == pytest.approx(low, rel=1e-8), k
         assert s["high"] == pytest.approx(high, rel=1e-8), k
         assert s["n"] == int(r["n"]), k
+
+
+def population(**slots) -> d.ProjectState:
+    """The surveyed population over a design with a PSU column, the two exclusion rules recorded."""
+    base = dict(target="glucose", task="regression", measure="mean_difference", roles=ROLES,
+                amounts=SHAPES, plan_locked=True, exclusions=[d.ExclusionRule(**r) for r in RULES],
+                survey=d.SurveySpec(estimand="population", weight="wt", strata="strata",
+                                    psu="psu"))
+    return ef.state(**{**base, **slots})
+
+
+def revisited(*, own_psu: bool) -> pd.DataFrame:
+    """``surveyed()`` with the test above's 150 second visits of persons aged 30 to 75, aged 80 to
+    85 so the age rule excludes them, each in its person's stratum: in its person's own PSU, or in
+    another PSU of that stratum (the next one; stratum 1 has three)."""
+    frame = surveyed()
+    rng = np.random.default_rng(8)
+    pick = rng.choice(frame.index[frame["age"].between(30, 75)], 150, replace=False)
+    again = frame.loc[pick].copy()
+    again["age"] = 80.0 + rng.uniform(0, 5, len(again))
+    again["glucose"] = frame.loc[pick, "glucose"].to_numpy() + rng.normal(0, 1, len(again))
+    if not own_psu:
+        psus = frame.groupby("strata")["psu"].max()
+        again["psu"] = [p % psus[h] + 1 for h, p in zip(again["strata"], again["psu"])]
+    return pd.concat([frame, again], ignore_index=True)
+
+
+# The departure with the age rule dropped: the one specification whose rows hold the second visits.
+AGE_DROPPED = next(k for k, (rules, _covariates) in departures().items() if rules == (1,))
+
+
+def assert_svyglm(got: dict, ref: dict) -> None:
+    """Each specification in ``ref`` is R's design-based fit there (``SVY``)."""
+    for key, (est, low, high, n) in ref.items():
+        s = got[key]
+        assert s["covariance"] == "design", key
+        assert s["estimate"] == pytest.approx(est, rel=1e-9), key
+        assert s["low"] == pytest.approx(low, rel=1e-8), key
+        assert s["high"] == pytest.approx(high, rel=1e-8), key
+        assert s["n"] == int(n), key
+
+
+@needs_r
+def test_a_departure_whose_persons_cross_psus_is_not_estimated_with_the_designs_reason(tmp_path):
+    """A specification whose survey design refuses is not estimated, with the design's reason
+    (``mattered.curve_for``'s ``fitter_for``): here, where it should. Each second visit sits in
+    another PSU of its person's stratum, so with the age rule dropped the rows repeat by `pid` and
+    no PSU holds a person's rows together (``methods.survey.for_fit``, over every row: 150 persons,
+    by construction). That departure is listed with that reason, which is the fit stage's own
+    refusal of the plan the departure is (the age rule dropped). Every other specification's rows
+    do not repeat, and each is R's svyglm (``ids = ~psu``) on its domain."""
+    from pathlib import Path
+
+    from turbotab.core.datastore import DataStore
+    from turbotab.core.methods.survey import for_fit
+
+    if not _r_has("survey"):
+        pytest.skip("R's survey is not installed (set R_LIBS to a library that has it)")
+    frame = revisited(own_psu=False)
+    run = Run(frame, tmp_path / "stages", population())
+    art = run.mattered()
+    assert art["refused"] is None, art["refused"]
+    with DataStore(Path(run.paths["data"]), 1 << 30) as store:
+        why = for_fit(run.state, store, "pid").refusal
+    assert why is not None and why.startswith("150 `pid` units have rows in more than one PSU")
+    [listed] = art["curve"]["not_estimated"]
+    assert listed["key"] == AGE_DROPPED and listed["primary"] is False
+    assert listed["reason"] == "With this choice changed, the fit would report no interval: " + why
+    plan = Run(frame, tmp_path / "plan", population(exclusions=[d.ExclusionRule(**RULES[1])]))
+    linear = next(m for m in plan.fit.data["models"] if m["family"] == "linear")
+    assert linear["inference"]["refused"] == why
+    ref = run_r(_r_specs() + SVY, {"d": run.table}, tmp_path / "r")
+    got = {s["key"]: s for s in art["curve"]["specs"]}
+    assert set(got) == set(ref) - {AGE_DROPPED}
+    assert_svyglm(got, {k: v for k, v in ref.items() if k != AGE_DROPPED})
+
+
+@needs_r
+def test_a_departure_whose_persons_keep_their_psu_is_svyglm_on_its_domain(tmp_path):
+    """The same guard silent where it should be: each second visit in its person's own PSU, so the
+    PSU holds a person's rows together and the departure with the age rule dropped, whose rows
+    repeat by `pid`, is estimated as every specification is, R's svyglm (``ids = ~psu``) on its
+    domain of the one design over every row."""
+    if not _r_has("survey"):
+        pytest.skip("R's survey is not installed (set R_LIBS to a library that has it)")
+    run = Run(revisited(own_psu=True), tmp_path / "stages", population())
+    art = run.mattered()
+    assert art["refused"] is None, art["refused"]
+    assert art["curve"]["not_estimated"] == []
+    keep = rows_of(run.table, rules=(1,), columns=["glucose", "fiber", *ADJUSTED])
+    assert run.table.loc[keep, "pid"].duplicated().sum() > 0  # the construction: its rows repeat
+    ref = run_r(_r_specs() + SVY, {"d": run.table}, tmp_path / "r")
+    got = {s["key"]: s for s in art["curve"]["specs"]}
+    assert set(got) == set(ref) == set(departures())
+    assert_svyglm(got, ref)
