@@ -107,7 +107,8 @@ the stage route's.
   - a `reseal` is refused, with a plain message and no exit offering one;
   - an opened seal's refusal drops its Reseal exit;
   - each claim rendered is logged (id, register, frozen status, grade, fallback used) to a
-    project-side JSONL file, which works from worker processes;
+    project-side JSONL file, which works from worker processes. The log is written in every
+    mode, since R1-M's claims-in-force list reads it (R1_PLAN); analyst mode serves it;
   - each preview is logged (the decision previewed, when);
   - `GET /projects/{pid}/analyst-log` serves both logs.
 - **In every mode,** `POST /decisions` accepts an optional `note`, the reason in at most 2,000
