@@ -1,0 +1,2962 @@
+{
+ "attempts": [
+  {
+   "at": "2026-10-18T22:58:43.302467Z",
+   "at_opening": null,
+   "changed": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+   ],
+   "changed_after_seal": true,
+   "decisions": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+   ],
+   "effects": {},
+   "families": [
+    "elastic_net",
+    "screened_elastic_net"
+   ],
+   "fit_key": "91392689a8ec35dd1ab4fd4985b2c8dffb88197558efaebeffb264fca1f0246a",
+   "folds": "683dfb10aaf0a6a58f61dd25b1f66a0199c3db9d2045a0221d03bf0daf298340",
+   "held_out": "d5d640fae84fd5ca12617653854aa293aaff6ad878b13a37a554ef3df6776a57",
+   "holdout": null,
+   "holdout_why": "This fit was computed before the opening at decision #23, which opened another fit's held-out scores, so this fit's are not served.",
+   "id": "03b13c16bf534280aafd9442e39aed23",
+   "locked": false,
+   "movement": [],
+   "movement_why": "No earlier fit is recorded to compare this one with.",
+   "plan_digest": "85f72115f78f010a6e95bdb4dea0473082fabdb751f1103b8e91476695452291",
+   "press": null,
+   "primary_metric": "log_loss",
+   "purpose": "prediction",
+   "reasons": [
+    {
+     "note": "Scripted analyst, step 1: lens answered from the journey's lens.",
+     "seq": 1
+    },
+    {
+     "note": "Scripted analyst, step 2: a finding acted on with its first repair",
+     "seq": 2
+    },
+    {
+     "note": "Scripted analyst, step 3: target answered from the card's outcome.",
+     "seq": 3
+    },
+    {
+     "note": "Scripted analyst, step 4: event answered from the card's outcome level.",
+     "seq": 4
+    },
+    {
+     "note": "Scripted analyst, step 5: follow_up answered from one period for everyone, the acceptance drivers' answer.",
+     "seq": 5
+    },
+    {
+     "note": "Scripted analyst, step 6: purpose answered from the card's purpose.",
+     "seq": 6
+    },
+    {
+     "note": "Scripted analyst, step 7: grain answered from one row per unit, the card's population.",
+     "seq": 7
+    },
+    {
+     "note": "Scripted analyst, step 8: roles answered from the app's proposed roles, confirmed.",
+     "seq": 8
+    },
+    {
+     "note": "Scripted analyst, step 9: a role confirmed as the roles answer gave it",
+     "seq": 9
+    },
+    {
+     "note": "Scripted analyst, step 10: a role confirmed as the roles answer gave it",
+     "seq": 10
+    },
+    {
+     "note": "Scripted analyst, step 11: exclusions answered from the app's first-ranked option (journeys).",
+     "seq": 11
+    },
+    {
+     "note": "Scripted analyst, step 12: missing answered from the app's first-ranked option (journeys).",
+     "seq": 12
+    },
+    {
+     "note": "Scripted analyst, step 13: split answered from the run's own answer.",
+     "seq": 13
+    },
+    {
+     "note": "Scripted analyst, step 14: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 14
+    },
+    {
+     "note": "Scripted analyst, step 15: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 15
+    },
+    {
+     "note": "Scripted analyst, step 16: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 16
+    },
+    {
+     "note": "Scripted analyst, step 17: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 17
+    },
+    {
+     "note": "Scripted analyst, step 18: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 18
+    },
+    {
+     "note": "Scripted analyst, step 19: models answered from the shelf's first-ranked families (journeys).",
+     "seq": 19
+    }
+   ],
+   "reinstated": [],
+   "scores": {
+    "elastic_net": {
+     "auc": {
+      "ci_high": 0.8206622605232897,
+      "ci_low": 0.7060537599975231,
+      "estimate": 0.7633580102604064,
+      "estimator": "fold_mean",
+      "folds": [
+       0.852165725047081,
+       0.7551789077212806,
+       0.7627118644067796,
+       0.756120527306968,
+       0.6906130268199233
+      ],
+      "mean": 0.7633580102604064,
+      "repeat_sd": null,
+      "repeats": 1,
+      "sd": 0.057659212628379045,
+      "se": 0.029237399623101228
+     },
+     "brier": {
+      "ci_high": 0.17396992215400553,
+      "ci_low": 0.13053196379626741,
+      "estimate": 0.15225094297513647,
+      "estimator": "fold_mean",
+      "folds": [
+       0.13052209710755092,
+       0.15623505061430135,
+       0.1555661934751649,
+       0.15200596845958667,
+       0.16692540521907848
+      ],
+      "mean": 0.15225094297513647,
+      "repeat_sd": null,
+      "repeats": 1,
+      "sd": 0.0133641928016419,
+      "se": 0.011081315447725375
+     },
+     "log_loss": {
+      "ci_high": 0.524375713828206,
+      "ci_low": 0.41396736225067665,
+      "estimate": 0.46917153803944134,
+      "estimator": "fold_mean",
+      "folds": [
+       0.41062968215918133,
+       0.46806558581573376,
+       0.4776326278984521,
+       0.4761968827577219,
+       0.5133329115661175
+      ],
+      "mean": 0.46917153803944134,
+      "repeat_sd": null,
+      "repeats": 1,
+      "sd": 0.03707945671797861,
+      "se": 0.028165913365861932
+     }
+    },
+    "screened_elastic_net": {
+     "auc": {
+      "ci_high": 0.8206622605232897,
+      "ci_low": 0.7060537599975231,
+      "estimate": 0.7633580102604064,
+      "estimator": "fold_mean",
+      "folds": [
+       0.852165725047081,
+       0.7551789077212806,
+       0.7627118644067796,
+       0.756120527306968,
+       0.6906130268199233
+      ],
+      "mean": 0.7633580102604064,
+      "repeat_sd": null,
+      "repeats": 1,
+      "sd": 0.057659212628379045,
+      "se": 0.029237399623101228
+     },
+     "brier": {
+      "ci_high": 0.17396992215400553,
+      "ci_low": 0.13053196379626741,
+      "estimate": 0.15225094297513647,
+      "estimator": "fold_mean",
+      "folds": [
+       0.13052209710755092,
+       0.15623505061430135,
+       0.1555661934751649,
+       0.15200596845958667,
+       0.16692540521907848
+      ],
+      "mean": 0.15225094297513647,
+      "repeat_sd": null,
+      "repeats": 1,
+      "sd": 0.0133641928016419,
+      "se": 0.011081315447725375
+     },
+     "log_loss": {
+      "ci_high": 0.524375713828206,
+      "ci_low": 0.41396736225067665,
+      "estimate": 0.46917153803944134,
+      "estimator": "fold_mean",
+      "folds": [
+       0.41062968215918133,
+       0.46806558581573376,
+       0.4776326278984521,
+       0.4761968827577219,
+       0.5133329115661175
+      ],
+      "mean": 0.46917153803944134,
+      "repeat_sd": null,
+      "repeats": 1,
+      "sd": 0.03707945671797861,
+      "se": 0.028165913365861932
+     }
+    }
+   },
+   "seconds": 78.25197779200971,
+   "seed": 0,
+   "seq": 1,
+   "target": "readmit_30d",
+   "withdrawn": [],
+   "withheld": null,
+   "workers": 2
+  },
+  {
+   "at": "2026-10-18T23:00:02.684738Z",
+   "at_opening": {
+    "current": true,
+    "family": "elastic_net",
+    "metric": "log_loss",
+    "n_holdout": 96,
+    "note": "At the opening (decision #23), `elastic_net` scored a held-out Log loss of 0.528 on 96 held-out rows: the reported result.",
+    "scores": {
+     "elastic_net": {
+      "auc": 0.6584766584766585,
+      "brier": 0.1741118483245978,
+      "log_loss": 0.5278277087071518
+     },
+     "screened_elastic_net": {
+      "auc": 0.6584766584766585,
+      "brier": 0.1741118483245978,
+      "log_loss": 0.5278277087071518
+     }
+    },
+    "seq": 23
+   },
+   "changed": [
+    20,
+    21
+   ],
+   "changed_after_seal": false,
+   "decisions": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    21
+   ],
+   "effects": {},
+   "families": [
+    "elastic_net",
+    "screened_elastic_net"
+   ],
+   "fit_key": "e8a8c8340e8f354b1deecec04e26b85e7f42b2371e96a2618dbedc0c6638a0b5",
+   "folds": "683dfb10aaf0a6a58f61dd25b1f66a0199c3db9d2045a0221d03bf0daf298340",
+   "held_out": "d5d640fae84fd5ca12617653854aa293aaff6ad878b13a37a554ef3df6776a57",
+   "holdout": {
+    "elastic_net": {
+     "auc": 0.6584766584766585,
+     "brier": 0.1741118483245978,
+     "log_loss": 0.5278277087071518
+    },
+    "screened_elastic_net": {
+     "auc": 0.6584766584766585,
+     "brier": 0.1741118483245978,
+     "log_loss": 0.5278277087071518
+    }
+   },
+   "holdout_why": null,
+   "id": "5f437b6365324736a5bf2b890ca5c68b",
+   "locked": false,
+   "movement": [
+    {
+     "against": "03b13c16bf534280aafd9442e39aed23",
+     "family": "elastic_net",
+     "movement": {
+      "band": 0,
+      "calibrated": true,
+      "changes_question": false,
+      "crosses": false,
+      "instrument": "paired_folds",
+      "label": "|mean \u0394score| / SD of \u0394 by fold = 0.066",
+      "not_measurable": false,
+      "regime": "realized",
+      "theorem": null,
+      "value": 0.06578174782212205,
+      "words": "For `elastic_net`, whose cross-validated score is its Log loss (lower is better), what differs from the previous fit changed the cross-validated score by +0.0003 on average, 0.07 of its fold-to-fold spread."
+     },
+     "why": null
+    },
+    {
+     "against": "03b13c16bf534280aafd9442e39aed23",
+     "family": "screened_elastic_net",
+     "movement": {
+      "band": 0,
+      "calibrated": true,
+      "changes_question": false,
+      "crosses": false,
+      "instrument": "paired_folds",
+      "label": "|mean \u0394score| / SD of \u0394 by fold = 0.066",
+      "not_measurable": false,
+      "regime": "realized",
+      "theorem": null,
+      "value": 0.06578174782212205,
+      "words": "For `screened_elastic_net`, whose cross-validated score is its Log loss (lower is better), what differs from the previous fit changed the cross-validated score by +0.0003 on average, 0.07 of its fold-to-fold spread."
+     },
+     "why": null
+    }
+   ],
+   "movement_why": null,
+   "plan_digest": "8295fe53b87772c4fcc6c4ee48204835baa9c24ba0d750710463193a074321bf",
+   "press": {
+    "seconds": 80.1,
+    "seq": 21,
+    "target": "readmit_30d"
+   },
+   "primary_metric": "log_loss",
+   "purpose": "prediction",
+   "reasons": [
+    {
+     "note": "Scripted analyst, step 20: Revisit the roles: testing whether sodium, which no card reason ties to readmission, carries signal. CV AUC with it: elastic_net 0.763, screened_elastic_net 0.763.",
+     "seq": 20
+    },
+    {
+     "note": "Scripted analyst, step 21: roles with sodium left out, to test whether it carries signal.",
+     "seq": 21
+    }
+   ],
+   "reinstated": [],
+   "scores": {
+    "elastic_net": {
+     "auc": {
+      "ci_high": 0.8246932063836557,
+      "ci_low": 0.7114649857067398,
+      "estimate": 0.7680790960451978,
+      "estimator": "fold_mean",
+      "folds": [
+       0.8559322033898304,
+       0.756120527306968,
+       0.7730696798493408,
+       0.7608286252354048,
+       0.6944444444444444
+      ],
+      "mean": 0.7680790960451978,
+      "repeat_sd": null,
+      "repeats": 1,
+      "sd": 0.05779427524938928,
+      "se": 0.028885280946498424
+     },
+     "brier": {
+      "ci_high": 0.17408275073427074,
+      "ci_low": 0.13054617093820745,
+      "estimate": 0.1523144608362391,
+      "estimator": "fold_mean",
+      "folds": [
+       0.13260324130173423,
+       0.15605039778088017,
+       0.15554068976866875,
+       0.15095583509516697,
+       0.16642214023474527
+      ],
+      "mean": 0.1523144608362391,
+      "repeat_sd": null,
+      "repeats": 1,
+      "sd": 0.012387195358832905,
+      "se": 0.011106474440212758
+     },
+     "log_loss": {
+      "ci_high": 0.5249154795086013,
+      "ci_low": 0.4139984260605935,
+      "estimate": 0.46945695278459737,
+      "estimator": "fold_mean",
+      "folds": [
+       0.4185398123245257,
+       0.4676315034149261,
+       0.47550480942177575,
+       0.473630254391453,
+       0.5119783843703063
+      ],
+      "mean": 0.46945695278459737,
+      "repeat_sd": null,
+      "repeats": 1,
+      "sd": 0.0333839505538802,
+      "se": 0.028295686635802324
+     }
+    },
+    "screened_elastic_net": {
+     "auc": {
+      "ci_high": 0.8246932063836557,
+      "ci_low": 0.7114649857067398,
+      "estimate": 0.7680790960451978,
+      "estimator": "fold_mean",
+      "folds": [
+       0.8559322033898304,
+       0.756120527306968,
+       0.7730696798493408,
+       0.7608286252354048,
+       0.6944444444444444
+      ],
+      "mean": 0.7680790960451978,
+      "repeat_sd": null,
+      "repeats": 1,
+      "sd": 0.05779427524938928,
+      "se": 0.028885280946498424
+     },
+     "brier": {
+      "ci_high": 0.17408275073427074,
+      "ci_low": 0.13054617093820745,
+      "estimate": 0.1523144608362391,
+      "estimator": "fold_mean",
+      "folds": [
+       0.13260324130173423,
+       0.15605039778088017,
+       0.15554068976866875,
+       0.15095583509516697,
+       0.16642214023474527
+      ],
+      "mean": 0.1523144608362391,
+      "repeat_sd": null,
+      "repeats": 1,
+      "sd": 0.012387195358832905,
+      "se": 0.011106474440212758
+     },
+     "log_loss": {
+      "ci_high": 0.5249154795086013,
+      "ci_low": 0.4139984260605935,
+      "estimate": 0.46945695278459737,
+      "estimator": "fold_mean",
+      "folds": [
+       0.4185398123245257,
+       0.4676315034149261,
+       0.47550480942177575,
+       0.473630254391453,
+       0.5119783843703063
+      ],
+      "mean": 0.46945695278459737,
+      "repeat_sd": null,
+      "repeats": 1,
+      "sd": 0.0333839505538802,
+      "se": 0.028295686635802324
+     }
+    }
+   },
+   "seconds": 74.32349716685712,
+   "seed": 0,
+   "seq": 2,
+   "target": "readmit_30d",
+   "withdrawn": [
+    {
+     "by": 20,
+     "seq": 8
+    }
+   ],
+   "withheld": null,
+   "workers": 2
+  }
+ ],
+ "claims": [],
+ "dataset": {
+  "card": {
+   "design": "analysts",
+   "id": "clinical_readmission_predict",
+   "manifest": "research/datasets/clinical_readmission_predict/manifest.json",
+   "outcome": {
+    "column": "readmit_30d",
+    "meaning": "readmitted within 30 days (1 yes, 0 no)"
+   },
+   "population": "A generated (synthetic) cohort of adult hospital encounters, one row per encounter.",
+   "prepared": [],
+   "purpose": "Predict",
+   "question": "How well do the table's measures predict a readmission within 30 days?",
+   "source": "A generated (synthetic) table.",
+   "table": {
+    "format": "csv",
+    "path": "research/data/datasets/clinical_readmission_predict/clinical_risk.csv"
+   }
+  },
+  "codebook": null,
+  "control": "known_answer",
+  "files": [
+   {
+    "bytes": 18803,
+    "license": null,
+    "name": "clinical_risk.csv",
+    "release_date": null,
+    "role": "table",
+    "sha256": "c33f2a5a928618db672ea3205e80094e70613290e1a07cde1f7350f2d14e7fd7",
+    "url": null
+   }
+  ],
+  "fixture": "clinical_risk.csv",
+  "id": "clinical_readmission_predict",
+  "known": null
+ },
+ "decisions": [
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "lens",
+     "value": {
+      "lenses": [
+       "clinical"
+      ]
+     }
+    }
+   ],
+   "at": "2026-10-18T22:56:45.406300Z",
+   "early": null,
+   "examined": [],
+   "id": "4d70148fb6fa4af2b52ab7b2e24a626b",
+   "kind": "set_lens",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "kind": "set_lens",
+    "lenses": [
+     "clinical"
+    ]
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 1: lens answered from the journey's lens.",
+   "seq": 1,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "findings:binary_text__sex",
+     "value": {
+      "action": "applied",
+      "option": "level",
+      "params": {
+       "column": "sex",
+       "one": "f",
+       "relabels": true,
+       "zero": "m"
+      },
+      "reason": null,
+      "to": null
+     }
+    }
+   ],
+   "at": "2026-10-18T22:56:47.342228Z",
+   "early": null,
+   "examined": [],
+   "id": "837863db69fa4ea0b5cc6d2f872d7ace",
+   "kind": "apply_repair",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "finding_id": "binary_text__sex",
+    "kind": "apply_repair",
+    "option": "level",
+    "params": {
+     "column": "sex",
+     "one": "f",
+     "relabels": true,
+     "zero": "m"
+    }
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 2: a finding acted on with its first repair",
+   "seq": 2,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "target",
+     "value": {
+      "column": "readmit_30d"
+     }
+    }
+   ],
+   "at": "2026-10-18T22:56:49.262389Z",
+   "early": null,
+   "examined": [],
+   "id": "5d34c88ae6254625a19db2ca8f67d86a",
+   "kind": "set_target",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "column": "readmit_30d",
+    "kind": "set_target"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 3: target answered from the card's outcome.",
+   "seq": 3,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "event",
+     "value": {
+      "column": "readmit_30d",
+      "level": "1"
+     }
+    }
+   ],
+   "at": "2026-10-18T22:56:51.219792Z",
+   "early": null,
+   "examined": [],
+   "id": "bb490876208945c8952a486ce8590303",
+   "kind": "set_event",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "column": "readmit_30d",
+    "kind": "set_event",
+    "level": "1"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 4: event answered from the card's outcome level.",
+   "seq": 4,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "censoring",
+     "value": {
+      "acknowledged": false,
+      "column": "readmit_30d"
+     }
+    }
+   ],
+   "at": "2026-10-18T22:56:53.130249Z",
+   "early": null,
+   "examined": [],
+   "id": "dacb9c71ef884e77a6985779102e1756",
+   "kind": "set_censoring",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "acknowledged": false,
+    "column": "readmit_30d",
+    "kind": "set_censoring"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 5: follow_up answered from one period for everyone, the acceptance drivers' answer.",
+   "seq": 5,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "purpose",
+     "value": {
+      "purpose": "prediction"
+     }
+    }
+   ],
+   "at": "2026-10-18T22:56:55.013633Z",
+   "early": null,
+   "examined": [],
+   "id": "c3a0e60c6b3845d2b078343c217b5edb",
+   "kind": "set_purpose",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "kind": "set_purpose",
+    "purpose": "prediction"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 6: purpose answered from the card's purpose.",
+   "seq": 6,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "grain",
+     "value": {
+      "acknowledged": false,
+      "grain": "one_row_per_unit",
+      "id_column": null
+     }
+    }
+   ],
+   "at": "2026-10-18T22:56:56.926919Z",
+   "early": null,
+   "examined": [],
+   "id": "5d24465361b6453c937fe85c6cfb65e5",
+   "kind": "set_grain",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "acknowledged": false,
+    "grain": "one_row_per_unit",
+    "id_column": null,
+    "kind": "set_grain"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 7: grain answered from one row per unit, the card's population.",
+   "seq": 7,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "role:encounter_id",
+     "value": "identifier"
+    },
+    {
+     "question": "role:age",
+     "value": "covariate"
+    },
+    {
+     "question": "role:sex",
+     "value": "covariate"
+    },
+    {
+     "question": "role:charlson_index",
+     "value": "exposure"
+    },
+    {
+     "question": "role:prior_admissions_12mo",
+     "value": "exposure"
+    },
+    {
+     "question": "role:albumin_g_dl",
+     "value": "exposure"
+    },
+    {
+     "question": "role:creatinine_mg_dl",
+     "value": "exposure"
+    },
+    {
+     "question": "role:hemoglobin_g_dl",
+     "value": "exposure"
+    },
+    {
+     "question": "role:sodium_mmol_l",
+     "value": "exposure"
+    },
+    {
+     "question": "role:length_of_stay_days",
+     "value": "exposure"
+    }
+   ],
+   "at": "2026-10-18T22:56:59.832244Z",
+   "early": null,
+   "examined": [
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:56:58.887737Z",
+     "attempt": null,
+     "how": "preview",
+     "question": "role:age",
+     "refused": null,
+     "seq": null,
+     "value": "covariate"
+    },
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:56:58.887737Z",
+     "attempt": null,
+     "how": "preview",
+     "question": "role:albumin_g_dl",
+     "refused": null,
+     "seq": null,
+     "value": "exposure"
+    },
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:56:58.887737Z",
+     "attempt": null,
+     "how": "preview",
+     "question": "role:charlson_index",
+     "refused": null,
+     "seq": null,
+     "value": "exposure"
+    },
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:56:58.887737Z",
+     "attempt": null,
+     "how": "preview",
+     "question": "role:creatinine_mg_dl",
+     "refused": null,
+     "seq": null,
+     "value": "exposure"
+    },
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:56:58.887737Z",
+     "attempt": null,
+     "how": "preview",
+     "question": "role:encounter_id",
+     "refused": null,
+     "seq": null,
+     "value": "identifier"
+    },
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:56:58.887737Z",
+     "attempt": null,
+     "how": "preview",
+     "question": "role:hemoglobin_g_dl",
+     "refused": null,
+     "seq": null,
+     "value": "exposure"
+    },
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:56:58.887737Z",
+     "attempt": null,
+     "how": "preview",
+     "question": "role:length_of_stay_days",
+     "refused": null,
+     "seq": null,
+     "value": "exposure"
+    },
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:56:58.887737Z",
+     "attempt": null,
+     "how": "preview",
+     "question": "role:prior_admissions_12mo",
+     "refused": null,
+     "seq": null,
+     "value": "exposure"
+    },
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:56:58.887737Z",
+     "attempt": null,
+     "how": "preview",
+     "question": "role:sex",
+     "refused": null,
+     "seq": null,
+     "value": "covariate"
+    },
+    {
+     "alternative": true,
+     "at": "2026-10-18T22:56:58.887737Z",
+     "attempt": null,
+     "how": "preview",
+     "question": "role:sodium_mmol_l",
+     "refused": null,
+     "seq": null,
+     "value": "excluded"
+    }
+   ],
+   "id": "0c47eeab66de4657a5013fd2c74a630e",
+   "kind": "set_roles",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "kind": "set_roles",
+    "roles": {
+     "age": "covariate",
+     "albumin_g_dl": "exposure",
+     "charlson_index": "exposure",
+     "creatinine_mg_dl": "exposure",
+     "encounter_id": "identifier",
+     "hemoglobin_g_dl": "exposure",
+     "length_of_stay_days": "exposure",
+     "prior_admissions_12mo": "exposure",
+     "sex": "covariate",
+     "sodium_mmol_l": "exposure"
+    },
+    "unconfirmed": [
+     "encounter_id",
+     "charlson_index",
+     "prior_admissions_12mo",
+     "albumin_g_dl",
+     "creatinine_mg_dl",
+     "hemoglobin_g_dl",
+     "sodium_mmol_l",
+     "length_of_stay_days"
+    ]
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 8: roles answered from the app's proposed roles, confirmed.",
+   "seq": 8,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "role:encounter_id",
+     "value": "identifier"
+    }
+   ],
+   "at": "2026-10-18T22:57:01.756157Z",
+   "early": null,
+   "examined": [],
+   "id": "00652774246d44fcbe0ccba63a2eff7f",
+   "kind": "confirm_role",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "column": "encounter_id",
+    "kind": "confirm_role",
+    "role": "identifier"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 9: a role confirmed as the roles answer gave it",
+   "seq": 9,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "role:charlson_index",
+     "value": "exposure"
+    },
+    {
+     "question": "role:prior_admissions_12mo",
+     "value": "exposure"
+    },
+    {
+     "question": "role:albumin_g_dl",
+     "value": "exposure"
+    },
+    {
+     "question": "role:creatinine_mg_dl",
+     "value": "exposure"
+    },
+    {
+     "question": "role:hemoglobin_g_dl",
+     "value": "exposure"
+    },
+    {
+     "question": "role:sodium_mmol_l",
+     "value": "exposure"
+    },
+    {
+     "question": "role:length_of_stay_days",
+     "value": "exposure"
+    }
+   ],
+   "at": "2026-10-18T22:57:03.658719Z",
+   "early": null,
+   "examined": [],
+   "id": "3e416982f15a4ba79577a518f81bd229",
+   "kind": "confirm_readings",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "items": [
+     {
+      "column": "charlson_index",
+      "reading": "role",
+      "value": "exposure"
+     },
+     {
+      "column": "prior_admissions_12mo",
+      "reading": "role",
+      "value": "exposure"
+     },
+     {
+      "column": "albumin_g_dl",
+      "reading": "role",
+      "value": "exposure"
+     },
+     {
+      "column": "creatinine_mg_dl",
+      "reading": "role",
+      "value": "exposure"
+     },
+     {
+      "column": "hemoglobin_g_dl",
+      "reading": "role",
+      "value": "exposure"
+     },
+     {
+      "column": "sodium_mmol_l",
+      "reading": "role",
+      "value": "exposure"
+     },
+     {
+      "column": "length_of_stay_days",
+      "reading": "role",
+      "value": "exposure"
+     }
+    ],
+    "kind": "confirm_readings"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 10: a role confirmed as the roles answer gave it",
+   "seq": 10,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "exclusions",
+     "value": {
+      "rules": []
+     }
+    }
+   ],
+   "at": "2026-10-18T22:57:05.594671Z",
+   "early": null,
+   "examined": [],
+   "id": "952175b41c8a4ec39110a4a5f48c882e",
+   "kind": "set_exclusions",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "kind": "set_exclusions",
+    "rules": []
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 11: exclusions answered from the app's first-ranked option (journeys).",
+   "seq": 11,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "missing",
+     "value": {
+      "acknowledged": false,
+      "below_detection": null,
+      "categorical": "impute",
+      "censored_columns": [],
+      "drop_columns": [],
+      "imputation_levels": "clustered",
+      "imputation_model": "compatible",
+      "indicators": false,
+      "m": 20,
+      "reason": null,
+      "strategy": "impute"
+     }
+    }
+   ],
+   "at": "2026-10-18T22:57:07.501496Z",
+   "early": null,
+   "examined": [],
+   "id": "6e600276e4db451186bc8802a6d6b5be",
+   "kind": "set_missing",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "acknowledged": false,
+    "below_detection": null,
+    "categorical": "impute",
+    "censored_columns": [],
+    "drop_columns": [],
+    "imputation_levels": "clustered",
+    "imputation_model": "compatible",
+    "indicators": false,
+    "kind": "set_missing",
+    "m": 20,
+    "reason": null,
+    "strategy": "impute"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 12: missing answered from the app's first-ranked option (journeys).",
+   "seq": 12,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "split",
+     "value": {
+      "cluster": null,
+      "folds": 5,
+      "holdout": 0.2,
+      "n_boot": 500,
+      "nested_cv": false,
+      "repeats": 10,
+      "seed": 0,
+      "validation": "bootstrap"
+     }
+    }
+   ],
+   "at": "2026-10-18T22:57:09.502796Z",
+   "early": null,
+   "examined": [],
+   "id": "c88ebeeca4984c4488770322dd90fc9d",
+   "kind": "set_split",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "cluster": null,
+    "folds": 5,
+    "holdout": 0.2,
+    "kind": "set_split",
+    "n_boot": 500,
+    "nested_cv": false,
+    "repeats": 10,
+    "seed": 0,
+    "validation": "bootstrap"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 13: split answered from the run's own answer.",
+   "seq": 13,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:age",
+     "value": "amount"
+    }
+   ],
+   "at": "2026-10-18T22:57:12.146777Z",
+   "early": null,
+   "examined": [],
+   "id": "31525948cf2541438d210a74c72b2f96",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "column": "age",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "amount"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 14: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 14,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:sodium_mmol_l",
+     "value": "amount"
+    }
+   ],
+   "at": "2026-10-18T22:57:14.711394Z",
+   "early": null,
+   "examined": [],
+   "id": "eac8484821054b28a222f1787418a5ba",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "column": "sodium_mmol_l",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "amount"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 15: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 15,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:length_of_stay_days",
+     "value": "amount"
+    }
+   ],
+   "at": "2026-10-18T22:57:17.290311Z",
+   "early": null,
+   "examined": [],
+   "id": "22d90e61b8c241979db11656b3b4f690",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "column": "length_of_stay_days",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "amount"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 16: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 16,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:charlson_index",
+     "value": "amount"
+    }
+   ],
+   "at": "2026-10-18T22:57:19.841752Z",
+   "early": null,
+   "examined": [],
+   "id": "72712a28fb3f4eebae8c18af3631545f",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "column": "charlson_index",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "amount"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 17: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 17,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:prior_admissions_12mo",
+     "value": "amount"
+    }
+   ],
+   "at": "2026-10-18T22:57:22.460747Z",
+   "early": null,
+   "examined": [],
+   "id": "086f9bea460843b7ab7a8423f6a42caa",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "column": "prior_admissions_12mo",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "amount"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 18: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 18,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "models",
+     "value": {
+      "models": [
+       "elastic_net",
+       "screened_elastic_net"
+      ]
+     }
+    }
+   ],
+   "at": "2026-10-18T22:57:25.013629Z",
+   "early": null,
+   "examined": [],
+   "id": "3acbcbf59e7045f49df977dca88d53ca",
+   "kind": "select_models",
+   "materiality": {
+    "attempt": "03b13c16bf534280aafd9442e39aed23",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No earlier fit is recorded to compare this one with."
+   },
+   "option": {
+    "kind": "select_models",
+    "models": [
+     "elastic_net",
+     "screened_elastic_net"
+    ]
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 19: models answered from the shelf's first-ranked families (journeys).",
+   "seq": 19,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "revert:0c47eeab66de4657a5013fd2c74a630e",
+     "value": {
+      "decision_id": "0c47eeab66de4657a5013fd2c74a630e"
+     }
+    }
+   ],
+   "at": "2026-10-18T22:58:44.904418Z",
+   "early": null,
+   "examined": [],
+   "id": "7de3184c36fb4c6eba0a42950692e06f",
+   "kind": "revert",
+   "materiality": {
+    "attempt": "5f437b6365324736a5bf2b890ca5c68b",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "It took effect at fit #2 together with record #21: the fit records measure the change between two fits, not each record's share of it."
+   },
+   "option": {
+    "decision_id": "0c47eeab66de4657a5013fd2c74a630e",
+    "kind": "revert"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 20: Revisit the roles: testing whether sodium, which no card reason ties to readmission, carries signal. CV AUC with it: elastic_net 0.763, screened_elastic_net 0.763.",
+   "seq": 20,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "role:encounter_id",
+     "value": "identifier"
+    },
+    {
+     "question": "role:age",
+     "value": "covariate"
+    },
+    {
+     "question": "role:sex",
+     "value": "covariate"
+    },
+    {
+     "question": "role:charlson_index",
+     "value": "exposure"
+    },
+    {
+     "question": "role:prior_admissions_12mo",
+     "value": "exposure"
+    },
+    {
+     "question": "role:albumin_g_dl",
+     "value": "exposure"
+    },
+    {
+     "question": "role:creatinine_mg_dl",
+     "value": "exposure"
+    },
+    {
+     "question": "role:hemoglobin_g_dl",
+     "value": "exposure"
+    },
+    {
+     "question": "role:sodium_mmol_l",
+     "value": "excluded"
+    },
+    {
+     "question": "role:length_of_stay_days",
+     "value": "exposure"
+    }
+   ],
+   "at": "2026-10-18T22:58:47.714901Z",
+   "early": null,
+   "examined": [
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:58:43.302467Z",
+     "attempt": "03b13c16bf534280aafd9442e39aed23",
+     "how": "fit",
+     "question": "role:encounter_id",
+     "refused": null,
+     "seq": 8,
+     "value": "identifier"
+    },
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:58:43.302467Z",
+     "attempt": "03b13c16bf534280aafd9442e39aed23",
+     "how": "fit",
+     "question": "role:age",
+     "refused": null,
+     "seq": 8,
+     "value": "covariate"
+    },
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:58:43.302467Z",
+     "attempt": "03b13c16bf534280aafd9442e39aed23",
+     "how": "fit",
+     "question": "role:sex",
+     "refused": null,
+     "seq": 8,
+     "value": "covariate"
+    },
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:58:43.302467Z",
+     "attempt": "03b13c16bf534280aafd9442e39aed23",
+     "how": "fit",
+     "question": "role:charlson_index",
+     "refused": null,
+     "seq": 8,
+     "value": "exposure"
+    },
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:58:43.302467Z",
+     "attempt": "03b13c16bf534280aafd9442e39aed23",
+     "how": "fit",
+     "question": "role:prior_admissions_12mo",
+     "refused": null,
+     "seq": 8,
+     "value": "exposure"
+    },
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:58:43.302467Z",
+     "attempt": "03b13c16bf534280aafd9442e39aed23",
+     "how": "fit",
+     "question": "role:albumin_g_dl",
+     "refused": null,
+     "seq": 8,
+     "value": "exposure"
+    },
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:58:43.302467Z",
+     "attempt": "03b13c16bf534280aafd9442e39aed23",
+     "how": "fit",
+     "question": "role:creatinine_mg_dl",
+     "refused": null,
+     "seq": 8,
+     "value": "exposure"
+    },
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:58:43.302467Z",
+     "attempt": "03b13c16bf534280aafd9442e39aed23",
+     "how": "fit",
+     "question": "role:hemoglobin_g_dl",
+     "refused": null,
+     "seq": 8,
+     "value": "exposure"
+    },
+    {
+     "alternative": true,
+     "at": "2026-10-18T22:58:43.302467Z",
+     "attempt": "03b13c16bf534280aafd9442e39aed23",
+     "how": "fit",
+     "question": "role:sodium_mmol_l",
+     "refused": null,
+     "seq": 8,
+     "value": "exposure"
+    },
+    {
+     "alternative": false,
+     "at": "2026-10-18T22:58:43.302467Z",
+     "attempt": "03b13c16bf534280aafd9442e39aed23",
+     "how": "fit",
+     "question": "role:length_of_stay_days",
+     "refused": null,
+     "seq": 8,
+     "value": "exposure"
+    }
+   ],
+   "id": "925ccdb1ba954c5a87184fe8939773bc",
+   "kind": "set_roles",
+   "materiality": {
+    "attempt": "5f437b6365324736a5bf2b890ca5c68b",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "It took effect at fit #2 together with record #20: the fit records measure the change between two fits, not each record's share of it."
+   },
+   "option": {
+    "kind": "set_roles",
+    "roles": {
+     "age": "covariate",
+     "albumin_g_dl": "exposure",
+     "charlson_index": "exposure",
+     "creatinine_mg_dl": "exposure",
+     "encounter_id": "identifier",
+     "hemoglobin_g_dl": "exposure",
+     "length_of_stay_days": "exposure",
+     "prior_admissions_12mo": "exposure",
+     "sex": "covariate",
+     "sodium_mmol_l": "excluded"
+    },
+    "unconfirmed": []
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 21: roles with sodium left out, to test whether it carries signal.",
+   "seq": 21,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "revert:7de3184c36fb4c6eba0a42950692e06f",
+     "value": {
+      "decision_id": "7de3184c36fb4c6eba0a42950692e06f"
+     }
+    }
+   ],
+   "at": "2026-10-18T23:00:04.205972Z",
+   "early": null,
+   "examined": [],
+   "id": "d3a4d486556148319a4390aa6726fc5b",
+   "kind": "revert",
+   "materiality": {
+    "attempt": null,
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No fit's change from the fit before it is credited to this revert of record #20."
+   },
+   "option": {
+    "decision_id": "7de3184c36fb4c6eba0a42950692e06f",
+    "kind": "revert"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 22: Withdraw the revisit's revert: the roles without sodium stand, CV AUC elastic_net 0.768, screened_elastic_net 0.768 against elastic_net 0.763, screened_elastic_net 0.763 with it.",
+   "seq": 22,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "seal_opened",
+     "value": {
+      "family": "elastic_net",
+      "metric": "log_loss",
+      "n_holdout": 96,
+      "scores": {
+       "elastic_net": {
+        "auc": 0.6584766584766585,
+        "brier": 0.1741118483245978,
+        "log_loss": 0.5278277087071518
+       },
+       "screened_elastic_net": {
+        "auc": 0.6584766584766585,
+        "brier": 0.1741118483245978,
+        "log_loss": 0.5278277087071518
+       }
+      },
+      "target": "readmit_30d"
+     }
+    }
+   ],
+   "at": "2026-10-18T23:00:07.273526Z",
+   "early": null,
+   "examined": [],
+   "id": "02cd046393d94b98bc6fd082580c8585",
+   "kind": "open_seal",
+   "materiality": {
+    "attempt": null,
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No fit completed while this record was in force."
+   },
+   "option": {
+    "family": "elastic_net",
+    "kind": "open_seal",
+    "metric": "log_loss",
+    "n_holdout": 96,
+    "scores": {
+     "elastic_net": {
+      "auc": 0.6584766584766585,
+      "brier": 0.1741118483245978,
+      "log_loss": 0.5278277087071518
+     },
+     "screened_elastic_net": {
+      "auc": 0.6584766584766585,
+      "brier": 0.1741118483245978,
+      "log_loss": 0.5278277087071518
+     }
+    },
+    "target": "readmit_30d"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 23: elastic_net is the shelf's first-ranked family fitted; its held-out score is the result.",
+   "seq": 23,
+   "source": "analyst"
+  }
+ ],
+ "export": {
+  "checklist": {
+   "checklist": "TRIPOD+AI",
+   "citation": "Collins GS, Moons KGM, Dhiman P, et al. TRIPOD+AI statement: updated guidance for reporting clinical prediction models that use regression or machine learning methods. BMJ 2024;385:e078378. doi:10.1136/bmj-2023-078378",
+   "counts": {
+    "answered": 3,
+    "items": 52,
+    "partly_answered": 12,
+    "unanswered": 37
+   },
+   "items": [
+    {
+     "id": "1",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Title",
+     "status": "unanswered",
+     "text": "Identify the study as developing or evaluating the performance of a multivariable prediction model, the target population, and the outcome to be predicted",
+     "topic": "Title",
+     "where": []
+    },
+    {
+     "id": "2",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Abstract",
+     "status": "unanswered",
+     "text": "See TRIPOD+AI for Abstracts checklist",
+     "topic": "Abstract",
+     "where": []
+    },
+    {
+     "id": "3a",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Introduction",
+     "status": "unanswered",
+     "text": "Explain the healthcare context (including whether diagnostic or prognostic) and rationale for developing or evaluating the prediction model, including references to existing models",
+     "topic": "Background",
+     "where": []
+    },
+    {
+     "id": "3b",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Introduction",
+     "status": "unanswered",
+     "text": "Describe the target population and the intended purpose of the prediction model in the context of the care pathway, including its intended users (eg, healthcare professionals, patients, public)",
+     "topic": "Background",
+     "where": []
+    },
+    {
+     "id": "3c",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Introduction",
+     "status": "unanswered",
+     "text": "Describe any known health inequalities between sociodemographic groups",
+     "topic": "Background",
+     "where": []
+    },
+    {
+     "id": "4",
+     "kind": null,
+     "note": "partly answered \u2014 the author must supply the study's objectives, and whether it develops or validates a model (or both)",
+     "owed": "the study's objectives, and whether it develops or validates a model (or both)",
+     "scope": "D;E",
+     "section": "Introduction",
+     "status": "partly answered",
+     "text": "Specify the study objectives, including whether the study describes the development or validation of a prediction model (or both)",
+     "topic": "Objectives",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_purpose",
+       "quote": "The analysis was declared for `prediction`: models are judged on rows they never saw.",
+       "record_id": "c3a0e60c6b3845d2b078343c217b5edb",
+       "record_ids": null,
+       "seq": 6,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "5a",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe the sources of data separately for the development and evaluation datasets (eg, randomised trial, cohort, routine care or registry data), the rationale for using these data, and representativeness of the data",
+     "topic": "Data",
+     "where": []
+    },
+    {
+     "id": "5b",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Specify the dates of the collected participant data, including start and end of participant accrual; and, if applicable, end of follow-up",
+     "topic": "Data",
+     "where": []
+    },
+    {
+     "id": "6a",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Specify key elements of the study setting (eg, primary care, secondary care, general population) including the number and location of centres",
+     "topic": "Participants",
+     "where": []
+    },
+    {
+     "id": "6b",
+     "kind": null,
+     "note": "partly answered \u2014 the author must supply the study's own eligibility criteria before the table was assembled",
+     "owed": "the study's own eligibility criteria before the table was assembled",
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "partly answered",
+     "text": "Describe the eligibility criteria for study participants",
+     "topic": "Participants",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "quote": "No rows were excluded: every row with `readmit_30d` measured stays in the analysis.",
+       "record_id": "952175b41c8a4ec39110a4a5f48c882e",
+       "record_ids": null,
+       "seq": 11,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "6c",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Give details of any treatments received, and how they were handled during model development or evaluation, if relevant",
+     "topic": "Participants",
+     "where": []
+    },
+    {
+     "id": "7",
+     "kind": null,
+     "note": "partly answered \u2014 the author must supply whether the checks were similar across sociodemographic groups",
+     "owed": "whether the checks were similar across sociodemographic groups",
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "partly answered",
+     "text": "Describe any data pre-processing and quality checking, including whether this was similar across relevant sociodemographic groups",
+     "topic": "Data preparation",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "apply_repair",
+       "quote": "`sex` was recoded with `f` as `1` and `m` as `0`.",
+       "record_id": "837863db69fa4ea0b5cc6d2f872d7ace",
+       "record_ids": null,
+       "seq": 2,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "confirm_role",
+       "quote": "`encounter_id` was confirmed as the unit's identifier on its own, after the evidence for its proposal was read.",
+       "record_id": "00652774246d44fcbe0ccba63a2eff7f",
+       "record_ids": null,
+       "seq": 9,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "quote": "The 7 columns `charlson_index`, `prior_admissions_12mo` and 5 more, proposed as measures at low confidence, below high, for one reason (\"A measured column: read as a predictor until you say otherwise.\"), were confirmed together as one group, after the evidence for their proposal was read.",
+       "record_id": "3e416982f15a4ba79577a518f81bd229",
+       "record_ids": null,
+       "seq": 10,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "confirm_reading",
+       "quote": "`age`, `sodium_mmol_l`, `length_of_stay_days`, `charlson_index` and `prior_admissions_12mo` were each confirmed to hold amounts or counts, on its own, after the evidence for its reading was read.",
+       "record_id": "086f9bea460843b7ab7a8423f6a42caa",
+       "record_ids": [
+        "31525948cf2541438d210a74c72b2f96",
+        "eac8484821054b28a222f1787418a5ba",
+        "22d90e61b8c241979db11656b3b4f690",
+        "72712a28fb3f4eebae8c18af3631545f",
+        "086f9bea460843b7ab7a8423f6a42caa"
+       ],
+       "seq": 18,
+       "seqs": [
+        14,
+        15,
+        16,
+        17,
+        18
+       ],
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "8a",
+     "kind": null,
+     "note": "partly answered \u2014 the author must supply how and when the outcome was assessed, why it was chosen, and whether its assessment is consistent across sociodemographic groups",
+     "owed": "how and when the outcome was assessed, why it was chosen, and whether its assessment is consistent across sociodemographic groups",
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "partly answered",
+     "text": "Clearly define the outcome that is being predicted and the time horizon, including how and when assessed, the rationale for choosing this outcome, and whether the method of outcome assessment is consistent across sociodemographic groups",
+     "topic": "Outcome",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_target",
+       "quote": "`readmit_30d` was chosen as the outcome; it is measured on all `480` rows.",
+       "record_id": "5d34c88ae6254625a19db2ca8f67d86a",
+       "record_ids": null,
+       "seq": 3,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "set_event",
+       "quote": "`1` of `readmit_30d` was taken as the event and coded 1; `0` was coded 0.",
+       "record_id": "bb490876208945c8952a486ce8590303",
+       "record_ids": null,
+       "seq": 4,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "set_censoring",
+       "quote": "`readmit_30d` was analyzed as a yes/no outcome: everyone was followed for the same time, as answered, so it counts events over one period.",
+       "record_id": "dacb9c71ef884e77a6985779102e1756",
+       "record_ids": null,
+       "seq": 5,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "8b",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "If outcome assessment requires subjective interpretation, describe the qualifications and demographic characteristics of the outcome assessors",
+     "topic": "Outcome",
+     "where": []
+    },
+    {
+     "id": "8c",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Report any actions to blind assessment of the outcome to be predicted",
+     "topic": "Outcome",
+     "where": []
+    },
+    {
+     "id": "9a",
+     "kind": null,
+     "note": "partly answered \u2014 the author must supply why these predictors, and any pre-selection of predictors before model building",
+     "owed": "why these predictors, and any pre-selection of predictors before model building",
+     "scope": "D",
+     "section": "Methods",
+     "status": "partly answered",
+     "text": "Describe the choice of initial predictors (eg, literature, previous models, all available predictors) and any pre-selection of predictors before model building",
+     "topic": "Predictors",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_roles",
+       "quote": "Column roles were set for `10` columns: predictors `age`, `sex`, `charlson_index` and 5 more; identifier `encounter_id`; excluded `sodium_mmol_l`.",
+       "record_id": "925ccdb1ba954c5a87184fe8939773bc",
+       "record_ids": null,
+       "seq": 21,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "9b",
+     "kind": null,
+     "note": "partly answered \u2014 the author must supply how and when each predictor was measured",
+     "owed": "how and when each predictor was measured",
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "partly answered",
+     "text": "Clearly define all predictors, including how and when they were measured (and any actions to blind assessment of predictors for the outcome and other predictors)",
+     "topic": "Predictors",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "confirm_role",
+       "quote": "`encounter_id` was confirmed as the unit's identifier on its own, after the evidence for its proposal was read.",
+       "record_id": "00652774246d44fcbe0ccba63a2eff7f",
+       "record_ids": null,
+       "seq": 9,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "quote": "The 7 columns `charlson_index`, `prior_admissions_12mo` and 5 more, proposed as measures at low confidence, below high, for one reason (\"A measured column: read as a predictor until you say otherwise.\"), were confirmed together as one group, after the evidence for their proposal was read.",
+       "record_id": "3e416982f15a4ba79577a518f81bd229",
+       "record_ids": null,
+       "seq": 10,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "confirm_reading",
+       "quote": "`age`, `sodium_mmol_l`, `length_of_stay_days`, `charlson_index` and `prior_admissions_12mo` were each confirmed to hold amounts or counts, on its own, after the evidence for its reading was read.",
+       "record_id": "086f9bea460843b7ab7a8423f6a42caa",
+       "record_ids": [
+        "31525948cf2541438d210a74c72b2f96",
+        "eac8484821054b28a222f1787418a5ba",
+        "22d90e61b8c241979db11656b3b4f690",
+        "72712a28fb3f4eebae8c18af3631545f",
+        "086f9bea460843b7ab7a8423f6a42caa"
+       ],
+       "seq": 18,
+       "seqs": [
+        14,
+        15,
+        16,
+        17,
+        18
+       ],
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "set_roles",
+       "quote": "Column roles were set for `10` columns: predictors `age`, `sex`, `charlson_index` and 5 more; identifier `encounter_id`; excluded `sodium_mmol_l`.",
+       "record_id": "925ccdb1ba954c5a87184fe8939773bc",
+       "record_ids": null,
+       "seq": 21,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "9c",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "If predictor measurement requires subjective interpretation, describe the qualifications and demographic characteristics of the predictor assessors",
+     "topic": "Predictors",
+     "where": []
+    },
+    {
+     "id": "10",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Explain how the study size was arrived at (separately for development and evaluation), and justify that the study size was sufficient to answer the research question. Include details of any sample size calculation",
+     "topic": "Sample size",
+     "where": []
+    },
+    {
+     "id": "11",
+     "kind": null,
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "answered",
+     "text": "Describe how missing data were handled. Provide reasons for omitting any data",
+     "topic": "Missing data",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_missing",
+       "quote": "Missing predictor values were imputed in each training fold without the outcome: the median for numbers, the most frequent value for categories; no row was dropped for a missing predictor.",
+       "record_id": "6e600276e4db451186bc8802a6d6b5be",
+       "record_ids": null,
+       "seq": 12,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "12a",
+     "kind": null,
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": "D",
+     "section": "Methods",
+     "status": "answered",
+     "text": "Describe how the data were used (eg, for development and evaluation of model performance) in the analysis, including whether the data were partitioned, considering any sample size requirements",
+     "topic": "Analytical methods",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_purpose",
+       "quote": "The analysis was declared for `prediction`: models are judged on rows they never saw.",
+       "record_id": "c3a0e60c6b3845d2b078343c217b5edb",
+       "record_ids": null,
+       "seq": 6,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "set_split",
+       "quote": "A random `20%` of the rows with `readmit_30d` recorded (seed `0`, stratified by `readmit_30d`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; the optimism of each model's apparent performance was estimated by Harrell's bootstrap (`500` resamples, the whole pipeline refit on each) and subtracted, except for a family that nearly memorizes its rows (boosted trees), whose cross-validated score stands because the bootstrap overstates it; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004).",
+       "record_id": "c88ebeeca4984c4488770322dd90fc9d",
+       "record_ids": null,
+       "seq": 13,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "12b",
+     "kind": null,
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": "D",
+     "section": "Methods",
+     "status": "answered",
+     "text": "Depending on the type of model, describe how predictors were handled in the analyses (functional form, rescaling, transformation, or any standardisation)",
+     "topic": "Analytical methods",
+     "where": [
+      {
+       "file": "figures/lineage.svg",
+       "kind": null,
+       "quote": "Figure 2. Column lineage, from the 8 raw columns the analysis reads to the 8 columns of the model matrix (384 rows), through the steps every model family shares; a family's own steps (scaling, a spline basis) are in the methods. Line styles: solid, kept as it is. Drawn from the decision record.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "12c",
+     "kind": null,
+     "note": "partly answered \u2014 the author must supply the rationale for each model family",
+     "owed": "the rationale for each model family",
+     "scope": "D",
+     "section": "Methods",
+     "status": "partly answered",
+     "text": "Specify the type of model, rationale\u2020, all model building steps, including any hyperparameter tuning, and method for internal validation",
+     "topic": "Analytical methods",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_split",
+       "quote": "A random `20%` of the rows with `readmit_30d` recorded (seed `0`, stratified by `readmit_30d`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; the optimism of each model's apparent performance was estimated by Harrell's bootstrap (`500` resamples, the whole pipeline refit on each) and subtracted, except for a family that nearly memorizes its rows (boosted trees), whose cross-validated score stands because the bootstrap overstates it; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004).",
+       "record_id": "c88ebeeca4984c4488770322dd90fc9d",
+       "record_ids": null,
+       "seq": 13,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "select_models",
+       "quote": "Two model families were chosen: elastic net and screened elastic net.",
+       "record_id": "3acbcbf59e7045f49df977dca88d53ca",
+       "record_ids": null,
+       "seq": 19,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "fit",
+       "quote": "Within each training fold, sure independence screening were fitted and applied to the held-out fold; elastic-net parameters were tuned by an inner CV within the rows each fit was given.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "analysis"
+      },
+      {
+       "file": "methods.md",
+       "kind": "fit",
+       "quote": "Cross-validated scores are the mean over folds; the fold values show the spread.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "analysis"
+      },
+      {
+       "file": "methods.md",
+       "kind": "fit",
+       "quote": "Each standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "analysis"
+      }
+     ]
+    },
+    {
+     "id": "12d",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe if and how any heterogeneity in estimates of model parameter values and model performance was handled and quantified across clusters (eg, hospitals, countries). See TRIPOD-Cluster for additional considerations\u2021",
+     "topic": "Analytical methods",
+     "where": []
+    },
+    {
+     "id": "12e",
+     "kind": null,
+     "note": "partly answered \u2014 the author must supply the rationale for each measure",
+     "owed": "the rationale for each measure",
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "partly answered",
+     "text": "Specify all measures and plots used (and their rationale) to evaluate model performance (eg, discrimination, calibration, clinical utility) and, if relevant, to compare multiple models",
+     "topic": "Analytical methods",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "fit",
+       "quote": "Within each training fold, sure independence screening were fitted and applied to the held-out fold; elastic-net parameters were tuned by an inner CV within the rows each fit was given.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "analysis"
+      },
+      {
+       "file": "methods.md",
+       "kind": "fit",
+       "quote": "Cross-validated scores are the mean over folds; the fold values show the spread.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "analysis"
+      },
+      {
+       "file": "methods.md",
+       "kind": "fit",
+       "quote": "Each standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "analysis"
+      },
+      {
+       "file": "results/performance.md",
+       "kind": null,
+       "quote": "Table 2. Performance of each model family, and the declared result. The held-out rows score the final model, declared on cross-validation before they are opened; its held-out log loss will be the result.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "12f",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "E",
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe any model updating (eg, recalibration) arising from the model evaluation, either overall or for particular sociodemographic groups or settings",
+     "topic": "Analytical methods",
+     "where": []
+    },
+    {
+     "id": "12g",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "E",
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "For model evaluation, describe how the model predictions were calculated (eg, formula, code, object, application programming interface)",
+     "topic": "Analytical methods",
+     "where": []
+    },
+    {
+     "id": "13",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "If class imbalance methods were used, state why and how this was done, and any subsequent methods to recalibrate the model or the model predictions",
+     "topic": "Class imbalance",
+     "where": []
+    },
+    {
+     "id": "14",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe any approaches that were used to address model fairness and their rationale",
+     "topic": "Fairness",
+     "where": []
+    },
+    {
+     "id": "15",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D",
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Specify the output of the prediction model (eg, probabilities, classification). Provide details and rationale for any classification and how the thresholds were identified",
+     "topic": "Model output",
+     "where": []
+    },
+    {
+     "id": "16",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Identify any differences between the development and evaluation data in healthcare setting, eligibility criteria, outcome, and predictors",
+     "topic": "Training versus evaluation",
+     "where": []
+    },
+    {
+     "id": "17",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Name the institutional research board or ethics committee that approved the study and describe the participant informed consent or the ethics committee waiver of informed consent",
+     "topic": "Ethical approval",
+     "where": []
+    },
+    {
+     "id": "18a",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Open science",
+     "status": "unanswered",
+     "text": "Give the source of funding and the role of the funders for the present study",
+     "topic": "Funding",
+     "where": []
+    },
+    {
+     "id": "18b",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Open science",
+     "status": "unanswered",
+     "text": "Declare any conflicts of interest and financial disclosures for all authors",
+     "topic": "Conflicts of interest",
+     "where": []
+    },
+    {
+     "id": "18c",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Open science",
+     "status": "unanswered",
+     "text": "Indicate where the study protocol can be accessed or state that a protocol was not prepared",
+     "topic": "Protocol",
+     "where": []
+    },
+    {
+     "id": "18d",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Open science",
+     "status": "unanswered",
+     "text": "Provide registration information for the study, including register name and registration number, or state that the study was not registered",
+     "topic": "Registration",
+     "where": []
+    },
+    {
+     "id": "18e",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Open science",
+     "status": "unanswered",
+     "text": "Provide details of the availability of the study data",
+     "topic": "Data sharing",
+     "where": []
+    },
+    {
+     "id": "18f",
+     "kind": null,
+     "note": "partly answered \u2014 the author must supply where the bundle, and the TurboTab version it names, can be obtained",
+     "owed": "where the bundle, and the TurboTab version it names, can be obtained",
+     "scope": "D;E",
+     "section": "Open science",
+     "status": "partly answered",
+     "text": "Provide details of the availability of the analytical code\u00a7",
+     "topic": "Code sharing",
+     "where": [
+      {
+       "file": "provenance.json",
+       "kind": null,
+       "quote": "the provenance record: the decision log, each input file's SHA-256, the engine and its stages' versions, the model matrix's hashes and every reported estimate, which `python -m turbotab.replay` checks against the input files",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "19",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Patient and public involvement",
+     "status": "unanswered",
+     "text": "Provide details of any patient and public involvement during the design, conduct, reporting, interpretation, or dissemination of the study or state no involvement",
+     "topic": "Patient and public involvement",
+     "where": []
+    },
+    {
+     "id": "20a",
+     "kind": null,
+     "note": "partly answered \u2014 the author must supply the number of participants with and without the outcome, and any follow-up time",
+     "owed": "the number of participants with and without the outcome, and any follow-up time",
+     "scope": "D;E",
+     "section": "Result",
+     "status": "partly answered",
+     "text": "Describe the flow of participants through the study, including the number of participants with and without the outcome and, if applicable, a summary of the follow-up time. A diagram may be helpful",
+     "topic": "Participants",
+     "where": [
+      {
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "quote": "Figure 1. Participant flow, from the 480 rows of the table as read to 384 for development by cross-validation and 96 held out. No row was excluded at any step.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "20b",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Result",
+     "status": "unanswered",
+     "text": "Report the characteristics overall and, where applicable, for each data source or setting, including the key dates, key predictors (including demographics), treatments received, sample size, number of outcome events, follow-up time, and amount of missing data. A table may be helpful. Report any differences across key demographic groups",
+     "topic": "Participants",
+     "where": []
+    },
+    {
+     "id": "20c",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "E",
+     "section": "Result",
+     "status": "unanswered",
+     "text": "For model evaluation, show a comparison with the development data of the distribution of important predictors (demographics, predictors, and outcome)",
+     "topic": "Participants",
+     "where": []
+    },
+    {
+     "id": "21",
+     "kind": null,
+     "note": "partly answered \u2014 the author must supply the number of participants (and outcome events) in each analysis: development, tuning and evaluation",
+     "owed": "the number of participants (and outcome events) in each analysis: development, tuning and evaluation",
+     "scope": "D;E",
+     "section": "Result",
+     "status": "partly answered",
+     "text": "Specify the number of participants and outcome events in each analysis (eg, for model development, hyperparameter tuning, model evaluation)",
+     "topic": "Model development",
+     "where": [
+      {
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "quote": "Figure 1. Participant flow, from the 480 rows of the table as read to 384 for development by cross-validation and 96 held out. No row was excluded at any step.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "22",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D",
+     "section": "Result",
+     "status": "unanswered",
+     "text": "Provide details of the full prediction model (eg, formula, code, object, application programming interface) to allow predictions in new individuals and to enable third party evaluation and implementation, including any restrictions to access or reuse (eg, freely available, proprietary)\u00b6",
+     "topic": "Model specification",
+     "where": []
+    },
+    {
+     "id": "23a",
+     "kind": null,
+     "note": "partly answered \u2014 the author must supply performance in key subgroups, with intervals",
+     "owed": "performance in key subgroups, with intervals",
+     "scope": "D;E",
+     "section": "Result",
+     "status": "partly answered",
+     "text": "Report model performance estimates with confidence intervals, including for any key subgroups (eg, sociodemographic). Consider plots to aid presentation",
+     "topic": "Model performance",
+     "where": [
+      {
+       "file": "results/performance.md",
+       "kind": null,
+       "quote": "Table 2. Performance of each model family, and the declared result. The held-out rows score the final model, declared on cross-validation before they are opened; its held-out log loss will be the result.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "23b",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Result",
+     "status": "unanswered",
+     "text": "If examined, report results of any heterogeneity in model performance across clusters. See TRIPOD-Cluster for additional details\u2021",
+     "topic": "Model performance",
+     "where": []
+    },
+    {
+     "id": "24",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "E",
+     "section": "Result",
+     "status": "unanswered",
+     "text": "Report the results from any model updating, including the updated model and subsequent performance",
+     "topic": "Model updating",
+     "where": []
+    },
+    {
+     "id": "25",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Give an overall interpretation of the main results, including issues of fairness in the context of the objectives and previous studies",
+     "topic": "Interpretation",
+     "where": []
+    },
+    {
+     "id": "26",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Discuss any limitations of the study (such as a non-representative sample, sample size, overfitting, missing data) and their effects on any biases, statistical uncertainty, and generalisability",
+     "topic": "Limitations",
+     "where": []
+    },
+    {
+     "id": "27a",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D",
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Describe how poor quality or unavailable input data (eg, predictor values) should be assessed and handled when implementing the prediction model",
+     "topic": "Usability of the model in the context of current care",
+     "where": []
+    },
+    {
+     "id": "27b",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D",
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Specify whether users will be required to interact in the handling of the input data or use of the model, and what level of expertise is required of users",
+     "topic": "Usability of the model in the context of current care",
+     "where": []
+    },
+    {
+     "id": "27c",
+     "kind": null,
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": "D;E",
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Discuss any next steps for future research, with a specific view to applicability and generalisability of the model",
+     "topic": "Usability of the model in the context of current care",
+     "where": []
+    }
+   ],
+   "note": "Each item is quoted from Table 2 of the source and listed with where this bundle answers it: a sentence of the decision record (with its decision), a paragraph the analysis wrote, or a figure or table. An item the record cannot answer is listed as \u201cunanswered \u2014 the author must supply this\u201d.",
+   "purpose": "prediction",
+   "source": {
+    "doi": "10.1136/bmj-2023-078378",
+    "license": "CC BY 4.0",
+    "pmcid": "PMC11019967",
+    "retrieved": "2026-10-05",
+    "sha256": "48f1f82c4f9f74d9a72a580690634651e095161c9bf8a0a1078afc691d54705a",
+    "table": "Table 2",
+    "url": "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC11019967/fullTextXML"
+   },
+   "title": "TRIPOD+AI checklist for the reporting of prediction model studies",
+   "unanswered": [
+    "1",
+    "2",
+    "3a",
+    "3b",
+    "3c",
+    "5a",
+    "5b",
+    "6a",
+    "6c",
+    "8b",
+    "8c",
+    "9c",
+    "10",
+    "12d",
+    "12f",
+    "12g",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18a",
+    "18b",
+    "18c",
+    "18d",
+    "18e",
+    "19",
+    "20b",
+    "20c",
+    "22",
+    "23b",
+    "24",
+    "25",
+    "26",
+    "27a",
+    "27b",
+    "27c"
+   ],
+   "waiting": []
+  },
+  "methods": "# Methods: clinical_risk\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the held-out rows were opened is kept and marked, a sentence that counts rows counts them as they stand, and confirmations alike but for their column are said once, together. Sections follow TRIPOD+AI; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Data (TRIPOD+AI 5)\n\nThe table was read through the `clinical` lens. Each row was declared a different participant: no one appears in more than one row.\n\n## Participants (TRIPOD+AI 6)\n\nNo rows were excluded: every row with `readmit_30d` measured stays in the analysis.\n\n## Data preparation (TRIPOD+AI 7)\n\n`sex` was recoded with `f` as `1` and `m` as `0`.\n\n## Outcome (TRIPOD+AI 8)\n\n`readmit_30d` was chosen as the outcome; it is measured on all `480` rows. `1` of `readmit_30d` was taken as the event and coded 1; `0` was coded 0. `readmit_30d` was analyzed as a yes/no outcome: everyone was followed for the same time, as answered, so it counts events over one period.\n\n## Predictors (TRIPOD+AI 9)\n\n`encounter_id` was confirmed as the unit's identifier on its own, after the evidence for its proposal was read. The 7 columns `charlson_index`, `prior_admissions_12mo` and 5 more, proposed as measures at low confidence, below high, for one reason (\"A measured column: read as a predictor until you say otherwise.\"), were confirmed together as one group, after the evidence for their proposal was read. `age`, `sodium_mmol_l`, `length_of_stay_days`, `charlson_index` and `prior_admissions_12mo` were each confirmed to hold amounts or counts, on its own, after the evidence for its reading was read. Column roles were set for `10` columns: predictors `age`, `sex`, `charlson_index` and 5 more; identifier `encounter_id`; excluded `sodium_mmol_l`.\n\nRead from the values, no question asked: `age` is a characteristic (A person's characteristic); `sex` is a characteristic (A person's characteristic); `readmit_30d` is a binary outcome (Only `0` and `1` \u2014 read as a binary outcome); `albumin_g_dl` is an amount (one slope) (`27` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `creatinine_mg_dl` is an amount (one slope) (`170` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `hemoglobin_g_dl` is an amount (one slope) (`87` values with decimals that fill their grid as a measurement's do (a code list's sit apart)).\n\n## Missing data (TRIPOD+AI 11)\n\nMissing predictor values were imputed in each training fold without the outcome: the median for numbers, the most frequent value for categories; no row was dropped for a missing predictor.\n\n## Analytical methods (TRIPOD+AI 12)\n\nThe analysis was declared for `prediction`: models are judged on rows they never saw. A random `20%` of the rows with `readmit_30d` recorded (seed `0`, stratified by `readmit_30d`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; the optimism of each model's apparent performance was estimated by Harrell's bootstrap (`500` resamples, the whole pipeline refit on each) and subtracted, except for a family that nearly memorizes its rows (boosted trees), whose cross-validated score stands because the bootstrap overstates it; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004). Two model families were chosen: elastic net and screened elastic net.\n\nWithin each training fold, sure independence screening were fitted and applied to the held-out fold; elastic-net parameters were tuned by an inner CV within the rows each fit was given.\n\nCross-validated scores are the mean over folds; the fold values show the spread.\n\nEach standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.\n\nWith elastic net declared the final model on cross-validation beforehand, the `96` held-out rows were opened once and scored: held-out log loss `0.528` (AUC `0.658`, the customary headline); its held-out score is the reported result, the other families' are secondary, and any later change is marked as made after the seal was opened.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `7b2960215a1c`). The supplementary provenance record holds the decision log (`23` records), the SHA-256 of the input file `clinical_risk.csv` (SHA-256 `c33f2a5a9286`), the analysis plan (SHA-256 `8295fe53b877`) and the model matrix (`384` rows by `8` columns; SHA-256 `a1defbc8e2ce` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
+  "reached": true,
+  "refused": null,
+  "sha256": "16edfbd4e6e490e40a126d421a3ca138c78b3c6969f3a3c39d32e518e4d144af"
+ },
+ "question": {
+  "estimand": null,
+  "intended_use": null,
+  "paper": null,
+  "purpose": "prediction",
+  "stated": "How well do the table's measures predict a readmission within 30 days?",
+  "target": "readmit_30d"
+ },
+ "regime": {
+  "design": {
+   "clusters": null,
+   "design": null,
+   "grain": {
+    "acknowledged": false,
+    "grain": "one_row_per_unit",
+    "id_column": null
+   },
+   "repeat_kind": null,
+   "survey": null,
+   "unit": null
+  },
+  "event": "1",
+  "events": 112,
+  "lenses": [
+   "clinical"
+  ],
+  "missing": {},
+  "n_analyzed": 480,
+  "n_rows": 480,
+  "task": "binary"
+ },
+ "replication": null,
+ "result": {
+  "attempt": "5f437b6365324736a5bf2b890ca5c68b",
+  "decisions": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   21
+  ],
+  "effects": null,
+  "family": "elastic_net",
+  "intervals": {
+   "auc": {
+    "ci_high": 0.7882165124454146,
+    "ci_low": 0.5287368045079024,
+    "estimate": 0.6584766584766585,
+    "level": 0.95,
+    "method": "DeLong",
+    "se": 0.06619501939429882
+   },
+   "brier": {
+    "ci_high": 0.2222773101460912,
+    "ci_low": 0.1259463865031044,
+    "estimate": 0.1741118483245978,
+    "level": 0.95,
+    "method": "influence function",
+    "se": 0.02457466678031659
+   },
+   "log_loss": {
+    "ci_high": 0.6519569617648001,
+    "ci_low": 0.40369845564950346,
+    "estimate": 0.5278277087071518,
+    "level": 0.95,
+    "method": "influence function",
+    "se": 0.06333241530801795
+   }
+  },
+  "intervals_why": null,
+  "lock": null,
+  "metric": "log_loss",
+  "n_holdout": 96,
+  "opening": 23,
+  "plan_digest": "8295fe53b87772c4fcc6c4ee48204835baa9c24ba0d750710463193a074321bf",
+  "purpose": "prediction",
+  "refused": null,
+  "refused_kind": null,
+  "scores": {
+   "elastic_net": {
+    "auc": 0.6584766584766585,
+    "brier": 0.1741118483245978,
+    "log_loss": 0.5278277087071518
+   },
+   "screened_elastic_net": {
+    "auc": 0.6584766584766585,
+    "brier": 0.1741118483245978,
+    "log_loss": 0.5278277087071518
+   }
+  }
+ },
+ "run": {
+  "analyst_model": "scripted",
+  "design": 2,
+  "effort": null,
+  "ended": null,
+  "engine_commit": "7b2960215a1c412401bbe15146f7ac54f92380aa",
+  "engine_modified": false,
+  "engine_version": "2.0.0.dev0",
+  "fit_budget": {
+   "fits": 4,
+   "seconds": 600.0
+  },
+  "fit_seconds": 152.57547495886683,
+  "fits": 2,
+  "fits_unseen": 0,
+  "help": [],
+  "id": "clinical_explore-6d1b37d008afc715265af12eb7af020f",
+  "prompt_version": "dry-run-1",
+  "server": {
+   "mode": "local",
+   "pid": 81521,
+   "port": 60543,
+   "workers": 2
+  },
+  "spend": null,
+  "spend_why": "No transcript of the analyst agent was given.",
+  "started": "2026-10-18T22:56:40Z"
+ },
+ "surfacings": {
+  "concerns": [],
+  "refusals": []
+ },
+ "version": 1
+}
