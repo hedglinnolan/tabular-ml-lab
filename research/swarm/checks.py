@@ -241,11 +241,11 @@ def single_pass(rec: Record) -> Outcome:
     examined = sorted({d.seq for d in rec.decisions if d.seq in before for e in d.examined
                        if e.alternative and (commit is None or e.at < commit)})
     fits = sum(1 for a in rec.attempts if a.decisions is not None and set(a.decisions) <= before)
+    noun = "fit" if fits == 1 else "fits"
     notes = [f"{len(examined)} of {len(before)} decisions made before the seal's opening or the "
-             f"plan's lock had an alternative examined; {fits} fits read only those decisions."]
+             f"plan's lock had an alternative examined; {fits} {noun} read only those decisions."]
     problems = []
     if not examined and fits <= 1:
-        noun = "fit" if fits == 1 else "fits"
         problems.append(f"Single pass: before the seal's opening or the plan's lock, no decision "
                         f"had an alternative examined, and the run made {fits} {noun}.")
     return _outcome("single_pass", rec, problems, [], notes)
@@ -324,7 +324,8 @@ def _estimate_holds(effects: Mapping[str, Any], known: Mapping[str, Any]
     rows = [(f, row) for f, rs in effects.items() if family in (None, f) for row in rs or []
             if row.get("feature") == feature]
     if not rows:
-        return [f"The result holds no estimate of `{feature}`, the known answer's."], []
+        which = f"`{family}` " if family is not None else ""
+        return [f"The result holds no {which}estimate of `{feature}`, the known answer's."], []
     problems, unchecked = [], []
     for f, row in rows:
         estimate, low, high = row.get("estimate"), row.get("ci_low"), row.get("ci_high")

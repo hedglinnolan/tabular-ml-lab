@@ -66,6 +66,9 @@ class Spec:
     roles: dict[str, str] | None = None  # the journey's roles, else the proposals confirmed
     exposure: str | None = None
     repairs: bool = False  # each finding takes its first repair (journeys.apply_first_repair(".")
+    # The run's own answers, by question, as a journey's spec gives them (``Journey.answers``):
+    # each an option the driver offers and its settings.
+    answers: dict[str, tuple[list[str], list[str]]] = field(default_factory=dict)
     explore: bool = False
     known: dict[str, Any] | None = None  # the checks' known answer, from the declared truth
 
@@ -82,24 +85,32 @@ def specs() -> dict[str, Spec]:
     takes in place of the form card's proposal), so the known answer is one row; its declared truth
     is that age has no effect, on every scale (``answers.json``), and the linear family's rows for a
     yes/no outcome are log odds (``models/inference.py``: "each odds ratio is exp(estimate)"), so
-    the known answer is 0 on the rows' scale. The Predict fixture and the decoy have no journey:
+    the known answer is 0 on the rows' scale; the run gives the linear family as its own models
+    answer, as the journey's capture answered it (without the scale the driver offers no way to
+    declare, the shelf ranks the elastic net first, which reports no effect: the export refuses
+    it). The Predict fixture and the decoy have no journey:
     their specs are the card's outcome and purpose, the clinical lens, the fixture's declared
     truth (none for the decoy), and each finding's first repair, as journeys' clinical journey takes
     them. The Predict fixture declares the generating model and the C-statistic of its true risk,
-    not a range a fitted model's held-out score must fall in, so its result has no known answer."""
+    not a range a fitted model's held-out score must fall in, so its result has no known answer.
+    Both Predict runs give the split as their own answer, a fifth of the rows held out (the plan's
+    first option holds none out, so the seal's way forward would draw them and refit): the seal
+    then opens on the fit it was pressed for."""
     from turbotab.core.reference.journeys import SURVEY_INFERENCE_ROLES, SURVEY_READINGS
 
     return {s.name: s for s in (
         Spec("clinical_explore", "clinical_readmission_predict", target="readmit_30d", event="1",
              purpose="prediction", lenses=["clinical"], readings=_truth("clinical_risk.csv"),
-             repairs=True, explore=True),
+             repairs=True, answers={"split": (["0.2"], [])}, explore=True),
         Spec("survey_single", "survey_support_estimate", target="sought_support", event="1",
              purpose="inference", lenses=["survey"],
              readings={**_truth("survey_instrument.csv"), **SURVEY_READINGS, "form:age": "linear"},
              roles=dict(SURVEY_INFERENCE_ROLES), exposure="age",
+             answers={"models": (["linear"], [])},
              known={"family": "linear", "feature": "age", "value": 0.0}),
         Spec("decoy_single", "outpatient_admission_predict", target="admitted_2y", event="1",
-             purpose="prediction", lenses=["clinical"], readings={}, repairs=True),
+             purpose="prediction", lenses=["clinical"], readings={}, repairs=True,
+             answers={"split": (["0.2"], [])}),
     )}
 
 
@@ -304,6 +315,7 @@ class Analyst:
         from types import SimpleNamespace
 
         from turbotab.core.reference import journeys as J
+        from turbotab.server import app  # noqa: F401 - every family the server registers
 
         run = SimpleNamespace(drive=SimpleNamespace(artifact=lambda s, timeout=None: self.artifact(s)),
                               note=lambda text: None)
@@ -328,6 +340,14 @@ class Analyst:
         data = q.get("data") or {}
         first = ids[0] if ids else None
         spec = self.spec
+        if key in spec.answers:
+            given, sets = spec.answers[key]
+            missing = [i for i in given if i not in ids]
+            if missing:
+                raise RuntimeError(f"the run's own {key} answer {missing} is not offered: {ids}")
+            if key == "models":
+                self.families = list(given)
+            return list(given), list(sets), "the run's own answer"
         body = self.journeys_body(key)
         if key == "models" and body is not None:
             self.families = list(body["models"])
@@ -434,8 +454,8 @@ class Analyst:
             if stop(q):
                 return q
             question = q.get("question")
-            if question is None or q.get("fit_reached"):
-                return q
+            if question is None or q.get("fit_reached") or question.get("key") == "open_seal":
+                return q  # the seal's question is opened by ``seal``, never answered
             if question["status"] != "open":
                 if q.get("failed"):
                     raise RuntimeError(f"the question waits on failed stages: {q['failed']}")
@@ -544,12 +564,13 @@ def drive(a: Analyst) -> None:
         a.until(lambda q: False)
         a.press("the roles changed")
         second = a.results()
-        q = a.reopen("roles", "set_roles", f"Revert the roles without sodium: CV AUC without it "
-                                           f"{a.cv(second)}, with it {a.cv(first)}.")
-        ids, sets, _ = a.choose("roles", q)
-        a.answer(ids, sets, "the proposed roles again, sodium kept.")
+        # A revert: the revisit's own revert withdrawn, which brings the first roles answer back
+        # under the second, a later answer to the same question: the plan, and so its fit, stay
+        # the second's (no new fit; Fit is pressed for answers already fitted).
+        a.revisit(a.last("revert"), f"Withdraw the revisit's revert: the roles without sodium "
+                                    f"stand, CV AUC {a.cv(second)} against {a.cv(first)} with it.")
         a.until(lambda q: False)
-        a.press("the roles are the proposed ones again")
+        a.press("the answers already fitted")
         a.results()
     if spec.purpose == "prediction":
         q = a.ask()
@@ -649,8 +670,13 @@ def main(argv: list[str] | None = None) -> int:
     all_specs = specs()
     args.out.mkdir(parents=True, exist_ok=True)
     results = [one(all_specs[n], args.runs.absolute(), args.out.absolute()) for n in args.names]
-    (args.out / "comparison.json").write_text(json.dumps(results, indent=1) + "\n", "utf-8")
-    (args.out / "comparison.md").write_text(table(results), "utf-8")
+    # Each run is one command (under ten minutes): the table keeps the runs made before it.
+    kept = args.out / "comparison.json"
+    earlier = json.loads(kept.read_text("utf-8")) if kept.exists() else []
+    now = {r["run"]: r for r in [*earlier, *results]}
+    every = [now[n] for n in RUNS if n in now]
+    kept.write_text(json.dumps(every, indent=1) + "\n", "utf-8")
+    (args.out / "comparison.md").write_text(table(every), "utf-8")
     print(json.dumps([{k: r[k] for k in ("run", "valid", "error", "seconds")}
                       | {"agrees": all(c["agrees"] for c in r["checks"])} for r in results]))
     return 0 if all(r["valid"] and all(c["agrees"] for c in r["checks"]) for r in results) else 1

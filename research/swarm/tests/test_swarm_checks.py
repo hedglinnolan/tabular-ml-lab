@@ -342,6 +342,15 @@ def test_single_pass_flags_a_run_that_examined_nothing_and_fit_once():
                             "decision had an alternative examined, and the run made 1 fit."]
 
 
+def test_single_pass_notes_count_one_fit_as_one():
+    """DRV-INT (the dry run's decoy): the note names one fit "1 fit", two "2 fits"."""
+    got = outcome(C.single_pass, _single(predict_record()))
+    assert got.notes == ["0 of 5 decisions made before the seal's opening or the plan's lock had "
+                         "an alternative examined; 1 fit read only those decisions."]
+    got = outcome(C.single_pass, predict_record())
+    assert got.notes[0].endswith("; 2 fits read only those decisions.")
+
+
 def test_single_pass_counts_no_option_tried_or_fitted_after_the_seal_was_opened():
     data = _single(predict_record())
     data["decisions"].append(decision(
@@ -477,6 +486,22 @@ def test_known_answer_judges_the_reading_in_force_at_the_logs_end_when_the_resul
                               "fixture declares `amount`."]
     right = outcome(C.known_answer, _read_again((6, "code"), (7, "r6")), truths=TRUTH)
     assert (right.outcome, right.problems) == ("pass", [])
+
+
+def test_a_result_with_no_row_of_the_known_answers_family_says_which_family():
+    """DRV-INT (the dry run): the known answer names the linear family, and the result holds only
+    the elastic net's row of `x`: the problem names the family it looked for, since the result
+    does hold an estimate of `x`. With no family named, a result with no row of `x` says so as
+    before."""
+    data = estimate_record("known_answer")
+    data["dataset"]["known"] = {"family": "linear", "feature": "x", "value": 0.3}
+    data["result"]["effects"] = {"elastic_net": copy.deepcopy(data["result"]["effects"]["linear"])}
+    data["attempts"][0]["effects"] = copy.deepcopy(data["result"]["effects"])
+    got = outcome(C.known_answer, data, truths={"table.csv": {}})
+    assert got.problems == ["The result holds no `linear` estimate of `x`, the known answer's."]
+    data["dataset"]["known"] = {"feature": "z", "value": 0.3}
+    got = outcome(C.known_answer, data, truths={"table.csv": {}})
+    assert got.problems == ["The result holds no estimate of `z`, the known answer's."]
 
 
 def test_known_answer_holds_a_refused_result():
