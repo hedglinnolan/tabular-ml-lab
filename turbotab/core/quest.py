@@ -1640,33 +1640,44 @@ def role_line_key(column: str) -> str:
 ROLE_WAITS_FOR = "the model's predictors"
 
 
-def role_choices(role: str) -> list[str]:
+def role_choices(role: str, purpose: str | None = None) -> list[str]:
     """The roles a column's own confirmation offers instead of ``role``, in the ledger's order: its
     changes (``readings.ROLE_CHANGES``) and an alternative the values cannot exclude
-    (``readings.ROLE_ALTERNATIVES``), each once."""
-    from turbotab.core.readings import ROLE_ALTERNATIVES, ROLE_CHANGES
+    (``readings.ROLE_ALTERNATIVES``), each once. Under the declared ``purpose`` a role that reads
+    as ``role`` or as one offered before it (under Predict an exposure and a covariate are each a
+    predictor, ``readings.role_words``) is no change the person can read, so it is not offered, as
+    the values' readings drop it (``readings.read_from_data``; W1-R round 3, SE-m2)."""
+    from turbotab.core.readings import ROLE_ALTERNATIVES, ROLE_CHANGES, role_words
 
     others = [*ROLE_CHANGES.get(str(role), ("covariate",)),
               *(other for other, _words in ROLE_ALTERNATIVES.get(str(role), ()))]
-    return [o for o in dict.fromkeys(others) if o != role]
+    said = {role_words(role, purpose)}
+    out = []
+    for other in dict.fromkeys(others):
+        words = role_words(other, purpose)
+        if other != role and words not in said:
+            out.append(other)
+            said.add(words)
+    return out
 
 
-def role_line_reason(column: str, role: str) -> str:
+def role_line_reason(column: str, role: str, purpose: str | None = None) -> str:
     """Why one column's role line waits: the fit's words for one column
     (``readings.unsettled_message``), whose last clause names only what the line's presses do instead
     of confirming (:func:`role_choices`): leaving it out where a press records it as left out of the
     models; putting it in the model where it was proposed as left out and every press makes it a
     predictor (while it waits it is in no model); else recording it as each role a press records (a
-    flag, a time, a design column or a cluster changes only to a covariate)."""
+    flag, a time, a design column or a cluster changes only to a covariate), in the words of the
+    declared ``purpose``."""
     from turbotab.core.readings import PREDICTOR_ROLES, role_words, unsettled_message
 
-    choices = role_choices(role)
+    choices = role_choices(role, purpose)
     if "excluded" in choices:
         return unsettled_message([column], ROLE_WAITS_FOR)
     if role == "excluded" and choices and all(c in PREDICTOR_ROLES for c in choices):
         instead = ", or put it in the model"
     elif choices:
-        instead = ", or record it as " + " or ".join(role_words(c) for c in choices)
+        instead = ", or record it as " + " or ".join(role_words(c, purpose) for c in choices)
     else:
         instead = ""
     return (f"`{column}` was proposed below high confidence and recorded with the other roles, not "
@@ -1674,20 +1685,22 @@ def role_line_reason(column: str, role: str) -> str:
             f"why it was proposed{instead}.")
 
 
-def role_line_text(column: str, role: str, other: str = "") -> dict[str, str]:
+def role_line_text(column: str, role: str, other: str = "",
+                   purpose: str | None = None) -> dict[str, str]:
     """The words of one column's role line (:func:`_role_lines`): its name, why it waits
     (:func:`role_line_reason`), its reading while it waits (``proposed``) and once settled
     (``settled``), and the labels of its confirmation (``confirm``) and of a change to ``other``
-    (``change``)."""
+    (``change``), each role in the words of the declared ``purpose`` (``readings.role_words``: under
+    Predict an exposure and a covariate are each a predictor, as the ask card and the record say)."""
     from turbotab.core.readings import role_words
 
     return {
         "name": f"the role of `{column}`",
-        "reason": role_line_reason(column, role),
-        "proposed": f"proposed as {role_words(role)}",
-        "settled": f"is {role_words(role)}",
-        "confirm": f"Confirm `{column}` as {role_words(role)}",
-        "change": f"`{column}` is {role_words(other)}",
+        "reason": role_line_reason(column, role, purpose),
+        "proposed": f"proposed as {role_words(role, purpose)}",
+        "settled": f"is {role_words(role, purpose)}",
+        "confirm": f"Confirm `{column}` as {role_words(role, purpose)}",
+        "change": f"`{column}` is {role_words(other, purpose)}",
     }
 
 
@@ -1726,15 +1739,17 @@ def _role_lines(state: Any, steps: Sequence[Any], log: _Log,
     reasons = {str(p.get("column")): str(p.get("reason") or "")
                for p in proposals_of(facts.artifacts.get("roles"))}
     target = getattr(state, "target", None)
+    purpose = getattr(state, "purpose", None)
     lines = []
     for i, (column, role) in enumerate(c for c in roles.items() if c[0] in named):
         reading = role_reading(state, column) if column != target else None
         if reading is None:
             continue
         role = str(role)
-        text = role_line_text(column, role)
-        options = [_role_option(column, other, role_line_text(column, role, other)["change"])
-                   for other in role_choices(role)]
+        text = role_line_text(column, role, purpose=purpose)
+        options = [_role_option(column, other,
+                                role_line_text(column, role, other, purpose)["change"])
+                   for other in role_choices(role, purpose)]
         waiting = not reading.settled
         if waiting:
             options.insert(0, _role_option(column, role, text["confirm"]))
