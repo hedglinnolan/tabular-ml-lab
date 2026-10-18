@@ -874,6 +874,34 @@ describe("the Results declarations, through W1-F's cards", () => {
     );
     expect(screen.queryByTestId("results-line")).toBeNull();
   });
+
+  // The re-walk's N8: a recorded card collapses to its answer, as the other stages' cards do
+  // (finding 24): its name, the record's sentence and Change; Change opens the card again, and a
+  // new record collapses it. The answer and its record are set by construction.
+  const ANSWER = "No model updating was applied (TRIPOD+AI 12f).";
+  const answered = (s: Snapshot): Snapshot => {
+    const next = withAnswered("set_updating")(s);
+    return { ...next, view: { ...next.view, decisions: [...next.view.decisions, { ...FIRST, id: "rec-set_updating", sentence: ANSWER, decision: { kind: "set_updating", method: "none" } }] } };
+  };
+
+  it("collapses a recorded card to its answer, with Change to open it again", async () => {
+    serve("sealed", answered);
+    mount(<ResultsCards pid={PID} />);
+    const line = await screen.findByTestId("results-recorded-set_updating");
+    expect(line).toHaveTextContent("The shrinkage question");
+    expect(line).toHaveTextContent(ANSWER);
+    expect(screen.queryByTestId("declaration-set_updating")).toBeNull();
+    expect(screen.queryAllByTestId("card-record")).toHaveLength(screen.queryAllByTestId("declaration-set_explain").length);
+    await userEvent.click(within(line).getByRole("button", { name: "Change" }));
+    expect(await screen.findByTestId("declaration-set_updating")).toBeInTheDocument();
+  });
+
+  it("keeps an open card open: one with no answer is the card itself", async () => {
+    serve("sealed");
+    mount(<ResultsCards pid={PID} />);
+    expect(await screen.findByTestId("declaration-set_updating")).toBeInTheDocument();
+    expect(screen.queryByTestId("results-recorded-set_updating")).toBeNull();
+  });
 });
 
 // ── the pure tables ──────────────────────────────────────────────────────────
