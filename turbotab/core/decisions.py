@@ -2129,6 +2129,9 @@ class DecisionRecord(BaseModel):
     id: str
     seq: int = Field(ge=1)
     at: AwareDatetime
+    # Why the decision was made, in the decider's words (``POST …/decisions?note=``; at most
+    # :data:`NOTE_MAX_CHARS` characters, :func:`check_note`). Kept in the log and served with it;
+    # never written into the methods, which are the records' sentences.
     note: str | None = None
     # The sentence the Record shows, authored by the server when the decision is
     # recorded (DESIGN_LANGUAGE §05.1: the receipt is a quotation, never a
@@ -5757,6 +5760,23 @@ RECORD_DEFAULTS: dict[str, Any] = {"recorded_by": "you", "early": None}
 
 # ── the log ──────────────────────────────────────────────────────────────────
 
+# A decision's note (SWARM_ENGINE_PLAN E4): its reason, in at most this many characters.
+NOTE_MAX_CHARS = 2000
+
+
+def check_note(note: str | None) -> str | None:
+    """``note`` without the blanks around it, None for a blank one; refused (``note_too_long``)
+    past :data:`NOTE_MAX_CHARS` characters."""
+    text = (note or "").strip()
+    if len(text) > NOTE_MAX_CHARS:
+        raise Refusal(
+            "note_too_long",
+            f"A decision's note holds at most {NOTE_MAX_CHARS:,} characters, and this one has "
+            f"{len(text):,}: shorten it, and the decision is recorded with it.",
+            exits=[{"label": "Shorten the note", "decision": None}])
+    return text or None
+
+
 class DecisionLog:
     """Append-only ``decisions.jsonl``. Safe across threads and processes.
 
@@ -5803,9 +5823,11 @@ class DecisionLog:
         question a "Decide now" answer was decided ahead of, and its sentence says so.
         ``unless_set`` names a slot: when the log already holds a value there, nothing is recorded
         and ``already_answered`` is raised (a completion never lands over the person's answer,
-        however close the two arrive).
+        however close the two arrive). ``note``: the decision's reason (:func:`check_note`, which
+        refuses one past its limit before anything is written).
         """
         decision = parse_decision(decision)
+        note = check_note(note)
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             fd = os.open(self.path, os.O_RDWR | os.O_CREAT | os.O_APPEND, 0o644)

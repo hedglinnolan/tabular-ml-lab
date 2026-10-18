@@ -4,6 +4,7 @@
     TURBOTAB_MODE            "local" | "server"             default local
     TURBOTAB_WORKERS         job worker processes           default max(1, cpu_count - 1)
     TURBOTAB_MEMORY_BUDGET   bytes, or "8G" / "512M" / …    default 50% of currently available RAM
+    TURBOTAB_ANALYST         "1" (analyst mode) | "0"       default 0
 """
 from __future__ import annotations
 
@@ -110,12 +111,19 @@ def default_memory_budget() -> int:
     return max(256 * 1024**2, available_memory_bytes() // 2)
 
 
+# Analyst mode (SWARM_ENGINE_PLAN E4): an agent drives the API in a person's place. A re-seal is
+# refused and no refusal offers one, each preview is logged beside the project, and
+# ``GET …/analyst-log`` serves that log and the claims rendered. Off, nothing a person meets changes.
+ANALYST_VALUES = {"1": True, "0": False}
+
+
 @dataclass(frozen=True)
 class Settings:
     home: Path
     mode: Mode = "local"
     workers: int = field(default_factory=default_workers)
     memory_budget_bytes: int = field(default_factory=default_memory_budget)
+    analyst: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "home", Path(self.home).expanduser())
@@ -125,6 +133,8 @@ class Settings:
             raise ValueError(f"workers must be at least 1, not {self.workers!r}")
         if int(self.memory_budget_bytes) <= 0:
             raise ValueError("memory_budget_bytes must be positive")
+        if not isinstance(self.analyst, bool):
+            raise ValueError(f"analyst must be True or False, not {self.analyst!r}")
 
     @classmethod
     def from_env(cls, environ: dict[str, str] | None = None) -> "Settings":
@@ -144,5 +154,8 @@ class Settings:
             budget = parse_bytes(raw_budget) if raw_budget else default_memory_budget()
         except ValueError as exc:
             raise ValueError(f"TURBOTAB_MEMORY_BUDGET: {exc}") from None
+        raw_analyst = (env.get("TURBOTAB_ANALYST") or "0").strip()
+        if raw_analyst not in ANALYST_VALUES:
+            raise ValueError(f"TURBOTAB_ANALYST must be 1 (analyst mode) or 0, not {raw_analyst!r}")
         return cls(home=home, mode=mode, workers=workers,  # type: ignore[arg-type]
-                   memory_budget_bytes=budget)
+                   memory_budget_bytes=budget, analyst=ANALYST_VALUES[raw_analyst])

@@ -6,6 +6,7 @@ the data layer (``DataStore``) or from a stage artifact.
 from __future__ import annotations
 
 import copy
+import functools
 import json
 import logging
 import os
@@ -16,7 +17,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from collections import OrderedDict
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Callable
@@ -42,8 +43,8 @@ from turbotab.core.jobs import PRELOAD, JobRunner, JobView
 from turbotab.core.quest import QuestLog, explore_label, quest_log, record_steps
 from turbotab.core.consequences import estimates_unseen as materiality_unseen
 from turbotab.core.sweep import ForTheRecord, Triage, for_the_record, triage
-from turbotab.core.stages import GRAPH_FACTORY
-from turbotab.core.workspace import ProjectMeta, Workspace
+from turbotab.core.claims._registry import render_log
+from turbotab.core.workspace import STAGE_GRAPH, ProjectMeta, Workspace
 from turbotab.server.errors import ApiError
 
 log = logging.getLogger(__name__)
@@ -142,6 +143,9 @@ class DecisionContext:
     # states the current plan reads: a split recorded while the seal plan recomputes names the
     # grouping the seal draws by, not none (WAVE_C6A ruling 5).
     settled: Callable[[str], Any] | None = field(default=None, repr=False, compare=False)
+    # Analyst mode (``Settings.analyst``; SWARM_ENGINE_PLAN E4): an agent drives the API, so a
+    # re-seal is refused and no refusal offers one (``seal``).
+    analyst: bool = False
 
 
 def _target_needs_columns(decision: Any, ctx: Any) -> None:
@@ -425,6 +429,40 @@ POOL_WORDS = {
 }
 
 
+def _renders_logged(method: Callable[..., Any]) -> Callable[..., Any]:
+    """``method(self, pid, …)``, run inside the project's claims render log (SWARM_ENGINE_PLAN E4):
+    each claim a sentence, a refusal or a preview renders on the way is logged beside the project,
+    as a stage's is (``workspace.stage_graph``)."""
+    @functools.wraps(method)
+    def run(self: "ProjectService", pid: str, *args: Any, **kwargs: Any) -> Any:
+        try:
+            path = self.workspace.claims_log_path(pid)
+        except KeyError:  # no such project: the method says so, as it always has
+            path = None
+        with render_log(path):
+            return method(self, pid, *args, **kwargs)
+
+    return run
+
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    """Each whole line of a JSON-lines log, oldest first; a line being written (or torn) is not
+    one."""
+    try:
+        text = path.read_text("utf-8")
+    except FileNotFoundError:
+        return []
+    out = []
+    for line in text.splitlines():
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(entry, dict):
+            out.append(entry)
+    return out
+
+
 def explore_labeled(artifact: Any, state: Any, noticed: Callable[[], Any]) -> Any:
     """The explore artifact with each finding's ``label`` (Decide, Confirm, For the record) as the
     person sees it (``quest.explore_label``). ``noticed`` returns the K5 collinear noticing measured
@@ -496,7 +534,9 @@ class ProjectService:
         self.runner = runner if runner is not None else JobRunner(settings.workers, preload=WORKER_PRELOAD)
         try:
             self.engine = Engine(
-                graph_factory=GRAPH_FACTORY,
+                # The stage graph, each stage run inside its project's claims render log, in the
+                # job workers as on the engine's threads (SWARM_ENGINE_PLAN E4).
+                graph_factory=STAGE_GRAPH,
                 runner=self.runner,
                 bus=self.bus,
                 project_ctx=self._project_ctx,
@@ -609,9 +649,13 @@ class ProjectService:
         self.engine.on_decision(meta.id)
         return meta
 
-    def create_from_upload(self, staged: Path, client_name: str, fingerprint: str) -> ProjectMeta:
-        """Adopt a file streamed into ``uploads/``: it moves into the project folder."""
-        meta = self.workspace.create_project("", staged, "upload", source_name=client_name)
+    def create_from_upload(self, staged: Path, client_name: str, fingerprint: str,
+                           provenance: dict[str, str] | None = None) -> ProjectMeta:
+        """Adopt a file streamed into ``uploads/``: it moves into the project folder.
+        ``provenance``: where the file came from, as given with it (``workspace.source_provenance``;
+        SWARM_ENGINE_PLAN E5), kept on the project's meta."""
+        meta = self.workspace.create_project("", staged, "upload", source_name=client_name,
+                                             provenance=provenance)
         folder = self.workspace.project_dir(meta.id) / "source"
         folder.mkdir(exist_ok=True)
         dest = folder / staged.name
@@ -644,17 +688,23 @@ class ProjectService:
             raise ApiError(403, "unreadable_file", f"TurboTab is not allowed to read {path}.")
         return self._add_file(pid, path.resolve(), path.name, "path", copy=False)
 
-    def add_file_from_upload(self, pid: str, staged: Path, client_name: str) -> dict[str, Any]:
-        """Adopt a file streamed into ``uploads/`` as a file to join to the project's table."""
+    def add_file_from_upload(self, pid: str, staged: Path, client_name: str,
+                             provenance: dict[str, str] | None = None) -> dict[str, Any]:
+        """Adopt a file streamed into ``uploads/`` as a file to join to the project's table.
+        ``provenance``: where it came from, as for the table's own file (``create_from_upload``)."""
         try:
-            return self._add_file(pid, staged, client_name, "upload", copy=True)
+            return self._add_file(pid, staged, client_name, "upload", copy=True,
+                                  provenance=provenance)
         finally:
             shutil.rmtree(staged.parent, ignore_errors=True)
 
-    def _add_file(self, pid: str, source: Path, name: str, kind: str, *, copy: bool) -> dict[str, Any]:
+    def _add_file(self, pid: str, source: Path, name: str, kind: str, *, copy: bool,
+                  provenance: dict[str, str] | None = None) -> dict[str, Any]:
         """``copy``: an upload moves into ``files/<id>/source/``; a file on this machine is read
         where it is, as the table's own file is. Either is read once, into the file's own
-        ``raw.parquet``, which every join reads."""
+        ``raw.parquet``, which every join reads. Its ``file.json`` keeps the SHA-256 of its bytes
+        beside its fingerprint, and where it came from when that was given (SWARM_ENGINE_PLAN
+        E5)."""
         import secrets
 
         from turbotab.core.datastore import ingest
@@ -679,9 +729,11 @@ class ProjectService:
             shutil.rmtree(folder, ignore_errors=True)
             raise ApiError(400, "unreadable_file", f"{name} could not be read: {exc}") from None
         meta = {"id": fid, "name": name, "source_kind": kind, "source_path": str(dest),
-                "fingerprint": info.fingerprint,
+                "fingerprint": info.fingerprint, "sha256": info.source_sha256,
                 "n_rows": info.n_rows, "n_cols": info.n_cols,
                 "columns": [c.name for c in info.columns], "warnings": list(info.warnings)}
+        if provenance:
+            meta["provenance"] = dict(provenance)
         _write_json_atomic(folder / "file.json", meta)
         return meta
 
@@ -940,6 +992,7 @@ class ProjectService:
             return None
         return first.key, body
 
+    @_renders_logged
     def _complete(self, pid: str) -> bool:
         """Record what is due (``_completion_due``) for ``pid``; True when a record was made. Run
         with each answer the person records and when a stage the Router waits on is computed,
@@ -1270,6 +1323,7 @@ class ProjectService:
             quest=lambda: self.quest(pid),
             triage=lambda: self.triage(pid),
             settled=lambda stage: self._settled(pid, stage),
+            analyst=self.settings.analyst,
         )
 
     def _settled(self, pid: str, stage: str, timeout: float = SETTLE_SECONDS) -> Any:
@@ -1302,14 +1356,18 @@ class ProjectService:
             return replace(ctx, settled=lambda stage: plan if stage == "seal_plan" else None)
         return replace(ctx, settled=None)
 
+    @_renders_logged
     def decide(self, pid: str, decision: Any, *, system: bool = False,
-               early: bool = False, unless_set: str | None = None) -> dict[str, Any]:
+               early: bool = False, unless_set: str | None = None,
+               note: str | None = None) -> dict[str, Any]:
         """Validate and record ``decision``. ``system``: recorded by the server itself (the
         analysis-plan lock, when an estimate is first displayed; P0.6's completions), never by a
         client. ``early``: "Decide now" (crosswalk disagreement 20), answered ahead of the Router
         where its card is computed and the answers it reads are in; the record names the question
-        it was decided ahead of."""
+        it was decided ahead of. ``note``: the decider's reason (SWARM_ENGINE_PLAN E4), kept on the
+        record and never in the methods; one past its limit is refused before anything else."""
         self.workspace.get(pid)
+        note = decisions.check_note(note)
         ctx = replace(self.decision_context(pid), early=early,
                       sealed_scores=lambda: self._fresh_sealed_scores(pid))
         parsed = self._validate(pid, decision, ctx)  # raises Refusal
@@ -1331,7 +1389,7 @@ class ProjectService:
                 exits=[{"label": "Answer the remaining questions, then press Fit",
                         "decision": None}])
         by = {"recorded_by": "turbotab" if system else "you", "early": ahead_of,
-              "unless_set": unless_set}
+              "unless_set": unless_set, "note": note}
         ctx = self._settle_for_sentence(pid, ctx, parsed)
         if system or self._unseen_lock(pid, self.log(pid).records()) is None:
             record = self._append(pid, ctx, parsed, **by)
@@ -1356,8 +1414,8 @@ class ProjectService:
         under a lock no estimate has been served under was not made after the estimates were seen
         (calm/FOUNDATION §7): a change to the plan withdraws that lock first, so Fit is asked for
         again; any other decision is recorded unmarked, and the lock stands. ``by``: who recorded
-        it, the question a "Decide now" answer was decided ahead of, and the slot that must still
-        be empty (``DecisionLog.append``)."""
+        it, the question a "Decide now" answer was decided ahead of, the slot that must still be
+        empty, and the decider's note (``DecisionLog.append``)."""
         log = self.log(pid)
         records = log.records()
         seen: bool | None = None
@@ -1404,12 +1462,42 @@ class ProjectService:
 
     # ── previews ──
 
+    @_renders_logged
     def preview(self, pid: str, decision: Any) -> consequences.PreviewResult:
         """What recording ``decision`` would do to this project's data. Nothing is recorded.
 
         A decision that would be refused is refused here too (409), so an option that
-        cannot be taken says why instead of previewing.
+        cannot be taken says why instead of previewing. In analyst mode each preview is logged
+        beside the project, the decision as asked and the refusal's code (SWARM_ENGINE_PLAN E4).
         """
+        if not self.settings.analyst:
+            return self._preview(pid, decision)
+        try:
+            result = self._preview(pid, decision)
+        except (Refusal, ApiError) as refusal:  # an ApiError: the table is not read yet
+            self._log_preview(pid, decision, refusal.code)
+            raise
+        self._log_preview(pid, decision, None)
+        return result
+
+    def _log_preview(self, pid: str, decision: Any, refused: str | None) -> None:
+        """One line of the previews log: when, the decision as asked, and the refusal's code (None
+        when it previewed)."""
+        try:
+            asked = decisions.parse_decision(decision).model_dump(mode="json")
+        except Exception:  # noqa: BLE001 - a decision that does not parse was refused as one
+            asked = decision if isinstance(decision, dict) else None
+        line = {"at": datetime.now(timezone.utc).isoformat(), "decision": asked,
+                "refused": refused}
+        data = (json.dumps(line, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+        fd = os.open(self.workspace.previews_log_path(pid), os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+                     0o644)
+        try:
+            os.write(fd, data)
+        finally:
+            os.close(fd)
+
+    def _preview(self, pid: str, decision: Any) -> consequences.PreviewResult:
         from turbotab.core import (  # noqa: F401 - register the builders
             fact_previews,
             row_previews,
@@ -2059,18 +2147,20 @@ class ProjectService:
 
     def _export_inputs(self, pid: str, meta: ProjectMeta, state: ProjectState) -> list[Any]:
         """Every file the analysis read: the table's own, each joined file, each imported
-        codebook's source, hashed now and checked against the fingerprint recorded on reading."""
+        codebook's source, hashed now and checked against the fingerprint recorded on reading,
+        each with where it came from when that was given (SWARM_ENGINE_PLAN E5)."""
         from turbotab.core.assembly import file_meta
         from turbotab.core.export.source import input_file
 
         pdir = self.workspace.project_dir(pid)
-        out = [input_file("table", meta.source_name, meta.source_path, self.fingerprint(pid))]
+        out = [input_file("table", meta.source_name, meta.source_path, self.fingerprint(pid),
+                          provenance=meta.provenance)]
         for fid in (state.joins or {}):
             found = file_meta(pdir, fid)
             if found is not None:
                 out.append(input_file("joined file", str(found.get("name") or fid),
                                       str(found.get("source_path")), found.get("fingerprint"),
-                                      file_id=fid))
+                                      file_id=fid, provenance=found.get("provenance")))
         for cid in (getattr(state, "codebooks", None) or {}):
             folder = pdir / "codebooks" / str(cid) / "source"
             for kept in sorted(folder.iterdir()) if folder.is_dir() else []:
@@ -2095,6 +2185,17 @@ class ProjectService:
             note_seen(self.workspace.project_dir(pid), getattr(source.state, "target", None),
                       scored_in(source.artifact("fit")))
         return out
+
+    def analyst_log(self, pid: str) -> dict[str, Any]:
+        """What the analyst saw (SWARM_ENGINE_PLAN E4): each claim rendered for the project and
+        each preview asked for, oldest first, as logged. Served in analyst mode only."""
+        self.workspace.get(pid)
+        if not self.settings.analyst:
+            raise ApiError(403, "analyst_mode_only",
+                           "The analyst log is served only while TurboTab runs in analyst mode, "
+                           "for an agent driving it in a person's place.")
+        return {"claims": _read_jsonl(self.workspace.claims_log_path(pid)),
+                "previews": _read_jsonl(self.workspace.previews_log_path(pid))}
 
     def checklist(self, pid: str) -> Any:
         """The reporting checklist of the declared purpose, filled from the record and the results

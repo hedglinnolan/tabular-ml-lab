@@ -1842,6 +1842,26 @@ def _the_opening_keeps_its_scores(decision: Any, ctx: Any) -> Any:
     })
 
 
+KEEP_THE_DRAW = {"label": "Keep the held-out rows as they were drawn", "decision": None}
+
+
+def _analyst(ctx: Any) -> bool:
+    """Whether an agent drives the API in a person's place (``Settings.analyst``; SWARM_ENGINE_PLAN
+    E4): it never re-seals, and no refusal offers it a re-seal."""
+    return bool(_ctx(ctx, "analyst"))
+
+
+def _no_reseal_in_analyst_mode(decision: Any, ctx: Any) -> None:
+    if not _analyst(ctx):
+        return
+    raise Refusal(
+        "no_reseal_in_analyst_mode",
+        "In analyst mode a re-seal is not recorded: once the held-out rows are opened they are not "
+        "drawn again, and the scores at their opening stay the reported result.",
+        exits=[KEEP_THE_DRAW],
+    )
+
+
 def _reseal_needs_an_opened_seal(decision: Any, ctx: Any) -> None:
     state = _ctx(ctx, "state")
     if state is None or state.seal_opened:
@@ -1907,6 +1927,14 @@ def _an_opened_seal_holds_still(decision: Any, ctx: Any) -> None:
                 f"count them as opened at decision #{opened.seq}, when they were not: "
                 f"{clause}.",
                 exits=[{"label": "Keep the re-seal", "decision": None}])
+    if _analyst(ctx):
+        raise Refusal(
+            "seal_opened",
+            f"The held-out rows were opened at decision #{opened.seq}, and {clause}. Their scores "
+            f"were seen, so in analyst mode they are not drawn again: the scores at the opening "
+            f"stay the reported result.",
+            exits=[KEEP_THE_DRAW],
+        )
     from turbotab.core.decisions import Reseal
 
     raise Refusal(
@@ -1917,7 +1945,7 @@ def _an_opened_seal_holds_still(decision: Any, ctx: Any) -> None:
         f"no longer independent.",
         exits=[{"label": "Re-seal: record that the held-out rows are drawn again after their "
                          "scores were seen", "decision": Reseal()},
-               {"label": "Keep the held-out rows as they were drawn", "decision": None}],
+               KEEP_THE_DRAW],
     )
 
 
@@ -1985,6 +2013,8 @@ decisions.register_validator("open_seal", _open_seal_once_on_a_fresh_fit)
 decisions.register_validator("open_seal", _the_opening_waits_for_the_triage)
 decisions.register_completion("open_seal", _the_opening_keeps_its_scores)
 decisions.register_validator("reseal", _reseal_needs_an_opened_seal)
+# First: in analyst mode no re-seal is recorded, whatever else holds (SWARM_ENGINE_PLAN E4).
+decisions.register_validator("reseal", _no_reseal_in_analyst_mode, first=True)
 decisions.register_completion("reseal", _the_reseal_names_its_outcome)
 for _kind in ("set_split", "revert"):  # first: once opened, the opening is the reason
     decisions.register_validator(_kind, _an_opened_seal_holds_still, first=True)

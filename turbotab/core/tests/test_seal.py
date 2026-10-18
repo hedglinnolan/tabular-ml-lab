@@ -504,6 +504,56 @@ def test_the_seal_opens_once_on_a_fresh_fit_and_is_never_reverted():
     assert undo.value.code == "seal_stays_open"
 
 
+KEEP_THE_DRAW = {"label": "Keep the held-out rows as they were drawn", "decision": None}
+
+
+def test_in_analyst_mode_a_reseal_is_refused_with_no_exit_offering_one():
+    """SWARM_ENGINE_PLAN E4: an agent driving the API (analyst mode) never re-seals. Reference:
+    the same opened log (the seal opened at #7, so a person's re-seal passes every check), with
+    only the context's ``analyst`` differing; the refusal offers no exit whose decision is a
+    re-seal, and says so in words that offer none."""
+    opened = opened_log()
+    person = {"state": d.fold(opened), "records": opened}
+    assert person["state"].seal_opened is True
+    assert d.validate(d.Reseal(), person).kind == "reseal"  # silent for a person
+    assert d.validate(d.Reseal(), {**person, "analyst": False}).kind == "reseal"
+    with pytest.raises(Refusal) as refused:
+        d.validate(d.Reseal(), {**person, "analyst": True})
+    assert refused.value.code == "no_reseal_in_analyst_mode"
+    assert refused.value.exits == [KEEP_THE_DRAW]
+    assert "not recorded" in refused.value.message
+    # Before any opening, too: analyst mode is the reason, not the seal's own check.
+    sealed = sealed_log()
+    with pytest.raises(Refusal) as early:
+        d.validate(d.Reseal(), {"state": d.fold(sealed), "records": sealed, "analyst": True})
+    assert early.value.code == "no_reseal_in_analyst_mode"
+
+
+def test_in_analyst_mode_an_opened_seal_s_refusal_drops_its_reseal_exit():
+    """A new seed after the opening is refused either way; for a person its first exit is the
+    recorded re-seal, as before; in analyst mode no exit offers one and the message does not ask
+    for one."""
+    opened = opened_log()
+    reseed = d.SetSplit(holdout=0.25, seed=1, folds=5)
+    ctx = {"state": d.fold(opened), "records": opened}
+    with pytest.raises(Refusal) as person:
+        seal._an_opened_seal_holds_still(reseed, ctx)
+    assert person.value.code == "seal_opened"
+    assert person.value.exits[0]["decision"]["kind"] == "reseal"
+    assert person.value.exits[1] == KEEP_THE_DRAW
+    assert "needs a recorded re-seal" in person.value.message
+    with pytest.raises(Refusal) as analyst:
+        seal._an_opened_seal_holds_still(reseed, {**ctx, "analyst": True})
+    assert analyst.value.code == "seal_opened"
+    assert analyst.value.exits == [KEEP_THE_DRAW]
+    assert "re-seal" not in analyst.value.message.lower()
+    assert "seed 1 in place of seed 0 would draw other rows" in analyst.value.message
+    # Through the validators the decision meets, as the server's ``decide`` runs them.
+    with pytest.raises(Refusal) as validated:
+        d.validate(reseed, {**ctx, "analyst": True})
+    assert validated.value.code == "seal_opened" and validated.value.exits == [KEEP_THE_DRAW]
+
+
 def test_opening_on_a_failed_fit_says_why_rather_than_to_wait():
     """The zero-row crash: no step waits on a failed fit, so opening the seal is asked of a fit that
     will not finish. It is refused with the first failure on the fit's way, in plain words, never

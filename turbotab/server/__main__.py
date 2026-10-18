@@ -1,4 +1,5 @@
-"""Launch TurboTab: ``venv/bin/python -m turbotab.server --port 8787 [--mode local|server] [--open]``.
+"""Launch TurboTab: ``venv/bin/python -m turbotab.server --port 8787 [--mode local|server] [--open]
+[--analyst]``.
 
 Local mode binds 127.0.0.1 only. Server mode listens where ``--host`` says
 (default 127.0.0.1, so exposing it is a deliberate choice) and signs users in
@@ -30,21 +31,39 @@ def _open_when_ready(host: str, port: int, url: str, timeout: float = 60.0) -> N
     webbrowser.open(url)
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m turbotab.server", description="Run TurboTab.")
     parser.add_argument("--port", type=int, default=8787)
     parser.add_argument("--mode", choices=MODES, default=None, help="default: $TURBOTAB_MODE, else local")
     parser.add_argument("--host", default=None, help="server mode only; local mode always binds 127.0.0.1")
     parser.add_argument("--open", action="store_true", help="open the app in a browser once it is up")
+    parser.add_argument("--analyst", action="store_true",
+                        help="analyst mode, for an agent driving the API: a re-seal is refused, "
+                             "each preview is logged, and GET /api/projects/{pid}/analyst-log "
+                             "serves that log and the claims rendered (default: $TURBOTAB_ANALYST)")
     parser.add_argument("--stop-on-eof", action="store_true",
                         help="shut down cleanly when standard input closes: how the desktop "
                              "launcher (turbotab/deploy/launch.py) stops the server on every OS, "
                              "and why closing the launcher's window stops it too")
-    args = parser.parse_args(argv)
+    return parser
 
-    settings = Settings.from_env()
+
+def settings_for(args: argparse.Namespace, environ: dict[str, str] | None = None) -> Settings:
+    """The environment's settings (``Settings.from_env``), with ``--mode`` and ``--analyst``
+    applied over them."""
+    settings = Settings.from_env(environ)
     if args.mode:
         settings = dataclasses.replace(settings, mode=args.mode)
+    if args.analyst:
+        settings = dataclasses.replace(settings, analyst=True)
+    return settings
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    settings = settings_for(args)
     host = args.host or "127.0.0.1"
     if settings.mode == "local" and host != "127.0.0.1":
         parser.error("local mode binds 127.0.0.1 only; pass --mode server to listen elsewhere")
@@ -60,7 +79,9 @@ def main(argv: list[str] | None = None) -> int:
         parser.exit(2, f"TurboTab did not start: {exc}\n")
     shown = "localhost" if host in ("127.0.0.1", "0.0.0.0") else host
     url = f"http://{shown}:{args.port}/"
-    print(f"TurboTab ({settings.mode} mode, {settings.workers} workers, home {settings.home})", flush=True)
+    analyst = ", analyst mode" if settings.analyst else ""
+    print(f"TurboTab ({settings.mode} mode{analyst}, {settings.workers} workers, home "
+          f"{settings.home})", flush=True)
     if settings.mode == "server":
         print(describe(app.state.auth), flush=True)
     print(f"Open {url}", flush=True)
