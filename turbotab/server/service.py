@@ -85,10 +85,12 @@ HOLDOUT_SEALED = ("The held-out rows are sealed: no held-out score is served unt
                   "opened.")
 DRAW_UNREAD = ("The held-out rows this fit was scored on, or those the seal's opening opened, could "
                "not be read, so this fit's held-out scores are not served.")
-# E2: a fit served that is not the current one, whose outcome no record or prefix of the log names.
-STALE_OUTCOME_UNREAD = ("This fit is not the current one, and neither its record nor any point in "
-                        "your decision log gives the answers it was computed from, so the outcome "
-                        "its scores are for is not known and none of them is served.")
+# E2: a fit served that is not the current one, whose outcome no record of its key names and no
+# prefix of the log gives as the engine keys a fit now (``_fit_outcome``). It says only that: the
+# log may have held the fit's answers under a version of a stage that has changed since.
+STALE_OUTCOME_UNREAD = ("This fit is not the current one, it has no record that names its outcome, "
+                        "and it cannot be matched to your decision log as the log is read now, so "
+                        "the outcome its scores are for is not known and none of them is served.")
 MAX_REMEMBERED_JOBS = 10_000
 # How long a sentence waits for a stage it states to settle for the answers as they stand (the
 # split's grouping, from the seal plan: WAVE_C6A ruling 5); past it, the sentence says less.
@@ -2562,8 +2564,10 @@ class ProjectService:
 
     def _fit_outcome(self, pid: str, key: str | None, records: list[Any]) -> str | None:
         """E2: the outcome the fit at ``key`` predicts: its record's (E1), else that of the longest
-        prefix of the decision log that keys it (``runs.keyed_prefix``); None when neither names
-        one (a fit keyed by no answers the log gives, as after a stage's version changed)."""
+        prefix of the decision log that keys it as the engine keys a fit now
+        (``runs.keyed_prefix``); None when neither names one (no record of the key holds an
+        outcome, and no prefix keys it now, as after a stage's version changed: the log may still
+        have held its answers)."""
         if not key:
             return None
         for rec in runs.RunLog(self.workspace.project_dir(pid) / runs.RUNS_FILE).records():

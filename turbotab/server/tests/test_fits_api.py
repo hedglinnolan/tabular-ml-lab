@@ -842,9 +842,11 @@ def test_a_records_gate_is_the_stage_routes_read_for_its_own_goal_outcome_and_pl
 
 
 def test_a_fit_no_recorded_decisions_match_is_refused_in_plain_words():
-    """The three refusals served when no point in the decision log gives a fit's answers (in
-    /fits' withheld and movement_why, and /results' withheld) say so in the reader's words, not
-    the engine's (a prefix of the log, a key)."""
+    """The three refusals served when a fit cannot be matched to the decision log (in /fits'
+    withheld and movement_why, and /results' withheld) say so in the reader's words, not the
+    engine's (a prefix of the log, a key). /results' says only what ``_fit_outcome`` checked: the
+    fit is not the current one, no record names its outcome, and the log as it is read now cannot
+    be matched to it; not that the log never held its answers (the next test holds them)."""
     from turbotab.core import runs
     from turbotab.server.service import FIT_ANSWERS_UNREAD
 
@@ -853,11 +855,78 @@ def test_a_fit_no_recorded_decisions_match_is_refused_in_plain_words():
         "up to when the fit completed, were the answers those it was computed from, so its folds "
         "are not known and no movement is measured.")
     assert STALE_OUTCOME_UNREAD == (
-        "This fit is not the current one, and neither its record nor any point in your decision "
-        "log gives the answers it was computed from, so the outcome its scores are for is not "
-        "known and none of them is served.")
+        "This fit is not the current one, it has no record that names its outcome, and it cannot "
+        "be matched to your decision log as the log is read now, so the outcome its scores are for "
+        "is not known and none of them is served.")
     for text in (FIT_ANSWERS_UNREAD, runs.ANSWERS_UNREAD, STALE_OUTCOME_UNREAD):
         assert "prefix" not in text and "keys" not in text, text
+
+
+def test_a_stale_fit_the_log_cannot_be_matched_to_now_is_withheld_unless_its_record_names_it(
+        client, monkeypatch):
+    """/results' refusal of a stale fit's outcome, both ways, on a log that did hold the fit's
+    answers. The ridge fit is served while a linear one waits for Fit (RECIPES §4.4); the fit
+    stage's version is then raised by one, as a release that changes the fit would, so no point of
+    the log keys ridge's fit as the engine keys a fit now, though the log up to the linear choice
+    keys it under the version that computed it (so the refusal may not say the log never held its
+    answers). With no record of it, none of its scores is served and the refusal says why; with
+    its record naming hba1c, its scores are served as the stage route serves them."""
+    from dataclasses import replace
+
+    from turbotab.core import decisions, fit_press, runs
+    from turbotab.core.graph import stage_keys
+
+    service = service_of(client)
+    pid = sealed_project(client)
+    pdir = service.workspace.project_dir(pid)
+    decide(client, pid, {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
+    decide(client, pid, {"kind": "select_models", "models": ["ridge"]})
+    wait_for(client, pid, {"fit": "fresh"}, timeout=180)
+    assert client.post(f"/api/projects/{pid}/fit").status_code == 200
+    service._recorder.submit(lambda: None).result(timeout=60)  # its record written
+    [ridge] = runs.RunLog(pdir / RUNS_FILE).records()
+    assert ridge.target == "hba1c"
+    monkeypatch.setattr(fit_press, "fit_estimate", lambda shelf, models: 1000.0)
+    decide(client, pid, {"kind": "select_models", "models": ["linear"]})
+    held_for_fit(client, pid)
+    served = stage(client, pid, "fit")
+    assert by_family(served)["ridge"]["cv"] != {}
+
+    def released(graph, state, fingerprint):
+        """``seal.keys_for`` with the fit stage's version one higher."""
+        order = [replace(s, version=s.version + 1) if s.name == "fit" else s
+                 for s in graph.order()]
+        return stage_keys(order, state.model_dump(mode="json"), fingerprint)
+
+    records, fingerprint = service.log(pid).records(), service.fingerprint(pid)
+
+    def fit_key_by(keys_for):
+        return lambda state: keys_for(service.engine.graph, state, fingerprint).get("fit")
+
+    held = runs.keyed_prefix(records, ridge.fit_key, fit_key_by(seal.keys_for))
+    assert held is not None and decisions.fold(held).target == "hba1c"  # the log held its answers
+    assert runs.keyed_prefix(records, ridge.fit_key, fit_key_by(released)) is None  # not read now
+
+    # No record of it: refused, and none of its scores is served.
+    path = pdir / RUNS_FILE
+    aside = path.with_name("fits.aside.jsonl")
+    path.rename(aside)
+    try:
+        with monkeypatch.context() as m:
+            m.setattr(seal, "keys_for", released)
+            document = results(client, pid)
+    finally:
+        aside.rename(path)
+    assert document["fit"]["key"] == ridge.fit_key and document["fit"]["fresh"] is False
+    assert document["withheld"] == STALE_OUTCOME_UNREAD and document["result"] is None
+    assert [f["cv"] for f in document["families"]] == [{}]
+
+    # Its record names the key, with hba1c: served as the stage route serves it, and no refusal.
+    with monkeypatch.context() as m:
+        m.setattr(seal, "keys_for", released)
+        document = results(client, pid)
+    assert document["fit"]["key"] == ridge.fit_key and document["withheld"] is None
+    assert [f["cv"] for f in document["families"]] == [by_family(served)["ridge"]["cv"]]
 
 
 def test_a_records_held_out_scores_are_served_only_on_the_rows_the_opening_opened():
