@@ -240,12 +240,17 @@ export interface paths {
          * @description Every fit that completed, one record per fit key in the order the keys turned fresh, each
          *     written once and never rewritten (SWARM_ENGINE_PLAN E1): its purpose, outcome and key, the
          *     plan's digest and the records in force it was computed from, the press of Fit in force, its
-         *     families, the seconds its job ran and the server's workers, and per family the cross-validated
-         *     summary (Predict) or the exposure's rows with their intervals (Estimate). Each number is the
-         *     fit's as ``GET /stages/fit`` serves it now: none before Fit under Predict, no held-out score
-         *     until the seal is opened, no estimate before the plan's lock under Estimate. Under Predict, a
-         *     record scored on the same folds as the one before it carries each family's paired movement
-         *     against it; otherwise ``movement_why`` says why it has none.
+         *     families, the seconds its job ran and the server's workers, the rows its split held out, and
+         *     per family the cross-validated summary (Predict) or the exposure's rows with their intervals
+         *     (Estimate). Each number is the fit's as ``GET /stages/fit`` would serve that fit now, read for
+         *     the record's own scope: none under another goal than the goal now; under Predict none before
+         *     Fit is pressed for the record's outcome; under Estimate none before the plan's lock, nor for a
+         *     fit computed before the lock under a plan other than the one it recorded, unless it is the fit
+         *     the stage route serves now; a held-out score only once the record's outcome's seal is opened,
+         *     and only where the fit was scored on the rows that opening opened. ``withheld`` and
+         *     ``holdout_why`` say why a number is not served. Under Predict, a record scored on the same
+         *     folds as the one before it carries each family's paired movement against it; otherwise
+         *     ``movement_why`` says why it has none.
          */
         get: operations["fits_api_projects__pid__fits_get"];
         put?: never;
@@ -268,9 +273,14 @@ export interface paths {
          * @description What the Results screens show, joined into one document, each field the served artifact's
          *     own value and gated as the stage route gates it (SWARM_ENGINE_PLAN E2). Under Predict: each
          *     family's cross-validated summary, the declared result and, once the seal is opened, its
-         *     held-out scores with their intervals and calibration. Under Estimate: the estimand, each
-         *     family's rows of the exposure from the fit, and from the effects stage its sequence fits,
-         *     marginal contrast and E-values.
+         *     held-out scores with their intervals and calibration, with what the screen says beside them:
+         *     the scores the opening recorded (the reported result) and whether those are the scores served,
+         *     the final model's note, whether the fit changed after the opening and the post-seal decisions
+         *     that changed it, and the split's basis, which can mark the held-out scores exploratory. Under
+         *     Estimate: the estimand, each family's rows of the exposure from the fit, and from the effects
+         *     stage its sequence fits, marginal contrast and E-values. The cross-validated scores served
+         *     count as seen for the outcome of the fit that holds them, as on the stage route, and also
+         *     while that fit is not the current one.
          */
         get: operations["results_api_projects__pid__results_get"];
         put?: never;
@@ -1043,6 +1053,31 @@ export interface components {
             /** Change */
             change: components["schemas"]["AskExit"][];
         };
+        /**
+         * AtOpening
+         * @description The held-out scores recorded when the current outcome's seal was first opened: the reported
+         *     result, whatever is drawn, fitted or opened later (audit WP16, RO-05). Set by the server.
+         */
+        AtOpening: {
+            /** Seq */
+            seq: number;
+            /** Family */
+            family: string | null;
+            /** Metric */
+            metric: string | null;
+            /** N Holdout */
+            n_holdout: number | null;
+            /** Scores */
+            scores: {
+                [key: string]: {
+                    [key: string]: number | null;
+                };
+            };
+            /** Current */
+            current: boolean;
+            /** Note */
+            note: string;
+        };
         /** BatchSpec */
         BatchSpec: {
             /** Column */
@@ -1242,6 +1277,38 @@ export interface components {
             sha256: string;
             /** License */
             license: string;
+        };
+        /**
+         * Chronology
+         * @description The chronological draw the temporal answer asked for, and whether it was drawn.
+         *
+         *     Whole units are held out by their last observation, so with repeated rows a held-out unit's
+         *     earlier rows can predate training rows (audit IN-24: 56–71% of held-out rows on visit data).
+         *     ``n_held_rows``/``n_held_earlier`` count that for this draw; ``earlier`` for each share the
+         *     split question offers, at this draw's seed, so the split's sentence can state it.
+         */
+        Chronology: {
+            /** Drawn */
+            drawn: boolean;
+            /** Time Column */
+            time_column: string | null;
+            /** Boundary */
+            boundary: string | null;
+            /** N Units */
+            n_units: number | null;
+            /** N Undated */
+            n_undated: number;
+            /** Sentence */
+            sentence: string;
+            /** N Held Rows */
+            n_held_rows: number | null;
+            /** N Held Earlier */
+            n_held_earlier: number | null;
+            /**
+             * Earlier
+             * @default []
+             */
+            earlier: components["schemas"]["EarlierRows"][];
         };
         /**
          * ClusterSpec
@@ -1873,6 +1940,21 @@ export interface components {
             /** Body */
             body: string;
             evidence: components["schemas"]["Evidence"] | null;
+        };
+        /**
+         * EarlierRows
+         * @description For one held-out share drawn by time: how many held-out rows there are, and how many were
+         *     observed before the latest training row (audit IN-24).
+         */
+        EarlierRows: {
+            /** Holdout */
+            holdout: number;
+            /** Seed */
+            seed: number;
+            /** N Held Rows */
+            n_held_rows: number;
+            /** N Earlier */
+            n_earlier: number;
         };
         /** EnergyAdjustment */
         EnergyAdjustment: {
@@ -4364,12 +4446,32 @@ export interface components {
             result: {
                 [key: string]: unknown;
             } | null;
+            at_opening: components["schemas"]["AtOpening"] | null;
+            /** Final Note */
+            final_note: string | null;
+            /** Changed After Seal */
+            changed_after_seal: boolean;
+            /** Post Seal Decisions */
+            post_seal_decisions: string[];
+            split: components["schemas"]["ResultsSplit"] | null;
             /** Estimand */
             estimand: {
                 [key: string]: unknown;
             } | null;
             /** Families */
             families: components["schemas"]["ResultFamily"][];
+        };
+        /**
+         * ResultsSplit
+         * @description How the split drew the held-out rows, as ``GET /stages/split`` serves it: the Results screen
+         *     marks the held-out scores exploratory beside them from these.
+         */
+        ResultsSplit: {
+            stage: components["schemas"]["StageServed"];
+            basis: components["schemas"]["SealBasis"] | null;
+            chronology: components["schemas"]["Chronology"] | null;
+            /** Exploratory */
+            exploratory: boolean | null;
         };
         /** Revert */
         Revert: {
@@ -4569,6 +4671,29 @@ export interface components {
             instrument: string | null;
         };
         /**
+         * SealBasis
+         * @description How the held-out rows were drawn: one of four states, never inferred silently.
+         */
+        SealBasis: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "grouped" | "one_row_per_unit" | "abandoned" | "undetermined";
+            /** Column */
+            column: string | null;
+            /** Label */
+            label: string;
+            /** Sentence */
+            sentence: string;
+            /** Exploratory */
+            exploratory: boolean;
+            /** Source */
+            source: ("grain" | "stated" | "roles" | "aggregation") | null;
+            /** N Units */
+            n_units: number | null;
+        };
+        /**
          * SealCells
          * @description The seal drawn one cell per row (M2_CONTRACT §3, §11): which side each row falls on and which
          *     unit it belongs to, so the basis is a picture. Whole units, in file order, up to
@@ -4677,8 +4802,9 @@ export interface components {
         /**
          * ServedFit
          * @description One fit's record (``turbotab/core/runs.py``'s ``FitRecord``) as a client is served it: its
-         *     numbers are the fit's at ``fit_key`` as ``GET /stages/fit`` serves it now, so each is withheld
-         *     exactly where the stage route withholds it, and ``withheld`` says why.
+         *     numbers are the fit's at ``fit_key`` as ``GET /stages/fit`` would serve that fit now, its gate
+         *     read for the record's own goal, outcome, plan and held-out rows, and ``withheld`` and
+         *     ``holdout_why`` say why a number is not served.
          */
         ServedFit: {
             /** Id */
@@ -4716,6 +4842,8 @@ export interface components {
             folds: string | null;
             /** Seed */
             seed: number | null;
+            /** Held Out */
+            held_out: string | null;
             /** Scores */
             scores: {
                 [key: string]: {
@@ -4728,6 +4856,8 @@ export interface components {
                     [key: string]: number | null;
                 } | null;
             } | null;
+            /** Holdout Why */
+            holdout_why: string | null;
             /** Effects */
             effects: {
                 [key: string]: {
@@ -8079,31 +8209,6 @@ export interface components {
             source: string;
         };
         /**
-         * AtOpening
-         * @description The held-out scores recorded when the current outcome's seal was first opened: the reported
-         *     result, whatever is drawn, fitted or opened later (audit WP16, RO-05). Set by the server.
-         */
-        AtOpening: {
-            /** Seq */
-            seq: number;
-            /** Family */
-            family: string | null;
-            /** Metric */
-            metric: string | null;
-            /** N Holdout */
-            n_holdout: number | null;
-            /** Scores */
-            scores: {
-                [key: string]: {
-                    [key: string]: number | null;
-                };
-            };
-            /** Current */
-            current: boolean;
-            /** Note */
-            note: string;
-        };
-        /**
          * BandEstimate
          * @description A measured estimate of what adding a band would cost: one refit per family, timed.
          */
@@ -8929,44 +9034,6 @@ export interface components {
             then: string;
         };
         /**
-         * Chronology
-         * @description The chronological draw the temporal answer asked for, and whether it was drawn.
-         *
-         *     Whole units are held out by their last observation, so with repeated rows a held-out unit's
-         *     earlier rows can predate training rows (audit IN-24: 56–71% of held-out rows on visit data).
-         *     ``n_held_rows``/``n_held_earlier`` count that for this draw; ``earlier`` for each share the
-         *     split question offers, at this draw's seed, so the split's sentence can state it.
-         */
-        Chronology: {
-            /** Drawn */
-            drawn: boolean;
-            /** Time Column */
-            time_column: string | null;
-            /** Boundary */
-            boundary: string | null;
-            /** N Units */
-            n_units: number | null;
-            /** N Undated */
-            n_undated: number;
-            /** Sentence */
-            sentence: string;
-            /**
-             * N Held Rows
-             * @default null
-             */
-            n_held_rows: number | null;
-            /**
-             * N Held Earlier
-             * @default null
-             */
-            n_held_earlier: number | null;
-            /**
-             * Earlier
-             * @default []
-             */
-            earlier: components["schemas"]["EarlierRows"][];
-        };
-        /**
          * ClusterScore
          * @description One held-out cluster: its rows, its scores, and the primary metric's interval.
          */
@@ -9715,21 +9782,6 @@ export interface components {
              * @default null
              */
             sd_basis: ("design_weighted" | "sample") | null;
-        };
-        /**
-         * EarlierRows
-         * @description For one held-out share drawn by time: how many held-out rows there are, and how many were
-         *     observed before the latest training row (audit IN-24).
-         */
-        EarlierRows: {
-            /** Holdout */
-            holdout: number;
-            /** Seed */
-            seed: number;
-            /** N Held Rows */
-            n_held_rows: number;
-            /** N Earlier */
-            n_earlier: number;
         };
         /** EffectsArtifact */
         EffectsArtifact: {
@@ -13784,29 +13836,6 @@ export interface components {
             scales: components["schemas"]["ScaleResult"][];
             /** Methods */
             methods: string;
-        };
-        /**
-         * SealBasis
-         * @description How the held-out rows were drawn: one of four states, never inferred silently.
-         */
-        SealBasis: {
-            /**
-             * State
-             * @enum {string}
-             */
-            state: "grouped" | "one_row_per_unit" | "abandoned" | "undetermined";
-            /** Column */
-            column: string | null;
-            /** Label */
-            label: string;
-            /** Sentence */
-            sentence: string;
-            /** Exploratory */
-            exploratory: boolean;
-            /** Source */
-            source: ("grain" | "stated" | "roles" | "aggregation") | null;
-            /** N Units */
-            n_units: number | null;
         };
         /**
          * SealFloor

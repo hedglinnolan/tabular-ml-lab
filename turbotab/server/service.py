@@ -74,6 +74,19 @@ RECORDING = "recording"
 _GATE_UNREAD = object()
 # E1: a record whose fit's artifact is no longer in the cache serves no number.
 FIT_NOT_KEPT = "This fit's artifact is no longer kept, so none of its numbers is served."
+# E1: why a record's numbers, or its held-out scores, are not served beyond the stage route's own
+# gate (``ProjectService._record_gate``, ``_held_out_why``); each says what the server checked.
+FIT_ANSWERS_UNREAD = ("No prefix of the decision log keys this fit, so the answers it was computed "
+                      "from are not known, and none of its numbers is served.")
+NONE_HELD_OUT = "No rows are held out of this fit's split, so it has no held-out score."
+HOLDOUT_SEALED = ("The held-out rows are sealed: no held-out score is served until the seal is "
+                  "opened.")
+DRAW_UNREAD = ("The held-out rows this fit was scored on, or those the seal's opening opened, could "
+               "not be read, so this fit's held-out scores are not served.")
+# E2: a fit served that is not the current one, whose outcome no record or prefix of the log names.
+STALE_OUTCOME_UNREAD = ("This fit is not the current one, and neither its record nor any prefix of "
+                        "the decision log gives the answers it was computed from, so the outcome "
+                        "its scores are for is not known and none of them is served.")
 MAX_REMEMBERED_JOBS = 10_000
 # How long a sentence waits for a stage it states to settle for the answers as they stand (the
 # split's grouping, from the seal plan: WAVE_C6A ruling 5); past it, the sentence says less.
@@ -464,30 +477,82 @@ def _stage_served(result: Any) -> dict[str, Any]:
     return {"key": result.key, "fresh": result.fresh, "status": result.status}
 
 
-def _served_record(rec: runs.FitRecord, fit: dict[str, Any] | None) -> dict[str, Any]:
-    """E1: a fit's record with its numbers as ``fit`` (the stage route's serving of the fit at the
-    record's key) serves them: each family's cross-validated summary and held-out scores, and the
-    exposure's rows the record holds wherever the served fit shows its coefficients. ``withheld``
-    is the served fit's reason when its scores or estimates are withheld; the movement is the
-    caller's (:meth:`ProjectService.fits`)."""
+def _other_goal(then: str, now: str) -> str:
+    return (f"This fit was computed under {then}, and the goal is now {now}: a fit's numbers are "
+            f"served only under the goal it was computed for.")
+
+
+def _other_seal(target: str | None, now: str | None) -> str:
+    return (f"This fit predicts `{target}`, and the seal opened is `{now}`'s: a fit's held-out "
+            f"scores are served only on the rows the opening in force opened.")
+
+
+def _other_draw(seq: int) -> str:
+    return (f"This fit was scored on other held-out rows than those the opening at decision #{seq} "
+            f"opened, so its held-out scores are not served.")
+
+
+def _not_the_locked_plan(seq: int) -> str:
+    return (f"No estimate of this fit is served: its plan is not the one the analysis-plan lock at "
+            f"decision #{seq} recorded, and it was computed before that lock.")
+
+
+def _record_withheld(state: Any, reason: str) -> dict[str, Any]:
+    """A gate (``estimand.withhold`` reads it) that withholds every score and estimate of a fit."""
+    return {"question": "fit", "reason": reason, "purpose": state.purpose, "scores": True,
+            "exits": []}
+
+
+def _held_out_why(rec: runs.FitRecord, fit: Mapping[str, Any],
+                  opened: tuple[int, str | None] | None, target: str | None) -> str | None:
+    """E1: why a record's held-out scores are not served, or None when they may be. The stage route
+    serves the current fit's once its outcome's seal is opened, and the opened rows hold still
+    until a recorded re-seal (``seal.py``), so it serves only the opened draw's. A record's are
+    served on the same terms: the seal opened (``opened``: the opening in force, as its seq and
+    :func:`runs.held_out_digest` of the rows it opened), the record's outcome the opened seal's
+    (``target``, the outcome now), and its fit scored on the rows that opening opened."""
+    if not int(fit.get("n_holdout") or 0):
+        return NONE_HELD_OUT
+    if fit.get("holdout_sealed") or opened is None:
+        return HOLDOUT_SEALED
+    if rec.target != target:
+        return _other_seal(rec.target, target)
+    seq, rows = opened
+    if rec.held_out is None or rows is None:
+        return DRAW_UNREAD
+    return _other_draw(seq) if rec.held_out != rows else None
+
+
+def _served_record(rec: runs.FitRecord, fit: dict[str, Any] | None, *,
+                   opened: tuple[int, str | None] | None = None,
+                   target: str | None = None) -> dict[str, Any]:
+    """E1: a fit's record with its numbers as ``fit`` serves them: ``fit`` is the stage route's
+    serving of the fit at the record's key under the record's own gate
+    (:meth:`ProjectService._record_gate`). Each family's cross-validated summary is the served
+    fit's; its held-out scores are the served fit's where :func:`_held_out_why` finds none to
+    withhold, else null and ``holdout_why`` says why; the exposure's rows are those the record
+    kept (the fit's own coefficient rows, annotated by the estimand it was computed under) wherever
+    the served fit shows its coefficients, so a later change of what you study leaves them this
+    fit's. ``withheld`` is the served fit's reason when its scores or estimates are withheld; the
+    movement is the caller's (:meth:`ProjectService.fits`)."""
     out = rec.model_dump(mode="json", exclude={"scores", "effects", "movement"})
     if fit is None:
-        return {**out, "scores": {}, "holdout": None, "effects": {}, "withheld": FIT_NOT_KEPT}
+        return {**out, "scores": {}, "holdout": None, "holdout_why": FIT_NOT_KEPT, "effects": {},
+                "withheld": FIT_NOT_KEPT}
     models = {str(m.get("family")): m for m in fit.get("models") or [] if isinstance(m, dict)}
     out["scores"] = {f: dict(models.get(f, {}).get("cv") or {}) for f in rec.scores}
-    # As the fit serves them (M2_CONTRACT §3): null while no held-out score is served.
-    held_out = {f: models.get(f, {}).get("holdout") for f in rec.families}
-    out["holdout"] = held_out if any(v is not None for v in held_out.values()) else None
-    effects: dict[str, list[dict[str, Any]] | None] = {}
-    for family, rows in rec.effects.items():
-        shown = models.get(family, {}).get("coefficients")
-        features = {r.get("feature") for r in rows}
-        effects[family] = None if shown is None else [
-            r for r in shown if isinstance(r, dict) and r.get("feature") in features]
-    out["effects"] = effects
     withheld = fit.get("withheld")
     if withheld is None and rec.scores and not any(out["scores"].values()):
         withheld = fit.get("cv_definition")  # under Estimate no score is shown: the fit says why
+    # As the fit serves them (M2_CONTRACT §3), on the opened draw only: null otherwise, and why.
+    held_out = {f: models.get(f, {}).get("holdout") for f in rec.families}
+    why = _held_out_why(rec, fit, opened, target)
+    if why is None and withheld is not None and not any(v is not None for v in held_out.values()):
+        why = withheld  # the gate withheld them with the rest
+    out["holdout"] = held_out if why is None else None
+    out["holdout_why"] = why
+    out["effects"] = {family: None if models.get(family, {}).get("coefficients") is None
+                      else [dict(r) for r in rows] for family, rows in rec.effects.items()}
     out["withheld"] = withheld
     return out
 
@@ -2001,8 +2066,8 @@ class ProjectService:
         if state is not None and purpose == "inference":
             data = estimand.annotate_fit(data, state)  # the exposure's rows, as the fit serves them
         families, scores, effects = runs.family_numbers(data, purpose)
-        folds, seed = (self._fit_folds(pid, keys_of(state).get("split")) if state is not None
-                       else (None, None))
+        folds, seed, held_out = (self._fit_folds(pid, keys_of(state).get("split"))
+                                 if state is not None else (None, None, None))
         press = self._press(pid)
         live = in_force(prefix) if prefix is not None else set()
         metric = data.get("primary_metric")
@@ -2015,7 +2080,7 @@ class ProjectService:
                           else None),
             "press": press if fit_press.pressed_for(press, target) else None,
             "families": families, "seconds": seconds, "workers": self.runner.workers,
-            "primary_metric": metric, "folds": folds, "seed": seed,
+            "primary_metric": metric, "folds": folds, "seed": seed, "held_out": held_out,
             "scores": scores, "effects": effects,
         }
 
@@ -2027,13 +2092,15 @@ class ProjectService:
 
         runs.RunLog(pdir / runs.RUNS_FILE).append(make)
 
-    def _fit_folds(self, pid: str, split_key: str | None) -> tuple[str | None, int | None]:
-        """E1: the digest of the folds the split at ``split_key`` draws (``runs.folds_digest``) and
-        its seed; ``(None, None)`` when the split cannot be read."""
+    def _fit_folds(self, pid: str, split_key: str | None
+                   ) -> tuple[str | None, int | None, str | None]:
+        """E1: the digest of the folds the split at ``split_key`` draws (``runs.folds_digest``), its
+        seed, and the digest of the rows it holds out (:meth:`_held_out`); each None when the split
+        cannot be read."""
         from turbotab.core.stages.modeling import read_assignment
 
         if not split_key:
-            return None, None
+            return None, None, None
         try:
             split = self._artifact(pid, "split", split_key)
             info = getattr(split, "data", None) or {}
@@ -2041,19 +2108,84 @@ class ProjectService:
                                        validation=info.get("validation"))
         except Exception:  # noqa: BLE001 - unread folds: no movement, and the record says why
             log.exception("the folds of split %s of project %s could not be read", split_key, pid)
-            return None, None
+            return None, None, None
         seed = info.get("seed")
-        return digest, int(seed) if seed is not None else None
+        return digest, int(seed) if seed is not None else None, self._held_out(pid, split_key)
+
+    def _held_out(self, pid: str, split_key: str | None) -> str | None:
+        """E1: :func:`runs.held_out_digest` of the rows the split at ``split_key`` holds out (its
+        ``sealed`` frame, every held-out row), or None when it holds none out or cannot be read."""
+        if not split_key:
+            return None
+        try:
+            frames = getattr(self._artifact(pid, "split", split_key), "frames", None) or {}
+            sealed = frames.get("sealed")
+            return runs.held_out_digest(sealed["row_id"].tolist()) if sealed is not None else None
+        except Exception:  # noqa: BLE001 - unread rows: no held-out score is served, and why
+            log.exception("the held-out rows of split %s of project %s could not be read",
+                          split_key, pid)
+            return None
+
+    def _opened_draw(self, pid: str, records: list[Any]) -> tuple[int, str | None] | None:
+        """E1: the opening in force (``seal.opening``: the current outcome's latest, unless a
+        re-seal came after it) as its seq and the rows it opened, :meth:`_held_out` of the split the
+        log keyed when it was recorded; None while the seal is sealed."""
+        opened = seal.opening(records)
+        if opened is None:
+            return None
+        then = seal.state_at_opening(records)
+        key = (seal.keys_for(self.engine.graph, then, self.fingerprint(pid)).get("split")
+               if then is not None else None)
+        return opened.seq, self._held_out(pid, key)
+
+    def _record_gate(self, rec: runs.FitRecord, state: ProjectState, question: Any,
+                     press: dict[str, Any] | None, lock: Any) -> Any:
+        """E1: the gate a record's numbers are served under (``estimand.withhold`` reads it), or None
+        when it is clear: the stage route's gate (:meth:`_estimate_gate`) read for the record's own
+        scope. ``question`` is the question an estimate rests on now (:meth:`_question_gate`),
+        ``press`` the press of Fit kept, ``lock`` the plan's lock in force.
+
+        * No goal now: the goal's gate, as on the stage route.
+        * The record's answers unread, or its goal not the goal now: everything withheld, and why.
+        * Predict: as the stage route, but read for the record's outcome: no score unless Fit was
+          pressed for it (``fit_press.pressed_for``).
+        * Estimate: as the stage route (no estimate before the lock), and then only where the
+          lock in force covers the record: its plan's digest is the lock's, or the lock is among
+          the records in force when it was computed (a change made after the lock is recorded as
+          made after the estimates, ``plan_lock``)."""
+        if state.purpose is None:
+            return fit_press.gate(question, state, False)
+        if rec.purpose is None:
+            return _record_withheld(state, FIT_ANSWERS_UNREAD)
+        if rec.purpose != state.purpose:
+            return _record_withheld(state, _other_goal(rec.purpose, state.purpose))
+        if rec.purpose == "prediction":
+            return fit_press.gate(question, state,
+                                  self.replay or fit_press.pressed_for(press, rec.target))
+        gate = fit_press.gate(question, state, False)  # under Estimate the lock is read, not a press
+        if gate is not None:
+            return gate
+        if lock is None:  # the state says locked, the log holds no lock: the strict case
+            return _record_withheld(state, fit_press.LOCK_FIRST)
+        if rec.plan_digest == getattr(lock.decision, "digest", None) or lock.seq in (
+                rec.decisions or []):
+            return None
+        return _record_withheld(state, _not_the_locked_plan(lock.seq))
 
     def fits(self, pid: str) -> dict[str, Any]:
         """E1: every fit's record, in the order the fits completed (``core/runs.py``). Each record's
-        numbers are those of the fit at its key as the stage route serves it now (:meth:`_serve`):
-        no score or estimate before Fit under Predict, no cross-validated score under Estimate, no
-        held-out score until the seal is opened, no estimate before the plan's lock under Estimate
-        nor while a question an estimate rests on is open; a movement only where both fits' scores
-        are served. What is served counts as shown, as on the stage route: each family whose
-        cross-validated scores are served is kept as seen for the record's outcome, and an estimate
-        served under the plan's lock makes the lock stand (:meth:`_note_shown`)."""
+        numbers are those of the fit at its key as the stage route would serve that fit now
+        (:meth:`_serve`): the current fit's under the stage route's own gate, every other's under
+        :meth:`_record_gate`, that gate read for the record's own goal, outcome and plan. So none
+        at all under another goal than the goal now; under Predict no score unless Fit was
+        pressed for the record's outcome; under Estimate no cross-validated score, and no
+        estimate before the plan's lock, nor after it for a plan the lock in force does not
+        cover; none while a question an estimate rests on is open. Its held-out scores only once
+        its outcome's seal is opened, and only where it was scored on the rows that opening
+        opened (:func:`_held_out_why`). A movement only where both fits' scores are served. What
+        is served counts as shown, as on the stage route: each family whose cross-validated
+        scores are served is kept as seen for the record's outcome, and an estimate served under
+        the plan's lock makes the lock stand (:meth:`_note_shown`)."""
         from turbotab.core.models.selection import note_seen
 
         self.workspace.get(pid)
@@ -2062,16 +2194,25 @@ class ProjectService:
         if not stored:
             return {"records": []}
         records = self.log(pid).records()
-        gate = self._estimate_gate(pid, decisions.fold(records), records)
+        state = decisions.fold(records)
+        question = self._question_gate(pid, state, records)
+        press, lock = self._press(pid), plan_lock.current_lock(records)
+        opened = self._opened_draw(pid, records)
+        # The current fit's record is gated as the stage route gates that fit now, exactly.
+        status = self.engine.status(pid).get("fit")
+        current = status.key if status is not None and status.status == "fresh" else None
+        now = fit_press.gate(question, state, self._pressed(pid, state))
         served: list[dict[str, Any]] = []
         for rec in stored:
             try:
                 data = self._artifact(pid, "fit", rec.fit_key, public=True)
             except (OSError, ValueError, KeyError):
                 data = None
+            gate = (now if rec.fit_key == current
+                    else self._record_gate(rec, state, question, press, lock))
             fit = self._serve(pid, "fit", data, rec.fit_key, gate=gate) if isinstance(
                 data, dict) else None
-            served.append(_served_record(rec, fit))
+            served.append(_served_record(rec, fit, opened=opened, target=state.target))
         scored = {rec.id: {f for f, cv in out["scores"].items() if cv}
                   for rec, out in zip(stored, served)}
         by_id = {rec.id: rec for rec in stored}
@@ -2099,11 +2240,17 @@ class ProjectService:
         own value (:meth:`_serve`, the stage route's serving, never recomputed), gated as the stage
         route gates it. Under Predict: each family's cross-validated summary, the declared result
         and, once the seal is opened, each family's held-out scores with their intervals and
-        calibration. Under Estimate: the estimand, each family's rows of the exposure from the fit
-        and, from the effects stage, its sequence fits, its marginal contrast and its E-values.
-        What is served counts as shown, as on the stage route (:meth:`stage_result`): the families
-        whose cross-validated scores a fresh fit serves are kept as seen, and an estimate served
-        under the plan's lock makes the lock stand."""
+        calibration, and what the screen says beside them: the scores the opening recorded
+        (``at_opening``), the final model's note, whether the fit changed after the opening and
+        the post-seal decisions that changed it, and how the split drew the held-out rows (its
+        basis, its chronology, and whether they make the held-out scores exploratory). Under
+        Estimate: the estimand, each family's rows of the exposure from the fit and, from the
+        effects stage, its sequence fits, its marginal contrast and its E-values.
+
+        What is served counts as shown: the families whose cross-validated scores the fit serves,
+        fresh or not, are kept as seen for the outcome that fit predicts (:meth:`_fit_outcome`); a
+        fit that is not the current one and whose outcome is not known serves no score. An
+        estimate served under the plan's lock makes the lock stand."""
         from turbotab.core.models.selection import note_seen, scored_in
 
         self.workspace.get(pid)
@@ -2117,21 +2264,33 @@ class ProjectService:
             return result, artifact if isinstance(artifact, dict) else {}
 
         fit_result, fit = served("fit")
+        outcome = (state.target if fit_result.fresh
+                   else self._fit_outcome(pid, fit_result.key, records))
+        if outcome is None and scored_in(fit):
+            fit = estimand.withhold("fit", fit, _record_withheld(state, STALE_OUTCOME_UNREAD))
         models = [m for m in fit.get("models") or [] if isinstance(m, dict) and m.get("family")]
         out: dict[str, Any] = {
             "purpose": state.purpose, "fit": _stage_served(fit_result), "effects": None,
             "withheld": fit.get("withheld"), "holdout_sealed": bool(fit.get("holdout_sealed")),
-            "final_model": None, "result": None, "estimand": None, "families": []}
+            "final_model": None, "result": None, "estimand": None, "families": [],
+            "at_opening": None, "final_note": None, "changed_after_seal": False,
+            "post_seal_decisions": [], "split": None}
         if state.purpose == "prediction":
             out["result"], out["final_model"] = fit.get("result"), fit.get("final_model")
+            out["at_opening"], out["final_note"] = fit.get("at_opening"), fit.get("final_note")
+            out["changed_after_seal"] = bool(fit.get("changed_after_seal"))
+            out["post_seal_decisions"] = list(fit.get("post_seal_decisions") or [])
+            split_result, split = served("split")
+            out["split"] = {"stage": _stage_served(split_result), "basis": split.get("basis"),
+                            "chronology": split.get("chronology"),
+                            "exploratory": split.get("exploratory")}
             for m in models:
                 detail = m.get("holdout_detail") or {}
                 out["families"].append({
                     "family": m["family"], "label": m.get("label"), "cv": m.get("cv") or {},
                     "holdout": m.get("holdout"), "intervals": detail.get("intervals"),
                     "calibration": detail.get("calibration")})
-            if fit_result.fresh:
-                note_seen(self.workspace.project_dir(pid), state.target, scored_in(fit))
+            note_seen(self.workspace.project_dir(pid), outcome, scored_in(fit))
         elif state.purpose == "inference":
             effects_result, effects = served("effects")
             out["effects"] = _stage_served(effects_result)
@@ -2152,6 +2311,20 @@ class ProjectService:
             self._note_shown(pid, "fit", fit)
             self._note_shown(pid, "effects", effects)
         return out
+
+    def _fit_outcome(self, pid: str, key: str | None, records: list[Any]) -> str | None:
+        """E2: the outcome the fit at ``key`` predicts: its record's (E1), else that of the longest
+        prefix of the decision log that keys it (``runs.keyed_prefix``); None when neither names
+        one (a fit keyed by no answers the log gives, as after a stage's version changed)."""
+        if not key:
+            return None
+        for rec in runs.RunLog(self.workspace.project_dir(pid) / runs.RUNS_FILE).records():
+            if rec.fit_key == key and rec.target is not None:
+                return rec.target
+        fingerprint = self.fingerprint(pid)
+        prefix = runs.keyed_prefix(
+            records, key, lambda s: seal.keys_for(self.engine.graph, s, fingerprint).get("fit"))
+        return decisions.fold(prefix).target if prefix is not None else None
 
     def plan(self, pid: str) -> bytes:
         """The analysis-plan export (ESTIMAND; MODELING_SEQUENCE §1 row 12): canonical JSON of the
@@ -2241,14 +2414,19 @@ class ProjectService:
     def _estimate_gate(self, pid: str, state: ProjectState, records: list[Any]) -> Any:
         """The gate every estimate stage is served under now (``estimand.withhold`` reads it), or
         None when it is clear. WP17: no estimate is served while a question it rests on is
-        unanswered (the follow-up; under inference the grouping, the exposure and its effect, the
-        adjustment set), as held-out scores are withheld until the seal is opened. P0.8: none
-        before the plan's lock under Estimate and Describe, none before Fit under Predict, and none
-        at all with no purpose; a question's gate before Fit withholds the scores too
-        (``fit_press.gate``)."""
-        gate = estimand.served_gate(state, self.interview(pid, state, self.engine.status(pid),
+        unanswered (:meth:`_question_gate`), as held-out scores are withheld until the seal is
+        opened. P0.8: none before the plan's lock under Estimate and Describe, none before Fit
+        under Predict, and none at all with no purpose; a question's gate before Fit withholds the
+        scores too (``fit_press.gate``)."""
+        return fit_press.gate(self._question_gate(pid, state, records), state,
+                              self._pressed(pid, state))
+
+    def _question_gate(self, pid: str, state: ProjectState, records: list[Any]) -> Any:
+        """WP17: the first unanswered question an estimate rests on now (the follow-up; under
+        inference the grouping, the exposure and its effect, the adjustment set), as
+        ``estimand.served_gate`` says it; None when every one is answered."""
+        return estimand.served_gate(state, self.interview(pid, state, self.engine.status(pid),
                                                           records))
-        return fit_press.gate(gate, state, self._pressed(pid, state))
 
     def _serve(self, pid: str, stage: str, artifact: Any, key: str | None,
                gate: Any = _GATE_UNREAD) -> Any:

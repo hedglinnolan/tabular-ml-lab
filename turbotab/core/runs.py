@@ -18,10 +18,14 @@ Each record holds what the fit was, read from the engine and the decision log wh
 * under Predict, against the record before it in completion order, each family's movement by
   :func:`materiality.paired_folds` on the two fits' fold scores of the primary metric, where the
   two were scored on the same folds (:func:`folds_digest`: the same training rows in the same folds,
-  drawn the same way); otherwise none, and why (:func:`movement`).
+  drawn the same way); otherwise none, and why (:func:`movement`);
+* the held-out rows the fit's split drew (:func:`held_out_digest`), so its held-out scores are
+  served only where they are the opened draw's.
 
-The server serves the records (``GET /projects/{pid}/fits``) through the fit's own serving gate, so
-each number is withheld exactly where the stage route withholds it.
+The server serves the records (``GET /projects/{pid}/fits``) through the fit's own serving gate,
+read for each record's own scope (its goal, its outcome's press of Fit, the lock over its plan, the
+draw its held-out rows came from), so each number is withheld wherever the stage route would
+withhold it for that fit.
 """
 from __future__ import annotations
 
@@ -80,14 +84,25 @@ def _too_few(family: str) -> str:
     return f"Fewer than two folds scored `{family}` in both fits."
 
 
-def _constant(family: str, change: float) -> str:
-    return (f"Every fold scored `{family}` {change:+.4f} from the previous fit, so the change has no "
-            f"fold-to-fold spread and the paired measure is not defined.")
+def _scored_by(metric: str) -> str:
+    """The primary metric as a sentence names it, with its direction (``models.metrics``)."""
+    from turbotab.core.models.metrics import LABELS, higher_is_better
+
+    better = "higher" if higher_is_better(metric) else "lower"
+    return f"{LABELS.get(metric, metric)} ({better} is better)"
 
 
-def _what(family: str) -> str:
-    """The alternative :func:`materiality.paired_folds` names: what differs, for this family."""
-    return f"For `{family}`, what differs from the previous fit"
+def _constant(family: str, metric: str, change: float) -> str:
+    return (f"Every fold's cross-validated {_scored_by(metric)} for `{family}` changed by "
+            f"{change:+.4f} from the previous fit, so the change has no fold-to-fold spread and the "
+            f"paired measure is not defined.")
+
+
+def _what(family: str, metric: str) -> str:
+    """The alternative :func:`materiality.paired_folds` names: what differs, for this family, with
+    the metric its sentence's change is on, so the sign can be read."""
+    return (f"For `{family}`, whose cross-validated score is its {_scored_by(metric)}, what differs "
+            f"from the previous fit")
 
 
 class FoldMovement(BaseModel):
@@ -125,6 +140,8 @@ class FitRecord(BaseModel):
     primary_metric: str | None
     folds: str | None  # :func:`folds_digest` of the split the fit read; null when unread
     seed: int | None  # the split's seed
+    # :func:`held_out_digest` of the rows the split held out; null when none are, or unread.
+    held_out: str | None = None
     # Predict: each family's cross-validated summary, the fit's own ``cv`` (every metric).
     scores: dict[str, dict[str, Any]] = {}
     # Estimate: each family's rows of the exposure, the fit's own coefficient rows.
@@ -159,6 +176,16 @@ def folds_digest(assignment: Any, *, scheme: str | None = None,
 
 def _missing(value: Any) -> bool:
     return value is None or (isinstance(value, float) and math.isnan(value))
+
+
+def held_out_digest(row_ids: Sequence[Any]) -> str | None:
+    """The SHA-256 of the held-out rows a split drew (its ``sealed`` frame's row ids, sorted), or
+    None when it holds none out. Two fits with the same digest were scored on the same held-out
+    rows: the draw an opening of the seal opens."""
+    ids = sorted(int(i) for i in row_ids)
+    if not ids:
+        return None
+    return hashlib.sha256(",".join(map(str, ids)).encode("utf-8")).hexdigest()
 
 
 def family_numbers(fit: Mapping[str, Any], purpose: str | None
@@ -232,11 +259,12 @@ def movement(previous: FitRecord | None, *, purpose: str | None, target: str | N
         if len(pairs) < 2:
             out.append(FoldMovement(family=family, against=previous.id, why=_too_few(family)))
             continue
-        moved = paired_folds([b for b, _ in pairs], [a for _, a in pairs], _what(family))
+        assert metric is not None  # fold scores are read by the metric (:func:`_fold_scores`)
+        moved = paired_folds([b for b, _ in pairs], [a for _, a in pairs], _what(family, metric))
         if moved.value is not None and not math.isfinite(moved.value):
             change = pairs[0][1] - pairs[0][0]
             out.append(FoldMovement(family=family, against=previous.id,
-                                    why=_constant(family, change)))
+                                    why=_constant(family, metric, change)))
             continue
         out.append(FoldMovement(family=family, against=previous.id, movement=moved))
     return out, None
@@ -332,4 +360,5 @@ def appended_by(records: Sequence[Any], at: datetime | None) -> list[Any]:
 
 __all__ = ["ANSWERS_UNREAD", "FOLDS_UNREAD", "FitRecord", "FoldMovement", "NOT_PREDICT",
            "NO_PREVIOUS", "OTHER_FOLDS", "PREVIOUS_NOT_PREDICT", "RUNS_FILE", "RunLog",
-           "appended_by", "family_numbers", "folds_digest", "keyed_prefix", "movement"]
+           "appended_by", "family_numbers", "folds_digest", "held_out_digest", "keyed_prefix",
+           "movement"]

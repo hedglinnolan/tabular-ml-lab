@@ -5,10 +5,14 @@
   measured only on the same folds, outcome and metric, and each case without one says why.
 * The log keeps one record per fit key, in the order written, and never rewrites a line, however
   many threads write at once.
-* Two fits share a folds digest exactly when they score the same training rows in the same folds.
+* Two fits share a folds digest exactly when they score the same training rows in the same folds,
+  and a held-out digest exactly when their splits hold out the same rows.
+* Each movement's sentence names the metric its change is on and which way is better, so its sign
+  reads (``MSE``, lower; ``R²``, higher: by each metric's definition).
 """
 from __future__ import annotations
 
+import hashlib
 import threading
 from datetime import datetime, timedelta, timezone
 
@@ -27,11 +31,12 @@ def summary(folds: list[float | None]) -> dict:
     return {"mean": float(np.mean(present)), "sd": sd, "folds": folds}
 
 
-def record(scores: dict[str, list[float | None]], **fields) -> runs.FitRecord:
+def record(scores: dict[str, list[float | None]], metric: str = "rmse",
+           **fields) -> runs.FitRecord:
     base = dict(id="a" * 32, seq=1, at=AT, purpose="prediction", target="hba1c", fit_key="k1",
                 plan_digest=None, decisions=[1], press=None, families=list(scores), seconds=1.0,
-                workers=2, primary_metric="rmse", folds="f1", seed=0,
-                scores={f: {"rmse": summary(v)} for f, v in scores.items()})
+                workers=2, primary_metric=metric, folds="f1", seed=0,
+                scores={f: {metric: summary(v)} for f, v in scores.items()})
     base.update(fields)
     return runs.FitRecord(**base)
 
@@ -39,15 +44,20 @@ def record(scores: dict[str, list[float | None]], **fields) -> runs.FitRecord:
 def measured(previous: runs.FitRecord, scores: dict[str, list[float | None]], **fields):
     args = dict(purpose="prediction", target="hba1c", metric="rmse", folds="f1", seed=0)
     args.update(fields)
-    return runs.movement(previous, scores={f: {"rmse": summary(v)} for f, v in scores.items()},
+    metric = args["metric"]
+    return runs.movement(previous, scores={f: {metric: summary(v)} for f, v in scores.items()},
                          **args)
 
 
-def test_the_movement_is_paired_folds_on_the_two_fits_fold_scores():
+@pytest.mark.parametrize("metric, named", [("rmse", "RMSE (lower is better)"),
+                                           ("mse", "MSE (lower is better)"),
+                                           ("r2", "R² (higher is better)")])
+def test_the_movement_is_paired_folds_on_the_two_fits_fold_scores(metric, named):
     before = [0.81, 0.77, 0.90, 0.84, 0.79]
     after = [0.78, 0.76, 0.85, 0.83, 0.75]
-    previous = record({"linear": before, "boosted_trees": [0.7, 0.71, 0.69, 0.72, 0.7]})
-    found, why = measured(previous, {"linear": after})
+    previous = record({"linear": before, "boosted_trees": [0.7, 0.71, 0.69, 0.72, 0.7]},
+                      metric=metric)
+    found, why = measured(previous, {"linear": after}, metric=metric)
     assert why is None and [m.family for m in found] == ["linear"]
     d = np.asarray(after) - np.asarray(before)  # this fit's less the previous one's
     expected = abs(d.mean()) / d.std(ddof=1)
@@ -55,8 +65,10 @@ def test_the_movement_is_paired_folds_on_the_two_fits_fold_scores():
     assert found[0].against == previous.id and found[0].why is None
     assert m.instrument == "paired_folds" and m.regime == "realized"
     assert m.value == pytest.approx(expected, rel=1e-12)
-    assert f"{d.mean():+.4f}" in m.words and f"{expected:.2f}" in m.words
-    assert m.words.startswith("For `linear`, what differs from the previous fit changed")
+    # The metric and its direction are named, so the sign of the change reads.
+    assert m.words == (f"For `linear`, whose cross-validated score is its {named}, what differs "
+                       f"from the previous fit changed the cross-validated score by "
+                       f"{d.mean():+.4f} on average, {expected:.2f} of its fold-to-fold spread.")
 
 
 def test_identical_fold_scores_move_by_exactly_zero():
@@ -116,8 +128,9 @@ def test_a_change_with_no_fold_to_fold_spread_is_refused_not_infinite():
     after = [b + 0.125 for b in before]  # every difference exactly 0.125 (binary fractions)
     found, why = measured(record({"linear": before}), {"linear": after})
     assert why is None and found[0].movement is None
-    assert found[0].why == ("Every fold scored `linear` +0.1250 from the previous fit, so the change "
-                            "has no fold-to-fold spread and the paired measure is not defined.")
+    assert found[0].why == ("Every fold's cross-validated RMSE (lower is better) for `linear` "
+                            "changed by +0.1250 from the previous fit, so the change has no "
+                            "fold-to-fold spread and the paired measure is not defined.")
 
 
 # ── the log ──────────────────────────────────────────────────────────────────
@@ -226,3 +239,13 @@ def test_two_fits_share_a_folds_digest_exactly_when_they_share_their_folds():
     assert runs.folds_digest(a) != runs.folds_digest(a, scheme="time_ordered")
     repeated = a.assign(fold_r1=[1, 0, 1, 0, float("nan")])
     assert runs.folds_digest(a) != runs.folds_digest(repeated)
+
+
+def test_two_splits_share_a_held_out_digest_exactly_when_they_hold_out_the_same_rows():
+    rows = [17, 3, 42, 8]
+    expected = hashlib.sha256(b"3,8,17,42").hexdigest()  # the row ids, sorted, comma-joined
+    assert runs.held_out_digest(rows) == expected
+    assert runs.held_out_digest(list(reversed(rows))) == expected  # the rows, in any order
+    assert runs.held_out_digest([17, 3, 42, 9]) != expected  # one row drawn otherwise
+    assert runs.held_out_digest([17, 3, 42]) != expected
+    assert runs.held_out_digest([]) is None  # nothing held out: no draw to open

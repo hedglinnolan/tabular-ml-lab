@@ -37,6 +37,7 @@ from turbotab.core.interview import InterviewStep  # noqa: F401
 # widens exactly when the interview does (the teaching also covers the repairs and seal cards).
 from turbotab.core.interview import QuestionKey  # noqa: F401
 from turbotab.core.jobs import JobView  # noqa: F401
+from turbotab.core.models.artifacts import AtOpening  # noqa: F401 - the opening's scores (WP16)
 from turbotab.core.repairs import RepairOption  # noqa: F401 - re-exported contract model
 from turbotab.core.runs import FoldMovement  # noqa: F401 - the record of every fit (E1)
 from turbotab.core.seal import Chronology, SealBasis, SealPlan  # noqa: F401 - the seal's shapes
@@ -116,8 +117,9 @@ class StageResult(Model):
 
 class ServedFit(Model):
     """One fit's record (``turbotab/core/runs.py``'s ``FitRecord``) as a client is served it: its
-    numbers are the fit's at ``fit_key`` as ``GET /stages/fit`` serves it now, so each is withheld
-    exactly where the stage route withholds it, and ``withheld`` says why."""
+    numbers are the fit's at ``fit_key`` as ``GET /stages/fit`` would serve that fit now, its gate
+    read for the record's own goal, outcome, plan and held-out rows, and ``withheld`` and
+    ``holdout_why`` say why a number is not served."""
 
     id: str
     seq: int  # completion order, from 1
@@ -134,12 +136,17 @@ class ServedFit(Model):
     primary_metric: str | None
     folds: str | None  # the SHA-256 of the training rows' folds (``runs.folds_digest``)
     seed: int | None  # the split's seed
+    # The SHA-256 of the rows the split held out (``runs.held_out_digest``); null when none are.
+    held_out: str | None
     # Predict: each family's cross-validated summary (the fit's ``cv``; empty while withheld).
     scores: dict[str, dict[str, Any]]
-    # Each family's held-out scores, as the fit serves them; null until the seal is opened
-    # (M2_CONTRACT §3).
+    # Each family's held-out scores, as the fit serves them, once its outcome's seal is opened and
+    # only where it was scored on the rows that opening opened (M2_CONTRACT §3); else null, and
+    # ``holdout_why`` says why.
     holdout: dict[str, dict[str, float | None] | None] | None
-    # Estimate: each family's rows of the exposure, with their intervals; null while withheld.
+    holdout_why: str | None
+    # Estimate: each family's rows of the exposure, with their intervals, under the estimand the
+    # fit was computed for; null while withheld.
     effects: dict[str, list[dict[str, Any]] | None]
     # Predict: each family's movement against the previous record (materiality.paired_folds),
     # where both fits' scores are served; ``movement_why`` says why the record has none.
@@ -186,6 +193,16 @@ class ResultFamily(Model):
     e_values: list[ResultEValue] = []
 
 
+class ResultsSplit(Model):
+    """How the split drew the held-out rows, as ``GET /stages/split`` serves it: the Results screen
+    marks the held-out scores exploratory beside them from these."""
+
+    stage: StageServed
+    basis: SealBasis | None
+    chronology: Chronology | None
+    exploratory: bool | None
+
+
 class Results(Model):
     """What the Results screens show, as one document (``GET /projects/{pid}/results``)."""
 
@@ -196,6 +213,15 @@ class Results(Model):
     holdout_sealed: bool
     final_model: str | None  # Predict: the family declared final at the opening
     result: dict[str, Any] | None  # Predict: the declared result (``FitArtifact.result``)
+    # Predict, beside the held-out scores, each the served fit's: the scores the first opening of
+    # the outcome's seal recorded (the reported result) and whether the scores served are those,
+    # the final model's note, whether the fit changed after the opening, and the post-seal
+    # decisions that changed it.
+    at_opening: AtOpening | None
+    final_note: str | None
+    changed_after_seal: bool
+    post_seal_decisions: list[str]
+    split: ResultsSplit | None  # Predict: the split's basis, as its stage serves it
     estimand: dict[str, Any] | None  # Estimate: the fit's estimand annotation
     families: list[ResultFamily]
 

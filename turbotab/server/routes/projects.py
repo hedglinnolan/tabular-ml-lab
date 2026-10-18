@@ -173,12 +173,17 @@ def fits(request: Request, pid: str) -> dict:
     """Every fit that completed, one record per fit key in the order the keys turned fresh, each
     written once and never rewritten (SWARM_ENGINE_PLAN E1): its purpose, outcome and key, the
     plan's digest and the records in force it was computed from, the press of Fit in force, its
-    families, the seconds its job ran and the server's workers, and per family the cross-validated
-    summary (Predict) or the exposure's rows with their intervals (Estimate). Each number is the
-    fit's as ``GET /stages/fit`` serves it now: none before Fit under Predict, no held-out score
-    until the seal is opened, no estimate before the plan's lock under Estimate. Under Predict, a
-    record scored on the same folds as the one before it carries each family's paired movement
-    against it; otherwise ``movement_why`` says why it has none."""
+    families, the seconds its job ran and the server's workers, the rows its split held out, and
+    per family the cross-validated summary (Predict) or the exposure's rows with their intervals
+    (Estimate). Each number is the fit's as ``GET /stages/fit`` would serve that fit now, read for
+    the record's own scope: none under another goal than the goal now; under Predict none before
+    Fit is pressed for the record's outcome; under Estimate none before the plan's lock, nor for a
+    fit computed before the lock under a plan other than the one it recorded, unless it is the fit
+    the stage route serves now; a held-out score only once the record's outcome's seal is opened,
+    and only where the fit was scored on the rows that opening opened. ``withheld`` and
+    ``holdout_why`` say why a number is not served. Under Predict, a record scored on the same
+    folds as the one before it carries each family's paired movement against it; otherwise
+    ``movement_why`` says why it has none."""
     return get_service(request).fits(pid)
 
 
@@ -191,9 +196,14 @@ def results(request: Request, pid: str) -> dict:
     """What the Results screens show, joined into one document, each field the served artifact's
     own value and gated as the stage route gates it (SWARM_ENGINE_PLAN E2). Under Predict: each
     family's cross-validated summary, the declared result and, once the seal is opened, its
-    held-out scores with their intervals and calibration. Under Estimate: the estimand, each
-    family's rows of the exposure from the fit, and from the effects stage its sequence fits,
-    marginal contrast and E-values."""
+    held-out scores with their intervals and calibration, with what the screen says beside them:
+    the scores the opening recorded (the reported result) and whether those are the scores served,
+    the final model's note, whether the fit changed after the opening and the post-seal decisions
+    that changed it, and the split's basis, which can mark the held-out scores exploratory. Under
+    Estimate: the estimand, each family's rows of the exposure from the fit, and from the effects
+    stage its sequence fits, marginal contrast and E-values. The cross-validated scores served
+    count as seen for the outcome of the fit that holds them, as on the stage route, and also
+    while that fit is not the current one."""
     return get_service(request).results(pid)
 
 

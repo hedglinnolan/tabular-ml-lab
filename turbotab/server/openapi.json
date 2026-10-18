@@ -873,7 +873,7 @@
           "projects"
         ],
         "summary": "Fits",
-        "description": "Every fit that completed, one record per fit key in the order the keys turned fresh, each\nwritten once and never rewritten (SWARM_ENGINE_PLAN E1): its purpose, outcome and key, the\nplan's digest and the records in force it was computed from, the press of Fit in force, its\nfamilies, the seconds its job ran and the server's workers, and per family the cross-validated\nsummary (Predict) or the exposure's rows with their intervals (Estimate). Each number is the\nfit's as ``GET /stages/fit`` serves it now: none before Fit under Predict, no held-out score\nuntil the seal is opened, no estimate before the plan's lock under Estimate. Under Predict, a\nrecord scored on the same folds as the one before it carries each family's paired movement\nagainst it; otherwise ``movement_why`` says why it has none.",
+        "description": "Every fit that completed, one record per fit key in the order the keys turned fresh, each\nwritten once and never rewritten (SWARM_ENGINE_PLAN E1): its purpose, outcome and key, the\nplan's digest and the records in force it was computed from, the press of Fit in force, its\nfamilies, the seconds its job ran and the server's workers, the rows its split held out, and\nper family the cross-validated summary (Predict) or the exposure's rows with their intervals\n(Estimate). Each number is the fit's as ``GET /stages/fit`` would serve that fit now, read for\nthe record's own scope: none under another goal than the goal now; under Predict none before\nFit is pressed for the record's outcome; under Estimate none before the plan's lock, nor for a\nfit computed before the lock under a plan other than the one it recorded, unless it is the fit\nthe stage route serves now; a held-out score only once the record's outcome's seal is opened,\nand only where the fit was scored on the rows that opening opened. ``withheld`` and\n``holdout_why`` say why a number is not served. Under Predict, a record scored on the same\nfolds as the one before it carries each family's paired movement against it; otherwise\n``movement_why`` says why it has none.",
         "operationId": "fits_api_projects__pid__fits_get",
         "parameters": [
           {
@@ -926,7 +926,7 @@
           "projects"
         ],
         "summary": "Results",
-        "description": "What the Results screens show, joined into one document, each field the served artifact's\nown value and gated as the stage route gates it (SWARM_ENGINE_PLAN E2). Under Predict: each\nfamily's cross-validated summary, the declared result and, once the seal is opened, its\nheld-out scores with their intervals and calibration. Under Estimate: the estimand, each\nfamily's rows of the exposure from the fit, and from the effects stage its sequence fits,\nmarginal contrast and E-values.",
+        "description": "What the Results screens show, joined into one document, each field the served artifact's\nown value and gated as the stage route gates it (SWARM_ENGINE_PLAN E2). Under Predict: each\nfamily's cross-validated summary, the declared result and, once the seal is opened, its\nheld-out scores with their intervals and calibration, with what the screen says beside them:\nthe scores the opening recorded (the reported result) and whether those are the scores served,\nthe final model's note, whether the fit changed after the opening and the post-seal decisions\nthat changed it, and the split's basis, which can mark the held-out scores exploratory. Under\nEstimate: the estimand, each family's rows of the exposure from the fit, and from the effects\nstage its sequence fits, marginal contrast and E-values. The cross-validated scores served\ncount as seen for the outcome of the fit that holds them, as on the stage route, and also\nwhile that fit is not the current one.",
         "operationId": "results_api_projects__pid__results_get",
         "parameters": [
           {
@@ -3461,6 +3461,85 @@
         "title": "AskSettled",
         "description": "One reading the values settled for this consumer, no question asked\n(``readings.read_from_data``, the readings endpoint's own item)."
       },
+      "AtOpening": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
+          },
+          "n_holdout": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Holdout"
+          },
+          "scores": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Scores"
+          },
+          "current": {
+            "type": "boolean",
+            "title": "Current"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "family",
+          "metric",
+          "n_holdout",
+          "scores",
+          "current",
+          "note"
+        ],
+        "title": "AtOpening",
+        "description": "The held-out scores recorded when the current outcome's seal was first opened: the reported\nresult, whatever is drawn, fitted or opened later (audit WP16, RO-05). Set by the server."
+      },
       "BatchSpec": {
         "properties": {
           "column": {
@@ -3933,6 +4012,100 @@
           "license"
         ],
         "title": "ChecklistSource"
+      },
+      "Chronology": {
+        "properties": {
+          "drawn": {
+            "type": "boolean",
+            "title": "Drawn"
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Column"
+          },
+          "boundary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Boundary"
+          },
+          "n_units": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Units"
+          },
+          "n_undated": {
+            "type": "integer",
+            "title": "N Undated"
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          },
+          "n_held_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Held Rows"
+          },
+          "n_held_earlier": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Held Earlier"
+          },
+          "earlier": {
+            "items": {
+              "$ref": "#/components/schemas/EarlierRows"
+            },
+            "type": "array",
+            "title": "Earlier",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "drawn",
+          "time_column",
+          "boundary",
+          "n_units",
+          "n_undated",
+          "sentence",
+          "n_held_rows",
+          "n_held_earlier",
+          "earlier"
+        ],
+        "title": "Chronology",
+        "description": "The chronological draw the temporal answer asked for, and whether it was drawn.\n\nWhole units are held out by their last observation, so with repeated rows a held-out unit's\nearlier rows can predate training rows (audit IN-24: 56–71% of held-out rows on visit data).\n``n_held_rows``/``n_held_earlier`` count that for this draw; ``earlier`` for each share the\nsplit question offers, at this draw's seed, so the split's sentence can state it."
       },
       "ClusterSpec": {
         "properties": {
@@ -5700,6 +5873,36 @@
           "evidence"
         ],
         "title": "DrawerSection"
+      },
+      "EarlierRows": {
+        "properties": {
+          "holdout": {
+            "type": "number",
+            "title": "Holdout"
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed"
+          },
+          "n_held_rows": {
+            "type": "integer",
+            "title": "N Held Rows"
+          },
+          "n_earlier": {
+            "type": "integer",
+            "title": "N Earlier"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "holdout",
+          "seed",
+          "n_held_rows",
+          "n_earlier"
+        ],
+        "title": "EarlierRows",
+        "description": "For one held-out share drawn by time: how many held-out rows there are, and how many were\nobserved before the latest training row (audit IN-24)."
       },
       "EnergyAdjustment": {
         "properties": {
@@ -12928,6 +13131,48 @@
             ],
             "title": "Result"
           },
+          "at_opening": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AtOpening"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "final_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Note"
+          },
+          "changed_after_seal": {
+            "type": "boolean",
+            "title": "Changed After Seal"
+          },
+          "post_seal_decisions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Post Seal Decisions"
+          },
+          "split": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResultsSplit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "estimand": {
             "anyOf": [
               {
@@ -12957,11 +13202,63 @@
           "holdout_sealed",
           "final_model",
           "result",
+          "at_opening",
+          "final_note",
+          "changed_after_seal",
+          "post_seal_decisions",
+          "split",
           "estimand",
           "families"
         ],
         "title": "Results",
         "description": "What the Results screens show, as one document (``GET /projects/{pid}/results``)."
+      },
+      "ResultsSplit": {
+        "properties": {
+          "stage": {
+            "$ref": "#/components/schemas/StageServed"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SealBasis"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chronology": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Chronology"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exploratory": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exploratory"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage",
+          "basis",
+          "chronology",
+          "exploratory"
+        ],
+        "title": "ResultsSplit",
+        "description": "How the split drew the held-out rows, as ``GET /stages/split`` serves it: the Results screen\nmarks the held-out scores exploratory beside them from these."
       },
       "Revert": {
         "properties": {
@@ -13450,6 +13747,84 @@
         ],
         "title": "ScaleSpec",
         "description": "One scale: its items, the instrument's key (the reverse-coded items and the response scale\n``low``–``high`` they are turned over on), how the score is formed, what kind of construct it\nmeasures (``reflective``: the items are caused by it; ``formative``: an index defined by its\ncomponents, such as a diet-quality score), its structure, the role the score takes in the\nmodels, and whether its coefficient is corrected for measurement error, from which reliability."
+      },
+      "SealBasis": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "grouped",
+              "one_row_per_unit",
+              "abandoned",
+              "undetermined"
+            ],
+            "title": "State"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          },
+          "exploratory": {
+            "type": "boolean",
+            "title": "Exploratory"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "grain",
+                  "stated",
+                  "roles",
+                  "aggregation"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "n_units": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Units"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "column",
+          "label",
+          "sentence",
+          "exploratory",
+          "source",
+          "n_units"
+        ],
+        "title": "SealBasis",
+        "description": "How the held-out rows were drawn: one of four states, never inferred silently."
       },
       "SealCells": {
         "properties": {
@@ -13964,6 +14339,17 @@
             ],
             "title": "Seed"
           },
+          "held_out": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Out"
+          },
           "scores": {
             "additionalProperties": {
               "additionalProperties": true,
@@ -14002,6 +14388,17 @@
               }
             ],
             "title": "Holdout"
+          },
+          "holdout_why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holdout Why"
           },
           "effects": {
             "additionalProperties": {
@@ -14068,15 +14465,17 @@
           "primary_metric",
           "folds",
           "seed",
+          "held_out",
           "scores",
           "holdout",
+          "holdout_why",
           "effects",
           "movement",
           "movement_why",
           "withheld"
         ],
         "title": "ServedFit",
-        "description": "One fit's record (``turbotab/core/runs.py``'s ``FitRecord``) as a client is served it: its\nnumbers are the fit's at ``fit_key`` as ``GET /stages/fit`` serves it now, so each is withheld\nexactly where the stage route withholds it, and ``withheld`` says why."
+        "description": "One fit's record (``turbotab/core/runs.py``'s ``FitRecord``) as a client is served it: its\nnumbers are the fit's at ``fit_key`` as ``GET /stages/fit`` would serve that fit now, its gate\nread for the record's own goal, outcome, plan and held-out rows, and ``withheld`` and\n``holdout_why`` say why a number is not served."
       },
       "SetAdjustment-Input": {
         "properties": {
@@ -21919,85 +22318,6 @@
         "title": "AssumptionView",
         "type": "object"
       },
-      "AtOpening": {
-        "additionalProperties": false,
-        "description": "The held-out scores recorded when the current outcome's seal was first opened: the reported\nresult, whatever is drawn, fitted or opened later (audit WP16, RO-05). Set by the server.",
-        "properties": {
-          "seq": {
-            "title": "Seq",
-            "type": "integer"
-          },
-          "family": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Family"
-          },
-          "metric": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Metric"
-          },
-          "n_holdout": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "N Holdout"
-          },
-          "scores": {
-            "additionalProperties": {
-              "additionalProperties": {
-                "anyOf": [
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "type": "object"
-            },
-            "title": "Scores",
-            "type": "object"
-          },
-          "current": {
-            "title": "Current",
-            "type": "boolean"
-          },
-          "note": {
-            "title": "Note",
-            "type": "string"
-          }
-        },
-        "required": [
-          "seq",
-          "family",
-          "metric",
-          "n_holdout",
-          "scores",
-          "current",
-          "note"
-        ],
-        "title": "AtOpening",
-        "type": "object"
-      },
       "BandEstimate": {
         "additionalProperties": false,
         "description": "A measured estimate of what adding a band would cost: one refit per family, timed.",
@@ -23898,102 +24218,6 @@
         "title": "ChainLink",
         "type": "object"
       },
-      "Chronology": {
-        "additionalProperties": false,
-        "description": "The chronological draw the temporal answer asked for, and whether it was drawn.\n\nWhole units are held out by their last observation, so with repeated rows a held-out unit's\nearlier rows can predate training rows (audit IN-24: 56–71% of held-out rows on visit data).\n``n_held_rows``/``n_held_earlier`` count that for this draw; ``earlier`` for each share the\nsplit question offers, at this draw's seed, so the split's sentence can state it.",
-        "properties": {
-          "drawn": {
-            "title": "Drawn",
-            "type": "boolean"
-          },
-          "time_column": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Time Column"
-          },
-          "boundary": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Boundary"
-          },
-          "n_units": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "N Units"
-          },
-          "n_undated": {
-            "title": "N Undated",
-            "type": "integer"
-          },
-          "sentence": {
-            "title": "Sentence",
-            "type": "string"
-          },
-          "n_held_rows": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "N Held Rows"
-          },
-          "n_held_earlier": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "N Held Earlier"
-          },
-          "earlier": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/EarlierRows"
-            },
-            "title": "Earlier",
-            "type": "array"
-          }
-        },
-        "required": [
-          "drawn",
-          "time_column",
-          "boundary",
-          "n_units",
-          "n_undated",
-          "sentence",
-          "n_held_rows",
-          "n_held_earlier",
-          "earlier"
-        ],
-        "title": "Chronology",
-        "type": "object"
-      },
       "ClusterScore": {
         "additionalProperties": false,
         "description": "One held-out cluster: its rows, its scores, and the primary metric's interval.",
@@ -25869,36 +26093,6 @@
           "sd_basis"
         ],
         "title": "EValueResult",
-        "type": "object"
-      },
-      "EarlierRows": {
-        "additionalProperties": false,
-        "description": "For one held-out share drawn by time: how many held-out rows there are, and how many were\nobserved before the latest training row (audit IN-24).",
-        "properties": {
-          "holdout": {
-            "title": "Holdout",
-            "type": "number"
-          },
-          "seed": {
-            "title": "Seed",
-            "type": "integer"
-          },
-          "n_held_rows": {
-            "title": "N Held Rows",
-            "type": "integer"
-          },
-          "n_earlier": {
-            "title": "N Earlier",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "holdout",
-          "seed",
-          "n_held_rows",
-          "n_earlier"
-        ],
-        "title": "EarlierRows",
         "type": "object"
       },
       "EffectsArtifact": {
@@ -36296,84 +36490,6 @@
           "methods"
         ],
         "title": "ScalesArtifact",
-        "type": "object"
-      },
-      "SealBasis": {
-        "additionalProperties": false,
-        "description": "How the held-out rows were drawn: one of four states, never inferred silently.",
-        "properties": {
-          "state": {
-            "enum": [
-              "grouped",
-              "one_row_per_unit",
-              "abandoned",
-              "undetermined"
-            ],
-            "title": "State",
-            "type": "string"
-          },
-          "column": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Column"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "sentence": {
-            "title": "Sentence",
-            "type": "string"
-          },
-          "exploratory": {
-            "title": "Exploratory",
-            "type": "boolean"
-          },
-          "source": {
-            "anyOf": [
-              {
-                "enum": [
-                  "grain",
-                  "stated",
-                  "roles",
-                  "aggregation"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source"
-          },
-          "n_units": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "N Units"
-          }
-        },
-        "required": [
-          "state",
-          "column",
-          "label",
-          "sentence",
-          "exploratory",
-          "source",
-          "n_units"
-        ],
-        "title": "SealBasis",
         "type": "object"
       },
       "SealFloor": {
