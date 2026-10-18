@@ -12,8 +12,8 @@ import FIXTURE from "./fixture.json";
 
 /**
  * What the predictor roles' names differ by under Predict in a project with these lenses
- * (core/readings.py `predict_kind`, whose lens lists the fixture holds): the energy-aware fill under
- * the dietary lens, normalization and batch correction under an assay lens, both, or neither.
+ * (core/readings.py `predict_kind`, whose lens lists the fixture holds): nutrients under the
+ * dietary lens, assay features under an assay lens, both, or neither.
  */
 export type PredictKind = keyof typeof FIXTURE.under.prediction.kinds;
 
@@ -27,17 +27,38 @@ export function predictKind(lenses: readonly string[] | null | undefined): Predi
 
 /** One predictor role under Predict as the roles card names it (core/readings.py
  *  `predictor_groups`): `one` in a role line's words, `head` the group's name for one column and
- *  for many, and `note` the steps that treat it differently, as a sentence. */
+ *  for many, and `note` the steps that treat it differently, as a sentence (empty where the project
+ *  runs none). */
 export interface PredictorGroup {
   one: string;
   head: readonly [string, string];
   note: string;
 }
 
-/** The three predictor roles' groups under Predict in a project with these lenses: the engine's
- *  words (the roles ruling of 2026-10-17), from the fixture its test writes. */
-export function predictorGroups(lenses: readonly string[] | null | undefined): Record<"exposure" | "energy" | "covariate", PredictorGroup> {
-  const g = FIXTURE.under.prediction.kinds[predictKind(lenses)].groups;
+/** Whether the screened elastic net is on the Predict shelf of a project with this task
+ *  (core/readings.py `screen_on_shelf`: a regression or a yes/no outcome's). No task read yet: no. */
+export function screenOnShelf(task: string | null | undefined): boolean {
+  return !!task && (FIXTURE.under.prediction.screen_tasks as readonly string[]).includes(task);
+}
+
+/** What a group's note may name besides the lenses' steps: the project's task, which sets whether
+ *  the screen is on its shelf, and whether a column holds the energy role, so the energy-aware fill
+ *  can run (core/readings.py `predict_steps`). */
+export interface PredictProject {
+  task: string | null | undefined;
+  roles: Readonly<Record<string, string>> | null | undefined;
+}
+
+/** The three predictor roles' groups under Predict in a project with these lenses, named by them,
+ *  each note naming only the steps the project can run: the engine's words (the roles ruling of
+ *  2026-10-17), from the fixture its test writes. */
+export function predictorGroups(
+  lenses: readonly string[] | null | undefined,
+  project: PredictProject,
+): Record<"exposure" | "energy" | "covariate", PredictorGroup> {
+  const shelves = FIXTURE.under.prediction.kinds[predictKind(lenses)].groups;
+  const energy = Object.values(project.roles ?? {}).includes("energy");
+  const g = shelves[screenOnShelf(project.task) ? "screen" : "no screen"][energy ? "energy" : "no energy"];
   const group = (x: { one: string; head: string[]; note: string }): PredictorGroup => ({ one: x.one, head: [x.head[0]!, x.head[1]!], note: x.note });
   return { exposure: group(g.exposure), energy: group(g.energy), covariate: group(g.covariate) };
 }

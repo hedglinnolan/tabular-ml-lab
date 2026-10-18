@@ -121,14 +121,15 @@ describe("the role card", () => {
     expect(screen.getByTestId("role-reason")).toHaveTextContent(line.reason!.replaceAll("`", ""));
     expect(screen.getByTestId("roles-waiting")).toHaveTextContent(/^1 column waits for its own confirmation and is not a predictor yet\.$/);
     const buttons = screen.getAllByRole("button");
-    expect(buttons.map((b) => b.textContent)).toEqual(["Confirm bp_sys as a characteristic", "bp_sys is a nutrient", "bp_sys is left out of the models"]);
+    // a change is a move between the roles card's groups, never a claim about the column (W1-T, P3)
+    expect(buttons.map((b) => b.textContent)).toEqual(["Confirm bp_sys as a characteristic", "Move bp_sys to the nutrients", "bp_sys is left out of the models"]);
     fireEvent.click(screen.getByRole("button", { name: "Confirm bp_sys as a characteristic" }));
     await waitFor(() => expect(posted()).toEqual([{ kind: "confirm_role", column: "bp_sys", role: "covariate" }]));
   });
 
   it("changes the role with one press too", async () => {
     mount(lineFor("cycle_begin_year"));
-    fireEvent.click(screen.getByRole("button", { name: "cycle_begin_year is a characteristic" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move cycle_begin_year to the characteristics" }));
     await waitFor(() => expect(posted()).toEqual([{ kind: "confirm_role", column: "cycle_begin_year", role: "covariate" }]));
   });
 

@@ -81,6 +81,10 @@
           "genomics"
         ]
       },
+      "screen_tasks": [
+        "regression",
+        "binary"
+      ],
       "kinds": {
         "both": {
           "reasons": {
@@ -141,62 +145,146 @@
           },
           "changes": {
             "identifier": {
-              "covariate": "`{column}` is a characteristic",
+              "covariate": "Move `{column}` to the characteristics",
               "excluded": "`{column}` is left out of the models"
             },
             "exposure": {
-              "covariate": "`{column}` is a characteristic",
+              "covariate": "Move `{column}` to the characteristics",
               "excluded": "`{column}` is left out of the models"
             },
             "energy": {
-              "covariate": "`{column}` is a characteristic, not total energy",
+              "covariate": "Move `{column}` to the characteristics (the energy-aware fill no longer reads it)",
               "excluded": "`{column}` is left out of the models"
             },
             "covariate": {
-              "exposure": "`{column}` is a nutrient or assay feature",
+              "exposure": "Move `{column}` to the nutrients and assay features",
               "excluded": "`{column}` is left out of the models"
             },
             "design": {
-              "covariate": "`{column}` is a characteristic"
+              "covariate": "Move `{column}` to the characteristics"
             },
             "flag": {
-              "covariate": "`{column}` is a characteristic"
+              "covariate": "Move `{column}` to the characteristics"
             },
             "time": {
-              "covariate": "`{column}` is a characteristic"
+              "covariate": "Move `{column}` to the characteristics"
             },
             "excluded": {
-              "covariate": "`{column}` is a characteristic",
-              "exposure": "`{column}` is a nutrient or assay feature"
+              "covariate": "Move `{column}` to the characteristics",
+              "exposure": "Move `{column}` to the nutrients and assay features"
             },
             "cluster": {
-              "covariate": "`{column}` is a characteristic"
+              "covariate": "Move `{column}` to the characteristics"
             }
           },
           "groups": {
-            "exposure": {
-              "one": "a nutrient or assay feature",
-              "head": [
-                "Nutrient or assay feature",
-                "Nutrients and assay features"
-              ],
-              "note": "The energy-aware fill fills a missing amount of one that carries energy from total energy; the screened elastic net's screen may leave any of them out; normalization and batch correction adjust them."
+            "screen": {
+              "energy": {
+                "exposure": {
+                  "one": "a nutrient or assay feature",
+                  "head": [
+                    "Nutrient or assay feature",
+                    "Nutrients and assay features"
+                  ],
+                  "note": "The energy-aware fill fills a missing amount of one that carries energy from total energy; the screened elastic net's screen may leave any of them out; normalization and batch correction adjust them."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The energy-aware fill fills the nutrients and assay features that carry energy from it; the screened elastic net's screen keeps it; normalization and batch correction leave it as it is."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The energy-aware fill fills them without total energy; the screened elastic net's screen keeps every one; normalization and batch correction leave them as they are."
+                }
+              },
+              "no energy": {
+                "exposure": {
+                  "one": "a nutrient or assay feature",
+                  "head": [
+                    "Nutrient or assay feature",
+                    "Nutrients and assay features"
+                  ],
+                  "note": "The screened elastic net's screen may leave any of them out; normalization and batch correction adjust them."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The screened elastic net's screen keeps it; normalization and batch correction leave it as it is."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The screened elastic net's screen keeps every one; normalization and batch correction leave them as they are."
+                }
+              }
             },
-            "energy": {
-              "one": "total energy",
-              "head": [
-                "Total energy",
-                "Total energy"
-              ],
-              "note": "The energy-aware fill fills the nutrients from it; the screened elastic net's screen keeps it; normalization and batch correction leave it as it is."
-            },
-            "covariate": {
-              "one": "a characteristic",
-              "head": [
-                "Characteristic",
-                "Characteristics"
-              ],
-              "note": "The energy-aware fill fills them without total energy; the screened elastic net's screen keeps every one; normalization and batch correction leave them as they are."
+            "no screen": {
+              "energy": {
+                "exposure": {
+                  "one": "a nutrient or assay feature",
+                  "head": [
+                    "Nutrient or assay feature",
+                    "Nutrients and assay features"
+                  ],
+                  "note": "The energy-aware fill fills a missing amount of one that carries energy from total energy; normalization and batch correction adjust them."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The energy-aware fill fills the nutrients and assay features that carry energy from it; normalization and batch correction leave it as it is."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The energy-aware fill fills them without total energy; normalization and batch correction leave them as they are."
+                }
+              },
+              "no energy": {
+                "exposure": {
+                  "one": "a nutrient or assay feature",
+                  "head": [
+                    "Nutrient or assay feature",
+                    "Nutrients and assay features"
+                  ],
+                  "note": "Normalization and batch correction adjust them."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "Normalization and batch correction leave it as it is."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "Normalization and batch correction leave them as they are."
+                }
+              }
             }
           }
         },
@@ -259,62 +347,146 @@
           },
           "changes": {
             "identifier": {
-              "covariate": "`{column}` is a characteristic",
+              "covariate": "Move `{column}` to the characteristics",
               "excluded": "`{column}` is left out of the models"
             },
             "exposure": {
-              "covariate": "`{column}` is a characteristic",
+              "covariate": "Move `{column}` to the characteristics",
               "excluded": "`{column}` is left out of the models"
             },
             "energy": {
-              "covariate": "`{column}` is a characteristic, not total energy",
+              "covariate": "Move `{column}` to the characteristics (the energy-aware fill no longer reads it)",
               "excluded": "`{column}` is left out of the models"
             },
             "covariate": {
-              "exposure": "`{column}` is a nutrient",
+              "exposure": "Move `{column}` to the nutrients",
               "excluded": "`{column}` is left out of the models"
             },
             "design": {
-              "covariate": "`{column}` is a characteristic"
+              "covariate": "Move `{column}` to the characteristics"
             },
             "flag": {
-              "covariate": "`{column}` is a characteristic"
+              "covariate": "Move `{column}` to the characteristics"
             },
             "time": {
-              "covariate": "`{column}` is a characteristic"
+              "covariate": "Move `{column}` to the characteristics"
             },
             "excluded": {
-              "covariate": "`{column}` is a characteristic",
-              "exposure": "`{column}` is a nutrient"
+              "covariate": "Move `{column}` to the characteristics",
+              "exposure": "Move `{column}` to the nutrients"
             },
             "cluster": {
-              "covariate": "`{column}` is a characteristic"
+              "covariate": "Move `{column}` to the characteristics"
             }
           },
           "groups": {
-            "exposure": {
-              "one": "a nutrient",
-              "head": [
-                "Nutrient",
-                "Nutrients"
-              ],
-              "note": "The energy-aware fill fills a missing amount of one that carries energy from total energy; the screened elastic net's screen may leave any of them out."
+            "screen": {
+              "energy": {
+                "exposure": {
+                  "one": "a nutrient",
+                  "head": [
+                    "Nutrient",
+                    "Nutrients"
+                  ],
+                  "note": "The energy-aware fill fills a missing amount of one that carries energy from total energy; the screened elastic net's screen may leave any of them out."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The energy-aware fill fills the nutrients that carry energy from it; the screened elastic net's screen keeps it."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The energy-aware fill fills them without total energy; the screened elastic net's screen keeps every one."
+                }
+              },
+              "no energy": {
+                "exposure": {
+                  "one": "a nutrient",
+                  "head": [
+                    "Nutrient",
+                    "Nutrients"
+                  ],
+                  "note": "The screened elastic net's screen may leave any of them out."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The screened elastic net's screen keeps it."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The screened elastic net's screen keeps every one."
+                }
+              }
             },
-            "energy": {
-              "one": "total energy",
-              "head": [
-                "Total energy",
-                "Total energy"
-              ],
-              "note": "The energy-aware fill fills the nutrients from it; the screened elastic net's screen keeps it."
-            },
-            "covariate": {
-              "one": "a characteristic",
-              "head": [
-                "Characteristic",
-                "Characteristics"
-              ],
-              "note": "The energy-aware fill fills them without total energy; the screened elastic net's screen keeps every one."
+            "no screen": {
+              "energy": {
+                "exposure": {
+                  "one": "a nutrient",
+                  "head": [
+                    "Nutrient",
+                    "Nutrients"
+                  ],
+                  "note": "The energy-aware fill fills a missing amount of one that carries energy from total energy."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The energy-aware fill fills the nutrients that carry energy from it."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The energy-aware fill fills them without total energy."
+                }
+              },
+              "no energy": {
+                "exposure": {
+                  "one": "a nutrient",
+                  "head": [
+                    "Nutrient",
+                    "Nutrients"
+                  ],
+                  "note": ""
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": ""
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": ""
+                }
+              }
             }
           }
         },
@@ -377,62 +549,146 @@
           },
           "changes": {
             "identifier": {
-              "covariate": "`{column}` is a characteristic",
+              "covariate": "Move `{column}` to the characteristics",
               "excluded": "`{column}` is left out of the models"
             },
             "exposure": {
-              "covariate": "`{column}` is a characteristic",
+              "covariate": "Move `{column}` to the characteristics",
               "excluded": "`{column}` is left out of the models"
             },
             "energy": {
-              "covariate": "`{column}` is a characteristic, not total energy",
+              "covariate": "Move `{column}` to the characteristics (the energy-aware fill no longer reads it)",
               "excluded": "`{column}` is left out of the models"
             },
             "covariate": {
-              "exposure": "`{column}` is an assay feature",
+              "exposure": "Move `{column}` to the assay features",
               "excluded": "`{column}` is left out of the models"
             },
             "design": {
-              "covariate": "`{column}` is a characteristic"
+              "covariate": "Move `{column}` to the characteristics"
             },
             "flag": {
-              "covariate": "`{column}` is a characteristic"
+              "covariate": "Move `{column}` to the characteristics"
             },
             "time": {
-              "covariate": "`{column}` is a characteristic"
+              "covariate": "Move `{column}` to the characteristics"
             },
             "excluded": {
-              "covariate": "`{column}` is a characteristic",
-              "exposure": "`{column}` is an assay feature"
+              "covariate": "Move `{column}` to the characteristics",
+              "exposure": "Move `{column}` to the assay features"
             },
             "cluster": {
-              "covariate": "`{column}` is a characteristic"
+              "covariate": "Move `{column}` to the characteristics"
             }
           },
           "groups": {
-            "exposure": {
-              "one": "an assay feature",
-              "head": [
-                "Assay feature",
-                "Assay features"
-              ],
-              "note": "The screened elastic net's screen may leave any of them out; normalization and batch correction adjust them."
+            "screen": {
+              "energy": {
+                "exposure": {
+                  "one": "an assay feature",
+                  "head": [
+                    "Assay feature",
+                    "Assay features"
+                  ],
+                  "note": "The energy-aware fill fills a missing amount of one that carries energy from total energy; the screened elastic net's screen may leave any of them out; normalization and batch correction adjust them."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The energy-aware fill fills the assay features that carry energy from it; the screened elastic net's screen keeps it; normalization and batch correction leave it as it is."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The energy-aware fill fills them without total energy; the screened elastic net's screen keeps every one; normalization and batch correction leave them as they are."
+                }
+              },
+              "no energy": {
+                "exposure": {
+                  "one": "an assay feature",
+                  "head": [
+                    "Assay feature",
+                    "Assay features"
+                  ],
+                  "note": "The screened elastic net's screen may leave any of them out; normalization and batch correction adjust them."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The screened elastic net's screen keeps it; normalization and batch correction leave it as it is."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The screened elastic net's screen keeps every one; normalization and batch correction leave them as they are."
+                }
+              }
             },
-            "energy": {
-              "one": "total energy",
-              "head": [
-                "Total energy",
-                "Total energy"
-              ],
-              "note": "The screened elastic net's screen keeps it; normalization and batch correction leave it as it is."
-            },
-            "covariate": {
-              "one": "a characteristic",
-              "head": [
-                "Characteristic",
-                "Characteristics"
-              ],
-              "note": "The screened elastic net's screen keeps every one; normalization and batch correction leave them as they are."
+            "no screen": {
+              "energy": {
+                "exposure": {
+                  "one": "an assay feature",
+                  "head": [
+                    "Assay feature",
+                    "Assay features"
+                  ],
+                  "note": "The energy-aware fill fills a missing amount of one that carries energy from total energy; normalization and batch correction adjust them."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The energy-aware fill fills the assay features that carry energy from it; normalization and batch correction leave it as it is."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The energy-aware fill fills them without total energy; normalization and batch correction leave them as they are."
+                }
+              },
+              "no energy": {
+                "exposure": {
+                  "one": "an assay feature",
+                  "head": [
+                    "Assay feature",
+                    "Assay features"
+                  ],
+                  "note": "Normalization and batch correction adjust them."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "Normalization and batch correction leave it as it is."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "Normalization and batch correction leave them as they are."
+                }
+              }
             }
           }
         },
@@ -495,62 +751,146 @@
           },
           "changes": {
             "identifier": {
-              "covariate": "`{column}` is a characteristic",
+              "covariate": "Move `{column}` to the characteristics",
               "excluded": "`{column}` is left out of the models"
             },
             "exposure": {
-              "covariate": "`{column}` is a characteristic",
+              "covariate": "Move `{column}` to the characteristics",
               "excluded": "`{column}` is left out of the models"
             },
             "energy": {
-              "covariate": "`{column}` is a characteristic, not total energy",
+              "covariate": "Move `{column}` to the characteristics (the energy-aware fill no longer reads it)",
               "excluded": "`{column}` is left out of the models"
             },
             "covariate": {
-              "exposure": "`{column}` is a measure",
+              "exposure": "Move `{column}` to the measures",
               "excluded": "`{column}` is left out of the models"
             },
             "design": {
-              "covariate": "`{column}` is a characteristic"
+              "covariate": "Move `{column}` to the characteristics"
             },
             "flag": {
-              "covariate": "`{column}` is a characteristic"
+              "covariate": "Move `{column}` to the characteristics"
             },
             "time": {
-              "covariate": "`{column}` is a characteristic"
+              "covariate": "Move `{column}` to the characteristics"
             },
             "excluded": {
-              "covariate": "`{column}` is a characteristic",
-              "exposure": "`{column}` is a measure"
+              "covariate": "Move `{column}` to the characteristics",
+              "exposure": "Move `{column}` to the measures"
             },
             "cluster": {
-              "covariate": "`{column}` is a characteristic"
+              "covariate": "Move `{column}` to the characteristics"
             }
           },
           "groups": {
-            "exposure": {
-              "one": "a measure",
-              "head": [
-                "Measure",
-                "Measures"
-              ],
-              "note": "The screened elastic net's screen may leave any of them out."
+            "screen": {
+              "energy": {
+                "exposure": {
+                  "one": "a measure",
+                  "head": [
+                    "Measure",
+                    "Measures"
+                  ],
+                  "note": "The energy-aware fill fills a missing amount of one that carries energy from total energy; the screened elastic net's screen may leave any of them out."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The energy-aware fill fills the measures that carry energy from it; the screened elastic net's screen keeps it."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The energy-aware fill fills them without total energy; the screened elastic net's screen keeps every one."
+                }
+              },
+              "no energy": {
+                "exposure": {
+                  "one": "a measure",
+                  "head": [
+                    "Measure",
+                    "Measures"
+                  ],
+                  "note": "The screened elastic net's screen may leave any of them out."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The screened elastic net's screen keeps it."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The screened elastic net's screen keeps every one."
+                }
+              }
             },
-            "energy": {
-              "one": "total energy",
-              "head": [
-                "Total energy",
-                "Total energy"
-              ],
-              "note": "The screened elastic net's screen keeps it."
-            },
-            "covariate": {
-              "one": "a characteristic",
-              "head": [
-                "Characteristic",
-                "Characteristics"
-              ],
-              "note": "The screened elastic net's screen keeps every one."
+            "no screen": {
+              "energy": {
+                "exposure": {
+                  "one": "a measure",
+                  "head": [
+                    "Measure",
+                    "Measures"
+                  ],
+                  "note": "The energy-aware fill fills a missing amount of one that carries energy from total energy."
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": "The energy-aware fill fills the measures that carry energy from it."
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": "The energy-aware fill fills them without total energy."
+                }
+              },
+              "no energy": {
+                "exposure": {
+                  "one": "a measure",
+                  "head": [
+                    "Measure",
+                    "Measures"
+                  ],
+                  "note": ""
+                },
+                "energy": {
+                  "one": "total energy",
+                  "head": [
+                    "Total energy",
+                    "Total energy"
+                  ],
+                  "note": ""
+                },
+                "covariate": {
+                  "one": "a characteristic",
+                  "head": [
+                    "Characteristic",
+                    "Characteristics"
+                  ],
+                  "note": ""
+                }
+              }
             }
           }
         }
@@ -591,7 +931,7 @@
               }
             },
             {
-              "label": "`bp_sys` is a nutrient",
+              "label": "Move `bp_sys` to the nutrients",
               "decision": {
                 "kind": "confirm_role",
                 "column": "bp_sys",
@@ -636,7 +976,7 @@
           "evidence": "the reason the roles stage gives for `waist`",
           "options": [
             {
-              "label": "`waist` is a nutrient",
+              "label": "Move `waist` to the nutrients",
               "decision": {
                 "kind": "confirm_role",
                 "column": "waist",
@@ -689,7 +1029,7 @@
               }
             },
             {
-              "label": "`imputed_waist` is a characteristic",
+              "label": "Move `imputed_waist` to the characteristics",
               "decision": {
                 "kind": "confirm_role",
                 "column": "imputed_waist",
@@ -734,7 +1074,7 @@
               }
             },
             {
-              "label": "`cycle_begin_year` is a characteristic",
+              "label": "Move `cycle_begin_year` to the characteristics",
               "decision": {
                 "kind": "confirm_role",
                 "column": "cycle_begin_year",
@@ -742,7 +1082,7 @@
               }
             },
             {
-              "label": "`cycle_begin_year` is a nutrient",
+              "label": "Move `cycle_begin_year` to the nutrients",
               "decision": {
                 "kind": "confirm_role",
                 "column": "cycle_begin_year",

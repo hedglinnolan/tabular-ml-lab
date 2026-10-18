@@ -1697,22 +1697,28 @@ def role_line_text(column: str, role: str, other: str = "",
     (``settled``), and the labels of its confirmation (``confirm``) and of a change to ``other``
     (``change``), each role in a role line's words under the declared ``purpose`` for a project with
     these ``lenses`` (``readings.role_line_words``: under Predict each predictor role by the roles
-    card's group for it, the roles ruling of 2026-10-17). Under Predict a change of the energy
-    column to another predictor role says it leaves the energy role."""
-    from turbotab.core.readings import PREDICTOR_ROLES, role_line_words
+    card's group for it, the roles ruling of 2026-10-17). Under Predict a change to another
+    predictor role is a move between the card's groups ("Move `bp_sys` to the nutrients"), never a
+    claim about what the column is, and the energy column's move says what it changes: the
+    energy-aware fill no longer reads it."""
+    from turbotab.core.readings import FILL, PREDICTOR_ROLES, predictor_groups, role_line_words
 
     def words(r: str) -> str:
         return role_line_words(r, purpose, lenses)
 
-    leaves = (purpose == "prediction" and role == "energy" and other != role
-              and other in PREDICTOR_ROLES)
+    if purpose == "prediction" and other in PREDICTOR_ROLES and other != role:
+        change = f"Move `{column}` to the {predictor_groups(lenses)[other].head[1].lower()}"
+        if role == "energy":
+            change += f" ({FILL} no longer reads it)"
+    else:
+        change = f"`{column}` is {words(other)}"
     return {
         "name": f"the role of `{column}`",
         "reason": role_line_reason(column, role, purpose, lenses),
         "proposed": f"proposed as {words(role)}",
         "settled": f"is {words(role)}",
         "confirm": f"Confirm `{column}` as {words(role)}",
-        "change": f"`{column}` is {words(other)}" + (f", not {words(role)}" if leaves else ""),
+        "change": change,
     }
 
 

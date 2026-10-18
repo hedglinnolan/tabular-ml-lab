@@ -73,7 +73,8 @@ const latest = (records: readonly DecisionRecord[], test: (d: DecisionRecord["de
  * A role line's words under the project's goal (core/quest.py `role_line_text`): with no goal and
  * under inference, Estimate's; under prediction each predictor role by the roles card's group for it
  * in a project with these lenses (the roles ruling of 2026-10-17), each change's label the engine's
- * own (the energy column's says it leaves the energy role). `reasons`: why a line waits, by the
+ * own (a move between the card's groups; the energy column's says the energy-aware fill no longer
+ * reads it). `reasons`: why a line waits, by the
  * proposed role, its last clause naming what that role's presses do.
  */
 function roleWords(purpose: string | null | undefined, lenses: readonly string[] | null | undefined) {

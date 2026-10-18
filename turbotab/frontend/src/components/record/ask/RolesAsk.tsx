@@ -44,10 +44,12 @@ const ESTIMATE = {
 /**
  * Under prediction every predictor role is a predictor (the roles ruling of 2026-10-17): the card
  * counts the columns that enter the models as predictors, and names each predictor role's group by
- * what treats it differently in the project, its note saying which steps do (core/readings.py
- * `predictor_groups`, by the project's lenses: nutrients and the energy-aware fill under the dietary
- * lens, assay features and normalization and batch correction under an assay lens, the screened
- * elastic net's screen in every project). The words are the engine's (roles/fixture.json).
+ * the project's lenses (nutrients under the dietary lens, assay features under an assay lens), its
+ * note naming each step that treats it differently only where the project can run it
+ * (core/readings.py `predictor_groups`): the energy-aware fill while a column holds the energy role,
+ * under any lens; the screened elastic net's screen where the project's task puts that family on the
+ * shelf (a regression or a yes/no outcome); normalization and batch correction under an assay lens.
+ * The words are the engine's (roles/fixture.json).
  */
 const PREDICT = {
   become: (n: number) => (n === 1 ? "column enters the models as a predictor" : "columns enter the models as predictors"),
@@ -67,6 +69,7 @@ export function RolesAsk({
   current,
   purpose = null,
   lenses = null,
+  task = null,
   ...p
 }: AskProps & {
   artifact: RolesArtifact;
@@ -75,11 +78,16 @@ export function RolesAsk({
   purpose?: string | null;
   /** The project's lenses: under prediction they name the predictor roles' groups. */
   lenses?: readonly string[] | null;
+  /** The project's task, as answered or as the outcome reads: under prediction it sets whether the
+   *  screened elastic net's screen is on the shelf, so whether a group's note names it. */
+  task?: string | null;
 }) {
   const predict = purpose === "prediction";
-  const named = predict ? predictorGroups(lenses) : null;
-  const group = (role: Role) => (named && (role === "exposure" || role === "energy" || role === "covariate") ? named[role] : null);
-  const groupName = (role: Role, n: number) => (group(role)?.head ?? GROUP[role])[n === 1 ? 0 : 1]!;
+  /** The predictor groups under prediction with these roles: a note names the energy-aware fill
+   *  only while one of them holds the energy role. */
+  const groupsOf = (roles: Record<string, Role>) => (predict ? predictorGroups(lenses, { task, roles }) : null);
+  const groupIn = (groups: ReturnType<typeof groupsOf>, role: Role) =>
+    groups && (role === "exposure" || role === "energy" || role === "covariate") ? groups[role] : null;
   const proposed = useMemo(
     () => Object.fromEntries(artifact.columns.map((col) => [col.column, col.proposed])),
     [artifact],
@@ -101,10 +109,17 @@ export function RolesAsk({
     () => new Map(artifact.columns.map((col) => [col.column, col])),
     [artifact],
   );
+  const named = groupsOf(draft);
+  const group = (role: Role) => groupIn(named, role);
+  const groupName = (role: Role, n: number) => (group(role)?.head ?? GROUP[role])[n === 1 ? 0 : 1]!;
 
   const roleLabel = (r: Role) => group(r)?.head[0] ?? taught(p.entry, r)?.label ?? GROUP[r][0];
-  /** What a role does, on its button: under prediction a predictor role's group note. */
-  const roleTitle = (r: Role) => group(r)?.note ?? taught(p.entry, r)?.consequence;
+  /** What a role does, on its button: under prediction a predictor role's group note in the roles
+   *  the press would leave (`roles`), none where the project runs no step that sets it apart. */
+  const roleTitle = (r: Role, roles: Record<string, Role>) => {
+    const g = groupIn(groupsOf(roles), r);
+    return g ? g.note || undefined : taught(p.entry, r)?.consequence;
+  };
   // ``unconfirmed`` is the server's to fill (BLUEPRINT §14): the proposals below high this answer
   // records as proposed, read from the roles it showed.
   const decisionFor = (roles: Record<string, Role>): Decision => ({
@@ -335,7 +350,7 @@ export function RolesAsk({
                           type="button"
                           className={c.roleButton}
                           aria-pressed={draft[col.column] === r}
-                          title={roleTitle(r)}
+                          title={roleTitle(r, next)}
                           onPointerMove={() => preview(f)}
                           onFocus={() => setFocus(f)}
                           onClick={() => choose(col.column, r)}

@@ -604,12 +604,21 @@ def test_the_predict_roles_card_fits_the_teaching_budgets():
 # ── the predictor roles under Predict, named by what differs (the roles ruling of 2026-10-17) ──
 #
 # Every predictor role is a predictor, and the roles card names each of the three by the steps that
-# treat it differently in the project (``readings.predictor_groups``): the energy-aware fill under
-# the dietary lens, the screened elastic net's screen in every project, and normalization and
-# batch correction under an assay lens. The words are the ruling's; each step they name is read
-# from the code below.
+# treat it differently in the project (``readings.predictor_groups``), each only where the project
+# can run it: the energy-aware fill wherever a column holds the energy role, under any lens; the
+# screened elastic net's screen where that family is on the shelf of the project's task (a
+# regression or a yes/no outcome's); and normalization and batch correction under an assay lens.
+# The names follow the lenses. The words are the ruling's; each step they name is read from the
+# code below.
 
 STEPS = (readings.FILL, readings.SCREEN, readings.NORMALIZATION, readings.BATCH)
+FILL, SCREEN, NORM, BATCH = STEPS
+ENERGY = {"kcal": "energy", "carb_g": "exposure", "age": "covariate"}
+PLAIN = {"carb_g": "exposure", "age": "covariate"}
+# The Predict shelf by task (``models.base.rank``): the screen correlates with a number or a 0/1
+# event, so the screened elastic net models a regression and a yes/no outcome alone.
+SHELF_HAS_SCREEN = {"regression": True, "binary": True, "multiclass": False, "ordinal": False,
+                    "time_to_event": False}
 
 
 def test_under_predict_the_served_roles_card_names_every_step_that_reads_the_predictor_role():
@@ -628,17 +637,25 @@ def test_under_predict_the_served_roles_card_names_every_step_that_reads_the_pre
         assert "omics screen" not in text and "like any other" not in text, text
 
 
-@pytest.mark.parametrize("lenses, names, steps", [
-    (["dietary", "clinical"], ("a nutrient", "Nutrients"), (readings.FILL, readings.SCREEN)),
-    (["genomics"], ("an assay feature", "Assay features"),
-     (readings.SCREEN, readings.NORMALIZATION, readings.BATCH)),
-    (["dietary", "metabolomics"], ("a nutrient or assay feature", "Nutrients and assay features"),
-     (readings.FILL, readings.SCREEN, readings.NORMALIZATION, readings.BATCH)),
-    (["clinical"], ("a measure", "Measures"), (readings.SCREEN,)),
+@pytest.mark.parametrize("lenses, task, roles, names, steps", [
+    (["dietary", "clinical"], "regression", ENERGY, ("a nutrient", "Nutrients"), (FILL, SCREEN)),
+    (["genomics"], "binary", PLAIN, ("an assay feature", "Assay features"), (SCREEN, NORM, BATCH)),
+    (["dietary", "metabolomics"], "regression", ENERGY,
+     ("a nutrient or assay feature", "Nutrients and assay features"), (FILL, SCREEN, NORM, BATCH)),
+    (["clinical"], "regression", PLAIN, ("a measure", "Measures"), (SCREEN,)),
+    # the W1-T verifier's P2: total energy beside a clinical lens runs the energy-aware fill, and a
+    # dietary project with no column in the energy role has no such fill to name
+    (["clinical"], "binary", ENERGY, ("a measure", "Measures"), (FILL, SCREEN)),
+    (["dietary"], "regression", PLAIN, ("a nutrient", "Nutrients"), (SCREEN,)),
+    # its P1: a multiclass, ordinal or time-to-event shelf holds no screened elastic net
+    (["clinical"], "multiclass", PLAIN, ("a measure", "Measures"), ()),
+    (["dietary"], "ordinal", ENERGY, ("a nutrient", "Nutrients"), (FILL,)),
+    (["genomics"], "time_to_event", PLAIN, ("an assay feature", "Assay features"), (NORM, BATCH)),
 ])
-def test_under_predict_each_group_is_named_by_the_steps_that_treat_it_apart(lenses, names, steps):
-    groups = readings.predictor_groups(lenses)
-    assert readings.predict_steps(lenses) == steps
+def test_under_predict_each_group_is_named_by_the_steps_that_treat_it_apart(lenses, task, roles,
+                                                                            names, steps):
+    groups = readings.predictor_groups(lenses, task, roles)
+    assert readings.predict_steps(lenses, task, roles) == steps
     assert (groups["exposure"].one, groups["exposure"].head[1]) == names
     assert (groups["covariate"].one, groups["covariate"].head) == (
         "a characteristic", ("Characteristic", "Characteristics"))
@@ -648,13 +665,69 @@ def test_under_predict_each_group_is_named_by_the_steps_that_treat_it_apart(lens
         # each named step fires where the project has it, and is silent where it has not
         for step in STEPS:
             assert (step in group.note.lower()) == (step in steps), (lenses, group.role, step)
-    if readings.FILL in steps:
+        # a project that runs none of them says nothing that sets the group apart
+        assert bool(group.note) == bool(steps), (lenses, task, group.role)
+    if FILL in steps:
         assert "fills a missing amount of one that carries energy from total energy" in \
             groups["exposure"].note
-        assert "fills the nutrients from it" in groups["energy"].note
+        assert f"fills the {names[1].lower()} that carry energy from it" in groups["energy"].note
         assert "fills them without total energy" in groups["covariate"].note
-    assert "may leave any of them out" in groups["exposure"].note
-    assert "keeps every one" in groups["covariate"].note and "keeps it" in groups["energy"].note
+    if SCREEN in steps:
+        assert "may leave any of them out" in groups["exposure"].note
+        assert "keeps every one" in groups["covariate"].note and "keeps it" in groups["energy"].note
+
+
+@pytest.mark.parametrize("task", sorted(SHELF_HAS_SCREEN))
+def test_the_screen_is_named_only_where_the_screened_elastic_net_is_on_the_predict_shelf(task):
+    """The W1-T verifier's P1: the card named the screen in every project, though a multiclass,
+    ordinal or time-to-event shelf holds no screened elastic net. The shelf is read from
+    ``models.base.rank`` under each lens (it is never shortened), and the screen is named where it
+    holds that family and nowhere else."""
+    import turbotab.core.methods.omics  # noqa: F401 - registers the screened family
+    from turbotab.core.models.base import Situation, rank
+
+    on = SHELF_HAS_SCREEN[task]
+    for lenses in (("dietary",), ("clinical",), ("genomics",)):
+        shelf = [f.key for f, _ in rank(Situation(task=task, purpose="prediction", n_rows=200,
+                                                  n_features=12, lenses=lenses))]
+        assert ("screened_elastic_net" in shelf) == on, (task, lenses)
+        assert readings.screen_on_shelf(task) == on
+        groups = readings.predictor_groups(lenses, task, PLAIN)
+        for role, group in groups.items():
+            assert (readings.SCREEN in group.note.lower()) == on, (task, lenses, role, group.note)
+
+
+def test_no_screen_is_named_before_the_task_is_read():
+    assert not readings.screen_on_shelf(None)
+    assert readings.SCREEN not in readings.predict_steps(["clinical"], None, PLAIN)
+
+
+def test_the_energy_aware_fill_is_named_wherever_a_column_holds_the_energy_role(tmp_path):
+    """The W1-T verifier's P2: the fill reads no lens, and the roles stage proposes total energy
+    under any lens, so a clinical project whose table holds total energy runs the energy-aware fill
+    while its card named only the screen. On the table built here (energy the macronutrients'
+    Atwater sum, 4/4/9 kcal/g) the roles stage under the clinical lens proposes ``energy_kcal`` as
+    total energy and the macronutrients as Predictor columns; with those roles the fill runs and the
+    card names it in each group, and with total energy given another role neither holds."""
+    from turbotab.core.methods.missing import energy_fill
+
+    _frame, path = _diet_table(tmp_path)
+    out = Ingested(path, tmp_path / "work").run(
+        roles_stage, ProjectState(lens=["clinical"], target="hba1c", purpose="prediction"))
+    roles = {p["column"]: p["proposed"] for p in out["columns"]}
+    assert roles["energy_kcal"] == "energy"
+    assert {roles[c] for c in ("protein_g", "carbohydrate_g", "fat_g")} == {"exposure"}
+    predictors = [c for c, r in roles.items() if r in readings.PREDICTOR_ROLES]
+    without = {**roles, "energy_kcal": "covariate"}
+    for task in ("regression", "multiclass"):
+        for project, runs in ((roles, True), (without, False)):
+            assert (energy_fill(None, predictors, project, predictors) is not None) == runs
+            groups = readings.predictor_groups(["clinical"], task, project)
+            for role, group in groups.items():
+                assert (readings.FILL in group.note.lower()) == runs, (task, role, group.note)
+    assert readings.predictor_groups(["clinical"], "regression", roles)["energy"].note == (
+        "The energy-aware fill fills the measures that carry energy from it; the screened elastic "
+        "net's screen keeps it.")
 
 
 def test_under_estimate_no_group_name_reaches_a_role_line():
@@ -665,7 +738,7 @@ def test_under_estimate_no_group_name_reaches_a_role_line():
                     readings.role_words(role, purpose)
 
 
-def test_the_energy_aware_fill_the_dietary_card_names_reads_the_predictor_role_alone():
+def test_the_energy_aware_fill_the_card_names_reads_the_predictor_role_alone():
     """The energy-aware fill, read from the code: under a single fill a Predictor nutrient that
     carries energy is filled from its least-squares line on the energy column, and a nutrient given
     the covariate role is filled by its median (W1-S se: on a dietary Predict project). With total
@@ -693,10 +766,11 @@ def test_the_energy_aware_fill_the_dietary_card_names_reads_the_predictor_role_a
     assert as_predictor[3, 1] == pytest.approx(112.0)  # fat_g as a Predictor: 0.04 × 2,800
 
 
-def test_the_screen_the_card_names_is_on_every_predict_shelf_and_screens_the_predictor_role():
-    """The screened elastic net's screen, read from the code: on the Predict shelf of a dietary, a
-    clinical and an assay project alike (the shelf is never shortened), it takes the Predictor
-    columns and passes every other."""
+def test_the_screen_is_on_a_regression_shelf_under_every_lens_and_screens_the_predictor_role():
+    """The screened elastic net's screen, read from the code: on the Predict shelf of a regression
+    outcome under a dietary, a clinical and an assay lens alike (the shelf is never shortened; the
+    shelves of the other tasks are the test above's), it takes the Predictor columns and passes
+    every other."""
     from types import SimpleNamespace
 
     import turbotab.core.methods.omics  # noqa: F401 - registers the screened family
