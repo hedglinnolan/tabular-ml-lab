@@ -773,11 +773,12 @@ ROLES = {
 # screening steps, and four rounds named them here and on the groups; each round produced a false
 # sentence, the last the energy-aware fill named under the complete-cases answer, where
 # ``models.pipeline`` builds no fill. So under the ruling of 2026-10-18 no option or term names a
-# step: each says what kind of column holds the role, and the card's one sentence says that its
-# columns enter the models as predictors, whichever group holds them
-# (``readings.predictors_sentence``, the ruling at W1-V's cap). The Predictor option's examples
-# name each group the role is named by (a nutrient intake, a lab value as a measure, an assay
-# feature), since one option is served under every lens. The drawer and the why are the Estimate
+# step: each says what kind of column holds the role, and the card's one sentence says how many
+# columns hold a predictor role, whichever group holds them (``readings.predictors_sentence``, the
+# rulings at W1-V's cap and at W1-X's: what the roles hold, never what the models get, since the
+# missing-values answer or a repair can leave a predictor-role column out). The Predictor option's
+# examples name each group the role is named by (a nutrient intake, a lab value as a measure, an
+# assay feature), since one option is served under every lens. The drawer and the why are the Estimate
 # card's but for two sentences that named steps (the W1-V verifier's P2): the units section says
 # what the units are and leaves out the screens, energy adjustment and substitution that read total
 # energy (neither of the last two runs under Predict), and a flag "marks which values were imputed"

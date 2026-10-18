@@ -1411,10 +1411,13 @@ def role_words(role: str | None, purpose: str | None = None) -> str:
 # steps on the card, and each produced a false sentence (the last, the energy-aware fill named under
 # the complete-cases answer, where ``models.pipeline`` builds no fill), so under the ruling of
 # 2026-10-18 the card, its groups, its options and terms and every role press name no step. The
-# card says one sentence that holds in every project (:func:`predictors_sentence`): its columns
-# enter the models as predictors, whichever group holds them. W1-V's sentence went on to say that a
+# card says one sentence that holds in every project (:func:`predictors_sentence`): how many
+# columns hold a predictor role, whichever group holds them. W1-V's sentence went on to say that a
 # group changes only how some preparation and screening steps treat a column; the ruling at W1-V's
-# cap took that claim about steps out, its "only" with it.
+# cap took that claim about steps out, its "only" with it. W1-X's sentence said the columns enter
+# the models, which the missing-values answer's drop or a repair that marks a column unusable makes
+# false (``decisions.left_out``; the models get ``models.pipeline.model_predictors``), so the ruling
+# at W1-X's cap has the card say what the roles hold, never what the models get.
 # The group names follow the lenses alone, so the record's sentences, which read only the answers,
 # name a move as the card does (``voice._role_move``). Under Estimate, and with no goal, the words
 # are ``role_words``'s, unchanged.
@@ -1424,12 +1427,13 @@ WHICHEVER_GROUP = "whichever group holds"
 
 def predictors_sentence(n: int | str) -> str:
     """The Predict roles card's one sentence about its predictor groups, true in every project:
-    ``n`` columns enter the models as predictors, whichever group holds them. It makes no claim
-    about steps. ``n`` may be a template's placeholder."""
+    ``n`` columns hold a predictor role, whichever group holds them. It makes no claim about steps,
+    nor about what the models get, since an answer can leave a predictor-role column out of them
+    (the ruling at W1-X's cap). ``n`` may be a template's placeholder."""
     if n == 1:
-        return f"It enters the models as a predictor, {WHICHEVER_GROUP} it."
+        return "One column holds a predictor role."
     count = f"{n:,}" if isinstance(n, int) else str(n)
-    return f"All {count} enter the models as predictors, {WHICHEVER_GROUP} them."
+    return f"{count} columns hold a predictor role, {WHICHEVER_GROUP} them."
 
 
 @dataclass(frozen=True)

@@ -793,8 +793,8 @@
         }
       },
       "sentence": {
-        "one": "It enters the models as a predictor, whichever group holds it.",
-        "many": "All {n} enter the models as predictors, whichever group holds them."
+        "one": "One column holds a predictor role.",
+        "many": "{n} columns hold a predictor role, whichever group holds them."
       },
       "options": {
         "exposure": {

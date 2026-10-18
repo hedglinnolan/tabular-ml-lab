@@ -33,28 +33,32 @@ const GROUP: Record<Role, [one: string, many: string]> = {
 };
 
 /**
- * The card's own words under Estimate (and with no goal), as they stood: what you study, energy and
- * the covariates become predictors.
+ * What the roles hold, under either goal: the card's line counts the columns that hold a predictor
+ * role, and never says they enter the models or become predictors, since a missing-values answer
+ * or a repair that marks a column unusable can leave one out of the models (core/decisions.py
+ * `left_out`; the ruling at W1-X's cap, its P3).
  */
-const ESTIMATE = {
-  become: (n: number) => (n === 1 ? "column becomes a predictor" : "columns become predictors"),
-  title: "Records every column's role. Only exposures, covariates and energy become predictors.",
-};
+const hold = (n: number) => (n === 1 ? "column holds a predictor role" : "columns hold a predictor role");
 
 /**
+ * The card's own words under Estimate (and with no goal): what you study, energy and the
+ * covariates are the predictor roles.
+ */
+const ESTIMATE = {
+  title: "Records every column's role. Only exposures, covariates and energy hold a predictor role.",
+};
+
+/*
  * Under prediction every predictor role is a predictor (the roles ruling of 2026-10-17): the card
  * names each predictor role's group by the project's lenses (nutrients under the dietary lens,
  * assay features under an assay lens), with its count, in the words the server serves beside the
  * proposals (core/readings.py `predictor_groups`; W1 part 2's U6), never a fixture's. It names no
  * step that treats a group apart: four rounds did, and each produced a false sentence (the ruling
  * of 2026-10-18). It says one sentence that holds in every project instead (`predictorsSentence`:
- * its columns enter the models as predictors, whichever group holds them, the ruling at W1-V's
- * cap), and a role's button says what kind of column holds it (the Predict teaching entry's
- * option).
+ * how many columns hold a predictor role, whichever group holds them, the rulings at W1-V's cap and
+ * at W1-X's), its title says which groups hold the predictor roles, and a role's button says what
+ * kind of column holds it (the Predict teaching entry's option).
  */
-const PREDICT = {
-  become: (n: number) => (n === 1 ? "column enters the models as a predictor" : "columns enter the models as predictors"),
-};
 
 /** "Total energy `kcal` and 4 characteristics", as the card's line begins it. */
 const capitalized = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -76,7 +80,7 @@ export function RolesAsk({
 }: AskProps & {
   artifact: RolesArtifact;
   current: Record<string, Role> | null;
-  /** The project's goal: under prediction the card says predictors (`PREDICT`), and names the
+  /** The project's goal: under prediction the card says predictors (`predictorsSentence`), and names the
    *  predictor roles' groups as the server serves them for the project's lenses and task. */
   purpose?: string | null;
 }) {
@@ -175,17 +179,17 @@ export function RolesAsk({
     energyCols.length ? `${named ? named.energy.head[0].toLowerCase() : "energy"} \`${energyCols[0]}\`` : null,
     counted("covariate", ["covariate", "covariates"]),
   ].filter(Boolean);
-  const become = (n: number) => (predict ? PREDICT : ESTIMATE).become(n);
   const title = named
-    ? `Records every column's role. ${listed([named.exposure.head[1], named.energy.head[0].toLowerCase(), named.covariate.head[1].toLowerCase()])} enter the models as predictors.`
+    ? `Records every column's role. ${listed([named.exposure.head[1], named.energy.head[0].toLowerCase(), named.covariate.head[1].toLowerCase()])} hold a predictor role.`
     : ESTIMATE.title;
   const printed = `\`${fmtCount(nPredictors)}\``;
   /** Under prediction the groups with their counts, then the one sentence (the ruling of
-   *  2026-10-18); under any other goal, as before. */
+   *  2026-10-18); under any other goal the count with its roles. Either says what the roles hold
+   *  (the ruling at W1-X's cap). */
   const line =
     predict && nPredictors > 0
       ? `${summary.length ? `${capitalized(listed(summary as string[]))}. ` : ""}${predictorsSentence(nPredictors, printed)}`
-      : `${printed} ${become(nPredictors)}${summary.length ? `: ${summary.join(", ")}` : ""}.`;
+      : `${printed} ${hold(nPredictors)}${summary.length ? `: ${summary.join(", ")}` : ""}.`;
 
   return (
     <Question

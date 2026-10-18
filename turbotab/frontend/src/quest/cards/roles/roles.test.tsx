@@ -288,6 +288,18 @@ describe("the Predict roles card's one sentence (the ruling of 2026-10-18)", () 
     expect(predictorsSentence(1, "1")).toBe(one);
   });
 
+  it("says what the roles hold, never what the models get (the ruling at W1-X's cap)", () => {
+    // A missing-values answer or a repair can leave a predictor-role column out of the models
+    // (core/decisions.py `left_out`), so the card counts the columns that hold a predictor role.
+    const MODELS_GET = /\benters? the models?\b|\bbecomes? (?:a )?predictors?\b/i;
+    // the guard fires on W1-X's sentences, and is silent on the card's
+    expect("All 12 enter the models as predictors, whichever group holds them.").toMatch(MODELS_GET);
+    expect("It enters the models as a predictor, whichever group holds it.").toMatch(MODELS_GET);
+    expect(predictorsSentence(12, "12")).toBe("12 columns hold a predictor role, whichever group holds them.");
+    expect(predictorsSentence(1, "1")).toBe("One column holds a predictor role.");
+    for (const n of [1, 2, 12]) expect(predictorsSentence(n, String(n))).not.toMatch(MODELS_GET);
+  });
+
   it("quotes the roles stage's reasons under Predict with the engine's clauses (the W1-V verifier's P1)", () => {
     // the card's clauses are the engine's (core/readings.py `_STUDY_CLAUSES`, written to the fixture)
     expect(STUDY_CLAUSES).toEqual(FIXTURE.under.prediction.study_clauses);

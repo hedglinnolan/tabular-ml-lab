@@ -39,13 +39,14 @@ export function servedGroups(
 }
 
 /** The Predict roles card's one sentence about its predictor groups (core/readings.py
- *  `predictors_sentence`, the ruling at W1-V's cap), true in every project: `n` columns enter the
- *  models as predictors, whichever group holds them; it makes no claim about steps. `count` is `n`
- *  as the card prints it. */
+ *  `predictors_sentence`, the rulings at W1-V's cap and at W1-X's), true in every project: `n`
+ *  columns hold a predictor role, whichever group holds them. It makes no claim about steps, nor
+ *  about what the models get, since a missing-values answer or a repair can leave a predictor-role
+ *  column out of them. `count` is `n` as the card prints it. */
 export function predictorsSentence(n: number, count: string): string {
   return n === 1
-    ? "It enters the models as a predictor, whichever group holds it."
-    : `All ${count} enter the models as predictors, whichever group holds them.`;
+    ? "One column holds a predictor role."
+    : `${count} columns hold a predictor role, whichever group holds them.`;
 }
 
 /** The roles stage's clauses in Estimate's words, each with its words under Predict (core/readings.py
@@ -72,7 +73,8 @@ export function roleEvidence(reason: string, purpose: string | null | undefined)
   return STUDY_CLAUSES.reduce((said, [estimate, predict]) => said.replaceAll(estimate, predict), reason);
 }
 
-/** Whether a role enters the models as a predictor (core/readings.py PREDICTOR_ROLES). */
+/** Whether a role is a predictor role (core/readings.py PREDICTOR_ROLES); a column that holds one
+ *  is in the models unless an answer left it out (core/decisions.py `left_out`). */
 export function isPredictorRole(role: string): boolean {
   return (PREDICTOR_ROLES as readonly string[]).includes(role as Role);
 }

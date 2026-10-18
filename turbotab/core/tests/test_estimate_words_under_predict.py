@@ -710,9 +710,12 @@ def test_the_predict_roles_card_fits_the_teaching_budgets():
 # batch-corrected", and the energy-aware fill named under the complete-cases answer, where
 # ``models.pipeline`` builds no fill. So no Predict card, option, term, served group or press names
 # a step; the card says one sentence that holds in every project
-# (``readings.predictors_sentence``): its columns enter the models as predictors, whichever group
-# holds them. W1-V's sentence added that a group changes only how some preparation and screening
-# steps treat a column, a claim about steps the ruling at W1-V's cap took out with its "only".
+# (``readings.predictors_sentence``): how many columns hold a predictor role, whichever group holds
+# them. W1-V's sentence added that a group changes only how some preparation and screening steps
+# treat a column, a claim about steps the ruling at W1-V's cap took out with its "only". W1-X's
+# sentence said its columns enter the models, which a missing-values answer or a repair that marks
+# a column unusable makes false (``decisions.left_out``), so the ruling at W1-X's cap (its P3) has
+# the card say what the roles hold, never what the models get.
 
 # The steps the rounds named, the QC chain's words, the energy model's two steps, which never run
 # under Predict (the W1-V verifier's P2: the drawer named them), and W1-V's generic "preparation
@@ -730,7 +733,9 @@ FOUR_ROUNDS = (
     "Total energy, a predictor: median-filled, fills nutrients; kept by the screen; "
     "assay-processed only by pooled-QC steps.",
 )
-SENTENCE = "All 12 enter the models as predictors, whichever group holds them."
+SENTENCE = "12 columns hold a predictor role, whichever group holds them."
+# W1-X's sentence, re-ruled at its cap: it says what the models get.
+MODELS_SENTENCE = "All 12 enter the models as predictors, whichever group holds them."
 # W1-V's sentence, re-ruled at its cap: the guard fires on it.
 STEP_SENTENCE = ("All 12 enter the models as predictors; a column's group changes only how some "
                  "preparation and screening steps treat it.")
@@ -838,17 +843,78 @@ def test_under_predict_the_whole_roles_entry_names_no_step_its_drawer_and_why_in
 def test_under_predict_the_roles_card_says_one_sentence_for_every_project():
     """The card keeps its groups and its count and says one sentence that holds in every project,
     its count interpolated (``readings.predictors_sentence``); one column is said as one. The ruling
-    at W1-V's cap: the sentence says the columns enter the models whichever group holds them, with
-    no "only" and no claim about steps."""
+    at W1-V's cap: no "only" and no claim about steps; at W1-X's cap: the sentence says how many
+    columns hold a predictor role, never that they enter the models."""
     assert readings.predictors_sentence(12) == SENTENCE
-    assert readings.predictors_sentence(1_234) == SENTENCE.replace("All 12", "All 1,234")
-    assert readings.predictors_sentence(1) == (
-        "It enters the models as a predictor, whichever group holds it.")
+    assert readings.predictors_sentence(1_234) == SENTENCE.replace("12 columns", "1,234 columns")
+    assert readings.predictors_sentence(1) == "One column holds a predictor role."
     assert readings.predictors_sentence("{n}") == SENTENCE.replace("12", "{n}")
     for n in (1, 12, "{n}"):
         said = readings.predictors_sentence(n)
         assert not _names_a_step(said) and not re.search(r"\bonly\b", said, re.I), said
+        assert not SAYS_WHAT_THE_MODELS_GET.search(said), said
     assert re.search(r"\bonly\b", STEP_SENTENCE)
+
+
+# What the models get, said of a role (the ruling at W1-X's cap, its P3): a role "enters the
+# models", or a column "becomes a predictor". The card says neither, since what the models get is
+# the predictor-role columns less those an answer left out (``models.pipeline.model_predictors``).
+SAYS_WHAT_THE_MODELS_GET = re.compile(r"\benters? the models?\b|\bbecomes? (?:a )?predictors?\b",
+                                      re.I)
+# A project's recorded roles: four columns hold a predictor role, two hold none.
+HELD = {"carb_g": "exposure", "kcal": "energy", "age": "covariate", "sbp": "covariate",
+        "seqn": "identifier", "wtint2yr": "design"}
+HOLD_A_PREDICTOR_ROLE = ["carb_g", "kcal", "age", "sbp"]
+IMPOSSIBLE = "pack::clinical::impossible_vs_extreme"
+
+
+def _left_out_by(how: str) -> ProjectState:
+    """``HELD`` under Predict with `sbp` left out of the models by ``how``: the missing-values
+    answer's drop, or a repair that marks it unusable for its impossible values; "no drop" leaves
+    every column in."""
+    from turbotab.core.decisions import FindingDisposition, MissingSpec
+
+    state = ProjectState(target="glucose", purpose="prediction", roles=HELD,
+                         missing=MissingSpec(strategy="complete_case"))
+    if how == "the missing-values answer":
+        return state.model_copy(update={"missing": MissingSpec(strategy="complete_case",
+                                                               drop_columns=["sbp"])})
+    if how == "an unusable repair":
+        return state.model_copy(update={"findings": {IMPOSSIBLE: FindingDisposition(
+            action="applied", option="unusable", params={"bands": {"sbp": [30.0, 300.0]}})}})
+    return state
+
+
+@pytest.mark.parametrize("how, gone", [("no drop", []), ("the missing-values answer", ["sbp"]),
+                                       ("an unusable repair", ["sbp"])])
+def test_under_predict_the_roles_card_says_what_the_roles_hold_not_what_the_models_get(how, gone):
+    """The ruling at W1-X's cap (its P3). Four columns are built to hold a predictor role. With no
+    drop the models get all four; the missing-values answer's drop, or a repair that marks `sbp`
+    unusable, leaves it out, so the models get three while the four columns still hold their
+    roles. The card's sentence is the same in all three, says the four that hold a role, and claims
+    nothing about the models; W1-X's sentence ("All 4 enter the models") was true only with no
+    drop. The guard on what the models get fires on W1-X's sentences and is silent on the card's."""
+    from turbotab.core.decisions import left_out
+    from turbotab.core.models.pipeline import model_predictors
+
+    state = _left_out_by(how)
+    assert left_out(state) == gone
+    got = model_predictors(state)
+    assert got == [c for c in HOLD_A_PREDICTOR_ROLE if c not in gone]
+    held = [c for c, r in state.roles.items() if r in readings.PREDICTOR_ROLES]
+    assert held == HOLD_A_PREDICTOR_ROLE
+    said = readings.predictors_sentence(len(held))
+    assert said == "4 columns hold a predictor role, whichever group holds them."
+    assert not SAYS_WHAT_THE_MODELS_GET.search(said)
+    # W1-X's sentence for these four: it said what the models get, which a drop makes false.
+    before = MODELS_SENTENCE.replace("12", "4")
+    assert SAYS_WHAT_THE_MODELS_GET.search(before)
+    assert (len(got) == len(held)) is (not gone)
+    for old in ("It enters the models as a predictor, whichever group holds it.",
+                "`4` columns become predictors: 1 exposure, energy `kcal`, 2 covariates.",
+                "Records every column's role. Only exposures, covariates and energy become "
+                "predictors."):
+        assert SAYS_WHAT_THE_MODELS_GET.search(old), old
 
 
 @pytest.mark.parametrize("lenses, names", [
