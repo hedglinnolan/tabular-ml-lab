@@ -33,6 +33,7 @@ import { confirmAsk, confirmStageAsk } from "./ask";
 import { toClassic } from "./classic";
 import { ANY_STAGE, FIT_CAP, FIT_QUIET, attributeWhileComputing, cheapestFamily, fitOnceComputed, openSealCard, shelfEstimates, visibleWhileComputing } from "./fit";
 import { nhanesExport } from "./nhanes";
+import { confirmWaitingRoles, expectDesignHolds } from "./roles";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../../..");
@@ -719,6 +720,11 @@ test("genomics expression: the wide path, the roles searched, elastic net first 
     models.getByRole("listbox", { name: /Model families/ }).locator(':scope > [role="option"]').first(),
   ).toHaveAttribute("data-key", "elastic_net", { timeout: 60_000 });
   await shot(page, "genomics-models", { at: models });
+  // The genes the roles stage proposed alike wait for their confirmation before the families: one
+  // line on the ask card and one press for all of them (ruling R-g), after which the server holds
+  // no role waiting (e2e/roles.ts).
+  const confirmedRoles = await confirmWaitingRoles(page, page.locator('[data-slot="models"]'));
+  T.roles_confirmed = confirmedRoles.length;
   // The elastic net, first on this shelf, is estimated at minutes once the 497 genes are confirmed
   // as predictors (the card says so, in the server's words, before a family is chosen), so the
   // journey fits the cheapest light family by the shelf's estimate instead of waiting out the
@@ -727,6 +733,8 @@ test("genomics expression: the wide path, the roles searched, elastic net first 
     await expect(options.first()).toHaveAttribute("data-key", "elastic_net");
     await expect(models.getByTestId("cost-elastic_net")).toContainText(/about \d+ (second|minute|hour)s?/);
   });
+  // The model holds the genes confirmed (the server's design, its count of each role).
+  T.roles_confirmed_in_design = await expectDesignHolds(page, confirmedRoles);
   await expect(page.getByTestId("held-out-sealed")).toBeVisible({ timeout: 30_000 });
   finish("genomics", run);
 });

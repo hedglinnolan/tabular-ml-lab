@@ -92,8 +92,9 @@ const answers: Answers = {
   unavailable: ["join_files", "import_codebook"],
   async answer(page, li, line) {
     if (line.source === "finding") return answerFinding(page, li, line);
-    // A role proposed below high confidence waits in Your data for its own confirmation (W1-R R1):
-    // the researcher confirms each as the app proposed it, one column per press.
+    // A role proposed below high confidence waits in Your data for its confirmation (W1-R R1): the
+    // researcher confirms each as the app proposed it, a column's own line one press, a group of
+    // columns proposed alike its one press for all of them (ruling R-g).
     if (isRoleLine(line)) return confirmRole(page, li, line);
     switch (lineId(line)) {
       case "question:lens":

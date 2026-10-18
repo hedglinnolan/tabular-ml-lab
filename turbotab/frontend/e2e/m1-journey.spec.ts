@@ -30,8 +30,9 @@ import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { confirmAsk } from "./ask";
 import { toClassic } from "./classic";
-import { ANY_STAGE, FIT_CAP, FIT_QUIET, fitOnceComputed, visibleWhileComputing, waitWhileComputing } from "./fit";
+import { ANY_STAGE, FIT_CAP, FIT_QUIET, fitOnceComputed, pidOf, visibleWhileComputing, waitWhileComputing } from "./fit";
 import { nhanesExport } from "./nhanes";
+import { confirmWaitingRoles, expectDesignHolds } from "./roles";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REAL = !!process.env.E2E_BASE_URL;
@@ -128,12 +129,24 @@ async function openNhanes(page: Page) {
   await expect(page.getByTestId("question-lens")).toBeVisible({ timeout: 60_000 });
 }
 
-/** The design's concerns under the lineage, then a changed earlier answer dates a sentence's counts. */
+/** The design's concerns under the lineage, as the server serves them, then a changed earlier
+ *  answer dates a sentence's counts. Under Predict the design states no concern about a
+ *  coefficient (the parts of `fat_total` beside their total are such a concern: W1-R's finding 3c),
+ *  so the card shows each concern the served design holds, and none where it holds none. */
 async function concernsAndDatedCounts(page: Page) {
   await page.getByTestId("banner-columns").click();
-  await expect(stage(page).locator("[data-card=lineage]").getByTestId("design-warnings")).toContainText(
-    "parts of fat_total",
-  );
+  const design = await page.evaluate(async (pid) => {
+    const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/stages/design`);
+    return ((await res.json()) as { artifact: { warnings: string[] } | null }).artifact;
+  }, pidOf(page));
+  expect(design, "the design is served").not.toBeNull();
+  const shown = stage(page).locator("[data-card=lineage]").getByTestId("design-warnings");
+  measurements.design_warnings = design!.warnings;
+  if (design!.warnings.length) {
+    for (const w of design!.warnings) await expect(shown).toContainText(w.replace(/`/g, ""));
+  } else {
+    await expect(shown).toHaveCount(0);
+  }
   await park(page);
   await settle(page, 400);
   await shot(page, "columns-concerns");
@@ -393,10 +406,13 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
 
   // ── the model families: the shelf's first three, with the keyboard ──────────────────────────
   // The roles proposed below high confidence set the predictors only once confirmed: the ledger's
-  // ask card lists them on this question, and they are confirmed as shown first.
+  // ask card lists them on this question, each judgment of the roles stage one line with one press
+  // (a group of columns proposed alike, all of them: ruling R-g), and they are confirmed as shown
+  // first; then the server holds no role waiting (e2e/roles.ts).
   const familyOptions = models.getByRole("listbox", { name: /Model families/ }).locator(':scope > [role="option"]');
   await expect(familyOptions.first()).toBeVisible({ timeout: 60_000 });
-  await confirmAsk(page.locator('[data-slot="models"]'));
+  const confirmedRoles = await confirmWaitingRoles(page, page.locator('[data-slot="models"]'));
+  measurements.roles_confirmed = confirmedRoles.length;
   await expect(familyOptions.first()).toBeVisible({ timeout: 60_000 });
   const shelf = await familyOptions.evaluateAll((els) => els.map((e) => e.getAttribute("data-key") ?? ""));
   expect(shelf.length, "the shelf offers at least three families").toBeGreaterThanOrEqual(3);
@@ -458,6 +474,8 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
     measurements.fit_pressed = await fitOnceComputed(page);
     await expect(page.getByTestId("banner-result-value")).toBeVisible();
   });
+  // The fit's design holds every column confirmed in a predictor role (the server's design).
+  if (REAL) measurements.roles_confirmed_in_design = await expectDesignHolds(page, confirmedRoles);
   await park(page);
   await expect(page.getByTestId("results")).toBeVisible({ timeout: 30_000 });
   const comparison = page.getByTestId("model-comparison");
