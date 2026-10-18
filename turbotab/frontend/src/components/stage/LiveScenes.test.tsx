@@ -9,7 +9,7 @@
  * quest log the stage's parent reads (U9): the card asks the server nothing.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 import type { CohortArtifact } from "../../api/m1-stage-types";
 import type { ProjectView, QuestLine, QuestLog } from "../../api/schema";
@@ -17,8 +17,8 @@ import { expandView, viewsOf, type M3Fixture } from "../../mocks/m3";
 import ROLES from "../../quest/cards/roles/fixture.json";
 import { CONTRACT } from "../../quest/fixtures/contract";
 import { StageFocusProvider } from "../../state/focus";
-import { waitingPredictorColumns } from "../../quest/cards/roles/roles";
-import { ColumnsCard, type LiveData } from "./LiveScenes";
+import { servedGroups, waitingPredictorColumns } from "../../quest/cards/roles/roles";
+import { ColumnsCard, inGroupWords, predictorsLineage, type LiveData } from "./LiveScenes";
 
 const FIXTURES = import.meta.glob<M3Fixture>("../../mocks/fixtures/m3-nhanes-prediction.json", { eager: true, import: "default" });
 const JOURNEY = Object.values(FIXTURES)[0]!;
@@ -96,6 +96,80 @@ function predictorLine(column: string): QuestLine {
     items: bp.items.map((i) => ({ ...i, column, words: swap(i.words), options: i.options.map((o) => ({ ...o, label: swap(o.label), decision: { ...o.decision, column } })) })),
   };
 }
+
+/**
+ * The re-walk's N3: under Predict the lineage named its groups "13 covariate columns" and "7 exposure
+ * columns", Estimate's words. It names them as the roles card does, in the predictor groups the server
+ * serves for the project (core/readings.py `served_groups`; here the engine's own, from the roles
+ * fixture, a dietary project's with no fill), each count read from the roles by construction; under
+ * Estimate, with no groups served, the words are as before.
+ */
+describe("the lineage's groups in the roles card's words under Predict (N3)", () => {
+  const SERVED = (ROLES as unknown as { under: { prediction: { kinds: { dietary: { groups: { screen: PredictorGroupsServed } } } } } })
+    .under.prediction.kinds.dietary.groups.screen;
+  type PredictorGroupsServed = { fill: Record<string, { one: string; head: [string, string]; note: string }>; no_fill: Record<string, { one: string; head: [string, string]; note: string }> };
+  const roles: Record<string, string> = {
+    ...Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`c${i}`, "covariate"])),
+    ...Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`n${i}`, "exposure"])),
+    kcal: "energy",
+  };
+  const predictors = Object.keys(roles);
+  const view = { ...VIEW, state: { ...VIEW.state, roles } } as ProjectView;
+  const head = (role: string) => SERVED.no_fill[role]!.head.map((w) => w.toLowerCase());
+
+  /** The card drawn, its lineage given a box to draw in (jsdom measures none), as Lineage.test does. */
+  function draw(groups: ReturnType<typeof servedGroups>) {
+    const observed: ResizeObserverCallback[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private cb: ResizeObserverCallback) {}
+        observe() {
+          observed.push(this.cb);
+        }
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <StageFocusProvider>
+          <ColumnsCard view={view} data={{ ...data(predictors, null), predictorGroups: groups }} full={false} />
+        </StageFocusProvider>
+      </QueryClientProvider>,
+    );
+    act(() => {
+      for (const cb of observed) cb([{ contentRect: { width: 900, height: 380 } } as ResizeObserverEntry], {} as ResizeObserver);
+    });
+  }
+
+  it("names each group as the roles card does, never as a covariate or an exposure", () => {
+    expect(predictors.length).toBeGreaterThan(12); // collapsed into one node per role
+    draw(servedGroups({ ...SERVED, energy_bearing: [] }, roles));
+    const text = document.body.textContent ?? "";
+    expect(text).toContain(`8 ${head("covariate")[1]}`);
+    expect(text).toContain(`5 ${head("exposure")[1]}`);
+    expect(head("energy")[0]).toBe(head("energy")[1]); // "total energy", one word for one or many
+    expect(text).toContain(`${head("energy")[0]}: 1 column`);
+    expect(text).not.toMatch(/covariate column|exposure column|energy column/);
+  });
+
+  it("keeps Estimate's words where no groups are served", () => {
+    draw(null);
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("8 covariate columns");
+    expect(text).toContain("5 exposure columns");
+  });
+
+  it("names the design's collapsed groups the same way", () => {
+    const engine = predictorsLineage(predictors, roles); // the engine's collapse has the same group nodes
+    const named = inGroupWords(engine, servedGroups({ ...SERVED, energy_bearing: [] }, roles));
+    const labels = named.nodes.filter((n) => n.lane === "raw").map((n) => n.label);
+    expect(labels).toEqual([`8 ${head("covariate")[1]}`, `5 ${head("exposure")[1]}`, `${head("energy")[0]}: 1 column`]);
+    expect(inGroupWords(engine, null)).toBe(engine);
+  });
+});
 
 describe("the Columns panel and the roles that wait (finding 1)", () => {
   it("counts the waiting columns proposed as predictors, never a flag or a column proposed as left out (W1-T)", () => {

@@ -15,7 +15,7 @@ import type {
 } from "../../api/m1-stage-types";
 import type { DecisionKind, ProjectView } from "../../api/schema";
 import { StaleVeil, type VeilState } from "../../motion/StaleVeil";
-import { waitingClause, waitingSentence } from "../../quest/cards/roles/roles";
+import { servedGroups, waitingClause, waitingSentence } from "../../quest/cards/roles/roles";
 import { useStageFocus } from "../../state/focus";
 import { StageFailure, rootFailure } from "../Failure";
 import { StageRetry } from "../StageRetry";
@@ -44,6 +44,37 @@ export interface LiveData extends ResultsData {
    *  `waitingPredictorColumns`); null where the parent reads no quest log, so the card says nothing
    *  of them and asks the server nothing. */
   waitingPredictors?: number | null;
+  /** Under Predict, the predictor groups the server serves for the project (roles.ts
+   *  `servedGroups`), which the lineage names its groups by, as the roles card does (the re-walk's
+   *  N3); null under Estimate, or where the parent reads none: the engine's words stand. */
+  predictorGroups?: ServedGroups;
+}
+
+type ServedGroups = ReturnType<typeof servedGroups>;
+
+/**
+ * A lineage's collapsed predictor groups named as the roles card names them under Predict (the
+ * re-walk's N3: never "13 covariate columns" or "7 exposure columns"): `n` and the group's name for
+ * many ("13 characteristics"), or for a name that is one word for one or many, the name and the
+ * count of columns ("total energy: 1 column"). Any other node, and every node with no groups
+ * served, is as drawn.
+ */
+export function inGroupWords(lineage: LineageData, groups: ServedGroups | null | undefined): LineageData {
+  if (!groups) return lineage;
+  const named = (group: string | null): readonly [string, string] | null =>
+    group === "exposure" || group === "energy" || group === "covariate" ? groups[group].head : null;
+  return {
+    ...lineage,
+    nodes: lineage.nodes.map((n) => {
+      const head = n.column === null ? named(n.group) : null;
+      if (!head) return n;
+      const [one, many] = [head[0].toLowerCase(), head[1].toLowerCase()];
+      const count = n.count;
+      const label =
+        one === many ? `${one}: ${fmtInt(count)} ${count === 1 ? "column" : "columns"}` : `${fmtInt(count)} ${count === 1 ? one : many}`;
+      return { ...n, label };
+    }),
+  };
 }
 
 /** The participant flow as recorded: the cohort's steps, then the split's fork. */
@@ -191,10 +222,11 @@ export function ColumnsCard({ view, data, full }: { view: ProjectView; data: Liv
   const nWaiting = data.waitingPredictors ?? 0;
   const waiting = waitingSentence(nWaiting);
   const warnings = data.design?.warnings ?? [];
-  const lineage =
+  const drawn =
     data.design?.lineage ??
     (data.cohort.artifact ? predictorsLineage(data.cohort.artifact.predictors, view.state.roles) : null);
-  if (!lineage) return null;
+  if (!drawn) return null;
+  const lineage = inGroupWords(drawn, data.predictorGroups);
   const provenance = recordedSentences(view, COLUMN_KINDS);
   const rawRows = lineage.nodes.filter((n) => n.lane === "raw").length;
   const open = view.interview.find((i) => i.status === "open");

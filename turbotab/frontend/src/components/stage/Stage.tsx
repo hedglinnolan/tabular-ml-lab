@@ -68,6 +68,10 @@ export interface StageProps {
    * them, and no card asks the server for it (U9).
    */
   waitingPredictors?: number | null;
+  /** Under Predict, the predictor groups the server serves for the project, which the Columns card
+   *  names the lineage's groups by (LiveData `predictorGroups`; the re-walk's N3); null draws the
+   *  engine's words. */
+  predictorGroups?: LiveData["predictorGroups"];
 }
 
 type Scene =
@@ -97,7 +101,16 @@ const LIVE_TITLE: Record<string, [string, string]> = {
   results: ["Results", "what the recorded pipeline fitted"],
 };
 
-export function Stage({ pid, view, focus, onFocus, fitWithheld = null, recordHere = true, waitingPredictors = null }: StageProps) {
+export function Stage({
+  pid,
+  view,
+  focus,
+  onFocus,
+  fitWithheld = null,
+  recordHere = true,
+  waitingPredictors = null,
+  predictorGroups = null,
+}: StageProps) {
   const seq = stateSeq(view);
   const { reduced } = useMotionPrefs();
   const t = useTransitions();
@@ -144,6 +157,7 @@ export function Stage({ pid, view, focus, onFocus, fitWithheld = null, recordHer
     substitution: { artifact: substitution.artifact, veil: substitution.veil },
     fitWithheld,
     waitingPredictors,
+    predictorGroups,
   };
 
   // ── what the stage wants to show, and whether it is ready ──

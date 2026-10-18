@@ -14,7 +14,8 @@ import type { ProjectView, QuestLog } from "../api/schema";
 import { Stage } from "../components/stage/Stage";
 import { ManuscriptBody, kit as k } from "../kit";
 import { useStageFocus, type StageFocus } from "../state/focus";
-import { waitingPredictorColumns } from "./cards/roles/roles";
+import { useStage } from "../state/stages";
+import { servedGroups, waitingPredictorColumns } from "./cards/roles/roles";
 import { FitControl } from "./Fit";
 import { fitWithheld, type FitPosition } from "./log";
 import { ResultsTapestry } from "./results";
@@ -42,6 +43,11 @@ export function Tapestry({
   onOpenKind: (kind: string) => void;
 }) {
   const { focus, setFocus, keepPreview, endPreview } = useStageFocus();
+  // Under Predict the lineage names its groups as the roles card does, by the groups the server
+  // serves beside the roles stage's proposals (the re-walk's N3); the roles card reads the same.
+  const roles = useStage(pid, view, "roles");
+  const groups =
+    view.state.purpose === "prediction" ? servedGroups(roles?.artifact?.predictor_groups, view.state.roles) : null;
 
   if (shown === "results") {
     return (
@@ -79,6 +85,7 @@ export function Tapestry({
           fitWithheld={fitWithheld(log)}
           recordHere={false}
           waitingPredictors={waitingPredictorColumns(log)}
+          predictorGroups={groups}
         />
       </div>
       {flowchart ? <FitControl pid={pid} log={log} fit={view.stages.fit} /> : null}
