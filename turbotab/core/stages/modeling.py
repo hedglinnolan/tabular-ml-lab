@@ -757,16 +757,21 @@ def design_stage(ctx: StageContext) -> Bundle:
                "steps": describe_steps(spec, f, task, state.purpose, n_cols)} for f in families]
     totals = [*([adj.energy_column] if adj is not None and adj.energy_column else []),
               *total_energy_columns(spec.predictors, spec.roles)]
+    # Under Predict no coefficient is read (BEATS_PREDICT §9 ruling 5, extended by the orchestrator
+    # on 2026-10-17): the design serves no estimand and no coefficient's meaning, each a statement
+    # of what a coefficient estimates, often a substitution, so no saved figure's provenance carries
+    # one. The energy model the matrix holds (``energy_form``) is a fact of the matrix and stays.
+    interpreted = state.purpose != "prediction"
     artifact = DesignArtifact(
         lineage=lineage,
         matrix={"n_rows": int(exported.shape[0]), "n_cols": int(exported.shape[1])},
         models=models,
-        estimand=described.text,
+        estimand=described.text if interpreted else None,
         substitution_pairs=substitution_pairs(spec.predictors, totals, nested),
         warnings=warnings_list,
         nested=[{"column": c, "parent": p} for c, p in nested.items()],
         left_out=[c for c in left_out(state) if c in (state.roles or {})],
-        terms=described.terms,
+        terms=described.terms if interpreted else {},
         energy_form=described.form if described.text else None,
     )
     return Bundle(

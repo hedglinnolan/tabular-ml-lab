@@ -262,15 +262,17 @@ MOVED = {**ROLES, "bp_sys": "exposure"}
 
 
 def _labels() -> dict[str, str]:
-    """The Predict roles card's own option labels, by role (``teaching.content``)."""
-    from turbotab.core.teaching.content import ROLES_UNDER_PREDICT
+    """The Predict roles card's own labels for its groups, by role, in this dietary project
+    (``readings.predictor_groups``; the roles ruling of 2026-10-17)."""
+    from turbotab.core.readings import predictor_groups
 
-    return {o["value"]: o["label"] for o in ROLES_UNDER_PREDICT["options"]}
+    return {role: g.head[0] for role, g in predictor_groups(["dietary"]).items()}
 
 
 def test_under_predict_a_covariate_made_a_predictor_column_is_said_as_a_move(tmp_path):
     label = _labels()
-    assert label["exposure"] != label["covariate"]
+    # the ruling's names for the two groups of a dietary project
+    assert (label["exposure"], label["covariate"]) == ("Nutrient", "Characteristic")
     log = _log(tmp_path, *HEAD, SetPurpose(purpose="prediction"), SetRoles(roles=ROLES),
                SetRoles(roles=MOVED))
     want = (f"`bp_sys` moved from the {label['covariate']} role to the {label['exposure']} role; "

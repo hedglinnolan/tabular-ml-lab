@@ -1396,6 +1396,112 @@ def role_words(role: str | None, purpose: str | None = None) -> str:
     return words.get(str(role), str(role))
 
 
+# ── the predictor roles under Predict, named by what differs (the roles ruling of 2026-10-17) ──
+#
+# Under Predict every predictor role is a predictor, yet the engine still reads the Predictor role
+# (``exposure``) apart from the others. The roles card and a role line name each of the three by
+# the steps that treat it differently in the project, each read from the code by
+# ``tests/test_estimate_words_under_predict.py``:
+# * the energy-aware fill (``methods.missing.energy_fill``): under a single fill, a Predictor column
+#   that carries energy is filled from its line on the column with the energy role, and every
+#   other column by its median; named under the dietary lens, whose roles read total energy;
+# * the screened elastic net's screen (``methods.omics``, ``ScreenedElasticNet.preprocess``): it
+#   screens the Predictor columns and passes every other; named in every project, since that family
+#   is on every Predict shelf;
+# * the omics normalization (``methods.omics.design_normalization``) and reference ComBat
+#   (``methods.batch.design_batch``), which adjust the Predictor columns alone; named under an
+#   assay lens, where their questions are asked.
+# Under Estimate, and with no goal, the words are ``role_words``'s, unchanged.
+FILL, SCREEN, NORMALIZATION, BATCH = ("the energy-aware fill", "the screened elastic net's screen",
+                                      "normalization", "batch correction")
+DIETARY_LENSES = ("dietary",)
+
+
+@dataclass(frozen=True)
+class PredictorGroup:
+    """One predictor role under Predict, as the roles card and a role line name it: ``one`` in a
+    role line's words ("a nutrient"), ``head`` the card's group, one column and many ("Nutrient",
+    "Nutrients"), and ``note`` the steps that treat it differently, as a sentence."""
+
+    role: str
+    one: str
+    head: tuple[str, str]
+    note: str
+
+
+def predict_kind(lenses: Iterable[str] | None) -> str:
+    """What the predictor roles' names differ by in a project with these lenses: ``both``,
+    ``dietary``, ``assay`` or ``neither``."""
+    lens = {str(k) for k in lenses or ()}
+    dietary = bool(lens & set(DIETARY_LENSES))
+    assay = bool(lens & set(ASSAY_LENSES))
+    return "both" if dietary and assay else "dietary" if dietary else "assay" if assay else "neither"
+
+
+def predict_steps(lenses: Iterable[str] | None) -> tuple[str, ...]:
+    """The steps that read the Predictor role alone in a project with these lenses."""
+    kind = predict_kind(lenses)
+    return ((FILL,) if kind in ("both", "dietary") else ()) + (SCREEN,) + \
+        ((NORMALIZATION, BATCH) if kind in ("both", "assay") else ())
+
+
+_PREDICTOR_NAMES = {
+    "both": ("a nutrient or assay feature", ("Nutrient or assay feature",
+                                             "Nutrients and assay features")),
+    "dietary": ("a nutrient", ("Nutrient", "Nutrients")),
+    "assay": ("an assay feature", ("Assay feature", "Assay features")),
+    "neither": ("a measure", ("Measure", "Measures")),
+}
+
+
+def _sentence(clauses: Sequence[str]) -> str:
+    text = "; ".join(clauses)
+    return text[0].upper() + text[1:] + "."
+
+
+def predictor_groups(lenses: Iterable[str] | None) -> dict[str, PredictorGroup]:
+    """The three predictor roles under Predict in a project with these lenses, each named by what
+    treats it differently there (:func:`predict_steps`)."""
+    steps = predict_steps(lenses)
+    assay = NORMALIZATION in steps
+    fill = FILL in steps
+    one, head = _PREDICTOR_NAMES[predict_kind(lenses)]
+    adjust = f"{NORMALIZATION} and {BATCH}"
+    predictor = [
+        *([f"{FILL} fills a missing amount of one that carries energy from total energy"]
+          if fill else []),
+        f"{SCREEN} may leave any of them out",
+        *([f"{adjust} adjust them"] if assay else []),
+    ]
+    characteristic = [
+        *([f"{FILL} fills them without total energy"] if fill else []),
+        f"{SCREEN} keeps every one",
+        *([f"{adjust} leave them as they are"] if assay else []),
+    ]
+    energy = [
+        *([f"{FILL} fills the nutrients from it"] if fill else []),
+        f"{SCREEN} keeps it",
+        *([f"{adjust} leave it as it is"] if assay else []),
+    ]
+    return {
+        "exposure": PredictorGroup("exposure", one, head, _sentence(predictor)),
+        "energy": PredictorGroup("energy", "total energy", ("Total energy", "Total energy"),
+                                 _sentence(energy)),
+        "covariate": PredictorGroup("covariate", "a characteristic",
+                                    ("Characteristic", "Characteristics"),
+                                    _sentence(characteristic)),
+    }
+
+
+def role_line_words(role: str | None, purpose: str | None = None,
+                    lenses: Iterable[str] | None = None) -> str:
+    """A role in a role line's words: under Predict a predictor role by its group in a project with
+    these lenses (:func:`predictor_groups`), else :func:`role_words`."""
+    if purpose == "prediction" and str(role) in PREDICTOR_ROLES:
+        return predictor_groups(lenses)[str(role)].one
+    return role_words(role, purpose)
+
+
 # The same finding, in a role's evidence: two of the roles stage's high-confidence reasons
 # (``stages.rows.propose_roles``) say why a column reads as its role in Estimate's words, a
 # nutrient "what you study" and a person's characteristic "usually adjusted for rather than

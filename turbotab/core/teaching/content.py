@@ -765,25 +765,31 @@ ROLES = {
 # ruling 5). The roles themselves stay as they are, each with a label of its own (the card's
 # buttons are named by them). A covariate and the energy column are not read "like any other"
 # predictor: the screened elastic net's screen, the omics normalization and reference ComBat act on
-# the Predictor columns alone (``methods.omics``, ``methods.batch``; W1-R round 3, SE-B3).
-_SKIPPED = "the omics screen, normalization and batch correction skip"
+# the Predictor columns alone (``methods.omics``, ``methods.batch``; W1-R round 3, SE-B3), and so
+# does the energy-aware fill (``methods.missing.energy_fill``), which fills a Predictor nutrient that
+# carries energy from total energy and every other column without it. The roles ruling of
+# 2026-10-17: every predictor role is a predictor, so the card says three roles enter the models
+# as predictors, and each option names every step that reads the Predictor role alone
+# (``readings.predict_steps``). These are the words for any project; the card names each group in
+# the project's own words (``readings.predictor_groups``, which the shell's roles fixture holds).
+_STEPS = "the energy-aware fill, screen, normalization and batch correction"
 _PREDICT_OPTIONS = {
-    "exposure": option("exposure", "Predictor", "A column the model reads to predict the outcome."),
-    "energy": option("energy", "Energy", f"Total energy intake; a predictor, which {_SKIPPED}."),
-    "covariate": option("covariate", "Covariate",
-                        f"A predictor such as age or sex; {_SKIPPED} it."),
+    "exposure": option("exposure", "Predictor", f"A predictor that {_STEPS} act on."),
+    "energy": option("energy", "Energy",
+                     "Total energy, a predictor the energy-aware fill reads; screen, normalization "
+                     "and batch correction skip it."),
+    "covariate": option("covariate", "Covariate", f"A predictor such as age, which {_STEPS} skip."),
 }
 ROLES_UNDER_PREDICT = {
     **ROLES,
-    "one_liner": "Only predictors, covariates and the energy column enter the models; every other "
-                 "role stays out of them.",
+    "one_liner": "Three roles enter the models as predictors; every other role stays out of them.",
     "consumer": "The participant flow, the split's grouping and the model matrix read it.",
     "options": [_PREDICT_OPTIONS.get(o["value"], o) for o in ROLES["options"]],
     "terms": [
         term("predictor", "A column the model reads to predict the outcome, such as a nutrient "
                           "intake or age."),
         term("covariate", f"A predictor such as age or sex. Under prediction every model reads "
-                          f"it; {_SKIPPED} it."),
+                          f"it; {_STEPS} skip it."),
         *(t for t in ROLES["terms"] if t["term"] == "identifier"),
     ],
 }

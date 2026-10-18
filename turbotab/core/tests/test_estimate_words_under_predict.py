@@ -284,11 +284,57 @@ def test_under_estimate_the_design_says_total_energy_is_a_covariate_as_before(tm
 def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_before():
     """Ruling R-e: the design's concerns under Predict changed (3b), and the fit serves the
     calibration's support (finding 10), so neither stage's cached artifact from before is served:
-    each stage's version is the one after the change."""
+    each stage's version is the one after the change. The design changed again (W1-T: no estimand
+    and no coefficient's meaning under Predict), and so did the SAS-zero finding's summary (R-f
+    14), which the findings stage computes."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
-    assert (versions["design"], versions["fit"]) == (31, 29)
+    assert (versions["design"], versions["fit"], versions["findings"]) == (32, 29, 21)
+
+
+def _design_data(tmp_path, purpose: str | None) -> dict:
+    """The design stage's artifact on :func:`_design_warnings`'s table: four nutrients beside total
+    energy as a covariate, which under Estimate is the standard model, its coefficients each a
+    substitution in place of the energy sources not in the model."""
+    from turbotab.core.stages.modeling import design_stage
+    from turbotab.core.tests import modeling_fixtures as mf
+
+    rng = np.random.default_rng(11)
+    n = 160
+    kcal = rng.normal(2000, 400, n)
+    frame = pd.DataFrame({"protein_g": 0.04 * kcal + rng.normal(0, 10, n),
+                          "carb_g": 0.12 * kcal + rng.normal(0, 20, n),
+                          "fat_g": 0.03 * kcal + rng.normal(0, 6, n),
+                          "fiber_g": rng.normal(18, 4, n), "energy_kcal": kcal,
+                          "age": rng.uniform(20, 80, n), "y": rng.normal(size=n)})
+    roles = {"protein_g": "exposure", "carb_g": "exposure", "fat_g": "exposure",
+             "fiber_g": "exposure", "energy_kcal": "covariate", "age": "covariate"}
+    paths = mf.ingest_frame(frame, tmp_path / f"terms-{purpose}")
+    st = mf.state(roles=roles, target="y", task="regression", models=["linear"], purpose=purpose,
+                  split=SplitSpec(holdout=0.0, seed=0, folds=5), shape_confirmations={})
+    design = design_stage(mf.context(st, {"split": mf.split_bundle(np.arange(n), holdout=0.0),
+                                          "target_info": mf.target_info("regression", "y")},
+                                     paths))
+    return dict(design.data)
+
+
+def test_under_predict_the_design_serves_no_estimand_and_no_coefficients_meaning(tmp_path):
+    """Ruling 5 extended (W1-S se): under Predict no coefficient is read, so the design serves no
+    estimand and no term's meaning, a substitution among them, and Results' saved provenance
+    (``energyProvenance``) has none to carry."""
+    data = _design_data(tmp_path, "prediction")
+    assert data["estimand"] is None
+    assert data["terms"] == {}
+
+
+@pytest.mark.parametrize("purpose", ["inference", None])
+def test_under_estimate_the_design_serves_its_estimand_and_each_terms_substitution(tmp_path,
+                                                                                    purpose):
+    data = _design_data(tmp_path, purpose)
+    assert data["estimand"] and "substitution" in data["estimand"]
+    assert set(data["terms"]) >= {"protein_g", "carb_g", "fat_g"}
+    assert all("in place of" in data["terms"][c] for c in ("protein_g", "carb_g", "fat_g"))
 
 
 def test_the_design_spec_carries_the_goal_its_concerns_read():
@@ -499,8 +545,9 @@ def test_under_predict_the_roles_card_names_no_study_factor():
              *(f"{t['term']} {t['definition']}" for t in entry["terms"])]
     for text in texts:
         assert not any(w in text.lower() for w in STUDY_WORDS), text
-    assert entry["one_liner"] == ("Only predictors, covariates and the energy column enter the "
-                                  "models; every other role stays out of them.")
+    # the roles ruling of 2026-10-17: every predictor role is a predictor
+    assert entry["one_liner"] == ("Three roles enter the models as predictors; every other role "
+                                  "stays out of them.")
     options = {o["value"]: o for o in entry["options"]}
     assert options["exposure"]["label"] == "Predictor"
     # each role keeps a label of its own: the card's buttons are named by them
@@ -554,43 +601,128 @@ def test_the_predict_roles_card_fits_the_teaching_budgets():
     assert not voice.machinery(entry.one_liner)
 
 
-# W1-R round 3 (SE-B3): what the card says the omics steps skip.
-SKIP = "the omics screen, normalization and batch correction skip"
+# ── the predictor roles under Predict, named by what differs (the roles ruling of 2026-10-17) ──
+#
+# Every predictor role is a predictor, and the roles card names each of the three by the steps that
+# treat it differently in the project (``readings.predictor_groups``): the energy-aware fill under
+# the dietary lens, the screened elastic net's screen in every project, and normalization and
+# batch correction under an assay lens. The words are the ruling's; each step they name is read
+# from the code below.
+
+STEPS = (readings.FILL, readings.SCREEN, readings.NORMALIZATION, readings.BATCH)
 
 
-def test_under_predict_the_roles_card_says_the_omics_steps_skip_a_covariate():
-    """Under Predict a covariate does not enter the models "like any other": the card says which
-    steps skip it, of a covariate and of the energy column, and nothing else changes."""
+def test_under_predict_the_served_roles_card_names_every_step_that_reads_the_predictor_role():
+    """The served card is the same in every project, so each predictor option names all four steps
+    (W1-S se: the energy-aware fill was left out), within the teaching budgets (above)."""
     entry = _roles_entry("prediction")
     options = {o["value"]: o["consequence"] for o in entry["options"]}
     terms = {t["term"]: t["definition"] for t in entry["terms"]}
-    for text in (options["covariate"], options["energy"], terms["covariate"]):
-        assert "like any other" not in text, text
-        assert SKIP in text, text
-    # silent: the Predictor column, which those steps act on, is said as before
-    assert options["exposure"] == "A column the model reads to predict the outcome."
-    assert SKIP not in terms["predictor"]
+    steps = "the energy-aware fill, screen, normalization and batch correction"
+    assert options["exposure"] == f"A predictor that {steps} act on."
+    assert options["covariate"] == f"A predictor such as age, which {steps} skip."
+    assert options["energy"] == ("Total energy, a predictor the energy-aware fill reads; screen, "
+                                 "normalization and batch correction skip it.")
+    assert terms["covariate"].endswith(f"; {steps} skip it.")
+    for text in (*options.values(), *terms.values()):
+        assert "omics screen" not in text and "like any other" not in text, text
 
 
-def test_the_omics_steps_the_card_names_act_on_predictor_columns_alone():
-    """Each claim of the card, read from the code on one constructed state: the screened elastic
-    net's screen (prediction only), the omics normalization an applied ``omics_scale`` repair
-    records, and reference ComBat each take the Predictor columns (role ``exposure``) and skip a
-    covariate and the energy column."""
+@pytest.mark.parametrize("lenses, names, steps", [
+    (["dietary", "clinical"], ("a nutrient", "Nutrients"), (readings.FILL, readings.SCREEN)),
+    (["genomics"], ("an assay feature", "Assay features"),
+     (readings.SCREEN, readings.NORMALIZATION, readings.BATCH)),
+    (["dietary", "metabolomics"], ("a nutrient or assay feature", "Nutrients and assay features"),
+     (readings.FILL, readings.SCREEN, readings.NORMALIZATION, readings.BATCH)),
+    (["clinical"], ("a measure", "Measures"), (readings.SCREEN,)),
+])
+def test_under_predict_each_group_is_named_by_the_steps_that_treat_it_apart(lenses, names, steps):
+    groups = readings.predictor_groups(lenses)
+    assert readings.predict_steps(lenses) == steps
+    assert (groups["exposure"].one, groups["exposure"].head[1]) == names
+    assert (groups["covariate"].one, groups["covariate"].head) == (
+        "a characteristic", ("Characteristic", "Characteristics"))
+    assert (groups["energy"].one, groups["energy"].head) == ("total energy",
+                                                             ("Total energy", "Total energy"))
+    for group in groups.values():
+        # each named step fires where the project has it, and is silent where it has not
+        for step in STEPS:
+            assert (step in group.note.lower()) == (step in steps), (lenses, group.role, step)
+    if readings.FILL in steps:
+        assert "fills a missing amount of one that carries energy from total energy" in \
+            groups["exposure"].note
+        assert "fills the nutrients from it" in groups["energy"].note
+        assert "fills them without total energy" in groups["covariate"].note
+    assert "may leave any of them out" in groups["exposure"].note
+    assert "keeps every one" in groups["covariate"].note and "keeps it" in groups["energy"].note
+
+
+def test_under_estimate_no_group_name_reaches_a_role_line():
+    for purpose in ("inference", None):
+        for lenses in (["dietary"], ["genomics"], ["clinical"]):
+            for role in readings.PREDICTOR_ROLES:
+                assert readings.role_line_words(role, purpose, lenses) == \
+                    readings.role_words(role, purpose)
+
+
+def test_the_energy_aware_fill_the_dietary_card_names_reads_the_predictor_role_alone():
+    """The energy-aware fill, read from the code: under a single fill a Predictor nutrient that
+    carries energy is filled from its least-squares line on the energy column, and a nutrient given
+    the covariate role is filled by its median (W1-S se: on a dietary Predict project). With total
+    energy given another predictor role, no energy-aware fill runs. The values are constructed:
+    carbohydrate and fat are exact lines on energy, so the line gives 0.1 and 0.04 of 2,800."""
+    from turbotab.core.methods.missing import EnergyAwareImputer, energy_fill
+
+    roles = {"carb_g": "exposure", "fat_g": "covariate", "age": "covariate", "kcal": "energy"}
+    predictors = list(roles)
+    fill = energy_fill(None, predictors, roles, predictors)
+    assert fill == {"energy": "kcal", "nutrients": ["carb_g"]}
+    assert energy_fill(None, predictors, {**roles, "fat_g": "exposure"}, predictors) == {
+        "energy": "kcal", "nutrients": ["carb_g", "fat_g"]}
+    assert energy_fill(None, predictors, {**roles, "kcal": "covariate"}, predictors) is None
+    kcal = np.array([1000.0, 1200.0, 1400.0, 2800.0, 3000.0])
+    frame = pd.DataFrame({"carb_g": 0.1 * kcal, "fat_g": 0.04 * kcal,
+                          "age": [30.0, 40.0, 50.0, 60.0, 70.0], "kcal": kcal})
+    frame.loc[3, ["carb_g", "fat_g"]] = np.nan
+    out = np.asarray(EnergyAwareImputer(energy="kcal", nutrients=fill["nutrients"])
+                     .fit(frame).transform(frame), dtype=float)
+    assert out[3, 0] == pytest.approx(280.0)  # carb_g: its line on kcal, 0.1 × 2,800
+    assert out[3, 1] == pytest.approx(float(np.median([40.0, 48.0, 56.0, 120.0])))  # fat_g: median
+    as_predictor = np.asarray(EnergyAwareImputer(energy="kcal", nutrients=["carb_g", "fat_g"])
+                              .fit(frame).transform(frame), dtype=float)
+    assert as_predictor[3, 1] == pytest.approx(112.0)  # fat_g as a Predictor: 0.04 × 2,800
+
+
+def test_the_screen_the_card_names_is_on_every_predict_shelf_and_screens_the_predictor_role():
+    """The screened elastic net's screen, read from the code: on the Predict shelf of a dietary, a
+    clinical and an assay project alike (the shelf is never shortened), it takes the Predictor
+    columns and passes every other."""
     from types import SimpleNamespace
 
     import turbotab.core.methods.omics  # noqa: F401 - registers the screened family
+    from turbotab.core.models.base import Situation, get_family, rank
+
+    for lenses in (("dietary",), ("clinical",), ("genomics",)):
+        shelf = [f.key for f, _ in rank(Situation(task="regression", purpose="prediction",
+                                                  n_rows=200, n_features=12, lenses=lenses))]
+        assert "screened_elastic_net" in shelf, lenses
+    roles = {"carb_g": "exposure", "fat_g": "exposure", "age": "covariate", "kcal": "energy"}
+    [(_name, screen)] = get_family("screened_elastic_net").preprocess(
+        SimpleNamespace(predictors=list(roles), roles=roles))
+    assert list(screen.columns) == ["carb_g", "fat_g"]
+
+
+def test_normalization_and_batch_correction_the_assay_card_names_act_on_predictor_columns_alone():
+    """The omics normalization an applied ``omics_scale`` repair records and reference ComBat, read
+    from the code on one constructed state, each take the Predictor columns (role ``exposure``) and
+    skip a covariate and the energy column."""
     from turbotab.core.decisions import BatchSpec, FindingDisposition
     from turbotab.core.methods.batch import design_batch
     from turbotab.core.methods.omics import FINDING, design_normalization
-    from turbotab.core.models.base import get_family
 
     roles = {"g1": "exposure", "g2": "exposure", "age": "covariate", "kcal": "energy",
              "plate": "design"}
     predictors = ["g1", "g2", "age", "kcal"]
-    [(_name, screen)] = get_family("screened_elastic_net").preprocess(
-        SimpleNamespace(predictors=predictors, roles=roles))
-    assert list(screen.columns) == ["g1", "g2"]
     scale = {FINDING: FindingDisposition(action="applied", option="log_cpm",
                                          params={"kind": "counts", "columns": predictors})}
     state = ProjectState(lens=["genomics"], target="y", purpose="prediction", roles=roles,

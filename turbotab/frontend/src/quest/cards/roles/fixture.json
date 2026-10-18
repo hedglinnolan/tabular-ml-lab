@@ -72,58 +72,488 @@
   },
   "under": {
     "prediction": {
-      "reasons": {
-        "identifier": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
-        "exposure": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
-        "energy": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
-        "covariate": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
-        "design": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a predictor.",
-        "flag": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a predictor.",
-        "time": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a predictor.",
-        "excluded": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or put it in the model.",
-        "cluster": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a predictor."
-      },
-      "words": {
-        "identifier": "the unit's identifier",
-        "exposure": "a predictor",
-        "energy": "total energy intake",
-        "covariate": "a predictor",
-        "design": "part of the survey design",
-        "flag": "a flag on another column",
-        "time": "the time of each row",
-        "excluded": "left out of the models",
-        "cluster": "a cluster of units"
-      },
-      "choices": {
-        "identifier": [
-          "covariate",
-          "excluded"
+      "lenses": {
+        "dietary": [
+          "dietary"
         ],
-        "exposure": [
-          "excluded"
-        ],
-        "energy": [
-          "covariate",
-          "excluded"
-        ],
-        "covariate": [
-          "excluded"
-        ],
-        "design": [
-          "covariate"
-        ],
-        "flag": [
-          "covariate"
-        ],
-        "time": [
-          "covariate"
-        ],
-        "excluded": [
-          "covariate"
-        ],
-        "cluster": [
-          "covariate"
+        "assay": [
+          "metabolomics",
+          "genomics"
         ]
+      },
+      "kinds": {
+        "both": {
+          "reasons": {
+            "identifier": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "exposure": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "energy": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "covariate": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "design": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "flag": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "time": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "excluded": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or put it in the model.",
+            "cluster": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic."
+          },
+          "words": {
+            "identifier": "the unit's identifier",
+            "exposure": "a nutrient or assay feature",
+            "energy": "total energy",
+            "covariate": "a characteristic",
+            "design": "part of the survey design",
+            "flag": "a flag on another column",
+            "time": "the time of each row",
+            "excluded": "left out of the models",
+            "cluster": "a cluster of units"
+          },
+          "choices": {
+            "identifier": [
+              "covariate",
+              "excluded"
+            ],
+            "exposure": [
+              "covariate",
+              "excluded"
+            ],
+            "energy": [
+              "covariate",
+              "excluded"
+            ],
+            "covariate": [
+              "exposure",
+              "excluded"
+            ],
+            "design": [
+              "covariate"
+            ],
+            "flag": [
+              "covariate"
+            ],
+            "time": [
+              "covariate"
+            ],
+            "excluded": [
+              "covariate",
+              "exposure"
+            ],
+            "cluster": [
+              "covariate"
+            ]
+          },
+          "changes": {
+            "identifier": {
+              "covariate": "`{column}` is a characteristic",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "exposure": {
+              "covariate": "`{column}` is a characteristic",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "energy": {
+              "covariate": "`{column}` is a characteristic, not total energy",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "covariate": {
+              "exposure": "`{column}` is a nutrient or assay feature",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "design": {
+              "covariate": "`{column}` is a characteristic"
+            },
+            "flag": {
+              "covariate": "`{column}` is a characteristic"
+            },
+            "time": {
+              "covariate": "`{column}` is a characteristic"
+            },
+            "excluded": {
+              "covariate": "`{column}` is a characteristic",
+              "exposure": "`{column}` is a nutrient or assay feature"
+            },
+            "cluster": {
+              "covariate": "`{column}` is a characteristic"
+            }
+          },
+          "groups": {
+            "exposure": {
+              "one": "a nutrient or assay feature",
+              "head": [
+                "Nutrient or assay feature",
+                "Nutrients and assay features"
+              ],
+              "note": "The energy-aware fill fills a missing amount of one that carries energy from total energy; the screened elastic net's screen may leave any of them out; normalization and batch correction adjust them."
+            },
+            "energy": {
+              "one": "total energy",
+              "head": [
+                "Total energy",
+                "Total energy"
+              ],
+              "note": "The energy-aware fill fills the nutrients from it; the screened elastic net's screen keeps it; normalization and batch correction leave it as it is."
+            },
+            "covariate": {
+              "one": "a characteristic",
+              "head": [
+                "Characteristic",
+                "Characteristics"
+              ],
+              "note": "The energy-aware fill fills them without total energy; the screened elastic net's screen keeps every one; normalization and batch correction leave them as they are."
+            }
+          }
+        },
+        "dietary": {
+          "reasons": {
+            "identifier": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "exposure": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "energy": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "covariate": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "design": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "flag": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "time": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "excluded": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or put it in the model.",
+            "cluster": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic."
+          },
+          "words": {
+            "identifier": "the unit's identifier",
+            "exposure": "a nutrient",
+            "energy": "total energy",
+            "covariate": "a characteristic",
+            "design": "part of the survey design",
+            "flag": "a flag on another column",
+            "time": "the time of each row",
+            "excluded": "left out of the models",
+            "cluster": "a cluster of units"
+          },
+          "choices": {
+            "identifier": [
+              "covariate",
+              "excluded"
+            ],
+            "exposure": [
+              "covariate",
+              "excluded"
+            ],
+            "energy": [
+              "covariate",
+              "excluded"
+            ],
+            "covariate": [
+              "exposure",
+              "excluded"
+            ],
+            "design": [
+              "covariate"
+            ],
+            "flag": [
+              "covariate"
+            ],
+            "time": [
+              "covariate"
+            ],
+            "excluded": [
+              "covariate",
+              "exposure"
+            ],
+            "cluster": [
+              "covariate"
+            ]
+          },
+          "changes": {
+            "identifier": {
+              "covariate": "`{column}` is a characteristic",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "exposure": {
+              "covariate": "`{column}` is a characteristic",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "energy": {
+              "covariate": "`{column}` is a characteristic, not total energy",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "covariate": {
+              "exposure": "`{column}` is a nutrient",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "design": {
+              "covariate": "`{column}` is a characteristic"
+            },
+            "flag": {
+              "covariate": "`{column}` is a characteristic"
+            },
+            "time": {
+              "covariate": "`{column}` is a characteristic"
+            },
+            "excluded": {
+              "covariate": "`{column}` is a characteristic",
+              "exposure": "`{column}` is a nutrient"
+            },
+            "cluster": {
+              "covariate": "`{column}` is a characteristic"
+            }
+          },
+          "groups": {
+            "exposure": {
+              "one": "a nutrient",
+              "head": [
+                "Nutrient",
+                "Nutrients"
+              ],
+              "note": "The energy-aware fill fills a missing amount of one that carries energy from total energy; the screened elastic net's screen may leave any of them out."
+            },
+            "energy": {
+              "one": "total energy",
+              "head": [
+                "Total energy",
+                "Total energy"
+              ],
+              "note": "The energy-aware fill fills the nutrients from it; the screened elastic net's screen keeps it."
+            },
+            "covariate": {
+              "one": "a characteristic",
+              "head": [
+                "Characteristic",
+                "Characteristics"
+              ],
+              "note": "The energy-aware fill fills them without total energy; the screened elastic net's screen keeps every one."
+            }
+          }
+        },
+        "assay": {
+          "reasons": {
+            "identifier": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "exposure": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "energy": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "covariate": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "design": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "flag": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "time": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "excluded": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or put it in the model.",
+            "cluster": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic."
+          },
+          "words": {
+            "identifier": "the unit's identifier",
+            "exposure": "an assay feature",
+            "energy": "total energy",
+            "covariate": "a characteristic",
+            "design": "part of the survey design",
+            "flag": "a flag on another column",
+            "time": "the time of each row",
+            "excluded": "left out of the models",
+            "cluster": "a cluster of units"
+          },
+          "choices": {
+            "identifier": [
+              "covariate",
+              "excluded"
+            ],
+            "exposure": [
+              "covariate",
+              "excluded"
+            ],
+            "energy": [
+              "covariate",
+              "excluded"
+            ],
+            "covariate": [
+              "exposure",
+              "excluded"
+            ],
+            "design": [
+              "covariate"
+            ],
+            "flag": [
+              "covariate"
+            ],
+            "time": [
+              "covariate"
+            ],
+            "excluded": [
+              "covariate",
+              "exposure"
+            ],
+            "cluster": [
+              "covariate"
+            ]
+          },
+          "changes": {
+            "identifier": {
+              "covariate": "`{column}` is a characteristic",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "exposure": {
+              "covariate": "`{column}` is a characteristic",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "energy": {
+              "covariate": "`{column}` is a characteristic, not total energy",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "covariate": {
+              "exposure": "`{column}` is an assay feature",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "design": {
+              "covariate": "`{column}` is a characteristic"
+            },
+            "flag": {
+              "covariate": "`{column}` is a characteristic"
+            },
+            "time": {
+              "covariate": "`{column}` is a characteristic"
+            },
+            "excluded": {
+              "covariate": "`{column}` is a characteristic",
+              "exposure": "`{column}` is an assay feature"
+            },
+            "cluster": {
+              "covariate": "`{column}` is a characteristic"
+            }
+          },
+          "groups": {
+            "exposure": {
+              "one": "an assay feature",
+              "head": [
+                "Assay feature",
+                "Assay features"
+              ],
+              "note": "The screened elastic net's screen may leave any of them out; normalization and batch correction adjust them."
+            },
+            "energy": {
+              "one": "total energy",
+              "head": [
+                "Total energy",
+                "Total energy"
+              ],
+              "note": "The screened elastic net's screen keeps it; normalization and batch correction leave it as it is."
+            },
+            "covariate": {
+              "one": "a characteristic",
+              "head": [
+                "Characteristic",
+                "Characteristics"
+              ],
+              "note": "The screened elastic net's screen keeps every one; normalization and batch correction leave them as they are."
+            }
+          }
+        },
+        "neither": {
+          "reasons": {
+            "identifier": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "exposure": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "energy": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "covariate": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+            "design": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "flag": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "time": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic.",
+            "excluded": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or put it in the model.",
+            "cluster": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic."
+          },
+          "words": {
+            "identifier": "the unit's identifier",
+            "exposure": "a measure",
+            "energy": "total energy",
+            "covariate": "a characteristic",
+            "design": "part of the survey design",
+            "flag": "a flag on another column",
+            "time": "the time of each row",
+            "excluded": "left out of the models",
+            "cluster": "a cluster of units"
+          },
+          "choices": {
+            "identifier": [
+              "covariate",
+              "excluded"
+            ],
+            "exposure": [
+              "covariate",
+              "excluded"
+            ],
+            "energy": [
+              "covariate",
+              "excluded"
+            ],
+            "covariate": [
+              "exposure",
+              "excluded"
+            ],
+            "design": [
+              "covariate"
+            ],
+            "flag": [
+              "covariate"
+            ],
+            "time": [
+              "covariate"
+            ],
+            "excluded": [
+              "covariate",
+              "exposure"
+            ],
+            "cluster": [
+              "covariate"
+            ]
+          },
+          "changes": {
+            "identifier": {
+              "covariate": "`{column}` is a characteristic",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "exposure": {
+              "covariate": "`{column}` is a characteristic",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "energy": {
+              "covariate": "`{column}` is a characteristic, not total energy",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "covariate": {
+              "exposure": "`{column}` is a measure",
+              "excluded": "`{column}` is left out of the models"
+            },
+            "design": {
+              "covariate": "`{column}` is a characteristic"
+            },
+            "flag": {
+              "covariate": "`{column}` is a characteristic"
+            },
+            "time": {
+              "covariate": "`{column}` is a characteristic"
+            },
+            "excluded": {
+              "covariate": "`{column}` is a characteristic",
+              "exposure": "`{column}` is a measure"
+            },
+            "cluster": {
+              "covariate": "`{column}` is a characteristic"
+            }
+          },
+          "groups": {
+            "exposure": {
+              "one": "a measure",
+              "head": [
+                "Measure",
+                "Measures"
+              ],
+              "note": "The screened elastic net's screen may leave any of them out."
+            },
+            "energy": {
+              "one": "total energy",
+              "head": [
+                "Total energy",
+                "Total energy"
+              ],
+              "note": "The screened elastic net's screen keeps it."
+            },
+            "covariate": {
+              "one": "a characteristic",
+              "head": [
+                "Characteristic",
+                "Characteristics"
+              ],
+              "note": "The screened elastic net's screen keeps every one."
+            }
+          }
+        }
       }
     }
   },
@@ -149,15 +579,23 @@
           "kind": "role",
           "column": "bp_sys",
           "value": "covariate",
-          "words": "proposed as a predictor",
+          "words": "proposed as a characteristic",
           "evidence": "the reason the roles stage gives for `bp_sys`",
           "options": [
             {
-              "label": "Confirm `bp_sys` as a predictor",
+              "label": "Confirm `bp_sys` as a characteristic",
               "decision": {
                 "kind": "confirm_role",
                 "column": "bp_sys",
                 "role": "covariate"
+              }
+            },
+            {
+              "label": "`bp_sys` is a measure",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "bp_sys",
+                "role": "exposure"
               }
             },
             {
@@ -194,9 +632,17 @@
           "kind": "role",
           "column": "waist",
           "value": "covariate",
-          "words": "is a predictor",
+          "words": "is a characteristic",
           "evidence": "the reason the roles stage gives for `waist`",
           "options": [
+            {
+              "label": "`waist` is a measure",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "waist",
+                "role": "exposure"
+              }
+            },
             {
               "label": "`waist` is left out of the models",
               "decision": {
@@ -220,7 +666,7 @@
       "counted": true,
       "order": 30.002,
       "decision_id": null,
-      "reason": "`imputed_waist` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a predictor.",
+      "reason": "`imputed_waist` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a characteristic.",
       "waiting_for": [],
       "computing": [],
       "reopened_by": null,
@@ -243,7 +689,7 @@
               }
             },
             {
-              "label": "`imputed_waist` is a predictor",
+              "label": "`imputed_waist` is a characteristic",
               "decision": {
                 "kind": "confirm_role",
                 "column": "imputed_waist",
@@ -288,11 +734,19 @@
               }
             },
             {
-              "label": "`cycle_begin_year` is a predictor",
+              "label": "`cycle_begin_year` is a characteristic",
               "decision": {
                 "kind": "confirm_role",
                 "column": "cycle_begin_year",
                 "role": "covariate"
+              }
+            },
+            {
+              "label": "`cycle_begin_year` is a measure",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "cycle_begin_year",
+                "role": "exposure"
               }
             }
           ]

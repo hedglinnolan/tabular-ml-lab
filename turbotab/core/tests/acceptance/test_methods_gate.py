@@ -281,9 +281,11 @@ def test_b_the_design_beside_an_every_row_table_reads_every_analyzed_row(tmp_pat
     gap = next(w for w in design["warnings"] if w.startswith("energy_kcal left the outcome model"))
     assert (f"on 2,400 training rows fat_g_adj's coefficient is {_sig3(t_dropped)}, against "
             f"{_sig3(t_standard)} with energy_kcal kept") in gap, gap
+    # Under prediction no coefficient is read, so no estimand prints an elasticity at all, from
+    # the training rows or any others (ruling 5 extended, W1-T): nothing of the held-out rows can
+    # reach it.
     design, _ = run("residual", True, "prediction")
-    printed = float(re.search(r"b = ([0-9.]+) for fat_g", design["estimand"]).group(1))
-    assert printed == pytest.approx(train_b, abs=5e-4)
+    assert design["estimand"] is None and design["terms"] == {}
 
 
 def _binary_cohort(n: int = 900, seed: int = 21) -> pd.DataFrame:

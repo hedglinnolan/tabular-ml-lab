@@ -784,11 +784,14 @@ def _role_move(column: str, before: str, after: str, state: Any) -> str:
     covariate is still a change, though both are predictors: the screened elastic net screens the
     Predictor columns alone, and the omics normalization and reference ComBat act on them alone
     (``methods.omics``, ``methods.batch``). It is said in the Predict roles card's own labels for
-    the two roles (W1-R round 3, SE-B2)."""
+    the two roles (W1-R round 3, SE-B2): since the roles ruling of 2026-10-17 its groups' names in
+    the project (``readings.predictor_groups``: a nutrient's and a characteristic's under the
+    dietary lens)."""
     if _under_predict(state) and before in _PREDICTORS and after in _PREDICTORS:
-        from turbotab.core.teaching.content import ROLES_UNDER_PREDICT
+        from turbotab.core.readings import predictor_groups
 
-        label = {o["value"]: o["label"] for o in ROLES_UNDER_PREDICT["options"]}
+        groups = predictor_groups(getattr(state, "lens", None))
+        label = {role: g.head[0] for role, g in groups.items()}
         return f"{tick(column)} moved from the {label[before]} role to the {label[after]} role"
     return f"{tick(column)} became {role_as(after, state)}"
 

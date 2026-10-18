@@ -295,9 +295,12 @@ def build_graph() -> Graph:
             # the app's own finding reads, repair and all, are left to it by the lab pack's
             # censored-values finding; a text predictor confirmed "amount" through the ledger is
             # checked by the plausibility checks as the numbers the fit reads.
+            # findings 21 (W1-R R-f 14): the SAS-zero finding says how many columns hold its cells
+            # ("9 cells in 3 columns (`a` and 2 more)", ``repairs.sas_zero_finding``), so findings
+            # cached before are computed again rather than served in the old words.
             Stage(
                 "findings",
-                20,
+                21,
                 ("oriented",),
                 ("lens", "target", "column_units", "sex_codings", "numbers_read",
                  "shape_confirmations", "categorical", "aggregation"),
@@ -581,7 +584,10 @@ def build_graph() -> Graph:
             # say nothing of a coefficient's meaning or a substitution (``warnings_for``, audit
             # ME-02's total energy as a covariate), so a design cached before is computed again
             # rather than served with them.
-            Stage("design", 31, ("working", "split", "target_info"),
+            # design 32 (W1-T, ruling 5 extended): under prediction the design serves no estimand
+            # and no coefficient's meaning, a substitution among them, so a design cached before
+            # is computed again rather than served with them into a saved figure's provenance.
+            Stage("design", 32, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS, "levers", "selection", "survey"),
