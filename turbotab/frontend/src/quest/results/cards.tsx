@@ -29,10 +29,12 @@ import { glyphOf, sealPhase } from "../../components/stage/seal/phase";
 import { SealGlyph } from "../../components/stage/seal/SealGlyph";
 import seal from "../../components/stage/seal/seal.module.css";
 import { Rich } from "../../components/stage/text";
-import { Foot } from "../../kit";
+import { Foot, Plain, kit as k } from "../../kit";
 import { CardFor } from "../cards/CardFor";
 import { FootSlot } from "../contracts";
 import { runningName } from "../log";
+import q from "../quest.module.css";
+import { said } from "../words";
 import { currentOpening, exploratoryReasons, openingNotes } from "./model";
 import s from "./results.module.css";
 
@@ -66,13 +68,44 @@ export function Cards({ pid, view }: { pid: string; view: ProjectView }) {
   return (
     <div className={s.cards} data-testid="results-cards">
       {declarations.map((line) => (
-        <CardFor key={line.id} pid={pid} line={line} />
+        <Declaration key={line.id} pid={pid} line={line} view={view} />
       ))}
       {triage ? <TriageCard pid={pid} triage={triage} id={triageId} heldOut={heldOut} /> : null}
       {fit.artifact ? (
         <SealCard pid={pid} view={view} fit={fit.artifact} fresh={fit.veil === "fresh"} split={split.artifact} waits={waits} />
       ) : null}
-      {explain ? <CardFor pid={pid} line={explain} /> : null}
+      {explain ? <Declaration pid={pid} line={explain} view={view} /> : null}
+    </div>
+  );
+}
+
+/**
+ * A Results declaration through W1-F's card while it waits for its answer; once recorded it
+ * collapses to its answer, as the other stages' cards do (finding 24; the re-walk's N8): its name,
+ * the record's sentence and Change, which opens the card again until a new record collapses it.
+ */
+function Declaration({ pid, line, view }: { pid: string; line: QuestLine; view: ProjectView }) {
+  const [changing, setChanging] = useState(false);
+  const [seen, setSeen] = useState(line.decision_id);
+  if (seen !== line.decision_id) {
+    setSeen(line.decision_id);
+    setChanging(false);
+  }
+  if (line.status !== "answered" || changing) return <CardFor pid={pid} line={line} />;
+  const sentence = view.decisions.find((d) => d.id === line.decision_id)?.sentence ?? null;
+  return (
+    <div className={q.line} data-kit data-testid={`results-recorded-${line.key}`} data-line={line.id} data-status={line.status}>
+      <div className={q.lineRow}>
+        <span className={q.lineName}>{said(line.name)}</span>
+        <button type="button" className={k.linkish} onClick={() => setChanging(true)}>
+          Change
+        </button>
+      </div>
+      {sentence ? (
+        <p className={q.lineAnswer}>
+          <Plain text={sentence} />
+        </p>
+      ) : null}
     </div>
   );
 }

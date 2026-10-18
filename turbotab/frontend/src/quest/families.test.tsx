@@ -13,7 +13,8 @@
  * (fixtures/quest-contract.json) with Models' selection answered and the families line open. The ask
  * card and the refusal are the engine's shapes (core/ask.py, core/decisions.py
  * `_models_read_settled_readings`: the fit's reason, the ledger's question after it, one block
- * confirmation, two alternatives per column, then the roles question), set by construction.
+ * confirmation, two alternatives per column, and the roles question only where a role waits: the
+ * re-walk's N4), set by construction.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -23,7 +24,7 @@ import type { TeachingEntry } from "../api/m1-types";
 import type { AskCard } from "../api/m3-types";
 import { keys } from "../api/queries";
 import type { Decision, ProjectView, QuestLine, QuestLog, Refusal } from "../api/schema";
-import { besideAsk, confirmsRoleInBlock, oneRoleAtATime } from "../components/record/besideAsk";
+import { READINGS_ABOVE, besideAsk, confirmsRoleInBlock, oneRoleAtATime } from "../components/record/besideAsk";
 import { artifactAt, expandView, viewsOf, type M3Fixture } from "../mocks/m3";
 import { CONTRACT } from "./fixtures/contract";
 import { QuestScreen } from "./QuestScreen";
@@ -72,10 +73,11 @@ const REFUSAL: Refusal = {
         { label: `\`${c}\`: an amount`, decision: readings([[c, "amount"]]) },
         { label: `\`${c}\`: codes for categories`, decision: readings([[c, "code"]]) },
       ]),
-      ROLES_EXIT,
     ],
   },
 };
+/** The same refusal where a role waits too: the engine offers the roles question after the rest. */
+const WITH_ROLE: Refusal = { error: { ...REFUSAL.error, exits: [...REFUSAL.error.exits, ROLES_EXIT] } };
 const ASK: AskCard = {
   question: "models",
   consumer: "The fit",
@@ -240,13 +242,27 @@ describe("a families press refused for the readings the card asks", () => {
     const note = await screen.findByTestId("refusal");
     expect(note).toHaveTextContent("the fit waits for the answer for each.");
     expect(note).not.toHaveTextContent("Tell me about");
+    // The re-walk's N4: its one way through leads to the readings the card lists, never to the
+    // roles question, which asks nothing the fit waits for here.
+    const exits = within(note).getAllByTestId("refusal-exit");
+    expect(exits.map((b) => b.textContent)).toEqual([READINGS_ABOVE.label]);
+    fireEvent.click(exits[0]!);
+    expect(ask).toContainElement(document.activeElement as HTMLElement);
+    // The readings' confirmations are on the card once: the ask card's.
+    expect(screen.getAllByTestId("ask-confirm")).toHaveLength(COLUMNS.length);
+  });
+
+  it("keeps the roles question after the readings where a role waits too", async () => {
+    shell(asking);
+    vi.spyOn(api, "decide").mockRejectedValue(new RefusalError(WITH_ROLE));
+    chooseTwo();
+    fireEvent.click(screen.getByTestId("record-models"));
+    const note = await screen.findByTestId("refusal");
     expect(
       within(note)
         .getAllByTestId("refusal-exit")
         .map((b) => b.textContent),
-    ).toEqual([ROLES_EXIT.label]);
-    // The readings' confirmations are on the card once: the ask card's.
-    expect(screen.getAllByTestId("ask-confirm")).toHaveLength(COLUMNS.length);
+    ).toEqual([READINGS_ABOVE.label, ROLES_EXIT.label]);
   });
 
   it("is said whole where the refusal offers no confirmation of a reading", async () => {
@@ -370,8 +386,10 @@ describe("besideAsk", () => {
   it("keeps the refusal's own words up to the ledger's question, and its ways forward but the confirmations", () => {
     const out = besideAsk(REFUSAL);
     expect(out.error.message).toBe(REASON);
-    expect(out.error.exits).toEqual([ROLES_EXIT]);
+    // The confirmations are the card's: one way through leads to them instead (the re-walk's N4).
+    expect(out.error.exits).toEqual([READINGS_ABOVE]);
     expect(out.error.code).toBe(REFUSAL.error.code);
+    expect(besideAsk(WITH_ROLE).error.exits).toEqual([READINGS_ABOVE, ROLES_EXIT]);
   });
 
   it("returns a refusal that offers no confirmation as it is", () => {

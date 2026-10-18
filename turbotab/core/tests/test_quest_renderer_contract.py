@@ -13,7 +13,8 @@ itself, so that none of them retypes it: the seven stages and their names, each 
 and declaration's place and name, each sweep size's heading and action, two quest logs of the
 NHANES fixture under Predict (Models open; Fit pressed and Results reached) with what "Confirm all"
 records in each stage, the Fit lock as the engine words it (held, ready, pressed, unlocked under
-Estimate and with no goal), and the floor a gain over the no-predictor baseline must reach.
+Estimate and with no goal), the floor a gain over the no-predictor baseline must reach, and the
+decision kinds each question that can carry the ledger's ask card records.
 
 When the engine emits a pair the fixture does not hold (or stops emitting one), this test writes
 the fixture anew and fails, so the change reaches the vitest in the same commit.
@@ -25,10 +26,11 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from turbotab.core import fit_press, quest, sweep
-from turbotab.core.decisions import ProjectState
+from turbotab.core import ask, fit_press, quest, sweep
+from turbotab.core.decisions import SLOTS, ProjectState
 from turbotab.core.interview import route
 from turbotab.core.models import baseline
+from turbotab.core.sequence import question_of
 from turbotab.core.tests import path_fuzzer
 from turbotab.core.voice import question_name
 
@@ -111,6 +113,10 @@ def contract() -> dict[str, Any]:
         "fit_locks": _locks(),
         # The floor a score's gain over the no-predictor baseline must reach (the mock's verdict).
         "min_gain": baseline.MIN_GAIN,
+        # The decision kinds each question that can carry the ledger's ask card records (the
+        # shell's record/besideAsk.ts `ASKED_BY`: where a refusal's readings are the card's to say).
+        "asked_by": {q: sorted(k for k in SLOTS if question_of(k) == q)
+                     for q in sorted(ask.CONSUMERS)},
     }
 
 

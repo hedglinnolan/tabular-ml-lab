@@ -196,6 +196,86 @@ def test_confirm_all_records_exactly_what_was_shown_and_refuses_an_empty_or_stal
     assert changed.value.exits[0]["decision"]["lines"] == swept(log, "whos_in")
 
 
+@pytest.mark.parametrize("split, scheme", [
+    (decisions.SplitSpec(holdout=0.2, seed=0), "5-fold cross-validation."),
+    (decisions.SplitSpec(holdout=0.2, seed=0, folds=10, validation="repeated_kfold", repeats=20),
+     "10-fold cross-validation, repeated 20 times."),
+    (decisions.SplitSpec(holdout=0.0, seed=0, validation="bootstrap", n_boot=200,
+                         nested_cv=True),
+     "Bootstrap optimism correction over 200 resamples, with a nested cross-validation interval."),
+])
+def test_confirm_all_records_each_default_by_its_own_value(split, scheme):
+    """The re-walk's N6: Models' "Confirm all" recorded the validation scheme by its name ("the
+    validation scheme"), dropping its value, since the engine stated no value for that default or
+    for the in-fold rules (the shell said them from the state). Each default a declaration sets is
+    stated by its value, as the split's scheme and the levers hold it: the line reads it, the sweep
+    records it, and the record's sentence quotes it. The scheme's words are written out here from
+    each split, and the levers' from their defaults (no lever: none of the three)."""
+    from turbotab.core.decisions import SetSplit
+
+    records = [record(1, {"kind": "set_lens", "lenses": ["clinical"]}),
+               record(2, {"kind": "set_target", "column": "glucose"}),
+               record(3, {"kind": "set_purpose", "purpose": "prediction"}),
+               record(4, {"kind": "set_roles", "roles": {"SEQN": "identifier", "age": "covariate"},
+                          "unconfirmed": []}),
+               record(5, SetSplit(**split.model_dump()).model_dump(mode="json")),
+               record(6, {"kind": "select_models", "models": ["linear"]})]
+    state = decisions.fold(records)
+    log = quest.quest_log(state, records, steps_until(None, stated=("form",)),
+                          columns=["SEQN", "age", "glucose"])
+    validation, levers = line(log, "set_validation"), line(log, "set_levers")
+    assert (validation.status, validation.reason) == ("set_for_you", scheme)
+    assert levers.reason == ("Predictor forms: none; variance filter: none; imbalance correction: "
+                             "none.")
+    got = {l.key: l.value for l in decisions.validate({"kind": "confirm_sweep", "stage": "models"},
+                                                      Ctx(log)).lines}
+    assert got["set_validation"] == scheme and got["set_levers"] == levers.reason
+    d = decisions.validate({"kind": "confirm_sweep", "stage": "models"}, Ctx(log))
+    said = sweep.confirm_sentence(d)
+    # The scheme by its value, beside its line's name (W1-W round 1, P3), never by its name alone.
+    assert f"the validation scheme, “{scheme[:-1]}”" in said
+
+
+def test_confirm_all_names_each_choice_beside_its_own_value():
+    """W1-W round 1, P3: the record joined the confirmed values with "; ", and the values hold
+    semicolons of their own (the functional-form line's reason under Predict, the in-fold rules'
+    three), so the re-walk's Models record read six clauses for three choices. Each choice is named
+    as its line is (the quest log's own name for it) and quotes its value as stated. Built from the
+    re-walk's Models stage: the form stated with the reason its record quoted, the validation scheme
+    and the in-fold rules set for the person; the sentence is parsed back into (name, value) pairs,
+    one per swept line, in order."""
+    import re
+
+    from turbotab.core.decisions import SetSplit
+
+    form = ("Under prediction each predictor enters as each family takes it; the spline benchmark "
+            "is on the shelf, and a spline can be declared for any numeric predictor.")
+    records = [record(1, {"kind": "set_lens", "lenses": ["clinical"]}),
+               record(2, {"kind": "set_target", "column": "glucose"}),
+               record(3, {"kind": "set_purpose", "purpose": "prediction"}),
+               record(4, {"kind": "set_roles", "roles": {"SEQN": "identifier", "age": "covariate"},
+                          "unconfirmed": []}),
+               record(5, SetSplit(holdout=0.2, seed=0).model_dump(mode="json")),
+               record(6, {"kind": "select_models", "models": ["linear"]})]
+    state = decisions.fold(records)
+    the_steps = [s.model_copy(update={"reason": form}) if s.key == "form" else s
+                 for s in steps_until(None, stated=("form",))]
+    log = quest.quest_log(state, records, the_steps, columns=["SEQN", "age", "glucose"])
+    d = decisions.validate({"kind": "confirm_sweep", "stage": "models"}, Ctx(log))
+    assert [l.key for l in d.lines] == ["form", "set_validation", "set_levers"]
+    assert d.lines[0].value == form and ";" in d.lines[2].value  # the values' own semicolons
+    said = sweep.confirm_sentence(d)
+    lead = "Confirmed the 3 choices set for you in Models, as stated: "
+    assert said.startswith(lead) and said.endswith("”.")
+    choices = re.findall(r"(?:^|; )([^;“”]+), “([^“”]*)”", said[len(lead):-1])
+    named = {l.key: l.name for s in log.stages for l in s.lines}
+    assert choices == [(named[l.key], l.value.rstrip(".")) for l in d.lines]
+    assert [c[0] for c in choices] == ["the functional-form question", "the validation scheme",
+                                       "the rules repeated inside each fold"]
+    # Nothing outside the quotes but each choice's name and the separators between them.
+    assert re.sub(r"“[^“”]*”", "", said[len(lead):-1]).count(";") == len(d.lines) - 1
+
+
 def test_a_sweep_with_a_line_still_waiting_cannot_be_confirmed():
     state = ProjectState(lens=["metabolomics"], target="outcome", purpose="prediction",
                          roles={"m_001": "exposure"})
@@ -255,8 +335,10 @@ def test_each_open_noticing_arrives_with_a_recommended_disposition_and_blockers_
     routed = {"id": "implausible", "severity": "warning", "affected_columns": ["sugar"],
               "routes_to": "exclusions"}
     assert sweep.recommend(state, routed, {"exclusions"})[:2] == ("act_on_it", False)
-    # Answered, it is still decided there: the answer is where it is changed (Q-a's rule 3).
-    assert sweep.recommend(state, routed, set())[:2] == ("act_on_it", False)
+    # Answered, that answer stands: it is left as a limitation, and changing the answer there is
+    # how to act on it instead (Q-a's rule 3 as the re-walk's N9 ruled it, 2026-10-18).
+    left = sweep.recommend(state, routed, set())
+    assert left[:2] == ("could_bias", False) and "change that answer there" in left[2]
 
 
 # A noticing decided in Models (it routes to the families question) and nothing else open there.

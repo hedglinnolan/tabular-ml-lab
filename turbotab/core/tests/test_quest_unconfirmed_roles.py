@@ -221,16 +221,89 @@ def test_a_role_lines_reason_names_the_role_its_only_change_records():
         others = _instead(line)
         assert others == ["covariate"], (column, others)
         first, _, last = line.reason.partition(" Confirm it after reading why it was proposed, ")
-        # The first sentence is the fit's for the same column; the last names each press's role in
-        # the words its option label uses.
+        # The first sentence is not the fit's for the same column: none of these is a predictor, so
+        # it says what waiting holds back (the next two tests: N2, and W1-W round 2's P4); the last
+        # names each press's role in the words its option label uses.
         fit = readings.unsettled_message([column], quest.ROLE_WAITS_FOR)
-        assert fit.startswith(first + " ")
+        assert not fit.startswith(first + " ")
         labels = [o.label for o in line.items[0].options]
         for role in others:
             words = readings.role_line_words(role, "prediction", ["clinical"])  # the log's
             group = readings.predictor_groups(["clinical"])[role].head[1].lower()
             assert f"Move `{column}` to the {group}" in labels
             assert words in last, (column, line.reason)
+
+
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_a_waiting_flags_line_says_what_waiting_holds_back_not_that_it_sets_the_predictors(purpose):
+    """The re-walk's N2: a flag enters no model, so its line never says it "cannot set the model's
+    predictors yet". What waiting holds back is the fit: the fit asks every role that rode along,
+    since a column recorded as a covariate instead would enter the model (``predictors_or_ask``).
+    Both halves are read from the engine here, on this log, before the sentence is: the flag is in
+    no model while it waits nor once confirmed, the fit asks for it while it waits, and not once it
+    is confirmed. A predictor role's line keeps the fit's words."""
+    records = [*_kinds_records()[:2], record(3, {"kind": "set_purpose", "purpose": purpose}),
+               _kinds_records()[3]]
+    state = decisions.fold(records)
+    log = quest.quest_log(state, records, steps_until("exclusions"))
+    line = next(l for l in _role_lines(log) if l.items[0].column == "imputed_waist")
+    flag = readings.role_line_words("flag", purpose, ["clinical"])
+    instead = readings.role_line_words("covariate", purpose, ["clinical"])
+    # the facts the sentence states, from the engine's own consumers
+    assert "imputed_waist" not in readings.predictor_columns(state)
+    with pytest.raises(readings.Unsettled) as asked:
+        readings.predictors_or_ask(state)
+    assert "imputed_waist" in {r.column for r in asked.value.readings}
+    confirmed = decisions.fold([*records, record(5, _confirm("imputed_waist", "flag"))])
+    assert "imputed_waist" not in readings.unsettled(confirmed)
+    assert "imputed_waist" not in readings.predictor_columns(confirmed)
+    assert line.reason == (
+        f"`imputed_waist` was proposed below high confidence and recorded with the other roles, "
+        f"not confirmed on its own. As {flag} it enters no model, but the fit waits for it, since "
+        f"as {instead} it would. Confirm it after reading why it was proposed, or record it as "
+        f"{instead}.")
+    assert "predictors" not in line.reason
+    # Silent for a predictor role: its line keeps the fit's words.
+    bp = next(l for l in _role_lines(log) if l.items[0].column == "bp_sys")
+    assert "cannot set the model's predictors yet" in (bp.reason or "")
+
+
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_a_waiting_time_design_or_cluster_line_says_it_is_no_predictor_and_the_fit_waits(purpose):
+    """W1-W round 2, P4, N2's neighbors: a time, a survey-design column and a cluster change only to
+    a covariate (``readings.ROLE_CHANGES``), so as recorded each is none of the model's predictors,
+    and its line never says it "cannot set the model's predictors yet". It is not said to enter no
+    model, as a flag's line says: a cluster groups the clustered intervals
+    (``models.inference.cluster_columns``), and a design column is the weight, strata or PSU a
+    design-based survey answer reads (``ask._survey``). The
+    facts are the engine's, on this log, before the sentence is: none is a predictor while it waits
+    nor once confirmed, the fit asks for each while it waits, and none once confirmed. A predictor
+    role's line and the exclusion's keep their words."""
+    records = [*_kinds_records()[:2], record(3, {"kind": "set_purpose", "purpose": purpose}),
+               _kinds_records()[3]]
+    state = decisions.fold(records)
+    lines = {l.items[0].column: l for l in _role_lines(
+        quest.quest_log(state, records, steps_until("exclusions")))}
+    instead = readings.role_line_words("covariate", purpose, ["clinical"])
+    with pytest.raises(readings.Unsettled) as asked:
+        readings.predictors_or_ask(state)
+    for column in ("exam_date", "sdmvstra", "sdmvpsu"):
+        role = EVERY_KIND[column]
+        assert column not in readings.predictor_columns(state)
+        assert column in {r.column for r in asked.value.readings}
+        confirmed = decisions.fold([*records, record(5, _confirm(column, role))])
+        assert column not in readings.unsettled(confirmed)
+        assert column not in readings.predictor_columns(confirmed)
+        assert lines[column].reason == (
+            f"`{column}` was proposed below high confidence and recorded with the other roles, not "
+            f"confirmed on its own. As {readings.role_line_words(role, purpose, ['clinical'])} it is "
+            f"not among the model's predictors, but the fit waits for it, since as {instead} it "
+            f"would be. Confirm it after reading why it was proposed, or record it as {instead}.")
+        assert "cannot set" not in lines[column].reason
+    # Silent where the role is a predictor's, or the proposal leaves the column out.
+    for column in ("bp_sys", "diet"):
+        assert lines[column].reason == readings.unsettled_message([column], quest.ROLE_WAITS_FOR)
+    assert "cannot set the model's predictors yet" in lines["cycle"].reason
 
 
 def test_an_exclusion_lines_reason_offers_putting_it_in_the_model():

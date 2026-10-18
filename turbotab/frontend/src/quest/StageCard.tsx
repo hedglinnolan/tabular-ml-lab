@@ -194,6 +194,7 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
       state={state}
       confirm={confirm}
       settledAs={settledText(log, l, noticings)}
+      swept={!!stage.sweep?.confirmed_by && l.label === "Confirm" && l.decision_id === stage.sweep.confirmed_by}
     />
   );
 
@@ -291,6 +292,7 @@ function Line({
   state,
   confirm = false,
   settledAs = null,
+  swept = false,
 }: {
   pid: string;
   line: QuestLine;
@@ -306,8 +308,13 @@ function Line({
   confirm?: boolean;
   /** A noticing another line's answer settled, as it reads then (`settledText`). */
   settledAs?: string | null;
+  /** Answered by its stage's "Confirm all", one record for every default it confirmed. */
+  swept?: boolean;
 }) {
-  const answer = line.decision_id ? answers.get(line.decision_id) : undefined;
+  // A default "Confirm all" answered reads as its own value, as stated (the engine's reason, which
+  // the sweep recorded), never the record's one sentence for all of them (the re-walk's N6).
+  const own = swept ? (line.reason ?? (state ? (DECLARATION_DEFAULTS[line.key]?.(state) ?? null) : null)) : null;
+  const answer = own ?? (line.decision_id ? answers.get(line.decision_id) : undefined);
   const testId = `line-${line.key}`;
   const id = idOf(line);
   if (expanded && answerable && !held && line.status !== "waiting") {

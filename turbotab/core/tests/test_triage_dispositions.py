@@ -6,8 +6,10 @@ out-of-range intake row, as "could bias the estimate, kept as a limitation". A n
 would not sign that: the first has a repair in Your data, the second is decided at the eligibility
 question in Who's in. The rules, in order: a blocker; a reparameterization of a column that is not
 focal (not what you study, not the outcome, not a declared modifier) changes no number here; a
-finding with a repair, or routed to a question (open or answered), is acted on where it is
-decided, naming the stage and the question; then the rules as they were.
+finding with a repair, or routed to a question still to come, is acted on where it is decided,
+naming the stage and the question, while one routed to a question already answered is left as it
+is, since that answer stands (the re-walk's N9, ruled 2026-10-18), its reason naming the question
+where changing the answer acts on it; then the rules as they were.
 
 The reparameterization rule rests on a theorem, not on the code: recoding a two-valued covariate
 (which value is 1) is an invertible linear map of the model matrix's column space, so the fitted
@@ -80,15 +82,36 @@ def test_sas_zeros_are_acted_on_by_their_repair_in_your_data():
     assert got.stage == "data" and not got.limitation
 
 
-def test_an_implausible_intake_routed_to_an_answered_question_is_acted_on_there():
+def test_an_implausible_intake_routed_to_an_answered_question_is_left_as_a_limitation():
+    """The re-walk's N9 (the orchestrator's ruling of 2026-10-18): where the question that decides a
+    noticing is already answered, that answer stands, so the triage proposes recording the noticing
+    as a limitation; acting on it, by changing that answer, is the alternative its reason names."""
     got = items(design())["pack::dietary::implausible_intake"]
-    assert (got.recommended, got.blocker) == ("act_on_it", False)
+    assert (got.recommended, got.blocker) == ("could_bias", False)
+    assert got.label == "Could bias the estimate"
     assert "Who's in" in got.reason and "the eligibility question" in got.reason
-    assert got.question == "exclusions" and got.stage == "whos_in" and not got.limitation
-    # Still to come, it is decided there too, and says so.
+    assert "already answered" in got.reason and "change that answer" in got.reason
+    assert got.question == "exclusions" and got.stage == "whos_in" and got.limitation
+    # Under Predict the same, said of the score.
+    predicted = items(design(purpose="prediction"))["pack::dietary::implausible_intake"]
+    assert (predicted.recommended, predicted.label) == ("could_bias", "Could bias the score")
+    assert "score" in predicted.reason
+    # Still to come, it is acted on there, and says so: nothing stands yet to keep.
     state = design()
     still = sweep.recommend(state, INTAKE, {"exclusions"})
     assert still[:2] == ("act_on_it", False) and "still to come" in still[2]
+
+
+def test_a_note_or_a_column_no_analysis_reads_routed_to_an_answered_question_changes_nothing():
+    """Left as it is under an answer that stands, a noticing is what rule 4 says of it: a note
+    (info) changes no number, nor does one about a column no analysis reads; neither is a
+    limitation."""
+    note = {**INTAKE, "severity": "info"}
+    got = sweep.recommend(design(), note, set())
+    assert got[0] == "no_change" and "already answered" in got[2]
+    unread = {**INTAKE, "affected_columns": ["SEQN"]}  # the identifier: in no model (ROLES)
+    got = sweep.recommend(design(), unread, set())
+    assert got[0] == "no_change" and "`SEQN`" in got[2] and "no analysis reads" in got[2]
 
 
 def test_recoding_a_covariate_that_is_not_focal_changes_no_number_here():

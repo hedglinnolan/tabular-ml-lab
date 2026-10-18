@@ -72,6 +72,7 @@ from turbotab.core.materiality import recommend as recommend_noticing
 from turbotab.core.quest import (
     CONFIRM,
     DECIDE,
+    DECLARATIONS,
     QUESTIONS,
     RECORD,
     STAGE_NAMES,
@@ -367,7 +368,8 @@ def sweep_of(stage: str, lines: Sequence[QuestLine], state: Any, log: _Log) -> S
         if line.status != "set_for_you":
             continue
         if (line.key, default_value(line)) in stated:
-            line.status, line.decision_id = "answered", writer
+            # Answered, it is open no more: no reopening of it stands (the re-walk's N7).
+            line.status, line.decision_id, line.reopened_by = "answered", writer, None
         elif held is not None:
             changed.append(line.key)
     if held is None:
@@ -511,21 +513,34 @@ def adjustment_only(state: Any, column: str) -> bool:
                    if slot not in WHAT_A_COLUMN_IS and slot != "modifications" and v is not None)
 
 
-def _decided_at(question: str, open_questions: set[str]) -> str:
+def _decided_at(question: str) -> str:
     from turbotab.core.voice import question_name
 
-    where = f"{question_name(question)} in {STAGE_NAMES[QUESTIONS[question].stage]}"
-    if question in open_questions:
-        return f"It is decided at {where}, still to come."
-    return (f"It is decided at {where}, already answered: change that answer there if it should "
-            f"act on this.")
+    return f"It is decided at {question_name(question)} in {STAGE_NAMES[QUESTIONS[question].stage]}"
+
+
+def _left_as_it_is(state: Any, finding: Mapping[str, Any]) -> tuple[Disposition, str]:
+    """What a finding left as it is means here (rule 4 of :func:`recommend`): a note (info) changes
+    no number, nor does a finding about columns no analysis reads; otherwise it concerns what the
+    analysis reads, and it could bias the estimate (under prediction, the score)."""
+    if str(finding.get("severity") or "info") == "info":
+        return "no_change", "A note about the data: no number rests on it."
+    columns = [str(c) for c in finding.get("affected_columns") or []]
+    read = [c for c in columns if analysis_reads(state, c)]
+    what = "score" if _get(state, "purpose") == "prediction" else "estimate"
+    if columns and not read:
+        return "no_change", f"It concerns only {_tick(columns)}, which no analysis reads."
+    about = f"It concerns {_tick(read)}, which the analysis reads" if read else \
+        "It concerns the whole table, which every number reads"
+    return "could_bias", f"{about}; left as it is, it could bias the {what}."
 
 
 def recommend(state: Any, finding: Mapping[str, Any], open_questions: set[str]
               ) -> tuple[Disposition, bool, str]:
     """The engine's recommended disposition for an open finding, whether it blocks, and why.
 
-    The rules, in order (WAVE_C6A_PLAN §3 row Q-a):
+    The rules, in order (WAVE_C6A_PLAN §3 row Q-a, with the re-walk's ruling of 2026-10-18 on
+    rule 3):
 
     1. A critical finding blocks or refuses part of the analysis (UNDERSTANDING_LAYER §2.2, T1):
        it is acted on first.
@@ -534,9 +549,13 @@ def recommend(state: Any, finding: Mapping[str, Any], open_questions: set[str]
        reach the focal estimate only as adjustment terms (:func:`adjustment_only`) changes no
        number here, exactly: the model matrix spans the same space either way
        (Frisch–Waugh–Lovell; ``materiality.invariance``).
-    3. A finding with a repair is decided in Your data, where the repair is chosen; one routed to
-       a question, open or answered, is decided at that question. Either way it is acted on
-       there, and the reason names the stage and the question.
+    3. A finding routed to a question still to come (``open_questions``: open, waiting, or not
+       listed yet with no answer) is acted on at that question. One routed to a question already
+       answered is left as it is, since that answer stands: rule 4 says what that means (a
+       limitation where it could bias), and its reason names the question, where changing the
+       answer is how to act on it instead (the re-walk's N9). A finding with a repair
+       is decided in Your data, where the repair is chosen: it is acted on there. The reason names
+       the stage and the question.
     4. A note (info) changes no number, nor does a finding about columns no analysis reads.
        Otherwise it concerns what the analysis reads, and left as it is it could bias the
        estimate (or, under prediction, the score): a limitation sentence, unless the person acts
@@ -545,26 +564,23 @@ def recommend(state: Any, finding: Mapping[str, Any], open_questions: set[str]
     if severity == "critical":
         return "act_on_it", True, ("It blocks or refuses part of the analysis, so it is resolved "
                                    "before any estimate.")
-    columns = [str(c) for c in finding.get("affected_columns") or []]
     recoded = reparameterized(state, finding)
     if recoded is not None:
         return "no_change", False, recoded.words
     repaired = _repaired(finding)
     routed = finding.get("routes_to")
     if routed in QUESTIONS:
-        return "act_on_it", False, _decided_at(str(routed), open_questions)
+        if routed in open_questions:
+            return "act_on_it", False, f"{_decided_at(str(routed))}, still to come."
+        disposition, why = _left_as_it_is(state, finding)
+        return disposition, False, (f"{_decided_at(str(routed))}, already answered, and that "
+                                    f"answer stands. {why} To act on it instead, change that "
+                                    f"answer there.")
     if repaired:
         return "act_on_it", False, (f"It is decided in {STAGE_NAMES['data']}, where its repair is "
                                     f"chosen.")
-    if severity == "info":
-        return "no_change", False, "A note about the data: no number rests on it."
-    read = [c for c in columns if analysis_reads(state, c)]
-    what = "score" if _get(state, "purpose") == "prediction" else "estimate"
-    if columns and not read:
-        return "no_change", False, f"It concerns only {_tick(columns)}, which no analysis reads."
-    about = f"It concerns {_tick(read)}, which the analysis reads" if read else \
-        "It concerns the whole table, which every number reads"
-    return "could_bias", False, f"{about}; left as it is, it could bias the {what}."
+    disposition, why = _left_as_it_is(state, finding)
+    return disposition, False, why
 
 
 def family_for(finding_id: str) -> Any:
@@ -602,8 +618,12 @@ def reparameterized(state: Any, finding: Mapping[str, Any]) -> Movement | None:
                       f"stay exactly as they are.")
 
 
-def _open_questions(lines: Iterable[QuestLine]) -> set[str]:
-    return {l.key for l in lines if l.source == "question" and l.status in ("open", "waiting")}
+def _open_questions(lines: Iterable[QuestLine], unlisted: Iterable[str] = ()) -> set[str]:
+    """The questions still to come: each listed open or waiting, and each the quest log does not
+    list yet with no answer (``unlisted``, ``quest.unlisted_to_come``: the event question while the
+    outcome is read). A question is already answered only where its own line says so."""
+    return {l.key for l in lines if l.source == "question" and l.status in ("open", "waiting")} \
+        | set(unlisted)
 
 
 def basis(disposition: str, reason: str) -> str:
@@ -703,7 +723,7 @@ def triage(state: Any, log: QuestLog, findings: Any, records: Sequence[Any] = ()
     stage = gate_stage(state)
     by_id = {str(f.get("id")): f for f in _get(findings, "findings") or []}
     lines = {l.key: (s.key, l) for s in log.stages for l in s.lines if l.source == "finding"}
-    open_questions = _open_questions(l for s in log.stages for l in s.lines)
+    open_questions = _open_questions((l for s in log.stages for l in s.lines), log.unlisted)
     held = _held_noticings(state)
     writer = _writer(_Log(list(records)), stage, "noticings") if held else None
     items, changed = [], []
@@ -750,16 +770,17 @@ def triage(state: Any, log: QuestLog, findings: Any, records: Sequence[Any] = ()
 
 
 def cover_noticings(placed: Sequence[tuple[str, QuestLine]], state: Any, log: _Log,
-                    findings: Any = None) -> None:
+                    findings: Any = None, unlisted: Iterable[str] = ()) -> None:
     """A noticing the triage disposed of (it changes no number here, or it is left as a
     limitation) is answered by the triage's record while that disposition stands (the triage
     still recommends what, and why, it did then); one to act on stays open for its decision.
-    A noticing that blocks, or is no longer among ``findings``, is never answered by it."""
+    A noticing that blocks, or is no longer among ``findings``, is never answered by it.
+    ``unlisted``: the questions still to come that no line lists, as :func:`triage` reads them."""
     held = _held_noticings(state)
     if not held:
         return
     by_id = {str(f.get("id")): f for f in _get(findings, "findings") or []}
-    open_questions = _open_questions(l for _s, l in placed)
+    open_questions = _open_questions((l for _s, l in placed), unlisted)
     writer = _writer(log, gate_stage(state), "noticings")
     for _stage, line in placed:
         if line.source != "finding" or line.status != "open" or line.key not in by_id:
@@ -768,7 +789,8 @@ def cover_noticings(placed: Sequence[tuple[str, QuestLine]], state: Any, log: _L
         if mine is None or mine.value not in ("no_change", "could_bias"):
             continue
         if _stands(mine, recommend(state, by_id[line.key], open_questions)):
-            line.status, line.decision_id = "answered", writer
+            # Answered, it is open no more: no reopening of it stands (the re-walk's N7).
+            line.status, line.decision_id, line.reopened_by = "answered", writer, None
 
 
 # ── "Confirm all": the record ────────────────────────────────────────────────
@@ -878,14 +900,19 @@ def _confirm_reads_the_sweep(d: ConfirmSweep, ctx: Any) -> ConfirmSweep:
 register_completion("confirm_sweep", _confirm_reads_the_sweep)
 
 
-def _plain(value: str) -> str:
-    text = value.strip().rstrip(".")
-    return text[:1].lower() + text[1:] if text[:1].isupper() and text[1:2].islower() else text
+def _line_name(key: str) -> str:
+    """A Confirm line's name as the quest log gives it: a declaration's own, else its question's."""
+    from turbotab.core.voice import question_name
+
+    declared = next((x for x in DECLARATIONS if x.kind == key), None)
+    return declared.name if declared is not None else question_name(key)
 
 
 def confirm_sentence(d: Any, state: Any = None, ctx: Any = None) -> str:
     """The record quotes what was confirmed, as it was stated (FOUNDATION §10: what the engine set
-    is recorded and visible)."""
+    is recorded and visible): each choice by its line's name, its value in quotes, since a value
+    may hold semicolons of its own (W1-W round 1, P3: "5-fold cross-validation" beside the in-fold
+    rules' three)."""
     name = STAGE_NAMES.get(d.stage, d.stage)
     if d.sweep == "noticings":
         counts = {k: sum(l.value == k for l in d.lines) for k in DISPOSITIONS}
@@ -896,7 +923,8 @@ def confirm_sentence(d: Any, state: Any = None, ctx: Any = None) -> str:
                 + "; ".join(f"{n} {words}" for n, words in said if n) + ".")
     if not d.lines:
         return f"Confirmed the choices set for you in {name}."
-    stated = "; ".join(_plain(l.value) for l in d.lines if not l.key.startswith("read_from_data"))
+    stated = "; ".join(f"{_line_name(l.key)}, “{l.value.strip().rstrip('.')}”" for l in d.lines
+                       if not l.key.startswith("read_from_data"))
     read = next((l for l in d.lines if l.key == "read_from_data"), None)
     if read is not None:
         n = len(read.value.split("; "))

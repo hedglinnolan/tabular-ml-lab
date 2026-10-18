@@ -522,11 +522,14 @@ def i2_registry_agrees_with_the_quest_log(snap: Snapshot) -> list[str]:
     reg = surfacing.registry()
     listed = {(line.source, line.key) for _stage, line in _lines(snap.log)}
     status = _status(snap.steps)
+    # A question asked only for some outcomes, waiting while the outcome's reading recomputes,
+    # is not listed until that reading says whether it is asked (the re-walk's N5).
+    unread = {s.key for s in snap.steps if quest.not_known_until_the_outcome_is_read(s, snap.state)}
     for key in QUESTION_KEYS:
         fires = reg[f"question:{key}"].fires(snap.state, facts)
         if fires != (status[key] != "not_applicable"):
             out.append(f"question {key} fires={fires} but the Router says {status[key]}")
-        if fires and ("question", key) not in listed:
+        if fires and ("question", key) not in listed and key not in unread:
             out.append(f"question {key} fires but is not listed")
     for decl in quest.DECLARATIONS:
         if decl.only_recorded:

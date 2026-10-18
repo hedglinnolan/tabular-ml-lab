@@ -91,7 +91,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Literal, Mapping, Sequence
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from turbotab.core.fit_press import FitLock
 
@@ -467,6 +467,50 @@ def _calibration_is_current(state: Any) -> bool:
     return spec is not None and changed is None
 
 
+def _sentence_case(text: str) -> str:
+    return text[:1].upper() + text[1:]
+
+
+def validation_stated(state: Any) -> str:
+    """The validation scheme set for the person, as the split holds it (else the scheme's
+    defaults): Models' Confirm line states it by its value, in the validation card's words."""
+    from turbotab.core.decisions import SetValidation
+
+    s = getattr(state, "split", None) or SetValidation()
+    if s.validation == "kfold":
+        scheme = f"{s.folds}-fold cross-validation"
+    elif s.validation == "repeated_kfold":
+        scheme = f"{s.folds}-fold cross-validation, repeated {s.repeats} times"
+    elif s.validation == "bootstrap":
+        scheme = f"bootstrap optimism correction over {s.n_boot} resamples"
+    else:
+        scheme = "internal–external validation" + (f" by {s.cluster}" if s.cluster else "")
+    nested = ", with a nested cross-validation interval" if s.nested_cv else ""
+    return _sentence_case(f"{scheme}{nested}.")
+
+
+# The levers card's words for each rule (src/quest/cards/predict/LeversCard.tsx), lowercased.
+LEVER_WORDS = {
+    "forms": {"none": "none", "rule": "spline by rule",
+              "inner_cv": "linear or spline, by inner cross-validation"},
+    "variance_filter": {"none": "none", "near_zero": "near-zero variance", "top": "most variable"},
+    "imbalance": {"none": "none", "weights": "class weights", "undersample": "undersampling",
+                  "oversample": "oversampling"},
+}
+
+
+def levers_stated(state: Any) -> str:
+    """The rules repeated inside each fold set for the person, as recorded (else the defaults: no
+    lever is none of the three): Models' Confirm line states them by their values."""
+    from turbotab.core.decisions import LeverSpec
+
+    r = getattr(state, "levers", None) or LeverSpec()
+    kept = f" ({r.keep} kept)" if r.variance_filter == "top" and r.keep is not None else ""
+    return (f"Predictor forms: {LEVER_WORDS['forms'][r.forms]}; variance filter: "
+            f"{LEVER_WORDS['variance_filter'][r.variance_filter]}{kept}; imbalance correction: "
+            f"{LEVER_WORDS['imbalance'][r.imbalance]}.")
+
+
 @dataclass(frozen=True)
 class Declaration:
     """A decision with no Router key that the quest log lists as a line (disagreement 11).
@@ -477,7 +521,8 @@ class Declaration:
     whether its recorded answer still stands (else it is asked again). ``only_recorded``: a For the
     record line, listed once something is recorded. ``own_record``: answered only by a record of its
     own kind, since its slot is another answer's too (the validation scheme rides in the split's
-    record until it is changed, P0.6)."""
+    record until it is changed, P0.6). ``stated``: the default a Confirm line sets for the person,
+    stated by its value (its ``reason``, which "Confirm all" records: the re-walk's N6)."""
 
     kind: str
     name: str
@@ -487,6 +532,7 @@ class Declaration:
     holds: Callable[[Any], bool] | None = None
     only_recorded: bool = False
     own_record: bool = False
+    stated: Callable[[Any], str] | None = None
 
     @property
     def place(self) -> Place:
@@ -522,7 +568,7 @@ DECLARATIONS: tuple[Declaration, ...] = (
                 lambda s, f: (s.purpose == "inference" and s.estimand is not None
                               and bool(s.estimand.family)), reads=("estimand",)),
     Declaration("set_levers", "the rules repeated inside each fold", _goal("prediction"),
-                reads=("models",)),
+                reads=("models",), stated=levers_stated),
     # An unpenalized regression family under prediction (the relation shrinkage_offered).
     Declaration("set_updating", "the shrinkage question",
                 lambda s, f: s.purpose == "prediction" and _shrinkage_offered(s),
@@ -532,7 +578,7 @@ DECLARATIONS: tuple[Declaration, ...] = (
     # P0.6 (disagreement 5): the scheme set for you with the draw, a Models Confirm line under
     # Predict; changing it records its own kind and keeps the draw.
     Declaration("set_validation", "the validation scheme", _goal("prediction"), reads=("split",),
-                own_record=True),
+                own_record=True, stated=validation_stated),
 )
 
 
@@ -1050,6 +1096,14 @@ class QuestLog(BaseModel):
     stages: list[QuestStage]
     kinds: dict[str, str]
     fit: FitLock | None = None  # Fit and the plan's lock (SIZING P0.8)
+    # The questions still to come that no line lists (:func:`unlisted_to_come`), which the triage
+    # reads as the quest log does (W1-W round 2, P1); never served.
+    _unlisted: frozenset[str] = PrivateAttr(default_factory=frozenset)
+
+    @property
+    def unlisted(self) -> frozenset[str]:
+        """The questions still to come that no line lists (:func:`unlisted_to_come`)."""
+        return self._unlisted
 
 
 def _get(obj: Any, name: str, default: Any = None) -> Any:
@@ -1461,6 +1515,12 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
               and not _holding(s, state)}
     if purpose == "prediction" and not drew_under_predict:
         asking.add("split")     # asked again below: no draw the person made under Predict
+    # The re-walk's N5: a question with no answer that waits only for the reading that says whether
+    # it is asked at all (``READ_BY_GATE``) is not known yet. A line after it waits for that
+    # reading, never for the question by name (a numeric outcome has no event question); and the
+    # questions asked only for some outcomes are not listed until the outcome's reading says.
+    unknown = {_get(s, "key"): list(_get(s, "waiting_on") or []) for s in steps
+               if _unknown_while_read(s, state)}
     lines = []
     for step in steps:
         key, status = _get(step, "key"), _get(step, "status")
@@ -1471,12 +1531,16 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
             continue
         if place is None or status == "not_applicable":
             continue
+        if not_known_until_the_outcome_is_read(step, state):
+            continue  # asked only for some outcomes: the outcome's reading says which (N5)
         label = place.label
         if status == "skipped":
             label = place.label if place.label != DECIDE else STATED.get(key, CONFIRM)
         waiting_on = list(_get(step, "waiting_on") or [])
         waiting_for, computing = [], waiting_on
-        if status == "waiting" and step is not first and waiting_on and waiting_on[0] in QUESTIONS:
+        if status == "waiting" and step is not first and waiting_on and waiting_on[0] in unknown:
+            computing = list(dict.fromkeys([*unknown[waiting_on[0]], *waiting_on[1:]]))
+        elif status == "waiting" and step is not first and waiting_on and waiting_on[0] in QUESTIONS:
             earlier = waiting_on[0]
             waiting_for = [Waiting(key=earlier, stage=QUESTIONS[earlier].stage,
                                    name=question_name(earlier))]
@@ -1732,22 +1796,37 @@ def role_line_reason(column: str, role: str, purpose: str | None = None,
     models; putting it in the model where it was proposed as left out and every press makes it a
     predictor (while it waits it is in no model); else recording it as each role a press records (a
     flag, a time, a design column or a cluster changes only to a covariate), in a role line's words
-    under the declared ``purpose`` for a project with these ``lenses``."""
+    under the declared ``purpose`` for a project with these ``lenses``.
+
+    A flag enters no model, waiting or confirmed, so its line never says it cannot set the
+    predictors (the re-walk's N2): what waiting holds back is the fit, which asks every role that
+    rode along (``readings.predictors_or_ask``), since recorded as a press's role instead the column
+    would enter the model. So for a time, a design column and a cluster, which also change only to
+    a predictor role (W1-W round 2, P4), in words true of each: it is not among the model's
+    predictors, never that it enters no model, since a cluster groups the clustered intervals and a
+    design column is the weight, strata or PSU a design-based answer reads. A column proposed as
+    left out keeps the fit's words, its clause offering to put it in the model."""
     from turbotab.core.readings import PREDICTOR_ROLES, role_line_words, unsettled_message
 
     choices = role_choices(role, purpose, lenses)
     if "excluded" in choices:
         return unsettled_message([column], ROLE_WAITS_FOR)
+    said = " or ".join(role_line_words(c, purpose, lenses) for c in choices)
     if role == "excluded" and choices and all(c in PREDICTOR_ROLES for c in choices):
         instead = ", or put it in the model"
     elif choices:
-        instead = ", or record it as " + " or ".join(role_line_words(c, purpose, lenses)
-                                                    for c in choices)
+        instead = f", or record it as {said}"
     else:
         instead = ""
+    waits = f", so it cannot set {ROLE_WAITS_FOR} yet."
+    if role not in (*PREDICTOR_ROLES, "excluded") and choices \
+            and all(c in PREDICTOR_ROLES for c in choices):
+        held, would = (("enters no model", "would") if role == "flag" else
+                       (f"is not among {ROLE_WAITS_FOR}", "would be"))
+        waits = (f". As {role_line_words(role, purpose, lenses)} it {held}, but the fit waits for "
+                 f"it, since as {said} it {would}.")
     return (f"`{column}` was proposed below high confidence and recorded with the other roles, not "
-            f"confirmed on its own, so it cannot set {ROLE_WAITS_FOR} yet. Confirm it after reading "
-            f"why it was proposed{instead}.")
+            f"confirmed on its own{waits} Confirm it after reading why it was proposed{instead}.")
 
 
 def role_line_text(column: str, role: str, other: str = "",
@@ -2044,6 +2123,9 @@ def _declaration_lines(state: Any, steps: Mapping[str, Any], log: _Log,
             id=place.item, key=decl.kind, source="declaration", label=place.label,
             name=decl.name, status=status, counted=decl.counted and place.label == DECIDE,
             order=place.order, decision_id=writer.id if answered and writer is not None else None,
+            # A default set for the person is stated by its value, which its sweep records (N6).
+            reason=(decl.stated(state) if decl.stated is not None and status == "set_for_you"
+                    else None),
             waiting_for=[Waiting(key=k, stage=QUESTIONS[k].stage, name=question_name(k))
                          for k in unanswered],
             reopened_by=reopened)))
@@ -2076,9 +2158,12 @@ def _finding_lines(state: Any, findings: Any, steps: Mapping[str, Any],
         if log is not None and not answered:
             reopened = _finding_withdrawal(log, str(f.get("id")))
             if (reopened is None and question is not None
-                    and (disposition is None or disposition.action == "deferred")):
+                    and (disposition is None or disposition.action == "deferred")
+                    and _settled_by_an_answer(log, f, question)):
                 # Decided by its question (held for it, or answered by it): a question whose
-                # answer was withdrawn or stopped holding is why it is open again.
+                # answer was withdrawn or stopped holding is why it is open again. Only an answer
+                # that settled it when given closed it; one no answer settled was open all along,
+                # so nothing reopened it (the re-walk's N7).
                 reopened = _reopened_by(log, answering_kinds(question), question_reads(question),
                                         answer_holds(question))
         lines.append((place.stage, QuestLine(
@@ -2088,6 +2173,23 @@ def _finding_lines(state: Any, findings: Any, steps: Mapping[str, Any],
             status="answered" if answered else "open", counted=decide, order=place.order,
             decision_id=answered_by, reopened_by=reopened)))
     return lines
+
+
+def _settled_by_an_answer(log: _Log, finding: Mapping[str, Any], question: str) -> bool:
+    """Whether an answer to ``question`` settled ``finding`` when it was given: on the log as it
+    stood just after that answer (one withdrawn since included), the answer matched it
+    (``repairs.matching_answer``: an eligibility rule names one of its columns, the roles give its
+    columns the role it asks for). A finding no answer ever settled was never closed."""
+    from turbotab.core.repairs import matching_answer
+
+    kinds = answering_kinds(question)
+    probe = {**finding, "routes_to": question}
+    for r in log.ordered:
+        if r.decision.kind in kinds:
+            state = log.state_at(r.seq)
+            if state is not None and matching_answer(probe, state):
+                return True
+    return False
 
 
 FINDING_DISPOSITIONS = ("apply_repair", "defer_finding", "dismiss_finding")
@@ -2166,6 +2268,39 @@ def _holding(step: Any, state: Any) -> bool:
     waiting_on = set(_get(step, "waiting_on") or ())
     return (state is not None and _get(step, "status") == "waiting" and bool(waiting_on)
             and waiting_on <= READ_BY_GATE.get(key, frozenset()) and answer_holds(key)(state))
+
+
+# The questions asked only for some outcomes (a two-level outcome's event, a time to event's
+# follow-up): while the outcome's reading recomputes, whether they are asked is not known.
+OUTCOME_KIND_QUESTIONS = frozenset({"event", "follow_up"})
+
+
+def not_known_until_the_outcome_is_read(step: Any, state: Any) -> bool:
+    """A question asked only for some outcomes (:data:`OUTCOME_KIND_QUESTIONS`) with no answer
+    standing, waiting while the outcome's reading (``target_info``) recomputes: whether it is
+    asked at all is that reading's, so the quest log does not list it yet (the re-walk's N5: a
+    numeric outcome has no event question)."""
+    return (_get(step, "key") in OUTCOME_KIND_QUESTIONS and _get(step, "status") == "waiting"
+            and "target_info" in (_get(step, "waiting_on") or ()) and not _holding(step, state))
+
+
+def unlisted_to_come(steps: Sequence[Any], state: Any) -> frozenset[str]:
+    """The questions still to come that the quest log does not list: an event or follow-up question
+    with no answer, waiting while the outcome is read (:func:`not_known_until_the_outcome_is_read`).
+    Not listed is not answered: a noticing such a question decides is still to come at it, never
+    left as it is under an answer that stands (the re-walk's N9 beside N5; W1-W round 2, P1)."""
+    return frozenset(str(_get(s, "key")) for s in steps
+                     if not_known_until_the_outcome_is_read(s, state))
+
+
+def _unknown_while_read(step: Any, state: Any) -> bool:
+    """A step with no answer standing that waits only for the reading that says whether it is
+    asked at all (``READ_BY_GATE``): what it will be is not known until that reading is back, so a
+    line after it waits for the reading, not for it (the re-walk's N5)."""
+    key = _get(step, "key")
+    waiting_on = set(_get(step, "waiting_on") or ())
+    return (_get(step, "status") == "waiting" and bool(waiting_on)
+            and waiting_on <= READ_BY_GATE.get(key, frozenset()) and not _holding(step, state))
 
 
 def _frontier(steps: Sequence[Any], stages: Mapping[str, Any],
@@ -2346,7 +2481,8 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     _reopened_only_if_complete(placed, log)
     _hold_the_families(placed)
     sweeps.weigh(placed, state, facts)
-    sweeps.cover_noticings(placed, state, log, findings)
+    unlisted = unlisted_to_come(steps, state)
+    sweeps.cover_noticings(placed, state, log, findings, unlisted)
     frontier = _frontier(steps, stages, shown_at, fit, state)
     # Under Estimate and Describe the exhibits are Results' objectives, none placed yet (C7a adds
     # placement): Results reads 0 of N, and Write-up is not reached until Results is placed.
@@ -2391,7 +2527,9 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
                                          served_exhibits(state))
         out.append(QuestStage(key=key, name=name, reached=reached, progress=progress, sweep=sweep,
                               lines=mine, reopened=reasons))
-    return QuestLog(stages=out, kinds=kind_stages(), fit=fit)
+    made = QuestLog(stages=out, kinds=kind_stages(), fit=fit)
+    made._unlisted = unlisted
+    return made
 
 
 __all__ = [
@@ -2405,6 +2543,7 @@ __all__ = [
     "exhibits_waiting",
     "asks", "explore_label", "explore_place", "finding_place", "fit_waits", "goal_of", "kind_place",
     "kind_stages", "noticing_place",
+    "OUTCOME_KIND_QUESTIONS", "not_known_until_the_outcome_is_read", "unlisted_to_come",
     "noticing_places", "noticing_stage", "noticing_stages", "quest_log", "question_reads",
     "ROLE_GROUP_ITEM", "record_stage", "record_steps", "role_choices", "role_group_head",
     "role_group_key", "role_group_name", "role_group_reason", "role_line_key", "role_line_reason",

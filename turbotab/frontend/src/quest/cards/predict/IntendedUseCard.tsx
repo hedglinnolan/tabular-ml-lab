@@ -1,6 +1,7 @@
 /**
- * `set_intended_use`: how the model will be used. Decision support or risk estimation, with the
- * subgroups whose performance is reported and the approach to fairness. The thresholds belong to
+ * `set_intended_use`: how the model will be used. Decision support or risk estimation (for a numeric
+ * outcome, estimating each person's outcome), with the subgroups whose performance is reported and
+ * the approach to fairness. The thresholds belong to
  * decision support alone, so a risk estimate never carries them. The engine refuses decision
  * support for an outcome whose task is known and not yes/no (models/decision_curve.py
  * `_intended_use_fits`: the task recorded, else the one the target stage detected), so for such an
@@ -37,6 +38,13 @@ import {
 const USE_NAMES: Record<IntendedUse["use"], string> = {
   risk_estimation: "Risk estimation",
   decision_support: "Decision support",
+};
+/** A numeric outcome's one use, named for what it is, as the engine's record says it
+ *  (models/decision_curve.py `intended_use_sentence`: "declared for estimating each person's
+ *  outcome"): it estimates each person's outcome, not a risk (the re-walk's N1). */
+const NUMERIC_USE_NAMES: Record<IntendedUse["use"], string> = {
+  ...USE_NAMES,
+  risk_estimation: "Estimating each person's outcome",
 };
 const FAIRNESS_NAMES: Record<IntendedUse["fairness"], string> = {
   subgroup_performance: "Subgroup performance",
@@ -195,7 +203,7 @@ function Body({
         field="use"
         legend="Use"
         values={uses}
-        names={USE_NAMES}
+        names={card.task === "regression" ? NUMERIC_USE_NAMES : USE_NAMES}
         offerOf={offerOf}
         recorded={on?.use ?? null}
         testId="options-use"
