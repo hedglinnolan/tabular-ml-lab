@@ -8,7 +8,8 @@ its claims render (``test_claims_frozen.py``), and :func:`write_history` writes 
 generator does, so meta-test 8 has the grade lines it reads. The predicates below are real
 functions, named as ``"module:function"`` strings, so a regime check imports them as it would an
 engine predicate. :func:`swarm` is a claim the research swarm proposed, as it enters: every part
-unsupported.
+unsupported. :func:`bound` binds each referee and basis audit a planted claim names to its part as
+it stands, as a promotion records them.
 
 This module holds no test; the claims tests import it.
 """
@@ -18,8 +19,8 @@ import dataclasses
 from pathlib import Path
 from typing import Any
 
-from turbotab.core.claims import (Basis, Claim, Fires, Param, Part, Regime, Registry, Silent,
-                                  frozen_text)
+from turbotab.core.claims import (Audit, Basis, Claim, Fires, Param, Part, Regime, Registry,
+                                  Silent, checked, frozen_text)
 
 HERE = "turbotab.core.tests.test_claims_fixtures"
 
@@ -130,6 +131,23 @@ def swarm(**over: Any) -> Claim:
     base = rule(id="planted.swarm_found", origin="swarm", author="theorist A",
                 parts=(Part("value", grade="unsupported"),))
     return dataclasses.replace(base, **over)
+
+
+def bound(c: Claim) -> Claim:
+    """``c`` with each referee that names no grade given its part's, and each referee and basis
+    audit that names no fingerprint given its part's as it stands (``claims.checked``), as a
+    promotion records them; a grade or fingerprint already named is kept, so a planted claim can
+    name a stale one."""
+    parts = []
+    for p in c.parts:
+        now = checked(c, p)
+        referees = tuple(dataclasses.replace(r, grade=r.grade or p.grade, checked=r.checked or now)
+                         for r in p.referees)
+        audit = p.audited_by
+        if isinstance(audit, Audit) and not audit.checked:
+            audit = dataclasses.replace(audit, checked=now)
+        parts.append(dataclasses.replace(p, referees=referees, audited_by=audit))
+    return dataclasses.replace(c, parts=tuple(parts))
 
 
 def write_frozen(reg: Registry) -> Registry:

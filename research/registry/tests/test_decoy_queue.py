@@ -7,7 +7,9 @@ them in a grading queue, and the false-promotion rate of the two-referee gate ov
   merits fields, keeps each decoy out of its sibling's batch, and seals its key by its SHA-256.
 * The score's rate is the share of false decoys the gate promoted, its Wilson interval
   statsmodels' own; the gate is the registry's (``turbotab.core.claims.referee_gate``), so an
-  author's or a fork's verdict does not count, and one referee who does not uphold blocks.
+  author's or a fork's verdict does not count, and one referee who does not uphold blocks. The
+  rate is given only once every false decoy is decided (two referees who count upheld it, or one
+  who counts did not): while any is undecided it is refused, naming them, and the command exits 1.
 * Scored on the claims backtest's own key and verdicts, it gives what the backtest's
   ``score.py`` reported on 2026-10-15 (``notes/claims-backtest/key/score_report.json``).
 * The tool reads and writes only the paths it is given.
@@ -236,11 +238,12 @@ def test_the_rate_is_the_share_of_false_decoys_promoted_and_its_interval_statsmo
     promoted = {f"D-{i}" for i in range(k)} | {f"R-{i}" for i in range(4)}
     report = decoy_queue.score(key, _votes(key, ["referee A", "referee B"], promoted))
     fp = report["false_promotion"]
-    assert (fp["promoted"], fp["decoys"], fp["rate"]) == (k, n, k / n)
+    assert (fp["promoted"], fp["decoys"], fp["decided"], fp["rate"]) == (k, n, n, k / n)
+    assert fp["undecided"] == [] and fp["refused"] is None
     lo, hi = proportion_confint(k, n, alpha=0.05, method="wilson")
     assert fp["wilson_95"] == pytest.approx([lo, hi], abs=1e-12)
     assert fp["rule_of_three_95"] is None
-    assert report["real"] == {"candidates": 4, "promoted": 4}
+    assert report["real"] == {"candidates": 4, "promoted": 4, "undecided": 0}
 
 
 def test_none_promoted_reports_the_rule_of_three_and_statsmodels_upper_bound():
@@ -281,9 +284,80 @@ def test_vacuous_decoys_are_left_out_of_the_rate_and_missing_verdicts_are_named(
     votes["D-1"] = votes["D-1"][:1]
     report = decoy_queue.score(key, votes)
     assert report["queue"]["false_decoys"] == 2 and report["queue"]["vacuous_decoys"] == 2
-    assert report["false_promotion"]["promoted"] == 1, "D-1 has one referee, so is not promoted"
-    assert report["vacuous"] == {"decoys": 2, "promoted": 2}
+    fp = report["false_promotion"]
+    assert (fp["decoys"], fp["decided"], fp["promoted"]) == (2, 1, 1)
+    assert fp["undecided"] == ["D-1"], "D-1 has one referee, so is undecided, not unpromoted"
+    assert fp["rate"] is None and fp["wilson_95"] is None and fp["refused"]
+    assert report["vacuous"] == {"decoys": 2, "promoted": 2, "undecided": 0}
     assert report["missing_verdicts"] == ["D-1"]
+
+
+# The verifier's case (RG-3): ten false decoys, of which referees A and B both upheld two and
+# gave no verdict on the rest. Each case is the verdicts on the other eight.
+REST = {
+    "none": [],
+    "one referee's uphold": [("referee A", "upheld", "")],
+    "two upholds, one of them a fork's": [("referee A", "upheld", ""),
+                                          ("referee B", "upheld", "theorist A")],
+    "two upholds, one of them the author's": [("referee A", "upheld", ""),
+                                              ("theorist A", "upheld", "")],
+}
+
+
+@pytest.mark.parametrize("case", sorted(REST))
+def test_the_rate_is_refused_while_any_false_decoy_is_undecided(case):
+    key = _key(10, n_real=0)
+    votes = {f"D-{i}": [Referee("referee A", "upheld"), Referee("referee B", "upheld")]
+             for i in range(2)}
+    votes.update({f"D-{i}": [Referee(*v) for v in REST[case]] for i in range(2, 10)})
+    report = decoy_queue.score(key, votes)
+    fp = report["false_promotion"]
+    assert (fp["decoys"], fp["decided"], fp["promoted"]) == (10, 2, 2)
+    assert fp["undecided"] == [f"D-{i}" for i in range(2, 10)]
+    assert fp["rate"] is None and fp["wilson_95"] is None and fp["rule_of_three_95"] is None
+    lines = decoy_queue.summary(report)
+    rate = next(x for x in lines if x.startswith("false-promotion rate"))
+    assert rate.startswith("false-promotion rate refused: 8 of 10 false decoys are undecided")
+    assert "%" not in rate and "D-2" in rate
+
+
+DECIDING = {
+    # the verdicts on each of the eight, and how many of the ten the gate then promotes
+    "two referees who count uphold": ([("referee A", "upheld", ""), ("referee B", "upheld", "")],
+                                      10),
+    "two referees who count do not": ([("referee A", "not_upheld", ""),
+                                       ("referee B", "not_upheld", "")], 2),
+    "one who counts does not, alone": ([("referee A", "not_upheld", "")], 2),
+    "one who counts does not, beside a fork's uphold": ([("referee A", "not_upheld", ""),
+                                                         ("referee B", "upheld", "theorist A")],
+                                                        2),
+}
+
+
+@pytest.mark.parametrize("case", sorted(DECIDING))
+def test_the_rate_is_given_once_every_false_decoy_is_decided(case):
+    """The other side: two upholds that count decide a decoy promoted, and one dissent that counts
+    decides it not, whatever else is missing; with all ten decided, the rate is k of 10."""
+    rest, k = DECIDING[case]
+    key = _key(10, n_real=0)
+    votes = {f"D-{i}": [Referee("referee A", "upheld"), Referee("referee B", "upheld")]
+             for i in range(2)}
+    votes.update({f"D-{i}": [Referee(*v) for v in rest] for i in range(2, 10)})
+    fp = decoy_queue.score(key, votes)["false_promotion"]
+    assert (fp["decided"], fp["undecided"], fp["refused"]) == (10, [], None)
+    assert (fp["promoted"], fp["rate"]) == (k, k / 10)
+    lo, hi = proportion_confint(k, 10, alpha=0.05, method="wilson")
+    assert fp["wilson_95"] == pytest.approx([lo, hi], abs=1e-12)
+
+
+def test_a_real_candidate_left_undecided_is_counted_apart(tmp_path):
+    key = _key(1, n_real=3)
+    votes = _votes(key, ["referee A", "referee B"])
+    votes["R-2"] = votes["R-2"][:1]
+    report = decoy_queue.score(key, votes)
+    assert report["real"] == {"candidates": 3, "promoted": 2, "undecided": 1}
+    assert "real candidates promoted: 2 of the 2 decided; 1 undecided" in decoy_queue.summary(
+        report)
 
 
 def test_the_backtest_s_own_key_and_verdicts_give_the_backtest_s_reported_gate():
@@ -302,10 +376,23 @@ def test_the_backtest_s_own_key_and_verdicts_give_the_backtest_s_reported_gate()
     for name in ("opus", "sonnet"):
         assert report["single_referee"][name]["upheld_false_decoys"] == gate[f"single_{name}_passed"]
     both_true = sum(reported[f"real_{s}"]["both_true"] for s in ("random", "tier2", "targeted"))
-    assert report["real"] == {"candidates": 117, "promoted": both_true}
+    assert report["real"] == {"candidates": 117, "promoted": both_true, "undecided": 0}
+    assert (fp["decided"], fp["undecided"], fp["refused"]) == (gate["false_decoys"], [], None)
     assert report["vacuous"]["decoys"] == len(reported["vacuous"])
     assert report["missing_verdicts"] == reported["missing_merits"] == []
     assert report["authors_recorded"] is False
+
+
+# ── the candidates ───────────────────────────────────────────────────────────────────────────
+
+def test_a_candidate_gives_the_parts_its_claim_asserts_and_not_one_retired():
+    from turbotab.core.claims import Basis, Part, Registry
+    from turbotab.core.tests.test_claims_fixtures import rule
+
+    claim = rule(parts=(Part("value", "judgment", Basis(reason="a planted judgment")),
+                        Part("scope", "retired", graded_by="a domain reviewer, 2026-10-19")))
+    [row] = decoy_queue.registry_candidates(Registry([claim]))
+    assert row["claimed_basis"] == "value (judgment): a planted judgment"
 
 
 # ── the command line, end to end ─────────────────────────────────────────────────────────────
@@ -334,3 +421,30 @@ def test_the_command_line_builds_a_queue_from_the_registry_and_prints_its_rate(t
     assert "real candidates promoted: 27 of 27" in printed
     saved = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
     assert saved["false_promotion"]["rate"] == pytest.approx(1 / 6)
+
+
+def test_the_command_line_refuses_the_rate_and_exits_1_while_a_false_decoy_is_undecided(
+        tmp_path, capsys):
+    """Referee A upholds one false decoy and referee B gives it no verdict, so nothing decides
+    it: the report is written, with its rate refused, and the score exits 1."""
+    cands, out = tmp_path / "candidates.jsonl", tmp_path / "queue"
+    assert decoy_queue.main(["candidates", "--out", str(cands)]) == 0
+    assert decoy_queue.main(["build", "--candidates", str(cands), "--out", str(out),
+                             "--decoys", "6", "--seed", "3"]) == 0
+    key = json.loads((out / "key.json").read_text(encoding="utf-8"))
+    skipped = next(it["rid"] for it in key["items"] if it["kind"] == "decoy")
+    for name in ("A", "B"):
+        (tmp_path / f"{name}.jsonl").write_text("".join(
+            json.dumps({"id": it["rid"], "truth": "true" if it["rid"] == skipped else "false"})
+            + "\n" for it in key["items"] if not (name == "B" and it["rid"] == skipped)),
+            encoding="utf-8")
+    capsys.readouterr()
+    assert decoy_queue.main(["score", "--key", str(out / "key.json"),
+                             "--verdicts", f"referee A={tmp_path}/A.jsonl",
+                             "--verdicts", f"referee B={tmp_path}/B.jsonl",
+                             "--report", str(tmp_path / "report.json")]) == 1
+    printed = capsys.readouterr().out
+    assert f"false-promotion rate refused: 1 of 6 false decoys are undecided ({skipped})" in printed
+    saved = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
+    assert saved["false_promotion"]["rate"] is None
+    assert saved["false_promotion"]["undecided"] == [skipped]

@@ -15,25 +15,36 @@ that break and keep it.
    test its file defines, whether or not the claim is built yet); above judgment its grader (the
    "<who>" of "<who>, YYYY-MM-DD") is not its author, compared as ``_schema.same_person`` does,
    which refuses in doubt, and its claim has regime predicates (§2.2). A part that names a basis
-   audit (who checked its basis against the source, and when) names someone other than its author.
+   audit (who checked its basis against the source, and when) names someone other than its
+   author, who checked the part as it stands (its fingerprint, ``_schema.checked``). A retired
+   part asserts nothing, so has no requirement.
 4. :func:`none_proposed_renders` — no built claim falls back to one that cannot render, and no
    proposed or retracted claim's sentence is among the strings the app shows.
 5. :func:`no_conflicts` — no two live claims on one decision in overlapping regimes supersede one
    another or give different verdicts.
 6. :func:`digit_gate` — every digit in a claim template outside its placeholders, and in every
    string the caller passes, is a placeholder, inside a citation, or allowlisted with its tag (§3).
-7. :func:`swarm_gate` — a part of a live claim the research swarm proposed is graded by someone
-   other than its author once it leaves unsupported; above judgment it passes the two-referee gate
-   (``_schema.referee_gate``: two distinct referees who upheld it, neither its author nor a fork,
-   and none who counts against it), meets its grade's own requirement (§2.4, as meta-test 3 reads
-   it) and names a basis audit by someone other than its author (§8).
+7. :func:`swarm_gate` — a part of a live claim the research swarm proposed is graded (or retired)
+   by someone other than its author once it leaves unsupported; above judgment it passes the
+   two-referee gate (``_schema.referee_gate``: two distinct referees who upheld it, neither its
+   author nor a fork, and none who counts against it), meets its grade's own requirement (§2.4, as
+   meta-test 3 reads it) and names a basis audit by someone other than its author (§8). A referee
+   or the audit counts only where it was on the part as it stands: the referee judged the grade
+   the part holds, and each read the part's fingerprint now (``_schema.checked``). An uphold and
+   the audit also count only where dated no earlier than the day the part took its previous
+   grade, read from the history, while a dissent on the part as it stands blocks whenever it was
+   given; where the history holds no line for the part, nothing dates that day, and the gate
+   refuses.
 8. :func:`grades_recorded` — every part's grade is the grade of its last line in the history
    (``history.jsonl``, which the generator writes): a grade moves only through a line with its
    date, its grader and its reason, which says the grade it moved from, downgrades included. Each
-   grade line reads so, the first for a part moving from no grade; a swarm claim's every part
-   entered unsupported; and a claim whose first version line the history holds as the swarm's is
-   still the swarm's, so no relabeling takes it out of meta-test 7's gate (a version written
-   before claims named an origin holds none, and is no swarm's).
+   grade line reads so, the first for a part moving from no grade, and each after it is dated no
+   earlier than the line before it and names a grader and date other than that line's; a swarm
+   claim's every part entered unsupported; and a claim whose first version line the history holds
+   as the swarm's is still the swarm's, so no relabeling takes it out of meta-test 7's gate (a
+   version written before claims named an origin holds none, and is no swarm's). A part the
+   history holds that its claim no longer names left it through a line that retires it, never
+   dropped or renamed; a swarm claim's part is retired by someone other than its author.
 """
 from __future__ import annotations
 
@@ -48,8 +59,9 @@ from typing import Any, Iterable, Mapping
 from turbotab.core.claims._digits import (CITATIONS, citation_keys, citation_spans, load_allowlist,
                                           stray_digits)
 from turbotab.core.claims._registry import GENERATOR, Registry, tree
-from turbotab.core.claims._schema import (ABOVE_JUDGMENT, GRADED_FORM, GRADES, Claim, fill, grader,
-                                          literal, referee_gate, same_person)
+from turbotab.core.claims._schema import (ABOVE_JUDGMENT, GRADED_FORM, GRADES, RETIRED, Audit,
+                                          Claim, checked, dated, fill, grader, literal,
+                                          referee_gate, same_person)
 
 _NEVER_RUNS = "is marked to skip or xfail unconditionally, so it never asserts"
 
@@ -119,8 +131,13 @@ def no_self_pinning(reg: Registry) -> list[str]:
     return out
 
 
-def _grade_unmet(reg: Registry, c: Claim, part, keys: frozenset[str]) -> str:
+def _grade_unmet(reg: Registry, c: Claim, part, keys: frozenset[str],
+                 with_audit: bool = True) -> str:
+    """What the part's grade lacks of its requirement and its grader, and, unless ``with_audit``
+    is False (meta-test 7 reads the audit itself), of a basis audit it names; "" where nothing."""
     b, grade = part.basis, part.grade
+    if grade == RETIRED:
+        return ""
     if grade == "proved":
         if b.derivation and not (reg.root / b.derivation).is_file():
             return f"its derivation {b.derivation} does not exist"
@@ -155,13 +172,17 @@ def _grade_unmet(reg: Registry, c: Claim, part, keys: frozenset[str]) -> str:
         if same_person(who, c.author):
             return (f"{grade} is graded by {who!r}, which may be its author {c.author!r}; above "
                     "judgment, someone else grades")
-    if part.audited_by:
-        auditor = grader(part.audited_by)
+    audit = part.audited_by
+    if with_audit and audit:
+        auditor = grader(audit.who) if isinstance(audit, Audit) else None
         if auditor is None:  # registration refuses it, so only a claim set past it
-            return f"its basis audit reads {GRADED_FORM}, not {part.audited_by!r}"
+            return f"its basis audit is an Audit that reads {GRADED_FORM}, not {audit!r}"
         if same_person(auditor, c.author):
             return (f"its basis audit is by {auditor!r}, which may be its author {c.author!r}; "
                     "someone else checks a basis against its source")
+        if audit.checked != checked(c, part):
+            return (f"its basis audit read another version of the part, since changed (its "
+                    "sentence, regime, decision, grade or basis): re-audit it, or name no audit")
     return ""
 
 
@@ -263,9 +284,22 @@ def digit_gate(reg: Registry, strings: Iterable[tuple[str, str]] = (),
     return out
 
 
-def swarm_gate(reg: Registry, citations: Path = CITATIONS) -> list[str]:
-    """Meta-test 7."""
+def _since(held: list[dict[str, Any]], grade: str) -> str | None:
+    """The day a part took the grade before ``grade``, from its grade lines ``held``, oldest
+    first: the date of the line before its last where the last records ``grade``, or of its last
+    where ``grade`` is not recorded yet. None where the history holds no line for the part, or the
+    line's date is no day."""
+    if not held:
+        return None
+    line = held[-2] if held[-1]["grade"] == grade and len(held) > 1 else held[-1]
+    return line["date"] if _a_day(line["date"]) else None
+
+
+def swarm_gate(reg: Registry, citations: Path = CITATIONS,
+               history: Path | None = None) -> list[str]:
+    """Meta-test 7. ``history`` is the registry's own (``Registry.history_path``) unless given."""
     keys = citation_keys(citations)
+    held = _read_history(Path(history) if history is not None else reg.history_path).parts
     out = []
     for c in reg:
         if c.origin != "swarm" or c.retracted:
@@ -273,25 +307,44 @@ def swarm_gate(reg: Registry, citations: Path = CITATIONS) -> list[str]:
         for part in c.parts:
             if part.grade == "unsupported":
                 continue
-            where = f"{c.id}: part {part.name!r} is graded {part.grade}"
+            where = (f"{c.id}: part {part.name!r} is retired" if part.grade == RETIRED
+                     else f"{c.id}: part {part.name!r} is graded {part.grade}")
             who = grader(part.graded_by or c.graded_by)
             if who is None or same_person(who, c.author):
                 named = ("it names no grader" if who is None
                          else f"{who!r}, its grader, may be its author")
-                out.append(f"{where}, but a swarm claim's part leaves unsupported only as graded "
-                           f"by someone other than its author, {GRADED_FORM}: {named}")
+                leaves = ("is retired only by" if part.grade == RETIRED
+                          else "leaves unsupported only as graded by")
+                out.append(f"{where}, but a swarm claim's part {leaves} someone other than its "
+                           f"author, {GRADED_FORM}: {named}")
             if part.grade not in ABOVE_JUDGMENT:
                 continue
-            out += [f"{where}: {lack}" for lack in referee_gate(part.referees, c.author)]
-            unmet = _grade_unmet(reg, c, part, keys)
+            now = checked(c, part)
+            since = _since([r for _, r in held.get((c.id, part.name), [])], part.grade)
+            if since is None:
+                out.append(f"{where}, but the history holds no line for it, so nothing dates the "
+                           "day it took its previous grade, from which its referees and basis "
+                           f"audit count: a swarm claim's part enters unsupported through "
+                           f"{GENERATOR}, and is graded after")
+            out += [f"{where}: {lack}"
+                    for lack in referee_gate(part.referees, c.author, part.grade, now, since)]
+            unmet = _grade_unmet(reg, c, part, keys, with_audit=False)
             if unmet:
                 out.append(f"{where}, but its grade's own requirement is unmet: {unmet}")
-            auditor = grader(part.audited_by) if part.audited_by else None
-            if auditor is None:
-                out.append(f"{where}, but it names no basis audit, {GRADED_FORM}: who checked its "
-                           "basis against the source, and when")
-            elif same_person(auditor, c.author):
-                out.append(f"{where}, but its basis audit is by {auditor!r}, who may be its author")
+            audit = part.audited_by if isinstance(part.audited_by, Audit) else None
+            when = dated(audit.who) if audit is not None else None
+            if when is None:
+                out.append(f"{where}, but it names no basis audit, an Audit reading {GRADED_FORM}: "
+                           "who checked its basis against the source, and when")
+            elif same_person(when[0], c.author):
+                out.append(f"{where}, but its basis audit is by {when[0]!r}, who may be its "
+                           "author")
+            elif audit.checked != now:
+                out.append(f"{where}, but its basis audit read another version of it, since "
+                           "changed (its sentence, regime, decision, grade or basis)")
+            elif since is not None and when[1] < since:
+                out.append(f"{where}, but its basis audit is dated {when[1]}, before {since}, "
+                           "when it took its previous grade")
     return out
 
 
@@ -310,70 +363,122 @@ def _a_day(text: str) -> bool:
     return True
 
 
-def _line_faults(n: int, record: dict[str, Any], prev: dict[str, Any] | None) -> list[str]:
-    """What is wrong with grade line ``n``, given the part's line before it."""
-    where = f"{record['id']}: part {record['part']!r}: history line {n}"
-    out = []
-    if record["grade"] not in GRADES:
-        out.append(f"{where} grades it {record['grade']!r}, not one of {GRADES}")
-    if not _a_day(record["date"]):
-        out.append(f"{where} is dated {record['date']!r}, not YYYY-MM-DD")
-    if not record["grader"].strip():
-        out.append(f"{where} names no grader")
-    if not record["reason"].strip():
-        out.append(f"{where} gives no reason")
-    if prev is None and record["was"]:
-        out.append(f"{where} says it moved from {record['was']}, but it is the part's first line")
-    elif prev is not None and record["was"] != prev["grade"]:
-        out.append(f"{where} says it moved from {record['was'] or 'no grade'}, but the line "
-                   f"before it graded it {prev['grade']}")
-    elif record["grade"] == record["was"]:
-        out.append(f"{where} moves it to the grade it moved from, {record['grade']}")
-    return out
+class _History:
+    """What a history holds: each part's grade lines with their line numbers, oldest first, in
+    the order the history first names each part; each claim's origin in its first version line;
+    and what does not read, one sentence each. ``missing`` is the path where there is none."""
+
+    def __init__(self) -> None:
+        self.parts: dict[tuple[str, str], list[tuple[int, dict[str, Any]]]] = {}
+        self.born: dict[str, str] = {}
+        self.unread: list[str] = []
+        self.missing: Path | None = None
 
 
-def grades_recorded(reg: Registry, history: Path | None = None) -> list[str]:
-    """Meta-test 8. ``history`` is the registry's own (``Registry.history_path``) unless given."""
-    path = Path(history) if history is not None else reg.history_path
+def _read_history(path: Path) -> _History:
+    h = _History()
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
-        return [f"there is no history at {path}: run {GENERATOR}, which records each part's grade "
-                "with its date, grader and reason"]
-    out: list[str] = []
-    first: dict[tuple[str, str], dict[str, Any]] = {}
-    last: dict[tuple[str, str], dict[str, Any]] = {}
-    born: dict[str, str] = {}  # each claim's origin in its first version line
+        h.missing = path
+        return h
     for n, raw in enumerate(text.splitlines(), 1):
         if not raw.strip():
             continue
         try:
             record = json.loads(raw)
         except ValueError:
-            out.append(f"history line {n} does not read as JSON")
+            h.unread.append(f"history line {n} does not read as JSON")
             continue
         if not isinstance(record, dict):
-            out.append(f"history line {n} is not one JSON object")
+            h.unread.append(f"history line {n} is not one JSON object")
             continue
         if "part" not in record:  # a version line
             claim = record.get("claim")
             if isinstance(record.get("id"), str) and isinstance(claim, dict):
-                born.setdefault(record["id"], str(claim.get("origin") or ""))
+                h.born.setdefault(record["id"], str(claim.get("origin") or ""))
             continue
         lacking = [k for k in GRADE_LINE if not isinstance(record.get(k), str)]
         if lacking:
-            out.append(f"history line {n}: a grade line gives {', '.join(GRADE_LINE)} as text, "
-                       f"and it lacks {', '.join(lacking)}")
+            h.unread.append(f"history line {n}: a grade line gives {', '.join(GRADE_LINE)} as "
+                            f"text, and it lacks {', '.join(lacking)}")
             continue
-        key = (record["id"], record["part"])
-        out += _line_faults(n, record, last.get(key))
-        first.setdefault(key, record)
-        last[key] = record
+        h.parts.setdefault((record["id"], record["part"]), []).append((n, record))
+    return h
+
+
+def _line_faults(n: int, record: dict[str, Any], prev: dict[str, Any] | None) -> list[str]:
+    """What is wrong with grade line ``n``, given the part's line before it."""
+    where = f"{record['id']}: part {record['part']!r}: history line {n}"
+    out = []
+    if record["grade"] not in GRADES and record["grade"] != RETIRED:
+        out.append(f"{where} grades it {record['grade']!r}, not one of {GRADES}, or {RETIRED!r}")
+    if not _a_day(record["date"]):
+        out.append(f"{where} is dated {record['date']!r}, not YYYY-MM-DD")
+    if not record["grader"].strip():
+        out.append(f"{where} names no grader")
+    if not record["reason"].strip():
+        out.append(f"{where} gives no reason")
+    if prev is None:
+        if record["was"]:
+            out.append(f"{where} says it moved from {record['was']}, but it is the part's first "
+                       "line")
+        elif record["grade"] == RETIRED:
+            out.append(f"{where} retires it, but it is the part's first line: a part is retired "
+                       "only once the history holds it")
+        return out
+    if record["was"] != prev["grade"]:
+        out.append(f"{where} says it moved from {record['was'] or 'no grade'}, but the line "
+                   f"before it graded it {prev['grade']}")
+    elif record["grade"] == record["was"]:
+        out.append(f"{where} moves it to the grade it moved from, {record['grade']}")
+    if _a_day(record["date"]) and _a_day(prev["date"]) and record["date"] < prev["date"]:
+        out.append(f"{where} is dated {record['date']}, before the line before it "
+                   f"({prev['date']})")
+    if (record["grader"], record["date"]) == (prev["grader"], prev["date"]):
+        out.append(f"{where} gives the grader and date of the line before it ({prev['grader']}, "
+                   f"{prev['date']}), so it names no one who made this change, or when")
+    return out
+
+
+def grades_recorded(reg: Registry, history: Path | None = None) -> list[str]:
+    """Meta-test 8. ``history`` is the registry's own (``Registry.history_path``) unless given."""
+    h = _read_history(Path(history) if history is not None else reg.history_path)
+    if h.missing is not None:
+        return [f"there is no history at {h.missing}: run {GENERATOR}, which records each part's "
+                "grade with its date, grader and reason"]
+    out: list[str] = list(h.unread)
+    faults: list[tuple[int, str]] = []
+    for lines in h.parts.values():
+        prev = None
+        for n, record in lines:
+            faults += [(n, f) for f in _line_faults(n, record, prev)]
+            prev = record
+    out += [f for _, f in sorted(faults, key=lambda x: x[0])]
+    first = {key: lines[0][1] for key, lines in h.parts.items()}
+    last = {key: lines[-1][1] for key, lines in h.parts.items()}
     for c in reg:
-        if born.get(c.id) == "swarm" and c.origin != "swarm":
+        if h.born.get(c.id) == "swarm" and c.origin != "swarm":
             out.append(f"{c.id}: the history first recorded it as the swarm's, but it now names "
                        f"its origin {c.origin}: a swarm claim stays the swarm's, and is graded "
                        "through meta-test 7's gate")
+        named = {p.name for p in c.parts}
+        swarm = c.origin == "swarm" or h.born.get(c.id) == "swarm"
+        for (id, name), lines in h.parts.items():
+            if id != c.id:
+                continue
+            if name not in named and lines[-1][1]["grade"] != RETIRED:
+                out.append(f"{c.id}: part {name!r} is in the history, last graded "
+                           f"{lines[-1][1]['grade']}, but the claim no longer names it, and no "
+                           "line retires it: a part is retired through a line with its date, "
+                           "grader and reason, never dropped or renamed, so name it retired, with "
+                           f"its dated grader and its reason, and run {GENERATOR}")
+            for n, record in lines:
+                if swarm and record["grade"] == RETIRED and same_person(record["grader"],
+                                                                        c.author):
+                    out.append(f"{c.id}: part {name!r}: history line {n} retires it by "
+                               f"{record['grader']!r}, who may be its author: a swarm claim's "
+                               "part is retired only by someone other than its author")
         for part in c.parts:
             key = (c.id, part.name)
             line = last.get(key)

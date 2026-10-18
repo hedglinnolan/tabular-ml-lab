@@ -25,10 +25,18 @@ the part's grade differs from its last line's, upgrades and downgrades alike, sa
 moved from. A line's grader and date are the "<who>, YYYY-MM-DD" of the part's grader in force;
 only a first line whose part names no dated grader (one its author graded judgment or unsupported)
 takes the author as its grader and the day it is recorded as its date (``--date``, today unless
-given). A change needs a dated grader and a reason in ``regraded`` other than the last line's: one
-without them is refused, and so is a swarm claim's part entering above unsupported; where any is
-refused, the generator writes nothing and it and ``--check`` exit 1. Meta-test 8 refuses a grade
-that differs from its part's last line.
+given). A change needs a dated grader, a grader and date other than the last line's (a grader in
+force left from the grade before is no record of who made this change, or when), a date no
+earlier than the last line's, and a reason in ``regraded`` other than the last line's.
+
+A part its sentence no longer asserts is graded ``retired`` (``claims.RETIRED``), a change like
+any other, and once its line is written the claim may leave it out; a part the history holds that
+the claim no longer names, and whose last line does not retire it, is dropped or renamed, and is
+refused. A part the history never recorded cannot enter retired, and a swarm claim's part is
+retired only by someone other than its author. A change without what it needs is refused, and so
+is a swarm claim's part entering above unsupported; where any is refused, the generator writes
+nothing and it and ``--check`` exit 1. Meta-test 8 refuses a grade that differs from its part's
+last line, and a part dropped without a line that retires it.
 
 ``turbotab/core/claims/status.json``, the frozen status file, holds each claim's id, derived status
 and content hash. The shipped app holds no tests, so a status cannot be derived there: a sentence
@@ -57,8 +65,9 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from turbotab.core import claims as registry_module
-from turbotab.core.claims import (FROZEN, GENERATOR, GRADED_FORM, GRADES, ORIGINS, Claim, Registry,
-                                  content, content_hash, dated, fill, frozen_records, frozen_text)
+from turbotab.core.claims import (FROZEN, GENERATOR, GRADED_FORM, GRADES, ORIGINS, RETIRED, Audit,
+                                  Claim, Registry, checked, content, content_hash, dated, fill,
+                                  frozen_records, frozen_text, same_person)
 from turbotab.core.claims import HISTORY as HISTORY_PATH
 
 REPO = Path(__file__).resolve().parents[3]
@@ -99,14 +108,23 @@ def _part(p: Any, c: Claim) -> str:
     basis += [f"test {code(t)}" for t in b.tests]
     basis += [f"held out on {h.fixture}: {h.rate:g} over {h.cases} cases" for h in b.heldout]
     grader = p.graded_by or c.graded_by or "not graded"
+    now = checked(c, p)
+    changed = ", on a version of the part since changed"
     checks = []
-    if p.audited_by:
-        checks.append(f"basis checked against its source by {p.audited_by}")
-    for verdict, label in (("upheld", "upheld by"), ("not_upheld", "not upheld by")):
-        who = [r.who + (f" (a fork of {r.fork_of})" if r.fork_of else "") for r in p.referees
-               if r.verdict == verdict]
-        if who:
-            checks.append(f"{label} {', '.join(who)}")
+    if isinstance(p.audited_by, Audit):
+        checks.append(f"basis checked against its source by {p.audited_by.who}"
+                      + ("" if p.audited_by.checked == now else changed))
+    groups: dict[tuple[str, bool, str], list[str]] = {}  # (verdict, read since, grade): who
+    for r in p.referees:
+        stale = r.checked != now
+        groups.setdefault((r.verdict, stale, r.grade), []).append(
+            r.who + (f" (a fork of {r.fork_of})" if r.fork_of else ""))
+    for verdict, label in (("upheld", "upheld"), ("not_upheld", "not upheld")):
+        for stale in (False, True):
+            for (v, s, grade), who in groups.items():
+                if (v, s) == (verdict, stale):
+                    checks.append(f"{label} as {grade} by {', '.join(who)}"
+                                  + (changed if stale else ""))
     if p.regraded:
         checks.append(f"regraded: {p.regraded}")
     return (f"  - {p.name}: *{p.grade}*, graded by {grader}"
@@ -183,13 +201,18 @@ def render(reg: Registry) -> str:
         "- **Origin** (" + ", ".join(f"*{o}*" for o in ORIGINS) + "): written by the engine's "
         "builders from its own code, registered for a finding an audit made, or proposed by the "
         "research swarm. A swarm claim enters with every part unsupported; each of its parts "
-        "leaves unsupported only as graded by someone other than its author, and rises above "
-        "judgment only once two distinct referees upheld it, neither its author nor a fork, and "
-        "someone other than its author checked its basis against the source.",
+        "leaves unsupported only as graded by someone other than its author. A swarm claim's "
+        "part rises above judgment only once two distinct referees, neither its author nor a "
+        "fork, upheld it at that grade, and someone other than its author checked its basis "
+        "against the source. Each of them read the part as it now stands (its sentence, regime, "
+        "decision, grade and basis), on or after the day it took its previous grade.",
         "- **Grade**: each part of a sentence is graded on its own (" + ", ".join(
             f"*{g}*" for g in GRADES) + ", strongest first), and the sentence shows its weakest "
         "part's. Above judgment, someone other than the author grades. A part's grade moves "
-        "only through a line of the history that gives its date, grader and reason.",
+        "only through a line of the history that gives its date, grader and reason. Each line "
+        "is dated no earlier than the line before it, with a grader or date other than that "
+        f"line's. A part the sentence no longer asserts is *{RETIRED}* through such a line, "
+        "never dropped.",
         "- **Status** is derived: *built* once every enforcer resolves and every test exists and "
         "is not marked to skip or xfail unconditionally, *ruled, not built* until then, as is a "
         "swarm claim with a part still unsupported; *retracted* is the only status anyone "
@@ -232,14 +255,31 @@ def grade_lines(reg: Registry, grades: list[dict[str, Any]],
     """The grade lines the history lacks, in id order, and the changes refused, one sentence each.
     ``today`` dates a first line whose part names no dated grader."""
     last = {(g["id"], g["part"]): g for g in grades}
+    held: dict[str, list[str]] = {}  # each claim's parts the history holds, as it first names them
+    for id, part in last:
+        held.setdefault(id, []).append(part)
     lines, refused = [], []
     for c in reg:
+        named = {p.name for p in c.parts}
+        for name in held.get(c.id, []):
+            gone = last[(c.id, name)]
+            if name not in named and gone["grade"] != RETIRED:
+                refused.append(f"{c.id}: part {name!r}, last graded {gone['grade']}, is in the "
+                               "history, but the claim no longer names it: a part is retired, "
+                               f"never dropped or renamed, so name it graded {RETIRED}, with its "
+                               "dated grader and its reason in regraded, until the history "
+                               "records that")
         for p in c.parts:
             prev = last.get((c.id, p.name))
             if prev is not None and prev["grade"] == p.grade:
                 continue
             graded = dated(p.graded_by or c.graded_by)
             if prev is None:
+                if p.grade == RETIRED:
+                    refused.append(f"{c.id}: part {p.name!r} is retired, but the history holds "
+                                   "no line for it: a part the history never recorded is left "
+                                   "out, not retired")
+                    continue
                 if c.origin == "swarm" and p.grade != "unsupported":
                     refused.append(f"{c.id}: part {p.name!r} is graded {p.grade}, but a swarm "
                                    "claim's part enters unsupported (R1_PLAN.md R1-G): register "
@@ -251,6 +291,17 @@ def grade_lines(reg: Registry, grades: list[dict[str, Any]],
                 missing = []
                 if graded is None:
                     missing.append(f"a dated grader, {GRADED_FORM}")
+                elif graded == (prev["grader"], prev["date"]):
+                    missing.append(f"a grader and date other than its last line's, "
+                                   f"{prev['grader']}, {prev['date']}, to say who made this "
+                                   "change and when")
+                elif graded[1] < prev["date"]:
+                    missing.append(f"a date no earlier than its last line's, {prev['date']}, not "
+                                   f"{graded[1]}")
+                elif (c.origin == "swarm" and p.grade == RETIRED
+                      and same_person(graded[0], c.author)):
+                    missing.append(f"a grader other than its author, not {graded[0]!r}: a swarm "
+                                   "claim's part is retired only by someone else")
                 if not p.regraded.strip() or p.regraded.strip() == prev["reason"]:
                     missing.append("a reason in its regraded other than its last line's")
                 if missing:

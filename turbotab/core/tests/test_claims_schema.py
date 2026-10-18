@@ -5,20 +5,26 @@ Each guard is tested both ways: the conforming planted claim registers, and the 
 field broken is refused, naming the field. Among them: above judgment, a part's grader reads
 "<who>, YYYY-MM-DD"; both templates fill from the claim's own parameters (Python's ``format`` is
 the truth); and a test's path is neither absolute nor leaves the repository root. Every claim
-names its origin (engine, audit or swarm; R1_PLAN.md R1-G), a part's basis audit and each of its
-referees read "<who>, YYYY-MM-DD" as a grader does, and a referee's verdict is upheld or not. The
-registry's copies of the leash rungs and the purposes are held to the contracts' own, since the
-registry may not import them.
+names its origin (engine, audit or swarm; R1_PLAN.md R1-G), a part's basis audit is an ``Audit``
+and it and each of its referees read "<who>, YYYY-MM-DD" as a grader does, each names the
+fingerprint of the part it read (``claims.checked``), a referee names the grade it judged, and its
+verdict is upheld or not. A part may be retired (a sentence that no longer asserts it), but a
+claim keeps one part it asserts, and its grade is its weakest asserted part's. The fingerprint
+moves with everything a referee or an audit reads (the claim's sentences, parameters, regime and
+decision, and the part's grade and basis), and with nothing else. The registry's copies of the
+leash rungs and the purposes are held to the contracts' own, since the registry may not import
+them.
 """
 from __future__ import annotations
 
 import dataclasses
+import re
 
 import pytest
 
 from turbotab.core import claims
-from turbotab.core.claims import (Basis, Claim, Fires, HeldOut, Param, Part, Referee, Regime,
-                                  Registry, Silent)
+from turbotab.core.claims import (Audit, Basis, Claim, Fires, HeldOut, Param, Part, Referee,
+                                  Regime, Registry, Silent, checked)
 from turbotab.core.tests.test_claims_fixtures import FIRES, SILENT, rule, teaching
 
 
@@ -35,6 +41,9 @@ def test_registering_the_same_claim_twice_is_one_claim_and_a_different_one_is_re
     with pytest.raises(ValueError, match="planted.few_clusters"):
         reg.register(rule(card="Fewer than {few} clusters: a different sentence."))
 
+
+# A well-formed fingerprint (twelve lowercase hex digits), of no part in particular.
+SEEN = "0123456789ab"
 
 BROKEN = {
     "id": dict(id="FewClusters"),
@@ -81,14 +90,39 @@ BROKEN = {
     "origin outside the vocabulary": dict(origin="agent"),
     "origin left blank": dict(origin=""),
     "basis audit with no date": dict(parts=(Part("value", grade="judgment", basis=Basis(reason="r"),
-                                                 audited_by="a basis audit"),)),
-    "referee with no date": dict(parts=(Part("value", grade="judgment", basis=Basis(reason="r"),
-                                             referees=(Referee("referee A", "upheld"),)),)),
+                                                 audited_by=Audit("a basis audit", SEEN)),)),
+    "basis audit given as a string": dict(parts=(Part(
+        "value", grade="judgment", basis=Basis(reason="r"),
+        audited_by="a basis audit, 2026-10-18"),)),
+    "basis audit naming no fingerprint": dict(parts=(Part(
+        "value", grade="judgment", basis=Basis(reason="r"),
+        audited_by=Audit("a basis audit, 2026-10-18")),)),
+    "basis audit fingerprint not twelve hex digits": dict(parts=(Part(
+        "value", grade="judgment", basis=Basis(reason="r"),
+        audited_by=Audit("a basis audit, 2026-10-18", "not a hash")),)),
+    "referee with no date": dict(parts=(Part(
+        "value", grade="judgment", basis=Basis(reason="r"),
+        referees=(Referee("referee A", "upheld", grade="judgment", checked=SEEN),)),)),
     "referee verdict outside the vocabulary": dict(parts=(Part(
         "value", grade="judgment", basis=Basis(reason="r"),
-        referees=(Referee("referee A, 2026-10-18", "probably"),)),)),
+        referees=(Referee("referee A, 2026-10-18", "probably", grade="judgment",
+                          checked=SEEN),)),)),
     "referee given as a string": dict(parts=(Part(
         "value", grade="judgment", basis=Basis(reason="r"), referees=("referee A, 2026-10-18",)),)),
+    "referee naming no grade": dict(parts=(Part(
+        "value", grade="judgment", basis=Basis(reason="r"),
+        referees=(Referee("referee A, 2026-10-18", "upheld", checked=SEEN),)),)),
+    "referee grade outside the vocabulary": dict(parts=(Part(
+        "value", grade="judgment", basis=Basis(reason="r"),
+        referees=(Referee("referee A, 2026-10-18", "upheld", grade="settled", checked=SEEN),)),)),
+    "referee naming no fingerprint": dict(parts=(Part(
+        "value", grade="judgment", basis=Basis(reason="r"),
+        referees=(Referee("referee A, 2026-10-18", "upheld", grade="judgment"),)),)),
+    "referee fingerprint in capitals": dict(parts=(Part(
+        "value", grade="judgment", basis=Basis(reason="r"),
+        referees=(Referee("referee A, 2026-10-18", "upheld", grade="judgment",
+                          checked=SEEN.upper()),)),)),
+    "every part retired": dict(parts=(Part("value", grade="retired"),)),
 }
 
 
@@ -115,11 +149,88 @@ def test_each_origin_registers(origin):
 
 def test_a_dated_basis_audit_and_dated_referees_register():
     part = Part("value", grade="judgment", basis=Basis(reason="r"),
-                audited_by="a basis audit, 2026-10-18",
-                referees=(Referee("referee A, 2026-10-18", "upheld"),
+                audited_by=Audit("a basis audit, 2026-10-18", SEEN),
+                referees=(Referee("referee A, 2026-10-18", "upheld", grade="judgment",
+                                  checked=SEEN),
                           Referee("referee B, 2026-10-18", "not_upheld",
-                                  fork_of="the orchestrator")))
+                                  fork_of="the orchestrator", grade="sourced", checked=SEEN)))
     assert Registry([rule(parts=(part,))])["planted.few_clusters"].parts == (part,)
+
+
+def test_a_retired_part_registers_beside_one_asserted_and_the_grade_is_the_asserted_one_s():
+    """A retired part is no grade: the claim shows the weakest part it still asserts."""
+    claim = rule(parts=(Part("value", "judgment", Basis(reason="r")), Part("scope", "retired")))
+    assert Registry([claim])["planted.few_clusters"].grade == "judgment"
+    assert claims.RETIRED == "retired" and "retired" not in claims.GRADES
+
+
+# ── the fingerprint of what a referee or a basis audit read ─────────────────────────────────
+
+PASSAGE = Basis(cites=("friedman2001",), where="§10.10, p. 1203")
+
+
+def _read():
+    """A claim whose one part a referee reads, with a second part beside it."""
+    return rule(parts=(Part("value", "sourced", PASSAGE, graded_by="a basis audit, 2026-10-18"),
+                       Part("scope", "judgment", Basis(reason="r"))))
+
+
+def _value(c):
+    return checked(c, c.parts[0])
+
+
+def _with_value(c, **over):
+    return dataclasses.replace(c, parts=(dataclasses.replace(c.parts[0], **over), *c.parts[1:]))
+
+
+READ = {
+    "its card": lambda c: dataclasses.replace(c, card="Fewer than {few} clusters: wider."),
+    "its methods sentence": lambda c: dataclasses.replace(c, methods="Below {few}, it is named."),
+    "a parameter's value": lambda c: dataclasses.replace(
+        c, params={"few": Param(12, unit="clusters", constant="planted.engine:FEW")}),
+    "its regime's words": lambda c: dataclasses.replace(c, regime=dataclasses.replace(
+        c.regime, words="any outcome")),
+    "its regime's predicates": lambda c: dataclasses.replace(c, regime=dataclasses.replace(
+        c.regime, requires=())),
+    "its decision": lambda c: dataclasses.replace(c, decision="planted.other"),
+    "its verdict": lambda c: dataclasses.replace(c, verdict="available"),
+    "its options": lambda c: dataclasses.replace(c, options=("gee_corrected",)),
+    "its goal": lambda c: dataclasses.replace(c, goal=("prediction",)),
+    "its id": lambda c: dataclasses.replace(c, id="planted.other_claim"),
+    "the part's grade": lambda c: _with_value(c, grade="certified"),
+    "the part's basis": lambda c: _with_value(c, basis=Basis(cites=("friedman2001",),
+                                                             where="p. 1190")),
+    "the part's name": lambda c: _with_value(c, name="direction"),
+}
+NOT_READ = {
+    "its grader": lambda c: _with_value(c, graded_by="a domain reviewer, 2026-10-19"),
+    "the claim's grader": lambda c: dataclasses.replace(c,
+                                                        graded_by="the orchestrator, 2026-10-19"),
+    "its referees": lambda c: _with_value(c, referees=(
+        Referee("referee A, 2026-10-19", "upheld", grade="sourced", checked=SEEN),)),
+    "its basis audit": lambda c: _with_value(c, audited_by=Audit("a basis audit, 2026-10-19",
+                                                                 SEEN)),
+    "why it was regraded": lambda c: _with_value(c, regraded="the passage says it"),
+    "another part": lambda c: dataclasses.replace(c, parts=(c.parts[0],
+                                                            Part("scope", "unsupported"))),
+    "its version": lambda c: dataclasses.replace(c, version=2),
+    "its tests": lambda c: dataclasses.replace(c, tests=(SILENT, FIRES)),
+}
+
+
+def test_the_fingerprint_is_twelve_hex_digits_and_repeats():
+    assert re.fullmatch(r"[0-9a-f]{12}", _value(_read()))
+    assert _value(_read()) == _value(_read())
+
+
+@pytest.mark.parametrize("change", sorted(READ))
+def test_the_fingerprint_moves_with_what_a_referee_or_an_audit_reads(change):
+    assert _value(READ[change](_read())) != _value(_read())
+
+
+@pytest.mark.parametrize("change", sorted(NOT_READ))
+def test_the_fingerprint_stays_where_only_its_review_or_another_part_changes(change):
+    assert _value(NOT_READ[change](_read())) == _value(_read())
 
 
 def test_a_teaching_claim_needs_no_test_enforcer_or_verdict():

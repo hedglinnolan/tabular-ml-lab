@@ -4,14 +4,18 @@ meets when it registers.
 A claim's vocabulary is checked at registration, as a method contract's is: its kind, its origin,
 its parts' grades, its verdict, its purposes, each test's declared truth, the form of every name it
 gives as a string (a test's path stays inside the repository), the grader of each part above
-judgment, its basis audit and each of its referees ("<who>, YYYY-MM-DD"), each referee's verdict,
-and that its parameters fill both its templates. What the vocabulary cannot settle (whether a test
-exists, whether a citation key resolves, whether the grader is the author, whether two referees
-are one person, whether two claims conflict) is the meta-tests' (``_meta``).
+judgment, its basis audit (an :class:`Audit`) and each of its referees ("<who>, YYYY-MM-DD"), the
+grade each referee judged and the fingerprint each referee and audit read, each referee's verdict,
+that a claim keeps one part it asserts, and that its parameters fill both its templates. What the
+vocabulary cannot settle (whether a test exists, whether a citation key resolves, whether the
+grader is the author, whether two referees are one person, whether a verdict was on the part as it
+stands, whether two claims conflict) is the meta-tests' (``_meta``).
 
-:func:`referee_gate` is the two-referee gate (§8) a swarm claim's part passes above judgment; it
-reads only the referees and the author, so a research tool outside the app (the decoy queue in
-``research/registry/``) applies the same gate to its own queue.
+:func:`checked` is the fingerprint of a part as it stands: what a referee or a basis audit read.
+:func:`referee_gate` is the two-referee gate (§8) a swarm claim's part passes above judgment; given
+the part's grade, fingerprint and the day it took its previous grade, it counts only the verdicts
+on the part as it stands. It reads only the referees and what it is given, so a research tool
+outside the app (the decoy queue in ``research/registry/``) applies the same gate to its own queue.
 """
 from __future__ import annotations
 
@@ -31,6 +35,12 @@ KINDS: tuple[str, ...] = ("rule", "parameter", "teaching")
 GRADES: tuple[str, ...] = ("proved", "certified", "replicated", "sourced", "judgment",
                            "unsupported")
 ABOVE_JUDGMENT: tuple[str, ...] = GRADES[:4]
+# A part its sentence no longer asserts. It is no grade: it moves there through a history line, as
+# a grade does (meta-test 8), so a part is retired, never dropped or renamed, and the claim shows
+# the weakest part it still asserts.
+RETIRED = "retired"
+# Hex digits of a part's fingerprint (:func:`checked`), as a referee or a basis audit names it.
+CHECKED_DIGITS = 12
 # Copies of ``contracts.PURPOSES`` and ``contracts.RUNGS``: the registry imports no engine module,
 # and ``test_claims_schema.py`` holds the copies to the originals.
 PURPOSES: tuple[str, ...] = ("prediction", "inference")
@@ -60,6 +70,7 @@ _RETRACTED = re.compile(r"^\d{4}-\d{2}-\d{2}: \S")
 # Above judgment, a grader is "<who>, YYYY-MM-DD" (§1's "basis audit, 2026-10-15").
 GRADED_FORM = "'<who>, YYYY-MM-DD'"
 _GRADED = re.compile(r"(?P<who>.*\S), (?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})")
+_CHECKED = re.compile(rf"[0-9a-f]{{{CHECKED_DIGITS}}}")
 _PARENTHETICAL = re.compile(r"\([^()]*\)")
 _NAME_PUNCTUATION = re.compile(r"[-_.'\u2019]")
 _SELF_REFERENCES = frozenset({"self", "myself", "me", "author", "same", "same author", "same person"})
@@ -118,11 +129,29 @@ class Referee:
     """One referee's verdict on a part (CLAIMS_REGISTRY.md §8): ``who`` reads "<who>, YYYY-MM-DD",
     ``verdict`` is one of :data:`REFEREE_VERDICTS`, and ``fork_of`` names the agent whose context
     the referee's was forked from, empty for one started fresh. A fork never counts toward the
-    gate: it inherits its parent's context (ORCHESTRATOR.md §3)."""
+    gate: it inherits its parent's context (ORCHESTRATOR.md §3).
+
+    ``grade`` is the grade the referee judged the part at, and ``checked`` the fingerprint
+    (:func:`checked`) of the part the referee read. A registered part's referee names both; a
+    research queue's (the decoy queue's), whose items each have one state, names neither. The gate
+    counts a registered part's referee only while both are the part's as it stands."""
 
     who: str
     verdict: str
     fork_of: str = ""
+    grade: str = ""
+    checked: str = ""
+
+
+@dataclass(frozen=True)
+class Audit:
+    """A part's basis audit (CLAIMS_REGISTRY.md §8): ``who`` reads "<who>, YYYY-MM-DD", who checked
+    the basis against its source, and when; ``checked`` is the fingerprint (:func:`checked`) of
+    the part they checked, which registration requires. An audit stands only while the part is as
+    they checked it (meta-tests 3 and 7)."""
+
+    who: str
+    checked: str = ""
 
 
 @dataclass(frozen=True)
@@ -131,21 +160,25 @@ class Part:
     ``graded_by`` overrides the claim's; above judgment, the one in force reads
     "<who>, YYYY-MM-DD".
 
-    ``audited_by`` is the basis audit, "<who>, YYYY-MM-DD": who checked the basis against its
-    source, and when, someone other than the author (meta-test 3). A swarm claim's part above
-    judgment names one, and the ``referees`` who upheld it (meta-test 7). An engine or audit
-    claim's part may name one; where it does not, its grader stands as its basis audit, since each
-    grade's requirement (§2.4) has the grader quote the passage, re-derive the derivation or read
-    the test against its reference, and meta-test 3 holds that grader apart from the author.
-    ``regraded`` is why the part moved to the grade it holds: the generator writes it, with the
-    grader and date, as the part's history line (meta-test 8)."""
+    ``grade`` is one of :data:`GRADES`, or :data:`RETIRED` for a part its sentence no longer
+    asserts.
+
+    ``audited_by`` is the basis audit, an :class:`Audit` ("" names none): who checked the basis
+    against its source, and when, someone other than the author, on the part as it stands
+    (meta-test 3). A swarm claim's part above judgment names one, and the ``referees`` who upheld
+    it (meta-test 7). An engine or audit claim's part may name one; where it does not, its grader
+    stands as its basis audit, since each grade's requirement (§2.4) has the grader quote the
+    passage, re-derive the derivation or read the test against its reference, and meta-test 3
+    holds that grader apart from the author. ``regraded`` is why the part moved to the grade it
+    holds: the generator writes it, with the grader and date, as the part's history line
+    (meta-test 8)."""
 
     name: str
     grade: str
     basis: Basis = Basis()
     graded_by: str = ""
     referees: tuple[Referee, ...] = ()
-    audited_by: str = ""
+    audited_by: Audit | str = ""
     regraded: str = ""
 
 
@@ -210,8 +243,10 @@ class Claim:
 
     @property
     def grade(self) -> str:
-        """The weakest part's grade (§2.4), which the sentence shows."""
-        return max((p.grade for p in self.parts), key=GRADES.index, default="unsupported")
+        """The weakest grade of the parts it asserts (§2.4), which the sentence shows; a retired
+        part is not asserted."""
+        return max((p.grade for p in self.parts if p.grade != RETIRED), key=GRADES.index,
+                   default="unsupported")
 
 
 def grader(graded_by: str) -> str | None:
@@ -252,16 +287,25 @@ def same_person(who_graded: str, author: str) -> bool:
     return g in a or a in g or g_run in a_run or a_run in g_run
 
 
-def referee_gate(referees: Iterable[Referee], author: str | None) -> list[str]:
+def referee_gate(referees: Iterable[Referee], author: str | None, grade: str | None = None,
+                 fingerprint: str | None = None, since: str | None = None) -> list[str]:
     """What the two-referee gate (CLAIMS_REGISTRY.md §8) still lacks for a part ``author`` wrote,
     one sentence each; ``[]`` once it passes.
 
     A referee counts unless it may be the author (``same_person``, which refuses in doubt) or is a
-    fork, of the author or of anyone (ORCHESTRATOR.md §3). The gate passes when at least two
+    fork, of the author or of anyone (ORCHESTRATOR.md §3). For a registered part, ``grade`` is the
+    grade it holds, ``fingerprint`` the part as it stands (:func:`checked`) and ``since`` the day
+    it took its previous grade (its history's line before this grade). A referee then counts only
+    where it judged that grade and read that fingerprint: a verdict on another grade, or on an
+    older basis or sentence, upheld or not, was not on the part as it stands. An uphold also
+    counts only where it is dated no earlier than ``since``, so one given before the part last
+    moved is not carried past that move; a dissent on the part as it stands counts whenever it was
+    given, since nothing has changed that could answer it. The gate passes when at least two
     referees who count, two distinct people, upheld the part, and none who counts did not. A
     referee is named by the "<who>" of its "<who>, YYYY-MM-DD", or by the whole string where it
-    gives no date (a research queue's referee). ``author`` None is an author not recorded, so no
-    referee is checked against one."""
+    gives no date (a research queue's referee, for which none of ``grade``, ``fingerprint`` and
+    ``since`` is given). ``author`` None is an author not recorded, so no referee is checked
+    against one."""
     upheld: list[str] = []
     lacks: list[str] = []
     uncounted: list[str] = []
@@ -275,13 +319,26 @@ def referee_gate(referees: Iterable[Referee], author: str | None) -> list[str]:
                      else repr(r.fork_of.strip()))
             uncounted.append(f"{name!r} is a fork of {whose}")
             continue
+        if grade is not None and r.grade != grade:
+            uncounted.append(f"{name!r} judged it as {r.grade or 'no grade'}, not {grade}")
+            continue
+        if fingerprint is not None and r.checked != fingerprint:
+            uncounted.append(f"{name!r} read another version of it, since changed")
+            continue
         if r.verdict != "upheld":
             lacks.append(f"{name!r} did not uphold it")
-        elif not any(same_person(name, u) for u in upheld):
+            continue
+        when = dated(r.who)
+        if since is not None and (when is None or when[1] < since):
+            uncounted.append(f"{name!r} is dated {when[1] if when else 'no day'}, before {since}, "
+                             "when it took its previous grade")
+            continue
+        if not any(same_person(name, u) for u in upheld):
             upheld.append(name)
     if len(upheld) < 2:
         why = f" (not counted: {'; '.join(uncounted)})" if uncounted else ""
-        lacks.append(f"it needs two distinct referees who upheld it, neither its author nor a "
+        at = f" as {grade}, on the part as it stands" if grade is not None else ""
+        lacks.append(f"it needs two distinct referees who upheld it{at}, neither its author nor a "
                      f"fork (ORCHESTRATOR.md §3), and has {len(upheld)}{why}")
     return lacks
 
@@ -322,20 +379,30 @@ def check(c: Claim) -> None:
         fail(f"origin {c.origin!r} is not one of {ORIGINS}")
     if not isinstance(c.version, int) or c.version < 1:
         fail("a version is a whole number from 1")
-    if not c.parts:
-        fail("a claim asserts at least one part, each graded (§2.4)")
+    if not any(p.grade != RETIRED for p in c.parts):
+        fail("a claim asserts at least one part, each graded (§2.4); one that asserts none is "
+             "retracted, not retired")
     names = [p.name for p in c.parts]
     if len(set(names)) != len(names):
         fail("two parts share a name")
+    fingerprint = f"{CHECKED_DIGITS} lowercase hex digits (claims.checked)"
     for p in c.parts:
-        if p.grade not in GRADES:
-            fail(f"part {p.name!r}: grade {p.grade!r} is not one of {GRADES}")
+        if p.grade not in GRADES and p.grade != RETIRED:
+            fail(f"part {p.name!r}: grade {p.grade!r} is not one of {GRADES}, or {RETIRED!r}")
         by = p.graded_by or c.graded_by
         if p.grade in ABOVE_JUDGMENT and grader(by) is None:
             fail(f"part {p.name!r} is graded {p.grade}, so its grader reads {GRADED_FORM} (§2.4), "
                  f"not {by!r}")
-        if p.audited_by and grader(p.audited_by) is None:
-            fail(f"part {p.name!r}: its basis audit reads {GRADED_FORM}, not {p.audited_by!r}")
+        audit = p.audited_by
+        if isinstance(audit, Audit):
+            if grader(audit.who) is None:
+                fail(f"part {p.name!r}: its basis audit reads {GRADED_FORM}, not {audit.who!r}")
+            if not _CHECKED.fullmatch(audit.checked):
+                fail(f"part {p.name!r}: its basis audit names the part it checked as its "
+                     f"fingerprint, {fingerprint}, not {audit.checked!r}")
+        elif audit != "":
+            fail(f"part {p.name!r}: a basis audit is an Audit, naming who checked the basis and "
+                 f"the part they checked, not {audit!r}")
         for r in p.referees:
             if not isinstance(r, Referee):
                 fail(f"part {p.name!r}: a referee is a Referee, not {r!r}")
@@ -344,6 +411,12 @@ def check(c: Claim) -> None:
             if r.verdict not in REFEREE_VERDICTS:
                 fail(f"part {p.name!r}: referee {r.who!r} gives the verdict {r.verdict!r}, not one "
                      f"of {REFEREE_VERDICTS}")
+            if r.grade not in GRADES:
+                fail(f"part {p.name!r}: referee {r.who!r} names the grade it judged, one of "
+                     f"{GRADES}, not {r.grade!r}")
+            if not _CHECKED.fullmatch(r.checked):
+                fail(f"part {p.name!r}: referee {r.who!r} names the part it read as its "
+                     f"fingerprint, {fingerprint}, not {r.checked!r}")
         for h in p.basis.heldout:
             if not isinstance(h.cases, int) or h.cases < 1 or not 0 <= h.rate <= 1:
                 fail(f"part {p.name!r}: held-out evidence has cases and a rate in [0, 1]")
@@ -428,3 +501,22 @@ def content(c: Claim) -> dict[str, Any]:
 def content_hash(c: Claim) -> str:
     text = json.dumps(content(c), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+# What a referee or a basis audit reads of a claim, beside the part's own name, grade and basis.
+_READ = ("id", "kind", "card", "methods", "params", "goal", "regime", "decision", "options",
+         "verdict")
+
+
+def checked(c: Claim, part: Part) -> str:
+    """The fingerprint of ``part`` as it stands in ``c``: the first :data:`CHECKED_DIGITS` hex
+    digits of the SHA-256 of what a referee or a basis audit reads, the claim's id, kind,
+    sentences, parameters, goal, regime, decision, options and verdict, and the part's name, grade
+    and basis. Its graders, referees, basis audit and reason for regrading are left out, as are
+    the claim's other parts, so recording a review moves no fingerprint, and any change to what
+    was reviewed does."""
+    whole = content(c)
+    read = {"claim": {k: whole[k] for k in _READ},
+            "part": {"name": part.name, "grade": part.grade, "basis": _plain(part.basis)}}
+    text = json.dumps(read, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:CHECKED_DIGITS]

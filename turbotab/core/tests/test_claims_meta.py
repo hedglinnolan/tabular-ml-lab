@@ -10,16 +10,23 @@ must name the violation) and on a planted registry that keeps it (it must name n
    with a grader other than the author above judgment, however the author's name is written (its
    case, spacing, a leading "the" or a parenthetical), and regime predicates wherever a part is
    graded above judgment (§2.2), and a basis audit, where a part names one, by someone other than
-   the author;
+   the author, of the part as it stands;
 4. no proposed claim renders: no built claim falls back to one, and none is shown;
 5. no two live claims conflict on one decision in overlapping regimes;
 6. the digit gate, over every claim's templates outside their placeholders;
-7. a swarm claim's part is graded by someone other than its author, and above judgment it has two
-   distinct referees who upheld it, neither its author nor a fork (ORCHESTRATOR.md §3), its grade's
-   own requirement and a basis audit by someone other than its author (CLAIMS_REGISTRY.md §8);
+7. a swarm claim's part is graded (or retired) by someone other than its author, and above
+   judgment it has two distinct referees who upheld it at its grade, neither its author nor a fork
+   (ORCHESTRATOR.md §3), its grade's own requirement and a basis audit by someone other than its
+   author (CLAIMS_REGISTRY.md §8); each referee and the audit read the part as it stands, and each
+   uphold and the audit are dated no earlier than the day it took its previous grade, so a verdict
+   on a lower grade or an older basis, or an uphold from before the part last moved, does not
+   count, while a dissent on the part as it stands still blocks;
 8. every part's grade is its last history line's, each line giving its date, grader and reason and
-   the grade it moved from, and a swarm claim's every part entered unsupported; a claim the history
-   first recorded as the swarm's is still the swarm's.
+   the grade it moved from, dated no earlier than the line before it and naming a grader and date
+   other than that line's, and a swarm claim's every part entered unsupported; a claim the history
+   first recorded as the swarm's is still the swarm's; and a part the history holds that its claim
+   no longer names was retired through a line (by someone other than a swarm claim's author), not
+   dropped or renamed.
 
 On the default registry, the meta-tests that read the app's strings (4 and 6) read every
 ``Relation.says`` and teaching string, as ``test_claims_digits.py`` collects them.
@@ -34,10 +41,12 @@ import json
 import pytest
 
 from turbotab.core import claims
-from turbotab.core.claims import (Basis, Fires, HeldOut, Param, Part, Referee, Regime, Registry,
-                                  Silent)
-from turbotab.core.tests.test_claims_fixtures import (DERIVATION, FIRES, HERE, SILENT, registry,
-                                                       rule, swarm, teaching, write_history)
+from turbotab.core.claims import (Audit, Basis, Fires, HeldOut, Param, Part, Referee, Regime,
+                                  Registry, Silent)
+from turbotab.core.reference import claims as reference
+from turbotab.core.tests.test_claims_fixtures import (DERIVATION, FIRES, HERE, SILENT, bound,
+                                                       registry, rule, swarm, teaching,
+                                                       write_history)
 from turbotab.core.tests.test_claims_digits import relation_says, teaching_strings
 
 ID = "planted.few_clusters"
@@ -219,9 +228,14 @@ UNMET = {
              graded_by="the R0a builder, 2026-10-16")),
     "above judgment with no regime predicate": _graded(
         Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3")), requires=()),
-    "a basis audit by its author": _graded(
+    "a basis audit by its author": bound(_graded(
         Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3"),
-             audited_by="the R0a builder, 2026-10-16")),
+             audited_by=Audit("the R0a builder, 2026-10-16")))),
+    "a basis audit of another version of the part": _graded(
+        Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3"),
+             audited_by=Audit("a domain reviewer, 2026-10-18", checked=claims.checked(
+                 _graded(Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 9"))),
+                 Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 9")))))),
 }
 MET = {
     "proved by a theorem": _graded(Part("value", "proved", Basis(theorem="Lean: planted.thm"))),
@@ -241,9 +255,12 @@ MET = {
     "a part graded by another over its author's claim-level grade": _graded(
         Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3"), graded_by=OTHER),
         graded_by="the R0a builder, 2026-10-16"),
-    "a basis audit by someone else": _graded(
+    "a basis audit by someone else, of the part as it stands": bound(_graded(
         Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3"),
-             audited_by="a domain reviewer, 2026-10-18")),
+             audited_by=Audit("a domain reviewer, 2026-10-18")))),
+    "a retired part, which asserts nothing": _graded(
+        Part("value", "judgment", Basis(reason="we use it")), Part("scope", "retired"),
+        graded_by="", requires=()),
 }
 
 
@@ -460,21 +477,58 @@ def test_6_is_silent_on_a_template_allowlisted_with_its_tag(tmp_path):
     assert len(claims.digit_gate(reg, allowlist={})) == 1
 
 
+# ── the history, as the generator writes it (meta-tests 7 and 8 read it) ─────────────────────
+
+def _line(grade, was="", *, id=ID, part="value", date="2026-10-18", grader="a basis audit",
+          reason="a planted reason"):
+    return {"id": id, "part": part, "grade": grade, "was": was, "date": date, "grader": grader,
+            "reason": reason}
+
+
+def _history(reg, *lines):
+    reg.history_path.parent.mkdir(parents=True, exist_ok=True)
+    reg.history_path.write_text("".join(json.dumps(x) + "\n" for x in lines), encoding="utf-8")
+    return reg
+
+
+def _generate(reg, today):
+    """Run the generator on ``reg`` as its own history's writer, ``today`` the day a line with no
+    dated grader is recorded on; its exit code."""
+    path = reg.history_path
+    return reference.main(["--out", str(path.with_name("CLAIMS_REFERENCE.md")), "--history",
+                           str(path), "--date", today], registry=reg)
+
+
 # ── 7. a swarm claim's grade above judgment passes the two-referee gate (§8) ──────────────────
 
 SWARM = "planted.swarm_found"
 GRADER = "the orchestrator, 2026-10-18"
-AUDIT = "a basis audit, 2026-10-18"
+AUDIT = Audit("a basis audit, 2026-10-18")
 FRESH_A = Referee("referee A, 2026-10-18", "upheld")
 FRESH_B = Referee("referee B, 2026-10-18", "upheld")
 PASSAGE = Basis(cites=("friedman2001",), where="§10.10, p. 1203")
+ENTERED = "2026-10-17"  # the day the planted swarm part entered the history, unsupported
+STALE = "0123456789ab"  # a well-formed fingerprint of no version of the planted part
 
 
 def _promoted(**over):
-    """A swarm claim whose one part is graded sourced through the whole gate, a field replaced."""
+    """A swarm claim whose one part is graded sourced through the whole gate, a field replaced. Its
+    referees and basis audit are bound to the part as it stands (``bound``), except where a
+    replaced field names another grade or fingerprint."""
     fields = dict(name="value", grade="sourced", basis=PASSAGE, graded_by=GRADER,
                   referees=(FRESH_A, FRESH_B), audited_by=AUDIT)
-    return swarm(parts=(Part(**{**fields, **over}),))
+    return bound(swarm(parts=(Part(**{**fields, **over}),)))
+
+
+def _entered(reg, *lines):
+    """``reg`` with the history the generator wrote when its swarm part entered, unsupported, on
+    ENTERED, and any grade lines after it."""
+    return _history(reg, _line("unsupported", id=SWARM, date=ENTERED, grader="theorist A"),
+                    *lines)
+
+
+def _as(referee, **over):
+    return dataclasses.replace(referee, **over)
 
 
 # Each case breaks one piece of the gate; the phrase is how the violation names that piece.
@@ -504,10 +558,29 @@ GATE_UNMET = {
     "a pair, one of whom did not uphold": (
         _promoted(referees=(FRESH_A, Referee("referee B, 2026-10-18", "not_upheld"))),
         "did not uphold"),
+    "two upholders of a lower grade": (
+        _promoted(grade="proved", basis=Basis(derivation=DERIVATION),
+                  referees=(_as(FRESH_A, grade="sourced"), _as(FRESH_B, grade="sourced"))),
+        "judged it as sourced, not proved"),
+    "two upholders of another version of the part": (
+        _promoted(referees=(_as(FRESH_A, checked=STALE), _as(FRESH_B, checked=STALE))),
+        "read another version"),
+    "two upholders dated before the part entered": (
+        _promoted(referees=(Referee("referee A, 2020-01-01", "upheld"),
+                            Referee("referee B, 2020-01-01", "upheld"))),
+        f"before {ENTERED}"),
+    "a dissent on the part as it stands, given before it took its previous grade": (
+        _promoted(referees=(FRESH_A, FRESH_B, Referee("referee C, 2020-01-01", "not_upheld"))),
+        "'referee C' did not uphold"),
     "its grade's own requirement unmet": (
         _promoted(basis=Basis(cites=("friedman2001",))), "requirement"),
     "no basis audit": (_promoted(audited_by=""), "basis audit"),
-    "a basis audit by its author": (_promoted(audited_by="theorist A, 2026-10-18"), "basis audit"),
+    "a basis audit by its author": (_promoted(audited_by=Audit("theorist A, 2026-10-18")),
+                                    "basis audit"),
+    "a basis audit of another version of the part": (
+        _promoted(audited_by=Audit(AUDIT.who, STALE)), "basis audit read another version"),
+    "a basis audit dated before the part entered": (
+        _promoted(audited_by=Audit("a basis audit, 2020-01-01")), f"before {ENTERED}"),
     "proved by a derivation, with no referee": (
         _promoted(grade="proved", basis=Basis(derivation=DERIVATION), referees=()),
         "two distinct referees"),
@@ -526,6 +599,16 @@ GATE_MET = {
     "two fresh upholders beside the author's and a fork's dissent, which do not count": _promoted(
         referees=(FRESH_A, FRESH_B, Referee("theorist A, 2026-10-18", "not_upheld"),
                   Referee("referee C, 2026-10-18", "not_upheld", fork_of="theorist A"))),
+    "referees and a basis audit dated the day the part entered": _promoted(
+        referees=(Referee(f"referee A, {ENTERED}", "upheld"),
+                  Referee(f"referee B, {ENTERED}", "upheld")),
+        audited_by=Audit(f"a basis audit, {ENTERED}")),
+    "a dissent on a lower grade beside two upholders of the part as it stands": _promoted(
+        referees=(FRESH_A, FRESH_B, Referee("referee C, 2026-10-18", "not_upheld",
+                                            grade="judgment"))),
+    "a dissent on another version beside two upholders of the part as it stands": _promoted(
+        referees=(FRESH_A, FRESH_B, Referee("referee C, 2026-10-18", "not_upheld",
+                                            checked=STALE))),
     "judgment graded by someone else": swarm(parts=(
         Part("value", "judgment", Basis(reason="r"), graded_by=GRADER),)),
     "unsupported, as it entered": swarm(),
@@ -542,14 +625,14 @@ GATE_MET = {
 @pytest.mark.parametrize("case", sorted(GATE_UNMET))
 def test_7_fires_where_a_swarm_part_misses_a_piece_of_the_gate(tmp_path, case):
     claim, phrase = GATE_UNMET[case]
-    found = claims.swarm_gate(registry(tmp_path, claim))
+    found = claims.swarm_gate(_entered(registry(tmp_path, claim)))
     assert found and all(v.startswith(f"{SWARM}: part 'value'") for v in found)
     assert any(phrase in v for v in found), found
 
 
 @pytest.mark.parametrize("case", sorted(GATE_MET))
 def test_7_is_silent_where_a_swarm_part_passes_the_gate_or_no_gate_applies(tmp_path, case):
-    assert claims.swarm_gate(registry(tmp_path, GATE_MET[case])) == []
+    assert claims.swarm_gate(_entered(registry(tmp_path, GATE_MET[case]))) == []
 
 
 def test_7_s_planted_pass_meets_meta_test_3_too(tmp_path):
@@ -557,19 +640,87 @@ def test_7_s_planted_pass_meets_meta_test_3_too(tmp_path):
     assert claims.grades_met(registry(tmp_path, _promoted())) == []
 
 
+def test_7_fires_where_the_history_holds_no_line_for_a_promoted_part(tmp_path):
+    """With no line, nothing dates the part's previous grade, so its referees cannot be held to
+    it: in doubt, the gate refuses."""
+    found = claims.swarm_gate(registry(tmp_path, _promoted()))
+    assert len(found) == 1 and found[0].startswith(f"{SWARM}: part 'value'")
+    assert "holds no line" in found[0]
+
+
+SINCE_JUDGED = "2026-10-15"  # the planted part took judgment on this day, after entering
+
+
+@pytest.mark.parametrize("recorded", [False, True], ids=["sourced not yet recorded",
+                                                           "sourced recorded"])
+def test_7_holds_referees_to_the_day_the_part_took_its_previous_grade(tmp_path, recorded):
+    """The part entered on 2026-10-10 and took judgment on SINCE_JUDGED; its referees for sourced
+    count from that day, whether or not the generator has recorded sourced yet."""
+    lines = [_line("unsupported", id=SWARM, date="2026-10-10", grader="theorist A"),
+             _line("judgment", "unsupported", id=SWARM, date=SINCE_JUDGED,
+                   grader="the orchestrator")]
+    if recorded:
+        lines.append(_line("sourced", "judgment", id=SWARM, date="2026-10-18",
+                           grader="the orchestrator"))
+    early = (Referee("referee A, 2026-10-12", "upheld"), Referee("referee B, 2026-10-12", "upheld"))
+    found = claims.swarm_gate(_history(registry(tmp_path, _promoted(referees=early)), *lines))
+    assert found and all(f"before {SINCE_JUDGED}" in v for v in found), found
+    on_time = (Referee(f"referee A, {SINCE_JUDGED}", "upheld"), FRESH_B)
+    assert claims.swarm_gate(_history(registry(tmp_path, _promoted(referees=on_time)),
+                                      *lines)) == []
+
+
+def test_7_fires_where_referees_and_an_audit_are_carried_to_a_higher_grade_on_a_new_basis(
+        tmp_path):
+    """The verifier's sequence (RG-1), through the generator: the part enters unsupported, rises
+    to sourced through the whole gate, then to proved on a derivation with the same referees and
+    basis audit, who never read proved or the derivation. Re-refereed and re-audited, it passes."""
+    reg = registry(tmp_path, swarm())
+    assert _generate(reg, "2026-10-18") == 0
+    sourced = _promoted(referees=(Referee("referee A, 2026-10-19", "upheld"),
+                                  Referee("referee B, 2026-10-19", "upheld")),
+                        audited_by=Audit("a basis audit, 2026-10-19"),
+                        graded_by="the orchestrator, 2026-10-19", regraded="two referees upheld it")
+    reg = registry(tmp_path, sourced)
+    assert _generate(reg, "2026-10-19") == 0 and claims.swarm_gate(reg) == []
+    was = sourced.parts[0]
+    carried = swarm(parts=(dataclasses.replace(
+        was, grade="proved", basis=Basis(derivation=DERIVATION),
+        graded_by="the orchestrator, 2026-10-20", regraded="a derivation proves it"),))
+    reg = registry(tmp_path, carried)
+    assert _generate(reg, "2026-10-20") == 0
+    found = claims.swarm_gate(reg)
+    assert sum("judged it as sourced, not proved" in v for v in found) == 1
+    assert sum("basis audit read another version" in v for v in found) == 1
+    assert sum("two distinct referees" in v for v in found) == 1
+    redone = _promoted(grade="proved", basis=Basis(derivation=DERIVATION),
+                       referees=(Referee("referee C, 2026-10-20", "upheld"),
+                                 Referee("referee D, 2026-10-20", "upheld")),
+                       audited_by=Audit("a basis audit, 2026-10-20"),
+                       graded_by="the orchestrator, 2026-10-20",
+                       regraded="a derivation proves it")
+    assert claims.swarm_gate(registry(tmp_path, redone)) == []
+
+
+def _with_scope(scope):
+    return swarm(parts=(Part("value", "unsupported"), scope))
+
+
+def test_7_fires_where_a_swarm_part_is_retired_by_its_author(tmp_path):
+    claim = _with_scope(Part("scope", "retired", graded_by="theorist A, 2026-10-18",
+                             regraded="the sentence no longer says it"))
+    found = claims.swarm_gate(_entered(registry(tmp_path, claim)))
+    assert len(found) == 1 and found[0].startswith(f"{SWARM}: part 'scope' is retired")
+    assert "someone other than its author" in found[0]
+
+
+def test_7_is_silent_where_a_swarm_part_is_retired_by_someone_else(tmp_path):
+    claim = _with_scope(Part("scope", "retired", graded_by=GRADER,
+                             regraded="the sentence no longer says it"))
+    assert claims.swarm_gate(_entered(registry(tmp_path, claim))) == []
+
+
 # ── 8. no grade differs from its last history line ───────────────────────────────────────────
-
-def _line(grade, was="", *, id=ID, part="value", date="2026-10-18", grader="a basis audit",
-          reason="a planted reason"):
-    return {"id": id, "part": part, "grade": grade, "was": was, "date": date, "grader": grader,
-            "reason": reason}
-
-
-def _history(reg, *lines):
-    reg.history_path.parent.mkdir(parents=True, exist_ok=True)
-    reg.history_path.write_text("".join(json.dumps(x) + "\n" for x in lines), encoding="utf-8")
-    return reg
-
 
 def test_8_is_silent_on_the_history_the_generator_wrote(tmp_path):
     reg = registry(tmp_path, rule(), teaching(), swarm())
@@ -607,6 +758,7 @@ HAND_EDITS = {
     "a date in another form": {"date": "18 October 2026"},
     "a grade outside the vocabulary": {"grade": "settled"},
     "a line that moves to the grade it moved from": {"was": "judgment"},
+    "a first line that retires the part": {"grade": "retired"},
 }
 
 
@@ -633,7 +785,7 @@ def test_8_fires_on_a_line_that_does_not_read_or_lacks_a_field(tmp_path):
 
 def test_8_fires_where_a_line_moves_from_a_grade_the_line_before_did_not_give(tmp_path):
     reg = _history(registry(tmp_path, rule(parts=(Part("value", "unsupported"),))),
-                   _line("judgment"), _line("unsupported", was="certified"))
+                   _line("judgment"), _line("unsupported", was="certified", date="2026-10-19"))
     found = claims.grades_recorded(reg)
     assert len(found) == 1 and "history line 2" in found[0] and "certified" in found[0]
 
@@ -643,8 +795,38 @@ def test_8_is_silent_on_a_chain_of_moves_whose_last_is_the_grade_in_force(tmp_pa
     version line between grade lines is not read as one."""
     reg = registry(tmp_path, rule(parts=(Part("value", "unsupported"),)))
     version = {"id": ID, "version": 1, "hash": "0" * 64, "claim": {}}
-    _history(reg, version, _line("judgment"), _line("sourced", was="judgment"), version,
-             _line("unsupported", was="sourced"))
+    _history(reg, version, _line("judgment", date="2026-10-16", grader="the R0a builder"),
+             _line("sourced", was="judgment", date="2026-10-17"), version,
+             _line("unsupported", was="sourced", date="2026-10-19", grader="a domain reviewer"))
+    assert claims.grades_recorded(reg) == []
+
+
+# A part's second line, after its first, a judgment by "a basis audit" on 2026-10-18 (RG-2).
+OUT_OF_ORDER = {
+    "dated before the line before it": (dict(date="2019-05-01", grader="a domain reviewer"),
+                                        "before the line before it"),
+    "the grader and date of the line before it": (dict(), "grader and date of the line before"),
+}
+IN_ORDER = {
+    "another grader, the same day": dict(grader="a domain reviewer"),
+    "the same grader, a later day": dict(date="2026-10-19"),
+}
+
+
+@pytest.mark.parametrize("case", sorted(OUT_OF_ORDER))
+def test_8_fires_on_a_change_dated_before_its_last_line_or_repeating_its_grader_and_date(
+        tmp_path, case):
+    over, phrase = OUT_OF_ORDER[case]
+    reg = _history(registry(tmp_path, rule(parts=(Part("value", "unsupported"),))),
+                   _line("judgment"), _line("unsupported", was="judgment", **over))
+    found = claims.grades_recorded(reg)
+    assert len(found) == 1 and "history line 2" in found[0] and phrase in found[0], found
+
+
+@pytest.mark.parametrize("case", sorted(IN_ORDER))
+def test_8_is_silent_on_a_change_by_another_grader_or_on_a_later_day(tmp_path, case):
+    reg = _history(registry(tmp_path, rule(parts=(Part("value", "unsupported"),))),
+                   _line("judgment"), _line("unsupported", was="judgment", **IN_ORDER[case]))
     assert claims.grades_recorded(reg) == []
 
 
@@ -688,3 +870,55 @@ def test_8_is_silent_where_a_claim_s_origin_never_left_the_swarm(tmp_path, first
     """A version written before claims named an origin (R0's) holds none, and is no swarm's."""
     reg = _history(registry(tmp_path, swarm(origin=now)), _version(first), *SWARM_LINES)
     assert claims.grades_recorded(reg) == []
+
+
+# A part is retired through a line, never dropped or renamed (RG-4). The planted claim's history
+# holds 'value' at judgment and 'scope' at sourced; each case is the claim's parts now, its lines
+# after those two, the part the violation names, and the phrase it names it by.
+TWO_PARTS = (_line("judgment"), _line("sourced", part="scope", date="2026-10-16"))
+JUDGED = Part("value", "judgment", Basis(reason="r"))
+NARROWED = Part("value_scope", "judgment", Basis(reason="r"))
+RETIRING = Part("scope", "retired", graded_by="a domain reviewer, 2026-10-19",
+                regraded="the sentence no longer says it")
+RETIRED_LINE = _line("retired", "sourced", part="scope", date="2026-10-19",
+                     grader="a domain reviewer", reason="the sentence no longer says it")
+DROPS = {
+    "a part dropped": ((JUDGED,), ()),
+    "a part renamed": ((JUDGED, NARROWED), (_line("judgment", part="value_scope"),)),
+}
+RETIREMENTS = {
+    "a part retired and still named": ((JUDGED, RETIRING), (RETIRED_LINE,)),
+    "a part retired, then dropped": ((JUDGED,), (RETIRED_LINE,)),
+}
+
+
+@pytest.mark.parametrize("case", sorted(DROPS))
+def test_8_fires_where_a_part_the_history_holds_is_dropped_or_renamed(tmp_path, case):
+    parts, lines = DROPS[case]
+    reg = _history(registry(tmp_path, rule(parts=parts)), *TWO_PARTS, *lines)
+    found = claims.grades_recorded(reg)
+    assert len(found) == 1 and found[0].startswith(f"{ID}: part 'scope'"), found
+    assert "no longer names it" in found[0] and "sourced" in found[0]
+
+
+@pytest.mark.parametrize("case", sorted(RETIREMENTS))
+def test_8_is_silent_where_a_part_left_through_a_line_that_retires_it(tmp_path, case):
+    parts, lines = RETIREMENTS[case]
+    reg = _history(registry(tmp_path, rule(parts=parts)), *TWO_PARTS, *lines)
+    assert claims.grades_recorded(reg) == []
+
+
+@pytest.mark.parametrize("by, fires", [("theorist A", True), ("the orchestrator", False)])
+def test_8_holds_a_swarm_part_s_retirement_to_someone_other_than_its_author(tmp_path, by, fires):
+    """Once a retired part leaves its claim, meta-test 7 no longer sees it; its line still names
+    who retired it, and for a swarm claim that is not its author."""
+    reg = _history(registry(tmp_path, swarm()), *SWARM_LINES,
+                   _line("unsupported", id=SWARM, part="scope", grader="theorist A"),
+                   _line("retired", "unsupported", id=SWARM, part="scope", date="2026-10-19",
+                         grader=by))
+    found = claims.grades_recorded(reg)
+    if fires:
+        assert len(found) == 1 and found[0].startswith(f"{SWARM}: part 'scope'")
+        assert "may be its author" in found[0]
+    else:
+        assert found == []

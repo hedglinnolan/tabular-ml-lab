@@ -24,10 +24,15 @@ verdicts the files the glob matches hold, one JSON object a line with the queue 
 ``truth``; a line may give its own ``referee`` and the agent it is a ``fork_of``. A truth of
 "true" upholds the item, and any other does not. An item is promoted when it passes the registry's
 own two-referee gate (``turbotab.core.claims.referee_gate``): two distinct referees upheld it,
-neither its author nor a fork, and none who counts did not. The false-promotion rate is the share
-of the false decoys promoted (a vacuous decoy is true, so left out), with its 95% Wilson interval,
-and the rule of three's bound where none was promoted; the report also gives each kind's rate,
-each referee's own passes, the real candidates promoted and the items short of two referees who
+neither its author nor a fork, and none who counts did not. An item is **decided** once the gate's
+outcome is settled: two distinct referees who count upheld it, or one who counts did not; one
+short of both is **undecided**, neither promoted nor not. The false-promotion rate is the share of
+the false decoys promoted (a vacuous decoy is true, so left out), with its 95% Wilson interval,
+and the rule of three's bound where none was promoted. It is given only once every false decoy is
+decided: while any is undecided, the rate, its interval and its bound are refused, the undecided
+are named, and ``score`` exits 1 (a rate over the decided alone would leave out the decoys that
+might have passed). The report also gives each kind's counts, each referee's own passes, the real
+candidates promoted, the undecided of each kind of item and the items short of two referees who
 count. A promoted decoy is listed to adjudicate: a generated decoy can be true by accident.
 
 Generalized from the claims backtest's ``build_batches.py`` and ``score.py``
@@ -57,6 +62,8 @@ SEED = 20261018
 SHARE = 0.25  # decoys per real candidate, unless --decoys says
 PER_BATCH = 12  # items a batch holds, about (the backtest's 147 in 12)
 TRUE_KINDS = ("vacuous",)  # a decoy kind that is true, so no false promotion
+UNDECIDED = ("each was upheld by fewer than two referees who count, and none who counts "
+             "dissented")
 Z95 = NormalDist().inv_cdf(0.975)
 
 
@@ -75,7 +82,8 @@ def write_jsonl(path: Path, rows: Iterable[dict[str, Any]]) -> None:
 
 def registry_candidates(reg: claims.Registry | None = None) -> list[dict[str, Any]]:
     """The registry's live claims as candidates: the methods sentence (the card where there is
-    none), the regime's words, the decision, the verdict, and each part's grade and basis."""
+    none), the regime's words, the decision, the verdict, and the grade and basis of each part it
+    asserts (a retired part it no longer asserts)."""
     reg = claims.registry() if reg is None else reg
     out = []
     for c in reg:
@@ -83,6 +91,8 @@ def registry_candidates(reg: claims.Registry | None = None) -> list[dict[str, An
             continue
         basis = []
         for p in c.parts:
+            if p.grade == claims.RETIRED:
+                continue
             b = p.basis
             said = [*b.cites, b.where, b.reason, b.theorem, b.derivation, *b.tests]
             basis.append(f"{p.name} ({p.grade}): " + "; ".join(x for x in said if x))
@@ -184,16 +194,27 @@ def _name(r: Referee) -> str:
     return grader(r.who) or r.who.strip()
 
 
+def _counts(r: Referee, author: str | None) -> bool:
+    """Whether the verdict counts: not the author's, and no fork's."""
+    return not ((author is not None and same_person(_name(r), author)) or r.fork_of.strip())
+
+
 def _counted(votes: Sequence[Referee], author: str | None) -> list[str]:
     """The distinct referees whose verdicts count: not the author, and no fork."""
     names: list[str] = []
     for r in votes:
         name = _name(r)
-        if (author is not None and same_person(name, author)) or r.fork_of.strip():
-            continue
-        if not any(same_person(name, n) for n in names):
+        if _counts(r, author) and not any(same_person(name, n) for n in names):
             names.append(name)
     return names
+
+
+def decided(votes: Sequence[Referee], author: str | None) -> bool:
+    """Whether the gate's outcome for an item is settled: a referee who counts did not uphold it
+    (not promoted, whatever else comes), or two distinct referees who count upheld it and none
+    did not (promoted)."""
+    counting = [r for r in votes if _counts(r, author)]
+    return any(r.verdict != "upheld" for r in counting) or len(_counted(counting, author)) >= 2
 
 
 def score(key: dict[str, Any], verdicts: dict[str, list[Referee]]) -> dict[str, Any]:
@@ -207,16 +228,24 @@ def score(key: dict[str, Any], verdicts: dict[str, list[Referee]]) -> dict[str, 
     def promoted(it: dict[str, Any]) -> bool:
         return not referee_gate(verdicts.get(it["rid"], []), author(it))
 
+    def undecided(group: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [it for it in group if not decided(verdicts.get(it["rid"], []), author(it))]
+
     false = [it for it in items if it["kind"] == "decoy" and kinds[it["orig"]] not in TRUE_KINDS]
     true_decoys = [it for it in items if it["kind"] == "decoy" and kinds[it["orig"]] in TRUE_KINDS]
     real = [it for it in items if it["kind"] == "real"]
     passed = [it for it in false if promoted(it)]
+    open_ = undecided(false)
     n, k = len(false), len(passed)
+    # The rate is right only over every false decoy, so it waits for each to be decided.
+    rated = bool(n) and not open_
+    refused = (f"{len(open_)} of {n} false decoys are undecided: {UNDECIDED}" if open_ else None)
     by_type: dict[str, dict[str, int]] = {}
     for it in false:
-        row = by_type.setdefault(kinds[it["orig"]], {"decoys": 0, "promoted": 0})
+        row = by_type.setdefault(kinds[it["orig"]], {"decoys": 0, "promoted": 0, "undecided": 0})
         row["decoys"] += 1
         row["promoted"] += it in passed
+        row["undecided"] += it in open_
     single: dict[str, dict[str, Any]] = {}
     for it in false:
         for r in verdicts.get(it["rid"], []):
@@ -228,9 +257,12 @@ def score(key: dict[str, Any], verdicts: dict[str, list[Referee]]) -> dict[str, 
         "queue": {"real": len(real), "decoys": len(false) + len(true_decoys),
                   "false_decoys": n, "vacuous_decoys": len(true_decoys)},
         "false_promotion": {
-            "decoys": n, "promoted": k, "rate": k / n if n else None,
-            "wilson_95": list(wilson(k, n)) if n else None,
-            "rule_of_three_95": 3 / n if n and k == 0 else None,
+            "decoys": n, "decided": n - len(open_),
+            "undecided": sorted(it["rid"] for it in open_), "promoted": k,
+            "rate": k / n if rated else None,
+            "wilson_95": list(wilson(k, n)) if rated else None,
+            "rule_of_three_95": 3 / n if rated and k == 0 else None,
+            "refused": refused,
             "promoted_ids": [[it["rid"], it["orig"], kinds[it["orig"]], it["sibling"]]
                              for it in passed]},
         "by_type": by_type,
@@ -238,8 +270,10 @@ def score(key: dict[str, Any], verdicts: dict[str, list[Referee]]) -> dict[str, 
                                   "verdicts": dict(row["verdicts"])}
                            for name, row in sorted(single.items())},
         "vacuous": {"decoys": len(true_decoys),
-                    "promoted": sum(promoted(it) for it in true_decoys)},
-        "real": {"candidates": len(real), "promoted": sum(promoted(it) for it in real)},
+                    "promoted": sum(promoted(it) for it in true_decoys),
+                    "undecided": len(undecided(true_decoys))},
+        "real": {"candidates": len(real), "promoted": sum(promoted(it) for it in real),
+                 "undecided": len(undecided(real))},
         "missing_verdicts": sorted(it["rid"] for it in items
                                    if len(_counted(verdicts.get(it["rid"], []), author(it))) < 2),
         "authors_recorded": all(author(it) for it in items),
@@ -251,7 +285,12 @@ def summary(report: dict[str, Any]) -> list[str]:
     q, fp = report["queue"], report["false_promotion"]
     lines = [f"queue: {q['real']} real candidates and {q['decoys']} decoys "
              f"({q['false_decoys']} false, {q['vacuous_decoys']} vacuous)"]
-    if fp["decoys"]:
+    if fp["refused"]:
+        open_ = fp["undecided"]
+        lines.append(f"false-promotion rate refused: {len(open_)} of {fp['decoys']} false decoys "
+                     "are undecided (" + ", ".join(open_[:12])
+                     + (", ..." if len(open_) > 12 else "") + f"): {UNDECIDED}")
+    elif fp["decoys"]:
         lo, hi = fp["wilson_95"]
         line = (f"false-promotion rate: {fp['promoted']} of {fp['decoys']} false decoys promoted "
                 f"({fp['rate']:.1%}); 95% Wilson interval {lo:.1%} to {hi:.1%}")
@@ -260,8 +299,13 @@ def summary(report: dict[str, Any]) -> list[str]:
         lines.append(line)
     else:
         lines.append("false-promotion rate: the queue holds no false decoy")
-    lines.append(f"real candidates promoted: {report['real']['promoted']} of "
-                 f"{report['real']['candidates']}")
+    real = report["real"]
+    if real["undecided"]:
+        lines.append(f"real candidates promoted: {real['promoted']} of the "
+                     f"{real['candidates'] - real['undecided']} decided; {real['undecided']} "
+                     "undecided")
+    else:
+        lines.append(f"real candidates promoted: {real['promoted']} of {real['candidates']}")
     if fp["promoted_ids"]:
         lines.append("promoted decoys to adjudicate (a generated decoy can be true): "
                      + ", ".join(f"{rid} ({kind}, from {sib})"
@@ -324,7 +368,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.report.write_text(json.dumps(report, ensure_ascii=False, indent=1) + "\n",
                                encoding="utf-8")
     print("\n".join(summary(report)))
-    return 0
+    return 1 if report["false_promotion"]["refused"] else 0
 
 
 if __name__ == "__main__":
