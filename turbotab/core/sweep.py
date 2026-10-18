@@ -368,7 +368,8 @@ def sweep_of(stage: str, lines: Sequence[QuestLine], state: Any, log: _Log) -> S
         if line.status != "set_for_you":
             continue
         if (line.key, default_value(line)) in stated:
-            line.status, line.decision_id = "answered", writer
+            # Answered, it is open no more: no reopening of it stands (the re-walk's N7).
+            line.status, line.decision_id, line.reopened_by = "answered", writer, None
         elif held is not None:
             changed.append(line.key)
     if held is None:
@@ -788,7 +789,8 @@ def cover_noticings(placed: Sequence[tuple[str, QuestLine]], state: Any, log: _L
         if mine is None or mine.value not in ("no_change", "could_bias"):
             continue
         if _stands(mine, recommend(state, by_id[line.key], open_questions)):
-            line.status, line.decision_id = "answered", writer
+            # Answered, it is open no more: no reopening of it stands (the re-walk's N7).
+            line.status, line.decision_id, line.reopened_by = "answered", writer, None
 
 
 # ── "Confirm all": the record ────────────────────────────────────────────────
