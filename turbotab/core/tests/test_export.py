@@ -198,6 +198,48 @@ def test_a_folded_confirmation_names_every_record_it_says_and_the_checklist_quot
                if w.quote != merged.text)
 
 
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_the_checklist_file_credits_a_folded_sentence_to_every_decision_it_says(tmp_path, purpose):
+    """The land-1 verifier's P2: the checklist's Markdown names the decision behind each sentence it
+    quotes. The log is built so the three flags' confirmations are its records #5, #6 and #7 and
+    `bp_sys`'s its #8. The methods fold the three flags' into one sentence, which the checklist
+    credits to all three decisions, in the order its columns are listed (``Where.seqs``), never to
+    #7 alone; a place that is one record's names its one decision, as before (`bp_sys`'s #8)."""
+    flags = ["imputed_weight", "imputed_height", "imputed_bmi"]
+    log = DecisionLog(tmp_path / "decisions.jsonl")
+    roles = {"SEQN": "identifier", "age": "covariate", "bp_sys": "covariate", "waist": "covariate",
+             **{c: "flag" for c in flags}}
+    for decision in (d.SetLens(lenses=["clinical"]), d.SetTarget(column="glucose"),
+                     d.SetPurpose(purpose=purpose),
+                     d.SetRoles(roles=roles, unconfirmed=[*flags, "bp_sys"]),
+                     *(d.ConfirmRole(column=c, role="flag") for c in flags),
+                     d.ConfirmRole(column="bp_sys", role="covariate")):
+        log.append(decision, sentence=_say)
+    records = log.records()
+    assert [(r.seq, r.decision.kind) for r in records[4:]] == [
+        (5, "confirm_role"), (6, "confirm_role"), (7, "confirm_role"), (8, "confirm_role")]
+    source = _source(records, purpose=purpose)
+    doc = methods.methods_section(source, {"engine": {}, "inputs": [], "decisions":
+                                           {"n": len(records)}, "analysis_plan": {}})
+    report = checklists.fill(checklists.checklist_of(purpose), methods=doc, records=records,
+                             state=source.state, files={})
+    places = [w for item in report.items for w in item.where if w.source == "record"]
+    folded = [w for w in places if w.record_ids]
+    assert folded and all(w.seqs == [5, 6, 7] for w in folded)
+    assert all(w.seqs is None for w in places if not w.record_ids)
+    lines = [line for line in checklists.markdown(report, "test").splitlines()
+             if line.startswith("- In the methods, decision")]
+    together = f"- In the methods, decisions #5, #6 and #7 (`confirm_role`): “{folded[0].quote}”"
+    assert lines.count(together) == len(folded)
+    assert not [line for line in lines if line.startswith("- In the methods, decision #7 ")]
+    # Silent on a place that is one record's: it names its one decision, `bp_sys`'s #8 among them.
+    singles = [w for w in places if not w.record_ids]
+    assert any(w.record_id == records[7].id for w in singles)
+    for w in singles:
+        assert f"- In the methods, decision #{w.seq} (`{w.kind}`): “{w.quote}”" in lines, w
+    assert len(lines) == len(places)
+
+
 # ── the tables ───────────────────────────────────────────────────────────────
 
 EFFECTS = {

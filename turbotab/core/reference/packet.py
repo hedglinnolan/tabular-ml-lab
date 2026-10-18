@@ -267,10 +267,14 @@ def quoted(text: str) -> list[str]:
 
 
 def where_words(where: Sequence[dict[str, Any]]) -> str:
+    """A checklist item's places, as its file names them: a sentence the methods fold from several
+    records names each decision (``checklists.decisions``)."""
+    from turbotab.core.export.checklists import decisions
+
     out = []
     for w in where:
         if w["source"] == "record":
-            out.append(f"decision #{w.get('seq')} (`{w.get('kind')}`)")
+            out.append(f"{decisions(w.get('seq'), w.get('seqs'))} (`{w.get('kind')}`)")
         elif w["source"] == "analysis":
             out.append(f"the analysis's paragraph (`{w.get('kind')}`)")
         else:

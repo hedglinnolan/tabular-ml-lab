@@ -412,6 +412,21 @@ def test_no_reference_journey_exports_a_bundle_that_contradicts_itself(name):
     assert packet.matrix_flags(capture["export"]) == [], name
 
 
+def test_a_packet_credits_a_folded_checklist_place_to_every_decision_it_says():
+    """The land-1 verifier's P2, in a packet's checklist table: a place whose sentence the methods
+    fold from several records names each of their decisions (``seqs``, in the order the sentence
+    lists their columns); one record's place names its one decision, as does a capture taken
+    before a place carried ``seqs``."""
+    folded = {"source": "record", "seq": 7, "seqs": [5, 6, 7], "record_ids": ["a", "b", "c"],
+              "kind": "confirm_role"}
+    single = {"source": "record", "seq": 8, "seqs": None, "record_ids": None,
+              "kind": "confirm_role"}
+    older = {"source": "record", "seq": 2, "kind": "set_target"}
+    assert packet.where_words([folded]) == "decisions #5, #6 and #7 (`confirm_role`)"
+    assert packet.where_words([single, older]) == (
+        "decision #8 (`confirm_role`); decision #2 (`set_target`)")
+
+
 # ── what the app offers, where the registry's rank says otherwise ────────────
 
 

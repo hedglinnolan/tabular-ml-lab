@@ -8294,7 +8294,8 @@ export interface components {
          * Where
          * @description Where an item is answered: a record sentence, an analysis paragraph, or a bundle file. A
          *     sentence the methods fold from several records names each of them, as its methods entry does
-         *     (``record_ids``, in order; ``methods._together``).
+         *     (``record_ids``, in order; ``methods._together``), and the decision number of each, in the same
+         *     order (``seqs``), which the checklist's file names; one record's sentence names neither.
          */
         Where: {
             /**
@@ -8312,6 +8313,8 @@ export interface components {
             record_ids: string[] | null;
             /** Seq */
             seq: number | null;
+            /** Seqs */
+            seqs: number[] | null;
             /** Kind */
             kind: string | null;
         };

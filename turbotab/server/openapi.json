@@ -22948,6 +22948,20 @@
             ],
             "title": "Seq"
           },
+          "seqs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seqs"
+          },
           "kind": {
             "anyOf": [
               {
@@ -22969,10 +22983,11 @@
           "record_id",
           "record_ids",
           "seq",
+          "seqs",
           "kind"
         ],
         "title": "Where",
-        "description": "Where an item is answered: a record sentence, an analysis paragraph, or a bundle file. A\nsentence the methods fold from several records names each of them, as its methods entry does\n(``record_ids``, in order; ``methods._together``)."
+        "description": "Where an item is answered: a record sentence, an analysis paragraph, or a bundle file. A\nsentence the methods fold from several records names each of them, as its methods entry does\n(``record_ids``, in order; ``methods._together``), and the decision number of each, in the same\norder (``seqs``), which the checklist's file names; one record's sentence names neither."
       },
       "AdjustmentCard": {
         "description": "WP17 (MODELING_SEQUENCE §1 step 3): the disjunctive cause criterion, asked per covariate.",

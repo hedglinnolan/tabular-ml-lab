@@ -55,7 +55,8 @@ class _Model(BaseModel):
 class Where(_Model):
     """Where an item is answered: a record sentence, an analysis paragraph, or a bundle file. A
     sentence the methods fold from several records names each of them, as its methods entry does
-    (``record_ids``, in order; ``methods._together``)."""
+    (``record_ids``, in order; ``methods._together``), and the decision number of each, in the same
+    order (``seqs``), which the checklist's file names; one record's sentence names neither."""
 
     source: Literal["record", "analysis", "file"]
     file: str  # the bundle file that holds it (the methods for a sentence or paragraph)
@@ -63,6 +64,7 @@ class Where(_Model):
     record_id: str | None = None
     record_ids: list[str] | None = None
     seq: int | None = None
+    seqs: list[int] | None = None
     kind: str | None = None  # the decision kind, or the stage that wrote the paragraph
 
 
@@ -284,9 +286,10 @@ def fill(checklist: Checklist, *, methods: Any, records: Sequence[Any], state: A
                     record = by_id.get(e.record_id)
                     if rule.when is not None and (record is None or not rule.when(record.decision)):
                         continue
+                    seqs = [by_id[i].seq for i in e.record_ids] if e.record_ids else None
                     where.append(Where(source="record", file=METHODS, quote=e.text,
                                        record_id=e.record_id, record_ids=e.record_ids, seq=e.seq,
-                                       kind=e.kind))
+                                       seqs=seqs, kind=e.kind))
                 elif e.source == "analysis" and e.kind in rule.analysis:
                     where.append(Where(source="analysis", file=METHODS, quote=e.text, kind=e.kind))
             for name in rule.files:
@@ -317,6 +320,17 @@ def fill(checklist: Checklist, *, methods: Any, records: Sequence[Any], state: A
               f"record cannot answer is listed as “{UNANSWERED}”."))
 
 
+def decisions(seq: int | None, seqs: Sequence[int] | None = None) -> str:
+    """The decision a record's place quotes (``Where.seq``), "decision #8", or for a sentence the
+    methods fold from several records each of theirs (``Where.seqs``) in the order it lists them,
+    "decisions #5, #6 and #7"."""
+    from turbotab.core.voice import listing
+
+    if seqs:
+        return f"decisions {listing([f'#{s}' for s in seqs], limit=len(seqs), ticked=False)}"
+    return f"decision #{seq}"
+
+
 def markdown(report: ChecklistReport, name: str) -> str:
     """The checklist as Markdown: every item, its quoted text, and where it is answered."""
     c = report.counts
@@ -340,7 +354,7 @@ def markdown(report: ChecklistReport, name: str) -> str:
         lines += [f"**{item.status[:1].upper()}{item.status[1:]}.**", ""]
         for w in item.where:
             if w.source == "record":
-                lines.append(f"- In the methods, decision #{w.seq} (`{w.kind}`): “{w.quote}”")
+                lines.append(f"- In the methods, {decisions(w.seq, w.seqs)} (`{w.kind}`): “{w.quote}”")
             elif w.source == "analysis":
                 lines.append(f"- In the methods, the analysis's paragraph (`{w.kind}`): “{w.quote}”")
             else:
@@ -352,4 +366,4 @@ def markdown(report: ChecklistReport, name: str) -> str:
 
 
 __all__ = ["ChecklistItem", "ChecklistReport", "RULES", "Rule", "STROBE_RULES", "TRIPOD_RULES",
-           "UNANSWERED", "Where", "checklist_of", "fill", "items", "markdown"]
+           "UNANSWERED", "Where", "checklist_of", "decisions", "fill", "items", "markdown"]
