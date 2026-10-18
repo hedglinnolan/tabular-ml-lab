@@ -275,6 +275,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/mattered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mattered
+         * @description Which decisions mattered, under Estimate (SWARM_ENGINE_PLAN E3): the exposure's estimate
+         *     refit with each recorded choice changed, one at a time (each exclusion rule dropped, each
+         *     adjusted covariate dropped, each covariate the adjustment answers left out added), a
+         *     specification curve the ``mattered`` stage computes after the plan's lock. Its primary is the
+         *     reported estimate, which stays the result whatever the curve shows. Refused before the lock,
+         *     with the line saying when it opens; while the stage computes, its status and no curve; a curve
+         *     that cannot be drawn is refused with why. Serving a curve marks its estimates as shown.
+         */
+        get: operations["mattered_api_projects__pid__mattered_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/triage": {
         parameters: {
             query?: never;
@@ -3140,6 +3166,205 @@ export interface components {
             label: string;
             /** Group */
             group: string | null;
+        };
+        /**
+         * Mattered
+         * @description ``GET /projects/{pid}/mattered``: the stage's status and, once it is fresh for the current
+         *     answers, its curve. ``plan_lock`` is the lock in force, by its record id.
+         */
+        Mattered: {
+            /** Status */
+            status: string;
+            /** Fresh */
+            fresh: boolean;
+            /** Key */
+            key: string | null;
+            /** Plan Lock */
+            plan_lock: string | null;
+            curve: components["schemas"]["MatteredCurve"] | null;
+            /** Says */
+            says: string | null;
+            /** Methods */
+            methods: string | null;
+            reported: components["schemas"]["MatteredReported"] | null;
+            /** Examined */
+            examined: components["schemas"]["MatteredExamined"][];
+            /** Error */
+            error: string | null;
+        };
+        /** MatteredChoice */
+        MatteredChoice: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Primary */
+            primary: string;
+            /** Decision */
+            decision: string;
+            /** Options */
+            options: components["schemas"]["MatteredOption"][];
+        };
+        /**
+         * MatteredCurve
+         * @description ``spec_curve.SpecCurve`` as data (its ``to_dict``).
+         */
+        MatteredCurve: {
+            /** Estimate Label */
+            estimate_label: string;
+            /** Choices */
+            choices: components["schemas"]["MatteredChoice"][];
+            /** Specs */
+            specs: components["schemas"]["MatteredSpec"][];
+            /** Not Estimated */
+            not_estimated: components["schemas"]["MatteredNotEstimated"][];
+            /** Total */
+            total: number;
+            /** Drawn */
+            drawn: number;
+            /** Sampled */
+            sampled: boolean;
+            /** Rule */
+            rule: string | null;
+            /** Crossing */
+            crossing: string;
+            summary: components["schemas"]["MatteredSummary"] | null;
+            /** Level */
+            level: number | null;
+            /** Sealed */
+            sealed: string | null;
+            /** Plan Lock */
+            plan_lock: string | null;
+            /** Weighted */
+            weighted: boolean;
+            /** Clustered */
+            clustered: boolean;
+            /** Exits */
+            exits: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * MatteredExamined
+         * @description An alternative the analyst declared as examined: the adjustment set with ``add`` added and
+         *     ``drop`` dropped, beside the primary (one departure of its own).
+         */
+        MatteredExamined: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Add
+             * @default []
+             */
+            add: string[];
+            /**
+             * Drop
+             * @default []
+             */
+            drop: string[];
+        };
+        /** MatteredNotEstimated */
+        MatteredNotEstimated: {
+            /** Key */
+            key: string;
+            /** Picks */
+            picks: {
+                [key: string]: string;
+            };
+            /** Primary */
+            primary: boolean;
+            /** Reason */
+            reason: string;
+        };
+        /** MatteredOption */
+        MatteredOption: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+        };
+        /**
+         * MatteredReported
+         * @description The reported estimate the primary specification reproduces: the fit stage's own row.
+         */
+        MatteredReported: {
+            /** Family */
+            family: string;
+            /** Feature */
+            feature: string;
+            /** Estimate */
+            estimate: number;
+            /** Ci Low */
+            ci_low: number;
+            /** Ci High */
+            ci_high: number;
+            /** Se */
+            se: number | null;
+            /** N Rows */
+            n_rows: number;
+            /** Covariance */
+            covariance: string | null;
+        };
+        /** MatteredSpec */
+        MatteredSpec: {
+            /** Key */
+            key: string;
+            /** Picks */
+            picks: {
+                [key: string]: string;
+            };
+            /** Primary */
+            primary: boolean;
+            /** Estimate */
+            estimate: number;
+            /** Low */
+            low: number | null;
+            /** High */
+            high: number | null;
+            /** N */
+            n: number;
+            /** Se */
+            se: number | null;
+            /** P */
+            p: number | null;
+            /** Df */
+            df: number | null;
+            /**
+             * Estimator
+             * @default
+             */
+            estimator: string;
+            /**
+             * Covariance
+             * @default
+             */
+            covariance: string;
+            /**
+             * Scale Key
+             * @default
+             */
+            scale_key: string;
+        };
+        /** MatteredSummary */
+        MatteredSummary: {
+            /** K */
+            k: number;
+            /** Median */
+            median: number;
+            /** Lowest */
+            lowest: number;
+            /** Highest */
+            highest: number;
+            /** Above */
+            above: number;
+            /** Below */
+            below: number;
+            /** Spanning */
+            spanning: number;
+            /** Primary Rank */
+            primary_rank: number | null;
         };
         /** MeasurementErrorSpec */
         MeasurementErrorSpec: {
@@ -17160,6 +17385,55 @@ export interface operations {
             };
             /** @description No such project */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mattered_api_projects__pid__mattered_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Mattered"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Not offered for this goal, the plan not locked yet, a question the estimates rest on open, or the curve cannot be drawn */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

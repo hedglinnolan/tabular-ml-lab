@@ -1098,6 +1098,56 @@ class ProjectService:
             self._note_shown(pid, stage, artifacts.get(stage))
         return book
 
+    # ── which decisions mattered, under Estimate (SWARM_ENGINE_PLAN E3; core/mattered.py) ──
+
+    def mattered(self, pid: str) -> Any:
+        """The ``mattered`` stage's specification curve (``core/mattered.py``): refused while the
+        goal does not offer it, before the plan's lock (with the line saying when it opens) and
+        while a question the estimates rest on is open, as the estimates are withheld; once the
+        stage is fresh for the current answers, its curve, the lock in force named by its record
+        id. A curve that cannot be drawn is refused with why. A curve served shows estimates, so
+        the lock stands from then on, as when an estimate stage is served."""
+        from turbotab.core import mattered
+        from turbotab.core.methods.spec_curve import SpecCurveRefused
+
+        self.workspace.get(pid)
+        records = self.log(pid).records()
+        state = decisions.fold(records)
+        why = self._mattered_gate(pid, state, records)
+        if why is not None:
+            raise Refusal(*why)
+        lock = plan_lock.current_lock(records)
+        status = self.engine.status(pid).get(mattered.STAGE)
+        result = self.engine.get(pid, mattered.STAGE)
+        try:
+            doc = mattered.served(result.artifact, status=result.status, fresh=result.fresh,
+                                  key=result.key, lock_id=lock.id,
+                                  error=status.error if status is not None else None)
+        except SpecCurveRefused as refusal:
+            raise Refusal("curve_refused", str(refusal), refusal.exits) from refusal
+        if doc.curve is not None and doc.curve.specs:
+            with self._locking:
+                self._mark_lock_shown(pid, self.log(pid).records())
+        return doc
+
+    def _mattered_gate(self, pid: str, state: Any, records: list[Any]
+                       ) -> tuple[str, str, list[dict[str, Any]]] | None:
+        """Why the curve may not be shown now, as ``(code, message, exits)``; None when it may."""
+        from turbotab.core import mattered
+        from turbotab.core.methods.spec_curve import LOCK_EXIT, SEALED
+
+        offered = mattered.offered(state)
+        if not offered.offered:
+            return "curve_not_offered", offered.says, list(offered.exits)
+        if plan_lock.current_lock(records) is None:
+            return "curve_sealed", SEALED, [dict(LOCK_EXIT)]
+        gate = estimand.served_gate(state, self.interview(pid, state, self.engine.status(pid),
+                                                          records))
+        gate = fit_press.gate(gate, state, self._pressed(pid, state))
+        if gate is not None:
+            return "curve_withheld", str(gate["reason"]), list(gate.get("exits") or [])
+        return None
+
     def record(self, pid: str) -> ForTheRecord:
         """Each reached stage's For the record lines (P0.5): the ingest's facts and warnings, the
         profile's basis, why a question was not asked, the defaults that change nothing here, and
@@ -1685,6 +1735,13 @@ class ProjectService:
         is a broken guarantee, said loudly."""
         from turbotab.core import plan_lock
 
+        if stage == "mattered":  # E3: its specifications are estimates, served only under the lock
+            from turbotab.core import mattered
+
+            if mattered.shows_estimates(artifact):
+                with self._locking:
+                    self._mark_lock_shown(pid, self.log(pid).records())
+            return
         if stage not in plan_lock.ESTIMATE_STAGES or not plan_lock.shows_estimates(stage, artifact):
             return
         with self._locking:
@@ -1970,6 +2027,14 @@ class ProjectService:
             artifact = self._served_fit(pid, artifact, key)
         if stage == "design" and artifact is not None and key:
             artifact = self._served_design(pid, artifact, key)
+        if stage == "mattered" and artifact is not None:
+            # E3 (core/mattered.py): withheld as GET …/mattered refuses it, else the lock named.
+            from turbotab.core import mattered
+
+            records = self.log(pid).records()
+            why = self._mattered_gate(pid, decisions.fold(records), records)
+            artifact = (mattered.withheld(artifact, why[1]) if why is not None
+                        else mattered.with_lock(artifact, plan_lock.current_lock(records).id))
         if artifact is not None and stage in estimand.ESTIMATE_STAGES:
             # WP17: no estimate is served while a question it rests on is unanswered (the follow-up;
             # under inference the grouping, the exposure and its effect, the adjustment set), as

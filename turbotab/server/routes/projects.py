@@ -7,6 +7,7 @@ from starlette.concurrency import run_in_threadpool
 from turbotab.core.export.methods import MethodsSections
 from turbotab.core.fit_press import FitLock
 from turbotab.core.materiality import Ledger
+from turbotab.core.mattered import Mattered
 from turbotab.core.plan_lock import PlanExport
 from turbotab.core.provenance import MethodsText
 from turbotab.core.quest import QuestLog
@@ -187,6 +188,24 @@ def materiality_ledger(request: Request, pid: str) -> Ledger:
     and once the plan is fixed its realized movement and whether it matched. Derived from the
     record each time, so a replay gives the same rows."""
     return get_service(request).materiality(pid)
+
+
+@router.get(
+    "/projects/{pid}/mattered",
+    response_model=Mattered,
+    responses={409: refusal("Not offered for this goal, the plan not locked yet, a question the "
+                            "estimates rest on open, or the curve cannot be drawn"),
+               404: refusal("No such project")},
+)
+def mattered(request: Request, pid: str) -> Mattered:
+    """Which decisions mattered, under Estimate (SWARM_ENGINE_PLAN E3): the exposure's estimate
+    refit with each recorded choice changed, one at a time (each exclusion rule dropped, each
+    adjusted covariate dropped, each covariate the adjustment answers left out added), a
+    specification curve the ``mattered`` stage computes after the plan's lock. Its primary is the
+    reported estimate, which stays the result whatever the curve shows. Refused before the lock,
+    with the line saying when it opens; while the stage computes, its status and no curve; a curve
+    that cannot be drawn is refused with why. Serving a curve marks its estimates as shown."""
+    return get_service(request).mattered(pid)
 
 
 @router.get(
