@@ -335,6 +335,79 @@ def test_the_figures_are_self_contained_greyscale_serif_svg():
     assert re.findall(r'font-weight="700">([^<]+)<', svg).count("a_1") == 1
 
 
+# A lineage over 40 raw columns (``models.lineage.COLLAPSE_AT``), which the design stage folds into
+# one node per role in each lane: 30 nutrients, 12 characteristics and total energy, each kept as
+# it is (no step runs, so no column is drawn alone).
+WIDE_ROLES = {**{f"n{i:02d}": "exposure" for i in range(30)},
+              **{f"c{i:02d}": "covariate" for i in range(12)}, "kcal": "energy"}
+
+
+def _wide_design() -> dict[str, Any]:
+    from turbotab.core.models.lineage import COLLAPSE_AT, trace
+
+    assert len(WIDE_ROLES) > COLLAPSE_AT
+    lineage = trace([], list(WIDE_ROLES), WIDE_ROLES).model_dump(mode="json")
+    return {"matrix": {"n_rows": 90, "n_cols": len(WIDE_ROLES)}, "lineage": lineage}
+
+
+def _texts(svg: str) -> list[str]:
+    import xml.etree.ElementTree as ET
+
+    return [t.text or "" for t in ET.fromstring(svg).iter("{http://www.w3.org/2000/svg}text")]
+
+
+def test_under_predict_the_lineage_figure_names_its_groups_as_the_roles_card_does():
+    """The ruling at W1-W's cap (M2): under Predict the bundle's lineage figure names its collapsed
+    predictor groups in the words the server serves for the roles card (``readings.served_groups``),
+    as the shell's Columns lineage does (LiveScenes.tsx ``inGroupWords``): in the raw lane by the
+    count and the group's name for many, after it by the group's name and its count of columns, and
+    a name that is one word for one or many with its count of columns in every lane. It never says
+    "covariate columns" or "exposure columns". The words for a dietary project are written out here
+    from the ruling of 2026-10-17; the counts are the frame's."""
+    design = _wide_design()
+    state = d.ProjectState(lens=["dietary"], target="y", purpose="prediction",
+                           roles=dict(WIDE_ROLES))
+    svg, caption = figures.lineage(design, groups=figures.predictor_words(state))
+    said = _texts(svg)
+    assert {"30 nutrients", "12 characteristics", "total energy: 1 column"} <= set(said)
+    assert said.count("nutrients: 30 columns") == said.count("characteristics: 12 columns") == 2
+    assert said.count("total energy: 1 column") == 3
+    assert not any(w in t for t in said for w in ("exposure", "covariate", "energy column"))
+    assert "covariate" not in caption and "exposure" not in caption
+    # the clinical lens names the Predictor role's group by its measures
+    clinical = d.ProjectState(lens=["clinical"], target="y", purpose="prediction")
+    svg, _ = figures.lineage(design, groups=figures.predictor_words(clinical))
+    assert "30 measures" in _texts(svg) and "measures: 30 columns" in _texts(svg)
+
+
+@pytest.mark.parametrize("purpose", ["inference", None])
+def test_under_estimate_the_lineage_figure_keeps_the_design_stages_words(purpose):
+    """The other way: under Estimate (and with no goal) the bundle passes no groups, and the figure
+    is the one drawn from the design stage's labels, byte for byte ("30 exposure columns")."""
+    design = _wide_design()
+    state = d.ProjectState(lens=["dietary"], target="y", purpose=purpose, roles=dict(WIDE_ROLES))
+    assert figures.predictor_words(state) is None
+    svg, caption = figures.lineage(design, groups=figures.predictor_words(state))
+    assert (svg, caption) == figures.lineage(design)
+    said = _texts(svg)
+    assert {"30 exposure columns", "12 covariate columns", "1 energy column"} <= set(said)
+
+
+@pytest.mark.parametrize("purpose, want", [("prediction", "30 nutrients"),
+                                           ("inference", "30 exposure columns")])
+def test_the_bundles_lineage_figure_is_worded_by_the_goal(tmp_path, purpose, want):
+    """The bundle itself draws ``figures/lineage.svg`` with the goal's words, from the design
+    stage's artifact over 40 raw columns."""
+    log = DecisionLog(tmp_path / "decisions.jsonl")
+    for x in (d.SetLens(lenses=["dietary"]), d.SetTarget(column="y"),
+              d.SetPurpose(purpose=purpose), d.SetRoles(roles=dict(WIDE_ROLES))):
+        log.append(x, sentence=_say)
+    source = _source(log.records(), purpose=purpose, artifacts={"design": _wide_design()})
+    files = bundle.contents(source, gated=False).files
+    said = _texts(files["figures/lineage.svg"].decode("utf-8"))
+    assert want in said
+
+
 # ── the replay's own refusals ────────────────────────────────────────────────
 
 

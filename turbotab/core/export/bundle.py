@@ -135,7 +135,8 @@ def contents(source: Any, *, gated: bool = True, scores_seen: bool = True) -> Ex
         estimand = getattr(state, "estimand", None)
         exposure = ((estimand.get("exposure") if isinstance(estimand, dict)
                      else getattr(estimand, "exposure", None)) if purpose == "inference" else None)
-        svg, caption = figures.lineage(design, exposures=[exposure] if exposure else [])
+        svg, caption = figures.lineage(design, exposures=[exposure] if exposure else [],
+                                       groups=figures.predictor_words(state))
         files["figures/lineage.svg"] = svg.encode("utf-8")
         captions[checklists.LINEAGE] = caption
     captions[checklists.PROVENANCE] = (
