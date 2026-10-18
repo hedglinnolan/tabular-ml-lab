@@ -695,6 +695,25 @@ def test_the_reported_estimate_is_the_linear_family_s_and_refused_without_one():
         M.reported_of(refused, "fiber")
 
 
+@pytest.mark.parametrize("task", ["regression", "binary"])
+def test_the_followed_family_is_the_tasks_declared_default_inference_family(task):
+    """The curve follows the family the task's declaration names its default inference family
+    (``inference_decl.default_for``; MODEL_FAMILY_CONTRACT C1: read from the declaration, never a
+    switch on a family's key), least squares or logistic regression: the linear family under
+    either task, its row reported with the family's key."""
+    from turbotab.core.models.base import inference_default
+
+    row = {"feature": "fiber", "estimate": 0.5, "ci_low": 0.1, "ci_high": 0.9, "se": 0.2}
+    model = {"coefficients": [row], "inference": {"n_rows": 50, "covariance": "HC3",
+                                                  "refused": None}}
+    fit = {"models": [{**model, "family": "ridge"}, {**model, "family": "linear"}]}
+    assert inference_default(task).key == "linear"
+    got = M.reported_of(fit, "fiber", task)
+    assert (got.family, got.estimate) == ("linear", 0.5)
+    with pytest.raises(S.SpecCurveRefused, match="not among the chosen families"):
+        M.reported_of({"models": [{**model, "family": "ridge"}]}, "fiber", task)
+
+
 # ── the analyst's examined alternatives ──────────────────────────────────────
 
 

@@ -93,7 +93,6 @@ from turbotab.core.methods import spec_curve as S
 
 STAGE = "mattered"
 CROSSING = "one_at_a_time"  # the curve's default (SWARM_ENGINE_PLAN E3)
-FAMILY = "linear"  # the family whose coefficient the curve follows (spec_curve.linear_fitter)
 EXAMINED = "examined"  # the field that holds the alternatives the analyst declared as examined
 # The primary specification reproduces the reported estimate when its estimate and interval ends
 # lie within this share of the reported standard error (a float64 tolerance: the same estimator on
@@ -525,12 +524,26 @@ def unanswered(readings: Sequence[Any], exits: Sequence[Mapping[str, Any]]) -> s
 # ── the reported estimate ────────────────────────────────────────────────────
 
 
-def reported_of(fit: Any, exposure: str) -> MatteredReported:
-    """The linear family's row of ``exposure`` in the fit stage's table; refused when there is none
-    (the family not chosen, a table refused or withheld by its own answer, the exposure split into
-    several columns by a form or an energy model)."""
+def followed(task: str = "regression") -> str | None:
+    """The key of the family whose coefficient the curve follows: the ``task``'s default inference
+    family by its declaration (``models.base.inference_default``: least squares for a numeric
+    outcome, logistic regression for a yes/no one, as ``spec_curve.linear_fitter`` refits), read
+    from the declaration, never a switch on a family's key (MODEL_FAMILY_CONTRACT C1)."""
+    from turbotab.core.models.base import inference_default
+
+    default = inference_default(task)  # type: ignore[arg-type]
+    return default.key if default is not None else None
+
+
+def reported_of(fit: Any, exposure: str, task: str = "regression") -> MatteredReported:
+    """The followed family's row of ``exposure`` in the fit stage's table (:func:`followed`: the
+    linear family for a numeric or yes/no outcome); refused when there is none (the family not
+    chosen, a table refused or withheld by its own answer, the exposure split into several columns
+    by a form or an energy model)."""
     data = getattr(fit, "data", fit) or {}
-    model = next((m for m in data.get("models") or [] if m.get("family") == FAMILY), None)
+    key = followed(task)
+    model = next((m for m in data.get("models") or [] if key is not None
+                  and m.get("family") == key), None)
     if model is None:
         raise S.SpecCurveRefused(
             "The curve follows the linear model's estimate (least squares, or logistic regression "
@@ -551,7 +564,7 @@ def reported_of(fit: Any, exposure: str) -> MatteredReported:
             f"The linear model's estimate of `{exposure}` has no interval here, so the curve has "
             f"no primary interval to follow.", ())
     n = info.get("n_rows")
-    return MatteredReported(family=FAMILY, feature=exposure, estimate=float(row["estimate"]),
+    return MatteredReported(family=str(key), feature=exposure, estimate=float(row["estimate"]),
                             ci_low=float(row["ci_low"]), ci_high=float(row["ci_high"]),
                             se=None if row.get("se") is None else float(row["se"]),
                             n_rows=int(n) if n is not None else -1,
@@ -812,7 +825,7 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
             "The curve refits the linear model on the table's own columns, and the plan holds "
             + _listing(held) + ", which that refit does not repeat, so no specification would be "
             "fitted as the primary is.", ())
-    reported = reported_of(ctx.inputs["fit"], exposure)
+    reported = reported_of(ctx.inputs["fit"], exposure, task)
     if survey is not None and survey.refusal:
         raise S.SpecCurveRefused(survey.refusal, survey.exits)
     design = survey.design if survey is not None and survey.answer == "population" else None
@@ -993,7 +1006,7 @@ def served(artifact: Any, *, status: str, fresh: bool, key: str | None, lock_id:
         error=error)
 
 
-__all__ = ["AGREEMENT", "CAP_REFUSAL", "CROSSING", "ESTIMATOR_WORDS", "EXAMINED", "FAMILY",
+__all__ = ["AGREEMENT", "CAP_REFUSAL", "CROSSING", "ESTIMATOR_WORDS", "EXAMINED", "followed",
            "INTERVAL_WORDS", "KIND_WORDS", "LOCKED", "MARGINAL_REFUSAL", "MATTERED_READS",
            "MATTERED_REQUIRES", "Mattered", "MatteredArtifact", "MatteredCurve",
            "MatteredExamined", "MatteredReported", "NOTHING_TO_VARY", "OUTCOME_REFUSAL",
