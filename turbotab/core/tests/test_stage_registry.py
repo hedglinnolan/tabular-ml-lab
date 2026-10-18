@@ -281,8 +281,11 @@ def test_a_stage_not_reached_reports_no_progress_and_waits_for_the_question_ahea
     assert not models.reached and models.progress is None  # empty, never "0 of N"
     estimand = line(log, "estimand")
     assert estimand.status == "waiting"
-    assert [(w.key, w.stage) for w in estimand.waiting_for] == [
-        (first.key, quest.QUESTIONS[first.key].stage)]
+    # The question ahead is the event question, which waits only for the outcome's first reading:
+    # whether it is asked at all is that reading's, so the line waits for the reading, not for it
+    # by name (the re-walk's N5).
+    assert (first.key, first.waiting_on) == ("event", ["target_info"])
+    assert estimand.waiting_for == [] and estimand.computing[:1] == ["target_info"]
     # Your data: the lens answered; the roles, asked after Who's in's structure questions today,
     # wait; the offers (a join, a codebook) are listed and not counted.
     data = stage(log, "data")
@@ -566,7 +569,10 @@ def test_progress_holds_while_the_outcome_is_read_again():
                if s.key in ("event", "task", "follow_up") else s for s in settled]
     log = quest.quest_log(state, [], reading)
     assert stage(log, "question").progress == before
-    assert not line(log, "event").counted and line(log, "event").status == "waiting"
+    # The event and follow-up questions are asked only for some outcomes: not listed until the
+    # reading says whether they are (the re-walk's N5).
+    keys = {l.key for l in stage(log, "question").lines}
+    assert "event" not in keys and "follow_up" not in keys
     # A recorded answer that still holds stands meanwhile, and counts: the task, set for the
     # outcome now; one recorded for another outcome does not hold, so it waits uncounted.
     records = [record(1, {"kind": "set_target", "column": "glucose"}),

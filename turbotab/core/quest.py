@@ -1461,6 +1461,12 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
               and not _holding(s, state)}
     if purpose == "prediction" and not drew_under_predict:
         asking.add("split")     # asked again below: no draw the person made under Predict
+    # The re-walk's N5: a question with no answer that waits only for the reading that says whether
+    # it is asked at all (``READ_BY_GATE``) is not known yet. A line after it waits for that
+    # reading, never for the question by name (a numeric outcome has no event question); and the
+    # questions asked only for some outcomes are not listed until the outcome's reading says.
+    unknown = {_get(s, "key"): list(_get(s, "waiting_on") or []) for s in steps
+               if _unknown_while_read(s, state)}
     lines = []
     for step in steps:
         key, status = _get(step, "key"), _get(step, "status")
@@ -1471,12 +1477,16 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
             continue
         if place is None or status == "not_applicable":
             continue
+        if not_known_until_the_outcome_is_read(step, state):
+            continue  # asked only for some outcomes: the outcome's reading says which (N5)
         label = place.label
         if status == "skipped":
             label = place.label if place.label != DECIDE else STATED.get(key, CONFIRM)
         waiting_on = list(_get(step, "waiting_on") or [])
         waiting_for, computing = [], waiting_on
-        if status == "waiting" and step is not first and waiting_on and waiting_on[0] in QUESTIONS:
+        if status == "waiting" and step is not first and waiting_on and waiting_on[0] in unknown:
+            computing = list(dict.fromkeys([*unknown[waiting_on[0]], *waiting_on[1:]]))
+        elif status == "waiting" and step is not first and waiting_on and waiting_on[0] in QUESTIONS:
             earlier = waiting_on[0]
             waiting_for = [Waiting(key=earlier, stage=QUESTIONS[earlier].stage,
                                    name=question_name(earlier))]
@@ -2180,6 +2190,30 @@ def _holding(step: Any, state: Any) -> bool:
             and waiting_on <= READ_BY_GATE.get(key, frozenset()) and answer_holds(key)(state))
 
 
+# The questions asked only for some outcomes (a two-level outcome's event, a time to event's
+# follow-up): while the outcome's reading recomputes, whether they are asked is not known.
+OUTCOME_KIND_QUESTIONS = frozenset({"event", "follow_up"})
+
+
+def not_known_until_the_outcome_is_read(step: Any, state: Any) -> bool:
+    """A question asked only for some outcomes (:data:`OUTCOME_KIND_QUESTIONS`) with no answer
+    standing, waiting while the outcome's reading (``target_info``) recomputes: whether it is
+    asked at all is that reading's, so the quest log does not list it yet (the re-walk's N5: a
+    numeric outcome has no event question)."""
+    return (_get(step, "key") in OUTCOME_KIND_QUESTIONS and _get(step, "status") == "waiting"
+            and "target_info" in (_get(step, "waiting_on") or ()) and not _holding(step, state))
+
+
+def _unknown_while_read(step: Any, state: Any) -> bool:
+    """A step with no answer standing that waits only for the reading that says whether it is
+    asked at all (``READ_BY_GATE``): what it will be is not known until that reading is back, so a
+    line after it waits for the reading, not for it (the re-walk's N5)."""
+    key = _get(step, "key")
+    waiting_on = set(_get(step, "waiting_on") or ())
+    return (_get(step, "status") == "waiting" and bool(waiting_on)
+            and waiting_on <= READ_BY_GATE.get(key, frozenset()) and not _holding(step, state))
+
+
 def _frontier(steps: Sequence[Any], stages: Mapping[str, Any],
               shown_at: Mapping[str, datetime | None], fit: FitLock | None = None,
               state: Any = None) -> int:
@@ -2417,6 +2451,7 @@ __all__ = [
     "exhibits_waiting",
     "asks", "explore_label", "explore_place", "finding_place", "fit_waits", "goal_of", "kind_place",
     "kind_stages", "noticing_place",
+    "OUTCOME_KIND_QUESTIONS", "not_known_until_the_outcome_is_read",
     "noticing_places", "noticing_stage", "noticing_stages", "quest_log", "question_reads",
     "ROLE_GROUP_ITEM", "record_stage", "record_steps", "role_choices", "role_group_head",
     "role_group_key", "role_group_name", "role_group_reason", "role_line_key", "role_line_reason",
