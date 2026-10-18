@@ -72,6 +72,7 @@ from turbotab.core.materiality import recommend as recommend_noticing
 from turbotab.core.quest import (
     CONFIRM,
     DECIDE,
+    DECLARATIONS,
     QUESTIONS,
     RECORD,
     STAGE_NAMES,
@@ -891,14 +892,19 @@ def _confirm_reads_the_sweep(d: ConfirmSweep, ctx: Any) -> ConfirmSweep:
 register_completion("confirm_sweep", _confirm_reads_the_sweep)
 
 
-def _plain(value: str) -> str:
-    text = value.strip().rstrip(".")
-    return text[:1].lower() + text[1:] if text[:1].isupper() and text[1:2].islower() else text
+def _line_name(key: str) -> str:
+    """A Confirm line's name as the quest log gives it: a declaration's own, else its question's."""
+    from turbotab.core.voice import question_name
+
+    declared = next((x for x in DECLARATIONS if x.kind == key), None)
+    return declared.name if declared is not None else question_name(key)
 
 
 def confirm_sentence(d: Any, state: Any = None, ctx: Any = None) -> str:
     """The record quotes what was confirmed, as it was stated (FOUNDATION §10: what the engine set
-    is recorded and visible)."""
+    is recorded and visible): each choice by its line's name, its value in quotes, since a value
+    may hold semicolons of its own (W1-W round 1, P3: "5-fold cross-validation" beside the in-fold
+    rules' three)."""
     name = STAGE_NAMES.get(d.stage, d.stage)
     if d.sweep == "noticings":
         counts = {k: sum(l.value == k for l in d.lines) for k in DISPOSITIONS}
@@ -909,7 +915,8 @@ def confirm_sentence(d: Any, state: Any = None, ctx: Any = None) -> str:
                 + "; ".join(f"{n} {words}" for n, words in said if n) + ".")
     if not d.lines:
         return f"Confirmed the choices set for you in {name}."
-    stated = "; ".join(_plain(l.value) for l in d.lines if not l.key.startswith("read_from_data"))
+    stated = "; ".join(f"{_line_name(l.key)}, “{l.value.strip().rstrip('.')}”" for l in d.lines
+                       if not l.key.startswith("read_from_data"))
     read = next((l for l in d.lines if l.key == "read_from_data"), None)
     if read is not None:
         n = len(read.value.split("; "))

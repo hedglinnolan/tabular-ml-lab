@@ -232,7 +232,48 @@ def test_confirm_all_records_each_default_by_its_own_value(split, scheme):
     assert got["set_validation"] == scheme and got["set_levers"] == levers.reason
     d = decisions.validate({"kind": "confirm_sweep", "stage": "models"}, Ctx(log))
     said = sweep.confirm_sentence(d)
-    assert scheme[:1].lower() + scheme[1:-1] in said and "the validation scheme" not in said
+    # The scheme by its value, beside its line's name (W1-W round 1, P3), never by its name alone.
+    assert f"the validation scheme, “{scheme[:-1]}”" in said
+
+
+def test_confirm_all_names_each_choice_beside_its_own_value():
+    """W1-W round 1, P3: the record joined the confirmed values with "; ", and the values hold
+    semicolons of their own (the functional-form line's reason under Predict, the in-fold rules'
+    three), so the re-walk's Models record read six clauses for three choices. Each choice is named
+    as its line is (the quest log's own name for it) and quotes its value as stated. Built from the
+    re-walk's Models stage: the form stated with the reason its record quoted, the validation scheme
+    and the in-fold rules set for the person; the sentence is parsed back into (name, value) pairs,
+    one per swept line, in order."""
+    import re
+
+    from turbotab.core.decisions import SetSplit
+
+    form = ("Under prediction each predictor enters as each family takes it; the spline benchmark "
+            "is on the shelf, and a spline can be declared for any numeric predictor.")
+    records = [record(1, {"kind": "set_lens", "lenses": ["clinical"]}),
+               record(2, {"kind": "set_target", "column": "glucose"}),
+               record(3, {"kind": "set_purpose", "purpose": "prediction"}),
+               record(4, {"kind": "set_roles", "roles": {"SEQN": "identifier", "age": "covariate"},
+                          "unconfirmed": []}),
+               record(5, SetSplit(holdout=0.2, seed=0).model_dump(mode="json")),
+               record(6, {"kind": "select_models", "models": ["linear"]})]
+    state = decisions.fold(records)
+    the_steps = [s.model_copy(update={"reason": form}) if s.key == "form" else s
+                 for s in steps_until(None, stated=("form",))]
+    log = quest.quest_log(state, records, the_steps, columns=["SEQN", "age", "glucose"])
+    d = decisions.validate({"kind": "confirm_sweep", "stage": "models"}, Ctx(log))
+    assert [l.key for l in d.lines] == ["form", "set_validation", "set_levers"]
+    assert d.lines[0].value == form and ";" in d.lines[2].value  # the values' own semicolons
+    said = sweep.confirm_sentence(d)
+    lead = "Confirmed the 3 choices set for you in Models, as stated: "
+    assert said.startswith(lead) and said.endswith("”.")
+    choices = re.findall(r"(?:^|; )([^;“”]+), “([^“”]*)”", said[len(lead):-1])
+    named = {l.key: l.name for s in log.stages for l in s.lines}
+    assert choices == [(named[l.key], l.value.rstrip(".")) for l in d.lines]
+    assert [c[0] for c in choices] == ["the functional-form question", "the validation scheme",
+                                       "the rules repeated inside each fold"]
+    # Nothing outside the quotes but each choice's name and the separators between them.
+    assert re.sub(r"“[^“”]*”", "", said[len(lead):-1]).count(";") == len(d.lines) - 1
 
 
 def test_a_sweep_with_a_line_still_waiting_cannot_be_confirmed():
