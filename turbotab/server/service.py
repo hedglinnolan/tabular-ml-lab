@@ -1102,11 +1102,12 @@ class ProjectService:
 
     def mattered(self, pid: str) -> Any:
         """The ``mattered`` stage's specification curve (``core/mattered.py``): refused while the
-        goal does not offer it, before the plan's lock (with the line saying when it opens) and
-        while a question the estimates rest on is open, as the estimates are withheld; once the
-        stage is fresh for the current answers, its curve, the lock in force named by its record
-        id. A curve that cannot be drawn is refused with why. A curve served shows estimates, so
-        the lock stands from then on, as when an estimate stage is served."""
+        goal or the effect measure does not offer it, before the plan's lock (with the line saying
+        when it opens) and while a question the estimates rest on is open, as the estimates are
+        withheld; once the stage is fresh for the current answers, its curve, the lock in force
+        named by its record id. A curve that cannot be drawn is refused with why, quoting no
+        estimate, so the refusal marks no lock shown. A curve served shows estimates, so the lock
+        stands from then on, as when an estimate stage is served."""
         from turbotab.core import mattered
         from turbotab.core.methods.spec_curve import SpecCurveRefused
 

@@ -21,6 +21,8 @@ computed again for the plan as it then stands.
   covers it.
 
 The curve changes one choice at a time (:data:`CROSSING`): the primary and each departure from it.
+The methods sentence names these alternatives as the engine derived them
+(:func:`methods_sentence`); only an examined one is said to be declared.
 
 **The primary stays the reported estimate.** The curve follows the linear family's coefficient of
 the declared exposure, the fit stage's own table. Each specification is refit by
@@ -28,12 +30,24 @@ the declared exposure, the fit stage's own table. Each specification is refit by
 columns, HC3 or CR2 by the unit, or design-based under the surveyed population). The primary
 specification must reproduce the reported estimate (its estimate and interval within
 :data:`AGREEMENT` of its standard error, on the same rows); otherwise no specification is shown and
-the curve is refused, since the others would not be fitted as the primary is. Before anything is
-fitted, a pipeline step of the plan that this refit does not repeat refuses the curve by name
-(:func:`not_refitted`): a fill of missing values that any specification's columns need, the energy
-model (other than total energy kept as a covariate), a declared form, blanks kept as a level, a
-scale's score, an omics normalization, values below detection, a batch correction, the D-ratio
-filter, or the data's own imputed copies.
+the curve is refused, since the others would not be fitted as the primary is. That refusal quotes
+no estimate: it is served where no estimate is.
+
+* **The measure.** Under a yes/no outcome the coefficient is a log odds ratio. The curve is drawn
+  under the odds ratio, and its sentence says the primary is the log of the reported odds ratio,
+  quoting both (:func:`says_of`). A marginal risk difference or ratio (``estimand.MARGINAL``) is
+  standardized over the analyzed rows from the logistic model, which the refit does not repeat for
+  each specification, so the curve is refused by name under it, before the lock too
+  (:func:`offered`).
+* **What the refit does not repeat.** Before anything is read from the fit or fitted, a pipeline
+  step of the plan that this refit does not repeat refuses the curve by name (:func:`not_refitted`):
+  a fill of missing values that the primary's columns need, the energy model (other than total
+  energy kept as a covariate), a declared form, blanks kept as a level, a scale's score, an omics
+  normalization, values below detection, a batch correction, the D-ratio filter, or the data's own
+  imputed copies. Each other specification is judged the same way, on the coding the plan would
+  give its own columns (``pipeline.design_spec`` over the table's column summaries, as the design
+  stage reads them): a column only a departure adds, coded otherwise by the plan's answers (its
+  blanks a level, a declared form), leaves that specification not estimated, with the step named.
 
 **Rows.** Every analyzed row (BLUEPRINT §12 ruling 3). The specifications' rows start from the
 participant flow without its exclusion rules and without its complete-cases line
@@ -87,6 +101,18 @@ ONE_EXPOSURE = ("The curve follows one exposure's estimate; under an exposure fa
                 "would need a curve of its own, which this curve does not draw yet.")
 ONE_EXPOSURE_EXIT = {"label": "Declare one column you study instead of the family",
                      "stage": "question"}
+# Under a marginal measure (``estimand.MARGINAL``), in its words (``estimand.MEASURE_WORDS``).
+MARGINAL_REFUSAL = ("The curve refits the logistic model's coefficient, a conditional log odds "
+                    "ratio, and the estimate reported is a {words}, standardized over the analyzed "
+                    "rows from that model (g-computation). The refit does not standardize each "
+                    "specification, so the curve is not drawn under this measure.")
+# The alternatives each kind of choice derives (its key's prefix), as the methods sentence says.
+KIND_WORDS: tuple[tuple[str, str], ...] = (
+    ("exclusion:", "each exclusion rule dropped"),
+    ("adjusted:", "each covariate in the adjustment set dropped"),
+    ("left_out:", "each covariate the adjustment answers left out added"),
+    ("examined:", "each alternative the analyst declared as examined taken instead"),
+)
 
 
 class _Model(BaseModel):
@@ -172,7 +198,9 @@ class MatteredCurve(_Model):
 
 
 class MatteredReported(_Model):
-    """The reported estimate the primary specification reproduces: the fit stage's own row."""
+    """The reported estimate the primary specification reproduces: the fit stage's own row.
+    ``ratio``: the row's odds ratio exp(β) for a yes/no outcome, the number the fit reports beside
+    the log odds; None for a difference."""
 
     family: str
     feature: str
@@ -182,6 +210,7 @@ class MatteredReported(_Model):
     se: float | None
     n_rows: int
     covariance: str | None
+    ratio: float | None = None
 
 
 class MatteredRefusal(_Model):
@@ -254,11 +283,19 @@ def goal_of(state: Any) -> str | None:
 
 
 def offered(state: Any) -> S.Eligibility:
-    """Whether the goal offers the curve, with the line and exits that say why not."""
+    """Whether the goal and the measure offer the curve, with the line and exits that say why not.
+    A marginal measure refuses it (the module docstring), with no exit: the measure is part of
+    the question, never changed to draw a sensitivity analysis."""
+    from turbotab.core.estimand import MARGINAL, MEASURE_WORDS, current_estimand
+
     goal = goal_of(state)
     if goal is None:
         return S.Eligibility(False, NOT_OFFERED_YET, (dict(S.ESTIMATE_EXIT),))
-    return S.eligible(goal)
+    eligibility = S.eligible(goal)
+    measure = getattr(current_estimand(state), "measure", None) if eligibility.offered else None
+    if measure in MARGINAL:
+        return S.Eligibility(False, MARGINAL_REFUSAL.format(words=MEASURE_WORDS[measure]), ())
+    return eligibility
 
 
 # ── the choices ──────────────────────────────────────────────────────────────
@@ -354,7 +391,8 @@ def reported_of(fit: Any, exposure: str) -> MatteredReported:
                             ci_low=float(row["ci_low"]), ci_high=float(row["ci_high"]),
                             se=None if row.get("se") is None else float(row["se"]),
                             n_rows=int(n) if n is not None else -1,
-                            covariance=info.get("covariance"))
+                            covariance=info.get("covariance"),
+                            ratio=None if row.get("ratio") is None else float(row["ratio"]))
 
 
 def agrees(primary: S.Spec, reported: MatteredReported) -> bool:
@@ -369,15 +407,61 @@ def agrees(primary: S.Spec, reported: MatteredReported) -> bool:
             and near(primary.high, reported.ci_high) and int(primary.n) == reported.n_rows)
 
 
-def _num(x: float | None) -> str:
-    return "none" if x is None else f"{x:.6g}".replace("-", "−")
+# ── words ────────────────────────────────────────────────────────────────────
+
+
+def _short(x: float) -> str:
+    return f"{x:.3g}".replace("-", "−")
+
+
+def says_of(curve: S.SpecCurve, reported: MatteredReported | None, task: str) -> str:
+    """What the curve says, its numbers the curve's own: the range and median of the estimates,
+    the primary (for a yes/no outcome, the log of the reported odds ratio, both quoted), and the
+    counts of intervals wholly above and below zero. Descriptive: never a test."""
+    if curve.sealed:
+        return curve.sealed
+    s = curve.summary
+    if s is None:
+        return "No specification could be estimated."
+    primary = next((x for x in curve.specs if x.primary), None)
+    text = (f"Across {s.k:,} specifications the estimate ranged from {_short(s.lowest)} to "
+            f"{_short(s.highest)} (median {_short(s.median)})")
+    if primary is not None and task == "binary":
+        ratio = reported.ratio if reported is not None else None
+        text += (f"; the primary, {_short(primary.estimate)}, is the log of the reported odds ratio"
+                 + (f", {_short(ratio)}" if ratio is not None else ""))
+    elif primary is not None:
+        text += f"; the primary, {_short(primary.estimate)}, is the reported estimate"
+    text += (f". {s.above:,} interval{'s' if s.above != 1 else ''} lay wholly above zero and "
+             f"{s.below:,} wholly below.")
+    if curve.not_estimated:
+        text += f" {len(curve.not_estimated):,} could not be estimated, each with its reason."
+    return text
+
+
+def methods_sentence(curve: S.SpecCurve, *, task: str) -> str:
+    """The methods sentence of the stage's curve (one choice at a time, :data:`CROSSING`): the
+    alternatives named as the engine derived them from the recorded choices (:data:`KIND_WORDS`,
+    the kinds the curve holds), the primary the reported estimate."""
+    keys = [str(c["key"]) for c in curve.choices]
+    kinds = [words for prefix, words in KIND_WORDS if any(k.startswith(prefix) for k in keys)]
+    sentence = ("As a sensitivity analysis after the analysis plan was locked, the exposure's "
+                "estimate was refitted with each recorded analytic choice changed, one at a time"
+                + (": " + _listing(kinds) if kinds else "") + "; each specification estimated "
+                "was fitted as the primary analysis was, and the primary remains the reported "
+                "estimate"
+                + (" (the log of its odds ratio)" if task == "binary" else "") + ".")
+    if curve.weighted:
+        sentence += (" Every specification was design-based, an exclusion rule defining a domain "
+                     "of the full design.")
+    return sentence + " No joint test across specifications was computed."
 
 
 # ── the stage ────────────────────────────────────────────────────────────────
 
 
 def _artifact(*, curve: S.SpecCurve | None = None, reported: MatteredReported | None = None,
-              examined: Sequence[MatteredExamined] = (),
+              task: str = "", examined: Sequence[MatteredExamined] = (),
               refused: S.SpecCurveRefused | None = None) -> dict[str, Any]:
     doc = None
     if curve is not None:
@@ -386,8 +470,9 @@ def _artifact(*, curve: S.SpecCurve | None = None, reported: MatteredReported | 
         doc = MatteredCurve.model_validate(data)
     return MatteredArtifact(
         crossing=CROSSING, curve=doc,
-        says=curve.says if curve is not None else None,
-        methods=(S.spec_curve_sentence(curve) if curve is not None and not curve.sealed else None),
+        says=says_of(curve, reported, task) if curve is not None else None,
+        methods=(methods_sentence(curve, task=task) if curve is not None and not curve.sealed
+                 else None),
         reported=reported, examined=list(examined),
         refused=(MatteredRefusal(message=str(refused), exits=list(refused.exits))
                  if refused is not None else None),
@@ -397,12 +482,14 @@ def _artifact(*, curve: S.SpecCurve | None = None, reported: MatteredReported | 
 def mattered_stage(ctx: StageContext) -> dict[str, Any]:
     """The specification curve over the recorded choices, one at a time, after the lock; a curve
     that cannot be drawn is the artifact's ``refused``, with why and its exits."""
+    from turbotab.core.stages.modeling import _task
+
     examined = examined_of(ctx.state)
     try:
         curve, reported = curve_for(ctx, examined=examined)
     except S.SpecCurveRefused as refusal:
         return _artifact(examined=examined, refused=refusal)
-    return _artifact(curve=curve, reported=reported, examined=examined)
+    return _artifact(curve=curve, reported=reported, task=_task(ctx), examined=examined)
 
 
 def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
@@ -471,6 +558,8 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
                     if unit_columns else None)
         unit = clusters.column if clusters is not None and clusters.clustered else None
         survey = for_fit(state, store, unit)
+        # Every row's column summaries, as the design stage reads them for the levels.
+        column_info = {c.name: c for c in store.info().columns}
 
     choices = [*exclusion_choices(rules, masks), *adjustment_choices(adjusted, left_out),
                *examined_choices(examined)]
@@ -486,10 +575,44 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
         return S.specification_curve(choices, lambda picks: None, lock=None, estimate_label=what,
                                      crossing=CROSSING), None
 
-    reported = reported_of(ctx.inputs["fit"], exposure)
-    read = [target, exposure, *covariates, *added]
-    gaps = bool(frame[read].isna().to_numpy().any())
-    held = not_refitted(spec, gaps=gaps and missing_strategy(state) != "complete_case")
+    # The steps the refit does not repeat, judged before the fit's row is read (a step that renames
+    # the exposure, as the energy model does, is named for what it is) and before any fit.
+    raw = frame  # the columns as the table holds them, which the design's coding reads
+    fills = missing_strategy(state) != "complete_case"
+    by_choice = {c.key: c for c in choices}
+    recorded = {c.key: c.primary for c in choices}
+
+    def columns_of(picks: Mapping[str, str]) -> list[str]:
+        """The specification's columns besides the outcome, as ``linear_fitter`` builds them."""
+        cols = list(dict.fromkeys(covariates))
+        for ck, ok in picks.items():
+            o = by_choice[ck].option(ok)
+            cols = [c for c in cols if c not in o.drop] + [c for c in o.add if c not in cols]
+        return [exposure, *(c for c in cols if c != exposure)]
+
+    def rule_rows(picks: Mapping[str, str]) -> np.ndarray:
+        keep = np.ones(len(raw), dtype=bool)
+        for ck, ok in picks.items():
+            o = by_choice[ck].option(ok)
+            if o.keep is not None:
+                keep &= o.keep.reindex(raw.index).fillna(False).to_numpy(dtype=bool)
+        return keep
+
+    def held_by(picks: Mapping[str, str], coding: Any = None) -> list[str]:
+        """The steps the plan would apply to this specification's columns that the refit does
+        not repeat: on ``coding`` (the design stage's own, for the primary), else on the coding
+        the plan's answers give these columns over every row's summaries, as the design does."""
+        cols = columns_of(picks)
+        if coding is None:
+            coding = design_spec(state, raw[cols], cols, column_info=column_info)
+        gaps = fills and bool(raw.loc[rule_rows(picks), [target, *cols]].isna().to_numpy().any())
+        return not_refitted(coding, gaps=gaps)
+
+    try:
+        held = held_by(recorded, spec)
+        held += [w for w in held_by(recorded) if w not in held]
+    except ValueError as exc:  # a column the design cannot code yet says why, as the design does
+        raise S.SpecCurveRefused(str(exc), ()) from exc
     if imputed_copies_column(state) is not None:
         held.append("the analysis of the data's own imputed copies")
     if held:
@@ -497,6 +620,7 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
             "The curve refits the linear model on the table's own columns, and the plan holds "
             + _listing(held) + ", which that refit does not repeat, so no specification would be "
             "fitted as the primary is.", ())
+    reported = reported_of(ctx.inputs["fit"], exposure)
     if survey is not None and survey.refusal:
         raise S.SpecCurveRefused(survey.refusal, survey.exits)
     design = survey.design if survey is not None and survey.answer == "population" else None
@@ -510,7 +634,7 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
     if task == "binary":
         values = frame[target].to_numpy()
         classes = sorted(pd.unique(values[pd.notna(values)]).tolist())
-    predictors = [c for c in read if c != target]
+    predictors = [exposure, *covariates, *added]
     try:
         coding = design_spec(state, frame[predictors], predictors)
     except ValueError as exc:  # a column the design cannot code yet says why, as the design does
@@ -525,26 +649,44 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
         blank = frame[unit].isna().to_numpy()
         keys[blank] = [f"__missing_{rid}" for rid in np.asarray(frame.index)[blank]]
         units = pd.Series(keys, index=frame.index)
-    fit = S.linear_fitter(frame, outcome=target, exposure=exposure, covariates=covariates,
-                          choices=choices, task=task, classes=classes, units=units,
-                          unit_name=unit if units is not None else None, design=design)
+    refit = S.linear_fitter(frame, outcome=target, exposure=exposure, covariates=covariates,
+                            choices=choices, task=task, classes=classes, units=units,
+                            unit_name=unit if units is not None else None, design=design)
+
+    def fit(picks: Mapping[str, str]) -> S.SpecFit:
+        """A departure whose columns the plan would code with a step the refit does not repeat is
+        not estimated, with the step named (the primary was judged above)."""
+        if dict(picks) != recorded:
+            try:
+                held = held_by(picks)
+            except ValueError as exc:
+                raise S.SpecCurveRefused(str(exc), ()) from exc
+            if held:
+                raise S.SpecCurveRefused(
+                    "With this choice changed, the plan would apply " + _listing(held) + ", which "
+                    "the curve's refit does not repeat, so it is not fitted as the primary is.", ())
+        return refit(picks)
+
     curve = S.specification_curve(choices, fit, lock=LOCKED, estimate_label=what,
                                   scale_key=scale_key, crossing=CROSSING,
                                   weighted=design is not None, clustered=units is not None)
     primary = next(s for s in curve.specs if s.primary)
     if not agrees(primary, reported):
+        # No estimate is quoted: the refusal is served where none is (``served``, ``withheld``).
+        rows = (f" (it reads {primary.n:,} rows where the fit reads {reported.n_rows:,})"
+                if reported.n_rows >= 0 and int(primary.n) != reported.n_rows else "")
         raise S.SpecCurveRefused(
-            f"The curve's refit of the recorded choices gives {_num(primary.estimate)} "
-            f"({_num(primary.low)} to {_num(primary.high)}, {primary.n:,} rows) where the "
-            f"reported estimate is {_num(reported.estimate)} ({_num(reported.ci_low)} to "
-            f"{_num(reported.ci_high)}, {reported.n_rows:,} rows), so its other specifications "
-            f"would not be fitted as the primary is, and none is shown.", ())
+            f"The curve's refit of the recorded choices does not reproduce the reported "
+            f"estimate{rows}, so its other specifications would not be fitted as the primary is, "
+            f"and none is shown.", ())
     return curve, reported
 
 
 def _listing(items: Sequence[str]) -> str:
     items = list(items)
-    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+    if len(items) <= 1:
+        return "".join(items)
+    return ", ".join(items[:-1]) + " and " + items[-1]
 
 
 # ── serving ──────────────────────────────────────────────────────────────────
@@ -552,7 +694,8 @@ def _listing(items: Sequence[str]) -> str:
 
 def withheld(artifact: Any, reason: str) -> Any:
     """The stage's artifact with every estimate removed and the reason first (``withheld``), as
-    ``estimand.withhold`` withholds the other estimate stages'."""
+    ``estimand.withhold`` withholds the other estimate stages'. A refusal of the curve goes too: it
+    was drawn up for answers a question now open may change, and the reason stands first."""
     if not isinstance(artifact, dict):
         return artifact
     out = dict(artifact)
@@ -563,6 +706,7 @@ def withheld(artifact: Any, reason: str) -> Any:
     out["says"] = None
     out["methods"] = None
     out["reported"] = None
+    out["refused"] = None
     return out
 
 
@@ -602,9 +746,10 @@ def served(artifact: Any, *, status: str, fresh: bool, key: str | None, lock_id:
         error=error)
 
 
-__all__ = ["AGREEMENT", "CROSSING", "EXAMINED", "FAMILY", "LOCKED", "MATTERED_READS",
-           "MATTERED_REQUIRES", "Mattered", "MatteredArtifact", "MatteredCurve",
-           "MatteredExamined", "MatteredReported", "RECORDED", "STAGE", "adjustment_choices",
-           "agrees", "curve_for", "examined_choices", "examined_of", "exclusion_choices",
-           "goal_of", "mattered_stage", "not_refitted", "offered", "reported_of", "served",
-           "shows_estimates", "with_lock", "withheld"]
+__all__ = ["AGREEMENT", "CROSSING", "EXAMINED", "FAMILY", "KIND_WORDS", "LOCKED",
+           "MARGINAL_REFUSAL", "MATTERED_READS", "MATTERED_REQUIRES", "Mattered",
+           "MatteredArtifact", "MatteredCurve", "MatteredExamined", "MatteredReported",
+           "RECORDED", "STAGE", "adjustment_choices", "agrees", "curve_for", "examined_choices",
+           "examined_of", "exclusion_choices", "goal_of", "mattered_stage", "methods_sentence",
+           "not_refitted", "offered", "reported_of", "says_of", "served", "shows_estimates",
+           "with_lock", "withheld"]

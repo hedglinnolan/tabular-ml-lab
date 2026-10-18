@@ -10,6 +10,9 @@ written out here from the table as ingested: never the engine's.
 """
 from __future__ import annotations
 
+import json
+import math
+import re
 from pathlib import Path
 from typing import Any
 
@@ -183,6 +186,20 @@ def test_each_logistic_specification_has_the_wald_interval_statsmodels_gives(bin
         assert s["n"] == n, k
 
 
+def test_under_the_odds_ratio_the_primary_is_worded_as_the_log_of_the_reported_ratio(binary):
+    """The fit reports the odds ratio exp(β); the curve follows β. Its sentence says the primary is
+    the log of the reported odds ratio and quotes both, statsmodels' numbers rounded as shown."""
+    art = binary.mattered()
+    est, *_ = statsmodels_fit(binary.table, outcome="dm", rules=(0, 1), covariates=ADJUSTED,
+                              binary=True)
+    log_odds = f"{est:.3g}".replace("-", "−")
+    assert (f"the primary, {log_odds}, is the log of the reported odds ratio, "
+            f"{math.exp(est):.3g}") in art["says"]
+    assert "is the reported estimate" not in art["says"]
+    assert art["reported"]["ratio"] == pytest.approx(math.exp(est), rel=1e-6)
+    assert "the log of its odds ratio" in art["methods"]
+
+
 def test_the_primary_is_the_reported_estimate_and_the_fit_is_unchanged(numeric):
     before = numeric.reported()
     art = numeric.mattered()
@@ -196,6 +213,7 @@ def test_the_primary_is_the_reported_estimate_and_the_fit_is_unchanged(numeric):
     assert primary["low"] == pytest.approx(reported["ci_low"], rel=1e-12)
     assert primary["n"] == len(numeric.kept)  # the participant flow's own rows
     assert "is the reported estimate" in art["says"]
+    assert art["reported"]["ratio"] is None and "odds ratio" not in art["methods"]
 
 
 # ── the lock ─────────────────────────────────────────────────────────────────
@@ -220,7 +238,11 @@ def test_before_the_lock_nothing_is_fitted_and_the_curve_says_when_it_opens(nume
 
 def test_a_primary_that_is_not_the_reported_estimate_is_refused(numeric, tmp_path):
     """The reported row moved by ten of its standard errors: the curve's refit no longer
-    reproduces it, so no specification is shown. The fixture's own fit passes (the tests above)."""
+    reproduces it, so no specification is shown. The fixture's own fit passes (the tests above).
+
+    The refusal quotes no estimate, neither the refit's nor the reported one: it is served where
+    no estimate is (the route's refusal marks no lock shown, and a withheld artifact keeps no
+    refusal), so a number in it would be an estimate seen with nothing recording it."""
     import copy
 
     from turbotab.core.graph import Bundle
@@ -233,8 +255,29 @@ def test_a_primary_that_is_not_the_reported_estimate_is_refused(numeric, tmp_pat
     moved = Run(cohort(), tmp_path, numeric.state, fit=Bundle(data=data))
     art = moved.mattered()
     assert art["curve"] is None and art["says"] is None
-    assert "would not be fitted as the primary is" in art["refused"]["message"]
+    message = art["refused"]["message"]
+    assert "would not be fitted as the primary is" in message
+    assert "does not reproduce the reported estimate" in message
+    assert not re.search(r"\d", message), message  # the same rows: no number at all
+    with pytest.raises(S.SpecCurveRefused, match="does not reproduce the reported estimate"):
+        M.served(art, status="fresh", fresh=True, key="k", lock_id="r1")  # served, not withheld
+    reason = "a question the estimates rest on is open"
+    held = M.withheld(art, reason)
+    assert held["refused"] is None and held["withheld"] == reason
     assert numeric.mattered()["refused"] is None  # the fit's own row: silent
+
+
+def test_a_withheld_curve_carries_none_of_its_estimates(numeric):
+    art = numeric.mattered()
+    numbers = {repr(v) for s in art["curve"]["specs"] for v in (s["estimate"], s["low"], s["high"])}
+    numbers |= {repr(art["reported"][k]) for k in ("estimate", "ci_low", "ci_high")}
+    assert any(n in json.dumps(art) for n in numbers)  # served: the estimates are there
+    held = M.withheld(art, "a question the estimates rest on is open")
+    text = json.dumps(held)
+    assert not [n for n in numbers if n in text]
+    assert held["curve"]["specs"] == [] and held["curve"]["summary"] is None
+    assert held["says"] is None and held["methods"] is None and held["reported"] is None
+    assert held["refused"] is None and not M.shows_estimates(held)
 
 
 def test_agreement_is_judged_against_the_standard_error_both_ways():
@@ -260,6 +303,30 @@ def test_a_fill_of_missing_values_refuses_the_curve_and_complete_cases_do_not(tm
     assert "the fill of missing values" in art["refused"]["message"]
 
 
+def test_under_a_fill_a_departure_whose_added_column_has_blanks_is_not_estimated(tmp_path):
+    """A single fill with blanks only in `bmi`, which the answers leave out: the primary's columns
+    are complete on its rows, so the fill changes nothing there and the curve is drawn; the
+    departure adding `bmi` would have its blanks filled by the plan, which the refit does not do,
+    so it alone is not estimated. Every other specification is statsmodels' fit."""
+    frame = ef.cohort(n=800, seed=7)
+    frame.loc[np.random.default_rng(11).choice(len(frame), 30, replace=False), "bmi"] = np.nan
+    filled = state(missing=d.MissingSpec(strategy="impute", acknowledged=True,
+                                         reason="a test of the guard"))
+    run = Run(frame, tmp_path, filled)
+    art = run.mattered()
+    assert art["refused"] is None, art["refused"]
+    curve = art["curve"]
+    added = [s for s in curve["not_estimated"] if s["picks"]["left_out:bmi"] == "added"]
+    assert len(added) == 1 and "the fill of missing values" in added[0]["reason"]
+    want = {k: v for k, v in departures().items() if k != added[0]["key"]}
+    got = {s["key"]: s for s in curve["specs"]}
+    assert set(got) == set(want)
+    for k, (rules, covariates) in want.items():
+        est, low, high, n = statsmodels_fit(run.table, outcome="glucose", rules=rules,
+                                            covariates=covariates)
+        assert got[k]["estimate"] == pytest.approx(est, rel=1e-9) and got[k]["n"] == n, k
+
+
 def test_a_declared_spline_refuses_the_curve_by_name(tmp_path):
     from turbotab.core.decisions import ExposureFormSpec
 
@@ -269,6 +336,106 @@ def test_a_declared_spline_refuses_the_curve_by_name(tmp_path):
     art = run.mattered()
     assert art["curve"] is None
     assert "a declared form other than a straight line" in art["refused"]["message"]
+
+
+def test_a_residual_energy_model_refuses_the_curve_by_naming_it(tmp_path):
+    """The residual model fits ``fiber_adj`` in place of ``fiber``. The refit does not repeat the
+    energy model, and the refusal says so, before it looks for the reported row of ``fiber``
+    (which the energy model renamed) and offers an exit about scales that does not apply."""
+    frame = cohort()
+    rng = np.random.default_rng(5)
+    frame["kcal"] = 2000 + 40 * (frame["fiber"] - 20) + rng.normal(0, 300, len(frame))
+    st = state(roles={**ef.ROLES, "kcal": "energy"}, answers={**ef.ANSWERS, "kcal": ef.CONFOUNDER},
+               energy_adjustment=d.EnergyAdjustment(method="residual", energy_column="kcal",
+                                                    nutrients=["fiber"]))
+    run = Run(frame, tmp_path, st)
+    model = next(m for m in run.fit.data["models"] if m["family"] == "linear")
+    assert "fiber_adj" in [r["feature"] for r in model["coefficients"]]  # the premise
+    art = run.mattered()
+    assert art["curve"] is None
+    message = art["refused"]["message"]
+    assert "the energy model" in message and "no single coefficient" not in message
+    assert S.SCALE_EXIT["label"] not in [e["label"] for e in art["refused"]["exits"]]
+
+
+@pytest.mark.parametrize("measure, words", [("risk_difference", "marginal risk difference"),
+                                            ("risk_ratio", "marginal risk ratio")])
+def test_a_marginal_measure_refuses_the_curve_by_name_and_the_odds_ratio_does_not(binary, measure,
+                                                                                  words):
+    """The reported estimate under a marginal measure is standardized over the analyzed rows from
+    the logistic model; the curve refits the logistic coefficient, a conditional log odds ratio,
+    so its primary would not be the reported estimate. Refused by name, before the lock too."""
+    st = binary.state.model_copy(update={
+        "estimand": binary.state.estimand.model_copy(update={"measure": measure})})
+    art = binary.mattered(st)
+    assert art["curve"] is None and art["says"] is None and art["reported"] is None
+    assert words in art["refused"]["message"]
+    before = st.model_copy(update={"plan_locked": None})
+    assert not M.offered(st).offered and not M.offered(before).offered
+    assert words in M.offered(before).says
+    # The odds ratio, the logistic model's own measure: the curve is drawn.
+    assert binary.state.estimand.measure == "odds_ratio" and M.offered(binary.state).offered
+    assert binary.mattered()["refused"] is None
+
+
+AFTER_EXPOSURE = {"causes_exposure": "no", "causes_outcome": "yes", "after_exposure": "yes"}
+
+
+def with_statin() -> pd.DataFrame:
+    """The cohort with `statin`, two-valued with 120 blanks, which lowers glucose."""
+    frame = cohort()
+    rng = np.random.default_rng(3)
+    statin = (rng.random(len(frame)) < 0.4).astype(float)
+    frame["glucose"] = frame["glucose"] - 4 * statin
+    statin[rng.choice(len(frame), 120, replace=False)] = np.nan
+    frame["statin"] = statin
+    return frame
+
+
+def test_an_added_column_the_plan_would_code_otherwise_is_not_estimated(tmp_path):
+    """`statin` is two-valued with blanks, and the answer keeps a category's blanks as a level of
+    their own, so a plan adjusting for it would code its blanks as a level (``level_columns``); the
+    adjustment answers leave it out, so only the curve's departure adds it. The refit would drop
+    its blank rows instead, so that specification is listed as not estimated, with the step named.
+    `bmi`, a number with no step of its own, is added and estimated as statsmodels fits it."""
+    st = state(roles={**ef.ROLES, "statin": "covariate"},
+               answers={**ef.ANSWERS, "statin": AFTER_EXPOSURE},
+               missing=d.MissingSpec(strategy="complete_case", categorical="missing_category",
+                                     acknowledged=True, reason="a test of the guard"))
+    run = Run(with_statin(), tmp_path, st)
+    art = run.mattered()
+    assert art["refused"] is None, art["refused"]
+    curve = art["curve"]
+    assert "left_out:statin" in [c["key"] for c in curve["choices"]]
+    statin = [s for s in curve["not_estimated"] if s["picks"]["left_out:statin"] == "added"]
+    assert len(statin) == 1 and "blanks kept as a level of their own" in statin[0]["reason"]
+    assert not [s for s in curve["specs"] if s["picks"]["left_out:statin"] == "added"]
+    bmi = next(s for s in curve["specs"] if s["picks"]["left_out:bmi"] == "added")
+    est, low, high, n = statsmodels_fit(run.table, outcome="glucose", rules=(0, 1),
+                                        covariates=[*ADJUSTED, "bmi"])
+    assert bmi["estimate"] == pytest.approx(est, rel=1e-9) and bmi["n"] == n
+    assert len(curve["specs"]) == 1 + len(curve["choices"]) - 1
+    assert "could not be estimated" in art["says"]
+
+
+def test_an_added_column_with_a_declared_form_is_not_estimated(numeric, tmp_path):
+    """A spline declared on `bmi`, which the adjustment answers leave out: a plan adjusting for it
+    would fit the spline, so the departure that adds it is not estimated, with the step named.
+    Without the form (the numeric fixture) the same departure is estimated."""
+    from turbotab.core.decisions import ExposureFormSpec
+
+    formed = state(exposure_forms={"bmi": ExposureFormSpec(form="spline", knots=4, scale="raw")})
+    run = Run(cohort(), tmp_path, formed)
+    art = run.mattered()
+    assert art["refused"] is None, art["refused"]
+    curve = art["curve"]
+    added = [s for s in curve["not_estimated"] if s["picks"]["left_out:bmi"] == "added"]
+    assert len(added) == 1
+    assert "a declared form other than a straight line" in added[0]["reason"]
+    assert {s["key"] for s in curve["specs"]} == set(departures()) - {added[0]["key"]}
+    plain = numeric.mattered()["curve"]
+    assert plain["not_estimated"] == []
+    assert [s for s in plain["specs"] if s["picks"]["left_out:bmi"] == "added"]
 
 
 def test_an_exposure_family_is_refused_and_one_exposure_is_not(numeric):
@@ -327,6 +494,29 @@ def test_an_examined_alternative_is_one_more_departure_and_none_adds_nothing(num
     assert s.estimate == pytest.approx(est, rel=1e-9) and s.n == n
     assert s.low == pytest.approx(low, rel=1e-9) and s.high == pytest.approx(high, rel=1e-9)
     assert len(curve.specs) == len(plain["curve"]["specs"]) + 1
+
+
+def test_the_methods_sentence_names_each_alternative_the_curve_derived(numeric):
+    """The alternatives are the engine's own (each rule dropped, each adjusted covariate dropped,
+    each left-out covariate added): the sentence names the kinds the curve holds, and says
+    "declared" only of an analyst's examined alternative."""
+    said = numeric.mattered()["methods"]
+    assert ("each exclusion rule dropped, each covariate in the adjustment set dropped and each "
+            "covariate the adjustment answers left out added") in said
+    assert "declared" not in said and "one at a time" in said and "No joint test" in said
+
+    def sentence(choices: list[S.Choice]) -> str:
+        curve = S.specification_curve(choices, lambda picks: S.SpecFit(1.0, 0.5, 1.5, 50),
+                                      lock="r1", estimate_label="x", crossing=M.CROSSING)
+        return M.methods_sentence(curve, task="regression")
+
+    only = sentence(M.adjustment_choices(["age"], []))
+    assert "each covariate in the adjustment set dropped" in only
+    assert "exclusion rule" not in only and "left out" not in only and "declared" not in only
+    examined = sentence(M.examined_choices([M.MatteredExamined(key="lean", label="with bmi",
+                                                               add=["bmi"])]))
+    assert "each alternative the analyst declared as examined" in examined
+    assert "exclusion rule" not in examined and "adjustment set dropped" not in examined
 
 
 # ── the stage: registered, keyed on what it reads, recomputed when a choice changes ──

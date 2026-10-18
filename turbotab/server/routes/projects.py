@@ -193,8 +193,9 @@ def materiality_ledger(request: Request, pid: str) -> Ledger:
 @router.get(
     "/projects/{pid}/mattered",
     response_model=Mattered,
-    responses={409: refusal("Not offered for this goal, the plan not locked yet, a question the "
-                            "estimates rest on open, or the curve cannot be drawn"),
+    responses={409: refusal("Not offered for this goal or effect measure, the plan not locked "
+                            "yet, a question the estimates rest on open, or the curve cannot be "
+                            "drawn"),
                404: refusal("No such project")},
 )
 def mattered(request: Request, pid: str) -> Mattered:
@@ -202,9 +203,11 @@ def mattered(request: Request, pid: str) -> Mattered:
     refit with each recorded choice changed, one at a time (each exclusion rule dropped, each
     adjusted covariate dropped, each covariate the adjustment answers left out added), a
     specification curve the ``mattered`` stage computes after the plan's lock. Its primary is the
-    reported estimate, which stays the result whatever the curve shows. Refused before the lock,
-    with the line saying when it opens; while the stage computes, its status and no curve; a curve
-    that cannot be drawn is refused with why. Serving a curve marks its estimates as shown."""
+    reported estimate, which stays the result whatever the curve shows. Refused under a goal or an
+    effect measure that does not offer it (a marginal risk difference or ratio), and before the
+    lock with the line saying when it opens; while the stage computes, its status and no curve; a
+    curve that cannot be drawn is refused with why, quoting no estimate. Serving a curve marks its
+    estimates as shown."""
     return get_service(request).mattered(pid)
 
 

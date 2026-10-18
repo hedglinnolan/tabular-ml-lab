@@ -288,9 +288,11 @@ export interface paths {
          *     refit with each recorded choice changed, one at a time (each exclusion rule dropped, each
          *     adjusted covariate dropped, each covariate the adjustment answers left out added), a
          *     specification curve the ``mattered`` stage computes after the plan's lock. Its primary is the
-         *     reported estimate, which stays the result whatever the curve shows. Refused before the lock,
-         *     with the line saying when it opens; while the stage computes, its status and no curve; a curve
-         *     that cannot be drawn is refused with why. Serving a curve marks its estimates as shown.
+         *     reported estimate, which stays the result whatever the curve shows. Refused under a goal or an
+         *     effect measure that does not offer it (a marginal risk difference or ratio), and before the
+         *     lock with the line saying when it opens; while the stage computes, its status and no curve; a
+         *     curve that cannot be drawn is refused with why, quoting no estimate. Serving a curve marks its
+         *     estimates as shown.
          */
         get: operations["mattered_api_projects__pid__mattered_get"];
         put?: never;
@@ -3288,6 +3290,8 @@ export interface components {
         /**
          * MatteredReported
          * @description The reported estimate the primary specification reproduces: the fit stage's own row.
+         *     ``ratio``: the row's odds ratio exp(β) for a yes/no outcome, the number the fit reports beside
+         *     the log odds; None for a difference.
          */
         MatteredReported: {
             /** Family */
@@ -3306,6 +3310,8 @@ export interface components {
             n_rows: number;
             /** Covariance */
             covariance: string | null;
+            /** Ratio */
+            ratio: number | null;
         };
         /** MatteredSpec */
         MatteredSpec: {
@@ -17432,7 +17438,7 @@ export interface operations {
                     "application/json": components["schemas"]["Refusal"];
                 };
             };
-            /** @description Not offered for this goal, the plan not locked yet, a question the estimates rest on open, or the curve cannot be drawn */
+            /** @description Not offered for this goal or effect measure, the plan not locked yet, a question the estimates rest on open, or the curve cannot be drawn */
             409: {
                 headers: {
                     [name: string]: unknown;
