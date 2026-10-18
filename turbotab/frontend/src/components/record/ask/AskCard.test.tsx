@@ -1,8 +1,9 @@
 /**
  * The ledger's ask card (BLUEPRINT §14.2) on the real server's cards (src/mocks/fixtures): a
  * confirmation settles exactly the readings its line lists, each with the value the line shows;
- * a family is one line and one block; a changed value is the value confirmed; "every line"
- * lists every line shown and nothing else; a line the consumer answers by its own decision (total
+ * a family is one line and one block, but a column's role, which is a line and a press of its own;
+ * a changed value is the value confirmed; "every line" lists every line shown but the roles, and
+ * nothing else; a line the consumer answers by its own decision (total
  * energy's unit and days) is offered only as the server's exit. And its words keep the budgets.
  */
 import { fireEvent, render, screen, within } from "@testing-library/react";
@@ -90,7 +91,8 @@ describe("the ask card", () => {
     const exit = within(screen.getByTestId("ask-exits")).getByRole("button");
     fireEvent.click(exit);
     expect(record.mock.calls[0]![0].kind).toBe("set_column_unit");
-    // "every line" lists the role line only: the unit line is not a reading it may settle.
+    // "every line" lists no unit line, which is not a reading it may settle (nor the role line,
+    // which is confirmed on its own: §14 rule 2).
     const all = confirmAll(card.groups, {});
     if (all) expect(items(all).every((x) => !x.startsWith("unit:"))).toBe(true);
   });
@@ -101,6 +103,68 @@ describe("the ask card", () => {
     const read = screen.getByTestId("read-from-data");
     fireEvent.click(within(read).getByRole("button", { name: /Read from your data/ }));
     expect(within(read).getAllByRole("listitem")).toHaveLength(card.read_from_data.length);
+  });
+
+  /**
+   * BLUEPRINT §14 rule 2 (ruling R-b, 2026-10-17): a role proposed below high confidence needs its
+   * own confirmation and never rides along in a block. The card's role lines are such roles (the
+   * ask card asks only readings not settled), so each column's role is a line of its own, its
+   * press records that one role alone, and no press records a role with anything else. Built as
+   * the engine serves the Models ask under Predict at W1-R R1's verification: `bp_sys` alone and
+   * the imputed flags as one family (readings.families groups five or more alike), here beside two
+   * code-or-amount lines.
+   */
+  describe("below-high roles, one at a time (ruling R-b)", () => {
+    const FLAGS = ["imputed_bp", "imputed_hdl", "imputed_height", "imputed_tg", "imputed_waist", "imputed_weight"];
+    const role = (columns: string[], guess: string) => ({ kind: "role", columns, guess, guess_words: guess === "flag" ? "a flag on another column" : "a covariate", evidence: "proposed below high confidence" });
+    const code = (column: string) => ({ kind: "code_or_count", columns: [column], guess: "amount", guess_words: "an amount", evidence: "whole numbers from 20 to 230" });
+    const CARD = {
+      question: "models",
+      consumer: "The fit",
+      text: "Tell me about these columns.",
+      groups: [role(["bp_sys"], "covariate"), role(FLAGS, "flag"), code("hdl"), code("triglycerides")],
+      exits: [],
+      read_from_data: [],
+    } as unknown as Card;
+    /** The readings a decision records, as `reading:column`. */
+    const read = (d: Decision) => (d.kind === "confirm_readings" ? d.items.map((i) => `${i.reading}:${i.column}`) : []);
+
+    it("gives each column's role its own line, whose press records that one role alone", () => {
+      const record = renderCard(CARD);
+      const lines = screen.getAllByTestId("ask-line").filter((l) => l.getAttribute("data-kind") === "role");
+      expect(lines).toHaveLength(1 + FLAGS.length);
+      for (const [n, line] of lines.entries()) {
+        fireEvent.click(within(line).getByTestId("ask-confirm"));
+        const column = ["bp_sys", ...FLAGS][n]!;
+        expect(record.mock.calls.at(-1)![0]).toEqual({
+          kind: "confirm_readings",
+          items: [{ reading: "role", column, value: column === "bp_sys" ? "covariate" : "flag" }],
+        });
+      }
+    });
+
+    it("offers no press that records a role with any other reading", () => {
+      const record = renderCard(CARD);
+      for (const b of screen.getAllByRole("button")) fireEvent.click(b);
+      expect(record.mock.calls.length).toBeGreaterThan(0);
+      for (const [d] of record.mock.calls) {
+        const items = read(d);
+        if (items.some((x) => x.startsWith("role:"))) expect(items, JSON.stringify(d)).toHaveLength(1);
+      }
+    });
+
+    it("keeps the block of every other line, listing no role", () => {
+      const record = renderCard(CARD);
+      fireEvent.click(screen.getByTestId("ask-confirm-all"));
+      expect(read(record.mock.calls[0]![0]).sort()).toEqual(["code_or_count:hdl", "code_or_count:triglycerides"]);
+      expect(confirmAll(CARD.groups, {})).toEqual(record.mock.calls[0]![0]);
+      expect(screen.getByTestId("ask-confirm-all")).toHaveTextContent("(2)");
+    });
+
+    it("offers no block where one line besides the roles is left", () => {
+      renderCard({ ...CARD, groups: [role(["bp_sys"], "covariate"), role(FLAGS, "flag"), code("hdl")] });
+      expect(screen.queryByTestId("ask-confirm-all")).toBeNull();
+    });
   });
 
   it("keeps its own words within the question budget", () => {

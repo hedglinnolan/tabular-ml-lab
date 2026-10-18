@@ -1,15 +1,17 @@
 /**
  * The quest line and the progress bar (FOUNDATION §3): the seven stages by name, the open one in
  * the text color, and seven segments at the right, one per stage, filled with its objectives
- * (empty when not reached, never "0 of N"). A stage reopened by an earlier change drops back and
- * says why beside the bar. Pointing at a stage or its segment, or focusing it, opens a quiet panel
- * of its lines by label, each answered line with its answer (GET /methods by `decision_id`);
- * leaving closes it after the kit's grace. Clicking a stage opens it on the card.
+ * (empty when not reached, never "0 of N"; a stage that asks nothing reads as done only once the
+ * analysis comes to it, log.ts `readsDone`, and as not done, never as not reached, before). A
+ * stage reopened by an earlier change drops back and says why beside the bar. Pointing at a stage
+ * or its segment, or focusing it, opens a quiet panel of its lines by label, each answered line
+ * with its answer (GET /methods by `decision_id`); leaving closes it after the kit's grace.
+ * Clicking a stage opens it on the card.
  */
 import { useEffect, useId, useRef, useState, type FocusEvent } from "react";
 import type { QuestLine, QuestLog, QuestStage } from "../api/schema";
 import { POINT_GRACE_MS, Plain, kit as k } from "../kit";
-import { LABELS, byLabel, filled, segments } from "./log";
+import { LABELS, byLabel, filled, readsDone, segments } from "./log";
 import { said } from "./words";
 import q from "./quest.module.css";
 
@@ -77,7 +79,7 @@ export function StageLine({ log, shown, onOpen, answers, fitting }: StageLinePro
       <nav aria-label="The analysis, stage by stage" className={q.questNav}>
         <ol className={k.chain} data-testid="quest-line">
           {log.stages.map((s) => {
-            const status = s.key === shown ? "current" : s.progress?.complete ? "done" : "todo";
+            const status = s.key === shown ? "current" : readsDone(log, s) ? "done" : "todo";
             return (
               <li key={s.key} data-status={status}>
                 <button
@@ -119,13 +121,17 @@ export function StageLine({ log, shown, onOpen, answers, fitting }: StageLinePro
               {...point(seg.key)}
             >
               <span className={q.segmentFill} style={{ width: `${filled(seg) * 100}%` }} />
+              {/* "Not reached" only where the engine says so; a reached stage that asks nothing
+                  and does not read as done is not done (W1-R B1). */}
               <span className={q.srOnly}>
                 {seg.name}:{" "}
                 {!seg.reached
                   ? "not reached yet"
                   : seg.complete
                     ? "done"
-                    : `${seg.answered} of ${seg.required} answered`}
+                    : !seg.required
+                      ? "not done yet"
+                      : `${seg.answered} of ${seg.required} answered`}
               </span>
             </li>
           ))}

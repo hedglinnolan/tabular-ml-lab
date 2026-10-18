@@ -313,18 +313,30 @@ describe("a line no card can answer yet (P8)", () => {
   // card that records them; the lens and the roles answered.
   const data = stageIn(REACHED, "data");
 
-  it("is listed after the lines that can be answered, as not available yet, with no Answer, and never opened", () => {
-    expect(data.lines.filter((l) => l.status === "open" && l.label === "Decide").map((l) => l.key)).toEqual(["join_files", "import_codebook"]);
+  it("is said, with every other such line that counts toward nothing, in one quiet line after the rest, never opened (finding 15)", () => {
+    const unavailable = data.lines.filter((l) => l.status === "open" && l.label === "Decide");
+    expect(unavailable.map((l) => l.key)).toEqual(["join_files", "import_codebook"]);
+    expect(unavailable.every((l) => !l.counted)).toBe(true);
     const { card } = cardOf(REACHED, "data");
-    for (const key of ["join_files", "import_codebook"]) {
-      const line = lineEl(card, key);
-      expect(within(line).queryByRole("button")).toBeNull();
-      expect(line).toHaveTextContent("Not available yet");
-      expect(line).not.toHaveAttribute("data-expanded");
-    }
-    const order = [...within(card).getByTestId("group-Decide").querySelectorAll("[data-line]")].map((x) => x.getAttribute("data-line"));
-    expect(order).toEqual(["question:lens", "question:roles", "declaration:join_files", "declaration:import_codebook"]);
+    for (const key of ["join_files", "import_codebook"]) expect(within(card).queryByTestId(`line-${key}`)).toBeNull();
+    const quiet = within(card).getByTestId("lines-unavailable");
+    expect(quiet).toHaveTextContent(`Not available in this version yet: ${unavailable[0]!.name} and ${unavailable[1]!.name}.`);
+    expect(within(quiet).queryByRole("button")).toBeNull();
+    const group = within(card).getByTestId("group-Decide");
+    const order = [...group.querySelectorAll("[data-line]")].map((x) => x.getAttribute("data-line"));
+    expect(order).toEqual(["question:lens", "question:roles"]);
+    expect(group.querySelector("ul")!.lastElementChild).toBe(quiet);
     expect(card.querySelector("[data-expanded]")).toBeNull();
+  });
+
+  it("keeps a line of its own where it counts, said as not available yet, with no Answer", () => {
+    const log = patched(REACHED, { data: (l) => (l.key === "join_files" ? { ...l, counted: true } : l) });
+    const { card } = cardOf(log, "data");
+    const line = lineEl(card, "join_files");
+    expect(within(line).queryByRole("button")).toBeNull();
+    expect(line).toHaveTextContent("Not available yet");
+    expect(line).not.toHaveAttribute("data-expanded");
+    expect(within(card).getByTestId("lines-unavailable")).not.toHaveTextContent(stageIn(log, "data").lines.find((l) => l.key === "join_files")!.name);
   });
 
   it("leaves a line a card can answer its Change", () => {
@@ -469,5 +481,132 @@ describe("Who's in's draw under Predict (P15)", () => {
     const { card } = cardOf(at(true), "whos_in");
     expect(lineEl(card, "split")).toHaveAttribute("data-expanded");
     expect(within(card).queryByTestId("line-split-held")).toBeNull();
+  });
+});
+
+/**
+ * Finding 24 of the 2026-10-17 walkthrough: a card recorded on a line that is not the stage's open
+ * line (an answer changed, a later line answered first) stayed expanded. A record on the expanded
+ * line collapses it, and the stage's open line opens; a change elsewhere leaves it as it is.
+ */
+describe("a recorded card (finding 24)", () => {
+  const expanded = (card: HTMLElement) => card.querySelector("[data-expanded]")?.getAttribute("data-line");
+  /** Who's in in a StageCard, re-rendered with each log in turn. */
+  function whosIn(first: QuestLog) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    qc.setQueryData(keys.view(PID), VIEW);
+    qc.setQueryData(keys.record(PID), RECORD);
+    const ui = (log: QuestLog) => (
+      <QueryClientProvider client={qc}>
+        <StageFocusProvider>
+          <StageCard pid={PID} log={log} stage={stageIn(log, "whos_in")} answers={new Map()} fit={{ kind: "none" }} onOpenStage={() => {}} arrival={null} onOpenManuscript={() => {}} />
+        </StageFocusProvider>
+      </QueryClientProvider>
+    );
+    const r = render(ui(first));
+    return { card: screen.getByTestId("card-whos_in"), next: (log: QuestLog) => r.rerender(ui(log)) };
+  }
+  // Who's in as the engine serves it: the noticing is the open line, the eligibility answered.
+  const NOTICING = "finding:pack::dietary::implausible_intake#1";
+  const withExclusions = (decision: string) =>
+    patched(REACHED, { whos_in: (l) => (l.key === "exclusions" ? { ...l, decision_id: decision } : l) });
+
+  it("collapses once its line's answer is recorded, and the open line opens", () => {
+    const before = stageIn(REACHED, "whos_in").lines.find((l) => l.key === "exclusions")!;
+    expect(before.status).toBe("answered");
+    const { card, next } = whosIn(REACHED);
+    expect(expanded(card)).toBe(NOTICING);
+    fireEvent.click(within(lineEl(card, "exclusions")).getByRole("button", { name: "Change" }));
+    expect(expanded(card)).toBe("question:exclusions");
+    next(withExclusions(`${before.decision_id}-changed`));
+    expect(expanded(card)).toBe(NOTICING);
+    expect(lineEl(card, "exclusions")).not.toHaveAttribute("data-expanded");
+  });
+
+  it("stays expanded while its own record has not changed", () => {
+    const { card, next } = whosIn(REACHED);
+    fireEvent.click(within(lineEl(card, "exclusions")).getByRole("button", { name: "Change" }));
+    // Another line's record changes; this one's does not.
+    next(patched(REACHED, { whos_in: (l) => (l.key === "missing" ? { ...l, decision_id: "r-missing-changed" } : l) }));
+    expect(expanded(card)).toBe("question:exclusions");
+  });
+});
+
+/** Fit's foot beside a noticing in Models under Predict (ruling R-a): it names Results' triage. */
+describe("the fit's foot (ruling R-a)", () => {
+  it("names the noticings that wait for the triage in Results", () => {
+    const models = stageIn(NOT_REACHED, "models");
+    const noticing = stageIn(NOT_REACHED, "whos_in").lines.find((l) => l.source === "finding")!;
+    const answered = models.lines.map((l): QuestLine => (l.label === "Decide" ? { ...l, status: "answered", decision_id: `r-${l.key}`, waiting_for: [] } : l));
+    const log: QuestLog = {
+      ...NOT_REACHED,
+      stages: NOT_REACHED.stages.map((s) =>
+        s.key === "models" ? { ...s, sweep: { ...models.sweep!, answered: true }, lines: [...answered, { ...noticing, id: "finding:m", key: "m" }] } : s,
+      ),
+    };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    qc.setQueryData(keys.view(PID), VIEW);
+    qc.setQueryData(keys.record(PID), RECORD);
+    render(
+      <QueryClientProvider client={qc}>
+        <StageFocusProvider>
+          <StageCard pid={PID} log={log} stage={stageIn(log, "models")} answers={new Map()} fit={{ kind: "press", held: false, estimate: null }} onOpenStage={() => {}} arrival={null} onOpenManuscript={() => {}} />
+        </StageFocusProvider>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByTestId("primary-fit")).toHaveTextContent(`1 noticing waits for the triage in ${stageIn(log, "results").name}.`);
+    expect(screen.queryByTestId("primary")).toBeNull();
+  });
+});
+
+/**
+ * The foot's refusal (BLUEPRINT §14 rule 2; ruling R-b): a refused press at the foot (the Confirm
+ * sweep, Download) draws the server's ways forward as presses, but never one that confirms a
+ * column's role together with other readings ("Confirm each of the 7 as shown"); a role confirmed
+ * alone stays, and a refusal with no such block keeps every way forward, a block of other
+ * readings included.
+ */
+describe("the foot's refusal, one role at a time (ruling R-b)", () => {
+  // Models as the engine serves it with its Decides answered: the sweep is the foot's action.
+  const log = patched(REACHED, { models: (l) => (l.label === "Decide" ? { ...l, status: "answered", decision_id: `r-${l.key}`, waiting_for: [] } : l) });
+  const role = (column: string, value: string) => ({ reading: "role", column, value });
+  const exit = (label: string, decision: Record<string, unknown> | null) => ({ label, decision });
+  /** The sweep's press, answered with `exits` in a refusal. */
+  const refusedWith = async (exits: ReturnType<typeof exit>[]) => {
+    const body = { error: { code: "readings_unsettled", message: "The sweep waits for the readings it rests on.", exits } };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(body), { status: 409, headers: { "Content-Type": "application/json" } }))),
+    );
+    // The foot is the sweep's press: every counted Decide answered, the sweep still to confirm.
+    const models = stageIn(log, "models");
+    expect(models.sweep).toMatchObject({ answered: false });
+    expect(models.lines.filter((l) => l.label === "Decide" && l.counted).every((l) => l.status === "answered")).toBe(true);
+    const { card } = cardOf(log, "models");
+    expect(within(card).getByTestId("primary")).toHaveTextContent(models.sweep!.action);
+    fireEvent.click(within(card).getByTestId("primary"));
+    const refusal = await screen.findByTestId("primary-refusal");
+    return within(refusal).queryAllByRole("button").map((b) => b.textContent);
+  };
+
+  it("draws no exit that confirms several roles in one press, and draws the one that confirms a role alone", async () => {
+    const labels = await refusedWith([
+      exit("Confirm each of the 2 as shown", { kind: "confirm_readings", items: [role("bp_sys", "covariate"), role("imputed_bp", "flag")] }),
+      exit("Confirm `bp_sys` as a predictor", { kind: "confirm_readings", items: [role("bp_sys", "covariate")] }),
+    ]);
+    expect(labels).toEqual(["Confirm `bp_sys` as a predictor"]);
+  });
+
+  it("keeps every exit of a refusal that confirms no role in a block: a block of other readings, a role alone, a way with no decision", async () => {
+    const codes = [
+      { reading: "code_or_count", column: "kids", value: "amount" },
+      { reading: "code_or_count", column: "visits", value: "amount" },
+    ];
+    const labels = await refusedWith([
+      exit("Confirm the 2 as amounts", { kind: "confirm_readings", items: codes }),
+      exit("Confirm `bp_sys` as a predictor", { kind: "confirm_readings", items: [role("bp_sys", "covariate")] }),
+      exit("Choose the models", null),
+    ]);
+    expect(labels).toEqual(["Confirm the 2 as amounts", "Confirm `bp_sys` as a predictor", "Choose the models"]);
   });
 });

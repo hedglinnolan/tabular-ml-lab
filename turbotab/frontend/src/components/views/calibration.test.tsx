@@ -134,6 +134,20 @@ describe("the calibration view", () => {
     expect(calibrationLine({ ...d, slope: { estimate: 0.8, ci_low: 0.6, ci_high: 1 } })).toContain("(calibration slope, interval 0.6 to 1;");
   });
 
+  it("says a slope that reads 1 as outcomes moving as far as the predictions did, never \"1 times as far\" (minor 21)", () => {
+    // The walk's held-out slope: 1.0 (0.936 to 1.07), shown at the view's precision as 1.
+    const one = { ...d, slope: { estimate: 1.0004, ci_low: 0.936, ci_high: 1.07, level: 0.95 } };
+    const line = calibrationLine(one);
+    expect(line).toContain(
+      "Outcomes moved as far as the predictions did (calibration slope 1, 95% interval 0.936 to 1.07; 1 when they agree, below 1 when predictions are too extreme).",
+    );
+    expect(line).not.toContain("times as far");
+    // Any other slope keeps its "times as far", the number said once.
+    expect(calibrationLine({ ...d, slope: { estimate: 1.07, ci_low: 0.9, ci_high: 1.2, level: 0.95 } })).toContain(
+      "Outcomes moved 1.07 times as far as the predictions did (calibration slope, 95% interval 0.9 to 1.2;",
+    );
+  });
+
   it("drops the repeated points lowess leaves at tied predictions", () => {
     expect(curvePoints(d)).toHaveLength(2);
     expect(curvePoints(calibrationClinical).length).toBeLessThan(calibrationClinical.curve.length);

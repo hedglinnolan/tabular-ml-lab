@@ -69,6 +69,13 @@
   --accent-tint: #e9f2f0;
   --on-accent: #ffffff;
 
+  /* The quest shell's one action color (FOUNDATION §1, §4: Continue, and each card's record
+     button inside the shell, quest.module.css `--record`): the calm kit's --action family, value
+     for value (docs/turbotab-next/calm/tokens.css), so a card built before the kit records in it. */
+  --action: #3B4AB9;
+  --action-hover: #2E39A0;
+  --action-ink: #FBFCFE;
+
   --ok: #2f7d46;
   --ok-tint: #e9f2eb;
 
@@ -132,6 +139,10 @@
     --accent-tint: #1b2e2a;
     --on-accent: #08201c;
 
+    --action: #96A4FE;
+    --action-hover: #AFBCFF;
+    --action-ink: #0A0D23;
+
     --ok: #5cb877;
     --ok-tint: #1c2e22;
 
@@ -170,6 +181,10 @@
   --accent-ink: #6fd4c6;
   --accent-tint: #1b2e2a;
   --on-accent: #08201c;
+
+  --action: #96A4FE;
+  --action-hover: #AFBCFF;
+  --action-ink: #0A0D23;
 
   --ok: #5cb877;
   --ok-tint: #1c2e22;

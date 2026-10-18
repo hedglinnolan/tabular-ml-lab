@@ -7,9 +7,12 @@
  * construction where a case needs a moment the samples do not hold; each expected value is read off
  * the constructed log (a name, a stage), never off the function under test.
  */
-import type { QuestLine, QuestLog, QuestStage } from "../api/schema";
+import type { Finding, FindingsArtifact, QuestLine, QuestLog, QuestStage } from "../api/schema";
+import prediction from "../mocks/fixtures/m3-nhanes-prediction.json";
+import { artifactAt, expandView, viewsOf, type M3Fixture } from "../mocks/m3";
+import { mockQuest } from "../mocks/quest";
 import { CONTRACT } from "./fixtures/contract";
-import { type Hint, drawWaitsForSweep, fitWithheld, openLine, openStageKey, primaryFor, settledBy, stageOf, sweptLines } from "./log";
+import { type Hint, drawWaitsForSweep, filled, fitPosition, fitWithheld, nextOpen, openLine, openStageKey, primaryFor, readsDone, segments, settledBy, stageOf, sweptLines } from "./log";
 
 const strip = (lines: { id: string; key: string; value: string }[]) =>
   lines.map(({ id, key, value }) => ({ id, key, value }));
@@ -98,10 +101,14 @@ describe("a hint's name (P7)", () => {
 });
 
 /**
- * Open noticings do not hold Continue (finding 6; FOUNDATION §7): each travels to the triage of the
- * open noticings, which stands before the held-out rows open under Predict (Results) and before the
- * plan's lock otherwise (Models; core/sweep.py `gate_stage`), and the foot says how many wait there.
- * The triage gates the opening, unchanged, so in the triage's own stage a noticing still holds it.
+ * Under Predict open noticings do not hold Continue (finding 6; FOUNDATION §7): each travels to the
+ * triage of the open noticings, which stands before the held-out rows open, in Results
+ * (core/sweep.py `gate_stage`), and the foot says how many wait there. Under Estimate the engine's
+ * triage stands before the plan's lock, in Models, which the shell does not draw yet (W1-R R3 P5):
+ * a noticing holds its own stage, as before finding 6, and the foot says it is decided there.
+ * Before the goal is chosen no noticing holds Continue either (W1-R M1: under Predict the goal is
+ * chosen in Your question, after Your data's noticings), and the foot names no triage, since where
+ * they are decided waits on the goal.
  */
 describe("open noticings and Continue (finding 6)", () => {
   // Who's in as the engine serves it under Predict: its questions answered, one noticing open.
@@ -141,14 +148,55 @@ describe("open noticings and Continue (finding 6)", () => {
     });
   });
 
-  it("names the plan's lock in Models as the triage's place when the goal is not Predict", () => {
-    const estimate = { ...LOG, fit: { ...LOG.fit!, purpose: "inference" } };
-    const p = primaryFor(estimate, stageOf(estimate, "whos_in")!, { kind: "none" });
-    expect((p as { note?: string }).note).toBe(`1 noticing waits for the triage in ${stageOf(LOG, "models")!.name}.`);
+  it("holds Continue on the noticing under Estimate, naming no triage, since the shell draws none there (W1-R R3 P5)", () => {
+    // Under Estimate the engine's triage stands before the plan's lock, in a Models the shell does
+    // not draw yet (W3): the noticing is decided in its own stage.
+    const log = { ...LOG, fit: { ...LOG.fit!, purpose: "inference" } } as QuestLog;
+    const p = primaryFor(log, stageOf(log, "whos_in")!, { kind: "none" });
+    expect(p).toEqual({
+      kind: "continue",
+      to: null,
+      label: "Continue",
+      disabled: true,
+      hint: { lead: "Still to answer: ", name: noticings[0]!.name.replaceAll("`", "").replace(/\.$/, ""), tail: ".", to: { stage: "whos_in", line: noticings[0]!.key } },
+      note: "1 noticing is decided in this stage.",
+    });
+    expect(JSON.stringify(p)).not.toContain("triage");
+    // A log with no Fit lock names no goal: the noticing holds its stage there too.
+    const unlocked = { ...LOG, fit: null } as QuestLog;
+    expect(primaryFor(unlocked, stageOf(unlocked, "whos_in")!, { kind: "none" })).toEqual(p);
   });
 
-  it("keeps a noticing holding Continue in the triage's own stage", () => {
-    // Models under Estimate is where the triage stands: its noticing is decided there.
+  it("enables Continue beside the noticing before the goal is chosen, naming no triage and no stage that decides it (W1-R M1)", () => {
+    const log = { ...LOG, fit: { ...LOG.fit!, purpose: null } } as QuestLog;
+    const p = primaryFor(log, stageOf(log, "whos_in")!, { kind: "none" });
+    expect(p).toMatchObject({ kind: "continue", disabled: false, label: "Continue" });
+    expect((p as { note?: string }).note).toBeUndefined();
+    expect(JSON.stringify(p)).not.toContain("triage");
+    // Continue passes over it, to the next open question, Your question's intended use.
+    expect(stageOf(log, "question")!.lines.find((l) => l.key === "set_intended_use")!.status).toBe("open");
+    expect(p).toMatchObject({ to: "question", line: "set_intended_use" });
+  });
+
+  it("says each of the stage's noticings is decided in it, in the plural", () => {
+    const estimate = { ...LOG, fit: { ...LOG.fit!, purpose: "inference" } } as QuestLog;
+    const second = { ...noticings[0]!, id: "finding:second", key: "second", order: noticings[0]!.order + 0.1 };
+    const whosE = stageOf(estimate, "whos_in")!;
+    const two = { ...whosE, lines: [...whosE.lines, second] };
+    const p = primaryFor({ ...estimate, stages: estimate.stages.map((s) => (s.key === "whos_in" ? two : s)) }, two, { kind: "none" });
+    expect((p as { note?: string }).note).toBe("2 noticings are decided in this stage.");
+  });
+
+  it("says nothing of noticings outside Predict where none is open", () => {
+    const estimate = { ...LOG, fit: { ...LOG.fit!, purpose: "inference" } } as QuestLog;
+    const { log, stage } = withStage(estimate, "whos_in", answered);
+    const p = primaryFor(log, stage, { kind: "none" });
+    expect(p).toMatchObject({ kind: "continue", disabled: false });
+    expect((p as { note?: string }).note).toBeUndefined();
+  });
+
+  it("keeps a noticing holding Continue in Models under Estimate, where the engine's triage stands", () => {
+    // The shell draws no triage there yet: Models' noticing is decided in Models.
     const estimate = { ...LOG, fit: { ...LOG.fit!, purpose: "inference" } };
     const n = { ...noticings[0]!, id: "finding:models-noticing", key: "models-noticing" };
     const models = stageOf(estimate, "models")!;
@@ -158,6 +206,62 @@ describe("open noticings and Continue (finding 6)", () => {
       kind: "continue",
       disabled: true,
       hint: { lead: "Still to answer: ", to: { stage: "models", line: n.key } },
+    });
+  });
+});
+
+/**
+ * The walk's own path (W1-R M1; finding 6): the real server's NHANES capture under Predict, at its
+ * first moment where Your data holds open noticings and the roles wait for the outcome, before the
+ * goal is chosen in Your question. The log is the mock's (dev:mock's /p/m3~nhanes-prediction~n),
+ * placed by the engine's registry from the captured view and findings.
+ */
+describe("Your data before the goal is chosen, on the NHANES capture (W1-R M1)", () => {
+  const F = prediction as unknown as M3Fixture;
+  const logs = viewsOf(F).map((v) => {
+    const st = v.stages.findings;
+    const read = st && st.status !== "idle" && st.status !== "blocked";
+    const findings = read ? ((artifactAt(F, "findings", st.key) as FindingsArtifact | null)?.findings ?? null) : null;
+    return mockQuest(expandView(F, v, "m3-test", "2026-10-17T00:00:00Z"), findings as Finding[] | null, false);
+  });
+  const atData = logs.find((log) => {
+    const data = stageOf(log, "data")!;
+    const open = data.lines.filter((l) => l.counted && l.status !== "answered");
+    return log.fit?.purpose === null && open.some((l) => l.source === "finding") && open.some((l) => l.key === "roles" && l.status === "waiting");
+  })!;
+  const data = stageOf(atData, "data")!;
+  const roles = data.lines.find((l) => l.key === "roles")!;
+
+  it("is the capture's moment: noticings open, the roles waiting on Your question, no goal", () => {
+    expect(atData).toBeDefined();
+    expect(atData.fit).toMatchObject({ purpose: null });
+    const left = data.lines.filter((l) => l.label === "Decide" && l.counted && l.status !== "answered");
+    expect(left.filter((l) => l.source !== "finding").map((l) => l.key)).toEqual(["roles"]);
+    expect(roles.waiting_for[0]!.stage).toBe("question");
+  });
+
+  it("enables Continue to what the roles wait for, saying no noticing holds it or where one is decided", () => {
+    const p = primaryFor(atData, data, { kind: "none" });
+    const on = roles.waiting_for[0]!;
+    expect(p).toEqual({
+      kind: "continue",
+      to: on.stage,
+      label: "Continue",
+      disabled: false,
+      hint: { lead: "Waiting for ", name: on.name.replaceAll("`", "").replace(/\.$/, ""), tail: `, in ${stageOf(atData, on.stage)!.name}.`, to: { stage: on.stage, line: on.key } },
+    });
+  });
+
+  it("holds Continue on the first noticing under Estimate, where Your data decides it", () => {
+    const estimate = { ...atData, fit: { ...atData.fit!, purpose: "inference" } } as QuestLog;
+    const first = data.lines
+      .filter((l) => l.label === "Decide" && l.counted && l.status === "open")
+      .sort((a, b) => a.order - b.order)[0]!;
+    expect(first.source).toBe("finding");
+    expect(primaryFor(estimate, data, { kind: "none" })).toMatchObject({
+      kind: "continue",
+      disabled: true,
+      hint: { lead: "Still to answer: ", to: { stage: "data", line: first.key } },
     });
   });
 });
@@ -290,10 +394,11 @@ describe("a stage not reached yet (P4)", () => {
 
 /**
  * Where the analysis is, beside open noticings (finding 6): the engine counts a stage's open
- * noticings in its progress, but they travel to the triage, so outside the triage's stage a stage
- * whose only lines still to answer are noticings is passed (its Continue is enabled) and is not
- * where the analysis is: the shell lands past it, and a stage not reached yet leads past it. In the
- * triage's own stage, and beside a question still open, the noticing holds the stage as before.
+ * noticings in its progress, but under Predict they travel to the triage, so outside the triage's
+ * stage a stage whose only lines still to answer are noticings is passed (its Continue is enabled)
+ * and is not where the analysis is: the shell lands past it, and a stage not reached yet leads past
+ * it. In the triage's own stage, beside a question still open, and outside Predict (W1-R R3 P5),
+ * the noticing holds the stage as before.
  */
 describe("where the analysis is, beside open noticings (finding 6)", () => {
   /** Your question answered and confirmed, so Who's in, with only its noticing open, comes first. */
@@ -346,8 +451,22 @@ describe("where the analysis is, beside open noticings (finding 6)", () => {
     expect(openStageKey(swept)).toBe("whos_in");
   });
 
-  it("stays at the triage's own stage, where the noticing is decided", () => {
-    // Under Estimate the triage stands in Models: a noticing there, every other line answered.
+  it("stays at a stage whose only open lines are noticings under Estimate (W1-R R3 P5)", () => {
+    const log = questionDone(LOG);
+    onlyNoticing(log);
+    const estimate = { ...log, fit: { ...LOG.fit!, purpose: "inference" } } as QuestLog;
+    expect(openStageKey(estimate)).toBe("whos_in");
+  });
+
+  it("lands past that stage before the goal is chosen, as under Predict (W1-R M1)", () => {
+    const log = questionDone(LOG);
+    onlyNoticing(log);
+    const unchosen = { ...log, fit: { ...LOG.fit!, purpose: null } } as QuestLog;
+    expect(openStageKey(unchosen)).toBe(pastWhosIn(log).key);
+  });
+
+  it("stays at Models under Estimate, where the noticing is decided, and passes it for Results under Predict", () => {
+    // Under Estimate a noticing in Models, every other line answered.
     const estimate = { ...questionDone(LOG), fit: { ...LOG.fit!, purpose: "inference" } } as QuestLog;
     const n = stageOf(estimate, "whos_in")!.lines.find((l) => l.source === "finding" && l.status === "open")!;
     const whosDone = withStage(estimate, "whos_in", answered, { progress: { answered: 5, required: 5, complete: true } }).log;
@@ -362,6 +481,216 @@ describe("where the analysis is, beside open noticings (finding 6)", () => {
     // Under Predict the same Models is passed for Results, the triage's stage there.
     const predict = { ...log, fit: LOG.fit } as QuestLog;
     expect(openStageKey(predict)).toBe("results");
+  });
+});
+
+/** Each stage in `keys` with every Decide answered, its sweep confirmed and its progress complete. */
+function doneIn(log: QuestLog, keys: string[]): QuestLog {
+  return keys.reduce((acc, key) => {
+    const s = stageOf(acc, key)!;
+    const required = s.progress?.required ?? 0;
+    return withStage(acc, key, answered, {
+      sweep: s.sweep ? { ...s.sweep, answered: true } : null,
+      progress: s.reached ? { answered: required, required, complete: true } : s.progress,
+    }).log;
+  }, log);
+}
+
+/**
+ * Fit beside a noticing in Models (ruling R-a, W1-R R3 P1): under Predict a noticing's triage is in
+ * Results, so Models' noticing does not hold Fit back: Fit is offered once Models' questions and
+ * sweep are answered, the foot names Results' triage, and Continue no longer loops between Models
+ * and Results. Under Estimate Models' noticing is decided in Models, and Fit waits for it.
+ */
+describe("Fit beside a noticing in Models (ruling R-a)", () => {
+  // Models under Predict before the press, as the engine serves it there: every question and the
+  // sweep answered, one open noticing, which the engine counts, so its progress is not complete.
+  const NOTICING = stageOf(LOG, "whos_in")!.lines.find((l) => l.source === "finding" && l.status === "open")!;
+  const withNoticing = (log: QuestLog, also: (l: QuestLine) => QuestLine = (l) => l) => {
+    const before = doneIn(log, ["question", "whos_in", "models"]);
+    const models = stageOf(before, "models")!;
+    return withStage(before, "models", also, {
+      lines: [...models.lines, { ...NOTICING, id: "finding:models-noticing", key: "models-noticing" }],
+      progress: { answered: models.progress!.required, required: models.progress!.required + 1, complete: false },
+    });
+  };
+
+  it("offers Fit under Predict, its foot naming the noticing's triage in Results", () => {
+    const { log, stage } = withNoticing(NOT_REACHED);
+    expect(log.fit?.purpose).toBe("prediction");
+    expect(log.fit?.pressed).toBe(false);
+    expect(stage.progress?.complete).toBe(false);
+    const fit = fitPosition(log, undefined);
+    expect(fit).toEqual({ kind: "press", held: log.fit!.held, estimate: null });
+    expect(primaryFor(log, stage, fit)).toEqual({ kind: "fit", note: `1 noticing waits for the triage in ${stageOf(log, "results")!.name}.` });
+    // Results, not reached before the press, leads back to Models, where Fit is: no loop.
+    expect(primaryFor(log, stageOf(log, "results")!, fit)).toMatchObject({ kind: "continue", to: "models" });
+  });
+
+  it("holds Fit back under Estimate, where Models' noticing is decided in Models", () => {
+    const { log: predict, stage } = withNoticing(NOT_REACHED);
+    const log = { ...predict, fit: { ...predict.fit!, purpose: "inference" } } as QuestLog;
+    const fit = fitPosition(log, undefined);
+    expect(fit).toEqual({ kind: "none" });
+    expect(primaryFor(log, stage, fit)).toMatchObject({
+      kind: "continue",
+      disabled: true,
+      hint: { lead: "Still to answer: ", to: { stage: "models", line: "models-noticing" } },
+    });
+  });
+
+  it("holds Fit back under Predict while a question in Models is still open beside the noticing", () => {
+    const { log } = withNoticing(NOT_REACHED, (l) => (l.key === "set_selection" ? { ...l, status: "open", decision_id: null } : l));
+    expect(fitPosition(log, undefined)).toEqual({ kind: "none" });
+  });
+
+  it("leaves the fit's foot without a note where Models has no open noticing", () => {
+    const log = doneIn(NOT_REACHED, ["question", "whos_in", "models"]);
+    const fit = fitPosition(log, undefined);
+    expect(fit.kind).toBe("press");
+    expect(primaryFor(log, stageOf(log, "models")!, fit)).toEqual({ kind: "fit" });
+  });
+});
+
+/**
+ * nextOpen's three exclusions (W1-R R3 P3), each where it fires and where it stays silent: under
+ * Predict an open noticing travels to the triage, so Continue passes over it; the draw while it
+ * waits for Who's in's sweep is not the next line, the sweep is; and a stage not reached yet is
+ * skipped, whatever line in it is open.
+ */
+describe("the next open line's exclusions (W1-R R3 P3)", () => {
+  it("passes over an open noticing in an earlier stage under Predict, to the next question", () => {
+    const log = doneIn(LOG, ["question"]);
+    expect(stageOf(log, "whos_in")!.lines.find((l) => l.source === "finding")!.status).toBe("open");
+    const to = nextOpen(log, "first_look");
+    expect(to?.stage.key).toBe("models");
+    expect(to?.line?.key).toBe("set_selection");
+  });
+
+  it("leads to that noticing under Estimate, where it is decided in its own stage", () => {
+    const log = { ...doneIn(LOG, ["question"]), fit: { ...LOG.fit!, purpose: "inference" } } as QuestLog;
+    const noticing = stageOf(log, "whos_in")!.lines.find((l) => l.source === "finding")!;
+    const to = nextOpen(log, "first_look");
+    expect(to?.stage.key).toBe("whos_in");
+    expect(to?.line?.key).toBe(noticing.key);
+  });
+
+  it("passes over that noticing before the goal is chosen (W1-R M1)", () => {
+    const log = { ...doneIn(LOG, ["question"]), fit: { ...LOG.fit!, purpose: null } } as QuestLog;
+    const to = nextOpen(log, "first_look");
+    expect(to?.stage.key).toBe("models");
+    expect(to?.line?.key).toBe("set_selection");
+  });
+
+  const SWEEP = { lines: 1, answered: false, id: "other:confirm-sweep:whos_in", heading: "Here is the other choice set for you", action: "Confirm it", confirmed_by: null, changed: [] };
+  /** Who's in under Predict with every Decide answered but the draw, and its sweep as `sweep`. */
+  const drawOpen = (sweep: typeof SWEEP) =>
+    withStage(doneIn(LOG, ["question"]), "whos_in", (l) => (l.key === "split" ? { ...l, status: "open", decision_id: null } : answered(l)), { sweep }).log;
+
+  it("leads to Who's in's sweep, not to the draw that waits for it", () => {
+    const log = drawOpen(SWEEP);
+    expect(nextOpen(log, "first_look")).toEqual({ stage: stageOf(log, "whos_in"), line: null });
+  });
+
+  it("leads to the draw once the sweep is confirmed", () => {
+    const log = drawOpen({ ...SWEEP, answered: true });
+    const to = nextOpen(log, "first_look");
+    expect(to?.stage.key).toBe("whos_in");
+    expect(to?.line?.key).toBe("split");
+  });
+
+  /** Every stage before Results done, and Results' updating question open, Results `reached` or not. */
+  const resultsOpen = (reached: boolean) => {
+    const log = doneIn(NOT_REACHED, ["question", "whos_in", "models"]);
+    return withStage(log, "results", (l) => (l.key === "set_updating" ? { ...l, status: "open", waiting_for: [] } : l), { reached }).log;
+  };
+
+  it("skips an open line in a stage not reached yet", () => {
+    const log = resultsOpen(false);
+    expect(stageOf(log, "results")!.lines.find((l) => l.key === "set_updating")).toMatchObject({ status: "open", counted: true });
+    expect(nextOpen(log, "first_look")).toBeNull();
+  });
+
+  it("leads to that line once its stage is reached", () => {
+    const log = resultsOpen(true);
+    const to = nextOpen(log, "first_look");
+    expect(to?.stage.key).toBe("results");
+    expect(to?.line?.key).toBe("set_updating");
+  });
+});
+
+/**
+ * A stage reads as done only once reached (finding 25): under Predict the engine reaches Write-up
+ * with Results, at 0 of 0, and First look with the stages around it; neither reads as done while
+ * the analysis is at an earlier stage. A stage whose own objectives are all answered reads as done.
+ */
+describe("a stage that reads as done (finding 25)", () => {
+  /** Each stage in `keys` with no objective answered, as before the researcher came to it. */
+  const untouched = (log: QuestLog, keys: string[]) =>
+    keys.reduce((acc, key) => {
+      const s = stageOf(acc, key)!;
+      return withStage(acc, key, (l) => (l.label === "Decide" && l.counted ? { ...l, status: "open", decision_id: null } : l), {
+        sweep: s.sweep ? { ...s.sweep, answered: false } : null,
+        progress: { answered: 0, required: s.progress!.required, complete: false },
+      }).log;
+    }, log);
+
+  it("is never a stage that asks nothing while the analysis is before it and nothing past it is answered", () => {
+    const log = untouched(LOG, ["whos_in", "models"]);
+    const writeup = stageOf(log, "writeup")!;
+    expect(writeup).toMatchObject({ reached: true, progress: { answered: 0, required: 0, complete: true } });
+    expect(stageOf(log, "question")!.progress?.complete).toBe(false);
+    expect(stageOf(log, "results")!.progress?.answered).toBe(0);
+    expect(readsDone(log, writeup)).toBe(false);
+    expect(readsDone(log, stageOf(log, "first_look")!)).toBe(false);
+    const seg = segments(log).find((x) => x.key === "writeup")!;
+    expect(seg.complete).toBe(false);
+    expect(filled(seg)).toBe(0);
+  });
+
+  it("is a stage that asks nothing once a stage past it has answers, an earlier line still open (W1-R B1)", () => {
+    // The engine's log: Your question's intended use is open, and Who's in and Models hold answers.
+    expect(stageOf(LOG, "question")!.lines.find((l) => l.key === "set_intended_use")!.status).toBe("open");
+    expect(stageOf(LOG, "whos_in")!.progress!.answered).toBeGreaterThan(0);
+    const first = stageOf(LOG, "first_look")!;
+    expect(first).toMatchObject({ reached: true, progress: { required: 0, complete: true } });
+    expect(readsDone(LOG, first)).toBe(true);
+    const seg = segments(LOG).find((x) => x.key === "first_look")!;
+    expect(seg.complete).toBe(true);
+    expect(filled(seg)).toBe(1);
+    // Only Who's in answered past it is enough.
+    const whosOnly = untouched(LOG, ["models"]);
+    expect(readsDone(whosOnly, stageOf(whosOnly, "first_look")!)).toBe(true);
+  });
+
+  it("is not Write-up while Results' lines are not all answered, under Predict (W1-R B1)", () => {
+    expect(stageOf(LOG, "results")!.progress).toMatchObject({ answered: 0, complete: false });
+    expect(readsDone(LOG, stageOf(LOG, "writeup")!)).toBe(false);
+    const before = doneIn(LOG, ["question", "whos_in", "models"]);
+    expect(readsDone(before, stageOf(before, "writeup")!)).toBe(false);
+    const one = withStage(before, "results", (l) => (l.key === "set_updating" ? answered(l) : l), {
+      progress: { answered: 1, required: 2, complete: false },
+    }).log;
+    expect(readsDone(one, stageOf(one, "writeup")!)).toBe(false);
+  });
+
+  it("is a stage whose objectives are all answered, and one that asks nothing once the analysis comes to it", () => {
+    const data = stageOf(LOG, "data")!;
+    expect(data.progress).toMatchObject({ complete: true });
+    expect(data.progress!.required).toBeGreaterThan(0);
+    expect(readsDone(LOG, data)).toBe(true);
+    const done = doneIn(LOG, ["question", "whos_in", "models", "results"]);
+    expect(readsDone(done, stageOf(done, "first_look")!)).toBe(true);
+    expect(readsDone(done, stageOf(done, "writeup")!)).toBe(true);
+    const seg = segments(done).find((x) => x.key === "writeup")!;
+    expect(seg.complete).toBe(true);
+    expect(filled(seg)).toBe(1);
+  });
+
+  it("is never a stage not reached", () => {
+    const results = stageOf(NOT_REACHED, "results")!;
+    expect(results.reached).toBe(false);
+    expect(readsDone(NOT_REACHED, { ...results, progress: { answered: 0, required: 0, complete: true } })).toBe(false);
   });
 });
 

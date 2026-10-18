@@ -71,6 +71,11 @@ function client(view: ProjectView, f: M3Fixture) {
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
   qc.setQueryData(keys.teaching(), SHARED.teaching);
+  // The roles card asks for the project's goal (finding 3c); the server words every card alike
+  // under every goal but prediction (core/teaching/content.py `entries_now`), so the captured words
+  // with no goal named are that goal's words too.
+  const purpose = view.state.purpose;
+  if (purpose && purpose !== "prediction") qc.setQueryData(keys.teaching(purpose), SHARED.teaching);
   qc.setQueryData(keys.view(PID), view);
   const columns = f.endpoints.columns;
   if (columns?.status === 200) qc.setQueryData(keys.columns(PID), columns.body);
@@ -239,6 +244,73 @@ describe("the Record holds every stage the cards read while it is mounted, with 
     for (const st of started) expect(observers(keys.stage(PID, st)), st).toBeGreaterThanOrEqual(1);
     expect(view.stages.ingest?.status).toBe("fresh");
     expect(observers(keys.columns(PID)), "columns").toBeGreaterThanOrEqual(1);
+  });
+});
+
+/**
+ * W1-R finding 3c (R2 P3a, the shell's side): the roles card asks for the project's goal, since the
+ * server words it by goal (GET /teaching?purpose=; core/teaching/content.py ROLES_UNDER_PREDICT),
+ * and under prediction its own words say predictors; under any other goal both stand as before.
+ * The Predict entry is the captured one with its one-liner and exposure option worded as
+ * content.py's ROLES_UNDER_PREDICT and `_PREDICT_OPTIONS` word them, so which entry the card read
+ * is seen on the card and its role menu.
+ */
+describe("the roles card, by the project's goal (finding 3c)", () => {
+  const { view: base, f } = openViewFor("roles");
+  const PREDICT = SHARED.teaching.map((e) =>
+    e.key === "roles"
+      ? {
+          ...e,
+          one_liner: "Only predictors, covariates and the energy column enter the models; every other role stays out of them.",
+          options: e.options.map((o) => (o.value === "exposure" ? { ...o, label: "Predictor" } : o)),
+        }
+      : e,
+  );
+  const withGoal = (purpose: string) => ({ ...base, state: { ...base.state, purpose } }) as ProjectView;
+  /** The roles card, with the words for each goal seeded where the hook would read them. */
+  function renderRoles(view: ProjectView) {
+    const qc = client(view, f);
+    qc.setQueryData(keys.teaching("prediction"), PREDICT);
+    const out = render(
+      <QueryClientProvider client={qc}>
+        <StageFocusProvider>
+          <AskFor pid={PID} view={view} stepKey="roles" />
+        </StageFocusProvider>
+      </QueryClientProvider>,
+    );
+    return within(out.container);
+  }
+  const roles = (view: ProjectView) => {
+    const art = artifactAt(f, "roles", view.stages.roles!.key) as { columns: { column: string; proposed: string }[] };
+    const role = (c: { column: string; proposed: string }) => (view.state.roles as Record<string, string> | null)?.[c.column] ?? c.proposed;
+    const exposures = art.columns.filter((c) => role(c) === "exposure");
+    const predictors = art.columns.filter((c) => ["exposure", "energy", "covariate"].includes(role(c)));
+    return { exposures, predictors };
+  };
+
+  it("reads the words for prediction under Predict, and says predictors", () => {
+    const view = withGoal("prediction");
+    const { exposures, predictors } = roles(view);
+    expect(exposures.length).toBeGreaterThan(1);
+    const card = renderRoles(view);
+    const block = card.getByTestId("question-roles");
+    expect(block.textContent).toContain(`${predictors.length} columns enter the models: ${exposures.length} predictors`);
+    expect(block.textContent).not.toMatch(/exposures?\b/);
+    expect(block.querySelector('[data-role="exposure"]')!.textContent).toContain("Predictors");
+    fireEvent.click(card.getByTestId(`role-chip-${exposures[0]!.column}`));
+    expect(card.getByTestId("role-exposure").textContent).toContain("Predictor");
+  });
+
+  it("reads the words with no goal named under any other goal, as before", () => {
+    const view = withGoal("inference");
+    const { exposures, predictors } = roles(view);
+    const card = renderRoles(view);
+    const block = card.getByTestId("question-roles");
+    expect(block.textContent).toContain(`${predictors.length} columns become predictors: ${exposures.length} exposures`);
+    fireEvent.click(card.getByTestId(`role-chip-${exposures[0]!.column}`));
+    const served = SHARED.teaching.find((e) => e.key === "roles")!.options.find((o) => o.value === "exposure")!.label;
+    expect(card.getByTestId("role-exposure").textContent).toContain(served);
+    expect(card.getByTestId("role-exposure").textContent).not.toContain("Predictor");
   });
 });
 

@@ -8,7 +8,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { QuestLog } from "../api/schema";
 import { CONTRACT } from "./fixtures/contract";
-import { LABELS, openStageKey } from "./log";
+import { LABELS, openStageKey, stageOf } from "./log";
 import { StageLine } from "./StageLine";
 
 const LOGS = Object.entries(CONTRACT.logs).map(([name, x]) => [name, x.log] as const);
@@ -35,8 +35,18 @@ describe.each(LOGS)("the bar and the panel on %s", (_name, log) => {
       }
       expect(seg).toHaveAttribute("data-answered", String(s.progress!.answered));
       expect(seg).toHaveAttribute("data-required", String(s.progress!.required));
-      if (s.progress!.complete) expect(seg, s.key).toHaveAttribute("data-complete");
-      else {
+      // A stage that asks nothing is done only once the analysis comes to it (finding 25): it is
+      // at or before the first stage still working, or a reached stage past it holds an answer
+      // (W1-R B1). A reached stage never reads as not reached.
+      const at = log.stages.findIndex((x) => x.key === openStageKey(log));
+      const worked = log.stages.reduce((n, x, i) => (x.reached && x.progress!.answered > 0 ? i : n), -1);
+      const cameTo = log.stages.indexOf(s) <= Math.max(at, worked);
+      expect(seg.textContent, s.key).not.toContain("not reached yet");
+      if (s.progress!.complete && (s.progress!.required > 0 || cameTo)) expect(seg, s.key).toHaveAttribute("data-complete");
+      else if (s.progress!.required === 0) {
+        expect(seg, s.key).not.toHaveAttribute("data-complete");
+        expect(seg.textContent, s.key).toContain("not done yet");
+      } else {
         expect(seg, s.key).not.toHaveAttribute("data-complete");
         expect(seg.textContent).toContain(`${s.progress!.answered} of ${s.progress!.required} answered`);
       }
@@ -102,5 +112,74 @@ describe("the bar's guard", () => {
     render(<StageLine log={reopened} shown="models" onOpen={() => {}} answers={new Map()} fitting={null} />);
     expect(screen.getByTestId("reopened-note")).toHaveTextContent(sentence);
     expect(screen.getByTestId("segment-data")).toHaveAttribute("data-reopened");
+  });
+});
+
+/**
+ * Finding 25 of the 2026-10-17 walkthrough: under Predict the engine reaches Write-up with Results,
+ * at 0 of 0, so Write-up read as done, its segment full, while the analysis was still before it.
+ */
+describe("a stage that asks nothing, before the analysis comes to it (finding 25)", () => {
+  const log = CONTRACT.logs.results_reached.log;
+  /** Every stage answered, confirmed and complete, as the engine serves it then. */
+  const allDone: QuestLog = {
+    ...log,
+    stages: log.stages.map((s) => ({
+      ...s,
+      sweep: s.sweep ? { ...s.sweep, answered: true } : null,
+      lines: s.lines.map((l) => (l.label === "Decide" ? { ...l, status: "answered" as const, decision_id: `r-${l.key}` } : l)),
+      progress: s.progress ? { answered: s.progress.required, required: s.progress.required, complete: true } : null,
+    })),
+  };
+
+  it("never reads as done on the line or the bar while an earlier stage is still working", () => {
+    const writeup = stageOf(log, "writeup")!;
+    expect(writeup).toMatchObject({ reached: true, progress: { required: 0, complete: true } });
+    expect(stageOf(log, "results")!.progress?.complete).toBe(false);
+    render(<StageLine log={log} shown="results" onOpen={() => {}} answers={new Map()} fitting={null} />);
+    expect(screen.getByTestId("stage-writeup")).toHaveAttribute("data-status", "todo");
+    const seg = screen.getByTestId("segment-writeup");
+    expect(seg).not.toHaveAttribute("data-complete");
+    expect(seg.querySelector("span")!.style.width).toBe("0%");
+    // The engine reaches it, so it reads as not done, never as not reached (W1-R B1).
+    expect(seg.textContent).toBe(`${writeup.name}: not done yet`);
+  });
+
+  it("reads First look as done once a stage past it holds answers, though Your question still has an open line (W1-R B1)", () => {
+    // The engine's log, the shape of /p/m3~nhanes-prediction~10: the intended use open in Your
+    // question, Who's in and Models with answers, First look reached at 0 of 0.
+    expect(stageOf(log, "question")!.lines.find((l) => l.key === "set_intended_use")!.status).toBe("open");
+    expect(stageOf(log, "whos_in")!.progress!.answered).toBeGreaterThan(0);
+    expect(stageOf(log, "first_look")).toMatchObject({ reached: true, progress: { required: 0, complete: true } });
+    render(<StageLine log={log} shown="models" onOpen={() => {}} answers={new Map()} fitting={null} />);
+    expect(screen.getByTestId("stage-first_look")).toHaveAttribute("data-status", "done");
+    const seg = screen.getByTestId("segment-first_look");
+    expect(seg).toHaveAttribute("data-complete");
+    expect(seg.querySelector("span")!.style.width).toBe("100%");
+    expect(seg.textContent).toBe(`${stageOf(log, "first_look")!.name}: done`);
+  });
+
+  it("says a reached stage the engine serves as not complete at 0 of 0 is not done, where the analysis is at it", () => {
+    // Under Estimate the engine serves Results reached, 0 of 0 and not complete while its exhibits
+    // wait (core/quest.py, the exhibits' TRUST note): the analysis is there.
+    const estimate: QuestLog = {
+      ...allDone,
+      fit: { ...allDone.fit!, purpose: "inference" },
+      stages: allDone.stages.map((s) => (s.key === "results" ? { ...s, progress: { answered: 0, required: 0, complete: false } } : s)),
+    };
+    expect(openStageKey(estimate)).toBe("results");
+    render(<StageLine log={estimate} shown="results" onOpen={() => {}} answers={new Map()} fitting={null} />);
+    const seg = screen.getByTestId("segment-results");
+    expect(seg).toHaveAttribute("data-reached");
+    expect(seg).not.toHaveAttribute("data-complete");
+    expect(seg.textContent).toBe(`${stageOf(estimate, "results")!.name}: not done yet`);
+  });
+
+  it("reads as done once every stage before it is", () => {
+    render(<StageLine log={allDone} shown="results" onOpen={() => {}} answers={new Map()} fitting={null} />);
+    expect(screen.getByTestId("stage-writeup")).toHaveAttribute("data-status", "done");
+    const seg = screen.getByTestId("segment-writeup");
+    expect(seg).toHaveAttribute("data-complete");
+    expect(seg.querySelector("span")!.style.width).toBe("100%");
   });
 });

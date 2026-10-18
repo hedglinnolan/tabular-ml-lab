@@ -41,3 +41,22 @@ describe("the kit's tokens", () => {
     expect(a.get(":root")?.length).toBeGreaterThan(20);
   });
 });
+
+/**
+ * One color for the primary action (FOUNDATION §1, §4; the walkthrough of 2026-10-17, minor 22):
+ * inside the shell a card built before the kit records in the kit's action color, which today's
+ * palette (src/styles/tokens.css) carries as the foundation's --action family, value for value, in
+ * the light, system-dark and chosen-dark blocks.
+ */
+describe("today's palette's action color", () => {
+  const today = blocks(readFileSync(resolve(here, "../styles/tokens.css"), "utf8"));
+  const foundation = blocks(theirs);
+  const action = (decls: string[] | undefined) => (decls ?? []).filter((d) => /^--action(-hover|-ink)?:/.test(d));
+
+  it("is the foundation's, value for value, in each block", () => {
+    for (const selector of [":root", ':root:not([data-theme="light"])', ':root[data-theme="dark"]']) {
+      expect(action(foundation.get(selector)), selector).toHaveLength(3);
+      expect(action(today.get(selector)), selector).toEqual(action(foundation.get(selector)));
+    }
+  });
+});

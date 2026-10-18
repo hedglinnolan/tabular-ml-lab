@@ -30,6 +30,29 @@ const GROUP: Record<Role, [one: string, many: string]> = {
   excluded: ["Excluded", "Excluded"],
 };
 
+/**
+ * The card's own words by goal (W1-R finding 3c: under prediction the card says predictors). Under
+ * prediction what you study is a predictor like the others, in the served roles card's words
+ * (core/teaching/content.py ROLES_UNDER_PREDICT: "Only predictors, covariates and the energy column
+ * enter the models"); otherwise the words stand as they did.
+ */
+const WORDS = {
+  estimate: {
+    exposure: ["Exposure", "Exposures"] as [string, string],
+    counted: ["exposure", "exposures"] as [string, string],
+    become: (n: number) => (n === 1 ? "column becomes a predictor" : "columns become predictors"),
+    note: "predictors",
+    title: "Records every column's role. Only exposures, covariates and energy become predictors.",
+  },
+  predict: {
+    exposure: ["Predictor", "Predictors"] as [string, string],
+    counted: ["predictor", "predictors"] as [string, string],
+    become: (n: number) => (n === 1 ? "column enters the models" : "columns enter the models"),
+    note: "enter the models",
+    title: "Records every column's role. Only predictors, covariates and energy enter the models.",
+  },
+};
+
 /** Chips shown per group before "N more". */
 const SHOWN = 14;
 /** Above this many columns, the roles question gets a search box (M2_CONTRACT §10). */
@@ -38,8 +61,16 @@ export const SEARCH_ABOVE = 200;
 export function RolesAsk({
   artifact,
   current,
+  purpose = null,
   ...p
-}: AskProps & { artifact: RolesArtifact; current: Record<string, Role> | null }) {
+}: AskProps & {
+  artifact: RolesArtifact;
+  current: Record<string, Role> | null;
+  /** The project's goal: under prediction the card says predictors (`WORDS`). */
+  purpose?: string | null;
+}) {
+  const words = purpose === "prediction" ? WORDS.predict : WORDS.estimate;
+  const groupName = (role: Role, n: number) => (role === "exposure" ? words.exposure : GROUP[role])[n === 1 ? 0 : 1];
   const proposed = useMemo(
     () => Object.fromEntries(artifact.columns.map((col) => [col.column, col.proposed])),
     [artifact],
@@ -117,7 +148,7 @@ export function RolesAsk({
 
   const summary = [
     count("exposure")
-      ? `${fmtCount(count("exposure"))} ${count("exposure") === 1 ? "exposure" : "exposures"}`
+      ? `${fmtCount(count("exposure"))} ${words.counted[count("exposure") === 1 ? 0 : 1]}`
       : null,
     energyCols.length ? `energy \`${energyCols[0]}\`` : null,
     count("covariate")
@@ -132,7 +163,7 @@ export function RolesAsk({
       data={
         <>
           <Taught
-            text={`\`${fmtCount(nPredictors)}\` ${nPredictors === 1 ? "column becomes a predictor" : "columns become predictors"}${summary.length ? `: ${summary.join(", ")}` : ""}.`}
+            text={`\`${fmtCount(nPredictors)}\` ${words.become(nPredictors)}${summary.length ? `: ${summary.join(", ")}` : ""}.`}
           />
           {artifact.repeats ? (
             <>
@@ -182,14 +213,14 @@ export function RolesAsk({
               data-predictor={predictor || undefined}
             >
               <div className={c.groupHead}>
-                <span className={c.groupName}>{GROUP[role][columns.length === 1 ? 0 : 1]}</span>
+                <span className={c.groupName}>{groupName(role, columns.length)}</span>
                 <span className={c.groupCount}>
                   {matching
                     ? `${fmtCount(columns.length)} of ${fmtCount(count(role))}`
                     : fmtCount(columns.length)}
                 </span>
                 <span className={c.groupNote}>
-                  {predictor ? "predictors" : "kept out of the models"}
+                  {predictor ? words.note : "kept out of the models"}
                 </span>
               </div>
               <ul className={cx(c.chips, all && columns.length > 60 && c.chipsScroll)}>
@@ -316,7 +347,7 @@ export function RolesAsk({
           <RecordButton
             disabled={p.pending}
             onClick={recordAll}
-            title="Records every column's role. Only exposures, covariates and energy become predictors."
+            title={words.title}
             testId="record-roles"
           >
             {confirmLabel}

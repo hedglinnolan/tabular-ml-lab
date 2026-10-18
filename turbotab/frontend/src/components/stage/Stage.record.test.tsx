@@ -164,3 +164,36 @@ describe("a preview on the stage", () => {
     expect(screen.queryByTestId("stage-record")).toBeNull();
   });
 });
+
+/**
+ * W1-R R3 P2: a preview served with a caution that asks the fit's unconfirmed readings (core/
+ * plan_previews.py `asks_first(offer=True)`: the caution's text is the ledger's question, its
+ * exits each confirmation) offers those confirmations as ways forward, each previewing a decision
+ * for the stage's record button. Where the card records, no such button exists, so they would lead
+ * nowhere: the shell draws the caution's words and no way forward; Classic keeps them.
+ */
+describe("a preview caution's ways forward", () => {
+  const CAUTION = `Tell me about these columns: ${COLUMNS.slice(0, 2).map((c) => `\`${c}\`: an amount? (${EVIDENCE[c]})`).join("; ")}.`;
+  const CAUTIONED: PreviewResult = {
+    ...PREVIEW,
+    caution: { text: CAUTION, exits: [confirm("bp_sys", "amount"), confirm("bp_di", "amount")] } as PreviewResult["caution"],
+  };
+  beforeEach(() => {
+    vi.spyOn(api, "preview").mockResolvedValue(CAUTIONED);
+  });
+
+  it("are drawn on Classic's stage, beside its record button", async () => {
+    mount(true);
+    const caution = await screen.findByTestId("stage-caution");
+    expect(caution).toHaveTextContent("Tell me about these columns:");
+    expect(caution.querySelectorAll("button")).toHaveLength(2);
+  });
+
+  it("are not drawn where the card records, and the caution's words stay", async () => {
+    mount(false);
+    const caution = await screen.findByTestId("stage-caution");
+    expect(caution).toHaveTextContent("Tell me about these columns:");
+    expect(caution.querySelectorAll("button")).toHaveLength(0);
+    expect(screen.queryByTestId("stage-record")).toBeNull();
+  });
+});

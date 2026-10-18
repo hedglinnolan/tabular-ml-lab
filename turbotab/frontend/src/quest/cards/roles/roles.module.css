@@ -3,9 +3,10 @@
    the stronger of the card's buttons; the other roles stay quiet beside it. */
 .confirm {
   justify-self: start;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
+  /* The shell's one action color (`--record`, quest.module.css), else today's accent. */
+  border: 1px solid var(--record, var(--accent));
+  background: var(--record, var(--accent));
+  color: var(--on-record, var(--on-accent));
   border-radius: var(--radius);
   padding: 4px 10px;
   font-size: var(--fs-control);

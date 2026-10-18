@@ -50,10 +50,11 @@ export interface StageProps {
   fitWithheld?: string | null;
   /**
    * Whether a choice can be recorded from the stage (default true, today's screen): the record
-   * button beside a preview, the touch equivalent of Enter in the Record, and a refusal's ways
-   * forward, each of which previews the decision it carries for that button to record. A screen
-   * whose card is the one place a choice is recorded (the quest shell: FOUNDATION §1, the card's
-   * foot is the one action) passes false: the stage draws neither, so no second record button
+   * button beside a preview, the touch equivalent of Enter in the Record, and a refusal's or a
+   * preview caution's ways forward, each of which previews the decision it carries for that button
+   * to record. A screen whose card is the one place a choice is recorded (the quest shell:
+   * FOUNDATION §1, the card's foot is the one action) passes false: the stage draws none of them
+   * (a caution keeps its words, W1-R R3 P2), so no second record button
    * disagrees with the card's and a refusal's readings are not drawn again beside the card that
    * asks them: the refusal still says why there is no preview, in the consumer's own words up to
    * the ledger's question, which the card asks (record/besideAsk.ts, as the card's own answer to a
@@ -421,7 +422,9 @@ export function Stage({ pid, view, focus, onFocus, fitWithheld = null, recordHer
                         <p className={s.cautionText}>
                           <Rich text={showing.caution.text} />
                         </p>
-                        {showing.caution.exits.length ? (
+                        {/* Its ways forward preview a decision for the stage's record button, so
+                            where the card records (recordHere false) they would lead nowhere. */}
+                        {recordHere && showing.caution.exits.length ? (
                           <div className={s.exits}>
                             {showing.caution.exits.map((x) => (
                               <button

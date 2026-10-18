@@ -268,8 +268,11 @@ export const api = {
   listDir: (path?: string, signal?: AbortSignal) =>
     request<FsListing>("/fs/list", { query: { path }, signal }),
 
-  /** The words every interview question carries, in asking order (M1_CONTRACT §5). */
-  teaching: (signal?: AbortSignal) => request<TeachingEntry[]>("/teaching", { signal }),
+  /** The words every interview question carries, in asking order (M1_CONTRACT §5), for the
+   *  project's goal (`?purpose=`, a plain query parameter) where one is named: the server words the
+   *  roles card by goal (W1-R finding 3c). */
+  teaching: (purpose?: string | null, signal?: AbortSignal) =>
+    request<TeachingEntry[]>("/teaching", { query: { purpose }, signal }),
 
   /** What recording `decision` would change, on the user's own data. Nothing is recorded. */
   preview: (pid: string, decision: Decision, signal?: AbortSignal) =>
