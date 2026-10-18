@@ -176,6 +176,7 @@ INFERENCE_FEW_CLUSTERS = register(Claim(
                  "turbotab.core.models.repeated:GEE.assess",
                  "turbotab.core.models.survival:cox_table"),
     author=AUTHOR,
+    origin="engine",
 ))
 
 TRIALS_FEW_CLUSTERS = register(Claim(
@@ -240,6 +241,7 @@ TRIALS_FEW_CLUSTERS = register(Claim(
     enforced_by=("turbotab.core.methods.trials:estimate",),
     fallback="trials.few_clusters_extended",
     author=AUTHOR,
+    origin="engine",
 ))
 
 TRIALS_FEW_CLUSTERS_EXTENDED = register(Claim(
@@ -284,6 +286,7 @@ TRIALS_FEW_CLUSTERS_EXTENDED = register(Claim(
     ),
     enforced_by=("turbotab.core.methods.trials:estimate",),
     author=AUTHOR,
+    origin="engine",
 ))
 
 ORDINAL_STATSMODELS_CR1 = (f"{TESTS}::test_an_ordinal_table_over_twelve_units_computes_"
@@ -359,6 +362,7 @@ ORDINAL_CLUSTER_ROBUST_INTERVALS = register(Claim(
     enforced_by=("turbotab.core.models.ordinal:_cr1_concerns",
                  "turbotab.core.models.ordinal:ordinal_table"),
     author=AUTHOR,
+    origin="audit",
 ))
 
 TRIALS_SEPARATION = register(Claim(
@@ -563,6 +567,7 @@ TRIALS_SEPARATION = register(Claim(
                  "turbotab.core.methods.trials:fit_gee",
                  "turbotab.core.methods.trials:_gee_refusal"),
     author=AUTHOR,
+    origin="audit",
 ))
 
 DESIGNS_OBSERVATIONAL_DEFAULT = register(Claim(
@@ -602,6 +607,7 @@ DESIGNS_OBSERVATIONAL_DEFAULT = register(Claim(
     ),
     enforced_by=("turbotab.core.interview:_design_gate", "turbotab.core.interview:route"),
     author=AUTHOR,
+    origin="audit",
 ))
 
 DESIGNS_SAMPLED_BY_OUTCOME = register(Claim(
@@ -652,6 +658,7 @@ DESIGNS_SAMPLED_BY_OUTCOME = register(Claim(
                  "turbotab.core.estimand:estimand_card",
                  "turbotab.core.voice:_set_design"),
     author=AUTHOR,
+    origin="audit",
 ))
 
 CAUSAL_NUMERIC_EXPOSURE_R2 = register(Claim(
@@ -708,6 +715,7 @@ CAUSAL_NUMERIC_EXPOSURE_R2 = register(Claim(
     ),
     enforced_by=("turbotab.core.causal:assumption_card", "turbotab.core.models.causal:variation"),
     author=AUTHOR,
+    origin="audit",
 ))
 
 COX_TEST_3 = (f"{ACCEPTANCE}/test_wp12b_cox_mixed_gee.py::test_3_a_group_with_no_events_is_"
@@ -788,6 +796,7 @@ SURVIVAL_MONOTONE_LIKELIHOOD = register(Claim(
                  "turbotab.core.models.survival:cox_table",
                  "turbotab.core.models.survival:survey_cox_table"),
     author=AUTHOR,
+    origin="audit",
 ))
 
 # Claims backtest D-086: a ruling in the Results design (BEATS_MODELS_RESULTS.md §6, E23), not
@@ -840,6 +849,7 @@ RESULTS_TAIL_SHARE = register(Claim(
     enforced_by=("turbotab.core.models.tail_share:tail_share",),
     ruled="docs/turbotab-next/calm/BEATS_MODELS_RESULTS.md §6 (BE23, E23; claims backtest D-086)",
     author=AUTHOR,
+    origin="audit",
 ))
 
 CLAIMS: tuple[Claim, ...] = (

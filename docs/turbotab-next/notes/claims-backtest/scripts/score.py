@@ -1,4 +1,8 @@
-"""Score the backtest (PLAN.md, pre-registered measures). Run after every referee is in."""
+"""Score the backtest (PLAN.md, pre-registered measures). Run after every referee is in.
+
+Kept as the backtest ran it: S below is that session's scratchpad, written in. To score a new
+queue, use its generalization, research/registry/decoy_queue.py (python -m research.registry.decoy_queue), which reads and writes only the paths it is given; on the backtest's own key and verdicts it gives this
+script's gate (research/registry/tests/test_decoy_queue.py)."""
 import json, glob, os, math, collections
 S = "/private/tmp/claude-501/-Users-nhedglin-tabular-ml-lab/a12607bd-3f0c-4a23-8d52-bda4a2c1292e/scratchpad"
 key = json.load(open(f"{S}/sealed/decoy_key.json"))
