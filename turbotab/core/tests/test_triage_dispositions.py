@@ -102,16 +102,41 @@ def test_an_implausible_intake_routed_to_an_answered_question_is_left_as_a_limit
     assert still[:2] == ("act_on_it", False) and "still to come" in still[2]
 
 
-def test_a_note_or_a_column_no_analysis_reads_routed_to_an_answered_question_changes_nothing():
-    """Left as it is under an answer that stands, a noticing is what rule 4 says of it: a note
-    (info) changes no number, nor does one about a column no analysis reads; neither is a
-    limitation."""
-    note = {**INTAKE, "severity": "info"}
-    got = sweep.recommend(design(), note, set())
-    assert got[0] == "no_change" and "already answered" in got[2]
-    unread = {**INTAKE, "affected_columns": ["SEQN"]}  # the identifier: in no model (ROLES)
+@pytest.mark.parametrize("severity", ["info", "warning"])
+def test_a_noticing_routed_to_an_answered_question_is_a_limitation_whatever_its_severity(severity):
+    """The ruling at W1-W's cap (B1, the N9 ruling): where the question that decides a noticing is
+    already answered and an analysis reads its columns, the triage proposes recording it as a
+    limitation, whatever its severity: a question decides it, so it is about what the analysis
+    reads, a note (info) included. A noticing of the whole table, no column named, is read by every
+    number. ``kcal`` is total energy, in the model (ROLES)."""
+    for purpose, what in ((None, "estimate"), ("prediction", "score")):
+        state = design(**({"purpose": purpose} if purpose else {}))
+        got = sweep.recommend(state, {**INTAKE, "severity": severity}, set())
+        assert got[:2] == ("could_bias", False), (purpose, got)
+        assert "already answered" in got[2] and "`kcal`" in got[2] and what in got[2]
+        whole = sweep.recommend(state, {**INTAKE, "severity": severity, "affected_columns": []},
+                                set())
+        assert whole[:2] == ("could_bias", False) and "whole table" in whole[2], whole
+    # through the triage itself: the item is a limitation
+    note = {**INTAKE, "severity": severity}
+    got = items(design(), {"findings": [SAS, note, GENDER]})[INTAKE["id"]]
+    assert (got.recommended, got.label, got.limitation) == ("could_bias", "Could bias the estimate",
+                                                            True)
+
+
+@pytest.mark.parametrize("severity", ["info", "warning"])
+def test_a_noticing_routed_to_an_answered_question_changes_nothing_only_where_nothing_reads_it(
+        severity):
+    """The other way: under an answer that stands, a noticing about columns no analysis reads
+    changes no number, whatever its severity, and is no limitation; and a note routed to no
+    question keeps rule 4's words, a note on which no number rests."""
+    unread = {**INTAKE, "severity": severity, "affected_columns": ["SEQN"]}  # in no model (ROLES)
     got = sweep.recommend(design(), unread, set())
     assert got[0] == "no_change" and "`SEQN`" in got[2] and "no analysis reads" in got[2]
+    assert "already answered" in got[2]
+    unrouted = {**INTAKE, "severity": "info", "routes_to": None}
+    got = sweep.recommend(design(), unrouted, set())
+    assert got == ("no_change", False, "A note about the data: no number rests on it.")
 
 
 def test_recoding_a_covariate_that_is_not_focal_changes_no_number_here():

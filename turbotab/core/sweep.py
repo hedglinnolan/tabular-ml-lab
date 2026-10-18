@@ -519,11 +519,14 @@ def _decided_at(question: str) -> str:
     return f"It is decided at {question_name(question)} in {STAGE_NAMES[QUESTIONS[question].stage]}"
 
 
-def _left_as_it_is(state: Any, finding: Mapping[str, Any]) -> tuple[Disposition, str]:
+def _left_as_it_is(state: Any, finding: Mapping[str, Any], decided: bool = False
+                   ) -> tuple[Disposition, str]:
     """What a finding left as it is means here (rule 4 of :func:`recommend`): a note (info) changes
     no number, nor does a finding about columns no analysis reads; otherwise it concerns what the
-    analysis reads, and it could bias the estimate (under prediction, the score)."""
-    if str(finding.get("severity") or "info") == "info":
+    analysis reads, and it could bias the estimate (under prediction, the score). A finding
+    ``decided`` by a question already answered is a limitation wherever an analysis reads its
+    columns, whatever its severity (rule 3): a question decides it, so it is no mere note."""
+    if not decided and str(finding.get("severity") or "info") == "info":
         return "no_change", "A note about the data: no number rests on it."
     columns = [str(c) for c in finding.get("affected_columns") or []]
     read = [c for c in columns if analysis_reads(state, c)]
@@ -551,11 +554,12 @@ def recommend(state: Any, finding: Mapping[str, Any], open_questions: set[str]
        (Frisch–Waugh–Lovell; ``materiality.invariance``).
     3. A finding routed to a question still to come (``open_questions``: open, waiting, or not
        listed yet with no answer) is acted on at that question. One routed to a question already
-       answered is left as it is, since that answer stands: rule 4 says what that means (a
-       limitation where it could bias), and its reason names the question, where changing the
-       answer is how to act on it instead (the re-walk's N9). A finding with a repair
-       is decided in Your data, where the repair is chosen: it is acted on there. The reason names
-       the stage and the question.
+       answered is left as it is, since that answer stands: it is a limitation wherever an
+       analysis reads its columns (or it names none: the whole table), whatever its severity, and
+       changes no number only where no analysis reads them (the ruling at W1-W's cap, B1). Its
+       reason names the question, where changing the answer is how to act on it instead (the
+       re-walk's N9). A finding with a repair is decided in Your data, where the repair is chosen:
+       it is acted on there. The reason names the stage and the question.
     4. A note (info) changes no number, nor does a finding about columns no analysis reads.
        Otherwise it concerns what the analysis reads, and left as it is it could bias the
        estimate (or, under prediction, the score): a limitation sentence, unless the person acts
@@ -572,7 +576,7 @@ def recommend(state: Any, finding: Mapping[str, Any], open_questions: set[str]
     if routed in QUESTIONS:
         if routed in open_questions:
             return "act_on_it", False, f"{_decided_at(str(routed))}, still to come."
-        disposition, why = _left_as_it_is(state, finding)
+        disposition, why = _left_as_it_is(state, finding, decided=True)
         return disposition, False, (f"{_decided_at(str(routed))}, already answered, and that "
                                     f"answer stands. {why} To act on it instead, change that "
                                     f"answer there.")
