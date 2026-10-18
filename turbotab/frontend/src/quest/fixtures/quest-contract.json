@@ -710,7 +710,7 @@
         "label": "Confirm",
         "name": "the validation scheme",
         "order": 136.0,
-        "reason": null,
+        "reason": "5-fold cross-validation.",
         "reopened_by": null,
         "source": "declaration",
         "status": "set_for_you",
@@ -872,7 +872,7 @@
       "basis": null,
       "id": "default:validation-scheme",
       "key": "set_validation",
-      "value": "the validation scheme"
+      "value": "5-fold cross-validation."
      }
     ],
     "question": [
@@ -1403,7 +1403,7 @@
         "label": "Confirm",
         "name": "the validation scheme",
         "order": 136.0,
-        "reason": null,
+        "reason": "5-fold cross-validation.",
         "reopened_by": null,
         "source": "declaration",
         "status": "set_for_you",
@@ -1422,7 +1422,7 @@
         "label": "Confirm",
         "name": "the rules repeated inside each fold",
         "order": 137.0,
-        "reason": null,
+        "reason": "Predictor forms: none; variance filter: none; imbalance correction: none.",
         "reopened_by": null,
         "source": "declaration",
         "status": "set_for_you",
@@ -1547,13 +1547,13 @@
       "basis": null,
       "id": "default:validation-scheme",
       "key": "set_validation",
-      "value": "the validation scheme"
+      "value": "5-fold cross-validation."
      },
      {
       "basis": null,
       "id": "decision:set_levers",
       "key": "set_levers",
-      "value": "the rules repeated inside each fold"
+      "value": "Predictor forms: none; variance filter: none; imbalance correction: none."
      }
     ],
     "question": [

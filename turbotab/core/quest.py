@@ -467,6 +467,50 @@ def _calibration_is_current(state: Any) -> bool:
     return spec is not None and changed is None
 
 
+def _sentence_case(text: str) -> str:
+    return text[:1].upper() + text[1:]
+
+
+def validation_stated(state: Any) -> str:
+    """The validation scheme set for the person, as the split holds it (else the scheme's
+    defaults): Models' Confirm line states it by its value, in the validation card's words."""
+    from turbotab.core.decisions import SetValidation
+
+    s = getattr(state, "split", None) or SetValidation()
+    if s.validation == "kfold":
+        scheme = f"{s.folds}-fold cross-validation"
+    elif s.validation == "repeated_kfold":
+        scheme = f"{s.folds}-fold cross-validation, repeated {s.repeats} times"
+    elif s.validation == "bootstrap":
+        scheme = f"bootstrap optimism correction over {s.n_boot} resamples"
+    else:
+        scheme = "internal–external validation" + (f" by {s.cluster}" if s.cluster else "")
+    nested = ", with a nested cross-validation interval" if s.nested_cv else ""
+    return _sentence_case(f"{scheme}{nested}.")
+
+
+# The levers card's words for each rule (src/quest/cards/predict/LeversCard.tsx), lowercased.
+LEVER_WORDS = {
+    "forms": {"none": "none", "rule": "spline by rule",
+              "inner_cv": "linear or spline, by inner cross-validation"},
+    "variance_filter": {"none": "none", "near_zero": "near-zero variance", "top": "most variable"},
+    "imbalance": {"none": "none", "weights": "class weights", "undersample": "undersampling",
+                  "oversample": "oversampling"},
+}
+
+
+def levers_stated(state: Any) -> str:
+    """The rules repeated inside each fold set for the person, as recorded (else the defaults: no
+    lever is none of the three): Models' Confirm line states them by their values."""
+    from turbotab.core.decisions import LeverSpec
+
+    r = getattr(state, "levers", None) or LeverSpec()
+    kept = f" ({r.keep} kept)" if r.variance_filter == "top" and r.keep is not None else ""
+    return (f"Predictor forms: {LEVER_WORDS['forms'][r.forms]}; variance filter: "
+            f"{LEVER_WORDS['variance_filter'][r.variance_filter]}{kept}; imbalance correction: "
+            f"{LEVER_WORDS['imbalance'][r.imbalance]}.")
+
+
 @dataclass(frozen=True)
 class Declaration:
     """A decision with no Router key that the quest log lists as a line (disagreement 11).
@@ -477,7 +521,8 @@ class Declaration:
     whether its recorded answer still stands (else it is asked again). ``only_recorded``: a For the
     record line, listed once something is recorded. ``own_record``: answered only by a record of its
     own kind, since its slot is another answer's too (the validation scheme rides in the split's
-    record until it is changed, P0.6)."""
+    record until it is changed, P0.6). ``stated``: the default a Confirm line sets for the person,
+    stated by its value (its ``reason``, which "Confirm all" records: the re-walk's N6)."""
 
     kind: str
     name: str
@@ -487,6 +532,7 @@ class Declaration:
     holds: Callable[[Any], bool] | None = None
     only_recorded: bool = False
     own_record: bool = False
+    stated: Callable[[Any], str] | None = None
 
     @property
     def place(self) -> Place:
@@ -522,7 +568,7 @@ DECLARATIONS: tuple[Declaration, ...] = (
                 lambda s, f: (s.purpose == "inference" and s.estimand is not None
                               and bool(s.estimand.family)), reads=("estimand",)),
     Declaration("set_levers", "the rules repeated inside each fold", _goal("prediction"),
-                reads=("models",)),
+                reads=("models",), stated=levers_stated),
     # An unpenalized regression family under prediction (the relation shrinkage_offered).
     Declaration("set_updating", "the shrinkage question",
                 lambda s, f: s.purpose == "prediction" and _shrinkage_offered(s),
@@ -532,7 +578,7 @@ DECLARATIONS: tuple[Declaration, ...] = (
     # P0.6 (disagreement 5): the scheme set for you with the draw, a Models Confirm line under
     # Predict; changing it records its own kind and keeps the draw.
     Declaration("set_validation", "the validation scheme", _goal("prediction"), reads=("split",),
-                own_record=True),
+                own_record=True, stated=validation_stated),
 )
 
 
@@ -2066,6 +2112,9 @@ def _declaration_lines(state: Any, steps: Mapping[str, Any], log: _Log,
             id=place.item, key=decl.kind, source="declaration", label=place.label,
             name=decl.name, status=status, counted=decl.counted and place.label == DECIDE,
             order=place.order, decision_id=writer.id if answered and writer is not None else None,
+            # A default set for the person is stated by its value, which its sweep records (N6).
+            reason=(decl.stated(state) if decl.stated is not None and status == "set_for_you"
+                    else None),
             waiting_for=[Waiting(key=k, stage=QUESTIONS[k].stage, name=question_name(k))
                          for k in unanswered],
             reopened_by=reopened)))

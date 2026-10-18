@@ -433,13 +433,22 @@ describe("First look (P14)", () => {
 
 describe("a default the engine states no reason for (P10)", () => {
   it("is stated from the engine's value: the split's scheme", () => {
-    const models = stageIn(REACHED, "models");
-    expect(models.lines.find((l) => l.key === "set_validation")).toMatchObject({ label: "Confirm", status: "set_for_you", reason: null });
+    // The engine states the scheme itself since the re-walk's N6; a log that serves none (an older
+    // capture) is stated from the split, in the same words.
+    const unstated = patched(REACHED, { models: (l) => (l.key === "set_validation" ? { ...l, reason: null } : l) });
+    expect(stageIn(unstated, "models").lines.find((l) => l.key === "set_validation")).toMatchObject({ label: "Confirm", status: "set_for_you", reason: null });
     const split = VIEW.state.split!;
     expect(split.validation).toBe("kfold");
     expect(split.nested_cv).toBe(false);
-    const { card } = cardOf(REACHED, "models");
+    const { card } = cardOf(unstated, "models");
     expect(within(card).getByTestId("line-set_validation-reason")).toHaveTextContent(`${split.folds}-fold cross-validation.`);
+  });
+
+  it("is the engine's own statement where it serves one (N6)", () => {
+    const served = stageIn(REACHED, "models").lines.find((l) => l.key === "set_validation")!;
+    expect(served.reason).toMatch(/^\d+-fold cross-validation\.$/);
+    const { card } = cardOf(REACHED, "models");
+    expect(within(card).getByTestId("line-set_validation-reason")).toHaveTextContent(served.reason!);
   });
 
   it("leaves the engine's own reason where it serves one", () => {
@@ -447,6 +456,42 @@ describe("a default the engine states no reason for (P10)", () => {
     expect(form.reason).toBeTruthy();
     const { card } = cardOf(REACHED, "models");
     expect(within(card).getByTestId("line-form-reason")).toHaveTextContent(form.reason!.replaceAll("`", ""));
+  });
+});
+
+/**
+ * The re-walk's N6: "Confirm all" is one record, but each line it answers reads as its own default,
+ * as stated (the line's reason, which the sweep recorded), never the record's one sentence for all
+ * of them. Models' sweep is confirmed here by construction: each Confirm line answered by one record.
+ */
+describe("a line answered by its stage's Confirm all (N6)", () => {
+  const RECORD_ID = "r-models-sweep";
+  const COMBINED = "Confirmed the 3 choices set for you in Models, as stated: one; two; three.";
+  const OWN: Record<string, string> = {
+    form: "Under prediction each predictor enters as each family takes it.",
+    set_validation: "5-fold cross-validation.",
+    set_levers: "Predictor forms: none; variance filter: none; imbalance correction: none.",
+  };
+  const swept = patched(
+    REACHED,
+    { models: (l) => (l.label === "Confirm" ? { ...l, status: "answered", decision_id: RECORD_ID, reason: OWN[l.key] ?? l.reason } : l) },
+    { models: { sweep: { ...stageIn(REACHED, "models").sweep!, answered: true, confirmed_by: RECORD_ID } } },
+  );
+
+  it("reads as its own value, not the record's sentence for all of them", () => {
+    const confirms = stageIn(swept, "models").lines.filter((l) => l.label === "Confirm");
+    expect(confirms.map((l) => l.key).sort()).toEqual(Object.keys(OWN).sort());
+    const { card } = cardOf(swept, "models", { answers: new Map([[RECORD_ID, COMBINED]]) });
+    for (const l of confirms) {
+      expect(lineEl(card, l.key)).toHaveTextContent(OWN[l.key]!);
+      expect(lineEl(card, l.key)).not.toHaveTextContent(COMBINED);
+    }
+  });
+
+  it("keeps a record of its own: a line the person answered reads as that record's sentence", () => {
+    const own = patched(swept, { models: (l) => (l.key === "set_validation" ? { ...l, decision_id: "r-validation" } : l) });
+    const { card } = cardOf(own, "models", { answers: new Map([[RECORD_ID, COMBINED], ["r-validation", "The validation scheme was changed."]]) });
+    expect(lineEl(card, "set_validation")).toHaveTextContent("The validation scheme was changed.");
   });
 });
 

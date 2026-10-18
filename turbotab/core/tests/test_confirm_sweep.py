@@ -196,6 +196,45 @@ def test_confirm_all_records_exactly_what_was_shown_and_refuses_an_empty_or_stal
     assert changed.value.exits[0]["decision"]["lines"] == swept(log, "whos_in")
 
 
+@pytest.mark.parametrize("split, scheme", [
+    (decisions.SplitSpec(holdout=0.2, seed=0), "5-fold cross-validation."),
+    (decisions.SplitSpec(holdout=0.2, seed=0, folds=10, validation="repeated_kfold", repeats=20),
+     "10-fold cross-validation, repeated 20 times."),
+    (decisions.SplitSpec(holdout=0.0, seed=0, validation="bootstrap", n_boot=200,
+                         nested_cv=True),
+     "Bootstrap optimism correction over 200 resamples, with a nested cross-validation interval."),
+])
+def test_confirm_all_records_each_default_by_its_own_value(split, scheme):
+    """The re-walk's N6: Models' "Confirm all" recorded the validation scheme by its name ("the
+    validation scheme"), dropping its value, since the engine stated no value for that default or
+    for the in-fold rules (the shell said them from the state). Each default a declaration sets is
+    stated by its value, as the split's scheme and the levers hold it: the line reads it, the sweep
+    records it, and the record's sentence quotes it. The scheme's words are written out here from
+    each split, and the levers' from their defaults (no lever: none of the three)."""
+    from turbotab.core.decisions import SetSplit
+
+    records = [record(1, {"kind": "set_lens", "lenses": ["clinical"]}),
+               record(2, {"kind": "set_target", "column": "glucose"}),
+               record(3, {"kind": "set_purpose", "purpose": "prediction"}),
+               record(4, {"kind": "set_roles", "roles": {"SEQN": "identifier", "age": "covariate"},
+                          "unconfirmed": []}),
+               record(5, SetSplit(**split.model_dump()).model_dump(mode="json")),
+               record(6, {"kind": "select_models", "models": ["linear"]})]
+    state = decisions.fold(records)
+    log = quest.quest_log(state, records, steps_until(None, stated=("form",)),
+                          columns=["SEQN", "age", "glucose"])
+    validation, levers = line(log, "set_validation"), line(log, "set_levers")
+    assert (validation.status, validation.reason) == ("set_for_you", scheme)
+    assert levers.reason == ("Predictor forms: none; variance filter: none; imbalance correction: "
+                             "none.")
+    got = {l.key: l.value for l in decisions.validate({"kind": "confirm_sweep", "stage": "models"},
+                                                      Ctx(log)).lines}
+    assert got["set_validation"] == scheme and got["set_levers"] == levers.reason
+    d = decisions.validate({"kind": "confirm_sweep", "stage": "models"}, Ctx(log))
+    said = sweep.confirm_sentence(d)
+    assert scheme[:1].lower() + scheme[1:-1] in said and "the validation scheme" not in said
+
+
 def test_a_sweep_with_a_line_still_waiting_cannot_be_confirmed():
     state = ProjectState(lens=["metabolomics"], target="outcome", purpose="prediction",
                          roles={"m_001": "exposure"})
