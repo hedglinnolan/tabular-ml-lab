@@ -1,0 +1,18 @@
+{
+ "id": "nhanes_glucose_predict",
+ "design": "analysts",
+ "purpose": "Predict",
+ "question": "How well do the table's measures predict fasting glucose?",
+ "population": "NHANES participants aged 18 to 85, one row each, every one with a fasting glucose, from the 9 survey cycles 2001–2002 to 2017–2018.",
+ "outcome": {
+  "column": "glucose",
+  "meaning": "fasting plasma glucose (mg/dL)"
+ },
+ "table": {
+  "path": "research/data/datasets/nhanes_glucose_predict/_tt_tmp_nhanes.csv",
+  "format": "csv"
+ },
+ "source": "An NHANES export tracked in this repository (turbotab/core/tests/fixtures/nhanes.csv.gz), the table of the app's NHANES glucose journeys. How it was exported from the NHANES files is not recorded with it.",
+ "prepared": [],
+ "manifest": "research/datasets/nhanes_glucose_predict/manifest.json"
+}

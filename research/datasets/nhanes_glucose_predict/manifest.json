@@ -1,0 +1,23 @@
+{
+ "about": "The NHANES export, decompressed from the repository's tracked copy.",
+ "dataset": "nhanes_glucose_predict",
+ "license": "public domain",
+ "basis": "a work of the U.S. federal government (NCHS, CDC), not subject to copyright (17 U.S.C. 105); the files' pages state no license of their own",
+ "files": [
+  {
+   "file": "turbotab/core/tests/fixtures/nhanes.csv.gz",
+   "origin": "this repository",
+   "bytes": 1237204,
+   "sha256": "bab42fa205ad931b9c120c2cacf7de8c1f2d71b9e8b802ec2f7171106d452d8f",
+   "decompressed_sha256": "dbb2df487d50de26a223c9b7f9f214b4a55b0399db72b2047e729920d04a15da"
+  }
+ ],
+ "table": {
+  "file": "research/data/datasets/nhanes_glucose_predict/_tt_tmp_nhanes.csv",
+  "format": "csv",
+  "rows": 21849,
+  "columns": 29,
+  "bytes": 4569802,
+  "sha256": "dbb2df487d50de26a223c9b7f9f214b4a55b0399db72b2047e729920d04a15da"
+ }
+}

@@ -1,0 +1,188 @@
+{
+ "id": "sullivan2021",
+ "kind": "replication",
+ "about": "The paper's printed numbers, as the replication's plan file holds them: the participant flow, Table 4's four associations and Appendix Table 2's models.",
+ "notes": "docs/turbotab-next/notes/replication/sullivan2021.md",
+ "truths": [
+  {
+   "name": "the participant flow: each step and the rows it removes",
+   "source": "research/replication/sullivan2021/engine/sullivan2021.json (paper)",
+   "value": [
+    [
+     "Start (four cycles combined)",
+     39156
+    ],
+    [
+     "Age < 20",
+     -16539
+    ],
+    [
+     "Pregnant",
+     -247
+    ],
+    [
+     "No self-rating",
+     -10
+    ],
+    [
+     "No dietary recall",
+     -2982
+    ],
+    [
+     "Only one recall",
+     -2445
+    ],
+    [
+     "Only water reported on a recall day",
+     -20
+    ],
+    [
+     "Analytic sample",
+     16913
+    ]
+   ]
+  },
+  {
+   "name": "Table 4: beta, SE, n and P for each outcome",
+   "source": "research/replication/sullivan2021/engine/sullivan2021.json (paper)",
+   "value": {
+    "glucose": {
+     "beta": -2.0,
+     "se": 0.4,
+     "n": 6832,
+     "p": "<0.001"
+    },
+    "insulin": {
+     "beta": -0.6,
+     "se": 0.2,
+     "n": 6655,
+     "p": "0.003"
+    },
+    "hba1c": {
+     "beta": -0.05,
+     "se": 0.01,
+     "n": 14795,
+     "p": "<0.001"
+    },
+    "bmi": {
+     "beta": -1.6,
+     "se": 0.1,
+     "n": 15278,
+     "p": "<0.001"
+    }
+   }
+  },
+  {
+   "name": "Appendix Table 2: beta and SE in Models 0 to 4",
+   "source": "research/replication/sullivan2021/engine/sullivan2021.json (paper)",
+   "value": {
+    "glucose": {
+     "M0": [
+      -2.7,
+      0.37
+     ],
+     "M1": [
+      -4.1,
+      0.36
+     ],
+     "M2": [
+      -3.7,
+      0.44
+     ],
+     "M3": [
+      -3.6,
+      0.45
+     ],
+     "M4": [
+      -1.1,
+      0.36,
+      "p = 0.004"
+     ]
+    },
+    "insulin": {
+     "M0": [
+      -2.3,
+      0.22
+     ],
+     "M1": [
+      -2.5,
+      0.21
+     ],
+     "M2": [
+      -2.2,
+      0.23
+     ],
+     "M3": [
+      -2.1,
+      0.23
+     ],
+     "M4": [
+      -0.4,
+      0.19,
+      "p = 0.03"
+     ]
+    },
+    "hba1c": {
+     "M0": [
+      -0.08,
+      0.01
+     ],
+     "M1": [
+      -0.13,
+      null
+     ],
+     "M2": [
+      -0.1,
+      null
+     ],
+     "M3": [
+      -0.09,
+      null
+     ],
+     "M4": [
+      -0.03,
+      0.01
+     ]
+    }
+   }
+  }
+ ],
+ "compare": {
+  "precision": {
+   "about": "decimal places the paper prints, [beta, SE]",
+   "table4": {
+    "glucose": [
+     1,
+     1
+    ],
+    "insulin": [
+     1,
+     1
+    ],
+    "hba1c": [
+     2,
+     2
+    ],
+    "bmi": [
+     1,
+     1
+    ]
+   },
+   "ladder": {
+    "glucose": [
+     1,
+     2
+    ],
+    "insulin": [
+     1,
+     2
+    ],
+    "hba1c": [
+     2,
+     2
+    ]
+   }
+  },
+  "direction": "The paper scores the rating poor = 1 to excellent = 5; NHANES codes DBQ700 excellent = 1 to poor = 5. The engine fits the raw codes (SULLIVAN_PLAN ruling 3), so the paper's beta is compared with -beta."
+ }
+}

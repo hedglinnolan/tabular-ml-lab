@@ -1,0 +1,13 @@
+{
+ "id": "outpatient_admission_predict",
+ "kind": "decoy",
+ "real_findings": [],
+ "about": "A null decoy (research/swarm/decoys.py): the outcome is drawn from a random stream of its own, which no column enters. No finding is real: any association or predictive skill a run reports is a false discovery.",
+ "truths": [
+  {
+   "name": "the outcome's relation to every column",
+   "source": "research/swarm/decoys.py (decoys.outcome)",
+   "value": "none: independent of every column by construction"
+  }
+ ]
+}
