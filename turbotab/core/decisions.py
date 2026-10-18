@@ -3463,19 +3463,23 @@ def _models_read_settled_readings(decision: Any, ctx: Any) -> None:
     model or leaves it by its role) and of each whole-number predictor's code-or-amount reading.
     While one rode along unconfirmed, the fit asks, one exit per reading, except that the roles of
     one judgment are confirmed in one press where the roles stage's proposals are at hand (ruling
-    R-g, ``readings.with_proposals``)."""
-    from turbotab.core.readings import Unsettled, predictors_or_ask
+    R-g, ``readings.with_proposals``). The roles question is a way through only where a role is
+    among the readings it waits on (the re-walk's N4: refused for codes or amounts alone, it asks
+    nothing the fit waits for)."""
+    from turbotab.core import readings
 
     state = _state(ctx)
     if state is None or not state.roles:
         return
     try:
-        predictors_or_ask(state, _ctx(ctx, "column_info"), drop=left_out(state),
-                          store=_store_of(ctx), artifact=_roles_artifact(ctx))
-    except Unsettled as waiting:
+        readings.predictors_or_ask(state, _ctx(ctx, "column_info"), drop=left_out(state),
+                                   store=_store_of(ctx), artifact=_roles_artifact(ctx))
+    except readings.Unsettled as waiting:
+        roles = any(r.kind == "role" for r in waiting.readings)
         raise Refusal("reading_unsettled", str(waiting), exits=[
             *waiting.exits,
-            {"label": "Change the roles (the roles question)", "decision": None}]) from None
+            *([{"label": "Change the roles (the roles question)", "decision": None}] if roles
+              else [])]) from None
 
 
 def _confirmed_role_names_a_column(decision: ConfirmRole, ctx: Any) -> None:

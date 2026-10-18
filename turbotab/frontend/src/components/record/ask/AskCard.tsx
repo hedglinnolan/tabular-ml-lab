@@ -21,7 +21,7 @@
  *   "Read from your data" (§14.3): the readings the values settled, each with its evidence and
  *   the answers that change it; never a required tap.
  */
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode, type Ref } from "react";
 import type { AskCard as Card, AskGroup, ReadingKind } from "../../../api/m3-types";
 import type { Decision } from "../../../api/schema";
 import { Prose, V } from "../../Prose";
@@ -146,6 +146,7 @@ export function AskCard({
   record,
   answerAt,
   mastered = false,
+  rootRef,
 }: {
   card: Card;
   pending: boolean;
@@ -155,6 +156,9 @@ export function AskCard({
   /** The user has confirmed guesses line by line before (BLUEPRINT §11.4 rule 4: a shortcut
    *  unlocks with mastery): the card then offers one block that lists every line it settles. */
   mastered?: boolean;
+  /** The card's root, for a refusal's way to its readings to lead to (record/besideAsk.ts
+   *  `READINGS_ABOVE`). */
+  rootRef?: Ref<HTMLElement>;
 }) {
   const titleId = useId();
   const [values, setValues] = useState<Record<number, string>>({});
@@ -168,7 +172,7 @@ export function AskCard({
   const answer = (at: string) => (answerAt?.key === at ? answerAt.node : null);
 
   return (
-    <section className={g.ask} aria-labelledby={titleId} data-testid="ask-card">
+    <section ref={rootRef} className={g.ask} aria-labelledby={titleId} data-testid="ask-card">
       <div className={g.askHead}>
         <h3 id={titleId} className={g.askTitle}>
           {lines.length === 1 ? "Tell me about this column" : "Tell me about these columns"}

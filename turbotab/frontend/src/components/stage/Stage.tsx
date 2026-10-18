@@ -56,9 +56,9 @@ export interface StageProps {
    * FOUNDATION §1, the card's foot is the one action) passes false: the stage draws none of them
    * (a caution keeps its words, W1-R R3 P2), so no second record button
    * disagrees with the card's and a refusal's readings are not drawn again beside the card that
-   * asks them: the refusal still says why there is no preview, in the consumer's own words up to
-   * the ledger's question, which the card asks (record/besideAsk.ts, as the card's own answer to a
-   * refused press does).
+   * asks them. A refusal for the readings the card asks (record/besideAsk.ts) is the card's to say,
+   * in its answer to the press, so the stage stays on the recorded pipeline and the refusal is said
+   * once (the re-walk's N4); any other refusal still says why there is no preview.
    */
   recordHere?: boolean;
   /**
@@ -165,7 +165,14 @@ export function Stage({
   const segment = focus.kind === "banner" ? focus.segment : null;
   const findingList = findings.artifact?.findings;
   const target = useMemo<Scene | null>(() => {
-    if (focus.kind === "option") return preview.answer ? answerScene(preview.answer) : null;
+    if (focus.kind === "option") {
+      if (!preview.answer) return null;
+      // Where the card records and asks the readings a refused option waits on, the card's answer
+      // to its press says the refusal, once (the re-walk's N4): the stage stays on the pipeline.
+      const refused = preview.answer.refusal;
+      if (!recordHere && refused && besideAsk(refused) !== refused) return liveScene(fitted ? "results" : "now");
+      return answerScene(preview.answer);
+    }
     if (focus.kind === "finding") {
       if (!evidence.answer) return null;
       const f = findingList?.find((x) => x.id === evidence.answer!.key);
@@ -179,7 +186,7 @@ export function Stage({
     }
     if (segment) return liveScene(segment === "result" ? "results" : segment);
     return liveScene(fitted ? "results" : "now");
-  }, [focus.kind, preview.answer, evidence.answer, findingList, segment, fitted]);
+  }, [focus.kind, preview.answer, evidence.answer, findingList, segment, fitted, recordHere]);
   const loading =
     focus.kind === "option" ? preview.loading : focus.kind === "finding" ? evidence.loading : false;
 

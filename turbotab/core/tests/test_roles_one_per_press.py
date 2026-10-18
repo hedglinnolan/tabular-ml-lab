@@ -125,6 +125,33 @@ def test_the_fits_refusal_offers_no_press_that_confirms_several_roles():
     assert {c for d in found for c in _roles_in(d)} == set(WAITING)
 
 
+@pytest.mark.parametrize("kinds, roles_exit", [
+    (("code_or_count",), False),           # the re-walk's N4: only codes or amounts wait
+    (("role", "code_or_count"), True),     # a role waits too: the roles question can settle it
+])
+def test_the_fits_refusal_offers_the_roles_question_only_where_a_role_waits(monkeypatch, kinds,
+                                                                             roles_exit):
+    """The re-walk's N4: refused for five code-or-amount readings alone, the families press's one
+    way through beside the card was "Change the roles (the roles question)", which asks nothing the
+    refusal waits for. The roles question is offered where a role is among the readings it waits
+    on, and not otherwise; each reading's own confirmations stay. The readings are constructed."""
+    state = _state()
+    waiting = [Reading(("age",), kind, "amount" if kind == "code_or_count" else "covariate",
+                       "medium", "whole numbers") for kind in kinds]
+    exits = [{"label": f"Confirm {r.kind}", "decision": None} for r in waiting]
+
+    def asks(*_args, **_kw):
+        raise readings.Unsettled("The fit waits for these readings.", waiting, exits)
+
+    monkeypatch.setattr(readings, "predictors_or_ask", asks)
+    with pytest.raises(Refusal) as refused:
+        decisions._models_read_settled_readings(decisions.SelectModels(models=["linear"]),
+                                                {"state": state})
+    labels = [e["label"] for e in refused.value.exits]
+    assert labels[:len(exits)] == [e["label"] for e in exits]
+    assert ("Change the roles (the roles question)" in labels) is roles_exit
+
+
 def test_the_quest_logs_ask_line_offers_one_column_per_press():
     records = [record(1, {"kind": "set_lens", "lenses": ["clinical"]}),
                record(2, {"kind": "set_target", "column": "glucose"}),

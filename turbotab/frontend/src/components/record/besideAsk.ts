@@ -16,18 +16,25 @@ const confirms = (d: Record<string, unknown> | null) =>
  *  (core/readings.py `ask_text`; core/quest.py `asks` splits a refusal there too). */
 const ASK_TEXT = /\s*Tell me about (?:this column|these columns): /;
 
+/** The way through that leads to the readings the ask card lists, in place of their confirmations
+ *  (the re-walk's N4): AskFor brings that card into view and focuses it. */
+export const READINGS_ABOVE: Exit = { label: "Answer the readings above", decision: null };
+
 /**
  * The refusal as said beside the ask card: that card lists each reading the refusal waits on, with
  * its evidence and its confirmation, so the answer keeps the consumer's own words, which say what
  * it waits for, up to the ledger's question, and the ways forward that are not those
- * confirmations. A refusal that offers no confirmation is said whole.
+ * confirmations, led by one to the readings the card lists (`READINGS_ABOVE`). A refusal that
+ * offers no confirmation is said whole.
  */
 export function besideAsk(refusal: Refusal): Refusal {
   const exits = refusal.error.exits.filter((x) => !confirms(x.decision));
   if (exits.length === refusal.error.exits.length) return refusal;
   const message = refusal.error.message;
   const cut = message.search(ASK_TEXT);
-  return { error: { ...refusal.error, message: cut > 0 ? message.slice(0, cut) : message, exits } };
+  return {
+    error: { ...refusal.error, message: cut > 0 ? message.slice(0, cut) : message, exits: [READINGS_ABOVE, ...exits] },
+  };
 }
 
 /**
