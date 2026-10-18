@@ -1,0 +1,10 @@
+{
+ "about": "The public NHANES files Sullivan et al. 2021 (Am J Prev Med 61:563) reads, by cycle. Each is fetched from wwwn.cdc.gov with its codebook page (intake.py), and listed with its size and SHA-256 in manifest.json.",
+ "url": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/{year}/DataFiles/{file}.{ext}",
+ "cycles": {
+  "2011-2012": {"year": 2011, "files": ["DEMO_G", "DBQ_G", "DR1TOT_G", "DR2TOT_G", "GLU_G", "GHB_G", "BMX_G", "SMQ_G", "PAQ_G", "DIQ_G"]},
+  "2013-2014": {"year": 2013, "files": ["DEMO_H", "DBQ_H", "DR1TOT_H", "DR2TOT_H", "GLU_H", "INS_H", "GHB_H", "BMX_H", "SMQ_H", "PAQ_H", "DIQ_H"]},
+  "2015-2016": {"year": 2015, "files": ["DEMO_I", "DBQ_I", "DR1TOT_I", "DR2TOT_I", "GLU_I", "INS_I", "GHB_I", "BMX_I", "SMQ_I", "PAQ_I", "DIQ_I"]},
+  "2017-2018": {"year": 2017, "files": ["DEMO_J", "DBQ_J", "DR1TOT_J", "DR2TOT_J", "GLU_J", "INS_J", "GHB_J", "BMX_J", "SMQ_J", "PAQ_J", "DIQ_J"]}
+ }
+}
