@@ -208,3 +208,142 @@ def test_the_readings_the_values_settled_are_their_own_sentence_among_the_predic
     # silent: nothing the values settled, no such sentence
     quiet = _sections(tmp_path / "quiet", purpose, None)
     assert not [e for entries in quiet.values() for e in entries if "Read from the values" in e.text]
+
+
+def _sections_of(log: DecisionLog, purpose: str, read: str | None) -> dict[str, list]:
+    from types import SimpleNamespace
+
+    from turbotab.core.export.methods import methods_section
+
+    source = SimpleNamespace(name="diet", purpose=purpose, methods=methods_text(log.records()),
+                             artifact=lambda stage: None, read_from_values=read)
+    doc = methods_section(source, {"engine": {}, "inputs": [], "decisions": {"n": 1},
+                                   "analysis_plan": {}})
+    return {s.key: s.entries for s in doc.sections}
+
+
+@pytest.mark.parametrize("purpose, section", [("prediction", "predictors"),
+                                              ("inference", "variables")])
+def test_a_families_answer_recorded_with_the_readings_states_them_once(tmp_path, purpose,
+                                                                      section):
+    """W1-R round 3 (SE-m1): a families answer recorded before ruling R-c ended with the readings
+    the values settled ("… ridge regression. Read from the values, no question asked: …", the
+    sentence as that version wrote it, built here). The methods restate it as the families alone,
+    so the readings are said once, in their own sentence among the predictors; the Record keeps the
+    sentence as said."""
+    from turbotab.core.decisions import SelectModels
+
+    legacy = f"{_families('regression')[:-1]}. {READ}"
+    log = _log(tmp_path, *HEAD, SetPurpose(purpose=purpose), SetRoles(roles=ROLES))
+    log.append(SelectModels(models=["linear", "ridge"]), sentence=lambda x, before: legacy)
+    sections = _sections_of(log, purpose, READ)
+    found = [(key, e.source, e.text) for key, entries in sections.items() for e in entries
+             if "Read from the values" in e.text]
+    assert found == [(section, "analysis", READ)]
+    [families] = [e for entries in sections.values() for e in entries if e.kind == "select_models"]
+    assert families.text == _families("regression")
+    assert _recorded(log, "select_models") == [legacy]
+    # silent: a families answer recorded as the families alone is said as recorded
+    fresh = _log(tmp_path / "fresh", *HEAD, SetPurpose(purpose=purpose), SetRoles(roles=ROLES),
+                 SelectModels(models=["linear", "ridge"]))
+    assert _said(fresh, "select_models") == _recorded(fresh, "select_models") == [
+        _families("regression")]
+
+
+# ── W1-R round 3 (SE-B2): under Predict a move between the predictor roles is a change ──
+#
+# Under Predict an exposure and a covariate are each a predictor, but the engine still treats them
+# apart: the screened elastic net (prediction only) screens the Predictor columns and passes every
+# other column through, and the omics normalization and reference ComBat act on Predictor columns
+# alone. So a move between the two is a change, said in the Predict roles card's own labels for the
+# two roles.
+
+MOVED = {**ROLES, "bp_sys": "exposure"}
+
+
+def _labels() -> dict[str, str]:
+    """The Predict roles card's own option labels, by role (``teaching.content``)."""
+    from turbotab.core.teaching.content import ROLES_UNDER_PREDICT
+
+    return {o["value"]: o["label"] for o in ROLES_UNDER_PREDICT["options"]}
+
+
+def test_under_predict_a_covariate_made_a_predictor_column_is_said_as_a_move(tmp_path):
+    label = _labels()
+    assert label["exposure"] != label["covariate"]
+    log = _log(tmp_path, *HEAD, SetPurpose(purpose="prediction"), SetRoles(roles=ROLES),
+               SetRoles(roles=MOVED))
+    want = (f"`bp_sys` moved from the {label['covariate']} role to the {label['exposure']} role; "
+            f"every other role is unchanged.")
+    assert _recorded(log, "set_roles")[-1] == want
+    assert want in _said(log, "set_roles")
+    assert not any("unchanged." in s and "every other" not in s for s in _said(log, "set_roles"))
+
+
+def test_under_predict_each_move_is_listed_beside_the_others(tmp_path):
+    """With up to three moves, a move inside the predictors is listed with the rest."""
+    label = _labels()
+    log = _log(tmp_path, *HEAD, SetPurpose(purpose="prediction"), SetRoles(roles=ROLES),
+               SetRoles(roles={**ROLES, "protein_g": "covariate", "age": "excluded"}))
+    assert _recorded(log, "set_roles")[-1] == (
+        f"`protein_g` moved from the {label['exposure']} role to the {label['covariate']} role "
+        f"and `age` became excluded; every other role is unchanged.")
+
+
+def test_under_predict_the_same_roles_again_are_still_unchanged(tmp_path):
+    log = _log(tmp_path, *HEAD, SetPurpose(purpose="prediction"), SetRoles(roles=ROLES),
+               SetRoles(roles=ROLES))
+    assert _recorded(log, "set_roles")[-1] == ("The roles of all `6` columns were recorded "
+                                               "unchanged.")
+
+
+def test_under_estimate_the_same_move_is_said_as_before(tmp_path):
+    log = _log(tmp_path, *HEAD, SetPurpose(purpose="inference"), SetRoles(roles=ROLES),
+               SetRoles(roles=MOVED))
+    assert _recorded(log, "set_roles")[-1] == ("`bp_sys` became an exposure; every other role is "
+                                               "unchanged.")
+
+
+def test_a_move_recorded_before_the_goal_is_said_as_a_move_once_the_goal_is_prediction(tmp_path):
+    log = _log(tmp_path, *HEAD, SetRoles(roles=ROLES), SetRoles(roles=MOVED))
+    as_said = "`bp_sys` became an exposure; every other role is unchanged."
+    assert _recorded(log, "set_roles")[-1] == as_said
+    log.append(SetPurpose(purpose="prediction"),
+               sentence=lambda x, before: voice.sentence_for(x, before, None))
+    label = _labels()
+    assert _said(log, "set_roles")[-1] == (
+        f"`bp_sys` moved from the {label['covariate']} role to the {label['exposure']} role; "
+        f"every other role is unchanged.")
+    assert _recorded(log, "set_roles")[-1] == as_said
+
+
+def test_under_predict_the_omics_screen_reads_the_move():
+    """Why the move is a change under Predict: the screened elastic net screens the Predictor
+    columns by their correlation with the outcome and passes every other column through. Keeping
+    one, the screen keeps `bp_sys` beside the best Predictor column while it is a covariate, and
+    drops it once it is a Predictor column that numpy's correlation ranks below another."""
+    from types import SimpleNamespace
+
+    import numpy as np
+    import pandas as pd
+
+    import turbotab.core.methods.omics  # noqa: F401 - registers the screened family
+    from turbotab.core.models.base import get_family
+
+    rng = np.random.default_rng(7)
+    n = 400
+    X = pd.DataFrame({"g1": rng.normal(size=n), "g2": rng.normal(size=n),
+                      "bp_sys": rng.normal(size=n)})
+    y = 2.0 * X["g1"] + 0.2 * X["bp_sys"] + rng.normal(size=n)
+    r = {c: abs(float(np.corrcoef(X[c], y)[0, 1])) for c in X}
+    family = get_family("screened_elastic_net")
+
+    def kept(roles: dict[str, str]) -> list[str]:
+        [(_name, screen)] = family.preprocess(SimpleNamespace(predictors=list(X), roles=roles))
+        screen.set_params(keep=1)
+        return list(screen.fit(X, y).transform(X).columns)
+
+    best = max(("g1", "g2"), key=r.get)
+    assert r["bp_sys"] < r[best]
+    assert kept({"g1": "exposure", "g2": "exposure", "bp_sys": "covariate"}) == [best, "bp_sys"]
+    assert kept({"g1": "exposure", "g2": "exposure", "bp_sys": "exposure"}) == [best]

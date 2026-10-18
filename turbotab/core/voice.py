@@ -425,6 +425,8 @@ def restate(decision: Any, sentence: str, then: Any, now: Any, ctx: Any = None, 
         return sentence
     said, says = fn(decision, then, ctx), fn(decision, now, ctx)
     said, says = (finish(said) if said else ""), (finish(says) if says else "")
+    if kind == "select_models":
+        sentence = _families_alone(sentence, said)
     if said == says:
         return sentence
     head = sentence
@@ -755,6 +757,20 @@ def _role_group(role: str, state: Any) -> str:
     return "exposure" if _under_predict(state) and role in _PREDICTORS else role
 
 
+def _role_move(column: str, before: str, after: str, state: Any) -> str:
+    """One column's move in the roles answer. Under Predict a move between an exposure and a
+    covariate is still a change, though both are predictors: the screened elastic net screens the
+    Predictor columns alone, and the omics normalization and reference ComBat act on them alone
+    (``methods.omics``, ``methods.batch``). It is said in the Predict roles card's own labels for
+    the two roles (W1-R round 3, SE-B2)."""
+    if _under_predict(state) and before in _PREDICTORS and after in _PREDICTORS:
+        from turbotab.core.teaching.content import ROLES_UNDER_PREDICT
+
+        label = {o["value"]: o["label"] for o in ROLES_UNDER_PREDICT["options"]}
+        return f"{tick(column)} moved from the {label[before]} role to the {label[after]} role"
+    return f"{tick(column)} became {role_as(after, state)}"
+
+
 @register_sentence("set_roles")
 def _set_roles(d: Any, state: Any, ctx: Any) -> str:
     return _set_roles_text(d, state, _after(state, d))
@@ -800,13 +816,13 @@ def _set_roles_body(d: Any, state: Any) -> str:
     roles: dict[str, str] = dict(d.roles)
     before: dict[str, str] = dict(state.roles or {})
     if before and set(before) == set(roles):
-        # Under Predict a move between an exposure and a covariate reads the same: both are
-        # predictors, so it is no change said.
-        changed = [c for c in roles if _role_group(roles[c], state) != _role_group(before[c], state)]
+        # Every move is a change, a move between an exposure and a covariate under Predict too
+        # (:func:`_role_move`).
+        changed = [c for c in roles if roles[c] != before[c]]
         if not changed:
             return f"The roles of all {count(len(roles))} columns were recorded unchanged"
         if len(changed) <= 3:
-            moves = [f"{tick(c)} became {role_as(roles[c], state)}" for c in changed]
+            moves = [_role_move(c, before[c], roles[c], state) for c in changed]
             return f"{listing(moves, ticked=False)}; every other role is unchanged"
     nouns = _ROLE_NOUN_UNDER_PREDICT if _under_predict(state) else _ROLE_NOUN
     groups = []
@@ -1532,6 +1548,23 @@ def _select_models(d: Any, state: Any, ctx: Any) -> str:
     # answer changes (:func:`restate`).
     population = _models_standing(d, state, ctx)
     return f"{chosen}. {population}" if population else chosen
+
+
+def _families_alone(sentence: str, standing: str) -> str:
+    """A families answer's ``sentence`` without the readings the values settled
+    (``readings.read_from_values_sentence``), which a version before ruling R-c appended to it: they
+    are a sentence of their own among the predictors now (``export.methods``), so the methods say
+    them once (W1-R round 3, SE-m1). They ran from their lead to the sentence's end, or to its
+    standing clause ``standing`` (the survey's estimators) where the sentence ends with it; a
+    sentence that holds no such readings, or whose end cannot be told, is left as said."""
+    from turbotab.core.readings import READ_FROM_VALUES
+
+    at = sentence.find(f" {READ_FROM_VALUES}")
+    if at < 0:
+        return sentence
+    if standing and not sentence.endswith(f" {standing}"):
+        return sentence
+    return sentence[:at] + (f" {standing}" if standing else "")
 
 
 @register_standing("select_models")

@@ -2956,6 +2956,10 @@ def read_from_data(state: Any, *, roles: Any = None, target_info: Any = None,
     return items
 
 
+# The lead of the readings the values settled, in the methods (``read_from_values_sentence``).
+READ_FROM_VALUES = "Read from the values, no question asked: "
+
+
 def read_from_values_sentence(items: Sequence[Mapping[str, Any]]) -> str:
     """The methods record's line for the readings the values settled: "Read from the values: …",
     each with its evidence; empty when there are none."""
@@ -2965,7 +2969,7 @@ def read_from_values_sentence(items: Sequence[Mapping[str, Any]]) -> str:
     for it in items:
         evidence = str(it.get("evidence") or "").strip().rstrip(".")
         parts.append(f"`{it['column']}` {it['words']}" + (f" ({evidence})" if evidence else ""))
-    return "Read from the values, no question asked: " + "; ".join(parts) + "."
+    return READ_FROM_VALUES + "; ".join(parts) + "."
 
 
 # ── the ask: what a consumer needs, listed once, by consequence (BLUEPRINT §14.2) ──
@@ -3568,7 +3572,8 @@ EVIDENCE_ONLY: dict[tuple[str, str], str] = {
 
 __all__ = [
     "ATTENTION", "ASK", "CODE_LEVELS", "CONFIRMABLE", "CONSUMERS", "Consumer", "KINDS", "NO_UNIT",
-    "PREDICTOR_ROLES", "Reading", "SETTLED_ONLY", "USER_APPLIED", "UNIT_VALUES", "Unsettled",
+    "PREDICTOR_ROLES", "READ_FROM_VALUES", "Reading", "SETTLED_ONLY", "USER_APPLIED",
+    "UNIT_VALUES", "Unsettled",
     "VALUES", "VALUES_SETTLE", "WORDS_ONLY", "attention_columns", "body_unit_reading",
     "cluster_reading",
     "code_or_count_exits", "code_or_count_reading", "confirm_exit", "confirm_exits",
