@@ -6,6 +6,7 @@
  */
 import type {
   CohortArtifact,
+  ConsequenceView,
   DesignArtifact,
   FitArtifact,
   Lineage as LineageData,
@@ -87,6 +88,24 @@ export function inGroupWords(
         one !== many && n.lane === "raw" ? `${fmtInt(count)} ${count === 1 ? one : many}` : `${count === 1 ? one : many}: ${columns}`;
       return { ...n, label };
     }),
+  };
+}
+
+/**
+ * A served view (a preview's, a finding's evidence's) with its lineage's collapsed groups named as
+ * the live Columns card names them (`inGroupWords`): under Predict a lineage's every side, before,
+ * after and each step between, in the roles card's group words, so a focused option's preview never
+ * says "12 covariate columns" beside the roles card (W1-W round 2, P2). Any other view, and every
+ * view under Estimate (`predict` false), is as served.
+ */
+export function viewInGroupWords(view: ConsequenceView, groups: ServedGroups | null | undefined, predict: boolean): ConsequenceView {
+  if (!predict || view.kind !== "lineage") return view;
+  const named = (l: LineageData) => inGroupWords(l, groups, predict);
+  return {
+    ...view,
+    before: view.before ? named(view.before) : null,
+    after: named(view.after),
+    story: view.story.map((f) => ({ ...f, lineage: named(f.lineage) })),
   };
 }
 

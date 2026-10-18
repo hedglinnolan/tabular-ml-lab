@@ -24,7 +24,7 @@ import { useMotionPrefs, useTransitions } from "../../motion/prefs";
 import { servedGroups } from "../../quest/cards/roles/roles";
 import { askedBeside, besideAsk } from "../record/besideAsk";
 import { stateSeq, useEvidence, useM1Stage, usePreview, type Answer } from "./data";
-import { ColumnsScene, ModelsScene, NowScene, ResultsScene, RowsScene, type LiveData } from "./LiveScenes";
+import { ColumnsScene, ModelsScene, NowScene, ResultsScene, RowsScene, viewInGroupWords, type LiveData } from "./LiveScenes";
 import { FitHeld } from "./results/Results";
 import { initial } from "./player";
 import { PreviewGrid } from "./PreviewGrid";
@@ -146,7 +146,11 @@ export function Stage({
   // stage (the re-walk's N3; W1-W round 1, P2).
   const predict = view.state.purpose === "prediction";
   const roles = useM1Stage(pid, view, "roles", predict);
-  const predictorGroups = predict ? servedGroups(roles.artifact?.predictor_groups, view.state.roles) : null;
+  const served = roles.artifact?.predictor_groups;
+  const predictorGroups = useMemo(
+    () => (predict ? servedGroups(served, view.state.roles) : null),
+    [predict, served, view.state.roles],
+  );
 
   const live: LiveData = {
     pid,
@@ -218,7 +222,11 @@ export function Stage({
       : scene.kind === "refusal" && lastPreview?.group === scene.group
         ? lastPreview.result
         : null;
-  const tracks = useMemo(() => (showing ? showing.views.map((v) => trackOf(v)) : []), [showing]);
+  // A preview's lineage names its groups as the Columns card does under Predict (W1-W round 2, P2).
+  const tracks = useMemo(
+    () => (showing ? showing.views.map((v) => trackOf(viewInGroupWords(v, predictorGroups, predict))) : []),
+    [showing, predictorGroups, predict],
+  );
   const story = useMemo(() => storyboardOf(tracks), [tracks]);
   const nRows = view.summary.n_rows;
   const nCols = view.summary.n_cols;

@@ -9,17 +9,18 @@
  * quest log the stage's parent reads (U9): the card asks the server nothing.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
-import type { CohortArtifact } from "../../api/m1-stage-types";
-import type { ProjectView, QuestLine, QuestLog } from "../../api/schema";
+import { api } from "../../api/client";
+import type { CohortArtifact, PreviewResult } from "../../api/m1-stage-types";
+import type { Decision, ProjectView, QuestLine, QuestLog } from "../../api/schema";
 import { expandView, viewsOf, type M3Fixture } from "../../mocks/m3";
 import ROLES from "../../quest/cards/roles/fixture.json";
 import { CONTRACT } from "../../quest/fixtures/contract";
 import { StageFocusProvider } from "../../state/focus";
 import { servedGroups, waitingPredictorColumns } from "../../quest/cards/roles/roles";
 import { keys } from "../../api/queries";
-import { ColumnsCard, inGroupWords, predictorsLineage, type LiveData } from "./LiveScenes";
+import { ColumnsCard, inGroupWords, predictorsLineage, viewInGroupWords, type LiveData } from "./LiveScenes";
 import { Stage } from "./Stage";
 
 const FIXTURES = import.meta.glob<M3Fixture>("../../mocks/fixtures/m3-nhanes-prediction.json", { eager: true, import: "default" });
@@ -292,6 +293,121 @@ describe("the lineage's groups in the roles card's words under Predict (N3)", ()
       const text = stageWith("inference", true);
       expect(text).toContain("8 covariate columns");
       expect(text).toContain("5 exposure columns");
+    });
+  });
+
+  /**
+   * W1-W round 2, P2: a roles option focused on the stage draws the server's preview of it, whose
+   * lineage (core/row_previews.py `_roles_lineage`, through core/consequences.py `lineage_of`) names
+   * its folded groups "{count} {group} columns": under Predict the real server said "12 covariate
+   * columns" and "7 exposure columns" beside the roles card's groups. The preview here is shaped as
+   * that server's was (scratchpad roles-preview.json of the W1-W verifier): the roles above with `c0`
+   * focused on its own, then left out of the models; a group node per role and lane, labelled as
+   * `lineage_of` labels it. Under Predict both sides of the preview name the groups as the live
+   * Columns card does; under Estimate the server's words stand.
+   */
+  describe("a preview's lineage on the stage (P2)", () => {
+    const group = (lane: "raw" | "matrix", role: "covariate" | "exposure" | "energy", count: number) => ({
+      id: `${lane}:group:${role}:kept`,
+      column: null,
+      lane,
+      role,
+      label: `${count} ${role} ${count === 1 ? "column" : "columns"}`,
+      formula: null,
+      group: role,
+      count,
+    });
+    const own = (lane: "raw" | "matrix", role: string) => ({
+      id: `${lane}:c0`, column: "c0", lane, role, label: "c0", formula: null, group: null, count: 1,
+    });
+    const groups = (lane: "raw" | "matrix") => [group(lane, "covariate", 7), group(lane, "exposure", 5), group(lane, "energy", 1)];
+    const before = { nodes: [...groups("raw"), own("raw", "covariate"), ...groups("matrix"), own("matrix", "covariate")], links: [], collapsed: true };
+    const after = { nodes: [...groups("raw"), own("raw", "excluded"), ...groups("matrix")], links: [], collapsed: true };
+    const LEFT_OUT = { kind: "set_roles", roles: { ...roles, c0: "excluded" } } as unknown as Decision;
+    const PREVIEW = {
+      kind: "set_roles",
+      views: [{ kind: "lineage", title: "Which columns enter the model", caption: "`c0` leaves it.", emphasis: ["c0"], coach: [], before, after, story: [] }],
+      basis: "The roles as recorded.",
+      note: null,
+      caution: null,
+    } as unknown as PreviewResult;
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    /** The lineage the stage draws at its first state ("Your data now") and once it has played to
+     *  the choice ("With this choice"), under `purpose`. */
+    async function previewed(purpose: string): Promise<[string, string]> {
+      vi.spyOn(api, "preview").mockResolvedValue(PREVIEW);
+      // The lineage measures its box (jsdom measures none): each one observed is given one.
+      const observed: ResizeObserverCallback[] = [];
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          constructor(private cb: ResizeObserverCallback) {}
+          observe() {
+            observed.push(this.cb);
+          }
+          unobserve() {}
+          disconnect() {}
+        },
+      );
+      const measure = () =>
+        act(() => {
+          for (const cb of observed) cb([{ contentRect: { width: 900, height: 380 } } as ResizeObserverEntry], {} as ResizeObserver);
+        });
+      const fresh = { status: "fresh", key: "k" };
+      const v = { ...view, state: { ...view.state, purpose }, decisions: [], interview: [], stages: { cohort: fresh, roles: fresh } } as unknown as ProjectView;
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+      qc.setQueryData(keys.stage(PID, "cohort"), { key: "k", fresh: true, artifact: { predictors, steps: [] } });
+      qc.setQueryData(keys.stage(PID, "roles"), {
+        key: "k",
+        fresh: true,
+        artifact: { columns: [], repeats: [], categorical: [], predictor_groups: { ...SERVED, energy_bearing: [] } },
+      });
+      render(
+        <QueryClientProvider client={qc}>
+          <StageFocusProvider>
+            <Stage pid={PID} view={v} focus={{ kind: "option", decision: LEFT_OUT, label: "Leave c0 out" }} onFocus={() => {}} />
+          </StageFocusProvider>
+        </QueryClientProvider>,
+      );
+      await waitFor(() => expect(screen.getByTestId("stage")).toHaveAttribute("data-scene", "preview"));
+      const drawn = () => document.querySelector("[data-state]");
+      await waitFor(() => expect(drawn()).toHaveAttribute("data-state", "0"));
+      measure();
+      const now = drawn()!.textContent ?? "";
+      await waitFor(() => expect(drawn()).not.toHaveAttribute("data-state", "0"));
+      measure();
+      return [now, drawn()!.textContent ?? ""];
+    }
+
+    it("names the groups as the roles card does under Predict, on both sides", async () => {
+      const [now, chosen] = await previewed("prediction");
+      for (const text of [now, chosen]) {
+        expect(text).toContain(`7 ${head("covariate")[1]}`);
+        expect(text).toContain(`5 ${head("exposure")[1]}`);
+        expect(text).toContain(`${head("covariate")[1]}: 7 columns`); // the model matrix's lane
+        expect(text).not.toMatch(/covariate|exposure|energy column/);
+      }
+      // A step between the two sides (a preview's story frame) is named the same way.
+      const served = servedGroups({ ...SERVED, energy_bearing: [] }, roles);
+      const framed = { ...PREVIEW.views[0]!, story: [{ label: "a step", lineage: before }] } as typeof PREVIEW.views[number];
+      const named = viewInGroupWords(framed, served, true);
+      const frame = named.kind === "lineage" ? named.story[0]!.lineage.nodes.map((n) => n.label) : [];
+      expect(frame).toContain(`7 ${head("covariate")[1]}`);
+      expect(frame.join(" ")).not.toMatch(/covariate|exposure|energy column/);
+      expect(viewInGroupWords(framed, served, false)).toBe(framed);
+    });
+
+    it("keeps the server's words under Estimate", async () => {
+      const [now, chosen] = await previewed("inference");
+      for (const text of [now, chosen]) {
+        expect(text).toContain("7 covariate columns");
+        expect(text).toContain("5 exposure columns");
+        expect(text).toContain("1 energy column");
+      }
     });
   });
 });
