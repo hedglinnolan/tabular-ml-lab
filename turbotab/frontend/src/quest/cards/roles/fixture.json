@@ -70,6 +70,63 @@
       "covariate"
     ]
   },
+  "under": {
+    "prediction": {
+      "reasons": {
+        "identifier": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+        "exposure": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+        "energy": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+        "covariate": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
+        "design": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a predictor.",
+        "flag": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a predictor.",
+        "time": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a predictor.",
+        "excluded": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or put it in the model.",
+        "cluster": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a predictor."
+      },
+      "words": {
+        "identifier": "the unit's identifier",
+        "exposure": "a predictor",
+        "energy": "total energy intake",
+        "covariate": "a predictor",
+        "design": "part of the survey design",
+        "flag": "a flag on another column",
+        "time": "the time of each row",
+        "excluded": "left out of the models",
+        "cluster": "a cluster of units"
+      },
+      "choices": {
+        "identifier": [
+          "covariate",
+          "excluded"
+        ],
+        "exposure": [
+          "excluded"
+        ],
+        "energy": [
+          "covariate",
+          "excluded"
+        ],
+        "covariate": [
+          "excluded"
+        ],
+        "design": [
+          "covariate"
+        ],
+        "flag": [
+          "covariate"
+        ],
+        "time": [
+          "covariate"
+        ],
+        "excluded": [
+          "covariate"
+        ],
+        "cluster": [
+          "covariate"
+        ]
+      }
+    }
+  },
   "lines": [
     {
       "id": "decision:confirm_role",
@@ -92,23 +149,15 @@
           "kind": "role",
           "column": "bp_sys",
           "value": "covariate",
-          "words": "proposed as a covariate",
+          "words": "proposed as a predictor",
           "evidence": "the reason the roles stage gives for `bp_sys`",
           "options": [
             {
-              "label": "Confirm `bp_sys` as a covariate",
+              "label": "Confirm `bp_sys` as a predictor",
               "decision": {
                 "kind": "confirm_role",
                 "column": "bp_sys",
                 "role": "covariate"
-              }
-            },
-            {
-              "label": "`bp_sys` is what you study",
-              "decision": {
-                "kind": "confirm_role",
-                "column": "bp_sys",
-                "role": "exposure"
               }
             },
             {
@@ -145,17 +194,9 @@
           "kind": "role",
           "column": "waist",
           "value": "covariate",
-          "words": "is a covariate",
+          "words": "is a predictor",
           "evidence": "the reason the roles stage gives for `waist`",
           "options": [
-            {
-              "label": "`waist` is what you study",
-              "decision": {
-                "kind": "confirm_role",
-                "column": "waist",
-                "role": "exposure"
-              }
-            },
             {
               "label": "`waist` is left out of the models",
               "decision": {
@@ -179,7 +220,7 @@
       "counted": true,
       "order": 30.002,
       "decision_id": null,
-      "reason": "`imputed_waist` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a covariate.",
+      "reason": "`imputed_waist` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or record it as a predictor.",
       "waiting_for": [],
       "computing": [],
       "reopened_by": null,
@@ -202,7 +243,7 @@
               }
             },
             {
-              "label": "`imputed_waist` is a covariate",
+              "label": "`imputed_waist` is a predictor",
               "decision": {
                 "kind": "confirm_role",
                 "column": "imputed_waist",
@@ -247,19 +288,11 @@
               }
             },
             {
-              "label": "`cycle_begin_year` is a covariate",
+              "label": "`cycle_begin_year` is a predictor",
               "decision": {
                 "kind": "confirm_role",
                 "column": "cycle_begin_year",
                 "role": "covariate"
-              }
-            },
-            {
-              "label": "`cycle_begin_year` is what you study",
-              "decision": {
-                "kind": "confirm_role",
-                "column": "cycle_begin_year",
-                "role": "exposure"
               }
             }
           ]
