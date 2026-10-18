@@ -34,8 +34,8 @@ Only a mechanical check (``checks.py``) or an independent grader judges a run.
 
 **Materiality is the engine's number.** A decision's ``materiality`` holds either what the engine
 measured (``GET …/fits``' paired movement for the fit the decision first took effect in, or
-``GET …/mattered``' specifications for a choice the curve varies) or why it has none; a record
-holding neither, or both, fails its schema.
+``GET …/mattered``' specifications for a choice the curve varies), with at least one number, or
+why it has none; a record holding neither, or both, or a measure of whys alone, fails its schema.
 
 **A record that fails its schema is a failed run** (``assemble.write``): it is written to
 ``research/corpus/failed/`` with the error, and never edited into one that passes.
@@ -186,7 +186,8 @@ class Materiality(_Strict):
     ``source == "fits"``: ``movement`` is the paired movement ``GET …/fits`` served for the fit
     the decision first took effect in, where it was the one record that changed since the fit
     before. ``source == "mattered"``: ``departures`` are ``GET …/mattered``' specifications that
-    change this decision's choices, beside its ``primary``."""
+    change this decision's choices, beside its ``primary``. A measure holds at least one number;
+    where every family or departure has only a why, the materiality is that why."""
 
     source: Literal["fits", "mattered"] | None
     attempt: str | None = None
@@ -197,11 +198,16 @@ class Materiality(_Strict):
 
     @model_validator(mode="after")
     def _number_or_why(self) -> "Materiality":
-        measured = bool(self.movement) or bool(self.departures)
-        if measured == (self.why is not None):
+        listed = bool(self.movement) or bool(self.departures)
+        if listed == (self.why is not None):
             raise ValueError("a materiality holds the engine's measure or why there is none, not "
                              "both and not neither")
-        if measured and self.source is None:
+        numbers = any(m.get("movement") is not None for m in self.movement or ()) or any(
+            d.get("spec") is not None for d in self.departures or ())
+        if listed and not numbers:
+            raise ValueError("a measure holds at least one number the engine measured; whys "
+                             "alone are a why")
+        if listed and self.source is None:
             raise ValueError("a measured materiality names the route that measured it")
         return self
 
@@ -371,10 +377,14 @@ class Record(_Strict):
             raise ValueError("the decisions' seqs repeat or are out of order")
         known = set(seqs)
         for a in self.attempts:
-            stray = sorted(set(a.decisions or ()) - known)
+            named = set(a.decisions or ()) | set(a.changed or ()) | {r.seq for r in a.reasons}
+            stray = sorted(named - known)
             if stray:
-                raise ValueError(f"fit #{a.seq} reads records {stray} the decision log does not "
+                raise ValueError(f"fit #{a.seq} names records {stray} the decision log does not "
                                  f"hold")
+        stray = sorted(set(self.result.decisions or ()) - known)
+        if stray:
+            raise ValueError(f"the result reads records {stray} the decision log does not hold")
         ids = {a.id for a in self.attempts}
         if self.result.attempt is not None and self.result.attempt not in ids:
             raise ValueError("the result names a fit no attempt holds")

@@ -101,6 +101,7 @@ NOT_VARIED = ("The curve of which decisions mattered varies the exclusion rules 
               "set (its v0), so it has no specification for this decision.")
 WITHDRAWN = ("Withdrawn by a revert: the curve served is drawn for the plan in force now, so it "
              "does not vary this record's choices.")
+NO_SPEC = "The curve estimated no specification that changes this decision's choices:"
 
 
 def _together(others: Sequence[int], fit_seq: int) -> str:
@@ -385,10 +386,12 @@ def fits_materiality(rec: Mapping[str, Any], attempts: Sequence[Mapping[str, Any
     others = [s for s in changed if s != seq]
     if others:
         return {"source": None, "attempt": fit["id"], "why": _together(others, fit["seq"])}
-    if fit.get("movement"):
-        return {"source": "fits", "attempt": fit["id"], "movement": fit["movement"]}
+    moved = fit.get("movement") or []
+    if any(m.get("movement") is not None for m in moved):
+        return {"source": "fits", "attempt": fit["id"], "movement": moved}
+    whys = " ".join(f"`{m.get('family')}`: {m['why']}" for m in moved if m.get("why"))
     return {"source": None, "attempt": fit["id"],
-            "why": fit.get("movement_why") or fit.get("withheld") or NO_MOVEMENT}
+            "why": whys or fit.get("movement_why") or fit.get("withheld") or NO_MOVEMENT}
 
 
 def in_force_of(records: Sequence[Mapping[str, Any]]) -> dict[str, int]:
@@ -444,6 +447,12 @@ def mattered_materiality(rec: Mapping[str, Any], mattered: Read,
                                "not_estimated": None if estimated else entry.get("reason")})
     if not departures:
         return {"source": None, "why": NOT_VARIED}
+    if all(d["spec"] is None for d in departures):
+        options = {c["key"]: {o["key"]: o.get("label") for o in c.get("options") or []}
+                   for c in choices}
+        reasons = " ".join(f"`{d['label']}` {options[d['choice']].get(d['option'], d['option'])}: "
+                           f"{d['not_estimated']}" for d in departures)
+        return {"source": None, "why": f"{NO_SPEC} {reasons}"}
     return {"source": "mattered", "primary": primary, "departures": departures}
 
 

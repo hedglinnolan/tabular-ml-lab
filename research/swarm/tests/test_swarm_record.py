@@ -44,6 +44,21 @@ def test_a_materiality_holds_the_engines_measure_or_why_not_both_and_not_neither
             R.Materiality.model_validate(bad)
 
 
+def test_a_measure_holds_a_number_and_a_list_of_whys_is_not_one():
+    """A fit's movement whose every family has only a why, or a curve whose every departure was
+    not estimated, measured nothing: it is a why, not a measure."""
+    whys = [{"family": "elastic_net", "movement": None, "why": "not fitted before"}]
+    with pytest.raises(ValidationError, match="number"):
+        R.Materiality.model_validate({"source": "fits", "attempt": "fit2", "movement": whys})
+    R.Materiality.model_validate({"source": "fits", "attempt": "fit2", "movement": whys + [
+        {"family": "linear", "movement": {"value": 0.0}, "why": None}]})
+    unestimated = [{"choice": "exclusion:0", "spec": None, "not_estimated": "a reading waits"}]
+    with pytest.raises(ValidationError, match="number"):
+        R.Materiality.model_validate({"source": "mattered", "departures": unestimated})
+    R.Materiality.model_validate({"source": "mattered", "departures": unestimated + [
+        {"choice": "adjusted:age", "spec": {"estimate": 0.4}, "not_estimated": None}]})
+
+
 def test_a_run_holds_its_spend_or_why_it_has_none():
     run = predict_record()["run"]
     R.Run.model_validate(run)
@@ -82,6 +97,14 @@ def test_a_fit_or_a_result_naming_what_the_record_does_not_hold_fails():
     lost["result"]["attempt"] = "fit9"
     with pytest.raises(ValidationError, match="no attempt"):
         R.validate(lost)
+    unread = predict_record()
+    unread["result"]["decisions"].append(98)
+    with pytest.raises(ValidationError, match="98"):
+        R.validate(unread)
+    unchanged = predict_record()
+    unchanged["attempts"][1]["changed"].append(97)
+    with pytest.raises(ValidationError, match="97"):
+        R.validate(unchanged)
     repeated = predict_record()
     repeated["decisions"][1]["seq"] = 1
     with pytest.raises(ValidationError, match="seqs"):

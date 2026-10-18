@@ -182,6 +182,12 @@ def test_a_decision_has_the_fits_movement_only_where_it_alone_changed():
     quiet = copy.deepcopy(fits)
     quiet[1].update(movement=[], withheld="Fit was not pressed.")
     assert A.fits_materiality({"seq": 3}, quiet)["why"] == "Fit was not pressed."
+    swapped = copy.deepcopy(fits)
+    swapped[1]["movement"] = [{"family": "elastic_net", "against": "fit1", "movement": None,
+                               "why": "`elastic_net` was not fitted in the previous fit."}]
+    assert A.fits_materiality({"seq": 3}, swapped) == {
+        "source": None, "attempt": "fit2",
+        "why": "`elastic_net`: `elastic_net` was not fitted in the previous fit."}
 
 
 def _curve_doc() -> dict[str, Any]:
@@ -219,9 +225,10 @@ def test_under_estimate_a_choice_the_curve_varies_has_its_departures_beside_the_
     assert got == {"source": "mattered", "primary": doc["curve"]["specs"][0], "departures": [
         {"choice": "adjusted:age", "label": "`age` adjusted", "option": "other",
          "spec": doc["curve"]["specs"][1], "not_estimated": None}]}
-    assert A.mattered_materiality(rules, served, in_force)["departures"] == [
-        {"choice": "exclusion:0", "label": "The rule", "option": "other", "spec": None,
-         "not_estimated": "A reading waits."}]
+    # The rule's one departure was not estimated: no number, so its why is the curve's reason.
+    assert A.mattered_materiality(rules, served, in_force) == {
+        "source": None, "why": "The curve estimated no specification that changes this "
+                               "decision's choices: `The rule` Changed: A reading waits."}
     assert A.mattered_materiality(earlier, served, in_force)["why"] == A._superseded(5)
     assert A.mattered_materiality(_rec(7, 7, {"kind": "set_purpose"}), served, in_force) is None
     refused = A.Read(409, {"error": {"code": "curve_sealed", "message": "Opens after the lock.",
