@@ -985,6 +985,25 @@ describe("the intended use (finding 9)", () => {
     expect(screen.queryByRole("group", { name: "Thresholds, for decision support" })).toBeNull();
   });
 
+  // The re-walk's N1: a numeric outcome's only use is named for what it is, as the engine's record
+  // says it (models/decision_curve.py `intended_use_sentence`: "declared for estimating each
+  // person's outcome"), never "Risk estimation"; an outcome of classes keeps its risk.
+  const useName = () => screen.getByTestId("option-use:risk_estimation").textContent ?? "";
+  it("names a numeric outcome's use for what it is, recorded or detected, never risk estimation", () => {
+    mount("set_intended_use", { recorded: { task: "regression" } });
+    expect(useName()).toContain("Estimating each person's outcome");
+    expect(useName()).not.toContain("Risk estimation");
+    cleanup();
+    mount("set_intended_use", { recorded: { task: null }, detected: { column: "LBXGLU", detected_task: "regression" } });
+    expect(useName()).toContain("Estimating each person's outcome");
+  });
+
+  it.each(["binary", "multiclass", null])("keeps risk estimation for a %s outcome", (task) => {
+    mount("set_intended_use", { recorded: { task } });
+    expect(useName()).toContain("Risk estimation");
+    expect(useName()).not.toContain("Estimating each person's outcome");
+  });
+
   it("offers decision support and its thresholds for a yes/no outcome, and while the task is not known", () => {
     for (const task of ["binary", null]) {
       mount("set_intended_use", { recorded: { task } });
