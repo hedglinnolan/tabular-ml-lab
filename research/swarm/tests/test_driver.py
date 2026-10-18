@@ -53,25 +53,47 @@ def test_the_fit_budget_refuses_a_press_past_its_count():
     assert driver.over_budget(spent(0, 0.0), None) is None
     assert driver.over_budget(spent(1, 9.0), "new") is None
     why = driver.over_budget(spent(2, 18.0), "new")
-    assert why == "Fit is not pressed: the run's fit budget is 2 fits, and 2 were made already."
+    assert why == ("Fit is not pressed: the run's fit budget is 2 fits, and 2 were made already. "
+                   "Past the budget, Fit is pressed only for answers already fitted, which "
+                   "makes no new fit.")
     assert driver.over_budget(spent(1, 9.0, budget_fits=1), "new") == (
-        "Fit is not pressed: the run's fit budget is 1 fit, and 1 was made already.")
+        "Fit is not pressed: the run's fit budget is 1 fit, and 1 was made already. Past the "
+        "budget, Fit is pressed only for answers already fitted, which makes no new fit.")
 
 
 def test_a_fit_already_made_for_these_answers_is_not_counted_twice():
     """The scheduler fits a quick fit before the press: pressing Fit for that fit counts it once,
-    so the budget's last fit can still be pressed; one past it cannot, recorded or not."""
+    so the budget's last fit can still be pressed; and a press for any fit made already makes no
+    new fit, so it goes through even with more fits made than budgeted (DRV-INT: the one rule
+    past the budget). One for answers not fitted yet is refused."""
     assert driver.over_budget(spent(2, 18.0, keys=["a", "b"]), "b") is None
-    assert driver.over_budget(spent(3, 27.0, keys=["a", "b", "c"]), "c") is not None
-    assert driver.over_budget(spent(3, 27.0, keys=["a", "b", "c"]), "a") is not None
+    assert driver.over_budget(spent(3, 27.0, keys=["a", "b", "c"]), "c") is None
+    assert driver.over_budget(spent(3, 27.0, keys=["a", "b", "c"]), "a") is None
+    assert driver.over_budget(spent(3, 27.0, keys=["a", "b", "c"]), "d") is not None
 
 
 def test_the_fit_budget_refuses_a_press_once_its_seconds_are_spent():
     assert driver.over_budget(spent(1, 99.9), "new") is None
     why = driver.over_budget(spent(1, 100.0), "new")
     assert why == ("Fit is not pressed: the run's fit budget is 100 seconds of fitting, and 100 "
-                   "were spent already.")
-    assert driver.over_budget(spent(1, 250.0, keys=["a"]), "a") is not None
+                   "were spent already. Past the budget, Fit is pressed only for answers already "
+                   "fitted, which makes no new fit.")
+
+
+def test_past_the_budget_a_press_for_answers_already_fitted_goes_through_by_either_rule():
+    """DRV-INT (DRV-A's verifier, P1): one rule the analyst is told plainly. A press for the
+    answers as they stand, whose fit was made already (its key in GET /fits), makes no new fit, so
+    neither the count nor the seconds refuse it; a press that would make a fit (a key not made, or
+    the one under way) is refused once either is spent. Before, the seconds refused every press."""
+    count_met = spent(2, 18.0, keys=["a", "b"])
+    seconds_spent = spent(1, 250.0, keys=["a"])
+    for made, key in ((count_met, "b"), (count_met, "a"), (seconds_spent, "a")):
+        assert driver.over_budget(made, key) is None, key
+    for met, key in ((count_met, "new"), (seconds_spent, "new"),
+                     (spent(1, 9.0, budget_fits=1, keys=["a"], running="b"), "b")):
+        assert driver.over_budget(met, key).endswith(
+            "Past the budget, Fit is pressed only for answers already fitted, which makes no new "
+            "fit."), key
 
 
 def test_a_fit_under_way_counts_as_made():
@@ -96,7 +118,9 @@ def test_a_fit_under_way_counts_as_made():
     assert driver.over_budget(met, "b") is None  # a press for the fit under way counts it once
     one = driver.spent_of(records, {"status": "running", "key": "b"}, {"fits": 1, "seconds": 100.0})
     assert driver.over_budget(one, "b") == ("Fit is not pressed: the run's fit budget is 1 fit, "
-                                            "and 1 was made and 1 is under way.")
+                                            "and 1 was made and 1 is under way. Past the "
+                                            "budget, Fit is pressed only for answers already "
+                                            "fitted, which makes no new fit.")
 
 
 def test_past_the_budget_an_answer_that_makes_a_new_fit_is_refused():
@@ -246,8 +270,8 @@ def test_what_turbotab_records_itself_with_an_answer_is_keyed_too(tmp_path):
     """With the roles answer reverted, TurboTab records the roles itself where each was confirmed
     on its own (P0.6, ``readings.roles_completion``): each fit the server may then leave is told,
     the one with no roles (none) and the one with the roles as confirmed, completed as the server
-    completes them (with no roles recorded before it, no confirmed role is kept as the person's
-    word, so b and c, below high and taken as proposed, are recorded unconfirmed). With one column
+    completes them (each role confirmed on its own is the person's word kept, so none rides along
+    unconfirmed: DRV-INT's fix of ``decisions._roles_record_what_rode_along``). With one column
     not confirmed the Router holds at the roles, and only the first is left. Under Estimate with no
     split, TurboTab records its split of no rows held out, so that fit is told too."""
     run = driver.Run(tmp_path, {"fingerprint": FINGERPRINT})
@@ -256,7 +280,7 @@ def test_what_turbotab_records_itself_with_an_answer_is_keyed_too(tmp_path):
     revert = {"kind": "revert", "decision_id": f"r{len(answers)}"}
     read = serving(answers, {"roles": PROPOSED})
     by_itself = keyed([*answers, revert,
-                       {"kind": "set_roles", "roles": ROLES, "unconfirmed": ["b", "c"]}])["fit"]
+                       {"kind": "set_roles", "roles": ROLES, "unconfirmed": []}])["fit"]
     assert by_itself is not None
     assert driver.fits_after(run, served_view(answers), revert, read) == [
         (None, None), (by_itself, "the roles")]
@@ -325,7 +349,10 @@ def test_after_the_seal_nothing_more_is_tried():
     driver.guard_sealed({"state": {"seal_opened": None}})
 
 
-def fake_run(tmp_path: Path, monkeypatch, run_id: str = "r1") -> Path:
+RID = "test-" + "0123456789abcdef" * 2  # a run id of the form start gives
+
+
+def fake_run(tmp_path: Path, monkeypatch, run_id: str = RID) -> Path:
     monkeypatch.setenv(driver.RUNS_ENV, str(tmp_path))
     folder = tmp_path / run_id
     folder.mkdir()
@@ -346,19 +373,106 @@ def test_an_answer_says_why(tmp_path, monkeypatch):
     refused by the driver before anything is posted (1), and the refusal is logged in the run."""
     folder = fake_run(tmp_path, monkeypatch)
     with pytest.raises(SystemExit):
-        driver.build_parser().parse_args(["answer", "--run", "r1", "impute"])
-    assert driver.main(["answer", "--run", "r1", "impute"], out=lambda s: None) == 2
-    code, payload = run_main(["answer", "--run", "r1", "impute", "--reason", "   "])
+        driver.build_parser().parse_args(["answer", "--run", RID, "impute"])
+    assert driver.main(["answer", "--run", RID, "impute"], out=lambda s: None) == 2
+    code, payload = run_main(["answer", "--run", RID, "impute", "--reason", "   "])
     assert code == 1 and payload["refused"]["code"] == "reason_required"
     logged = [json.loads(line) for line in (folder / "commands.jsonl").read_text().splitlines()]
     assert logged[-1]["command"] == "answer" and logged[-1]["summary"]["refused"]["code"] == "reason_required"
 
 
-@pytest.mark.parametrize("run_id", ["../etc", "a/b", "", ".hidden", "x" * 81])
+@pytest.mark.parametrize("run_id", ["../etc", "a/b", "", ".hidden", "x" * 81,
+                                    # DRV-INT: well-formed once, guessable now (no secret part)
+                                    "r1", "full", "20261018T101500-1a2b3c",
+                                    "test-" + "0123456789ABCDEF" * 2, "test-" + "0" * 31,
+                                    "../test-" + "0" * 32, "test/" + "0" * 32])
 def test_a_run_is_named_by_its_id_alone(tmp_path, monkeypatch, run_id):
+    """A run id is a label and a secret part (:func:`driver.new_run_id`); anything else names no
+    run, whatever folder it would reach."""
     fake_run(tmp_path, monkeypatch)
     code, payload = run_main(["ask", "--run", run_id])
     assert code == 1 and payload["refused"]["code"] == "no_such_run"
+    assert payload["refused"]["message"] == f"{run_id!r} is not a run id."
+
+
+def test_each_run_id_start_gives_carries_an_unguessable_part():
+    """DRV-INT (DRV-A's verifier): three analysts run at once, each naming its run with --run, so
+    no analyst may reach another's run by guessing its id. ``start`` gives each run its id: a
+    label and 32 hex digits from ``secrets`` (128 bits), so ids drawn for one label differ; a
+    label that is not a plain word is refused, and ``start`` takes no id of its own."""
+    ids = {driver.new_run_id("pilot") for _ in range(50)}
+    assert len(ids) == 50
+    for run_id in ids:
+        label, secret = run_id.rsplit("-", 1)
+        assert label == "pilot" and len(secret) == 32 and int(secret, 16) >= 0
+        assert driver.RUN_ID.match(run_id)
+    assert driver.RUN_ID.match(driver.new_run_id(None))  # the time, by default
+    for label in ("a/b", "../x", "", "x" * 41, "a b"):
+        with pytest.raises(driver.DriverError):
+            driver.new_run_id(label)
+    with pytest.raises(SystemExit):
+        driver.build_parser().parse_args(["start", "--data", "x.csv", "--budget-fits", "1",
+                                          "--budget-seconds", "1", "--run", RID])
+
+
+def test_a_run_id_that_reaches_outside_the_runs_home_names_no_run(tmp_path, monkeypatch):
+    """A run folder that is a link to a folder elsewhere (another home, another run) is refused,
+    though its id is of the form; the run folder itself loads."""
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    fake_run(other, monkeypatch, RID)
+    monkeypatch.setenv(driver.RUNS_ENV, str(runs))
+    linked = "link-" + "f" * 32
+    (runs / linked).symlink_to(other / RID, target_is_directory=True)
+    code, payload = run_main(["ask", "--run", linked])
+    assert code == 1 and payload["refused"]["code"] == "no_such_run"
+    assert payload["refused"]["message"] == f"Run {linked} is not in the runs' home."
+    fake_run(runs, monkeypatch, RID)
+    assert driver.Run.load(RID).folder == runs / RID
+
+
+def test_an_analysts_command_reads_no_answer_truth_decoy_or_record(tmp_path, monkeypatch):
+    """DRV-INT: while an analyst's command runs (``driver.analyst_sealed``), opening a dataset's
+    declared answers, its manifest, a corpus record, the fixtures' declared truths or the decoy's
+    generator is refused, and so is importing the modules that hold or build them; the run's own
+    files and the data file open as ever. Outside an analyst's command nothing is refused (the
+    orchestrator's start and stop, the assembler)."""
+    repo = driver.REPO
+    refused = [repo / "research" / "datasets" / "clinical_readmission_predict" / "answers.json",
+               repo / "research" / "datasets" / "outpatient_admission_predict" / "manifest.json",
+               repo / "research" / "corpus" / f"{RID}.json",
+               repo / "turbotab" / "core" / "tests" / "truths.py",
+               repo / "research" / "swarm" / "decoys.py"]
+    folder = fake_run(tmp_path, monkeypatch)
+    allowed = [folder / "driver.json", FIXTURE]
+    with driver.analyst_sealed():
+        for path in refused:
+            with pytest.raises(driver.DriverError) as caught:
+                open(path, "rb").close()
+            assert caught.value.code == "not_for_the_analyst", path
+        for path in allowed:
+            open(path, "rb").close()
+    for path in refused:
+        if path.exists():
+            open(path, "rb").close()  # unsealed: read as ever
+    probe = ("import sys; from research.swarm import driver\n"
+             "with driver.analyst_sealed():\n"
+             "    for name in sys.argv[1:]:\n"
+             "        try:\n"
+             "            __import__(name)\n"
+             "            print(name, 'imported')\n"
+             "        except driver.DriverError:\n"
+             "            print(name, 'refused')\n")
+    names = [*driver.UNREAD_MODULES, "research.swarm.options", "turbotab.core.reference.journeys"]
+    out = subprocess.run([sys.executable, "-c", probe, *names], cwd=REPO, capture_output=True,
+                         text=True, timeout=120, env={**os.environ, "OMP_NUM_THREADS": "2"})
+    assert out.returncode == 0, out.stderr[-2000:]
+    got = dict(line.split() for line in out.stdout.splitlines())
+    assert got == {**{m: "refused" for m in driver.UNREAD_MODULES},
+                   "research.swarm.options": "imported",
+                   "turbotab.core.reference.journeys": "imported"}
 
 
 def test_a_server_that_does_not_answer_is_said_in_json(tmp_path, monkeypatch):
@@ -367,14 +481,14 @@ def test_a_server_that_does_not_answer_is_said_in_json(tmp_path, monkeypatch):
     folder = fake_run(tmp_path, monkeypatch)
     meta = json.loads((folder / "driver.json").read_text())
     (folder / "driver.json").write_text(json.dumps({**meta, "port": driver.free_port()}))  # closed
-    code, payload = run_main(["ask", "--run", "r1", "--wait", "0"])
+    code, payload = run_main(["ask", "--run", RID, "--wait", "0"])
     assert code == 1 and payload["refused"]["code"] == "server_unreachable"
 
     def broken(args):
         raise KeyError("columns")
 
     monkeypatch.setitem(driver.COMMANDS, "results", broken)
-    code, payload = run_main(["results", "--run", "r1"])
+    code, payload = run_main(["results", "--run", RID])
     assert code == 1 and payload["refused"]["code"] == "driver_failed"
     assert "KeyError" in payload["refused"]["message"]
     logged = [json.loads(line)["summary"]["refused"]["code"]
@@ -386,7 +500,7 @@ def test_a_stopped_run_takes_no_more_commands(tmp_path, monkeypatch):
     folder = fake_run(tmp_path, monkeypatch)
     meta = json.loads((folder / "driver.json").read_text())
     (folder / "driver.json").write_text(json.dumps({**meta, "ended": "2026-10-18T00:00:00+00:00"}))
-    code, payload = run_main(["ask", "--run", "r1"])
+    code, payload = run_main(["ask", "--run", RID])
     assert code == 1 and payload["refused"]["code"] == "run_stopped"
 
 
@@ -417,7 +531,7 @@ def test_a_run_does_not_start_where_the_analyst_is_not_held(tmp_path, monkeypatc
     monkeypatch.setenv(driver.RUNS_ENV, str(tmp_path / "runs"))
     monkeypatch.setattr(driver, "SETTINGS_FILES", (tmp_path / "none.json",))
     code, payload = run_main(["start", "--data", str(FIXTURE), "--budget-fits", "1",
-                              "--budget-seconds", "60", "--run", "unguarded"])
+                              "--budget-seconds", "60", "--label", "unguarded"])
     assert code == 1 and payload["refused"]["code"] == "unguarded"
     assert "analyst_hook.py" in payload["refused"]["message"]
     assert not (tmp_path / "runs").exists()
@@ -670,9 +784,12 @@ def listening(port: int) -> bool:
 def start(analyst: Analyst, budget_fits: int) -> dict[str, Any]:
     out = analyst.drv("start", "--data", str(FIXTURE), "--provenance", PROVENANCE,
                       "--budget-fits", str(budget_fits), "--budget-seconds", "900",
-                      "--run", analyst.run, "--scripted")
+                      "--label", analyst.run, "--scripted")
     meta = out["started"]
     assert meta["analyst"] == "scripted"
+    label, secret = meta["run"].rsplit("-", 1)  # the id start gives: the label, a secret part
+    assert label == analyst.run and len(secret) == 32 and driver.RUN_ID.match(meta["run"])
+    analyst.run = meta["run"]
     folder = analyst.runs / analyst.run
     assert json.loads((folder / "driver.json").read_text()) == meta
     assert {"run", "pid", "port", "project", "budget", "started", "ended", "data",

@@ -21,6 +21,7 @@ Run the driver, one command per call, from the repo root:
 
     scripts/py -m research.swarm.driver <command> --run <run id> ...
 
+Give `--run` the run id your prompt names, exactly as written; the driver refuses any other.
 Nothing else runs: no other program, no file reading or writing, no web. Write each id, option
 and setting as a plain word of letters, digits and `. _ - / : , @ % +`, with `=` only inside a
 word (`--set low=18`). Put each reason in double quotes, and any other word that holds another
@@ -57,10 +58,11 @@ app computes; if `ask` still shows the question waiting, run it again.
       scripts/py -m research.swarm.driver revisit --run RUN 0d27d9a3 --reason "The CV log loss was worse with ridge. Testing whether plain logistic does better."
 
 - `fit`: presses Fit. Under Estimate this locks the plan. The run has a fit budget, a number of
-  fits and of seconds, and `fit` says what is spent. Once it is spent, `fit` is refused, and so
-  is an `answer` or `revisit` that would make a new fit, or that the driver cannot tell makes
-  none; one it can tell makes none, such as going back to a model already fitted, still goes
-  through.
+  fits and of seconds, and `fit` says what is spent. Once either is spent, `fit` is refused
+  unless the answers as they stand were fitted already, since pressing Fit for them makes no new
+  fit. An `answer` or `revisit` that would make a new fit is refused then too, and so is one the
+  driver cannot tell makes none; one it can tell makes none, such as going back to a model
+  already fitted, still goes through.
 
       scripts/py -m research.swarm.driver fit --run RUN
 

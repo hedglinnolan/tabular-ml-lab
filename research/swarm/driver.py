@@ -2,7 +2,7 @@
 own API, one small command at a time, each printing JSON.
 
     python -m research.swarm.driver start --data <file> [--provenance url,date,license]
-                                         --budget-fits N --budget-seconds S [--run <id>]
+                                         --budget-fits N --budget-seconds S [--label <word>]
     python -m research.swarm.driver ask      --run <id>
     python -m research.swarm.driver preview  --run <id> <option> [--set name=value ...]
     python -m research.swarm.driver answer   --run <id> <option> [<option> ...] [--set ...] --reason <why>
@@ -14,7 +14,10 @@ own API, one small command at a time, each printing JSON.
     python -m research.swarm.driver stop     --run <id>
 
 **One run** is one directory, ``research/runs/<run id>/`` (``$TURBOTAB_SWARM_RUNS`` in its place
-for a test): ``home/`` is the server's ``TURBOTAB_HOME``; ``driver.json`` holds the run's id, the
+for a test), named by the id ``start`` gives and prints: a label and a secret part
+(:func:`new_run_id`), so no analyst reaches another's run by guessing its id, and ``--run`` names
+only an id of that form whose folder is in the runs' home itself (:meth:`Run.load`). ``home/`` is
+the server's ``TURBOTAB_HOME``; ``driver.json`` holds the run's id, the
 PID and port of the server the driver started, the project's id, the fit budget, the data file
 and where it came from, and when the run started and ended; ``commands.jsonl`` holds every command
 with its arguments and a summary of its response; ``server.log`` is the server's output;
@@ -40,8 +43,10 @@ by :mod:`research.swarm.options`.
 
 * a ``reseal`` (the server refuses one in analyst mode too, and offers none), a ``lock_plan`` (the
   server's own), a ``revert`` other than by ``revisit``, and an ``open_seal`` other than by ``seal``;
-* ``fit`` past the run's fit budget: its count of fits and their seconds, read from
-  ``GET /fits``'s records (SWARM_ENGINE_PLAN E1), with the fit under way counted among them;
+* ``fit`` past the run's fit budget: once the fits made reach its count, or their seconds its
+  seconds, read from ``GET /fits``'s records (SWARM_ENGINE_PLAN E1), a press that would make a
+  fit is refused (the fit under way counts as made by it); a press for the answers as they stand
+  whose fit was made already makes none, so it goes through;
 * once those meet the budget, an ``answer`` or ``revisit`` that would make a new fit, since the
   server makes and serves it without another press, and one the driver cannot tell makes none
   (the fit budget's section below); one it can tell makes none (the triage, which the fit does
@@ -50,6 +55,13 @@ by :mod:`research.swarm.options`.
 * once the held-out rows are opened, any change or attempt (``preview``, ``answer``, ``revisit``,
   ``fit``): the reported result is the opening's score, and nothing more is tried (SWARM_PLAN §3).
   ``seal`` again goes to the server, which refuses a second opening.
+
+**What an analyst's command never reads** (:func:`analyst_sealed`): while ``ask``, ``preview``,
+``answer``, ``revisit``, ``fit``, ``results``, ``seal`` or ``export`` runs, opening anything a run
+is judged against (a dataset's declared answers and its manifest under ``research/datasets/``, the
+corpus records and their materiality under ``research/corpus/``, the fixtures' declared truths, the
+decoy's generator) or importing a module that holds or builds them (:data:`UNREAD_MODULES`) is
+refused, so nothing it prints can come from them.
 
 Exit status: 0 when the command did what it says, 1 when the server or the driver refused it (the
 JSON says why, with the ways forward), 2 when the command line does not read.
@@ -70,7 +82,6 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -81,7 +92,11 @@ from research.swarm import options as opts
 REPO = Path(__file__).resolve().parents[2]
 RUNS_ENV = "TURBOTAB_SWARM_RUNS"
 WORKERS = 2  # DRIVER_PLAN D1: two workers per run's server
-RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
+# A run's id, as ``start`` gives it (:func:`new_run_id`): a label (a plain word) and a secret part,
+# 32 hex digits from ``secrets``, so no analyst reaches another's run by guessing its id (three
+# analysts run on one dataset at once, SWARM_PLAN §6).
+LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_]{0,39}$")
+RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_]{0,39}-[0-9a-f]{32}$")
 REQUEST_SECONDS = 120.0
 HEALTH_SECONDS = 180.0
 INGEST_SECONDS = 600.0
@@ -115,8 +130,79 @@ class DriverError(Exception):
         self.code, self.message, self.extra = code, message, extra
 
 
+# ── what an analyst's command never reads (the module docstring) ─────────────
+
+# The modules that hold or build what a run is judged against: the fixtures' declared truths, the
+# intake (each dataset's answers), the decoy's generator, and the record with its materiality,
+# its checks and its referee.
+UNREAD_MODULES = ("turbotab.core.tests.truths", "research.swarm.intake", "research.swarm.decoys",
+                  "research.swarm.record", "research.swarm.assemble", "research.swarm.checks",
+                  "research.swarm.referee")
+UNREAD_FOLDERS = (REPO / "research" / "datasets", REPO / "research" / "corpus")
+UNREAD_FILES = (REPO / "turbotab" / "core" / "tests" / "truths.py",
+                REPO / "research" / "swarm" / "decoys.py", REPO / "research" / "swarm" / "intake.py")
+_SEALED = {"on": False, "in_hook": False}
+
+
+def unread(path: Any) -> bool:
+    """Whether ``path`` is one an analyst's command never opens (:data:`UNREAD_FOLDERS`, their
+    contents, and :data:`UNREAD_FILES`)."""
+    if isinstance(path, int):
+        return False  # an open file descriptor: what it names was opened already
+    try:
+        p = Path(os.fsdecode(path)).resolve()
+    except (OSError, TypeError, ValueError, RuntimeError):
+        return False
+    return p in UNREAD_FILES or any(p == f or f in p.parents for f in UNREAD_FOLDERS)
+
+
+def _audit(event: str, args: tuple[Any, ...]) -> None:
+    if not _SEALED["on"] or _SEALED["in_hook"] or event not in ("open", "import"):
+        return
+    _SEALED["in_hook"] = True
+    try:
+        name = args[0] if args else None
+        if event == "open" and unread(name):
+            raise DriverError("not_for_the_analyst", "An analyst's command reads nothing a run is "
+                                                     "judged against.")
+        if event == "import" and isinstance(name, str) and name in UNREAD_MODULES:
+            raise DriverError("not_for_the_analyst", "An analyst's command reads nothing a run is "
+                                                     "judged against.")
+    finally:
+        _SEALED["in_hook"] = False
+
+
+class analyst_sealed:
+    """While an analyst's command runs, refuse every read of what a run is judged against (the
+    module docstring): an audit hook (``sys.addaudithook``, added once per process) on each file
+    opened and each module imported, which refuses only while one of these is entered."""
+
+    hooked = False
+
+    def __enter__(self) -> "analyst_sealed":
+        if not analyst_sealed.hooked:
+            sys.addaudithook(_audit)
+            analyst_sealed.hooked = True
+        self.before = _SEALED["on"]
+        _SEALED["on"] = True
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        _SEALED["on"] = self.before
+
+
 def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def new_run_id(label: str | None) -> str:
+    """A new run's id: ``label`` (the UTC time by default; letters, digits and ``_``, up to 40)
+    and 32 hex digits from ``secrets``, so an id cannot be guessed from another's."""
+    label = label if label is not None else datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    if not LABEL.match(label):
+        raise DriverError("bad_label", f"{label!r} is not a run's label (letters, digits and _, up "
+                                       f"to 40).")
+    return f"{label}-{secrets.token_hex(16)}"
 
 
 def runs_root() -> Path:
@@ -202,9 +288,14 @@ class Run:
 
     @classmethod
     def load(cls, run_id: str) -> "Run":
+        """The run ``run_id`` names: an id of the form ``start`` gives (:data:`RUN_ID`), whose
+        folder is in the runs' home itself, not a link to a folder elsewhere."""
         if not RUN_ID.match(run_id or ""):
             raise DriverError("no_such_run", f"{run_id!r} is not a run id.")
-        folder = runs_root() / run_id
+        home = runs_root()
+        folder = home / run_id
+        if folder.is_symlink() or folder.resolve().parent != home.resolve():
+            raise DriverError("no_such_run", f"Run {run_id} is not in the runs' home.")
         try:
             meta = json.loads((folder / "driver.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -679,9 +770,7 @@ def cmd_start(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None
         if len(parts) != 3:
             raise DriverError("bad_provenance", "--provenance takes url,date,license.")
         provenance = dict(zip(("url", "release_date", "license"), (p.strip() for p in parts)))
-    run_id = args.run or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:6]
-    if not RUN_ID.match(run_id):
-        raise DriverError("bad_run_id", f"{run_id!r} is not a run id (letters, digits, . _ -).")
+    run_id = new_run_id(args.label)
     folder = runs_root() / run_id
     if folder.exists():
         raise DriverError("run_exists", f"Run {run_id} exists already.")
@@ -881,12 +970,21 @@ def budget_words(spent: dict[str, Any]) -> str:
             f"{spent['seconds']:g} were spent already")
 
 
+PAST_BUDGET = ("Past the budget, Fit is pressed only for answers already fitted, which makes no "
+               "new fit.")
+
+
 def over_budget(spent: dict[str, Any], fit_key: str | None) -> str | None:
-    """Why pressing Fit now would pass the run's fit budget, or None. A fit already recorded for
-    the answers now (one the scheduler ran before the press) is within the count it was made in."""
-    counted = spent["fits"] if fit_key in spent["keys"] else spent["fits"] + 1
-    if counted > int(spent["budget_fits"]) or spent["seconds"] >= float(spent["budget_seconds"]):
-        return f"Fit is not pressed: {budget_words(spent)}."
+    """Why pressing Fit now would pass the run's fit budget, or None. A press for the answers as
+    they stand whose fit was made already (its key among ``GET /fits``' records: one the
+    scheduler ran before the press) makes no new fit, so neither rule refuses it; any other press
+    would make one (the fit under way counts as that one), so it is refused once the fits made
+    reach the budget's count or their seconds its seconds."""
+    if fit_key in spent["keys"]:
+        return None
+    if spent["fits"] + 1 > int(spent["budget_fits"]) \
+            or spent["seconds"] >= float(spent["budget_seconds"]):
+        return f"Fit is not pressed: {budget_words(spent)}. {PAST_BUDGET}"
     return None
 
 
@@ -1072,13 +1170,12 @@ def served_context(view: dict[str, Any], records: list[Any], state: Any, keys: d
 
 def completed(decision: Any, ctx: Any, unread: list[str]) -> Any | None:
     """``decision`` as the server records it: its kind's completions run under ``ctx``
-    (``decisions.validate`` runs them after the validators, which only refuse). None when a
-    completion refuses it, as the server then does: nothing is recorded."""
+    (``decisions.complete``, which ``decisions.validate`` runs after the validators, which only
+    refuse). None when a completion refuses it, as the server then does: nothing is recorded."""
     from turbotab.core import decisions
 
     try:
-        for fn in decisions._COMPLETIONS.get(decision.kind, ()):
-            decision = fn(decision, ctx)
+        decision = decisions.complete(decision, ctx)
     except decisions.Refusal:
         decision = None
     except Exception as exc:  # noqa: BLE001 - a completion that fails here keys nothing
@@ -1416,7 +1513,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--provenance", help="url,release date (YYYY-MM-DD),license")
     p.add_argument("--budget-fits", type=int, required=True)
     p.add_argument("--budget-seconds", type=float, required=True)
-    p.add_argument("--run", help="the run's id (default: the time and a random suffix)")
+    p.add_argument("--label", help="the run id's label (default: the time); start adds a secret "
+                                   "part, and prints the id")
     p.add_argument("--scripted", action="store_true",
                    help="the analyst is a script, not an agent (the dry run, the tests)")
 
@@ -1468,7 +1566,11 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] | None = None
     started = now()
     try:
         try:
-            code, payload, run = COMMANDS[args.command](args)
+            if args.command in ANALYST_COMMANDS:
+                with analyst_sealed():
+                    code, payload, run = COMMANDS[args.command](args)
+            else:
+                code, payload, run = COMMANDS[args.command](args)
         except DriverError:
             raise
         except Exception as exc:  # noqa: BLE001 - a driver defect still answers in JSON, logged
