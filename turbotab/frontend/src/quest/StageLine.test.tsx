@@ -42,12 +42,15 @@ describe.each(LOGS)("the bar and the panel on %s", (_name, log) => {
       const worked = log.stages.reduce((n, x, i) => (x.reached && x.progress!.answered > 0 ? i : n), -1);
       const cameTo = log.stages.indexOf(s) <= Math.max(at, worked);
       expect(seg.textContent, s.key).not.toContain("not reached yet");
-      if (s.progress!.complete && (s.progress!.required > 0 || cameTo)) expect(seg, s.key).toHaveAttribute("data-complete");
+      // data-complete is the served field, whatever the stage reads as (W1-T); data-done is the
+      // shell's reading of it.
+      expect(seg.hasAttribute("data-complete"), s.key).toBe(s.progress!.complete);
+      if (s.progress!.complete && (s.progress!.required > 0 || cameTo)) expect(seg, s.key).toHaveAttribute("data-done");
       else if (s.progress!.required === 0) {
-        expect(seg, s.key).not.toHaveAttribute("data-complete");
+        expect(seg, s.key).not.toHaveAttribute("data-done");
         expect(seg.textContent, s.key).toContain("not done yet");
       } else {
-        expect(seg, s.key).not.toHaveAttribute("data-complete");
+        expect(seg, s.key).not.toHaveAttribute("data-done");
         expect(seg.textContent).toContain(`${s.progress!.answered} of ${s.progress!.required} answered`);
       }
     }
@@ -139,7 +142,9 @@ describe("a stage that asks nothing, before the analysis comes to it (finding 25
     render(<StageLine log={log} shown="results" onOpen={() => {}} answers={new Map()} fitting={null} />);
     expect(screen.getByTestId("stage-writeup")).toHaveAttribute("data-status", "todo");
     const seg = screen.getByTestId("segment-writeup");
-    expect(seg).not.toHaveAttribute("data-complete");
+    expect(seg).not.toHaveAttribute("data-done");
+    // the served field stands as GET /quest serves it: complete at 0 of 0
+    expect(seg).toHaveAttribute("data-complete");
     expect(seg.querySelector("span")!.style.width).toBe("0%");
     // The engine reaches it, so it reads as not done, never as not reached (W1-R B1).
     expect(seg.textContent).toBe(`${writeup.name}: not done yet`);
@@ -154,6 +159,7 @@ describe("a stage that asks nothing, before the analysis comes to it (finding 25
     render(<StageLine log={log} shown="models" onOpen={() => {}} answers={new Map()} fitting={null} />);
     expect(screen.getByTestId("stage-first_look")).toHaveAttribute("data-status", "done");
     const seg = screen.getByTestId("segment-first_look");
+    expect(seg).toHaveAttribute("data-done");
     expect(seg).toHaveAttribute("data-complete");
     expect(seg.querySelector("span")!.style.width).toBe("100%");
     expect(seg.textContent).toBe(`${stageOf(log, "first_look")!.name}: done`);
@@ -171,6 +177,7 @@ describe("a stage that asks nothing, before the analysis comes to it (finding 25
     render(<StageLine log={estimate} shown="results" onOpen={() => {}} answers={new Map()} fitting={null} />);
     const seg = screen.getByTestId("segment-results");
     expect(seg).toHaveAttribute("data-reached");
+    expect(seg).not.toHaveAttribute("data-done");
     expect(seg).not.toHaveAttribute("data-complete");
     expect(seg.textContent).toBe(`${stageOf(estimate, "results")!.name}: not done yet`);
   });
@@ -179,6 +186,7 @@ describe("a stage that asks nothing, before the analysis comes to it (finding 25
     render(<StageLine log={allDone} shown="results" onOpen={() => {}} answers={new Map()} fitting={null} />);
     expect(screen.getByTestId("stage-writeup")).toHaveAttribute("data-status", "done");
     const seg = screen.getByTestId("segment-writeup");
+    expect(seg).toHaveAttribute("data-done");
     expect(seg).toHaveAttribute("data-complete");
     expect(seg.querySelector("span")!.style.width).toBe("100%");
   });

@@ -114,6 +114,7 @@ export function StageLine({ log, shown, onOpen, answers, fitting }: StageLinePro
               className={q.segment}
               data-reached={seg.reached || undefined}
               data-complete={seg.complete || undefined}
+              data-done={seg.done || undefined}
               data-reopened={seg.reopened.length ? true : undefined}
               data-answered={seg.answered ?? undefined}
               data-required={seg.required ?? undefined}
@@ -127,7 +128,7 @@ export function StageLine({ log, shown, onOpen, answers, fitting }: StageLinePro
                 {seg.name}:{" "}
                 {!seg.reached
                   ? "not reached yet"
-                  : seg.complete
+                  : seg.done
                     ? "done"
                     : !seg.required
                       ? "not done yet"

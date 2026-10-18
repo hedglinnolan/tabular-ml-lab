@@ -306,7 +306,7 @@ export async function chooseFamilies(page: Page, li: Locator, families: readonly
 export interface Answers {
   /** The line left for a later card (the triage): not answered by the walk. */
   deferred: (line: QuestLine) => boolean;
-  /** Lines the shell lists as "Not available yet": no card records them. */
+  /** Lines no card records, which the shell says together in one quiet line (finding 15). */
   unavailable: readonly string[];
   /** The answer to a line, on its card. */
   answer: (page: Page, li: Locator, line: QuestLine) => Promise<void>;

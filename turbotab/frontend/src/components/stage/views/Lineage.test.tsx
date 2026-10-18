@@ -76,20 +76,17 @@ function draw(lineage: LineageData, width: number, height = 420) {
   return r;
 }
 
-/** Where the three lanes sit (their heads' x) and the drawing's width, as drawn. */
-function lanes(lineage: LineageData, width: number) {
-  const r = draw(lineage, width);
-  const heads = [...r.container.querySelectorAll("svg > g > g text")];
+/** Where the three lanes sit (their heads' x) and the drawing's width, in a drawing. */
+function lanesIn(container: HTMLElement) {
+  const heads = [...container.querySelectorAll("svg > g > g text")];
   const x = (word: string) =>
     Number(heads.find((t) => t.textContent?.startsWith(word))!.getAttribute("x"));
-  const out = {
+  return {
     x0: x("RAW"),
     x1: x("ADJUSTED"),
     x2: x("MATRIX"),
-    w: Number(r.container.querySelector("svg")!.getAttribute("width")),
+    w: Number(container.querySelector("svg")!.getAttribute("width")),
   };
-  r.unmount();
-  return out;
 }
 
 const labels = (lineage: LineageData, lane: string) =>
@@ -99,10 +96,10 @@ const labels = (lineage: LineageData, lane: string) =>
 const widest = (words: string[]) => Math.max(...words.map((s) => s.length)) * CW;
 
 /** Each adjusted pill as drawn: its label and its width (the rect just before its label; a group's
- *  deck of cards lies behind it), and where the lanes sit. */
+ *  deck of cards lies behind it), and where the lanes sit, all read off one drawing. */
 function pills(lineage: LineageData, width: number) {
-  const { x0, x1, x2 } = lanes(lineage, width);
   const r = draw(lineage, width);
+  const { x0, x1, x2 } = lanesIn(r.container);
   const drawn = [...r.container.querySelectorAll("svg g")].flatMap((g) => {
     const kids = [...g.children];
     const text = kids.find((k) => k.tagName.toLowerCase() === "text");
@@ -146,14 +143,20 @@ describe("the lineage's adjusted pills", () => {
     expect(pills(LINEAGE, min - 1).drawn).toEqual([]);
   });
 
-  it("are never drawn narrower than their labels, at any width", () => {
+  // It draws the lineage once at every seventh pixel from 200 to 400 past the narrowest whole width
+  // (one full jsdom render a width, under a second on this machine): its timeout fits that
+  // work on a slower runner (CI's timed out at the 5 s default, W1-T), never cutting a width.
+  it("are never drawn narrower than their labels, at any width", { timeout: 30_000 }, () => {
     const min = lineageMinWidth(LINEAGE);
     const all = labels(LINEAGE, "adjusted").length;
+    let widths = 0;
     for (let width = 200; width <= min + 400; width += 7) {
       const { drawn } = pills(LINEAGE, width);
       expect(drawn.filter((p) => !whole(p)), `${width} px`).toEqual([]);
       expect([0, all], `${width} px`).toContain(drawn.length);
+      widths += 1;
     }
+    expect(widths).toBe(Math.floor((min + 400 - 200) / 7) + 1);
   });
 
   it("set the narrowest whole width by the widest adjusted label where that is wider than the lanes' least span", () => {

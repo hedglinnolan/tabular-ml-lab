@@ -187,9 +187,16 @@ test("NHANES glucose under Predict, through the quest shell, from the upload to 
     expect(taken, `the walk took ${id}`).toContain(id);
   }
 
-  // The lines no card records are listed as such, and stay out of the count.
+  // The lines no card records stay out of the count and are said together in one quiet line, by
+  // the names the server serves (finding 15), not each as a line of its own.
   await openStage(page, "data");
-  for (const key of answers.unavailable) await expect(page.getByTestId(`line-${key}-unavailable`)).toHaveText("Not available yet");
+  const dataLines = (await getQuest(page, pid)).stages.find((s) => s.key === "data")!.lines;
+  const unavailable = answers.unavailable.map((key) => dataLines.find((l) => l.key === key)!);
+  expect(unavailable.map((l) => l.counted)).toEqual([false, false]);
+  await expect(page.getByTestId("lines-unavailable")).toHaveText(
+    `Not available in this version yet: ${unavailable.map((l) => l.name.replaceAll("`", "")).join(" and ")}.`,
+  );
+  for (const key of answers.unavailable) await expect(page.getByTestId(`line-${key}-unavailable`)).toHaveCount(0);
 
   // First look decides nothing; it lists each noticing with the stage that decides it.
   await openStage(page, "first_look");
