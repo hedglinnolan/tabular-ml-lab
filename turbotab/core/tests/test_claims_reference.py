@@ -349,3 +349,23 @@ def test_each_part_s_first_grade_line_is_the_grade_its_claim_s_first_version_hel
     for (id, part), g in first_line.items():
         held = {p["name"]: p["grade"] for p in first_version[id]["claim"]["parts"]}
         assert g["grade"] == held[part], (id, part)
+
+
+def test_an_entry_names_its_origin_its_basis_audit_its_referees_and_why_it_was_regraded(tmp_path):
+    from turbotab.core.claims import Referee
+
+    part = Part("value", "sourced", PASSAGE, graded_by="the orchestrator, 2026-10-19",
+                audited_by="a basis audit, 2026-10-19", regraded="two referees upheld it",
+                referees=(Referee("referee A, 2026-10-19", "upheld"),
+                          Referee("referee B, 2026-10-19", "upheld"),
+                          Referee("referee C, 2026-10-19", "not_upheld", fork_of="referee A")))
+    text = reference.render(registry(tmp_path, swarm(parts=(part,)), rule()))
+    swarm_entry = text.split("### `planted.swarm_found`")[1]
+    assert "*rule* · from *swarm* · weakest part *sourced*" in swarm_entry
+    assert ("; basis checked against its source by a basis audit, 2026-10-19; upheld by referee A, "
+            "2026-10-19, referee B, 2026-10-19; not upheld by referee C, 2026-10-19 (a fork of "
+            "referee A); regraded: two referees upheld it") in swarm_entry
+    plain = text.split("### `planted.few_clusters`")[1].split("### ")[0]
+    assert "*rule* · from *engine*" in plain
+    for absent in ("basis checked", "upheld by", "regraded:"):
+        assert absent not in plain

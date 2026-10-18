@@ -42,7 +42,8 @@ one, the generator writes nothing and it and ``--check`` both exit 1.
 
 The reference and the frozen file are pure functions of the registry and the files its status is
 derived from: nothing they hold reads the clock, and claims are listed by id. Only a first grade
-line with no dated grader reads the day it is recorded on, and ``--check`` reads none.
+line with no dated grader holds the day it is recorded on, and what ``--check`` decides never
+turns on the day: a line is stale by its grade alone.
 ``turbotab/core/tests/test_claims_reference.py`` regenerates the reference and fails when the
 committed copy is stale.
 """
