@@ -80,7 +80,7 @@ export interface paths {
         put?: never;
         /**
          * Upload Project
-         * @description Upload a data file (multipart field ``file``). It is streamed to disk as it arrives.
+         * @description Upload a data file (multipart field ``file``). It is streamed to disk as it arrives. ``url``, ``release_date`` and ``license`` (each optional, each at most 2,000 characters) say where the file came from: kept on the project's meta and echoed into the export's ``provenance.json`` inputs beside the file's SHA-256 (SWARM_ENGINE_PLAN E5). One that does not read refuses the upload before any of it is kept.
          */
         post: operations["upload_project_api_projects_upload_post"];
         delete?: never;
@@ -120,9 +120,36 @@ export interface paths {
          * @description Record a decision. Stages downstream of the slot it writes recompute. ``decide_now``
          *     answers a later question ahead of the Router, only where its card is computed and the earlier
          *     answers it reads are in (crosswalk disagreement 20); otherwise it is refused with what it is
-         *     waiting for, and the record names the question it was decided ahead of.
+         *     waiting for, and the record names the question it was decided ahead of. ``note``: the reason,
+         *     in any mode (SWARM_ENGINE_PLAN E4); one past its limit is refused (``note_too_long``) and
+         *     nothing is recorded.
          */
         post: operations["decide_api_projects__pid__decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/analyst-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Analyst Log
+         * @description What the analyst saw, in analyst mode only (``--analyst``, or ``TURBOTAB_ANALYST=1``;
+         *     SWARM_ENGINE_PLAN E4), oldest first: each claim rendered for the project (the claim asked for,
+         *     its register, frozen status and grade, the claim that rendered in its place outside its
+         *     regime, and why a render was refused), which is logged in every mode; and each preview asked
+         *     for in analyst mode, a decision's (``…/preview``) or a join's (``…/join-preview``, as the
+         *     ``join_files`` decision it previews), with the refusal's code when it was refused.
+         */
+        get: operations["analyst_log_api_projects__pid__analyst_log_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -894,6 +921,8 @@ export interface components {
             source_kind: "path" | "upload";
             /** Fingerprint */
             fingerprint: string;
+            /** Sha256 */
+            sha256: string | null;
             /** N Rows */
             n_rows: number;
             /** N Cols */
@@ -980,6 +1009,16 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+        };
+        /**
+         * AnalystLog
+         * @description What the analyst saw, oldest first.
+         */
+        AnalystLog: {
+            /** Claims */
+            claims: components["schemas"]["ClaimRendered"][];
+            /** Previews */
+            previews: components["schemas"]["PreviewLogged"][];
         };
         /**
          * ApplyRepair
@@ -1342,6 +1381,54 @@ export interface components {
              * @default []
              */
             earlier: components["schemas"]["EarlierRows"][];
+        };
+        /**
+         * ClaimRendered
+         * @description One render of a claim for the project (``claims.render_log``), in any mode.
+         */
+        ClaimRendered: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Id
+             * @description The claim asked for
+             */
+            id: string;
+            /**
+             * Register
+             * @description card or methods
+             */
+            register: string;
+            /**
+             * Status
+             * @description Its frozen status as read; null where the render stopped before it was read
+             */
+            status: string | null;
+            /**
+             * Grade
+             * @description The weakest part's grade of the claim that rendered
+             */
+            grade: string | null;
+            /**
+             * Fallback
+             * @description The claim that rendered in its place, outside its regime; null when it rendered itself
+             */
+            fallback: string | null;
+            /** Version */
+            version: number | null;
+            /**
+             * Hash
+             * @description The content hash its frozen status is kept under
+             */
+            hash: string | null;
+            /**
+             * Refused
+             * @description Why no sentence rendered; null when one did
+             */
+            refused: string | null;
         };
         /**
          * ClusterSpec
@@ -3958,6 +4045,28 @@ export interface components {
             sha256: string;
             /** Text */
             text: string;
+        };
+        /**
+         * PreviewLogged
+         * @description One preview asked for in analyst mode: a decision's (``…/preview``), or a join's
+         *     (``…/join-preview``), logged as the ``join_files`` decision it previews.
+         */
+        PreviewLogged: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Decision
+             * @description The decision previewed, as asked; null for a join whose fields do not read as one
+             */
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"] | components["schemas"]["SetModelSequence-Output"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Output"] | components["schemas"]["SetTimeVarying-Output"] | components["schemas"]["SetExplain-Output"] | components["schemas"]["SetForms-Output"] | components["schemas"]["SetModification-Output"] | components["schemas"]["ViewOutcome-Output"] | components["schemas"]["SetLevers-Output"] | components["schemas"]["SetSelection-Output"] | components["schemas"]["SetIntendedUse-Output"] | components["schemas"]["SetUpdating-Output"] | components["schemas"]["ConfirmSweep-Output"] | components["schemas"]["SetDesign-Output"] | components["schemas"]["SetValidation-Output"]) | null;
+            /**
+             * Refused
+             * @description The refusal's code; null when it previewed
+             */
+            refused: string | null;
         };
         /** PreviewResult */
         PreviewResult: {
@@ -9606,6 +9715,11 @@ export interface components {
             columns: components["schemas"]["ColumnInfo"][];
             /** Source Bytes */
             source_bytes: number;
+            /**
+             * Source Sha256
+             * @default null
+             */
+            source_sha256: string | null;
             /** Parquet Bytes */
             parquet_bytes: number;
             /** Ingest Seconds */
@@ -13147,6 +13261,11 @@ export interface components {
             columns: components["schemas"]["ColumnInfo"][];
             /** Source Bytes */
             source_bytes: number;
+            /**
+             * Source Sha256
+             * @default null
+             */
+            source_sha256: string | null;
             /** Parquet Bytes */
             parquet_bytes: number;
             /** Ingest Seconds */
@@ -17157,6 +17276,11 @@ export interface components {
             columns: components["schemas"]["ColumnInfo"][];
             /** Source Bytes */
             source_bytes: number;
+            /**
+             * Source Sha256
+             * @default null
+             */
+            source_sha256: string | null;
             /** Parquet Bytes */
             parquet_bytes: number;
             /** Ingest Seconds */
@@ -17351,7 +17475,14 @@ export interface operations {
     };
     upload_project_api_projects_upload_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Where the file came from, in full (https://…) */
+                url?: string | null;
+                /** @description When it was released, YYYY-MM-DD */
+                release_date?: string | null;
+                /** @description The license it was released under */
+                license?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -17374,13 +17505,22 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectSummary"];
                 };
             };
-            /** @description No file, or not a readable data file */
+            /** @description No file, not a readable data file, or a field of where it came from that does not read */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -17429,6 +17569,8 @@ export interface operations {
         parameters: {
             query?: {
                 decide_now?: boolean;
+                /** @description Why: the decision's reason, at most 2,000 characters, kept on its record and served in the decision log, never written into the methods */
+                note?: string | null;
             };
             header?: never;
             path: {
@@ -17462,6 +17604,55 @@ export interface operations {
             };
             /** @description The decision was refused and not recorded */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analyst_log_api_projects__pid__analyst_log_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalystLog"];
+                };
+            };
+            /** @description TurboTab is not in analyst mode */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description No such project */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

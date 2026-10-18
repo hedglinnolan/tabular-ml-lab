@@ -202,27 +202,64 @@
           "projects"
         ],
         "summary": "Upload Project",
-        "description": "Upload a data file (multipart field ``file``). It is streamed to disk as it arrives.",
+        "description": "Upload a data file (multipart field ``file``). It is streamed to disk as it arrives. ``url``, ``release_date`` and ``license`` (each optional, each at most 2,000 characters) say where the file came from: kept on the project's meta and echoed into the export's ``provenance.json`` inputs beside the file's SHA-256 (SWARM_ENGINE_PLAN E5). One that does not read refuses the upload before any of it is kept.",
         "operationId": "upload_project_api_projects_upload_post",
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "properties": {
-                  "file": {
-                    "type": "string",
-                    "format": "binary"
-                  }
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
                 },
-                "type": "object",
-                "required": [
-                  "file"
-                ]
-              }
-            }
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Where the file came from, in full (https://…)",
+              "title": "Url"
+            },
+            "description": "Where the file came from, in full (https://…)"
           },
-          "required": true
-        },
+          {
+            "name": "release_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "When it was released, YYYY-MM-DD",
+              "title": "Release Date"
+            },
+            "description": "When it was released, YYYY-MM-DD"
+          },
+          {
+            "name": "license",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The license it was released under",
+              "title": "License"
+            },
+            "description": "The license it was released under"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -235,11 +272,40 @@
             }
           },
           "400": {
-            "description": "No file, or not a readable data file",
+            "description": "No file, not a readable data file, or a field of where it came from that does not read",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
                 }
               }
             }
@@ -305,7 +371,7 @@
           "projects"
         ],
         "summary": "Decide",
-        "description": "Record a decision. Stages downstream of the slot it writes recompute. ``decide_now``\nanswers a later question ahead of the Router, only where its card is computed and the earlier\nanswers it reads are in (crosswalk disagreement 20); otherwise it is refused with what it is\nwaiting for, and the record names the question it was decided ahead of.",
+        "description": "Record a decision. Stages downstream of the slot it writes recompute. ``decide_now``\nanswers a later question ahead of the Router, only where its card is computed and the earlier\nanswers it reads are in (crosswalk disagreement 20); otherwise it is refused with what it is\nwaiting for, and the record names the question it was decided ahead of. ``note``: the reason,\nin any mode (SWARM_ENGINE_PLAN E4); one past its limit is refused (``note_too_long``) and\nnothing is recorded.",
         "operationId": "decide_api_projects__pid__decisions_post",
         "parameters": [
           {
@@ -326,6 +392,24 @@
               "default": false,
               "title": "Decide Now"
             }
+          },
+          {
+            "name": "note",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Why: the decision's reason, at most 2,000 characters, kept on its record and served in the decision log, never written into the methods",
+              "title": "Note"
+            },
+            "description": "Why: the decision's reason, at most 2,000 characters, kept on its record and served in the decision log, never written into the methods"
           }
         ],
         "requestBody": {
@@ -614,6 +698,69 @@
           },
           "409": {
             "description": "The decision was refused and not recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/analyst-log": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Analyst Log",
+        "description": "What the analyst saw, in analyst mode only (``--analyst``, or ``TURBOTAB_ANALYST=1``;\nSWARM_ENGINE_PLAN E4), oldest first: each claim rendered for the project (the claim asked for,\nits register, frozen status and grade, the claim that rendered in its place outside its\nregime, and why a render was refused), which is logged in every mode; and each preview asked\nfor in analyst mode, a decision's (``…/preview``) or a join's (``…/join-preview``, as the\n``join_files`` decision it previews), with the refusal's code when it was refused.",
+        "operationId": "analyst_log_api_projects__pid__analyst_log_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalystLog"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TurboTab is not in analyst mode",
             "content": {
               "application/json": {
                 "schema": {
@@ -3081,6 +3228,17 @@
             "type": "string",
             "title": "Fingerprint"
           },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
           "n_rows": {
             "type": "integer",
             "title": "N Rows"
@@ -3115,6 +3273,7 @@
           "name",
           "source_kind",
           "fingerprint",
+          "sha256",
           "n_rows",
           "n_cols",
           "columns",
@@ -3294,6 +3453,31 @@
           "acknowledged"
         ],
         "title": "AggregationSpec"
+      },
+      "AnalystLog": {
+        "properties": {
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimRendered"
+            },
+            "type": "array",
+            "title": "Claims"
+          },
+          "previews": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewLogged"
+            },
+            "type": "array",
+            "title": "Previews"
+          }
+        },
+        "type": "object",
+        "required": [
+          "claims",
+          "previews"
+        ],
+        "title": "AnalystLog",
+        "description": "What the analyst saw, oldest first."
       },
       "ApplyRepair-Input": {
         "properties": {
@@ -4169,6 +4353,110 @@
         ],
         "title": "Chronology",
         "description": "The chronological draw the temporal answer asked for, and whether it was drawn.\n\nWhole units are held out by their last observation, so with repeated rows a held-out unit's\nearlier rows can predate training rows (audit IN-24: 56–71% of held-out rows on visit data).\n``n_held_rows``/``n_held_earlier`` count that for this draw; ``earlier`` for each share the\nsplit question offers, at this draw's seed, so the split's sentence can state it."
+      },
+      "ClaimRendered": {
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "The claim asked for"
+          },
+          "register": {
+            "type": "string",
+            "title": "Register",
+            "description": "card or methods"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status",
+            "description": "Its frozen status as read; null where the render stopped before it was read"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade",
+            "description": "The weakest part's grade of the claim that rendered"
+          },
+          "fallback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback",
+            "description": "The claim that rendered in its place, outside its regime; null when it rendered itself"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hash",
+            "description": "The content hash its frozen status is kept under"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refused",
+            "description": "Why no sentence rendered; null when one did"
+          }
+        },
+        "type": "object",
+        "required": [
+          "at",
+          "id",
+          "register",
+          "status",
+          "grade",
+          "fallback",
+          "version",
+          "hash",
+          "refused"
+        ],
+        "title": "ClaimRendered",
+        "description": "One render of a claim for the project (``claims.render_log``), in any mode."
       },
       "ClusterSpec": {
         "properties": {
@@ -11413,6 +11701,309 @@
         ],
         "title": "PlanExport",
         "description": "The exported analysis plan: the plan, when it was declared, its hash and its text."
+      },
+      "PreviewLogged": {
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/SetLens"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTarget"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTask"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetPurpose"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Revert"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetRoles-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetEnergyAdjustment-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExclusions-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMissing-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSplit-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SelectModels"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSubstitution-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOrientation"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetEvent"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetGrain-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetRepeatKind-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUnit"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetAggregation-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTemporal-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/OpenSeal-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApplyRepair-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DeferFinding"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DismissFinding-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetFeatureTable-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCategorical"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSurvey-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExposureForm-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOutcomeOrder"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetFollowUp-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSensitivity-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMeasurementError-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOutcomeUnit"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetColumnUnit-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmRole"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmReading"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmReadings"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOutcomeScale"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Reseal-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LockPlan-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCensoring-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetClusters-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetEstimand-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetAdjustment-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/JoinFiles-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImportCodebook-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetBatch-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMultiplicity-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetScales-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUsualIntake-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetModelSequence-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RespondDiagnostic"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCausal-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTimeVarying-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExplain-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetForms-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetModification-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ViewOutcome-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetLevers-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSelection-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetIntendedUse-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUpdating-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmSweep-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetDesign-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetValidation-Output"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "kind",
+                  "mapping": {
+                    "apply_repair": "#/components/schemas/ApplyRepair-Output",
+                    "confirm_reading": "#/components/schemas/ConfirmReading",
+                    "confirm_readings": "#/components/schemas/ConfirmReadings",
+                    "confirm_role": "#/components/schemas/ConfirmRole",
+                    "confirm_sweep": "#/components/schemas/ConfirmSweep-Output",
+                    "defer_finding": "#/components/schemas/DeferFinding",
+                    "dismiss_finding": "#/components/schemas/DismissFinding-Output",
+                    "import_codebook": "#/components/schemas/ImportCodebook-Output",
+                    "join_files": "#/components/schemas/JoinFiles-Output",
+                    "lock_plan": "#/components/schemas/LockPlan-Output",
+                    "open_seal": "#/components/schemas/OpenSeal-Output",
+                    "reseal": "#/components/schemas/Reseal-Output",
+                    "respond_diagnostic": "#/components/schemas/RespondDiagnostic",
+                    "revert": "#/components/schemas/Revert",
+                    "select_models": "#/components/schemas/SelectModels",
+                    "set_adjustment": "#/components/schemas/SetAdjustment-Output",
+                    "set_aggregation": "#/components/schemas/SetAggregation-Output",
+                    "set_batch": "#/components/schemas/SetBatch-Output",
+                    "set_categorical": "#/components/schemas/SetCategorical",
+                    "set_causal": "#/components/schemas/SetCausal-Output",
+                    "set_censoring": "#/components/schemas/SetCensoring-Output",
+                    "set_clusters": "#/components/schemas/SetClusters-Output",
+                    "set_column_unit": "#/components/schemas/SetColumnUnit-Output",
+                    "set_design": "#/components/schemas/SetDesign-Output",
+                    "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
+                    "set_estimand": "#/components/schemas/SetEstimand-Output",
+                    "set_event": "#/components/schemas/SetEvent",
+                    "set_exclusions": "#/components/schemas/SetExclusions-Output",
+                    "set_explain": "#/components/schemas/SetExplain-Output",
+                    "set_exposure_form": "#/components/schemas/SetExposureForm-Output",
+                    "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
+                    "set_follow_up": "#/components/schemas/SetFollowUp-Output",
+                    "set_forms": "#/components/schemas/SetForms-Output",
+                    "set_grain": "#/components/schemas/SetGrain-Output",
+                    "set_intended_use": "#/components/schemas/SetIntendedUse-Output",
+                    "set_lens": "#/components/schemas/SetLens",
+                    "set_levers": "#/components/schemas/SetLevers-Output",
+                    "set_measurement_error": "#/components/schemas/SetMeasurementError-Output",
+                    "set_missing": "#/components/schemas/SetMissing-Output",
+                    "set_model_sequence": "#/components/schemas/SetModelSequence-Output",
+                    "set_modification": "#/components/schemas/SetModification-Output",
+                    "set_multiplicity": "#/components/schemas/SetMultiplicity-Output",
+                    "set_orientation": "#/components/schemas/SetOrientation",
+                    "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
+                    "set_outcome_scale": "#/components/schemas/SetOutcomeScale",
+                    "set_outcome_unit": "#/components/schemas/SetOutcomeUnit",
+                    "set_purpose": "#/components/schemas/SetPurpose",
+                    "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
+                    "set_roles": "#/components/schemas/SetRoles-Output",
+                    "set_scales": "#/components/schemas/SetScales-Output",
+                    "set_selection": "#/components/schemas/SetSelection-Output",
+                    "set_sensitivity": "#/components/schemas/SetSensitivity-Output",
+                    "set_split": "#/components/schemas/SetSplit-Output",
+                    "set_substitution": "#/components/schemas/SetSubstitution-Output",
+                    "set_survey": "#/components/schemas/SetSurvey-Output",
+                    "set_target": "#/components/schemas/SetTarget",
+                    "set_task": "#/components/schemas/SetTask",
+                    "set_temporal": "#/components/schemas/SetTemporal-Output",
+                    "set_time_varying": "#/components/schemas/SetTimeVarying-Output",
+                    "set_unit": "#/components/schemas/SetUnit",
+                    "set_updating": "#/components/schemas/SetUpdating-Output",
+                    "set_usual_intake": "#/components/schemas/SetUsualIntake-Output",
+                    "set_validation": "#/components/schemas/SetValidation-Output",
+                    "view_outcome": "#/components/schemas/ViewOutcome-Output"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision",
+            "description": "The decision previewed, as asked; null for a join whose fields do not read as one"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refused",
+            "description": "The refusal's code; null when it previewed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "at",
+          "decision",
+          "refused"
+        ],
+        "title": "PreviewLogged",
+        "description": "One preview asked for in analyst mode: a decision's (``…/preview``), or a join's\n(``…/join-preview``), logged as the ``join_files`` decision it previews."
       },
       "PreviewResult": {
         "properties": {
@@ -25723,6 +26314,18 @@
             "title": "Source Bytes",
             "type": "integer"
           },
+          "source_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Sha256"
+          },
           "parquet_bytes": {
             "title": "Parquet Bytes",
             "type": "integer"
@@ -25748,6 +26351,7 @@
           "n_cols",
           "columns",
           "source_bytes",
+          "source_sha256",
           "parquet_bytes",
           "ingest_seconds",
           "fingerprint",
@@ -34831,6 +35435,18 @@
             "title": "Source Bytes",
             "type": "integer"
           },
+          "source_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Sha256"
+          },
           "parquet_bytes": {
             "title": "Parquet Bytes",
             "type": "integer"
@@ -34866,6 +35482,7 @@
           "n_cols",
           "columns",
           "source_bytes",
+          "source_sha256",
           "parquet_bytes",
           "ingest_seconds",
           "fingerprint",
@@ -44541,6 +45158,18 @@
             "title": "Source Bytes",
             "type": "integer"
           },
+          "source_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Sha256"
+          },
           "parquet_bytes": {
             "title": "Parquet Bytes",
             "type": "integer"
@@ -44619,6 +45248,7 @@
           "n_cols",
           "columns",
           "source_bytes",
+          "source_sha256",
           "parquet_bytes",
           "ingest_seconds",
           "fingerprint",

@@ -30,8 +30,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 SAMPLE_CSVS = sorted((REPO_ROOT / "turbotab" / "sample_data").glob("*.csv"))
 BUDGET = 4 * 1024**3
 
-INFO_KEYS = {"n_rows", "n_cols", "columns", "source_bytes", "parquet_bytes", "ingest_seconds",
-             "fingerprint", "warnings"}
+INFO_KEYS = {"n_rows", "n_cols", "columns", "source_bytes", "source_sha256", "parquet_bytes",
+             "ingest_seconds", "fingerprint", "warnings"}
 COLUMN_KEYS = {"name", "dtype", "physical_type", "n_missing", "n_unique", "sample"}
 SUMMARY_KEYS = {"name", "dtype", "n", "n_missing", "n_unique", "mean", "std", "min", "q25",
                 "median", "q75", "max", "top", "n_infinite"}
@@ -333,6 +333,32 @@ def test_unsupported_and_empty_files_are_refused_by_name(tmp_path):
 
 
 # ── metadata, summaries, histograms ──────────────────────────────────────────
+
+def test_the_ingest_records_the_sha256_of_the_bytes_it_read_beside_its_fingerprint(tmp_path):
+    """SWARM_ENGINE_PLAN E5: the SHA-256 a publisher states for a file (hashlib's, over the bytes
+    as given) is served beside the BLAKE2b fingerprint. With a file joined to the table the
+    fingerprint covers the join too, while ``source_sha256`` stays the table's own file's."""
+    import hashlib
+
+    data = b"pid,x\n1,2.5\n2,3.5\n3,\n"
+    src = _write(tmp_path, "t.csv", data.decode())
+    assert src.read_bytes() == data
+    info = ingest(src, tmp_path / "raw.parquet")
+    assert info.source_sha256 == hashlib.sha256(data).hexdigest()
+    assert info.fingerprint == hashlib.blake2b(data, digest_size=16).hexdigest()
+    assert ds_mod.DatasetInfo.from_dict(info.to_dict()) == info
+    older = {k: v for k, v in info.to_dict().items() if k != "source_sha256"}
+    assert ds_mod.DatasetInfo.from_dict(older).source_sha256 is None  # a sidecar from before
+
+    other = b"pid,y\n1,a\n2,b\n"
+    side = _write(tmp_path, "y.csv", other.decode())
+    side_info = ingest(side, tmp_path / "y.parquet")
+    assert side_info.source_sha256 == hashlib.sha256(other).hexdigest()
+    joined = ingest(src, tmp_path / "joined.parquet",
+                    joins=[ds_mod.JoinInput(parquet=tmp_path / "y.parquet", name="y.csv", on="pid")])
+    assert joined.source_sha256 == hashlib.sha256(data).hexdigest()
+    assert joined.fingerprint != info.fingerprint
+
 
 def test_info_matches_the_contract_and_survives_a_lost_sidecar(tmp_path):
     src = SAMPLE_CSVS[0]

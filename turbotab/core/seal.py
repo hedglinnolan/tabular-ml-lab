@@ -1256,28 +1256,72 @@ def _cross_validation_only(state: Any) -> bool:
     return split is not None and float(getattr(split, "holdout", 0) or 0) == 0
 
 
-def _reseal_exit(records: Sequence[Any] | None, cv_only: bool = False) -> dict[str, Any]:
+# ── analyst mode (SWARM_ENGINE_PLAN E4) ──
+# An agent drives the API in a person's place (``Settings.analyst``). It never re-seals
+# (``_no_reseal_in_analyst_mode``), so once the current seal is opened the held-out rows are not
+# drawn again: no refusal offers to withdraw them, and none says they can be drawn again. Before
+# the opening no score has been seen, so withdrawing them and drawing them again stays an exit,
+# named for what it does rather than as a re-seal.
+KEEP_THE_DRAW = {"label": "Keep the held-out rows as they were drawn", "decision": None}
+# Analyst mode's keep: true wherever its refusals fire, a project with nothing drawn included.
+KEEP_AS_THEY_ARE = {"label": "Keep the held-out rows as they are", "decision": None}
+NOT_DRAWN_AGAIN = ("The held-out rows were opened and their scores seen, so in analyst mode they "
+                   "are not drawn again: the scores at the opening stay the reported result.")
+
+
+def _analyst(ctx: Any) -> bool:
+    """Whether an agent drives the API in a person's place (``Settings.analyst``; SWARM_ENGINE_PLAN
+    E4): it never re-seals, no refusal offers it a re-seal, and once the current seal is opened
+    none offers to withdraw the held-out rows and draw them again (``_withdrawal``)."""
+    return bool(_ctx(ctx, "analyst"))
+
+
+def _opened_in_analyst_mode(state: Any, ctx: Any) -> bool:
+    """Analyst mode with the current seal opened (a re-seal clears ``seal_opened``, and analyst
+    mode records none): the held-out rows are not drawn again."""
+    return _analyst(ctx) and bool(getattr(state, "seal_opened", None))
+
+
+def _reseal_exit(records: Sequence[Any] | None, cv_only: bool = False,
+                 analyst: bool = False) -> dict[str, Any]:
     writer = split_writer(records)
-    label = ("Re-draw: withdraw the folds, change this, then draw them again" if cv_only
-             else "Re-seal: withdraw the held-out rows, change this, then draw them again")
+    if cv_only:
+        label = "Re-draw: withdraw the folds, change this, then draw them again"
+    elif analyst:  # no re-seal is recorded in analyst mode: this is a withdrawal and a new draw
+        label = "Withdraw the held-out rows, change this, then draw them again"
+    else:
+        label = "Re-seal: withdraw the held-out rows, change this, then draw them again"
     return {"label": label, "decision": Revert(decision_id=writer) if writer else None}
 
 
-def _sealed_refusal(what: str, records: Sequence[Any] | None, state: Any = None) -> Refusal:
+def _withdrawal(records: Sequence[Any] | None, state: Any, ctx: Any) -> list[dict[str, Any]]:
+    """The exit that withdraws the held-out rows so a change can draw them again (a revert of the
+    split's record), as a list; empty in analyst mode once the current seal is opened, when they
+    are not drawn again."""
+    if _opened_in_analyst_mode(state, ctx):
+        return []
+    return [_reseal_exit(records, analyst=_analyst(ctx))]
+
+
+def _sealed_refusal(what: str, records: Sequence[Any] | None, state: Any = None,
+                    ctx: Any = None) -> Refusal:
     """Decision A's refusal, worded for what is drawn: held-out rows, or the folds alone when every
-    row trains under cross-validation (M2_CONTRACT §12.3)."""
-    if _cross_validation_only(state):
+    row trains under cross-validation (M2_CONTRACT §12.3). In analyst mode once the seal is opened
+    it offers no withdrawal (``_withdrawal``) and says the rows are not drawn again."""
+    if _cross_validation_only(state):  # nothing is held out, so no seal was opened
         return Refusal(
             "sealed",
             f"The cross-validation folds are drawn, and changing {what} changes what a row is: the "
             f"folds name rows as they were. Withdraw the split first, then draw it again.",
             exits=[_reseal_exit(records, cv_only=True)],
         )
+    exits = _withdrawal(records, state, ctx)
+    then = "Withdraw the seal first, then draw it again." if exits else NOT_DRAWN_AGAIN
     return Refusal(
         "sealed",
         f"The held-out rows are drawn, and changing {what} changes what a row is: the seal names "
-        f"rows as they were. Withdraw the seal first, then draw it again.",
-        exits=[_reseal_exit(records)],
+        f"rows as they were. {then}",
+        exits=exits or [KEEP_AS_THEY_ARE],
     )
 
 
@@ -1289,7 +1333,7 @@ def _decision_a_waits_for_a_reseal(decision: Any, ctx: Any) -> None:
     value = decisions._SLOT_VALUE[decision.kind](decision)
     if getattr(state, slot, None) == value:
         return  # the same answer again changes nothing
-    raise _sealed_refusal(what, _records(ctx), state)
+    raise _sealed_refusal(what, _records(ctx), state, ctx)
 
 
 # ── what the draw reads holds still until a re-seal (audit RO-02) ────────────
@@ -1394,11 +1438,16 @@ def _redrawn_by(now: Any, after: Any, ctx: Any) -> str | None:
 
 
 def _redraw_refusal(clause: str, records: Sequence[Any] | None,
-                    extra: Sequence[Mapping[str, Any]] = ()) -> Refusal:
+                    extra: Sequence[Mapping[str, Any]] = (), state: Any = None,
+                    ctx: Any = None) -> Refusal:
+    """A change to what the draw reads, refused while it would move rows across the seal; in
+    analyst mode once the seal is opened it offers no withdrawal (``_withdrawal``)."""
+    exits = _withdrawal(records, state, ctx)
+    then = "Withdraw the seal first, then draw it again." if exits else NOT_DRAWN_AGAIN
     return Refusal(
         "sealed",
-        f"{clause}, moving rows across the seal. Withdraw the seal first, then draw it again.",
-        exits=[*extra, _reseal_exit(records)],
+        f"{clause}, moving rows across the seal. {then}",
+        exits=[*extra, *(exits or [KEEP_AS_THEY_ARE])],
     )
 
 
@@ -1475,7 +1524,8 @@ def _the_draw_holds_until_a_reseal(decision: Any, ctx: Any) -> None:
         return
     clause = _redrawn_by(state, after, ctx)
     if clause is not None:
-        raise _redraw_refusal(clause, _records(ctx), _same_rows_another_way(decision, ctx))
+        raise _redraw_refusal(clause, _records(ctx), _same_rows_another_way(decision, ctx), state,
+                              ctx)
 
 
 DRAW_READS = ("set_target", "set_task", "set_temporal", "apply_repair", "defer_finding",
@@ -1547,13 +1597,13 @@ def _the_draw_reads_settled_values(decision: Any, ctx: Any) -> None:
         try:
             decisions.validate(option["decision"], ctx)
         except Refusal:
-            continue  # a repair the drawn seal refuses: the re-seal exit below comes first
+            continue  # a repair the drawn seal refuses: the withdrawal below is its way
         exits.append({"label": str(option.get("label") or option.get("key")),
                       "decision": option["decision"]})
     exits.append({"label": "Keep the values as they are",
                   "decision": DismissFinding(finding_id=str(finding["id"]))})
     if holds_rows_out(state):
-        exits.append(_reseal_exit(_records(ctx)))
+        exits.extend(_withdrawal(_records(ctx), state, ctx))
     raise Refusal(
         "settle_first",
         f"{what} about {named} {'is' if len(pending) == 1 else 'are'} not settled, and the held-out "
@@ -1616,11 +1666,11 @@ def _revert_keeps_the_seal(decision: Revert, ctx: Any) -> None:
         return  # this revert withdraws the seal: the re-seal path
     for kind, (slot, what) in DECISION_A.items():
         if getattr(now, slot) != getattr(after, slot):
-            raise _sealed_refusal(what, records, now)
+            raise _sealed_refusal(what, records, now, ctx)
     if holds_rows_out(now) and now.split == after.split:
         clause = _redrawn_by(now, after, ctx)
         if clause is not None:
-            raise _redraw_refusal(clause, records)
+            raise _redraw_refusal(clause, records, state=now, ctx=ctx)
 
 
 # Python's own error classes: a stage that raised one stopped on a fault, not on a reason it put in
@@ -1842,6 +1892,19 @@ def _the_opening_keeps_its_scores(decision: Any, ctx: Any) -> Any:
     })
 
 
+def _no_reseal_in_analyst_mode(decision: Any, ctx: Any) -> None:
+    """Analyst mode records no re-seal, whether or not anything is drawn or opened: its one exit
+    keeps the held-out rows as they are (none, on a project with no split)."""
+    if not _analyst(ctx):
+        return
+    raise Refusal(
+        "no_reseal_in_analyst_mode",
+        "In analyst mode a re-seal is not recorded: once the held-out rows are opened they are not "
+        "drawn again, and the scores at their opening stay the reported result.",
+        exits=[KEEP_AS_THEY_ARE],
+    )
+
+
 def _reseal_needs_an_opened_seal(decision: Any, ctx: Any) -> None:
     state = _ctx(ctx, "state")
     if state is None or state.seal_opened:
@@ -1907,6 +1970,14 @@ def _an_opened_seal_holds_still(decision: Any, ctx: Any) -> None:
                 f"count them as opened at decision #{opened.seq}, when they were not: "
                 f"{clause}.",
                 exits=[{"label": "Keep the re-seal", "decision": None}])
+    if _analyst(ctx):
+        raise Refusal(
+            "seal_opened",
+            f"The held-out rows were opened at decision #{opened.seq}, and {clause}. Their scores "
+            f"were seen, so in analyst mode they are not drawn again: the scores at the opening "
+            f"stay the reported result.",
+            exits=[KEEP_AS_THEY_ARE],
+        )
     from turbotab.core.decisions import Reseal
 
     raise Refusal(
@@ -1917,7 +1988,7 @@ def _an_opened_seal_holds_still(decision: Any, ctx: Any) -> None:
         f"no longer independent.",
         exits=[{"label": "Re-seal: record that the held-out rows are drawn again after their "
                          "scores were seen", "decision": Reseal()},
-               {"label": "Keep the held-out rows as they were drawn", "decision": None}],
+               KEEP_THE_DRAW],
     )
 
 
@@ -1985,6 +2056,8 @@ decisions.register_validator("open_seal", _open_seal_once_on_a_fresh_fit)
 decisions.register_validator("open_seal", _the_opening_waits_for_the_triage)
 decisions.register_completion("open_seal", _the_opening_keeps_its_scores)
 decisions.register_validator("reseal", _reseal_needs_an_opened_seal)
+# First: in analyst mode no re-seal is recorded, whatever else holds (SWARM_ENGINE_PLAN E4).
+decisions.register_validator("reseal", _no_reseal_in_analyst_mode, first=True)
 decisions.register_completion("reseal", _the_reseal_names_its_outcome)
 for _kind in ("set_split", "revert"):  # first: once opened, the opening is the reason
     decisions.register_validator(_kind, _an_opened_seal_holds_still, first=True)

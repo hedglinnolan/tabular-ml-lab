@@ -20,13 +20,26 @@ A sentence renders only for a built claim. With a context, every regime predicat
 called; where one fails, strict mode raises and otherwise the named fallback renders. Without a
 context nothing is checked: that is the static fill an engine module makes at registration
 (``says=claims.card(id)``), which has no data to check against.
+
+**The render log** (SWARM_ENGINE_PLAN E4; R1_PLAN R1-M): inside :func:`render_log`, each render
+appends one JSON line to that file (the claim asked for, the register, the frozen status, the
+grade, the fallback that rendered in its place, the claim's version and content hash, and why it
+was refused, if it was). The file is set per thread of control (a context variable), so the
+engine runs each stage inside its project's log, in a worker process as on a server thread
+(``workspace.stage_graph``). Outside one nothing is written, and a render made while a module is
+being imported is never logged: a static fill renders once per process, for no project, even when
+a lazy import runs inside a project's log.
 """
 from __future__ import annotations
 
 import ast
+import contextvars
 import importlib
 import json
 import os
+import sys
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Iterator
@@ -176,6 +189,50 @@ def _test_in(module: ast.Module | None, dotted: str) -> str:
     return "never runs" if never or any(_never_runs(d) for d in fn.decorator_list) else "runs"
 
 
+_RENDER_LOG: contextvars.ContextVar[Path | None] = contextvars.ContextVar(
+    "turbotab_claims_render_log", default=None)
+
+
+@contextmanager
+def render_log(path: str | os.PathLike[str] | None) -> Iterator[None]:
+    """Log every render inside the block to ``path``, a JSON-lines file (module docstring); None
+    logs nothing. Nested blocks log to the innermost."""
+    token = _RENDER_LOG.set(Path(path) if path is not None else None)
+    try:
+        yield
+    finally:
+        _RENDER_LOG.reset(token)
+
+
+def _importing() -> bool:
+    """Whether this render runs inside a module's import: a static fill made at registration,
+    once per process and for no project, even when the import is a lazy one inside a project's
+    log (``methods.trials`` builds its contracts as it is imported)."""
+    frame = sys._getframe(1)
+    while frame is not None:
+        if frame.f_code.co_name == "<module>":
+            spec = frame.f_globals.get("__spec__")
+            if spec is not None and getattr(spec, "_initializing", False):
+                return True
+        frame = frame.f_back
+    return False
+
+
+def _append_render(path: Path, line: dict[str, Any]) -> None:
+    """One line, written whole by a single append, so the server's threads and the job workers can
+    share the file; a log that cannot be written never stops a sentence."""
+    data = (json.dumps(line, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        try:
+            os.write(fd, data)
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+
+
 @lru_cache(maxsize=8)
 def _frozen(data: bytes) -> dict[str, tuple[str, str]] | None:
     """The frozen status file's claims, id to (status, hash), or None when they do not read.
@@ -306,11 +363,45 @@ class Registry:
         return failed
 
     def _render(self, id: str, register: str, ctx: Any, strict: bool | None) -> str:
+        log = _RENDER_LOG.get()
+        if log is None or _importing():
+            return self._sentence(id, register, ctx, strict, {})
+        reached: dict[str, Any] = {}
+        try:
+            text = self._sentence(id, register, ctx, strict, reached)
+        except Exception as exc:
+            self._log_render(log, id, register, reached, refused=str(exc))
+            raise
+        self._log_render(log, id, register, reached, refused=None)
+        return text
+
+    def _log_render(self, path: Path, asked: str, register: str, reached: dict[str, Any],
+                    refused: str | None) -> None:
+        """The render log's line (module docstring): ``reached`` names the claim whose sentence
+        rendered, or where the render stopped, and the frozen status read for it."""
+        id = reached.get("id")
+        c = self._claims.get(id) if id is not None else None
+        _append_render(path, {
+            "at": datetime.now(timezone.utc).isoformat(),
+            "id": asked,
+            "register": register,
+            "status": reached.get("status"),
+            "grade": getattr(c, "grade", None),
+            "fallback": id if id not in (None, asked) else None,
+            "version": getattr(c, "version", None),
+            "hash": content_hash(c) if c is not None else None,
+            "refused": refused,
+        })
+
+    def _sentence(self, id: str, register: str, ctx: Any, strict: bool | None,
+                  reached: dict[str, Any]) -> str:
         strict = strict_mode(strict)
         seen: list[str] = []
         while True:
             c = self[id]
+            reached["id"] = id
             status = self.frozen_status(id)
+            reached["status"] = status
             derived = self.status(id) if strict else status
             if derived != status:
                 raise NotRenderable(f"{id}: {self.frozen_path} froze it as {status}, but the "

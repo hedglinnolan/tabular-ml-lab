@@ -333,6 +333,9 @@ class AddedFile(Model):
     name: str
     source_kind: SourceKind
     fingerprint: str
+    # The SHA-256 of the file's bytes as read, beside its fingerprint (SWARM_ENGINE_PLAN E5); null
+    # for a file added before it was recorded.
+    sha256: str | None = None
     n_rows: int
     n_cols: int
     columns: list[str]
@@ -460,6 +463,46 @@ class Refusal(Model):
     error: RefusalDetail
 
 
+# ── analyst mode (SWARM_ENGINE_PLAN E4) ──────────────────────────────────────
+
+
+class ClaimRendered(Model):
+    """One render of a claim for the project (``claims.render_log``), in any mode."""
+
+    # ``register`` on the wire; the attribute is renamed only because pydantic's models have a
+    # ``register`` of their own.
+    model_config = ConfigDict(populate_by_name=True)
+
+    at: datetime
+    id: str = Field(description="The claim asked for")
+    sentence_register: str = Field(alias="register", description="card or methods")
+    status: str | None = Field(description="Its frozen status as read; null where the render "
+                                            "stopped before it was read")
+    grade: str | None = Field(description="The weakest part's grade of the claim that rendered")
+    fallback: str | None = Field(description="The claim that rendered in its place, outside its "
+                                              "regime; null when it rendered itself")
+    version: int | None
+    hash: str | None = Field(description="The content hash its frozen status is kept under")
+    refused: str | None = Field(description="Why no sentence rendered; null when one did")
+
+
+class PreviewLogged(Model):
+    """One preview asked for in analyst mode: a decision's (``…/preview``), or a join's
+    (``…/join-preview``), logged as the ``join_files`` decision it previews."""
+
+    at: datetime
+    decision: Decision | None = Field(description="The decision previewed, as asked; null for a "
+                                                   "join whose fields do not read as one")
+    refused: str | None = Field(description="The refusal's code; null when it previewed")
+
+
+class AnalystLog(Model):
+    """What the analyst saw, oldest first."""
+
+    claims: list[ClaimRendered]
+    previews: list[PreviewLogged]
+
+
 # ── the file browser ─────────────────────────────────────────────────────────
 
 
@@ -495,6 +538,10 @@ class DatasetInfo(Model):
     n_cols: int
     columns: list[ColumnInfo]
     source_bytes: int
+    # The SHA-256 of the source file's bytes as read (SWARM_ENGINE_PLAN E5), beside the BLAKE2b
+    # ``fingerprint``; the source's own even with files joined to it (the fingerprint then covers
+    # them too). Null for a file read before it was recorded.
+    source_sha256: str | None = None
     parquet_bytes: int
     ingest_seconds: float
     fingerprint: str

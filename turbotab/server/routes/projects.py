@@ -1,9 +1,10 @@
 """Projects, decisions and stage results."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Query, Request, Response
 from starlette.concurrency import run_in_threadpool
 
+from turbotab.core.decisions import NOTE_MAX_CHARS
 from turbotab.core.export.methods import MethodsSections
 from turbotab.core.fit_press import FitLock
 from turbotab.core.materiality import Ledger
@@ -12,8 +13,11 @@ from turbotab.core.plan_lock import PlanExport
 from turbotab.core.provenance import MethodsText
 from turbotab.core.quest import QuestLog
 from turbotab.core.sweep import ForTheRecord, Triage
+from turbotab.core.workspace import PROVENANCE_MAX_CHARS, source_provenance
+from turbotab.server.errors import ApiError
 from turbotab.server.routes import get_service, get_settings, refusal, require_local
 from turbotab.server.schemas import (
+    AnalystLog,
     CreateProject,
     Decision,
     FitsLog,
@@ -74,15 +78,32 @@ def create_project(request: Request, body: CreateProject) -> dict:
 @router.post(
     "/projects/upload",
     response_model=ProjectSummary,
-    responses={400: refusal("No file, or not a readable data file")},
+    responses={400: refusal("No file, not a readable data file, or a field of where it came from "
+                            "that does not read")},
     openapi_extra=_UPLOAD_BODY,
+    description=(
+        "Upload a data file (multipart field ``file``). It is streamed to disk as it arrives. "
+        "``url``, ``release_date`` and ``license`` (each optional, each at most "
+        f"{PROVENANCE_MAX_CHARS:,} characters) say where the file came from: kept on the "
+        "project's meta and echoed into the export's ``provenance.json`` inputs beside the file's "
+        "SHA-256 (SWARM_ENGINE_PLAN E5). One that does not read refuses the upload before any of "
+        "it is kept."),
 )
-async def upload_project(request: Request) -> dict:
-    """Upload a data file (multipart field ``file``). It is streamed to disk as it arrives."""
+async def upload_project(
+    request: Request,
+    url: str | None = Query(None, description="Where the file came from, in full (https://…)"),
+    release_date: str | None = Query(None, description="When it was released, YYYY-MM-DD"),
+    license: str | None = Query(None, description="The license it was released under"),
+) -> dict:
+    """Upload a data file, with where it came from (the route's description)."""
+    try:
+        provenance = source_provenance(url=url, release_date=release_date, license=license)
+    except ValueError as exc:
+        raise ApiError(400, "bad_provenance", str(exc)) from None
     service = get_service(request)
     staged = await receive_upload(request, service.workspace.uploads_dir())
     meta = await run_in_threadpool(
-        service.create_from_upload, staged.path, staged.client_name, staged.fingerprint
+        service.create_from_upload, staged.path, staged.client_name, staged.fingerprint, provenance
     )
     return await run_in_threadpool(service.summary, meta)
 
@@ -97,12 +118,34 @@ def get_project(request: Request, pid: str) -> dict:
     response_model=ProjectView,
     responses={409: refusal("The decision was refused and not recorded"), 404: refusal("No such project")},
 )
-def decide(request: Request, pid: str, decision: Decision, decide_now: bool = False) -> dict:
+def decide(
+    request: Request, pid: str, decision: Decision, decide_now: bool = False,
+    note: str | None = Query(None, description=(
+        f"Why: the decision's reason, at most {NOTE_MAX_CHARS:,} characters, kept on its record "
+        f"and served in the decision log, never written into the methods")),
+) -> dict:
     """Record a decision. Stages downstream of the slot it writes recompute. ``decide_now``
     answers a later question ahead of the Router, only where its card is computed and the earlier
     answers it reads are in (crosswalk disagreement 20); otherwise it is refused with what it is
-    waiting for, and the record names the question it was decided ahead of."""
-    return get_service(request).decide(pid, decision, early=decide_now)
+    waiting for, and the record names the question it was decided ahead of. ``note``: the reason,
+    in any mode (SWARM_ENGINE_PLAN E4); one past its limit is refused (``note_too_long``) and
+    nothing is recorded."""
+    return get_service(request).decide(pid, decision, early=decide_now, note=note)
+
+
+@router.get(
+    "/projects/{pid}/analyst-log",
+    response_model=AnalystLog,
+    responses={403: refusal("TurboTab is not in analyst mode"), 404: refusal("No such project")},
+)
+def analyst_log(request: Request, pid: str) -> dict:
+    """What the analyst saw, in analyst mode only (``--analyst``, or ``TURBOTAB_ANALYST=1``;
+    SWARM_ENGINE_PLAN E4), oldest first: each claim rendered for the project (the claim asked for,
+    its register, frozen status and grade, the claim that rendered in its place outside its
+    regime, and why a render was refused), which is logged in every mode; and each preview asked
+    for in analyst mode, a decision's (``…/preview``) or a join's (``…/join-preview``, as the
+    ``join_files`` decision it previews), with the refusal's code when it was refused."""
+    return get_service(request).analyst_log(pid)
 
 
 @router.get(
