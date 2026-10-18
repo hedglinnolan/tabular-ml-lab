@@ -84,3 +84,6 @@ README_PUBLIC.md
 Tabular ML Lab.app/
 .venv-stamp
 .worktrees/
+
+# The swarm's corpus: one record per run (research/swarm/assemble.py), kept on this machine
+research/corpus/
