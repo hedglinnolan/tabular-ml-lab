@@ -124,3 +124,52 @@ Two packages in parallel, each with an adversarial verifier and at most two repa
   - 1: one-at-a-time confirmation;
   - 4, 5, 6, 7, 8, 9, 10 (the strip) and 12;
   - the frontend minors (15, 19, 22, 23, 24).
+
+## The re-walk (2026-10-18, W1-U's head 712747ff)
+
+The orchestrator walked the same path again on a fresh real server: the same fixture and lenses,
+glucose under Predict, every row kept, blanks as a level, a 20% seal, linear and ridge, then
+opened with ridge. Held-out MSE 1,131 for ridge. The cross-validated R² was 0.156 (0.141 to 0.171).
+
+**Fixed: findings 1–17 and 19–25.**
+- The 16 waiting roles are open lines: cycle_begin_year on its own, one group of 7 measures, one of
+  2, and the six flags each on its own, since each has its own evidence.
+- The model holds all 21 predictors once they are confirmed. Before, it held 11.
+- Continue moves past open noticings to the next line that can be answered.
+- There is one record button per card.
+- The families choice survives the readings' confirmation.
+- The calibration view draws its support strip.
+- The noise noticing is honest under Predict.
+- The design states no estimand.
+
+Finding 18 was not exercised.
+
+**Still open.** The Predict roles card's step notes are still there: W1-V removes them (one plain
+sentence), with the "read as a covariate" quote of finding 3c's class.
+
+**New, from this walk:**
+- **N9 (major):**
+  - **What happens:** the triage proposes "Act on it" for a noticing whose action is a change to an
+    answered question, for example the energy screen at eligibility. "Confirm all 3" accepts it.
+  - **The effect:** the seal then refuses until each is acted on or recorded as a limitation, and
+    the record says "2 to act on".
+  - **→ ruling:** where the deciding question is already answered, the proposal is to record it as
+    a limitation, since the answer stands. Acting on it, by changing that answer, is the
+    alternative.
+- N1: a numeric outcome's only intended use is labeled "Risk estimation".
+- N2: a waiting flag's line says it "cannot set the model's predictors yet", but a flag never
+  enters the models.
+- N3: the Columns lineage says "13 covariate columns" and "7 exposure columns" under Predict.
+- N4: the families refusal is shown twice, and its only exit points to the roles question rather
+  than the readings above it.
+- N5: while the shelf re-ranks after the readings' confirmation, the families wait on "the event
+  question", which a numeric outcome does not have.
+- N6: "Confirm all 3" writes one combined sentence into each of the three lines, and it drops the
+  validation scheme's value.
+- N7: the banner "Your change to Your data reopened 2 questions in Who's in" stays while Who's in
+  reads done.
+- N8: in Results, a recorded card stays expanded with its record button.
+- N10: the methods list each single confirmation as its own near-identical sentence (six flag
+  lines).
+
+→ W1-W takes N1–N10.
