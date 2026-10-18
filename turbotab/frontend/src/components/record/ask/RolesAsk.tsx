@@ -3,7 +3,8 @@
  * be, editable per column. Predictors first (exposures, energy, covariates); the roles that
  * stay out of the models after. A nested nutrient shows its parent (`sugar` ⊂ `carb`), a flag
  * the column it marks. Pressing a column opens its role menu in place, with the reason for
- * the proposal; every edit previews on the stage before anything is recorded.
+ * the proposal, under prediction in the goal's words (`roleEvidence`, as the engine quotes it);
+ * every edit previews on the stage before anything is recorded.
  */
 import { useId, useMemo, useState } from "react";
 import type { Role, RolesArtifact } from "../../../api/m1-types";
@@ -12,7 +13,7 @@ import type { Decision } from "../../../api/schema";
 import { useStageFocus, type StageFocus } from "../../../state/focus";
 import { buildColumnIndex, filterColumns } from "../../../util/filterColumns";
 import { cx } from "../../../util/format";
-import { predictorsSentence, servedGroups } from "../../../quest/cards/roles/roles";
+import { predictorsSentence, roleEvidence, servedGroups } from "../../../quest/cards/roles/roles";
 import { V } from "../../Prose";
 import { Question } from "../Question";
 import { Taught } from "../teach";
@@ -324,7 +325,7 @@ export function RolesAsk({
                   <p className={c.menuWhy}>
                     <V>{col.column}</V> was read as{" "}
                     <strong>{roleLabel(col.proposed).toLowerCase()}</strong>, {col.confidence}{" "}
-                    confidence: <Taught text={col.reason} />
+                    confidence: <Taught text={roleEvidence(col.reason, purpose)} />
                     {col.unit ? (
                       <>
                         {" "}

@@ -688,10 +688,13 @@ def test_the_predict_roles_card_fits_the_teaching_budgets():
 # (``readings.predictors_sentence``), and its claim that a group changes how some steps treat a
 # column is read from the code on a frame built below.
 
-# The steps the rounds named, and the QC chain's words: none is said under Predict. "Screening" is
-# the sentence's own generic word, so the screen is matched as "screen" or "screened" alone.
-STEP_NAMES = re.compile(r"energy-aware|\bscreen(ed)?\b|normaliz|\bbatch|combat|\bqc\b|pooled|"
-                        r"assay-process|\bfill|-filled", re.I)
+# The steps the rounds named, the QC chain's words, and the energy model's two steps, which never
+# run under Predict (the W1-V verifier's P2: the drawer named them): none is said under Predict.
+# "Screening" is the sentence's own generic word, so the screen is matched as "screen" or
+# "screened" alone; "pooled" is matched as the QC chain's "pooled QC", since pooled cycles are a
+# survey's, which no step on a predictor role reads.
+STEP_NAMES = re.compile(r"energy-aware|\bscreen(ed)?\b|normaliz|\bbatch|combat|\bqc\b|"
+                        r"pooled[- ]qc|assay-process|\bfill|-filled|energy adjust|substitut", re.I)
 # What the four rounds said (the brief's words, the base's served words): the guard fires on each.
 FOUR_ROUNDS = (
     "The omics screen, normalization and batch correction skip them.",
@@ -712,6 +715,18 @@ PLAIN = {"carb_g": "exposure", "age": "covariate"}
 
 def _names_a_step(text: str) -> bool:
     return STEP_NAMES.search(text) is not None
+
+
+def _served_words(entry: object) -> list[str]:
+    """Every string a teaching entry serves, at any depth: its question, one-liner, why and
+    consumer, each option and term, and each drawer section's heading, body and evidence."""
+    if isinstance(entry, str):
+        return [entry]
+    if isinstance(entry, dict):
+        return [w for v in entry.values() for w in _served_words(v)]
+    if isinstance(entry, list):
+        return [w for v in entry for w in _served_words(v)]
+    return []
 
 
 def _predict_presses(lenses: tuple[str, ...]) -> list[str]:
@@ -762,6 +777,34 @@ def test_under_predict_no_roles_card_option_term_group_or_press_names_a_step():
                         assert not _names_a_step(" ".join((group["one"], *group["head"]))), group
         for said in _predict_presses(lenses):
             assert not _names_a_step(said), (lenses, said)
+
+
+def test_under_predict_the_whole_roles_entry_names_no_step_its_drawer_and_why_included():
+    """The W1-V verifier's P2: the Predict roles entry inherited the Estimate drawer's "Units decide
+    everything downstream", which says every implausibility screen, energy adjustment and
+    substitution is a function of total energy; neither of the last two runs under Predict
+    (BEATS_PREDICT §9 ruling 5), and the screen is a step on a role. The guard reads every string
+    the served Predict entry holds, so it reaches the drawer and the why: it fires on that sentence
+    in the Estimate entry, which keeps its words, and is silent on the whole Predict entry. Pooled
+    survey cycles are no QC chain, so a section on them is not a step."""
+    from turbotab.core.teaching.content import ROLES as TODAY
+
+    estimate = _roles_entry("inference")
+    assert estimate == TODAY
+    units = next(s for s in estimate["drawer"]["sections"]
+                 if s["heading"] == "Units decide everything downstream")
+    assert _names_a_step(units["body"])
+    assert any(_names_a_step(w) for w in _served_words(estimate))
+    assert not _names_a_step("Pooled cycles")
+    entry = _roles_entry("prediction")
+    words = _served_words(entry)
+    assert units["body"] not in words
+    assert any(entry["drawer"]["sections"]) and entry["why"] in words
+    for said in words:
+        assert not _names_a_step(said), said
+    for said in words:
+        for step in ("energy adjustment", "substitution", "implausib"):
+            assert step not in said.lower(), (step, said)
 
 
 def test_under_predict_the_roles_card_says_one_sentence_for_every_project():

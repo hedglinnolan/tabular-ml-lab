@@ -24,9 +24,11 @@ import {
   ownRefusal,
   predictorsSentence,
   readingBlocks,
+  roleEvidence,
   roleItem,
   ROLE_LINE_ID,
   servedGroups,
+  STUDY_CLAUSES,
   waitingClause,
   waitingPredictorColumns,
   waitingPredictors,
@@ -284,6 +286,22 @@ describe("the Predict roles card's one sentence (the ruling of 2026-10-18)", () 
     expect(predictorsSentence(12, "12")).toBe(many.replace("{n}", "12"));
     expect(predictorsSentence(1_234, "1,234")).toBe(many.replace("{n}", "1,234"));
     expect(predictorsSentence(1, "1")).toBe(one);
+  });
+
+  it("quotes the roles stage's reasons under Predict with the engine's clauses (the W1-V verifier's P1)", () => {
+    // the card's clauses are the engine's (core/readings.py `_STUDY_CLAUSES`, written to the fixture)
+    expect(STUDY_CLAUSES).toEqual(FIXTURE.under.prediction.study_clauses);
+    // the stage's two covariate defaults and a characteristic's reason, said under Predict
+    const reasons = {
+      "Not a nutrient or feature: read as a covariate until you say otherwise.":
+        "Not a nutrient or feature: read as a predictor until you say otherwise.",
+      "A category that describes the row: read as a covariate for now.": "A category that describes the row: read as a predictor for now.",
+      "A person's characteristic, usually adjusted for rather than studied.": "A person's characteristic.",
+    };
+    for (const [reason, said] of Object.entries(reasons)) {
+      expect(roleEvidence(reason, "prediction")).toBe(said);
+      for (const purpose of ["inference", null, undefined]) expect(roleEvidence(reason, purpose)).toBe(reason);
+    }
   });
 
   it("reads served groups that name no step, the same under fill and no fill", () => {

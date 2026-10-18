@@ -166,15 +166,19 @@ export function AskCard({
   // The consumer's own ways forward: what is not a confirmation (a repair, a unit and its days).
   const own = card.exits.filter((e) => e.decision && !isConfirmation(e.decision));
   const answer = (at: string) => (answerAt?.key === at ? answerAt.node : null);
+  // The heading counts the columns its lines list, not the lines, as core/readings.py `ask_text`
+  // does: one line of one column asks about "this column", one line of a group of six about "these
+  // columns".
+  const oneColumn = lines.reduce((n, grp) => n + grp.columns.length, 0) === 1;
 
   return (
     <section className={g.ask} aria-labelledby={titleId} data-testid="ask-card">
       <div className={g.askHead}>
         <h3 id={titleId} className={g.askTitle}>
-          {lines.length === 1 ? "Tell me about this column" : "Tell me about these columns"}
+          {oneColumn ? "Tell me about this column" : "Tell me about these columns"}
         </h3>
         <span className={g.askConsumer}>
-          <Prose text={card.consumer} /> reads {lines.length === 1 ? "it" : "them"}
+          <Prose text={card.consumer} /> reads {oneColumn ? "it" : "them"}
         </span>
       </div>
       <ol className={g.askList}>

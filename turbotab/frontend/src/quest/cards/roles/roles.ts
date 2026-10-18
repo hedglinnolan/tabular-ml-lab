@@ -48,6 +48,30 @@ export function predictorsSentence(n: number, count: string): string {
     : `All ${count} enter the models as predictors; a column's group changes only how some preparation and screening steps treat it.`;
 }
 
+/** The roles stage's clauses in Estimate's words, each with its words under Predict (core/readings.py
+ *  `_STUDY_CLAUSES`, which the engine's `role_evidence` applies wherever it quotes a reason; the
+ *  roles fixture holds the engine's, and roles.test.tsx pins these to them): a nutrient is no longer
+ *  "what you study", a characteristic no longer "adjusted for rather than studied", and a column
+ *  read "as a covariate" is read as a predictor. */
+export const STUDY_CLAUSES: readonly (readonly [string, string])[] = [
+  [": what you study;", ";"],
+  [", usually adjusted for rather than studied.", "."],
+  [", adjusted for rather than studied.", "."],
+  [": what you study under the omics lens.", " under the omics lens."],
+  [": what you study under the dietary lens.", ", under the dietary lens."],
+  [": what you study, not", ", not"],
+  ["read as what you study", "read as a predictor"],
+  ["read as a covariate", "read as a predictor"],
+];
+
+/** The roles stage's `reason` for a column's proposal, said under the project's goal: under
+ *  prediction in Predict's words (`STUDY_CLAUSES`, in order, as core/readings.py `role_evidence`
+ *  replaces them), else as the stage said it. The served artifact holds the stage's own words. */
+export function roleEvidence(reason: string, purpose: string | null | undefined): string {
+  if (purpose !== "prediction") return reason;
+  return STUDY_CLAUSES.reduce((said, [estimate, predict]) => said.replaceAll(estimate, predict), reason);
+}
+
 /** Whether a role enters the models as a predictor (core/readings.py PREDICTOR_ROLES). */
 export function isPredictorRole(role: string): boolean {
   return (PREDICTOR_ROLES as readonly string[]).includes(role as Role);

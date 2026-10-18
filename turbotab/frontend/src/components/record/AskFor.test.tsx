@@ -292,9 +292,9 @@ describe("the roles card, by the project's goal (finding 3c)", () => {
   /** NHANES glucose under Predict through the dietary lens, as captured: a regression outcome
    *  (its target_info), total energy `kcal` among the proposed roles. */
   const nhanes = openViewIn("nhanes-prediction", "roles");
-  /** The steps the four rounds named, and the QC chain's words (core/tests/
-   *  test_estimate_words_under_predict.py STEP_NAMES): none is said under Predict. */
-  const STEP_NAMES = /energy-aware|\bscreen(ed)?\b|normaliz|\bbatch|combat|\bqc\b|pooled|assay-process|\bfill|-filled/i;
+  /** The steps the four rounds named, the QC chain's words and the energy model's two steps (core/
+   *  tests/test_estimate_words_under_predict.py STEP_NAMES): none is said under Predict. */
+  const STEP_NAMES = /energy-aware|\bscreen(ed)?\b|normaliz|\bbatch|combat|\bqc\b|pooled[- ]qc|assay-process|\bfill|-filled|energy adjust|substitut/i;
   const OPTIONS = ROLE_FIXTURE.under.prediction.options as Record<string, { label: string; consequence: string }>;
   const PREDICT = SHARED.teaching.map((e) =>
     e.key === "roles"
@@ -392,6 +392,54 @@ describe("the roles card, by the project's goal (finding 3c)", () => {
     expect(card.getByTestId("record-roles").getAttribute("title")).toBe(
       "Records every column's role. Nutrients, total energy and characteristics enter the models as predictors.",
     );
+  });
+
+  /**
+   * The W1-V verifier's P1: a column's menu quotes the roles stage's reason for its proposal. The
+   * stage says it in Estimate's words ("read as a covariate until you say otherwise", "usually
+   * adjusted for rather than studied"); under Predict the menu quotes it in the goal's words, as
+   * core/readings.py `role_evidence` does everywhere else, and under Estimate word for word. Each
+   * reason the capture holds is read on its first column's menu; the Predict quotes of the two
+   * reasons asked about are written out here.
+   */
+  it("quotes each column's reason under Predict in the goal's words, and under Estimate as the stage said it (P1)", () => {
+    const { view, f: nf } = nhanes;
+    const art = artifactAt(nf, "roles", view.stages.roles!.key) as { columns: { column: string; reason: string }[] };
+    expect(view.state.purpose).toBe("prediction");
+    // each reason once, on its first column, and the two columns asked about
+    const first = new Map<string, string>();
+    for (const { column, reason } of art.columns) if (!first.has(reason)) first.set(reason, column);
+    const asked = [...new Set([...first.values(), "hdl", "age"])];
+    const reasonOf = new Map(art.columns.map((c) => [c.column, c.reason]));
+    expect(first.size).toBeGreaterThan(4);
+    /** Each asked column's menu text: its chip pressed open (a press on another chip moves the menu). */
+    const menus = (card: ReturnType<typeof renderRoles>) => {
+      for (const more of card.queryAllByRole("button", { name: /^\d+ more$/ })) fireEvent.click(more);
+      const out = new Map<string, string>();
+      for (const column of asked) {
+        fireEvent.click(card.getByTestId(`role-chip-${column}`));
+        out.set(column, card.getByTestId("role-menu").querySelector("p")!.textContent ?? "");
+      }
+      return out;
+    };
+    const predict = menus(renderRoles(view, nf));
+    expect(predict.size).toBe(asked.length);
+    expect(predict.get("hdl")).toBe(
+      "hdl was read as characteristic, low confidence: Not a nutrient or feature: read as a predictor until you say otherwise.",
+    );
+    expect(predict.get("age")).toBe("age was read as characteristic, high confidence: A person's characteristic.");
+    for (const [column, text] of predict) {
+      for (const word of ["covariate", "studied", "adjusted for", "what you study"]) {
+        expect(text.toLowerCase(), column).not.toContain(word);
+      }
+    }
+    // the other way: under Estimate each reason is the stage's, word for word
+    const estimate = menus(renderRoles(withState(view, { purpose: "inference" }), nf));
+    for (const column of asked) {
+      expect(estimate.get(column), column).toContain(`confidence: ${reasonOf.get(column)!.replace(/`/g, "")}`);
+    }
+    expect(estimate.get("hdl")).toContain("read as a covariate until you say otherwise");
+    expect(estimate.get("age")).toContain("usually adjusted for rather than studied");
   });
 
   it("names no step on the card or a role's button, whatever the task and the roles (the ruling of 2026-10-18)", () => {

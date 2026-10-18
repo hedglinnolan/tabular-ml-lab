@@ -691,6 +691,13 @@ TEMPORAL = {
     "evidence": None,
 }
 
+_ROLE_UNITS = section(
+    "Units decide everything downstream",
+    "1 kcal = 4.184 kJ, and a column ending `_pct_kcal` is a share of energy, not an amount. Every "
+    "implausibility screen, energy adjustment and substitution is a function of total energy, so a "
+    "unit error there reaches every result.",
+    "SETTLED", NUT01)
+
 ROLES = {
     "key": "roles",
     "title": "What each column is",
@@ -750,11 +757,7 @@ ROLES = {
                 "four-year weight, doubled, before the division (NHANES Analytic Guidelines "
                 "2011–2016 §3.1.3–3.1.4). Confirm the same dietary method applies across cycles.",
                 "SETTLED", NUT01),
-        section("Units decide everything downstream",
-                "1 kcal = 4.184 kJ, and a column ending `_pct_kcal` is a share of energy, not an "
-                "amount. Every implausibility screen, energy adjustment and substitution is a "
-                "function of total energy, so a unit error there reaches every result.",
-                "SETTLED", NUT01),
+        _ROLE_UNITS,
     ]},
     "evidence": None,
 }
@@ -772,8 +775,12 @@ ROLES = {
 # ``models.pipeline`` builds no fill. So under the ruling of 2026-10-18 no option or term names a
 # step: each says what kind of column holds the role, and the card's one sentence says that a
 # column's group changes only how some preparation and screening steps treat it
-# (``readings.predictors_sentence``). ``tests/test_estimate_words_under_predict.py`` holds every
-# Predict word to naming no step.
+# (``readings.predictors_sentence``). The drawer and the why are the Estimate card's but for two
+# sentences that named steps (the W1-V verifier's P2): the units section says what the units are
+# and leaves out the screens, energy adjustment and substitution that read total energy (neither
+# of the last two runs under Predict), and a flag "marks which values were imputed" rather than
+# "describes how a value was filled". ``tests/test_estimate_words_under_predict.py`` holds every
+# word of the Predict entry to naming no step.
 _PREDICT_OPTIONS = {
     "exposure": option("exposure", "Predictor",
                        "A predictor, such as a nutrient intake or an assay feature."),
@@ -781,9 +788,17 @@ _PREDICT_OPTIONS = {
     "covariate": option("covariate", "Covariate",
                         "A predictor that describes the person, such as age or sex."),
 }
+_ROLE_UNITS_UNDER_PREDICT = section(
+    "Energy units",
+    "1 kcal = 4.184 kJ, and a column ending `_pct_kcal` is a share of energy, not an amount.",
+    "SETTLED", NUT01)
 ROLES_UNDER_PREDICT = {
     **ROLES,
     "one_liner": "Three roles enter the models as predictors; every other role stays out of them.",
+    "why": "An identifier names a person and cannot generalize. Survey weights and design columns "
+           "describe how people were sampled, and a flag such as `imputed_weight` marks which "
+           "values were imputed. None of them measures the participant, so each stays out of the "
+           "predictors while the record keeps it.",
     "consumer": "The participant flow, the split's grouping and the model matrix read it.",
     "options": [_PREDICT_OPTIONS.get(o["value"], o) for o in ROLES["options"]],
     "terms": [
@@ -792,6 +807,8 @@ ROLES_UNDER_PREDICT = {
         term("covariate", "A predictor that describes the person, such as age or sex."),
         *(t for t in ROLES["terms"] if t["term"] == "identifier"),
     ],
+    "drawer": {"sections": [_ROLE_UNITS_UNDER_PREDICT if s is _ROLE_UNITS else s
+                            for s in ROLES["drawer"]["sections"]]},
 }
 
 SURVEY = {

@@ -6,7 +6,7 @@
  * nothing else; a line the consumer answers by its own decision (total
  * energy's unit and days) is offered only as the server's exit. And its words keep the budgets.
  */
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { AskCard as Card } from "../../../api/m3-types";
 import type { Decision } from "../../../api/schema";
 import { viewsOf, type M3Fixture } from "../../../mocks/m3";
@@ -174,6 +174,26 @@ describe("the ask card", () => {
     it("offers no block where one line besides the roles is left", () => {
       renderCard({ ...CARD, groups: [role(["bp_sys"], "covariate"), role(FLAGS, "flag"), code("hdl")] });
       expect(screen.queryByTestId("ask-confirm-all")).toBeNull();
+    });
+
+    /** The W1-V verifier's P3: the heading counts the columns its lines list, as the engine's ask
+     *  text does (core/readings.py `ask_text`), so one line of a group of six asks about "these
+     *  columns", and a line of one column about "this column". */
+    it("heads one line of several columns 'these columns', and a lone column 'this column'", () => {
+      const heading = () => [
+        screen.getByRole("heading", { level: 3 }).textContent,
+        screen.getByTestId("ask-card").querySelector('[class*="askConsumer"]')!.textContent,
+      ];
+      const one = renderCard({ ...CARD, groups: [role(FLAGS, "flag")] }, false);
+      expect(screen.getAllByTestId("ask-line")).toHaveLength(1);
+      expect(heading()).toEqual(["Tell me about these columns", "The fit reads them"]);
+      cleanup();
+      renderCard({ ...CARD, groups: [role(["bp_sys"], "covariate")] }, false);
+      expect(heading()).toEqual(["Tell me about this column", "The fit reads it"]);
+      cleanup();
+      renderCard({ ...CARD, groups: [role(["bp_sys"], "covariate"), code("hdl")] }, false);
+      expect(heading()).toEqual(["Tell me about these columns", "The fit reads them"]);
+      expect(one).not.toHaveBeenCalled();
     });
   });
 
