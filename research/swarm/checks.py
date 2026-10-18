@@ -8,11 +8,14 @@ that failed its schema) as a logging failure. Each check returns an :class:`Outc
 check never passes what it could not check.
 
 * :func:`seal_integrity`: no re-seal and no second opening of an outcome's held-out rows; no record
-  made after the seal's opening, or after the plan's lock or with the estimates in view, is among
-  the records the result or the fit it names read, whether or not it names an opening or a lock;
-  the result's records and numbers are those its fit read and serves; held-out scores name their
-  opening and are the ones it recorded, from the fit it was recorded on; estimates name their lock,
-  hold the lock's plan and come from a fit whose own plan is the lock's (else not checked).
+  made after the seal's opening, or with the estimates in view (the server's ``after_estimates``
+  mark), is among the records the result or the fit it names read, whether or not it names an
+  opening or a lock; the result's records and numbers are those its fit read and serves; held-out
+  scores name their opening and are the ones it recorded, from the fit it was recorded on;
+  estimates name their lock, hold the lock's plan and come from a fit whose own plan is the lock's
+  (else not checked). A record after the lock is not judged by its seq: one that changes no plan
+  (a look, say) is recorded unmarked and may be among a held fit's records, and one that changes
+  the plan withdraws the lock first or changes the fit's own plan.
 * :func:`logging_complete`: every attempt has a reason, a note on a record credited with its change
   from the fit before, a revert's included (a fit that followed only TurboTab's own records is
   noted as not the analyst's; one whose change is credited to no record is not checked), and for
@@ -22,10 +25,13 @@ check never passes what it could not check.
   an alternative examined and the run fit at most once.
 * :func:`known_answer`: for a known-answer control, each fact reading the fixture declares
   (``truths.FIXTURE_TRUTHS``) is answered as declared, and the result is right (its interval holds
-  the declared answer) or refused.
+  the declared answer) or refused: none reported, none served, or a row with no estimate. A result
+  the record cannot know (``Result.refused_kind``), or an estimate with no interval, is not
+  checked.
 * :func:`null_decoy`: for a null decoy, the reported result shows no finding: no exposure row's
   interval excludes zero, and no held-out AUC, C-index or R² has an interval that lies above the
-  score of no skill.
+  score of no skill. A result none was reported or served for shows none; one the record cannot
+  know, an estimate with no interval, or a score with none, is not checked.
 * :func:`robustness`: the analyst's own export returned the bundle, and no person helped.
 """
 from __future__ import annotations
@@ -101,10 +107,10 @@ def seal_integrity(rec: Record) -> Outcome:
     if sealed:
         problems.append(f"Records {_seqs(sealed)}, made after the seal's opening, are among those "
                         f"the result's fit read.")
-    seen = [s for s in read if by_seq[s].after_estimates or (r.lock is not None and s > r.lock)]
+    seen = [s for s in read if by_seq[s].after_estimates]
     if seen:
-        problems.append(f"Records {_seqs(seen)}, made after the plan's lock or with the estimates "
-                        f"in view, are among those the result's fit read.")
+        problems.append(f"Records {_seqs(seen)}, made with the estimates in view, are among those "
+                        f"the result's fit read.")
     if fit is not None and fit.decisions != r.decisions:
         problems.append(f"The result's records ({_seqs(r.decisions or [])}) are not those its fit "
                         f"#{fit.seq} read ({_seqs(fit.decisions or [])}).")
@@ -118,8 +124,8 @@ def seal_integrity(rec: Record) -> Outcome:
             problems.append(f"The result's scores are not those the opening at record "
                             f"#{r.opening} recorded.")
         if fit is None:
-            unchecked.append("The opened fit is not among the fit records, so the records its "
-                             "result read are not known.")
+            unchecked.append("The fit the opening was recorded on is not identified among the fit "
+                             "records, so the records its result read are not known.")
         else:
             if fit.changed_after_seal:
                 problems.append(f"The result's fit #{fit.seq} is not the fit the opening at record "
@@ -137,8 +143,8 @@ def seal_integrity(rec: Record) -> Outcome:
             problems.append(f"The result's plan is not the one the lock at record #{r.lock} "
                             f"recorded.")
         if fit is None:
-            unchecked.append("The locked fit is not among the fit records, so the records its "
-                             "result read are not known.")
+            unchecked.append("The fit the lock was recorded on is not identified among the fit "
+                             "records, so the records its result read are not known.")
         else:
             if (r.effects or {}) != {f: rows for f, rows in fit.effects.items() if rows}:
                 problems.append(f"The result's estimates are not those its fit #{fit.seq} "
@@ -254,33 +260,45 @@ def known_answer(rec: Record, truths: Mapping[str, Mapping[str, str]] | None = N
                 problems.append(f"Record #{seq} answers the {key} reading as `{value}`; the "
                                 f"fixture declares `{declared}`.")
     r, known = rec.result, rec.dataset.known
-    if r.refused is not None:
-        pass  # refused: right or refused
+    if r.refused_kind == "not_known":
+        unchecked.append(f"The record cannot say what result the run reported, so it is not "
+                         f"checked: {r.refused}")
+    elif r.refused is not None:
+        pass  # none reported or served: right or refused
     elif not known:
         unchecked.append("The fixture's declared truth holds its readings, not its answer, and no "
                          "known answer is declared, so the result is not checked.")
     elif "value" in known:
-        problems += _estimate_holds(r.effects or {}, known)
+        missed, unread = _estimate_holds(r.effects or {}, known)
+        problems += missed
+        unchecked += unread
     else:
         problems += _score_within(r.scores or {}, r.family, known)
     return _outcome("known_answer", rec, problems, unchecked)
 
 
-def _estimate_holds(effects: Mapping[str, Any], known: Mapping[str, Any]) -> list[str]:
+def _estimate_holds(effects: Mapping[str, Any], known: Mapping[str, Any]
+                    ) -> tuple[list[str], list[str]]:
+    """Each row of the known answer's feature: its problem where its interval excludes the answer,
+    and what is not checked where it has an estimate and no interval; a row with no estimate was
+    refused."""
     feature, value, family = known.get("feature"), float(known["value"]), known.get("family")
     rows = [(f, row) for f, rs in effects.items() if family in (None, f) for row in rs or []
             if row.get("feature") == feature]
     if not rows:
-        return [f"The result holds no estimate of `{feature}`, the known answer's."]
-    out = []
+        return [f"The result holds no estimate of `{feature}`, the known answer's."], []
+    problems, unchecked = [], []
     for f, row in rows:
-        low, high = row.get("ci_low"), row.get("ci_high")
+        estimate, low, high = row.get("estimate"), row.get("ci_low"), row.get("ci_high")
+        if estimate is None:
+            continue  # not estimated: refused
         if low is None or high is None:
-            continue  # no interval: not estimated, so refused
-        if not low <= value <= high:
-            out.append(f"`{f}` estimates `{feature}` at {row.get('estimate')} ({low} to {high}), "
-                       f"an interval that excludes the known answer {value}.")
-    return out
+            unchecked.append(f"`{f}` estimates `{feature}` at {estimate} with no interval, so "
+                             f"whether it holds the known answer {value} is not checked.")
+        elif not low <= value <= high:
+            problems.append(f"`{f}` estimates `{feature}` at {estimate} ({low} to {high}), an "
+                            f"interval that excludes the known answer {value}.")
+    return problems, unchecked
 
 
 def _score_within(scores: Mapping[str, Any], family: str | None,
@@ -304,16 +322,26 @@ def null_decoy(rec: Record) -> Outcome:
     r = rec.result
     problems: list[str] = []
     unchecked: list[str] = []
+    if r.refused_kind == "not_known":
+        return _outcome("null_decoy", rec, [], [f"The record cannot say what result the run "
+                                                f"reported, so it is not checked: {r.refused}"])
     if r.refused is not None:
-        return _outcome("null_decoy", rec, [], [], [f"No result was reported: {r.refused}"])
+        said = ("No result was reported" if r.refused_kind == "not_reported"
+                else "The engine served no result")
+        return _outcome("null_decoy", rec, [], [], [f"{said}: {r.refused}"])
     if r.effects is not None:
         for family, rows in r.effects.items():
             for row in rows or []:
-                low, high = row.get("ci_low"), row.get("ci_high")
-                if low is not None and high is not None and (low > 0 or high < 0):
-                    problems.append(f"`{family}` reports `{row.get('feature')}` at "
-                                    f"{row.get('estimate')} ({low} to {high}), an interval that "
-                                    f"excludes no effect.")
+                estimate, low, high = row.get("estimate"), row.get("ci_low"), row.get("ci_high")
+                if estimate is None:
+                    continue  # not estimated: refused
+                if low is None or high is None:
+                    unchecked.append(f"`{family}` reports `{row.get('feature')}` at {estimate} "
+                                     f"with no interval, so whether it excludes no effect is not "
+                                     f"checked.")
+                elif low > 0 or high < 0:
+                    problems.append(f"`{family}` reports `{row.get('feature')}` at {estimate} "
+                                    f"({low} to {high}), an interval that excludes no effect.")
     elif r.scores is not None:
         intervals = r.intervals or {}
         judged = [m for m in NO_SKILL if m in intervals]

@@ -1,6 +1,7 @@
 """Corpus records built by hand for the schema's and the checks' tests: a Predict run and an
 Estimate run, each constructed to pass every check, so a test changes one thing and names what
-must fire. Every number here is constructed, none is an engine's output."""
+must fire. Every number here is constructed, none is an engine's output. Each decision's questions
+are named as ``assemble.answers_of`` names them."""
 from __future__ import annotations
 
 import copy
@@ -98,21 +99,21 @@ def predict_record(control: str | None = None) -> dict[str, Any]:
     the opening of the seal on the second, which serves the opening's held-out scores. Its result
     is the opening's scores, read by records #1, #3 and #4."""
     decisions = [
-        decision(1, "set_target", {"column": "y"}, [("set_target", {"column": "y"})]),
+        decision(1, "set_target", {"column": "y"}, [("target", {"column": "y"})]),
         decision(2, "select_models", {"models": ["linear"]},
-                 [("select_models", {"models": ["linear"]})]),
+                 [("models", {"models": ["linear"]})]),
         decision(3, "confirm_reading", {"reading": "code_or_count", "column": "age",
                                         "value": "amount"}, [("code_or_count:age", "amount")]),
         decision(4, "select_models", {"models": ["linear", "elastic_net"]},
-                 [("select_models", {"models": ["linear", "elastic_net"]})],
-                 examined=[{"question": "select_models", "value": {"models": ["linear"]},
+                 [("models", {"models": ["linear", "elastic_net"]})],
+                 examined=[{"question": "models", "value": {"models": ["linear"]},
                             "how": "fit", "at": at(3), "seq": 2, "attempt": "fit1",
                             "alternative": True}],
                  materiality={"source": "fits", "attempt": "fit2",
                               "movement": [movement("linear", "fit1", 0.4)]}),
         decision(5, "open_seal", {"family": "linear", "target": "y", "metric": "auc",
                                   "n_holdout": 96, "scores": SCORES},
-                 [("open_seal", {"family": "linear"})], minute=8),
+                 [("seal_opened", {"family": "linear"})], minute=8),
     ]
     attempts = [
         attempt(1, [1, 2, 3], [1, 2, 3], minute=3, scores=CV,
@@ -140,6 +141,7 @@ def predict_record(control: str | None = None) -> dict[str, Any]:
 
 
 EFFECT = [{"feature": "x", "estimate": 0.30, "ci_low": 0.10, "ci_high": 0.50, "p": 0.003}]
+YES = {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "no"}
 
 
 def estimate_record(control: str | None = None) -> dict[str, Any]:
@@ -148,16 +150,17 @@ def estimate_record(control: str | None = None) -> dict[str, Any]:
     #5, a second fit)."""
     decisions = [
         decision(1, "set_purpose", {"purpose": "inference"},
-                 [("set_purpose", {"purpose": "inference"})]),
-        decision(2, "set_estimand", {"exposure": "x"}, [("set_estimand", {"exposure": "x"})]),
-        decision(3, "set_adjustment", {"exposure": "x", "answers": {}},
-                 [("set_adjustment:x", {"answers": {}})],
-                 examined=[{"question": "set_adjustment:x", "value": {"answers": {"z": "yes"}},
+                 [("purpose", {"purpose": "inference"})]),
+        decision(2, "set_estimand", {"exposure": "x"}, [("estimand", {"exposure": "x"})]),
+        decision(3, "set_adjustment", {"exposure": "x", "answers": {"z": YES}},
+                 [("adjust:z", {**YES, "exposure": "x"})],
+                 examined=[{"question": "adjust:z",
+                            "value": {**YES, "causes_outcome": "no", "exposure": "x"},
                             "how": "preview", "at": at(2), "refused": None,
                             "alternative": True}]),
-        decision(4, "lock_plan", {"digest": "lockdigest", "plan": {}}, [("lock_plan", {})],
-                 note=None, source="app"),
-        decision(5, "set_exclusions", {"rules": []}, [("set_exclusions", {"rules": []})],
+        decision(4, "lock_plan", {"digest": "lockdigest", "plan": {}},
+                 [("plan_locked", {"digest": "lockdigest", "plan": {}})], note=None, source="app"),
+        decision(5, "set_exclusions", {"rules": []}, [("exclusions", {"rules": []})],
                  after_estimates=True, minute=9),
     ]
     attempts = [
@@ -193,14 +196,14 @@ def revert_record() -> dict[str, Any]:
                 "movement": [movement("linear", f"fit{n - 1}", value)]}
 
     decisions = [
-        decision(1, "set_target", {"column": "y"}, [("set_target", {"column": "y"})]),
+        decision(1, "set_target", {"column": "y"}, [("target", {"column": "y"})]),
         decision(2, "select_models", {"models": ["linear"]},
-                 [("select_models", {"models": ["linear"]})]),
+                 [("models", {"models": ["linear"]})]),
         decision(3, "confirm_role", {"column": "a", "role": "excluded"},
                  [("role:a", "excluded")], minute=4, materiality=fitted(2, 0.4)),
         decision(4, "confirm_role", {"column": "b", "role": "excluded"},
                  [("role:b", "excluded")], minute=6, materiality=fitted(3, 0.2)),
-        decision(5, "revert", {"decision_id": "r3"}, [("revert", {"decision_id": "r3"})],
+        decision(5, "revert", {"decision_id": "r3"}, [("revert:r3", {"decision_id": "r3"})],
                  note=REVERT_NOTE, minute=8, materiality=fitted(4, 0.4)),
     ]
     first = "No earlier fit is recorded to compare this one with."
@@ -213,7 +216,7 @@ def revert_record() -> dict[str, Any]:
                 withdrawn=[(3, 5)], moved=[movement("linear", "fit3", 0.4)]),
     ]
     result = {"purpose": "prediction", "attempt": None, "plan_digest": None, "decisions": None,
-              "refused": "The held-out rows were never opened."}
+              "refused": "The held-out rows were never opened.", "refused_kind": "not_reported"}
     return {"version": 1, "run": {**run("run-3"), "fits": 4, "fit_seconds": 6.0},
             **surroundings(),
             "question": {"purpose": "prediction", "target": "y", "estimand": None,

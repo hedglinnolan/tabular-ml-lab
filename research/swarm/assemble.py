@@ -24,18 +24,24 @@ reads the run directory the driver wrote and the server's own data, builds the r
 **The server's reads.** The analyst log comes first, since any later read can render a claim and
 each render is logged. Then the project with its decision log, the fit records, the results, which
 decisions mattered (waiting while that stage computes), the materiality ledger, the ingest, the
-outcome and the participant flow, and the export. Every number in the record is a served value;
-nothing is recomputed. These reads count what they serve as shown, as the stage routes do; the run
-is over, so no decision of the run is marked by them.
+outcome and the participant flow, and the export. A read of the project, the analyst log, the fit
+records, the results or the materiality ledger that fails leaves a failed run
+(:class:`RunUnreadable`), never a record that reads as if the route had served nothing. Every
+number in the record is a served value; nothing is recomputed. These reads count what they serve
+as shown, as the stage routes do; the run is over, so no decision of the run is marked by them.
 
 **A fit's change from the fit before** (:func:`change_of`) is read both ways from the records in
-force at each (``GET …/fits``' ``decisions``), against the decision log: each record that left
-force is credited to the revert that withdrew it (a revert of it recorded after the fit before's
-records and by this fit) or to a new record answering its question; each record that came into
-force is new, or is restored and credited to the revert that withdrew what had replaced it or that
-reverted its own revert. A record no record of the log is found to credit is kept with none. A
-revert is never in force, so a fit whose only change is a revert has that revert as its change and
-its note as its reason.
+force at each (``GET …/fits``' ``decisions``), against the decision log. A record that left or came
+into force is credited to the one revert of its chain (a revert of it, a revert of that revert, …)
+that this fit read and the fit before did not; a revert appended by the time a fit completed
+counts as read by it wherever reading it leaves the record as that fit holds it, and one before
+the fit's last record in force always does, since a fit's records are the longest prefix of the
+log that keys its fit. Where its chain accounts for no shift, a record that left force is credited
+to a new record answering its question, and one that came into force to the revert that withdrew
+what had replaced it; any other came into force new. A record no record of the log is found to
+credit, or that several may be (more than one revert of its chain, or a new answer beside a
+revert of its chain this fit may not have read), is kept with none. A revert is never in force,
+so a fit whose only change is a revert has that revert as its change and its note as its reason.
 
 **A decision's materiality** is the engine's (:class:`record.Materiality`):
 
@@ -43,22 +49,25 @@ its note as its reason.
   force in (a revert: the first whose change holds it), where the fit's whole change from the fit
   before is that one record; with others, or with a record credited to none, it moved together, so
   it has no measure of its own, and the why names them;
-* under Estimate, for an exclusion rule or an adjustment set in force when the curve was drawn,
-  ``GET …/mattered``' specifications that change its choices, beside the primary;
+* under Estimate, for the exclusion rules or covariates' adjustment answers a record holds in
+  force (each covariate's answer its own question, as the server keeps it), ``GET …/mattered``'
+  specifications that change the choices those answers recorded, beside the primary;
 * otherwise none, and why: the route's own words where it gave them.
 
 **The result** under Estimate is the fit the lock in force was recorded on: the one fit record
 whose own plan digest is the lock's. ``GET …/fits`` does not serve the fit key the lock was
 recorded on, so where no record, or more than one, holds the lock's plan, the result is refused
-and says so; it is never the last fit before the lock.
+and says so, as a result the record cannot know (``refused_kind``), never as one the run did not
+report; it is never the last fit before the lock.
 
-**Examined options.** A decision answers one or more questions (:func:`answers_of`). For each, an
-option is examined for the decision when it was previewed (the analyst log's previews) while the
-decision was being chosen or while it stood, after the question's previous answer and before its
-next (a preview followed by keeping the answer examined it too), or when it was an earlier answer
-in force in a fit that completed before the decision (SWARM_PLAN §3: reading a card does not
-count). It is an alternative when it is not the option chosen and, for a preview, the preview was
-not refused.
+**Examined options.** A decision answers one or more questions (:func:`answers_of`: each answer
+the server keeps apart is its own question, so a preview of another covariate's adjustment answer
+is not an option examined for this covariate's). For each, an option is examined for the decision
+when it was previewed (the analyst log's previews) while the decision was being chosen or while it
+stood, after the question's previous answer and before its next (a preview followed by keeping the
+answer examined it too), or when it was an earlier answer in force in a fit that completed before
+the decision (SWARM_PLAN §3: reading a card does not count). It is an alternative when it is not
+the option chosen and, for a preview, the preview was not refused.
 
 **Spend** (:func:`spend`): the transcript's assistant lines, once per message id. A message
 streams as several lines with one id, the same input counts and a growing output count, so each
@@ -92,18 +101,13 @@ DRIVER_FILE = "driver.json"
 COMMANDS_FILE = "commands.jsonl"
 META_KEYS = ("design", "analyst_model", "effort", "prompt_version", "transcript", "dataset", "help")
 
-# The fields that say which question a decision answers, by kind; any other kind answers one
-# question, its kind's. A reading is keyed as a fixture's declared truth keys it (``answers_of``).
-ADDRESS: dict[str, tuple[str, ...]] = {
-    "apply_repair": ("finding_id",), "defer_finding": ("finding_id",),
-    "dismiss_finding": ("finding_id",), "confirm_sweep": ("stage", "sweep"),
-    "respond_diagnostic": ("exposure", "check"), "set_exposure_form": ("column",),
-    "set_adjustment": ("exposure",), "set_causal": ("exposure",), "set_usual_intake": ("nutrient",),
-    "set_outcome_order": ("column",), "set_outcome_scale": ("column",),
-    "set_outcome_unit": ("column",), "join_files": ("file",), "import_codebook": ("codebook",),
-}
 # A repair of values below a detection limit answers that reading (``truths.answers``).
 BELOW_DETECTION = "below_detection__"
+# The kinds that dispose of a finding: each writes the finding's entry, under its id.
+FINDING_KINDS = ("apply_repair", "defer_finding", "dismiss_finding")
+# Where the server keeps each covariate's adjustment answer (``decisions.register_kind``), and the
+# question it answers, keyed as a fixture's declared truth keys it (``adjust:<column>``).
+ADJUSTMENT_SLOT = "adjustment"
 # The choices ``GET …/mattered`` varies, by the decision kind that recorded them (mattered v0).
 MATTERED_KINDS = ("set_exclusions", "set_adjustment")
 # The stage statuses after which ``GET …/mattered`` is waited for no longer.
@@ -118,6 +122,11 @@ NOT_VARIED = ("The curve of which decisions mattered varies the exclusion rules 
 WITHDRAWN = ("Withdrawn by a revert: the curve served is drawn for the plan in force now, so it "
              "does not vary this record's choices.")
 NO_SPEC = "The curve estimated no specification that changes this decision's choices:"
+NOT_HELD = "No answer this record gave is in force, so the curve served varies none of them."
+NOT_CHOSEN = ("The curve served varies no choice recorded by the answers this record holds in "
+              "force.")
+NOT_DEPARTED = ("The curve served has no specification that changes a choice recorded by the "
+                "answers this record holds in force.")
 
 
 def _records(seqs: Sequence[int]) -> str:
@@ -149,8 +158,7 @@ def _restored(fit_seq: int, by: int | None) -> str:
 
 def _unseen_revert(target: int | None) -> str:
     withdrawn = f"record #{target}" if target is not None else "the record it names"
-    return (f"No fit's change from the fit before it includes this revert's withdrawal of "
-            f"{withdrawn}.")
+    return f"No fit's change from the fit before it is credited to this revert of {withdrawn}."
 
 
 def no_locked_fit(lock: int) -> str:
@@ -164,9 +172,11 @@ def locked_twice(lock: int, ids: Sequence[str]) -> str:
             f"which one the lock was recorded on is not known from the fit records.")
 
 
-def _superseded(seq: int) -> str:
-    return (f"Superseded by record #{seq}: the curve served is drawn for the plan in force now, so "
-            f"it varies that record's choices, not this one's.")
+def _superseded(seqs: Sequence[int]) -> str:
+    those = "that record's" if len(seqs) == 1 else "those records'"
+    return (f"Superseded by {_records(seqs)}, which answered again each question this record "
+            f"answered: the curve served is drawn for the plan in force now, so it varies {those} "
+            f"choices, not this one's.")
 
 
 # ── the run directory ────────────────────────────────────────────────────────
@@ -292,12 +302,53 @@ def fetch(client: Any, pid: str, *, mattered_wait: float = 600.0, poll: float = 
 # ── what a decision answers ──────────────────────────────────────────────────
 
 
+class UnreadDecision(ValueError):
+    """A decision of a keyed kind that the engine's own models do not read, so where the server
+    keeps its answers is not known."""
+
+
+def _dumped(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    if isinstance(value, Mapping):
+        return {k: _dumped(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_dumped(v) for v in value]
+    return value
+
+
+def _question(slot: str, key: str | None) -> str:
+    """A server write's question: the slot, and the entry's key where the slot is keyed; a
+    covariate's adjustment answer as ``adjust:<column>``."""
+    if key is None:
+        return slot
+    return f"adjust:{key}" if slot == ADJUSTMENT_SLOT else f"{slot}:{key}"
+
+
 def answers_of(decision: Mapping[str, Any]) -> list[tuple[str, Any]]:
-    """The questions ``decision`` answers, each with its value: a reading as
-    ``<reading>:<column>`` (a role, a unit and its days, a code or an amount, …; a repair of values
-    below a detection limit as ``detection_limit:<column>``); any other decision as its kind and
-    the fields that say which question it answers (:data:`ADDRESS`), its value every other field."""
+    """The questions ``decision`` answers, each with its value.
+
+    * A reading as ``<reading>:<column>``, as a fixture's declared truth keys it: a role (by
+      ``confirm_role``, ``set_roles`` or a confirmation), a unit and its days, a code or an amount,
+      …; a disposition of a finding of values below a detection limit as
+      ``detection_limit:<column>``; a codebook's readings, and the codebook as
+      ``codebooks:<codebook>``.
+    * Any other decision as the server keeps its answers (``provenance._writes``: each slot it
+      writes, and the entry's key where the slot is keyed, so two answers to one entry are one
+      question and answers to two entries are two): an unkeyed slot by its name (``models``,
+      ``exclusions``, ``target``, …); each entry of a keyed one as ``<slot>:<key>`` (a finding's
+      disposition as ``findings:<finding id>``, a column's form as ``exposure_forms:<column>``,
+      a modifier as ``modifications:<modifier>``, …), a covariate's adjustment answer as
+      ``adjust:<column>``. Its value, for a keyed slot, is the entry the server keeps (so a
+      column's form is one value whichever kind answered it), else every field of the decision but
+      its kind.
+    * A revert as ``revert:<record id>``; a kind the server keeps nowhere, by its kind.
+
+    Raises :class:`UnreadDecision` for a decision of a keyed kind that does not read as one."""
+    from turbotab.core import decisions as D
+
     kind = str(decision.get("kind"))
+    rest = {k: v for k, v in decision.items() if k != "kind"}
     if kind == "confirm_reading":
         return [(f"{decision['reading']}:{decision['column']}", decision.get("value"))]
     if kind == "confirm_readings":
@@ -310,13 +361,32 @@ def answers_of(decision: Mapping[str, Any]) -> list[tuple[str, Any]]:
     if kind == "set_column_unit":
         return [(f"unit:{decision['column']}", decision.get("unit")),
                 (f"day_count:{decision['column']}", str(decision.get("days")))]
+    if kind == "import_codebook":
+        return [*((f"{i['reading']}:{i['column']}", i.get("value"))
+                  for i in decision.get("items") or []),
+                (f"codebooks:{decision.get('codebook')}",
+                 {k: v for k, v in rest.items() if k != "items"})]
     finding = str(decision.get("finding_id") or "")
-    if kind == "apply_repair" and finding.startswith(BELOW_DETECTION):
-        return [(f"detection_limit:{finding[len(BELOW_DETECTION):]}", decision.get("option"))]
-    address = ADDRESS.get(kind, ())
-    question = ":".join([kind, *(str(decision.get(f)) for f in address)])
-    value = {k: v for k, v in decision.items() if k != "kind" and k not in address}
-    return [(question, value)]
+    if kind in FINDING_KINDS and finding.startswith(BELOW_DETECTION):
+        value = decision.get("option") if kind == "apply_repair" else {
+            k: v for k, v in rest.items() if k != "finding_id"}
+        return [(f"detection_limit:{finding[len(BELOW_DETECTION):]}", value)]
+    if kind == "revert":
+        return [(f"revert:{decision.get('decision_id')}", rest)]
+    if kind in D._ENTRIES or kind in D._KEYS:
+        try:
+            model = D.parse_decision(dict(decision))
+        except ValidationError as exc:
+            first = exc.errors()[0]
+            where = ".".join(str(p) for p in first.get("loc") or ())
+            raise UnreadDecision(f"A `{kind}` decision does not read as one: `{where}`: "
+                                 f"{first.get('msg')}") from exc
+        if kind in D._ENTRIES:
+            return [(_question(slot, key), _dumped(value))
+                    for slot, key, value in D._ENTRIES[kind](model)]
+        slot = D._SLOT_FOR[kind](model) if kind in D._SLOT_FOR else D.SLOTS[kind]
+        return [(_question(slot, D._KEYS[kind](model)), _dumped(D._SLOT_VALUE[kind](model)))]
+    return [(D.SLOTS.get(kind, kind), rest)]
 
 
 def same_option(examined: Any, chosen: Any) -> bool:
@@ -356,6 +426,7 @@ def cancelled(records: Sequence[Mapping[str, Any]]) -> dict[str, str]:
 
 
 CHANGE = ("changed", "withdrawn", "reinstated")
+AMBIGUOUS = object()  # a shift several records made, which no one of them is credited with
 
 
 def change_of(before: Mapping[str, Any] | None, fit: Mapping[str, Any],
@@ -364,11 +435,20 @@ def change_of(before: Mapping[str, Any] | None, fit: Mapping[str, Any],
     (the module docstring; :class:`record.Attempt`'s ``changed``, ``withdrawn`` and
     ``reinstated``).
 
-    A record is taken as read by the fit before when it comes before that fit's last record in
-    force (``floor``) or was appended by the time that fit completed, and as appended between the
-    two fits when it comes after ``floor`` and was appended by the time this fit completed: a
-    fit's records are the log appended by its completion (``runs.appended_by``), less the newest
-    ones the engine had not read (``runs.keyed_prefix``)."""
+    A fit's records are the longest prefix of the log appended by its completion whose answers
+    key its fit (``runs.appended_by``, ``runs.keyed_prefix``), so a revert appended by the time the
+    fit before completed may have been read by it or not. Each record that left or came into force
+    has its chain of reverts (a revert of it, a revert of that revert, …), appended by this fit's
+    completion: each revert of the chain read flips it, so it is in force where an even number of
+    them are read. Of the chain's reverts appended by the time each fit completed, each fit read
+    the most that leave the record as that fit holds it (the prefix is the longest), and at least
+    those before its last record in force (the prefix reaches it). Where this fit read exactly one
+    revert of the chain more than the fit before, that revert is credited; where it read several,
+    or the chain branches, no one record is. Where the chain does not account for the shift (none
+    of it read since), a record that left force is credited to a new record that answers its
+    question (one that replaced it), and one that came into force to the revert that withdrew what
+    had replaced it. Beside a new answer to its question, a record's chain is credited with its
+    leaving only where this fit read every revert of the chain."""
     now = fit.get("decisions")
     if before is None:
         return {"changed": sorted(now) if now is not None else None, "withdrawn": [],
@@ -378,42 +458,73 @@ def change_of(before: Mapping[str, Any] | None, fit: Mapping[str, Any],
         return {"changed": None, "withdrawn": [], "reinstated": []}
     by_seq = {r["seq"]: r for r in records}
     seq_of = {r["id"]: r["seq"] for r in records}
-    reverts: dict[int, list[Mapping[str, Any]]] = {}  # each record's reverts, by its seq
-    for r in records:
-        if r["decision"].get("kind") == "revert" and r["decision"].get("decision_id") in seq_of:
-            reverts.setdefault(seq_of[r["decision"]["decision_id"]], []).append(r)
     floor = max(was, default=0)
     done = _at(fit["at"]) if fit.get("at") else None
     done_before = _at(before["at"]) if before.get("at") else None
 
-    def between(r: Mapping[str, Any]) -> bool:
-        return r["seq"] > floor and (done is None or _at(r["at"]) <= done)
+    def by(r: Mapping[str, Any], when: datetime | None) -> bool:
+        return when is None or _at(r["at"]) <= when
 
-    def held_before(r: Mapping[str, Any]) -> bool:
-        return r["seq"] < floor or (done_before is not None and _at(r["at"]) <= done_before)
+    reverts: dict[int, list[Mapping[str, Any]]] = {}  # each record's reverts, by its seq
+    for r in records:
+        if r["decision"].get("kind") == "revert" and r["decision"].get("decision_id") in seq_of \
+                and by(r, done):
+            reverts.setdefault(seq_of[r["decision"]["decision_id"]], []).append(r)
+
+    whole: set[int] = set()  # the records whose shift this fit's whole chain read accounts for
+
+    def chained(seq: int, in_force_before: bool, in_force_now: bool) -> Any:
+        """The revert of ``seq``'s chain this fit read and the fit before did not: its seq, None
+        where the chain accounts for no shift, :data:`AMBIGUOUS` where it accounts for one made
+        by several reverts, or where the chain branches."""
+        chain: list[Mapping[str, Any]] = []
+        link = seq
+        while reverts.get(link):
+            if len(reverts[link]) > 1:
+                return AMBIGUOUS
+            chain.append(reverts[link][0])
+            link = chain[-1]["seq"]
+
+        def read(appended: int, in_force: bool, last: int) -> int:
+            """How many reverts of the chain a fit read: the most of those ``appended`` that leave
+            the record as the fit holds it, and at least each one before ``last``, the fit's
+            last record in force (its prefix reaches it); -1 where none does."""
+            k = appended if (appended % 2 == 0) == in_force else appended - 1
+            return k if k >= sum(1 for r in chain if r["seq"] < last) else -1
+
+        k_before = read(sum(1 for r in chain if by(r, done_before)), in_force_before, floor)
+        k_now = read(len(chain), in_force_now, max(now, default=0))
+        if k_before < 0 or k_now <= k_before:
+            return None
+        if k_now == len(chain):
+            whole.add(seq)
+        return chain[k_now - 1]["seq"] if k_now == k_before + 1 else AMBIGUOUS
 
     def questions(seq: int) -> set[str]:
         return {q for q, _ in answers_of(by_seq[seq]["decision"])} if seq in by_seq else set()
 
     gone, came = sorted(set(was) - set(now)), sorted(set(now) - set(was))
-    withdrawn: dict[int, int | None] = {
-        x: next((r["seq"] for r in reverts.get(x, ()) if between(r)), None) for x in gone}
+    withdrawn: dict[int, Any] = {x: chained(x, True, False) for x in gone}
     reinstated: dict[int, int | None] = {}
     new: list[int] = []
     for s in came:
-        # Restored: the revert that withdrew what had replaced it, or that reverted its revert.
-        by = next((withdrawn[y] for y in gone if withdrawn[y] is not None and y > s
-                   and questions(y) & questions(s)), None)
-        if by is None:
-            by = next((r2["seq"] for r1 in reverts.get(s, ()) if held_before(r1)
-                       for r2 in reverts.get(r1["seq"], ()) if between(r2)), None)
-        if by is not None or s < floor:  # before ``floor``: in the fit before's prefix, not new
-            reinstated[s] = by
+        found = chained(s, False, True)
+        if found is None:  # restored by the revert that withdrew what had replaced it
+            found = next((withdrawn[y] for y in gone if isinstance(withdrawn[y], int)
+                          and y > s and questions(y) & questions(s)), None)
+        if found is not None or s < floor:  # before ``floor``: in the fit before's prefix
+            reinstated[s] = found if isinstance(found, int) else None
         else:
             new.append(s)
-    for x in gone:  # replaced by a new answer to its question
+    for x in gone:
+        # Replaced by a new answer to its question. A revert of the chain stays credited beside a
+        # new answer only where every revert of the chain was read (it withdrew the record, the
+        # answer or no answer); where it was taken as unread, the new answer may be why.
+        replaced = next((s for s in new if s > x and questions(x) & questions(s)), None)
         if withdrawn[x] is None:
-            withdrawn[x] = next((s for s in new if s > x and questions(x) & questions(s)), None)
+            withdrawn[x] = replaced
+        elif withdrawn[x] is AMBIGUOUS or (replaced is not None and x not in whole):
+            withdrawn[x] = None
     credited = {b for b in (*withdrawn.values(), *reinstated.values()) if b is not None}
     return {"changed": sorted(set(new) | credited),
             "withdrawn": [{"seq": x, "by": b} for x, b in withdrawn.items()],
@@ -550,21 +661,35 @@ def in_force_of(records: Sequence[Mapping[str, Any]]) -> dict[str, int]:
     return out
 
 
-def mattered_materiality(rec: Mapping[str, Any], mattered: Read,
-                         in_force: Mapping[str, int]) -> dict[str, Any] | None:
+def choice_question(key: str, kind: str) -> str | None:
+    """The question whose answer recorded a choice ``GET …/mattered`` varies: the exclusion rules
+    (``exclusion:<i>``) are the one ``exclusions`` answer; a covariate adjusted for or left out
+    (``adjusted:<column>``, ``left_out:<column>``) is that covariate's ``adjust:<column>``."""
+    if kind == "set_exclusions":
+        return "exclusions"
+    prefix, _, column = key.partition(":")
+    if kind == "set_adjustment" and prefix in ("adjusted", "left_out") and column:
+        return _question(ADJUSTMENT_SLOT, column)
+    return None
+
+
+def mattered_materiality(rec: Mapping[str, Any], mattered: Read, in_force: Mapping[str, int],
+                         withdrawn: Sequence[str] = ()) -> dict[str, Any] | None:
     """Under Estimate, ``GET …/mattered``' specifications for ``rec``'s choices: those of the
-    choices its kind recorded, where ``rec`` is the record in force now (the curve served is drawn
-    for the plan in force); the route's own refusal or status where it drew none; None for a
-    decision the curve does not vary."""
+    choices whose question ``rec`` is the answer in force for now (the curve served is drawn for
+    the plan in force; each covariate's answer is its own question, :func:`choice_question`); the
+    route's own refusal or status where it drew none; None for a decision the curve does not vary.
+    ``withdrawn``: the ids of the records a revert withdrew (:func:`cancelled`)."""
     kind = rec["decision"].get("kind")
     if kind not in MATTERED_KINDS:
         return None
-    question = answers_of(rec["decision"])[0][0]
-    current = in_force.get(question)
-    if current is None:
+    if rec["id"] in withdrawn:
         return {"source": None, "why": WITHDRAWN}
-    if current != rec["seq"]:
-        return {"source": None, "why": _superseded(current)}
+    questions = [q for q, _ in answers_of(rec["decision"])]
+    mine = {q for q in questions if in_force.get(q) == rec["seq"]}
+    if not mine:
+        later = sorted({in_force[q] for q in questions if in_force.get(q) is not None})
+        return {"source": None, "why": _superseded(later) if later else NOT_HELD}
     if not mattered.ok:
         return {"source": None,
                 "why": str(((mattered.body or {}).get("error") or {}).get("message")
@@ -575,7 +700,8 @@ def mattered_materiality(rec: Mapping[str, Any], mattered: Read,
         error = (mattered.body or {}).get("error")
         return {"source": None, "why": str(error or f"The curve's stage is {status}, with no "
                                                     f"curve drawn.")}
-    choices = [c for c in curve.get("choices") or [] if c.get("decision") == kind]
+    choices = [c for c in curve.get("choices") or [] if c.get("decision") == kind
+               and choice_question(str(c.get("key")), kind) in mine]
     primary = next((s for s in curve.get("specs") or [] if s.get("primary")), None)
     departures: list[dict[str, Any]] = []
     for c in choices:
@@ -588,7 +714,7 @@ def mattered_materiality(rec: Mapping[str, Any], mattered: Read,
                                "spec": entry if estimated else None,
                                "not_estimated": None if estimated else entry.get("reason")})
     if not departures:
-        return {"source": None, "why": NOT_VARIED}
+        return {"source": None, "why": NOT_CHOSEN if not choices else NOT_DEPARTED}
     if all(d["spec"] is None for d in departures):
         options = {c["key"]: {o["key"]: o.get("label") for o in c.get("options") or []}
                    for c in choices}
@@ -602,11 +728,12 @@ def decisions_of(records: Sequence[Mapping[str, Any]], previews: Sequence[Mappin
                  attempts: Sequence[Mapping[str, Any]], *, purpose: str | None,
                  mattered: Read) -> list[dict[str, Any]]:
     in_force = in_force_of(records)
+    withdrawn = set(cancelled(records))
     out: list[dict[str, Any]] = []
     for rec in records:
         materiality = fits_materiality(rec, attempts, records)
         if purpose == "inference" and materiality.get("source") is None:
-            drawn = mattered_materiality(rec, mattered, in_force)
+            drawn = mattered_materiality(rec, mattered, in_force, withdrawn)
             if drawn is not None:
                 materiality = drawn
         out.append({
@@ -636,13 +763,20 @@ def _last(records: Sequence[Mapping[str, Any]], kind: str) -> Mapping[str, Any] 
 
 def result_of(purpose: str | None, records: Sequence[Mapping[str, Any]],
               attempts: Sequence[Mapping[str, Any]], results: Read) -> dict[str, Any]:
-    """The reported result, once (:class:`record.Result`)."""
+    """The reported result, once (:class:`record.Result`), or why there is none, with its kind
+    (``refused_kind``): ``not_reported``, the run reported none (the seal never opened, the plan
+    never locked, no goal); ``not_served``, the engine served none (the opening recorded no
+    held-out scores and its fit serves none; the locked fit serves no exposure rows and withholds
+    none); ``not_known``, the record cannot say what the run reported (no fit record, or several,
+    holds the lock's plan; the route withholds the locked fit's rows now; the opening recorded no
+    scores while its fit serves held-out scores)."""
     base: dict[str, Any] = {"purpose": purpose, "attempt": None, "plan_digest": None,
                             "decisions": None}
     if purpose == "prediction":
         opening = next((r for r in records if r["decision"].get("kind") == "open_seal"), None)
         if opening is None:
-            return {**base, "refused": "The held-out rows were never opened."}
+            return {**base, "refused": "The held-out rows were never opened.",
+                    "refused_kind": "not_reported"}
         d = opening["decision"]
         target = d.get("target")
         opened = [a for a in attempts if a.get("target") == target and not a.get(
@@ -666,28 +800,36 @@ def result_of(purpose: str | None, records: Sequence[Mapping[str, Any]],
                                        or "The results serve no intervals for the opening's "
                                           "scores.")
         if not out["scores"]:
-            out["scores"] = None
-            out["refused"] = "The opening recorded no held-out scores."
+            # None recorded: none served at the opening, unless its fit serves held-out scores,
+            # which the record cannot say the run did not report.
+            served = fit is not None and any((fit.get("holdout") or {}).values())
+            out.update(scores=None, refused="The opening recorded no held-out scores.",
+                       refused_kind="not_known" if served else "not_served")
         return out
     if purpose == "inference":
         lock = _last(records, "lock_plan")
         if lock is None:
-            return {**base, "refused": "The plan was never locked, so no estimate was served."}
+            return {**base, "refused": "The plan was never locked, so no estimate was served.",
+                    "refused_kind": "not_reported"}
         digest = lock["decision"].get("digest")
         out = {**base, "lock": lock["seq"], "plan_digest": digest}
         held = [a for a in attempts if digest is not None and a.get("plan_digest") == digest]
         if not held:
-            return {**out, "refused": no_locked_fit(lock["seq"])}
+            return {**out, "refused": no_locked_fit(lock["seq"]),
+                    "refused_kind": "not_known"}
         if len(held) > 1:
-            return {**out, "refused": locked_twice(lock["seq"], [a["id"] for a in held])}
+            return {**out, "refused": locked_twice(lock["seq"], [a["id"] for a in held]),
+                    "refused_kind": "not_known"}
         fit = held[0]
         out.update(attempt=fit["id"], decisions=fit.get("decisions"))
         effects = {f: rows for f, rows in (fit.get("effects") or {}).items() if rows}
         if not effects:
-            return {**out, "refused": str(fit.get("withheld")
-                                          or "The locked fit serves no exposure rows.")}
+            # Withheld by the route's gate now: what was served during the run is not known.
+            withheld = fit.get("withheld")
+            return {**out, "refused": str(withheld or "The locked fit serves no exposure rows."),
+                    "refused_kind": "not_known" if withheld else "not_served"}
         return {**out, "effects": effects}
-    return {**base, "refused": "No goal was declared."}
+    return {**base, "refused": "No goal was declared.", "refused_kind": "not_reported"}
 
 
 # ── the rest of the record ───────────────────────────────────────────────────
@@ -738,8 +880,7 @@ def surfacings_of(commands: Sequence[Mapping[str, Any]], ledger: Read) -> dict[s
                          "exits": [str(e.get("label")) for e in error.get("exits") or []
                                    if isinstance(e, Mapping)],
                          "then": str(nxt.get("command")) if nxt is not None else None})
-    concerns = (ledger.body or {}).get("rows") or [] if ledger.ok else []
-    return {"refusals": refusals, "concerns": concerns}
+    return {"refusals": refusals, "concerns": (ledger.body or {}).get("rows") or []}
 
 
 def regime_of(state: Mapping[str, Any], stages: Mapping[str, Read]) -> dict[str, Any]:
@@ -818,22 +959,31 @@ def run_of(run: RunDir, meta: Mapping[str, Any], attempts: Sequence[Mapping[str,
 
 
 class RunUnreadable(RuntimeError):
-    """The server serves no record of this run: its project, or its analyst log (a server not in
-    analyst mode refuses it), cannot be read. The run is a failed run."""
+    """The server serves no full record of this run: a route that refuses only a project it does
+    not hold (the project, its fit records, its results, its materiality ledger), or its analyst
+    log (a server not in analyst mode refuses it), cannot be read, or a decision of the log does
+    not read as one (:class:`UnreadDecision`). The run is a failed run."""
+
+
+# The routes every record reads, which refuse only a project the server does not hold: a read of
+# any of them that fails leaves no record (``Served``'s field, and its name in the error).
+REQUIRED = (("project", "The project"), ("analyst_log", "The analyst log"),
+            ("fits", "The fit records"), ("results", "The results"),
+            ("ledger", "The materiality ledger"))
 
 
 def build(served: Served, run: RunDir, meta: Mapping[str, Any]) -> dict[str, Any]:
     """The record, as a dict, from what the server served and the run directory: nothing is
     validated here (:func:`write` validates)."""
-    if not served.project.ok:
-        raise RunUnreadable(f"The project could not be read: {served.project.body}")
-    if not served.analyst_log.ok:
-        raise RunUnreadable(f"The analyst log could not be read: {served.analyst_log.body}")
+    for field, name in REQUIRED:
+        read = getattr(served, field)
+        if not read.ok:
+            raise RunUnreadable(f"{name} could not be read (HTTP {read.status}): {read.body}")
     view = served.project.body
     records = sorted(view.get("decisions") or [], key=lambda r: r["seq"])
     state = view.get("state") or {}
     purpose = state.get("purpose")
-    fit_records = (served.fits.body or {}).get("records") or [] if served.fits.ok else []
+    fit_records = (served.fits.body or {}).get("records") or []
     attempts = attempts_of(fit_records, records)
     log = served.analyst_log.body
     export, provenance = export_of(served, run.commands)
@@ -909,7 +1059,7 @@ def assemble(run_dir: str | Path, *, meta: Mapping[str, Any] | None = None, clie
             own.close()
     try:
         raw: dict[str, Any] = build(served, run, meta_of(run, meta))
-    except RunUnreadable as exc:
+    except (RunUnreadable, UnreadDecision) as exc:
         raw = {"unreadable": str(exc)}
     return write(raw, run_id, corpus)
 

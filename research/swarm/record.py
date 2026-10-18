@@ -20,7 +20,8 @@ analyst's account of it, and validated here before it is kept. Its fields are SW
   that made the change: itself, the record that replaced it, or the revert that withdrew or
   restored it) and the reasons of the records credited;
 * ``result``: the reported result, once: the first opening's held-out scores under Predict, the
-  estimate of the fit whose plan is the lock's under Estimate, or why there is none;
+  estimate of the fit whose plan is the lock's under Estimate, or why there is none and of which
+  kind (none reported, none served, or none the record can know);
 * ``claims``: every registry claim rendered for the project, as the analyst log serves it;
 * ``surfacings``: each refusal the driver met and the command that followed it, and each concern
   the materiality ledger measured;
@@ -58,6 +59,13 @@ VERSION = 1
 # an estimate was shown under it); "before", neither.
 Phase = Literal["before", "after_estimates", "after_seal"]
 Control = Literal["known_answer", "null_decoy"]
+# Why a result has no numbers (``assemble.result_of``): "not_reported", the run reported none (the
+# seal never opened, the plan never locked, no goal); "not_served", the engine served none (the
+# opening recorded no held-out scores and its fit serves none, or the locked fit serves no exposure
+# rows and withholds none); "not_known", the record cannot say what the run reported (no fit record,
+# or several, holds the lock's plan; the route withholds the locked fit's rows now; the opening
+# recorded no scores while its fit serves held-out scores).
+RefusedKind = Literal["not_reported", "not_served", "not_known"]
 
 
 class _Strict(BaseModel):
@@ -158,9 +166,10 @@ class Regime(_Strict):
 
 
 class Answer(_Strict):
-    """One question a decision answers, and its value: ``<reading>:<column>`` for a reading (the
-    keys of a fixture's declared truth, ``truths.Truth``), else the decision's kind and the fields
-    that say which question it answers."""
+    """One question a decision answers, and its value (``assemble.answers_of``):
+    ``<reading>:<column>`` for a reading (the keys of a fixture's declared truth,
+    ``truths.Truth``), else where the server keeps the answer: its slot, and the entry's key where
+    the slot is keyed (``adjust:<column>`` for a covariate's adjustment answer)."""
 
     question: str
     value: Any
@@ -301,7 +310,8 @@ class Result(_Strict):
     the intervals beside them only while the scores served are the opening's; under Estimate each
     family's exposure rows of the fit the plan's lock in force was recorded on, the one fit record
     whose own plan digest is the lock's, under the lock's digest. ``refused`` says why there is
-    none."""
+    none, and ``refused_kind`` which kind of none it is (:data:`RefusedKind`): a check judges a
+    result none was reported or served for as refused, and does not judge one it cannot know."""
 
     purpose: str | None
     attempt: str | None  # the fit record the result is from
@@ -317,6 +327,7 @@ class Result(_Strict):
     lock: int | None = None  # Estimate: the lock's record seq
     effects: dict[str, list[dict[str, Any]] | None] | None = None
     refused: str | None = None
+    refused_kind: RefusedKind | None = None
 
     @model_validator(mode="after")
     def _numbers_or_refused(self) -> "Result":
@@ -324,6 +335,9 @@ class Result(_Strict):
         if has == (self.refused is not None):
             raise ValueError("a result holds its numbers or why it has none, not both and not "
                              "neither")
+        if (self.refused is None) != (self.refused_kind is None):
+            raise ValueError("a result with no numbers says which kind of none it is, and only "
+                             "then")
         return self
 
 
@@ -428,5 +442,5 @@ def validate(data: Any) -> Record:
 
 
 __all__ = ["Answer", "Attempt", "Claim", "Dataset", "DatasetFile", "Decision", "Examined", "Export",
-           "Materiality", "Question", "Reason", "Record", "Refusal", "Regime", "Replication",
-           "Result", "Run", "Shift", "Spend", "Surfacings", "VERSION", "validate"]
+           "Materiality", "Question", "Reason", "Record", "RefusedKind", "Refusal", "Regime",
+           "Replication", "Result", "Run", "Shift", "Spend", "Surfacings", "VERSION", "validate"]

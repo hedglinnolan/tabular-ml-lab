@@ -37,7 +37,8 @@ def test_seal_integrity_is_silent_on_a_result_no_later_record_reached(make):
 def test_seal_integrity_fires_on_a_reseal():
     data = predict_record()
     data["decisions"].append(decision(6, "reseal", {"reason": "again", "target": "y"},
-                                      [("reseal", {})], post_seal=True, minute=20))
+                                      [("seal_opened", {"reason": "again", "target": "y"})],
+                                      post_seal=True, minute=20))
     got = outcome(C.seal_integrity, data)
     assert got.outcome == "fail" and got.problems == ["Record #6 re-seals the held-out rows."]
 
@@ -45,7 +46,8 @@ def test_seal_integrity_fires_on_a_reseal():
 def test_seal_integrity_fires_on_a_second_opening_of_the_same_outcome():
     data = predict_record()
     data["decisions"].append(decision(6, "open_seal", {"family": "linear", "target": "y"},
-                                      [("open_seal", {})], post_seal=True, minute=20))
+                                      [("seal_opened", {"family": "linear", "target": "y"})],
+                                      post_seal=True, minute=20))
     got = outcome(C.seal_integrity, data)
     assert got.outcome == "fail"
     assert got.problems == ["The held-out rows of `y` were opened 2 times (records #5, #6)."]
@@ -54,7 +56,7 @@ def test_seal_integrity_fires_on_a_second_opening_of_the_same_outcome():
 def test_seal_integrity_fires_when_a_record_after_the_opening_reaches_the_result():
     data = predict_record()
     data["decisions"].append(decision(6, "select_models", {"models": ["linear"]},
-                                      [("select_models", {"models": ["linear"]})],
+                                      [("models", {"models": ["linear"]})],
                                       post_seal=True, minute=20))
     data["result"]["decisions"] = [1, 3, 6]
     got = outcome(C.seal_integrity, data)
@@ -78,7 +80,7 @@ def test_seal_integrity_fires_on_a_record_after_the_seal_in_the_result_when_no_o
     opening."""
     data = predict_record()
     data["decisions"].append(decision(6, "select_models", {"models": ["linear"]},
-                                      [("select_models", {"models": ["linear"]})],
+                                      [("models", {"models": ["linear"]})],
                                       post_seal=True, minute=20))
     data["result"].update(opening=None, decisions=[1, 3, 4, 6])
     got = outcome(C.seal_integrity, data)
@@ -106,8 +108,7 @@ def test_seal_integrity_fires_on_a_named_fit_that_read_a_change_made_with_the_es
     got = outcome(C.seal_integrity, data)
     assert got.outcome == "fail"
     assert got.problems[:2] == [
-        "Records #5, made after the plan's lock or with the estimates in view, are among those "
-        "the result's fit read.",
+        "Records #5, made with the estimates in view, are among those the result's fit read.",
         "The result's records (#1, #2, #3, #4) are not those its fit #2 read (#1, #2, #3, #4, "
         "#5)."]
 
@@ -168,6 +169,26 @@ def test_seal_integrity_fires_when_a_change_made_with_the_estimates_in_view_reac
     data["result"].update(attempt="fit2", decisions=[1, 2, 3, 4, 5])
     got = outcome(C.seal_integrity, data)
     assert got.outcome == "fail" and "#5" in got.problems[0]
+
+
+@pytest.mark.parametrize("seen,status", [(False, "pass"), (True, "fail")])
+def test_seal_integrity_reads_a_record_after_the_lock_by_the_servers_mark(seen, status):
+    """DB-V9: a look (``view_outcome``, outside the plan's digest) posted while a held fit ran,
+    after the lock and before any estimate was served, is recorded unmarked and lands among the
+    locked fit's records, its plan still the lock's: not a record made with the estimates in view.
+    The same record marked ``after_estimates`` is."""
+    data = estimate_record()
+    look = decision(5, "view_outcome", {"view": "distribution", "target": "y"},
+                    [("outcome_views:distribution:y", {"view": "distribution"})],
+                    after_estimates=seen, minute=5)
+    data["decisions"][4] = look  # the post-lock exclusions change gives way to the look
+    data["attempts"] = data["attempts"][:1]
+    data["attempts"][0]["decisions"] = [1, 2, 3, 4, 5]
+    data["result"]["decisions"] = [1, 2, 3, 4, 5]
+    got = outcome(C.seal_integrity, data)
+    assert got.outcome == status
+    assert got.problems == ([] if not seen else [
+        "Records #5, made with the estimates in view, are among those the result's fit read."])
 
 
 def test_seal_integrity_fires_when_the_result_is_not_the_locked_plans():
@@ -268,8 +289,8 @@ def test_single_pass_counts_no_option_tried_or_fitted_after_the_seal_was_opened(
     data = _single(predict_record())
     data["decisions"].append(decision(
         6, "select_models", {"models": ["elastic_net"]},
-        [("select_models", {"models": ["elastic_net"]})], post_seal=True, minute=20,
-        examined=[{"question": "select_models", "value": {"models": ["linear"]}, "how": "fit",
+        [("models", {"models": ["elastic_net"]})], post_seal=True, minute=20,
+        examined=[{"question": "models", "value": {"models": ["linear"]}, "how": "fit",
                    "at": data["attempts"][0]["at"], "seq": 2, "attempt": "fit1",
                    "alternative": True}]))
     second = copy.deepcopy(data["attempts"][0])
@@ -298,7 +319,7 @@ def test_single_pass_counts_an_alternative_previewed_before_the_opening_only(min
     """The opening is at 10:08: a preview of another option while record #2 stood counts before
     it, and not after it."""
     data = _single(predict_record())
-    data["decisions"][1]["examined"] = [{"question": "select_models",
+    data["decisions"][1]["examined"] = [{"question": "models",
                                          "value": {"models": ["boosted_trees"]},
                                          "how": "preview", "at": f"2026-10-18T10:{minute:02d}:00Z",
                                          "refused": None, "alternative": True}]
@@ -307,7 +328,7 @@ def test_single_pass_counts_an_alternative_previewed_before_the_opening_only(min
 
 def test_an_option_examined_that_is_the_one_chosen_is_not_exploring():
     data = _single(predict_record())
-    data["decisions"][1]["examined"] = [{"question": "select_models",
+    data["decisions"][1]["examined"] = [{"question": "models",
                                          "value": {"models": ["linear"]}, "how": "preview",
                                          "at": data["decisions"][0]["at"], "refused": None,
                                          "alternative": False}]
@@ -369,7 +390,71 @@ def test_known_answer_holds_an_estimate_whose_interval_covers_the_declared_value
 def test_known_answer_holds_a_refused_result():
     data = estimate_record("known_answer")
     data["dataset"]["known"] = {"family": "linear", "feature": "x", "value": 9.0}
+    data["result"].update(effects=None, refused="The plan was never locked.",
+                          refused_kind="not_reported")
+    assert outcome(C.known_answer, data, truths={"table.csv": {}}).outcome == "pass"
+    data["result"].update(refused="The locked fit serves no exposure rows.",
+                          refused_kind="not_served")
+    assert outcome(C.known_answer, data, truths={"table.csv": {}}).outcome == "pass"
+
+
+# DB-V5: a result the record could not identify is not a refusal.
+
+
+def _unknown(data):
+    data["result"].update(attempt=None, decisions=None, effects=None,
+                          refused="No fit record holds the plan the lock at record #4 recorded.",
+                          refused_kind="not_known")
+    return data
+
+
+def test_known_answer_does_not_judge_a_result_the_record_cannot_know():
+    """The known answer 9.0 lies outside every interval the record could hold (constructed): a
+    result whose fit is not identified is neither right nor refused, so it is not checked."""
+    data = _unknown(estimate_record("known_answer"))
+    data["dataset"]["known"] = {"family": "linear", "feature": "x", "value": 9.0}
+    got = outcome(C.known_answer, data, truths={"table.csv": {}})
+    assert (got.outcome, got.problems) == ("not_checked", [])
+    assert got.unchecked == ["The record cannot say what result the run reported, so it is not "
+                             "checked: No fit record holds the plan the lock at record #4 "
+                             "recorded."]
+
+
+def test_null_decoy_does_not_judge_a_result_the_record_cannot_know():
+    got = outcome(C.null_decoy, _unknown(estimate_record("null_decoy")))
+    assert (got.outcome, got.notes) == ("not_checked", [])
+    assert got.unchecked[0].startswith("The record cannot say what result the run reported")
+
+
+def test_a_result_with_no_numbers_names_its_kind():
+    data = estimate_record()
     data["result"].update(effects=None, refused="The plan was never locked.")
+    with pytest.raises(ValueError, match="which kind of none"):
+        validate(data)
+    numbered = estimate_record()
+    numbered["result"]["refused_kind"] = "not_known"
+    with pytest.raises(ValueError, match="which kind of none"):
+        validate(numbered)
+
+
+# DB-V7: an estimate with no interval is not a refusal.
+
+
+@pytest.mark.parametrize("value", [0.0, 0.9])
+def test_known_answer_does_not_judge_an_estimate_with_no_interval(value):
+    data = estimate_record("known_answer")
+    data["dataset"]["known"] = {"family": "linear", "feature": "x", "value": value}
+    data["result"]["effects"]["linear"][0].update(estimate=0.9, ci_low=None, ci_high=None)
+    got = outcome(C.known_answer, data, truths={"table.csv": {}})
+    assert (got.outcome, got.problems) == ("not_checked", [])
+    assert got.unchecked == [f"`linear` estimates `x` at 0.9 with no interval, so whether it holds "
+                             f"the known answer {value} is not checked."]
+
+
+def test_known_answer_holds_a_row_the_engine_did_not_estimate():
+    data = estimate_record("known_answer")
+    data["dataset"]["known"] = {"family": "linear", "feature": "x", "value": 9.0}
+    data["result"]["effects"]["linear"][0].update(estimate=None, ci_low=None, ci_high=None)
     assert outcome(C.known_answer, data, truths={"table.csv": {}}).outcome == "pass"
 
 
@@ -413,8 +498,28 @@ def test_null_decoy_does_not_pass_a_result_with_no_interval_to_judge():
 
 def test_null_decoy_holds_a_run_that_reported_no_result():
     data = estimate_record("null_decoy")
-    data["result"].update(effects=None, refused="The plan was never locked.")
-    assert outcome(C.null_decoy, data).outcome == "pass"
+    data["result"].update(effects=None, refused="The plan was never locked.",
+                          refused_kind="not_reported")
+    got = outcome(C.null_decoy, data)
+    assert (got.outcome, got.notes) == ("pass", ["No result was reported: The plan was never "
+                                                 "locked."])
+    data["result"].update(refused="The locked fit serves no exposure rows.",
+                          refused_kind="not_served")
+    got = outcome(C.null_decoy, data)
+    assert (got.outcome, got.notes) == ("pass", ["The engine served no result: The locked fit "
+                                                 "serves no exposure rows."])
+
+
+def test_null_decoy_does_not_judge_an_estimate_with_no_interval():
+    data = estimate_record("null_decoy")
+    data["result"]["effects"]["linear"][0].update(estimate=0.9, ci_low=None, ci_high=None)
+    got = outcome(C.null_decoy, data)
+    assert (got.outcome, got.problems) == ("not_checked", [])
+    assert got.unchecked == ["`linear` reports `x` at 0.9 with no interval, so whether it excludes "
+                             "no effect is not checked."]
+    refused = estimate_record("null_decoy")
+    refused["result"]["effects"]["linear"][0].update(estimate=None, ci_low=None, ci_high=None)
+    assert outcome(C.null_decoy, refused).outcome == "pass"  # not estimated: no finding
 
 
 # ── 6. robustness ────────────────────────────────────────────────────────────

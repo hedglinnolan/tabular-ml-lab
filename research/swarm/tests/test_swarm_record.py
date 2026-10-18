@@ -71,9 +71,10 @@ def test_a_run_holds_its_spend_or_why_it_has_none():
 def test_a_result_holds_its_numbers_or_why_it_has_none():
     result = predict_record()["result"]
     R.Result.model_validate(result)
-    refused = {**result, "scores": None, "refused": "never opened"}
+    refused = {**result, "scores": None, "refused": "never opened", "refused_kind": "not_reported"}
     R.Result.model_validate(refused)
-    for bad in ({**result, "refused": "and refused"}, {**result, "scores": None}):
+    for bad in ({**result, "refused": "and refused"}, {**result, "scores": None},
+                {**refused, "refused_kind": None}, {**result, "refused_kind": "not_known"}):
         with pytest.raises(ValidationError, match="result"):
             R.Result.model_validate(bad)
 
