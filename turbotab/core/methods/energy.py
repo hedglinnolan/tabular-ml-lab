@@ -1685,6 +1685,30 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
            _and([t.column for t, _ in present if t.column not in children]))
     clause = (f"with {who} all in the model, each coefficient is a substitution in place "
               f"of the energy sources not in the model: {', '.join(omitted)}." if named else "")
+
+    def carries_no_energy(column: str) -> bool:
+        """A positive reading that ``column`` carries no energy: the recognizers read it as a
+        nutrient with no energy-bearing macronutrient (sodium, potassium, a vitamin, caffeine),
+        and it is no fatty acid (EPA, DHA, omega-3: fat, at 9 kcal/g) or fiber (the Framingham
+        FFQ's AOAC or crude fiber, 2 kcal/g in the systems that count it) named apart from its
+        macronutrient. A food, servings, drinks or an unrecognized name are no such reading,
+        though no factor converts them (``energy_factor`` gives none)."""
+        from turbotab.core.recognizers import AmbiguousNutrient, read_nutrient
+
+        try:
+            reading = read_nutrient(column)
+        except AmbiguousNutrient:
+            return False
+        if reading is None or reading.macro is not None:
+            return False
+        return not set(re.findall(r"[a-z0-9]+", reading.nutrient.lower())) & {
+            "fiber", "omega", "epa", "dha", "dpa"}
+
+    # The columns the sentence's "the nutrient" is: the study factors and the adjusted nutrients.
+    read = [c for c in dict.fromkeys([*(c for c in predictors if roles.get(c) == "exposure"),
+                                      *(getattr(adjustment, "nutrients", None) or [])])
+            if c not in energy_cols]
+    no_energy = bool(read) and all(carries_no_energy(str(c)) for c in read)
     if log:
         text = LOG_ESTIMAND[form]
         slopes = _slopes(step)
@@ -1700,11 +1724,13 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
                 "and total energy span the same model as the nutrients and total energy, so each "
                 f"coefficient is the standard model's exactly ({_MCCULLOUGH}). "
                 + clause[0].upper() + clause[1:])
-    elif not terms and form in ("standard", "residual", "residual_energy_dropped"):
-        # Claims backtest D-001 (its claim, ``energy.no_energy_no_swap``): no study factor or
-        # covariate carries energy (sodium), so more of it at fixed total energy displaces no
-        # source, and METHOD_TABLE's substitution, written for one energy-bearing nutrient, is not
-        # its meaning.
+    elif not terms and no_energy and form in ("standard", "residual", "residual_energy_dropped"):
+        # Claims backtest D-001 (its claim, ``energy.no_energy_no_swap``): every study factor is a
+        # nutrient that carries no energy (sodium) and no covariate carries energy in a stated
+        # unit, so more of it at fixed total energy displaces no source, and METHOD_TABLE's
+        # substitution, written for an energy-bearing exposure, is not its meaning. A missing
+        # energy factor is no such reading: a food, servings, drinks or a fatty acid carry energy
+        # that no general factor converts, and keep the substitution.
         from turbotab.core import claims
 
         nothing = claims.card("energy.no_energy_no_swap")

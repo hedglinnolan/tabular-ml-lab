@@ -847,8 +847,8 @@ register(Claim(
 register(Claim(
     id="copies.pooled_by_rubin",
     kind="rule",
-    card="Imputed copies of one record; under inference, copies kept as records are pooled by "
-         "Rubin's rules.",
+    card="Imputed copies of one record; under inference, Rubin's rules pool numbered copies kept "
+         "as records.",
     methods="kept as records, each copy is analyzed as a completed dataset with its own outcome "
             "and the estimates pooled by Rubin's rules, which carries the imputation's "
             "uncertainty (NCHS's combining rules)",
@@ -876,6 +876,8 @@ register(Claim(
               "pools_them", truth="construction"),
         Silent(f"{RF1_TESTS}::test_copies_no_column_numbers_are_said_not_pooled_as_the_fit_does_"
                "not_pool_them", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_the_copies_option_names_both_conditions_the_fit_pools_under",
+              truth="construction"),
     ),
     enforced_by=("turbotab.core.stages.modeling:imputed_copies_column",
                  "turbotab.core.voice:_set_repeat_kind"),
@@ -888,21 +890,34 @@ register(Claim(
     kind="teaching",
     card="the nutrient carries no energy, so nothing is substituted for it",
     regime=Regime("an energy-adjusted model (standard, or residual with energy kept or dropped) "
-                  "whose study factors and covariates hold no energy-bearing nutrient, such as "
-                  "sodium"),
+                  "whose study factors the recognizers read as nutrients that carry no energy "
+                  "(sodium, potassium, a vitamin; not a fatty acid or fiber), with no covariate "
+                  "carrying energy in a stated unit; not a food, servings, drinks or a name the "
+                  "recognizers do not read, which carry energy no general factor converts"),
     decision="set_energy_adjustment",
     parts=(
         Part("no_swap", grade="judgment", basis=Basis(
-            reason="A nutrient with no Atwater factor adds no calories, so more of it at fixed "
-                   "total energy leaves every energy source where it was: the coefficient is "
-                   "more of it at the same total energy. The fires test reads describe_model for "
-                   "sodium; the silent test keeps protein's substitution.")),
+            reason="A mineral, a vitamin or caffeine has no Atwater factor and adds no calories "
+                   "(FAO 2003's general factors are for protein, carbohydrate, fat, alcohol and "
+                   "fiber), so more of it at fixed total energy leaves every energy source where "
+                   "it was: the coefficient is more of it at the same total energy. The sentence "
+                   "fires on that positive reading, never on a missing energy factor: a food in "
+                   "grams, servings, alcoholic drinks, a fatty acid named apart from fat and a "
+                   "fiber named by its method have no factor yet carry energy (the RF-1 "
+                   "verifier's P1). The fires test reads describe_model for sodium and "
+                   "potassium; the silent tests keep protein's substitution and that of red "
+                   "meat, fatty fish, sugar-sweetened beverages, alcoholic drinks, EPA and AOAC "
+                   "fiber.")),
     ),
     tests=(
         Fires(f"{RF1_TESTS}::test_with_energy_held_fixed_a_nutrient_with_no_energy_is_"
               "substituted_for_nothing", truth="construction"),
         Silent(f"{RF1_TESTS}::test_with_energy_held_fixed_a_nutrient_that_carries_energy_is_a_"
                "substitution", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_with_energy_held_fixed_a_food_a_drink_or_a_fatty_acid_is_"
+               "still_a_substitution", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_food_beside_sodium_keeps_the_substitution_reading",
+               truth="construction"),
         Fires(f"{RF1_TESTS}::test_the_teaching_scopes_the_substitution_reading_to_nutrients_"
               "that_carry_energy", truth="construction"),
     ),
@@ -914,8 +929,8 @@ register(Claim(
 register(Claim(
     id="aggregation.replicate_mean",
     kind="teaching",
-    card="Averaging k replicates of one quantity divides the day-to-day error variance of each "
-         "person's mean by up to k, and by k when the replicates' errors are independent, as for "
+    card="Averaging k replicates of one quantity divides the error variance of each person's "
+         "mean by up to k, and by k when the replicates' errors are independent, as for "
          "non-consecutive recalls.",
     regime=Regime("a unit's rows that repeat one quantity (the repeats answer), combined by their "
                   "mean"),
@@ -923,7 +938,10 @@ register(Claim(
     parts=(
         Part("quantity", grade="judgment", basis=Basis(
             reason="Averaging shrinks the error variance of each person's mean, not the "
-                   "within-person variance itself (the claims backtest's D-012).")),
+                   "within-person variance itself (the claims backtest's D-012), whatever the "
+                   "error's source: replicates may be recalls on different days or readings at "
+                   "one visit, so the note and the mean option name no source (the RF-1 "
+                   "verifier's P5).")),
         Part("up_to", grade="judgment", basis=Basis(
             reason="With k errors of variance s² correlated at ρ ≥ 0 the mean's error variance is "
                    "s²(1 + (k − 1)ρ)/k, so the cut is k only at ρ = 0 (non-consecutive recalls) "
@@ -936,6 +954,8 @@ register(Claim(
         Fires(f"{RF1_TESTS}::test_the_replicates_note_names_the_error_variance_of_each_mean",
               truth="construction"),
         Silent(f"{RF1_TESTS}::test_time_points_get_no_replicates_note", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_the_mean_option_names_no_source_for_the_replicates_error",
+              truth="construction"),
     ),
     enforced_by=("turbotab.core.coach:aggregation_coach",),
     author=RF1_AUTHOR,

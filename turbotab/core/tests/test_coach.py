@@ -141,9 +141,9 @@ def test_the_aggregation_notes_follow_what_repeats(recalls):
     coach.annotate(d.SetAggregation(method="mean"), [view], ctx_for(recalls, replicates))
     texts = [n.text for n in view.coach]
     # Claims backtest D-012: the error variance of each person's mean, by up to k (k when the
-    # replicates' errors are independent).
-    assert texts == ["Averaging `2` replicates cuts each mean's day-to-day error variance up to "
-                     "`2`-fold."]
+    # replicates' errors are independent), its source unnamed (replicates may be readings at one
+    # visit; the RF-1 verifier's P5).
+    assert texts == ["Averaging `2` replicates cuts each mean's error variance up to `2`-fold."]
     assert view.coach[0].anchor.kind == "step" and view.coach[0].anchor.ref == "combined"
     # hba1c is measured once per person here, so nothing is said about which outcome to keep.
 

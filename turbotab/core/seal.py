@@ -195,9 +195,11 @@ def _repeating(frame: Any, columns: Sequence[str]) -> list[tuple[int, str]]:
 
 GRAIN_FIRST = ("The held-out rows are drawn by the grain answer: say first whether a unit can "
                "appear in more than one row.")
-# A seal drawn by row draws its folds by row too (they share its groups, :meth:`SealDraw.
-# split_args`), so its sentence says the cross-validated scores are as exploratory as the held-out
-# ones (claims backtest C-110; its claim, ``seal.by_row_exploratory``).
+# A seal drawn by row labels its held-out scores exploratory: a unit's rows can sit on both sides,
+# and such scores read high (claims backtest C-110, whose "conservative" was backwards; its claim,
+# ``seal.by_row_exploratory``). It says nothing of the folds: the seal is drawn before the
+# validation is chosen, and under internal–external validation the folds are a grouping's levels,
+# not drawn by row (``stages.rows.draw_split``), so what the folds did is the split's note's.
 BY_ROW = claims.card("seal.by_row_exploratory")
 
 
@@ -235,13 +237,13 @@ def decide_basis(state: Any, frame: Any, identifiers: Sequence[str], *,
         if not present:
             return (_basis("abandoned", column,
                            f"The rows were said to repeat by `{column}`, but the table has no such "
-                           f"column, so the held-out rows and the folds were drawn by row. A unit "
-                           f"can sit on both sides: {BY_ROW}.", source=source), None)
+                           f"column, so the held-out rows were drawn by row. A unit can sit on both "
+                           f"sides: {BY_ROW}.", source=source), None)
         if units < min_groups():
             return (_basis("abandoned", column,
                            f"`{column}` repeats, but `{units}` units are too few to hold any out "
-                           f"whole, so the held-out rows and the folds were drawn by row. A unit "
-                           f"can sit on both sides: {BY_ROW}.",
+                           f"whole, so the held-out rows were drawn by row. A unit can sit on both "
+                           f"sides: {BY_ROW}.",
                            source=source, n_units=units), None)
         why = _measurement(frame, column) if source == "grain" else None
         if why is not None:
@@ -265,9 +267,9 @@ def decide_basis(state: Any, frame: Any, identifiers: Sequence[str], *,
             seen = (f" `{column}` repeats (`{units:,}` values over `{n:,}` rows), so a unit can "
                     f"sit on both sides.")
         return (_basis("undetermined", None,
-                       f"Held out and folded by row, because whether a unit can appear in more "
-                       f"than one row was answered as not known.{seen} This is not a verified "
-                       f"clean split: {BY_ROW}.", source="grain"), None)
+                       f"Held out by row, because whether a unit can appear in more than one row "
+                       f"was answered as not known.{seen} This is not a verified clean split: "
+                       f"{BY_ROW}.", source="grain"), None)
     if grain.grain == "repeated":
         if named:
             return grouped(named, "grain")
@@ -277,13 +279,13 @@ def decide_basis(state: Any, frame: Any, identifiers: Sequence[str], *,
             units, column = waiting[0]
             return (_basis("abandoned", column,
                            f"Units were said to repeat and `{column}` repeats, but its identifier "
-                           f"role awaits its own confirmation, so the held-out rows and the folds "
-                           f"were drawn by row. A unit can sit on both sides: {BY_ROW}.",
+                           f"role awaits its own confirmation, so the held-out rows were drawn by "
+                           f"row. A unit can sit on both sides: {BY_ROW}.",
                            source="roles", n_units=units), None)
         return (_basis("abandoned", None,
                        f"Units were said to repeat, but no column names the unit, so the held-out "
-                       f"rows and the folds were drawn by row. A unit can sit on both sides: "
-                       f"{BY_ROW}.", source="grain"), None)
+                       f"rows were drawn by row. A unit can sit on both sides: {BY_ROW}.",
+                       source="grain"), None)
     source = "stated" if stated else "grain"
     repeating = repeating or waiting
     if repeating:
@@ -291,8 +293,8 @@ def decide_basis(state: Any, frame: Any, identifiers: Sequence[str], *,
         said = "stated" if stated else "said"
         return (_basis("abandoned", column,
                        f"Each row was {said} to be a different unit, but `{column}` repeats "
-                       f"(`{units:,}` values over `{n:,}` rows); the held-out rows and the folds "
-                       f"were drawn by row as answered. {BY_ROW[:1].upper()}{BY_ROW[1:]}.",
+                       f"(`{units:,}` values over `{n:,}` rows); the held-out rows were drawn by "
+                       f"row as answered. {BY_ROW[:1].upper()}{BY_ROW[1:]}.",
                        source=source, n_units=units), None)
     if stated and named:
         return (_basis("one_row_per_unit", None,

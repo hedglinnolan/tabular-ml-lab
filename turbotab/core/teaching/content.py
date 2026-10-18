@@ -542,8 +542,9 @@ REPEAT_KIND = {
         option("time_points", "Time points",
                "Different moments in time; averaging is not offered first, and order matters."),
         # Audit I18 (WP18): NHANES DXA's five imputations, numbered by _MULT_. Claims backtest
-        # D-070: under inference the fit pools the copies kept as records (its claim,
-        # ``copies.pooled_by_rubin``); only combining them is recorded as a limitation.
+        # D-070: under inference the fit pools the copies numbered by a column and kept as records
+        # (``stages.modeling.imputed_copies_column``; its claim, ``copies.pooled_by_rubin``), and
+        # no others; only combining them is recorded as a limitation.
         option("imputed_copies", "Imputed copies", claims.card("copies.pooled_by_rubin")),
     ],
     "terms": [
@@ -615,8 +616,10 @@ AGGREGATION = {
     "consumer": "The working table, the participant flow, the seal and every model read the "
                 "combined rows.",
     "options": [
-        option("mean", "Mean", "Each person's rows are averaged; replicates' day-to-day error "
-                               "shrinks."),
+        # Claims backtest D-012: replicates may be recalls on different days or readings at one
+        # visit, so the error that shrinks is named without its source.
+        option("mean", "Mean", "Each person's rows are averaged; the error in a mean of "
+                               "replicates shrinks."),
         option("first", "First (baseline)", "Each person keeps their first row, such as the "
                                              "baseline visit."),
         option("last", "Last", "Each person keeps their most recent row."),
@@ -718,7 +721,7 @@ ROLES = {
     "why": "An identifier names a person and cannot generalize. Survey weights and design columns "
            "describe how people were sampled, and a flag such as `imputed_weight` describes how a "
            "value was filled. None of them measures the participant, so none holds a predictor "
-           "role, while the record keeps it.",
+           "role, and the record keeps each of them.",
     "consumer": "The participant flow, the split's grouping, energy adjustment and the model "
                 "matrix read it.",
     "options": [

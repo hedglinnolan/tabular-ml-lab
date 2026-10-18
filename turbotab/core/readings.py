@@ -22,9 +22,12 @@ the user's confirmed roles). So the invariant lives here, once:
   reading: no unit in a sentence, no clustering without a confirmed unit, no screen until the unit
   and the days are settled, no combining rule for a column whose code-or-count reading is
   unsettled, no fit while a role the predictor set reads waits for its confirmation. Leash-safe is
-  not conservative: held out and folded without a confirmed unit, a unit's rows can sit on both
-  sides, and held-out and cross-validated scores read high, so the seal labels them exploratory
-  (``seal.decide_basis``; claims backtest C-110).
+  not conservative: held out without a confirmed unit, a unit's rows can sit on both sides, and
+  held-out scores read high, so the seal labels them exploratory (``seal.decide_basis``). Folds
+  drawn by row read high too, which is the split's note's to say
+  (``models.validation.within_unit_sentence``): the split is drawn after the validation is
+  chosen, and only then is it known whether the folds are a grouping's levels (internal-external
+  validation; claims backtest C-110).
 
 **Corroboration must discriminate** (BLUEPRINT §14.3). Each kind of reading declares its plausible
 alternatives in :data:`KIND_RULES`, and the values settle it only through a test that rejects every

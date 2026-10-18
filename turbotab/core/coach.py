@@ -493,9 +493,11 @@ def aggregation_coach(decision: Any, views: list, ctx: PreviewContext) -> None:
         if kind == "repeats":
             # Claims backtest D-012 (its claim, ``aggregation.replicate_mean``): the mean's error
             # variance shrinks, not the within-person variance, and by the full k only when the
-            # replicates' errors are independent (consecutive recalls' are not), so "up to".
-            notes.append(note(f"Averaging {tick(k)} replicates cuts each mean's day-to-day error "
-                              f"variance up to {tick(k)}-fold", *anchor))
+            # replicates' errors are independent (consecutive recalls' are not), so "up to". The
+            # error is named without its source: replicates may be recalls on different days or
+            # readings at one visit (duplicate assays), whose errors are reading to reading.
+            notes.append(note(f"Averaging {tick(k)} replicates cuts each mean's error variance up "
+                              f"to {tick(k)}-fold", *anchor))
         elif kind == "time_points":
             notes.append(note(f"Averaging {tick(k)} time points erases change between them", *anchor))
     if decision.method == "change" and singles:

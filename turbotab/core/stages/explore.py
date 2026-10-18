@@ -771,17 +771,20 @@ def _quality_finding(state: Any, frame: pd.DataFrame, predictors: Sequence[str],
     named = list(use.subgroups) if use is not None else []
     # Claims backtest C-241 (its claim, ``explore.missing_by_group``): the imputation model holds
     # the design's inputs and the outcome (``methods.missing.imputation_frame``), with no path for
-    # another column, so the option says whether this group is among them.
+    # another column, so the option says whether this group is among them, in the clause right
+    # after the variables (the claim's first half), before complete cases (its second).
     from turbotab.core import claims
     from turbotab.core.models.pipeline import input_columns
 
     inputs = input_columns(predictors, getattr(state, "energy_adjustment", None))
-    among = "is one of them" if column in inputs else "is not one of them"
+    among = ("is one of those variables, so the imputation model holds it" if column in inputs
+             else "is not one of those variables, so the imputation model leaves it out")
+    fills, cases = claims.card("explore.missing_by_group").split("; ", 1)
     lever = _lever("Do these differences change how missing values are handled?", [
         LeverOption(key="missing", label="The missing-values question, with these differences in "
                                          "view",
                     customary="Missingness is rarely compared across groups",
-                    sound=f"{claims.card('explore.missing_by_group')}; `{column}` {among}",
+                    sound=f"{fills}; `{column}` {among}; {cases}",
                     rung="recommended")])
     if state.purpose != "inference":
         lever = _lever("Report performance within these groups?", [

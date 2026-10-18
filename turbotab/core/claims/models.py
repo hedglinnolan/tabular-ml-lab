@@ -41,7 +41,8 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from turbotab.core.claims import Basis, Claim, Fires, Param, Part, Regime, Silent, register
+from turbotab.core.claims import (RETIRED, Basis, Claim, Fires, Param, Part, Regime, Silent,
+                                  register)
 
 HERE = "turbotab.core.claims.models"
 AUTHOR = "R0b-models builder"
@@ -712,7 +713,8 @@ COLLINEAR_UNDER_PREDICTION = register(Claim(
 # fixed test first: which validation leads, and for which families (D-018), what the pairwise
 # interval says (D-021), the event's share and whether anything was resampled (A-106), and the
 # seal drawn by row (C-110). Each part is the author's judgment: no grader other than the author
-# has checked one yet (CLAIMS_REGISTRY.md §2.4).
+# has checked one yet (CLAIMS_REGISTRY.md §2.4). The seal's part on the folds is retired: repair
+# round 1 found it false under internal-external validation.
 
 RF1_AUTHOR = "RF-1 builder"
 RF1_TESTS = "turbotab/core/tests/test_rf1_sentences.py"
@@ -721,10 +723,10 @@ VALIDATION_RESAMPLING_FIRST = register(Claim(
     id="validation.resampling_first",
     kind="teaching",
     card="Under prediction, for regression-type models below about {resample_below:,} units, "
-         "bootstrap optimism correction is the recommended default and repeated cross-validation "
-         "is acceptable; boosted trees, XGBoost and random forests keep their cross-validated "
-         "score, since the bootstrap overstates them. A single train and test split is the "
-         "weakest option.",
+         "where the folds need not follow time, bootstrap optimism correction is the recommended "
+         "default and repeated cross-validation is acceptable; boosted trees, XGBoost and random "
+         "forests keep their cross-validated score, since the bootstrap overstates them. A single "
+         "train and test split is the weakest option.",
     goal=("prediction",),
     regime=Regime("Predict, folds that need not follow time, the units validated below the "
                   "number at which models/validation.py's plan ranks resampling first",
@@ -736,7 +738,11 @@ VALIDATION_RESAMPLING_FIRST = register(Claim(
             reason="Harrell (2017, Split-sample model validation) finds data splitting unstable "
                    "below about twenty thousand subjects, and the plan ranks resampling first "
                    "below it (models/validation.py); the clinical pack's order, bootstrap then "
-                   "repeated cross-validation, is a convention (CLINICAL_SURVEY_PACK §A5.5).")),
+                   "repeated cross-validation, is a convention (CLINICAL_SURVEY_PACK §A5.5). The "
+                   "threshold holds only where the folds need not follow time: where the answers "
+                   "ask for time order the plan forward-chains the folds by whole unit and ranks "
+                   "the bootstrap last, whatever the units, since resamples would ignore time "
+                   "(the RF-1 verifier's P4).")),
         Part("trees", grade="judgment", basis=Basis(
             reason="Coley et al. 2023 found the bootstrap's optimism correction did not validate "
                    "a random forest, and the repair round replicated boosted trees' overstated "
@@ -748,6 +754,8 @@ VALIDATION_RESAMPLING_FIRST = register(Claim(
               "thousand", truth="independent:Harrell 2017, Split-sample model validation"),
         Silent(f"{RF1_TESTS}::test_the_teaching_names_every_family_the_bootstrap_does_not_"
                "correct", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_with_time_ordered_folds_the_bootstrap_comes_last_and_the_"
+               "teaching_says_where_it_leads", truth="construction"),
     ),
     enforced_by=("turbotab.core.models.validation:validation_plan",
                  "turbotab.core.teaching.content:SINGLE_SPLIT"),
@@ -840,28 +848,39 @@ MODELING_NO_RESAMPLING = register(Claim(
 SEAL_BY_ROW = register(Claim(
     id="seal.by_row_exploratory",
     kind="rule",
-    card="treat held-out and cross-validated scores as exploratory",
+    card="treat held-out scores as exploratory",
     regime=Regime("a seal that could not keep a unit's rows together (abandoned or undetermined), "
-                  "whose folds share its groups and are drawn by row too",
+                  "whatever the validation: the seal is drawn before it is chosen",
                   requires=(f"{HERE}:drawn_by_row",)),
     decision="set_split.basis",
     verdict="noted",
     parts=(
-        Part("folds", grade="judgment", basis=Basis(
-            reason="The folds are drawn with the seal's groups (seal.split_args, rows.draw_split), "
-                   "so where the held-out rows are drawn by row the folds are too.")),
+        Part("folds", grade=RETIRED, graded_by="RF-1 builder, repair round 1, 2026-10-18",
+             regraded="The seal's sentence no longer says the folds were drawn by row: it is "
+                      "drawn before the validation is chosen, and under internal-external "
+                      "validation each fold is one level of the grouping (rows.draw_split's "
+                      "clusters), so the RF-1 verifier's P3 found it false there; the split's "
+                      "note, written after the validation is chosen, says what the folds did "
+                      "(models.validation.within_unit_sentence, MS6).",
+             basis=Basis(
+                 reason="The folds are drawn with the seal's groups (seal.split_args, "
+                        "rows.draw_split), so where the held-out rows are drawn by row the folds "
+                        "are too, unless internal-external validation makes each fold a level of "
+                        "the grouping.")),
         Part("direction", grade="judgment", basis=Basis(
             cites=("saeb2017",),
-            reason="A unit on both sides of a fold scores high: record-wise cross-validation "
-                   "overestimates performance on new units (Saeb et al. 2017), so the claims "
+            reason="A unit on both sides of the held-out draw scores high: record-wise splits "
+                   "overestimate performance on new units (Saeb et al. 2017), so the claims "
                    "backtest's 'conservative' (C-110) was backwards; the scores are labeled "
                    "exploratory rather than corrected.")),
     ),
     tests=(
-        Fires(f"{RF1_TESTS}::test_a_seal_drawn_by_row_over_a_repeating_identifier_says_the_folds_"
-              "were_too", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_a_seal_drawn_by_row_over_a_repeating_identifier_labels_its_held_"
+              "out_scores_exploratory", truth="construction"),
         Silent(f"{RF1_TESTS}::test_a_grouped_seal_says_nothing_of_exploratory_scores",
                truth="construction"),
+        Silent(f"{RF1_TESTS}::test_under_internal_external_validation_the_folds_are_the_sites_and_"
+               "the_seal_says_nothing_of_them", truth="construction"),
     ),
     enforced_by=("turbotab.core.seal:decide_basis",),
     author=RF1_AUTHOR,

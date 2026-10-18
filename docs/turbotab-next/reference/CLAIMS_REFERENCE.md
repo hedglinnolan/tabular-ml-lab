@@ -35,16 +35,16 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `aggregation.replicate_mean`
 
-*teaching* · from *audit* · weakest part *judgment* · built · version 1 · hash `3a3e1d472ec5`
+*teaching* · from *audit* · weakest part *judgment* · built · version 1 · hash `799b54069a17`
 
-- **Card:** Averaging k replicates of one quantity divides the day-to-day error variance of each person's mean by up to k, and by k when the replicates' errors are independent, as for non-consecutive recalls.
+- **Card:** Averaging k replicates of one quantity divides the error variance of each person's mean by up to k, and by k when the replicates' errors are independent, as for non-consecutive recalls.
 - **Methods:** none
 - **Regime:** a unit's rows that repeat one quantity (the repeats answer), combined by their mean
 - **Decision:** decision `set_aggregation`
 - **Parts:**
-  - quantity: *judgment*, graded by not graded (reason: Averaging shrinks the error variance of each person's mean, not the within-person variance itself (the claims backtest's D-012).)
+  - quantity: *judgment*, graded by not graded (reason: Averaging shrinks the error variance of each person's mean, not the within-person variance itself (the claims backtest's D-012), whatever the error's source: replicates may be recalls on different days or readings at one visit, so the note and the mean option name no source (the RF-1 verifier's P5).)
   - up_to: *judgment*, graded by not graded (reason: With k errors of variance s² correlated at ρ ≥ 0 the mean's error variance is s²(1 + (k − 1)ρ)/k, so the cut is k only at ρ = 0 (non-consecutive recalls) and smaller for consecutive days, as the teaching's own section on consecutive recalls says; the fires test simulates both.)
-- **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_averaging_replicates_divides_the_error_variance_by_up_to_their_number` (construction); fires `turbotab/core/tests/test_rf1_sentences.py::test_the_replicates_note_names_the_error_variance_of_each_mean` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_time_points_get_no_replicates_note` (construction)
+- **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_averaging_replicates_divides_the_error_variance_by_up_to_their_number` (construction); fires `turbotab/core/tests/test_rf1_sentences.py::test_the_replicates_note_names_the_error_variance_of_each_mean` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_time_points_get_no_replicates_note` (construction); fires `turbotab/core/tests/test_rf1_sentences.py::test_the_mean_option_names_no_source_for_the_replicates_error` (construction)
 - **Enforced by:** `turbotab.core.coach:aggregation_coach`
 - **Author:** RF-1 builder
 
@@ -99,16 +99,16 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `copies.pooled_by_rubin`
 
-*rule* · from *audit* · weakest part *judgment* · built · version 1 · hash `f12119e12cce`
+*rule* · from *audit* · weakest part *judgment* · built · version 1 · hash `d5565c9c54b9`
 
-- **Card:** Imputed copies of one record; under inference, copies kept as records are pooled by Rubin's rules.
+- **Card:** Imputed copies of one record; under inference, Rubin's rules pool numbered copies kept as records.
 - **Methods:** kept as records, each copy is analyzed as a completed dataset with its own outcome and the estimates pooled by Rubin's rules, which carries the imputation's uncertainty (NCHS's combining rules)
 - **Regime:** under inference, rows that are imputed copies of one record, numbered by a column (NHANES DXA's _MULT_), each copy kept as a record
 - **Decision:** decision `set_repeat_kind.imputed_copies`; options `imputed_copies`, `repeats`, `time_points`; verdict *recommended*; goal inference
 - **Parts:**
   - pooled: *judgment*, graded by not graded (reason: The fit pools the copies only where a column numbers them and each is kept as a record (stages.modeling.imputed_copies_column), and the record's sentence says pooled only then. The pooled numbers are held to R's mitools and mice elsewhere (test_ms1_ms3_multiple_imputation.py), which no one has graded for this claim.)
   - records: *judgment*, graded by not graded (reason: Under inference, combining the copies into one row per unit is blocked and recorded (structural._imputed_copies_are_not_combined_unrecorded), so a numbered copy is kept as a record unless that limitation is recorded, which records the repeats answer again with its own sentence.)
-- **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_numbered_copies_kept_as_records_are_said_pooled_as_the_fit_pools_them` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_copies_no_column_numbers_are_said_not_pooled_as_the_fit_does_not_pool_them` (construction)
+- **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_numbered_copies_kept_as_records_are_said_pooled_as_the_fit_pools_them` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_copies_no_column_numbers_are_said_not_pooled_as_the_fit_does_not_pool_them` (construction); fires `turbotab/core/tests/test_rf1_sentences.py::test_the_copies_option_names_both_conditions_the_fit_pools_under` (construction)
 - **Enforced by:** `turbotab.core.stages.modeling:imputed_copies_column`, `turbotab.core.voice:_set_repeat_kind`
 - **Author:** RF-1 builder
 
@@ -265,28 +265,28 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `energy.no_energy_no_swap`
 
-*teaching* · from *audit* · weakest part *judgment* · built · version 1 · hash `a34ac8d822d7`
+*teaching* · from *audit* · weakest part *judgment* · built · version 1 · hash `18ffd72a90e9`
 
 - **Card:** the nutrient carries no energy, so nothing is substituted for it
 - **Methods:** none
-- **Regime:** an energy-adjusted model (standard, or residual with energy kept or dropped) whose study factors and covariates hold no energy-bearing nutrient, such as sodium
+- **Regime:** an energy-adjusted model (standard, or residual with energy kept or dropped) whose study factors the recognizers read as nutrients that carry no energy (sodium, potassium, a vitamin; not a fatty acid or fiber), with no covariate carrying energy in a stated unit; not a food, servings, drinks or a name the recognizers do not read, which carry energy no general factor converts
 - **Decision:** decision `set_energy_adjustment`
 - **Parts:**
-  - no_swap: *judgment*, graded by not graded (reason: A nutrient with no Atwater factor adds no calories, so more of it at fixed total energy leaves every energy source where it was: the coefficient is more of it at the same total energy. The fires test reads describe_model for sodium; the silent test keeps protein's substitution.)
-- **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_with_energy_held_fixed_a_nutrient_with_no_energy_is_substituted_for_nothing` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_with_energy_held_fixed_a_nutrient_that_carries_energy_is_a_substitution` (construction); fires `turbotab/core/tests/test_rf1_sentences.py::test_the_teaching_scopes_the_substitution_reading_to_nutrients_that_carry_energy` (construction)
+  - no_swap: *judgment*, graded by not graded (reason: A mineral, a vitamin or caffeine has no Atwater factor and adds no calories (FAO 2003's general factors are for protein, carbohydrate, fat, alcohol and fiber), so more of it at fixed total energy leaves every energy source where it was: the coefficient is more of it at the same total energy. The sentence fires on that positive reading, never on a missing energy factor: a food in grams, servings, alcoholic drinks, a fatty acid named apart from fat and a fiber named by its method have no factor yet carry energy (the RF-1 verifier's P1). The fires test reads describe_model for sodium and potassium; the silent tests keep protein's substitution and that of red meat, fatty fish, sugar-sweetened beverages, alcoholic drinks, EPA and AOAC fiber.)
+- **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_with_energy_held_fixed_a_nutrient_with_no_energy_is_substituted_for_nothing` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_with_energy_held_fixed_a_nutrient_that_carries_energy_is_a_substitution` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_with_energy_held_fixed_a_food_a_drink_or_a_fatty_acid_is_still_a_substitution` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_a_food_beside_sodium_keeps_the_substitution_reading` (construction); fires `turbotab/core/tests/test_rf1_sentences.py::test_the_teaching_scopes_the_substitution_reading_to_nutrients_that_carry_energy` (construction)
 - **Enforced by:** `turbotab.core.methods.energy:describe_model`
 - **Author:** RF-1 builder
 
 ### `explore.missing_by_group`
 
-*teaching* · from *audit* · weakest part *judgment* · built · version 1 · hash `dabda8c56ec8`
+*teaching* · from *audit* · weakest part *judgment* · built · version 1 · hash `217c0f2063f6`
 
-- **Card:** Multiple imputation fills blanks from the analysis's variables, so a group is in its model only where it is one of them, and complete cases state their assumption
+- **Card:** Multiple imputation fills blanks from the analysis's variables; complete cases state their assumption
 - **Methods:** none
 - **Regime:** under Estimate, a column named like a sociodemographic group whose groups differ in how often the candidate predictors are blank (TRIPOD+AI 7)
 - **Decision:** decision `explore.quality_by_group`; goal inference
 - **Parts:**
-  - model: *judgment*, graded by not graded (reason: The imputation model holds the design's inputs (the predictors and a residual method's strata column) and the outcome's terms (methods.missing.imputation_frame), with no path for an auxiliary column, so the option says whether the group is among them.)
+  - model: *judgment*, graded by not graded (reason: The imputation model holds the design's inputs (the predictors and a residual method's strata column) and the outcome's terms (methods.missing.imputation_frame), with no path for an auxiliary column, so the option says, right after the variables, whether the group is one of them, and so whether the imputation model holds it.)
   - complete_cases: *judgment*, graded by not graded (reason: Complete cases stay on the menu with their assumption stated (methods.missing.COMPLETE_CASE_ASSUMPTION).)
 - **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_a_group_that_is_a_predictor_is_said_to_be_in_the_imputation_model` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_a_group_that_is_no_predictor_is_said_to_be_left_out_of_the_imputation_model` (construction)
 - **Enforced by:** `turbotab.core.stages.explore:_quality_finding`
@@ -465,16 +465,16 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `seal.by_row_exploratory`
 
-*rule* · from *audit* · weakest part *judgment* · built · version 1 · hash `e9b352125fc9`
+*rule* · from *audit* · weakest part *judgment* · built · version 1 · hash `ca0b3f83d9fd`
 
-- **Card:** treat held-out and cross-validated scores as exploratory
+- **Card:** treat held-out scores as exploratory
 - **Methods:** none
-- **Regime:** a seal that could not keep a unit's rows together (abandoned or undetermined), whose folds share its groups and are drawn by row too; predicates `turbotab.core.claims.models:drawn_by_row`
+- **Regime:** a seal that could not keep a unit's rows together (abandoned or undetermined), whatever the validation: the seal is drawn before it is chosen; predicates `turbotab.core.claims.models:drawn_by_row`
 - **Decision:** decision `set_split.basis`; verdict *noted*
 - **Parts:**
-  - folds: *judgment*, graded by not graded (reason: The folds are drawn with the seal's groups (seal.split_args, rows.draw_split), so where the held-out rows are drawn by row the folds are too.)
-  - direction: *judgment*, graded by not graded (cites `saeb2017`; reason: A unit on both sides of a fold scores high: record-wise cross-validation overestimates performance on new units (Saeb et al. 2017), so the claims backtest's 'conservative' (C-110) was backwards; the scores are labeled exploratory rather than corrected.)
-- **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_a_seal_drawn_by_row_over_a_repeating_identifier_says_the_folds_were_too` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_a_grouped_seal_says_nothing_of_exploratory_scores` (construction)
+  - folds: *retired*, graded by RF-1 builder, repair round 1, 2026-10-18 (reason: The folds are drawn with the seal's groups (seal.split_args, rows.draw_split), so where the held-out rows are drawn by row the folds are too, unless internal-external validation makes each fold a level of the grouping.); regraded: The seal's sentence no longer says the folds were drawn by row: it is drawn before the validation is chosen, and under internal-external validation each fold is one level of the grouping (rows.draw_split's clusters), so the RF-1 verifier's P3 found it false there; the split's note, written after the validation is chosen, says what the folds did (models.validation.within_unit_sentence, MS6).
+  - direction: *judgment*, graded by not graded (cites `saeb2017`; reason: A unit on both sides of the held-out draw scores high: record-wise splits overestimate performance on new units (Saeb et al. 2017), so the claims backtest's 'conservative' (C-110) was backwards; the scores are labeled exploratory rather than corrected.)
+- **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_a_seal_drawn_by_row_over_a_repeating_identifier_labels_its_held_out_scores_exploratory` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_a_grouped_seal_says_nothing_of_exploratory_scores` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_under_internal_external_validation_the_folds_are_the_sites_and_the_seal_says_nothing_of_them` (construction)
 - **Enforced by:** `turbotab.core.seal:decide_basis`
 - **Author:** RF-1 builder
 
@@ -654,17 +654,17 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `validation.resampling_first`
 
-*teaching* · from *audit* · weakest part *judgment* · built · version 1 · hash `64e47e60eb10`
+*teaching* · from *audit* · weakest part *judgment* · built · version 1 · hash `55a2db606960`
 
-- **Card:** Under prediction, for regression-type models below about 20,000 units, bootstrap optimism correction is the recommended default and repeated cross-validation is acceptable; boosted trees, XGBoost and random forests keep their cross-validated score, since the bootstrap overstates them. A single train and test split is the weakest option.
+- **Card:** Under prediction, for regression-type models below about 20,000 units, where the folds need not follow time, bootstrap optimism correction is the recommended default and repeated cross-validation is acceptable; boosted trees, XGBoost and random forests keep their cross-validated score, since the bootstrap overstates them. A single train and test split is the weakest option.
 - **Methods:** none
 - **Parameters:** `resample_below` = 20000 units
 - **Regime:** Predict, folds that need not follow time, the units validated below the number at which models/validation.py's plan ranks resampling first; predicates `turbotab.core.claims.models:under_prediction`
 - **Decision:** decision `set_validation`; goal prediction
 - **Parts:**
-  - threshold: *judgment*, graded by not graded (reason: Harrell (2017, Split-sample model validation) finds data splitting unstable below about twenty thousand subjects, and the plan ranks resampling first below it (models/validation.py); the clinical pack's order, bootstrap then repeated cross-validation, is a convention (CLINICAL_SURVEY_PACK §A5.5).)
+  - threshold: *judgment*, graded by not graded (reason: Harrell (2017, Split-sample model validation) finds data splitting unstable below about twenty thousand subjects, and the plan ranks resampling first below it (models/validation.py); the clinical pack's order, bootstrap then repeated cross-validation, is a convention (CLINICAL_SURVEY_PACK §A5.5). The threshold holds only where the folds need not follow time: where the answers ask for time order the plan forward-chains the folds by whole unit and ranks the bootstrap last, whatever the units, since resamples would ignore time (the RF-1 verifier's P4).)
   - trees: *judgment*, graded by not graded (reason: Coley et al. 2023 found the bootstrap's optimism correction did not validate a random forest, and the repair round replicated boosted trees' overstated score (models/validation.py), so each near-interpolating family declares bootstrap_optimism False and keeps its cross-validated score.)
-- **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_resampling_leads_under_prediction_below_harrells_twenty_thousand` (independent:Harrell 2017, Split-sample model validation); silent `turbotab/core/tests/test_rf1_sentences.py::test_the_teaching_names_every_family_the_bootstrap_does_not_correct` (construction)
+- **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_resampling_leads_under_prediction_below_harrells_twenty_thousand` (independent:Harrell 2017, Split-sample model validation); silent `turbotab/core/tests/test_rf1_sentences.py::test_the_teaching_names_every_family_the_bootstrap_does_not_correct` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_with_time_ordered_folds_the_bootstrap_comes_last_and_the_teaching_says_where_it_leads` (construction)
 - **Enforced by:** `turbotab.core.models.validation:validation_plan`, `turbotab.core.teaching.content:SINGLE_SPLIT`
 - **Author:** RF-1 builder
 

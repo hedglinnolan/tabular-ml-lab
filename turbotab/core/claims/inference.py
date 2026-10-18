@@ -975,8 +975,8 @@ COLLINEAR_INSIDE = register(Claim(
 EXPLORE_MISSING_BY_GROUP = register(Claim(
     id="explore.missing_by_group",
     kind="teaching",
-    card="Multiple imputation fills blanks from the analysis's variables, so a group is in its "
-         "model only where it is one of them, and complete cases state their assumption",
+    card="Multiple imputation fills blanks from the analysis's variables; complete cases state "
+         "their assumption",
     goal=("inference",),
     regime=Regime("under Estimate, a column named like a sociodemographic group whose groups "
                   "differ in how often the candidate predictors are blank (TRIPOD+AI 7)"),
@@ -986,7 +986,8 @@ EXPLORE_MISSING_BY_GROUP = register(Claim(
             reason="The imputation model holds the design's inputs (the predictors and a "
                    "residual method's strata column) and the outcome's terms "
                    "(methods.missing.imputation_frame), with no path for an auxiliary column, so "
-                   "the option says whether the group is among them.")),
+                   "the option says, right after the variables, whether the group is one of "
+                   "them, and so whether the imputation model holds it.")),
         Part("complete_cases", grade="judgment", basis=Basis(
             reason="Complete cases stay on the menu with their assumption stated "
                    "(methods.missing.COMPLETE_CASE_ASSUMPTION).")),

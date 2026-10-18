@@ -5,7 +5,8 @@ teaching, in a refusal or in a reading, each held to what the code does, both wa
 * **D-009**: a swap is counted in calories; a nutrient's grams convert by its Atwater factor, and a
   food moves only when recorded in kcal (``readings.kcal_per_unit``).
 * **D-018**: bootstrap optimism correction leads under prediction below about 20,000 units (Harrell
-  2017's figure), and the near-interpolating families keep their cross-validated score.
+  2017's figure) where the folds need not follow time, and the near-interpolating families keep
+  their cross-validated score.
 * **D-021**: the pairwise interval is the corrected repeated k-fold t, written out here, and one
   that includes zero says the rows cannot tell two families apart.
 * **D-032**: in a randomized trial an adjusted odds ratio is a conditional one, while the
@@ -14,19 +15,23 @@ teaching, in a refusal or in a reading, each held to what the code does, both wa
   nutrition pack gives them (its §06, read here).
 * **D-044**: blanking a count too numerous to count says it removes a count above the countable
   range, and that this biases the column low (built here so every such count is above the rest).
-* **D-070**: the imputed copies' sentence says they are pooled only where the fit pools them.
-* **D-001**: a nutrient that carries no energy is substituted for nothing.
+* **D-070**: the imputed copies' sentence and option say they are pooled only where the fit pools
+  them: numbered by a column, each kept as a record.
+* **D-001**: a nutrient that carries no energy is substituted for nothing; a food, servings, a
+  drink, a fatty acid or a fiber, which no general factor converts, keeps the substitution.
 * **D-012**: averaging replicates divides each mean's error variance by up to their number, fully
-  when the errors are independent (a simulation built here).
+  when the errors are independent (a simulation built here), whatever the error's source.
 * **A-106**: the event-share sentence says no resampling only where the fit applied none.
 * **A-117**: multiple imputation is refused unless the purpose is inference, in Sisk et al.'s
   scope.
 * **A-121**: inside a near dependency the estimate's contrast changes; "less of what it replaces"
   is said only of a part beside its total.
-* **C-110**: an ungrouped seal says its folds were drawn by row too.
+* **C-110**: an ungrouped seal labels its held-out scores exploratory and says nothing of the
+  folds, which internal–external validation draws by a grouping's levels.
 * **C-144**: the demographic guess's reason names no diet, and says the socioeconomic columns may
   follow what you study.
-* **C-241**: the missing-values option says whether the group is in the imputation model.
+* **C-241**: the missing-values option says whether the group is in the imputation model, right
+  after the variables it refers to.
 * **The roles ruling** (the orchestrator's, at the landing's cap): the roles teaching says what a
   role is, never what reaches the models, since a missing-values drop or a fixed-effects grouping
   column changes what the models get (``models.pipeline.model_predictors``).
@@ -131,6 +136,20 @@ def test_resampling_leads_under_prediction_below_harrells_twenty_thousand():
     assert inference.options[0].validation == "kfold"
     body = _section(_entry("split"), "A single split is the weakest")["body"]
     assert f"{HARRELL_UNITS:,}" in body and body.startswith("Under prediction")
+
+
+def test_with_time_ordered_folds_the_bootstrap_comes_last_and_the_teaching_says_where_it_leads():
+    """With folds that follow time the plan forward-chains and ranks the bootstrap last, below the
+    units at which it would otherwise lead; the teaching, served under both, names the condition."""
+    from turbotab.core.models.validation import validation_plan
+
+    timed = validation_plan("prediction", HARRELL_UNITS - 1, time_ordered=True)
+    untimed = validation_plan("prediction", HARRELL_UNITS - 1, time_ordered=False)
+    assert [o.validation for o in timed.options][-1] == "bootstrap" and not timed.resampling_first
+    assert untimed.options[0].validation == "bootstrap" and untimed.resampling_first
+    body = _section(_entry("split", "prediction"), "A single split is the weakest")["body"]
+    lead = body.split("bootstrap optimism correction is the recommended default")[0]
+    assert "where the folds need not follow time" in lead, body
 
 
 def test_the_teaching_names_every_family_the_bootstrap_does_not_correct():
@@ -360,7 +379,26 @@ def test_numbered_copies_kept_as_records_are_said_pooled_as_the_fit_pools_them()
     said = _copies_sentence("_MULT_")
     assert "pooled by Rubin's rules, which carries the imputation's uncertainty" in said
     option = _option(_entry("repeat_kind"), "imputed_copies")["consequence"]
-    assert "pooled by Rubin's rules" in option and "only as a recorded limitation" not in option
+    assert "Rubin's rules pool" in option and "only as a recorded limitation" not in option
+
+
+def test_the_copies_option_names_both_conditions_the_fit_pools_under():
+    """The option says pooled only for numbered copies kept as records, the two conditions
+    ``imputed_copies_column`` reads: with a numbering column and one row per record it
+    pools; with no numbering column, or with each unit's rows combined, it does not."""
+    from turbotab.core.stages.modeling import imputed_copies_column
+
+    def pools(implicate: str | None, unit: str) -> bool:
+        state = ProjectState(target="bmd", purpose="inference", unit=unit,
+                             grain={"grain": "repeated", "id_column": "SEQN"},
+                             repeat_kind={"repeat_kind": "imputed_copies",
+                                          "implicate_column": implicate})
+        return imputed_copies_column(state) is not None
+
+    assert pools("_MULT_", "row") and not pools(None, "row") and not pools("_MULT_", "unit")
+    option = _option(_entry("repeat_kind", "inference"), "imputed_copies")["consequence"]
+    assert option.endswith("under inference, Rubin's rules pool numbered copies kept as "
+                           "records."), option
 
 
 def test_copies_no_column_numbers_are_said_not_pooled_as_the_fit_does_not_pool_them():
@@ -384,13 +422,17 @@ def _describe(method: str, exposure: str):
 
 
 @pytest.mark.parametrize("method", ["standard", "residual"])
-def test_with_energy_held_fixed_a_nutrient_with_no_energy_is_substituted_for_nothing(method):
-    """Sodium carries no energy (no Atwater factor): with total energy fixed, more sodium leaves
-    every energy source where it was, so the coefficient names no substitution."""
+@pytest.mark.parametrize("exposure", ["sodium_mg", "potassium_mg", "DR1TSODI"])
+def test_with_energy_held_fixed_a_nutrient_with_no_energy_is_substituted_for_nothing(method,
+                                                                                     exposure):
+    """Sodium and potassium are minerals, which carry no energy (no Atwater factor: FAO 2003's
+    general factors are for protein, carbohydrate, fat, alcohol and fiber), and NHANES's DR1TSODI
+    is sodium in mg (DR1TOT_L's codebook): with total energy fixed, more of one leaves every energy
+    source where it was, so the coefficient names no substitution."""
     from turbotab.core.methods.energy import energy_factor
 
-    assert energy_factor("sodium_mg").factor is None
-    text = _describe(method, "sodium_mg").text
+    assert energy_factor(exposure).factor is None
+    text = _describe(method, exposure).text
     assert "substitution" not in text and "in place of" not in text, text
     assert "carries no energy" in text and "held fixed" in text
 
@@ -402,6 +444,44 @@ def test_with_energy_held_fixed_a_nutrient_that_carries_energy_is_a_substitution
     assert energy_factor("protein_g").factor == 4.0
     text = _describe(method, "protein_g").text
     assert "substitution" in text and "carries no energy" not in text
+
+
+# Columns that carry energy though no general factor converts them (energy_factor gives none), so
+# the gate the verifier found (no energy factor) fired on them: a food in grams (red meat; fatty
+# fish, about 2 kcal/g), servings of a sugar-sweetened beverage, alcoholic drinks (alcohol is 7
+# kcal/g), EPA (a polyunsaturated fatty acid, fat at 9 kcal/g) and the Framingham FFQ's AOAC fiber
+# (fiber is 2 kcal/g in the systems that count it). The general factors are FAO 2003's (Food
+# energy: methods of analysis and conversion factors, ch. 3).
+CARRY_ENERGY_WITH_NO_FACTOR = ["red_meat_g", "fatty_fish_g", "ssb_servings", "alcohol_drinks",
+                               "epa_g", "NUT_AOFIB"]
+
+
+@pytest.mark.parametrize("method", ["standard", "residual"])
+@pytest.mark.parametrize("exposure", CARRY_ENERGY_WITH_NO_FACTOR)
+def test_with_energy_held_fixed_a_food_a_drink_or_a_fatty_acid_is_still_a_substitution(method,
+                                                                                       exposure):
+    """The no-swap sentence fires only on a positive reading that a column carries no energy, not
+    on a missing factor: each of these has none (shown first), carries energy, and keeps the
+    substitution reading."""
+    from turbotab.core.methods.energy import energy_factor
+
+    assert energy_factor(exposure).factor is None
+    text = _describe(method, exposure).text
+    assert "carries no energy" not in text and "nothing is substituted" not in text, text
+    assert "substitution" in text, text
+
+
+def test_a_food_beside_sodium_keeps_the_substitution_reading():
+    """Two study factors, sodium and red meat: red meat carries energy, so the model's sentence
+    does not say the nutrient carries none."""
+    from turbotab.core.methods.energy import describe_model
+
+    adjustment = d.EnergyAdjustment(method="standard", energy_column="kcal",
+                                    nutrients=["sodium_mg", "red_meat_g"])
+    roles = {"sodium_mg": "exposure", "red_meat_g": "exposure", "kcal": "energy"}
+    columns = ["sodium_mg", "red_meat_g", "kcal"]
+    text = describe_model(adjustment, columns, roles, columns).text
+    assert "carries no energy" not in text, text
 
 
 def test_the_teaching_scopes_the_substitution_reading_to_nutrients_that_carry_energy():
@@ -433,12 +513,12 @@ def test_averaging_replicates_divides_the_error_variance_by_up_to_their_number()
     assert sigma ** 2 / correlated < 2 < sigma ** 2 / independent * 1.05
 
 
-def _aggregation_notes(recalls, kind: str) -> list[str]:
+def _aggregation_notes(recalls, kind: str, lens: str = "dietary") -> list[str]:
     from turbotab.core import coach
     from turbotab.core.consequences import RowFlowView, RowStep
     from turbotab.core.tests.test_coach import ctx_for
 
-    base = ProjectState(lens=["dietary"], target="hba1c",
+    base = ProjectState(lens=[lens], target="hba1c",
                         grain={"grain": "repeated", "id_column": "participant_id"},
                         repeat_kind=d.RepeatSpec(repeat_kind=kind))
     steps = [RowStep(key="loaded", label="Rows", n=600), RowStep(key="combined", label="People",
@@ -449,10 +529,20 @@ def _aggregation_notes(recalls, kind: str) -> list[str]:
     return [n.text for n in view.coach]
 
 
-def test_the_replicates_note_names_the_error_variance_of_each_mean(recalls):
-    (said,) = _aggregation_notes(recalls, "repeats")
-    assert "within-person variance" not in said
-    assert said == "Averaging `2` replicates cuts each mean's day-to-day error variance up to `2`-fold."
+@pytest.mark.parametrize("lens", ["dietary", "clinical"])
+def test_the_replicates_note_names_the_error_variance_of_each_mean(recalls, lens):
+    """Replicates can be recalls on different days or readings at one visit (duplicate assays,
+    triplicate blood pressures), whose errors are reading to reading: the note names the error of
+    each mean, not its source, under every lens; the simulation above holds for any independent
+    errors, whatever their source."""
+    (said,) = _aggregation_notes(recalls, "repeats", lens)
+    assert "within-person variance" not in said and "day-to-day" not in said
+    assert said == "Averaging `2` replicates cuts each mean's error variance up to `2`-fold."
+
+
+def test_the_mean_option_names_no_source_for_the_replicates_error():
+    option = _option(_entry("aggregation"), "mean")["consequence"]
+    assert "day-to-day" not in option and "error" in option, option
 
 
 def test_time_points_get_no_replicates_note(recalls):
@@ -560,7 +650,7 @@ def test_a_part_beside_its_total_says_more_of_it_is_less_of_the_rest_of_the_tota
     assert "more `sugar` means less of the rest of `carb`" in n.predicted.words
 
 
-# ── C-110 · an ungrouped seal draws its folds by row too ──────────────────────
+# ── C-110 · an ungrouped seal's held-out scores, and nothing of the folds ─────
 
 
 def _seal(grain: dict) -> tuple:
@@ -571,19 +661,50 @@ def _seal(grain: dict) -> tuple:
     return decide_basis(state, frame, ["pid"])
 
 
-def test_a_seal_drawn_by_row_over_a_repeating_identifier_says_the_folds_were_too():
-    basis, column = _seal({"grain": "one_row_per_unit"})
-    assert column is None and basis.exploratory
-    assert "treat held-out and cross-validated scores as exploratory" in basis.sentence.lower()
+PID = np.repeat(np.arange(40), 3)  # 40 units, 3 rows each
+SITE = PID % 4  # 4 sites, each unit wholly in one
+
+
+def _spans(frame: pd.DataFrame, column: str) -> pd.Series:
+    """How many distinct values of ``column`` (partition or fold) each unit's rows take, over the
+    rows that have one."""
+    rows = np.arange(len(PID))
+    got = frame.set_index("row_id")[column].reindex(rows).to_numpy()
+    keep = got != -1 if column == "fold" else np.ones(len(rows), bool)
+    return pd.Series(got[keep]).groupby(PID[keep]).nunique()
+
+
+@pytest.mark.parametrize("grain", [{"grain": "one_row_per_unit"}, {"grain": "unknown"},
+                                   {"grain": "repeated", "id_column": "person"}])
+def test_a_seal_drawn_by_row_over_a_repeating_identifier_labels_its_held_out_scores_exploratory(
+        grain):
+    """By construction a unit's rows can then land on both sides of the held-out draw, so its
+    scores are within-unit and read high (Saeb et al. 2017); the seal labels them exploratory. It
+    says nothing of the folds: it is drawn before the validation is chosen, and only the split's
+    note, written after, knows whether they are a grouping's levels."""
     from turbotab.core.stages.rows import draw_split
 
-    rows = np.arange(120)
-    frame, _ = draw_split(rows, holdout=0.2, seed=0, folds=5, groups=None)
-    pid = np.repeat(np.arange(40), 3)
-    folds = frame.set_index("row_id")["fold"].reindex(rows).to_numpy()
-    train = folds >= 0
-    spans = pd.Series(folds[train]).groupby(pid[train]).nunique()
-    assert (spans > 1).any()  # drawn by row: a unit's rows land in two folds
+    basis, column = _seal(grain)
+    assert column is None and basis.exploratory
+    assert "treat held-out scores as exploratory" in basis.sentence.lower(), basis.sentence
+    assert "fold" not in basis.sentence, basis.sentence
+    frame, _ = draw_split(np.arange(len(PID)), holdout=0.2, seed=0, folds=5, groups=None)
+    assert (_spans(frame, "partition") > 1).any()  # a unit on both sides of the seal
+
+
+def test_under_internal_external_validation_the_folds_are_the_sites_and_the_seal_says_nothing_of_them():
+    """The verifier's case: `pid` repeats 3 times over 40 units in 4 sites while each row was said
+    to be a unit, so the basis is abandoned; internal–external validation then makes each site a
+    fold (``draw_split``'s clusters), and no unit spans two folds. The seal's sentence, true under
+    every validation, says nothing of how the folds were drawn."""
+    from turbotab.core.stages.rows import draw_split
+
+    basis, _ = _seal({"grain": "one_row_per_unit"})
+    assert basis.state == "abandoned"
+    frame, info = draw_split(np.arange(len(PID)), holdout=0.2, seed=0, folds=5, groups=None,
+                             clusters=SITE, cluster_column="site")
+    assert info["folds"] == 4 and (_spans(frame, "fold") == 1).all()
+    assert "fold" not in basis.sentence and "cross-validated" not in basis.sentence
 
 
 def test_a_grouped_seal_says_nothing_of_exploratory_scores():
@@ -643,15 +764,23 @@ def _quality_lever(group_is_a_predictor: bool) -> str:
     return finding.lever.options[0].sound
 
 
+# The group's clause follows the variables it refers to, so its "those" cannot be read as the
+# complete cases, which come last.
+VARIABLES = "Multiple imputation fills blanks from the analysis's variables; "
+CASES = "; complete cases state their assumption"
+
+
 def test_a_group_that_is_a_predictor_is_said_to_be_in_the_imputation_model():
     sound = _quality_lever(True)
-    assert "`race` is one of them" in sound and "not one" not in sound
+    assert sound == (f"{VARIABLES}`race` is one of those variables, so the imputation model holds "
+                     f"it{CASES}"), sound
 
 
 def test_a_group_that_is_no_predictor_is_said_to_be_left_out_of_the_imputation_model():
     sound = _quality_lever(False)
     assert "with the group in its model" not in sound
-    assert "`race` is not one of them" in sound
+    assert sound == (f"{VARIABLES}`race` is not one of those variables, so the imputation model "
+                     f"leaves it out{CASES}"), sound
 
 
 # ── the roles ruling: what a role is, never what reaches the models ───────────
@@ -668,6 +797,14 @@ BASE_WORDS = (
     "A column the model reads to predict the outcome, such as a nutrient intake or age.",
     "Names a participant; never a predictor, and keeps a person's rows together in the split.",
 )
+
+
+def test_the_estimate_why_says_the_record_keeps_each_column_that_holds_no_predictor_role():
+    """The why's last clause names what the record keeps: after "none holds a predictor role" a
+    bare "it" has nothing to refer to."""
+    why = _entry("roles", "inference")["why"]
+    assert why.endswith("so none holds a predictor role, and the record keeps each of them."), why
+    assert not re.search(r"\bkeeps it\b", why), why
 
 
 def test_the_guard_fires_on_the_base_words_and_is_silent_on_a_roles_definition():
