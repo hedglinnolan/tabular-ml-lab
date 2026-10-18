@@ -1411,23 +1411,25 @@ def role_words(role: str | None, purpose: str | None = None) -> str:
 # steps on the card, and each produced a false sentence (the last, the energy-aware fill named under
 # the complete-cases answer, where ``models.pipeline`` builds no fill), so under the ruling of
 # 2026-10-18 the card, its groups, its options and terms and every role press name no step. The
-# card says one sentence that holds in every project (:func:`predictors_sentence`), and
-# ``tests/test_estimate_words_under_predict.py`` reads its claim from the code on a frame it builds.
+# card says one sentence that holds in every project (:func:`predictors_sentence`): its columns
+# enter the models as predictors, whichever group holds them. W1-V's sentence went on to say that a
+# group changes only how some preparation and screening steps treat a column; the ruling at W1-V's
+# cap took that claim about steps out, its "only" with it.
 # The group names follow the lenses alone, so the record's sentences, which read only the answers,
 # name a move as the card does (``voice._role_move``). Under Estimate, and with no goal, the words
 # are ``role_words``'s, unchanged.
 DIETARY_LENSES = ("dietary",)
-GROUP_CHANGES = "group changes only how some preparation and screening steps treat it"
+WHICHEVER_GROUP = "whichever group holds"
 
 
 def predictors_sentence(n: int | str) -> str:
     """The Predict roles card's one sentence about its predictor groups, true in every project:
-    ``n`` columns enter the models as predictors, and a column's group changes only how some
-    preparation and screening steps treat it. ``n`` may be a template's placeholder."""
+    ``n`` columns enter the models as predictors, whichever group holds them. It makes no claim
+    about steps. ``n`` may be a template's placeholder."""
     if n == 1:
-        return f"It enters the models as a predictor; its {GROUP_CHANGES}."
+        return f"It enters the models as a predictor, {WHICHEVER_GROUP} it."
     count = f"{n:,}" if isinstance(n, int) else str(n)
-    return f"All {count} enter the models as predictors; a column's {GROUP_CHANGES}."
+    return f"All {count} enter the models as predictors, {WHICHEVER_GROUP} them."
 
 
 @dataclass(frozen=True)

@@ -39,13 +39,13 @@ export function servedGroups(
 }
 
 /** The Predict roles card's one sentence about its predictor groups (core/readings.py
- *  `predictors_sentence`, the ruling of 2026-10-18), true in every project: `n` columns enter the
- *  models as predictors, and a column's group changes only how some preparation and screening steps
- *  treat it. `count` is `n` as the card prints it. */
+ *  `predictors_sentence`, the ruling at W1-V's cap), true in every project: `n` columns enter the
+ *  models as predictors, whichever group holds them; it makes no claim about steps. `count` is `n`
+ *  as the card prints it. */
 export function predictorsSentence(n: number, count: string): string {
   return n === 1
-    ? "It enters the models as a predictor; its group changes only how some preparation and screening steps treat it."
-    : `All ${count} enter the models as predictors; a column's group changes only how some preparation and screening steps treat it.`;
+    ? "It enters the models as a predictor, whichever group holds it."
+    : `All ${count} enter the models as predictors, whichever group holds them.`;
 }
 
 /** The roles stage's clauses in Estimate's words, each with its words under Predict (core/readings.py

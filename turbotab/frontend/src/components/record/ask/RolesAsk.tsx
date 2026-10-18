@@ -47,8 +47,10 @@ const ESTIMATE = {
  * assay features under an assay lens), with its count, in the words the server serves beside the
  * proposals (core/readings.py `predictor_groups`; W1 part 2's U6), never a fixture's. It names no
  * step that treats a group apart: four rounds did, and each produced a false sentence (the ruling
- * of 2026-10-18). It says one sentence that holds in every project instead (`predictorsSentence`),
- * and a role's button says what kind of column holds it (the Predict teaching entry's option).
+ * of 2026-10-18). It says one sentence that holds in every project instead (`predictorsSentence`:
+ * its columns enter the models as predictors, whichever group holds them, the ruling at W1-V's
+ * cap), and a role's button says what kind of column holds it (the Predict teaching entry's
+ * option).
  */
 const PREDICT = {
   become: (n: number) => (n === 1 ? "column enters the models as a predictor" : "columns enter the models as predictors"),

@@ -793,13 +793,13 @@
         }
       },
       "sentence": {
-        "one": "It enters the models as a predictor; its group changes only how some preparation and screening steps treat it.",
-        "many": "All {n} enter the models as predictors; a column's group changes only how some preparation and screening steps treat it."
+        "one": "It enters the models as a predictor, whichever group holds it.",
+        "many": "All {n} enter the models as predictors, whichever group holds them."
       },
       "options": {
         "exposure": {
           "label": "Predictor",
-          "consequence": "A predictor, such as a nutrient intake or an assay feature."
+          "consequence": "A predictor, such as a nutrient intake, a lab value or an assay feature."
         },
         "energy": {
           "label": "Energy",

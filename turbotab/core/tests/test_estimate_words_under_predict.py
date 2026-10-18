@@ -633,6 +633,31 @@ def test_under_predict_the_roles_card_names_no_study_factor():
     assert "energy adjustment" not in entry["consumer"]
 
 
+# An example of each group the Predictor role is named by (``readings.predict_kind``): a nutrient
+# under the dietary lens, an assay feature under an assay lens, a measure (such as a lab value)
+# under any other; a project with both lenses names both.
+GROUP_EXAMPLES = {"dietary": ("nutrient intake",), "assay": ("assay feature",),
+                  "neither": ("lab value",), "both": ("nutrient intake", "assay feature")}
+GROUP_LENSES = (("dietary",), ("clinical",), ("genomics",), ("metabolomics",),
+                ("dietary", "metabolomics"), ("dietary", "clinical"), ())
+
+
+@pytest.mark.parametrize("lenses", GROUP_LENSES)
+def test_under_predict_the_predictor_options_examples_cover_the_projects_group(lenses):
+    """The ruling at W1-V's cap: the Predictor role's option is served to every project under
+    Predict, so its examples name each group the role is named by, whatever the lenses: a clinical
+    project's measures among them (a lab value), not a nutrient intake and an assay feature alone."""
+    entry = _roles_entry("prediction")
+    consequence = next(o["consequence"] for o in entry["options"] if o["value"] == "exposure")
+    assert set(GROUP_EXAMPLES) == {readings.predict_kind(k) for k in GROUP_LENSES}
+    for example in GROUP_EXAMPLES[readings.predict_kind(lenses)]:
+        assert example in consequence, (lenses, example, consequence)
+    # under Estimate the option is as before
+    estimate = next(o["consequence"] for o in _roles_entry("inference")["options"]
+                    if o["value"] == "exposure")
+    assert "lab value" not in estimate
+
+
 def test_under_estimate_the_roles_card_is_as_before():
     from turbotab.core.teaching.content import ROLES as TODAY
 
@@ -685,16 +710,17 @@ def test_the_predict_roles_card_fits_the_teaching_budgets():
 # batch-corrected", and the energy-aware fill named under the complete-cases answer, where
 # ``models.pipeline`` builds no fill. So no Predict card, option, term, served group or press names
 # a step; the card says one sentence that holds in every project
-# (``readings.predictors_sentence``), and its claim that a group changes how some steps treat a
-# column is read from the code on a frame built below.
+# (``readings.predictors_sentence``): its columns enter the models as predictors, whichever group
+# holds them. W1-V's sentence added that a group changes only how some preparation and screening
+# steps treat a column, a claim about steps the ruling at W1-V's cap took out with its "only".
 
-# The steps the rounds named, the QC chain's words, and the energy model's two steps, which never
-# run under Predict (the W1-V verifier's P2: the drawer named them): none is said under Predict.
-# "Screening" is the sentence's own generic word, so the screen is matched as "screen" or
-# "screened" alone; "pooled" is matched as the QC chain's "pooled QC", since pooled cycles are a
-# survey's, which no step on a predictor role reads.
-STEP_NAMES = re.compile(r"energy-aware|\bscreen(ed)?\b|normaliz|\bbatch|combat|\bqc\b|"
-                        r"pooled[- ]qc|assay-process|\bfill|-filled|energy adjust|substitut", re.I)
+# The steps the rounds named, the QC chain's words, the energy model's two steps, which never run
+# under Predict (the W1-V verifier's P2: the drawer named them), and W1-V's generic "preparation
+# and screening steps": none is said under Predict. "Pooled" is matched as the QC chain's "pooled
+# QC", since pooled cycles are a survey's, which no step on a predictor role reads.
+STEP_NAMES = re.compile(r"energy-aware|\bscreen(ed|ing)?\b|normaliz|\bbatch|combat|\bqc\b|"
+                        r"pooled[- ]qc|assay-process|\bfill|-filled|energy adjust|substitut|"
+                        r"\bsteps?\b|preparation", re.I)
 # What the four rounds said (the brief's words, the base's served words): the guard fires on each.
 FOUR_ROUNDS = (
     "The omics screen, normalization and batch correction skip them.",
@@ -704,8 +730,10 @@ FOUR_ROUNDS = (
     "Total energy, a predictor: median-filled, fills nutrients; kept by the screen; "
     "assay-processed only by pooled-QC steps.",
 )
-SENTENCE = ("All 12 enter the models as predictors; a column's group changes only how some "
-            "preparation and screening steps treat it.")
+SENTENCE = "All 12 enter the models as predictors, whichever group holds them."
+# W1-V's sentence, re-ruled at its cap: the guard fires on it.
+STEP_SENTENCE = ("All 12 enter the models as predictors; a column's group changes only how some "
+                 "preparation and screening steps treat it.")
 # The lenses the card's names follow (``readings.predict_kind``), a pooled-QC lens among them.
 PREDICT_LENSES = (("dietary",), ("clinical",), ("genomics",), ("metabolomics",),
                   ("dietary", "metabolomics"), ("dietary", "clinical"))
@@ -758,7 +786,7 @@ def test_under_predict_no_roles_card_option_term_group_or_press_names_a_step():
     batch correction or the QC chain). The guard fires on each sentence the four rounds wrote."""
     from turbotab.core.decisions import Task
 
-    for old in FOUR_ROUNDS:
+    for old in (*FOUR_ROUNDS, STEP_SENTENCE):
         assert _names_a_step(old), old
     assert not _names_a_step(SENTENCE)
     entry = _roles_entry("prediction")
@@ -809,74 +837,18 @@ def test_under_predict_the_whole_roles_entry_names_no_step_its_drawer_and_why_in
 
 def test_under_predict_the_roles_card_says_one_sentence_for_every_project():
     """The card keeps its groups and its count and says one sentence that holds in every project,
-    its count interpolated (``readings.predictors_sentence``); one column is said as one."""
+    its count interpolated (``readings.predictors_sentence``); one column is said as one. The ruling
+    at W1-V's cap: the sentence says the columns enter the models whichever group holds them, with
+    no "only" and no claim about steps."""
     assert readings.predictors_sentence(12) == SENTENCE
     assert readings.predictors_sentence(1_234) == SENTENCE.replace("All 12", "All 1,234")
     assert readings.predictors_sentence(1) == (
-        "It enters the models as a predictor; its group changes only how some preparation and "
-        "screening steps treat it.")
+        "It enters the models as a predictor, whichever group holds it.")
     assert readings.predictors_sentence("{n}") == SENTENCE.replace("12", "{n}")
-
-
-def _screen_frame() -> tuple[pd.DataFrame, np.ndarray]:
-    """A frame built here: 40 rows, an outcome, eleven measures each the outcome plus noise of its
-    own size (so each correlates with it), and an ``age`` made exactly uncorrelated with it (a draw
-    with the outcome's least-squares line, intercept and slope, taken out)."""
-    rng = np.random.default_rng(23)
-    n = 40
-    y = rng.normal(size=n)
-    columns = {f"m{i:02d}": y + rng.normal(0.0, 0.3 + 0.2 * i, n) for i in range(11)}
-    draw = rng.normal(50.0, 10.0, n)
-    design = np.column_stack([np.ones(n), y])
-    age = draw - design @ np.linalg.lstsq(design, draw, rcond=None)[0] + 50.0
-    return pd.DataFrame({**columns, "age": age}), y
-
-
-def _steps_on(frame: pd.DataFrame, y: np.ndarray, family: str, roles: dict[str, str]):
-    """The family's own steps (``models.pipeline.family_steps``) for these roles, fit on the frame:
-    every column numeric and complete, so no fill runs."""
-    from sklearn.pipeline import Pipeline
-
-    import turbotab.core.methods.omics  # noqa: F401 - registers the screened family
-    from turbotab.core.models.base import get_family
-    from turbotab.core.models.pipeline import DesignSpec, family_steps
-
-    predictors = list(frame.columns)
-    spec = DesignSpec(predictors=predictors, inputs=predictors, categorical=[],
-                      numeric=predictors, energy=None, impute=False, roles=roles)
-    return Pipeline(family_steps(spec, get_family(family), "regression")).fit(frame, y)
-
-
-def test_a_columns_group_changes_how_the_screen_treats_it_on_a_frame_built_here():
-    """The sentence's claim that a column's group changes how some screening step treats it, read
-    from the code: the screened elastic net's screen keeps the ``d = [n / ln n]`` Predictor columns
-    most correlated with the outcome (Fan & Lv 2008; ``d`` and the ranking are computed here with
-    ``math`` and numpy) and passes every other column. ``age``, uncorrelated with the outcome by
-    construction, passes the screen as a characteristic and is screened out in the Predictor role.
-    The other way, a family with no screen (ridge) prepares ``age`` alike in either group, value
-    for value: the group changes only some steps."""
-    import math
-
-    frame, y = _screen_frame()
-    measures = [c for c in frame if c != "age"]
-    d = int(math.floor(len(frame) / math.log(len(frame))))
-    assert d == 10 and len(measures) == 11
-    r = {c: abs(float(np.corrcoef(frame[c], y)[0, 1])) for c in frame}
-    assert r["age"] < 1e-12 and min(r[c] for c in measures) > 0.1
-    as_characteristic = {**{c: "exposure" for c in measures}, "age": "covariate"}
-    as_predictor = {**as_characteristic, "age": "exposure"}
-    for roles, screened in ((as_characteristic, measures), (as_predictor, [*measures, "age"])):
-        kept = sorted(sorted(screened, key=lambda c: -r[c])[:d])
-        fitted = _steps_on(frame, y, "screened_elastic_net", roles)
-        screen = fitted.named_steps["screen"]
-        assert sorted(screen.kept_) == kept, roles["age"]
-        assert ("age" in screen.transform(frame).columns) == (roles["age"] == "covariate")
-    assert "age" not in sorted(sorted([*measures, "age"], key=lambda c: -r[c])[:d])
-    # the other way: no screen, and the same prepared values whichever group holds `age`
-    prepared = [np.asarray(_steps_on(frame, y, "ridge", roles).transform(frame), dtype=float)
-                for roles in (as_characteristic, as_predictor)]
-    assert prepared[0].shape == (len(frame), len(frame.columns))
-    assert np.array_equal(prepared[0], prepared[1])
+    for n in (1, 12, "{n}"):
+        said = readings.predictors_sentence(n)
+        assert not _names_a_step(said) and not re.search(r"\bonly\b", said, re.I), said
+    assert re.search(r"\bonly\b", STEP_SENTENCE)
 
 
 @pytest.mark.parametrize("lenses, names", [

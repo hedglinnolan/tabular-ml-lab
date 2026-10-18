@@ -773,17 +773,19 @@ ROLES = {
 # screening steps, and four rounds named them here and on the groups; each round produced a false
 # sentence, the last the energy-aware fill named under the complete-cases answer, where
 # ``models.pipeline`` builds no fill. So under the ruling of 2026-10-18 no option or term names a
-# step: each says what kind of column holds the role, and the card's one sentence says that a
-# column's group changes only how some preparation and screening steps treat it
-# (``readings.predictors_sentence``). The drawer and the why are the Estimate card's but for two
-# sentences that named steps (the W1-V verifier's P2): the units section says what the units are
-# and leaves out the screens, energy adjustment and substitution that read total energy (neither
-# of the last two runs under Predict), and a flag "marks which values were imputed" rather than
-# "describes how a value was filled". ``tests/test_estimate_words_under_predict.py`` holds every
-# word of the Predict entry to naming no step.
+# step: each says what kind of column holds the role, and the card's one sentence says that its
+# columns enter the models as predictors, whichever group holds them
+# (``readings.predictors_sentence``, the ruling at W1-V's cap). The Predictor option's examples
+# name each group the role is named by (a nutrient intake, a lab value as a measure, an assay
+# feature), since one option is served under every lens. The drawer and the why are the Estimate
+# card's but for two sentences that named steps (the W1-V verifier's P2): the units section says
+# what the units are and leaves out the screens, energy adjustment and substitution that read total
+# energy (neither of the last two runs under Predict), and a flag "marks which values were imputed"
+# rather than "describes how a value was filled". ``tests/test_estimate_words_under_predict.py``
+# holds every word of the Predict entry to naming no step.
 _PREDICT_OPTIONS = {
     "exposure": option("exposure", "Predictor",
-                       "A predictor, such as a nutrient intake or an assay feature."),
+                       "A predictor, such as a nutrient intake, a lab value or an assay feature."),
     "energy": option("energy", "Energy", "Total energy intake, a predictor."),
     "covariate": option("covariate", "Covariate",
                         "A predictor that describes the person, such as age or sex."),
