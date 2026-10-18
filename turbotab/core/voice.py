@@ -93,9 +93,10 @@ def number(value: Any) -> str:
 
 def table_number(value: Any) -> str:
     """A number as the results tables print it (``components/stage/format.ts``, ``fmtNum``): three
-    significant digits, a whole number with thousands separators from 1,000, a true minus; "—" for
-    none. A sentence that states a table's number says it this way (W1-R round 2, R-f 20: "CV MSE
-    of 1033.261" beside a table showing 1,033)."""
+    significant digits, printed as JavaScript prints a number (:func:`_js_string`), a whole number
+    with thousands separators from 1,000, its first minus a true one (the table's one
+    ``replace``); "—" for none. A sentence that states a table's number says it this way (W1-R
+    round 2, R-f 20: "CV MSE of 1033.261" beside a table showing 1,033)."""
     from decimal import ROUND_HALF_UP, Decimal
 
     try:
@@ -112,8 +113,29 @@ def table_number(value: Any) -> str:
         exact = Decimal(x)  # toPrecision(3): the exact binary value, a tie away from zero
         rounded = float(exact.quantize(Decimal(1).scaleb(exact.adjusted() - 2),
                                        rounding=ROUND_HALF_UP))
-        text = str(int(rounded)) if rounded.is_integer() else repr(rounded)
-    return text.replace("-", "−")
+        text = _js_string(rounded)
+    return text.replace("-", "−", 1)
+
+
+def _js_string(x: float) -> str:
+    """JavaScript's ``String(x)`` for a finite nonzero ``x`` (ECMAScript Number::toString): the
+    shortest digits that read back as ``x``, which are ``repr``'s, in decimal notation from 1e-6
+    up to 1e21 and as "1.23e-7" outside it. ``repr`` writes an exponent from below 1e-4 instead
+    (W1-R round 3, SE-m3: "5e−05" beside a table showing 0.00005)."""
+    from decimal import Decimal
+
+    _sign, digits, exponent = Decimal(repr(abs(x))).as_tuple()
+    n = len(digits) + exponent  # x = 0.d1d2… × 10^n
+    s = "".join(map(str, digits)).rstrip("0")
+    if len(s) <= n <= 21:
+        body = s + "0" * (n - len(s))
+    elif 0 < n <= 21:
+        body = f"{s[:n]}.{s[n:]}"
+    elif -6 < n <= 0:
+        body = "0." + "0" * -n + s
+    else:
+        body = (s if len(s) == 1 else f"{s[0]}.{s[1:]}") + f"e{'+' if n > 0 else '-'}{abs(n - 1)}"
+    return ("-" if x < 0 else "") + body
 
 
 def count(n: int) -> str:

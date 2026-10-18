@@ -10,6 +10,7 @@ reported result.
 from __future__ import annotations
 
 import math
+from decimal import ROUND_HALF_UP, Decimal
 
 import numpy as np
 import pytest
@@ -19,18 +20,42 @@ from turbotab.core.decisions import OpenSeal, ProjectState
 from turbotab.core.models.selection import OutOfFold, selection_optimism
 
 
+def js_string(x: float) -> str:
+    """JavaScript's ``String(x)`` for a finite nonzero number, as ECMAScript's Number::toString
+    (radix 10) writes it out: the shortest digits ``s`` that read back as ``x`` (the digits Python's
+    ``repr`` gives), ``k`` of them, with ``x = 0.s × 10^n``; in decimal notation while
+    ``-6 < n <= 21``, else as ``d.ddde±e`` with ``e = n − 1``."""
+    _sign, digits, exponent = Decimal(repr(abs(x))).as_tuple()
+    n = len(digits) + exponent
+    s = "".join(map(str, digits)).rstrip("0")
+    k = len(s)
+    if k <= n <= 21:
+        body = s + "0" * (n - k)
+    elif 0 < n <= 21:
+        body = f"{s[:n]}.{s[n:]}"
+    elif -6 < n <= 0:
+        body = "0." + "0" * -n + s
+    else:
+        e = n - 1
+        body = (s if k == 1 else f"{s[0]}.{s[1:]}") + f"e{'+' if e >= 0 else '-'}{abs(e)}"
+    return ("-" if x < 0 else "") + body
+
+
 def table(v: float) -> str:
     """``fmtNum(v)``: ``Math.round(v).toLocaleString("en-US")`` from 1,000, else
-    ``String(+v.toPrecision(3))`` (a number rounded to three significant digits, printed as
-    JavaScript prints a number); a true minus."""
+    ``String(+v.toPrecision(3))`` (a number rounded to three significant digits, a tie away from
+    zero, printed as JavaScript prints a number, :func:`js_string`); its first minus a true one, as
+    ``replace("-", "−")`` makes it."""
     if v == 0:
         return "0"
     if abs(v) >= 1000:
         text = f"{int(math.floor(v + 0.5)):,}"
     else:
-        rounded = float(f"{v:.2e}")
-        text = str(int(rounded)) if rounded.is_integer() else repr(rounded)
-    return text.replace("-", "−")
+        exact = Decimal(v)
+        rounded = float(exact.quantize(Decimal(1).scaleb(exact.adjusted() - 2),
+                                       rounding=ROUND_HALF_UP))
+        text = js_string(rounded)
+    return text.replace("-", "−", 1)
 
 
 @pytest.mark.parametrize("value, shown", [(1033.261, "1,033"), (1133.621, "1,134"),
@@ -39,6 +64,22 @@ def table(v: float) -> str:
                                           (1.5, "1.5"), (999.6, "1000")])
 def test_the_table_rule_written_out(value, shown):
     """The reference itself, on values whose table form is read off the rule by hand."""
+    assert table(value) == shown
+    assert voice.table_number(value) == shown
+
+
+# W1-R round 3 (SE-m3): below 1e-4 Python's ``repr`` writes an exponent where JavaScript writes
+# decimals down to 1e-6, so "5e−05" stood where the table shows 0.00005. Each value's table form
+# here is what ``fmtNum`` printed under node 25.9.0 (an independent engine), byte for byte; the
+# last minus of a negative's exponent stays a hyphen, as the table's one ``replace`` leaves it.
+@pytest.mark.parametrize("value, shown", [
+    (5e-05, "0.00005"), (1.23e-05, "0.0000123"), (1e-06, "0.000001"), (9.99e-07, "9.99e−7"),
+    (1.23e-07, "1.23e−7"), (-1.23e-07, "−1.23e-7"), (7e-07, "7e−7"), (-5e-05, "−0.00005"),
+    (9.99e-06, "0.00000999"), (0.000123456, "0.000123"), (-0.00009996, "−0.0001"),
+    (9.995e-07, "9.99e−7"), (1e-21, "1e−21"), (2.675, "2.67"), (123.456, "123"),
+    (-999.95, "−1000"), (0.1 + 0.2, "0.3"), (-2 / 3, "−0.667"), (999.4999, "999"),
+    (0.0012345, "0.00123")])
+def test_a_small_score_is_printed_as_the_table_prints_it(value, shown):
     assert table(value) == shown
     assert voice.table_number(value) == shown
 
