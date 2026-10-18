@@ -59,7 +59,7 @@ command returning JSON:
 |---|---|---|
 | `ask` | the open question: its card's words, its options, the readings it rests on | the quest log and ask cards |
 | `preview <option>` | what recording that option would do to the data; nothing is recorded | `ProjectService.preview` |
-| `answer <option> --reason` | records the decision, with the analyst's reason in the record's `note` | `decide`; `DecisionRecord.note` |
+| `answer <option> --reason` | records the decision, with the analyst's reason in the record's `note` | `decide`; `DecisionRecord.note` exists, but no route accepts a note yet (SWARM_ENGINE_PLAN E4) |
 | `revisit <decision>` | changes an earlier decision, which the log keeps as a new record | the decision log's reverts |
 | `fit` | presses Fit; under Estimate this records the plan's lock | `press_fit`, `LockPlan` |
 | `results` | the results the app would show now: cross-validated under Predict, the estimate under Estimate | W2 (Predict Results), W3–W4 (Estimate) |
