@@ -343,7 +343,10 @@ def selection_optimism(task: str, metric: str, results: Mapping[str, Any], oof: 
 
 
 def _num(value: float) -> str:
-    return f"{value:.3f}".replace("-", "−")
+    """A score in a sentence, as the results table prints it (``voice.table_number``; R-f 20)."""
+    from turbotab.core.voice import table_number
+
+    return table_number(value)
 
 
 # ── the declared result (MODELING_SEQUENCE §1 row 12, ruling 4; MS6) ─────────

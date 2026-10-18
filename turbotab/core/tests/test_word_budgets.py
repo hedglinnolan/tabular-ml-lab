@@ -609,7 +609,16 @@ def test_every_lens_preview_says_what_it_adds(lens, tables):
     assert not over(result.note, C["preview_note"]) and "Nothing" not in result.note
     assert not over(result.views[0].caption, 20), result.views[0].caption
     if "dietary" in lenses:
-        assert "energy adjustment and substitution curves join the questions" in result.note
+        # W1-R round 2 (R-f 13): both are asked only when the goal is to estimate effects
+        # (BEATS_PREDICT §9 ruling 5), so the note says so, and under Predict names neither.
+        assert ("for estimating effects, energy adjustment and substitution curves join the "
+                "questions") in result.note
+        predict = plan(d.SetLens(lenses=lenses), PreviewContext(
+            project_id=fixture, state=ProjectState(purpose="prediction"),
+            datastore=table.store(), artifact=lambda s: None, training_row_ids=None,
+            cohort_row_ids=None), basis="")
+        assert "energy adjustment" not in predict.note and "substitution" not in predict.note
+        assert not over(predict.note, C["preview_note"])
 
 
 def test_composed_card_text_is_within_budget(composed):

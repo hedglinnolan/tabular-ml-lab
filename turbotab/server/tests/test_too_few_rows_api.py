@@ -59,23 +59,36 @@ def test_confirming_the_features_under_complete_cases_is_refused_with_a_fill(cli
     wait_for(client, pid, {"shelf": "fresh"}, timeout=180)
     asked = post(client, pid, {"kind": "select_models", "models": ["elastic_net"]})
     assert asked.status_code == 409 and asked.json()["error"]["code"] == "reading_unsettled"
-    confirm = next(e["decision"] for e in asked.json()["error"]["exits"]
-                   if (e["decision"] or {}).get("kind") == "confirm_readings")
-    assert any(i["column"].startswith("mz_") for i in confirm["items"])
+    # Each feature proposed below high is confirmed on its own (BLUEPRINT §14 rule 2; W1-R round
+    # 2's ruling R-b): the refusal offers one confirmation per feature and no block of them.
+    exits = [e["decision"] for e in asked.json()["error"]["exits"] if e["decision"]]
+    assert not [d for d in exits if d.get("kind") == "confirm_readings"
+                and any(i["reading"] == "role" for i in d["items"])]
+    confirms = [d for d in exits if d.get("kind") == "confirm_reading" and d["reading"] == "role"
+                and d["column"].startswith("mz_") and d["value"] == "exposure"]
+    assert confirms
 
-    previewed = client.post(f"/api/projects/{pid}/preview", json=confirm)
-    assert previewed.status_code == 409, previewed.text[:600]
-    assert previewed.json()["error"]["code"] == "too_few_rows"
-    refused = post(client, pid, confirm)
-    assert refused.status_code == 409, refused.text[:600]
-    error = refused.json()["error"]
+    # Confirmed one by one, they are accepted until one would leave too few complete rows.
+    tipping = None
+    for i, confirm in enumerate(confirms):
+        previewed = client.post(f"/api/projects/{pid}/preview", json=confirm)
+        recorded = post(client, pid, confirm)
+        if recorded.status_code == 409:
+            assert previewed.status_code == 409, previewed.text[:600]
+            assert previewed.json()["error"]["code"] == "too_few_rows"
+            tipping = i
+            break
+        assert recorded.status_code == 200, recorded.text[:600]
+    assert tipping is not None
+    error = recorded.json()["error"]
     assert error["code"] == "too_few_rows"
     # Under prediction the check reads the rows outside the held-out ones, as a preview does.
     held = client.get(f"/api/projects/{pid}/stages/split").json()["artifact"]["n_holdout"]
-    assert error["message"].startswith(
-        f"Recorded, this answer would leave none of the {measured - held} rows outside the held-out "
-        f"ones, and the design needs at least 6. Complete cases would remove {measured - held} rows: "
-        f"each of them is blank in at least one of the ")
+    assert error["message"].startswith("Recorded, this answer would leave ")
+    assert "rows outside the held-out ones, and the design needs at least 6." in error["message"]
+    assert held > 0
+    # The blanks it names are the column this confirmation brings in.
+    assert f"`{confirms[tipping]['column']}`" in error["message"]
     assert error["message"].endswith(
         "Fill the blanks instead of complete cases (the missing-values question).")
     fill = error["exits"][0]
@@ -84,8 +97,9 @@ def test_confirming_the_features_under_complete_cases_is_refused_with_a_fill(cli
     assert error["exits"][-1] == {"label": "Keep the answers as they are", "decision": None}
 
     assert post(client, pid, fill["decision"]).status_code == 200
-    confirmed = post(client, pid, confirm)
-    assert confirmed.status_code == 200, confirmed.text[:600]
+    for confirm in confirms[tipping:]:
+        confirmed = post(client, pid, confirm)
+        assert confirmed.status_code == 200, confirmed.text[:600]
     view = wait_for(client, pid, {"cohort": "fresh"}, timeout=180)
     assert client.get(f"/api/projects/{pid}/stages/cohort").json()["artifact"]["n_final"] == measured
     assert not [s for s, st in view["stages"].items() if st["status"] == "error"]

@@ -130,8 +130,8 @@ LENS = {
     "consumer": "The findings, the column roles and the order of every suggestion read it.",
     "options": [
         option("dietary", "Dietary intake",
-               "Checks energy units and implausible intakes; offers energy adjustment and "
-               "substitution curves."),
+               "Checks energy units and implausible intakes; for estimating effects, offers energy "
+               "adjustment and substitution curves."),
         option("clinical", "Clinical measurements and labs",
                "Separates impossible values from abnormal ones; checks units and censored "
                "results."),
@@ -763,13 +763,15 @@ ROLES = {
 # under Predict no column is studied and nothing is adjusted for, so the roles card says
 # "predictors" and names no study factor, and no energy model reads the roles (BEATS_PREDICT §9
 # ruling 5). The roles themselves stay as they are, each with a label of its own (the card's
-# buttons are named by them).
+# buttons are named by them). A covariate and the energy column are not read "like any other"
+# predictor: the screened elastic net's screen, the omics normalization and reference ComBat act on
+# the Predictor columns alone (``methods.omics``, ``methods.batch``; W1-R round 3, SE-B3).
+_SKIPPED = "the omics screen, normalization and batch correction skip"
 _PREDICT_OPTIONS = {
     "exposure": option("exposure", "Predictor", "A column the model reads to predict the outcome."),
-    "energy": option("energy", "Energy",
-                     "Total energy intake; enters the models as a predictor like any other."),
+    "energy": option("energy", "Energy", f"Total energy intake; a predictor, which {_SKIPPED}."),
     "covariate": option("covariate", "Covariate",
-                        "A predictor such as age or sex; enters the models like any other."),
+                        f"A predictor such as age or sex; {_SKIPPED} it."),
 }
 ROLES_UNDER_PREDICT = {
     **ROLES,
@@ -780,8 +782,8 @@ ROLES_UNDER_PREDICT = {
     "terms": [
         term("predictor", "A column the model reads to predict the outcome, such as a nutrient "
                           "intake or age."),
-        term("covariate", "A predictor such as age or sex; under prediction it enters the model "
-                          "like any other."),
+        term("covariate", f"A predictor such as age or sex. Under prediction every model reads "
+                          f"it; {_SKIPPED} it."),
         *(t for t in ROLES["terms"] if t["term"] == "identifier"),
     ],
 }

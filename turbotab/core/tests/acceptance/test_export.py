@@ -56,8 +56,8 @@ import pandas as pd
 import pytest
 
 from turbotab.core.tests.acceptance.server_drive import (WP17_QUESTIONS, _post_when_reached,
-                                                         answer_plan, answer_wp17, local_server,
-                                                         open_project)
+                                                         answer_plan, answer_wp17, confirm_each,
+                                                         local_server, open_project)
 from turbotab.core.tests.acceptance.r_reference import needs_r, run_r
 from turbotab.core.tests.stage_harness import NHANES, REPO
 from turbotab.core.tests.truths import ASKING, fixture_truth
@@ -155,8 +155,8 @@ def _journey(client: Any, purpose: str, *, confirm_roles: bool,
             _post(drive, {"kind": "set_roles", "roles": roles})
             waiting = drive.view()["decisions"][-1]["decision"].get("unconfirmed") or []
             if confirm_roles and waiting:
-                _post(drive, {"kind": "confirm_readings", "items": [
-                    {"reading": "role", "column": c, "value": roles[c]} for c in waiting]})
+                for body in confirm_each(roles, waiting):
+                    _post(drive, body)
             continue
         for body in plan[key]:
             _post(drive, body)

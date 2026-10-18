@@ -91,6 +91,53 @@ def number(value: Any) -> str:
     return f"{x:.6g}"
 
 
+def table_number(value: Any) -> str:
+    """A number as the results tables print it (``components/stage/format.ts``, ``fmtNum``): three
+    significant digits, printed as JavaScript prints a number (:func:`_js_string`), a whole number
+    with thousands separators from 1,000, its first minus a true one (the table's one
+    ``replace``); "—" for none. A sentence that states a table's number says it this way (W1-R
+    round 2, R-f 20: "CV MSE of 1033.261" beside a table showing 1,033)."""
+    from decimal import ROUND_HALF_UP, Decimal
+
+    try:
+        x = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if not math.isfinite(x):
+        return "—"
+    if x == 0:
+        return "0"
+    if abs(x) >= 1000:
+        text = f"{math.floor(x + 0.5):,}"  # Math.round, then toLocaleString("en-US")
+    else:
+        exact = Decimal(x)  # toPrecision(3): the exact binary value, a tie away from zero
+        rounded = float(exact.quantize(Decimal(1).scaleb(exact.adjusted() - 2),
+                                       rounding=ROUND_HALF_UP))
+        text = _js_string(rounded)
+    return text.replace("-", "−", 1)
+
+
+def _js_string(x: float) -> str:
+    """JavaScript's ``String(x)`` for a finite nonzero ``x`` (ECMAScript Number::toString): the
+    shortest digits that read back as ``x``, which are ``repr``'s, in decimal notation from 1e-6
+    up to 1e21 and as "1.23e-7" outside it. ``repr`` writes an exponent from below 1e-4 instead
+    (W1-R round 3, SE-m3: "5e−05" beside a table showing 0.00005)."""
+    from decimal import Decimal
+
+    _sign, digits, exponent = Decimal(repr(abs(x))).as_tuple()
+    n = len(digits) + exponent  # x = 0.d1d2… × 10^n
+    s = "".join(map(str, digits)).rstrip("0")
+    if len(s) <= n <= 21:
+        body = s + "0" * (n - len(s))
+    elif 0 < n <= 21:
+        body = f"{s[:n]}.{s[n:]}"
+    elif -6 < n <= 0:
+        body = "0." + "0" * -n + s
+    else:
+        body = (s if len(s) == 1 else f"{s[0]}.{s[1:]}") + f"e{'+' if n > 0 else '-'}{abs(n - 1)}"
+    return ("-" if x < 0 else "") + body
+
+
 def count(n: int) -> str:
     """A count, with thousands separators, in backticks."""
     return tick(f"{int(n):,}")
@@ -285,14 +332,16 @@ def sentence_for(decision: Any, state_before: Any = None, ctx: Any = None) -> st
 # analysis is now (``provenance``), so it restates these sentences on the current state; the Record
 # keeps them as said.
 #
-# There are two ways to restate:
+# There are three ways to restate:
 # * whole: a kind whose sentence reads only the decision and the state is re-authored on the
 #   current state, led by what had been seen when it was recorded (``decisions.disclose``);
 # * standing clause: a kind whose sentence also reads the recorder's context (``select_models``:
-#   its labels and the readings the values settled) ends with its standing clause. That clause is
-#   a sentence of its own, a function of the decision, the state and at most the context's
-#   ``detected_task`` (the task the target stage detected, where none was answered), and only it is
-#   restated.
+#   its labels) ends with its standing clause. That clause is a sentence of its own, a function of
+#   the decision, the state and at most the context's ``detected_task`` (the task the target stage
+#   detected, where none was answered), and only it is restated;
+# * by goal: a kind whose words follow the goal and that is recorded before the goal is (the roles
+#   and the confirmations of a role, in Your data) is re-authored on the state it was recorded on
+#   with the goal as it stands (:func:`restated_by_goal`).
 
 StandingFn = Callable[[Any, Any, Any], "str | None"]
 _RESTATED_WHOLE: set[str] = set()
@@ -328,8 +377,32 @@ def restated_counts(kind: str) -> None:
     _COUNTED.add(kind)
 
 
+# W1-R round 2 (the walkthrough's findings 2 and 3c): the roles answer and each confirmation of a
+# role are recorded in Your data, often before the goal is answered, and the roles answer says
+# which of its columns still wait for their own confirmation. Each is re-authored on the state it
+# was recorded on (so the roles before it read as they did) in the words of the goal as it stands,
+# and the roles answer with the columns that wait as they stand. ``fn(decision, worded, now,
+# ctx)``: the sentence on ``worded`` (the state then, with the goal now) and ``now``; None: the
+# kind's own sentence on ``worded``.
+Restater = Callable[[Any, Any, Any, Any], str]
+_BY_GOAL: dict[str, "Restater | None"] = {}
+
+
+def restated_by_goal(kind: str, fn: "Restater | None" = None) -> None:
+    """Declare that ``kind``'s sentence is restated in the goal's words as it stands (above)."""
+    _BY_GOAL[kind] = fn
+
+
+def _with_goal(then: Any, now: Any) -> Any:
+    purpose = getattr(now, "purpose", None)
+    if then is None or getattr(then, "purpose", None) == purpose or not hasattr(then, "model_copy"):
+        return then
+    return then.model_copy(update={"purpose": purpose})
+
+
 def restates(kind: str) -> bool:
-    return kind in _RESTATED_WHOLE or kind in _STANDING or kind in _COUNTED
+    return (kind in _RESTATED_WHOLE or kind in _STANDING or kind in _COUNTED
+            or kind in _BY_GOAL)
 
 
 def restate(decision: Any, sentence: str, then: Any, now: Any, ctx: Any = None, *,
@@ -345,6 +418,15 @@ def restate(decision: Any, sentence: str, then: Any, now: Any, ctx: Any = None, 
 
     decision = parse_decision(decision)
     kind = decision.kind
+    if kind in _BY_GOAL:
+        worded = _with_goal(then, now)
+        fn = _BY_GOAL[kind]
+        before = sentence_for(decision, then, ctx)
+        after = finish(fn(decision, worded, now, ctx)) if fn is not None else \
+            sentence_for(decision, worded, ctx)
+        if before == after:
+            return sentence
+        return disclose(after, post_seal=post_seal, after_estimates=after_estimates) or sentence
     if kind in _RESTATED_WHOLE:
         # A stage's facts for this kind, when the methods text passes them (``counts[kind]``; the
         # calibration stage's block, REPAIR-RC), are read on the answers as they stand.
@@ -365,6 +447,8 @@ def restate(decision: Any, sentence: str, then: Any, now: Any, ctx: Any = None, 
         return sentence
     said, says = fn(decision, then, ctx), fn(decision, now, ctx)
     said, says = (finish(said) if said else ""), (finish(says) if says else "")
+    if kind == "select_models":
+        sentence = _families_alone(sentence, said)
     if said == says:
         return sentence
     head = sentence
@@ -672,15 +756,76 @@ _ROLE_AS = {
     "time": "a time column",
     "excluded": "excluded",
 }
+# W1-R round 2 (the walkthrough's finding 3c; R2's P3c): under Predict nothing is studied and
+# nothing adjusted for, so an exposure and a covariate are each a predictor, one group in the roles
+# answer (``readings.role_words`` says the same). The engine's roles stay as they are.
+_PREDICTORS = ("exposure", "covariate")
+_ROLE_NOUN_UNDER_PREDICT = {**_ROLE_NOUN, "exposure": ("predictor", "predictors")}
+_ROLE_AS_UNDER_PREDICT = {**_ROLE_AS, "exposure": "a predictor", "covariate": "a predictor"}
+
+
+def _under_predict(state: Any) -> bool:
+    return getattr(state, "purpose", None) == "prediction"
+
+
+def role_as(role: Any, state: Any = None) -> str:
+    """A role as a complement ("as a covariate"), under the goal ``state`` declares."""
+    words = _ROLE_AS_UNDER_PREDICT if _under_predict(state) else _ROLE_AS
+    return words.get(str(role), tick(role))
+
+
+def _role_group(role: str, state: Any) -> str:
+    """The group a role is listed in: under Predict an exposure and a covariate are one."""
+    return "exposure" if _under_predict(state) and role in _PREDICTORS else role
+
+
+def _role_move(column: str, before: str, after: str, state: Any) -> str:
+    """One column's move in the roles answer. Under Predict a move between an exposure and a
+    covariate is still a change, though both are predictors: the screened elastic net screens the
+    Predictor columns alone, and the omics normalization and reference ComBat act on them alone
+    (``methods.omics``, ``methods.batch``). It is said in the Predict roles card's own labels for
+    the two roles (W1-R round 3, SE-B2)."""
+    if _under_predict(state) and before in _PREDICTORS and after in _PREDICTORS:
+        from turbotab.core.teaching.content import ROLES_UNDER_PREDICT
+
+        label = {o["value"]: o["label"] for o in ROLES_UNDER_PREDICT["options"]}
+        return f"{tick(column)} moved from the {label[before]} role to the {label[after]} role"
+    return f"{tick(column)} became {role_as(after, state)}"
 
 
 @register_sentence("set_roles")
 def _set_roles(d: Any, state: Any, ctx: Any) -> str:
-    return _set_roles_body(d, state) + _waiting_clause(list(getattr(d, "unconfirmed", None) or []))
+    return _set_roles_text(d, state, _after(state, d))
 
 
-def _waiting_clause(waiting: list[str]) -> str:
-    """BLUEPRINT §14 rule 2: what a bulk confirm recorded without confirming, said in the record."""
+def _after(state: Any, d: Any) -> Any:
+    """The state recording ``d`` leaves (``decisions.fold_onto``); None where it cannot be told."""
+    from turbotab.core.decisions import fold_onto
+
+    try:
+        return fold_onto(state, d)
+    except Exception:  # noqa: BLE001 - a sentence never fails a decision; it says less
+        return None
+
+
+def _set_roles_text(d: Any, worded: Any, now: Any) -> str:
+    """The roles answer's sentence: its roles in the words of the goal ``worded`` declares, read
+    against the roles before it (``worded`` is the state the answer was recorded on), and which of
+    the columns it recorded below high still wait on the answers ``now``."""
+    return _set_roles_body(d, worded) + _waiting_clause(d, now)
+
+
+def _waiting_clause(d: Any, now: Any) -> str:
+    """BLUEPRINT §14 rule 2: the columns a bulk confirm recorded without confirming that still wait
+    on the answers ``now`` (a confirmation of a column's own since settles it: the walkthrough's
+    finding 2), said in the record; nothing once none waits. ``now`` None: every one listed."""
+    from turbotab.core.readings import role_reading
+
+    def waits(column: str) -> bool:
+        reading = role_reading(now, column) if now is not None else None
+        return reading is None or not reading.settled
+
+    waiting = [c for c in getattr(d, "unconfirmed", None) or [] if waits(c)]
     if not waiting:
         return ""
     one = len(waiting) == 1
@@ -693,18 +838,21 @@ def _set_roles_body(d: Any, state: Any) -> str:
     roles: dict[str, str] = dict(d.roles)
     before: dict[str, str] = dict(state.roles or {})
     if before and set(before) == set(roles):
+        # Every move is a change, a move between an exposure and a covariate under Predict too
+        # (:func:`_role_move`).
         changed = [c for c in roles if roles[c] != before[c]]
         if not changed:
             return f"The roles of all {count(len(roles))} columns were recorded unchanged"
         if len(changed) <= 3:
-            moves = [f"{tick(c)} became {_ROLE_AS.get(roles[c], tick(roles[c]))}" for c in changed]
+            moves = [_role_move(c, before[c], roles[c], state) for c in changed]
             return f"{listing(moves, ticked=False)}; every other role is unchanged"
+    nouns = _ROLE_NOUN_UNDER_PREDICT if _under_predict(state) else _ROLE_NOUN
     groups = []
     for role in _ROLE_ORDER:
-        cols = [c for c, r in roles.items() if r == role]
+        cols = [c for c, r in roles.items() if _role_group(r, state) == role]
         if not cols:
             continue
-        one, many = _ROLE_NOUN[role]
+        one, many = nouns[role]
         noun = one if len(cols) == 1 else many
         groups.append(f"{noun} {listing(cols)}")
     return f"Column roles were set for {count(len(roles))} columns: " + "; ".join(groups)
@@ -713,8 +861,12 @@ def _set_roles_body(d: Any, state: Any) -> str:
 @register_sentence("confirm_role")
 def _confirm_role(d: Any, state: Any, ctx: Any) -> str:
     """BLUEPRINT §14 rule 2: an individual confirmation, recorded as one."""
-    return (f"{tick(d.column)} was confirmed as {_ROLE_AS.get(d.role, tick(d.role))} on its own, "
+    return (f"{tick(d.column)} was confirmed as {role_as(d.role, state)} on its own, "
             f"after the evidence for its proposal was read")
+
+
+restated_by_goal("set_roles", lambda d, worded, now, ctx: _set_roles_text(d, worded, now))
+restated_by_goal("confirm_role")
 
 
 _UNIT_WORDS = {"kj": "kJ", "pct_energy": "percent of energy", "m": "meters", "in": "inches"}
@@ -723,7 +875,8 @@ _UNIT_WORDS = {"kj": "kJ", "pct_energy": "percent of energy", "m": "meters", "in
 @register_sentence("confirm_reading")
 def _confirm_reading(d: Any, state: Any, ctx: Any) -> str:
     """BLUEPRINT §14.1: one reading of the data, confirmed on its own and recorded as one."""
-    return f"{_confirmed(d.reading, d.column, d.value)}, on its own, after the evidence for its reading was read"
+    return (f"{_confirmed(d.reading, d.column, d.value, state)}, on its own, after the evidence "
+            f"for its reading was read")
 
 
 @register_sentence("confirm_readings")
@@ -736,21 +889,26 @@ def _confirm_readings(d: Any, state: Any, ctx: Any) -> str:
     parts = []
     for (reading, value), columns in groups.items():
         if len(columns) >= 5:
-            parts.append(_confirmed(reading, f"__{len(columns)}__", value).replace(
+            parts.append(_confirmed(reading, f"__{len(columns)}__", value, state).replace(
                 f"`__{len(columns)}__` was", f"{tick(f'{len(columns):,}')} columns (from "
                 f"{tick(columns[0])}) were", 1))
         else:
-            parts.extend(_confirmed(reading, c, value) for c in columns)
+            parts.extend(_confirmed(reading, c, value, state) for c in columns)
     shown = "; ".join(parts[:6]) + (f"; and {len(parts) - 6} more" if len(parts) > 6 else "")
     return f"Confirmed together, each as the question showed it: {shown}"
 
 
-def _confirmed(reading: str, column: str, value: Any) -> str:
+restated_by_goal("confirm_reading")
+restated_by_goal("confirm_readings")
+
+
+def _confirmed(reading: str, column: str, value: Any, state: Any = None) -> str:
+    """One reading's confirmation, a role in the words of the goal ``state`` declares."""
     col = tick(column)
     value = str(value)
     d = SimpleNamespace(reading=reading)
     if d.reading == "role":
-        said = f"{col} was confirmed as {_ROLE_AS.get(value, tick(value))}"
+        said = f"{col} was confirmed as {role_as(value, state)}"
     elif d.reading == "cluster":
         said = (f"{col} was confirmed as marking rows that belong together, so the intervals "
                 f"cluster by it" if value == "yes" else
@@ -1404,16 +1562,31 @@ def _select_models(d: Any, state: Any, ctx: Any) -> str:
                    "bias-corrected cross-validation (Tsamardinos et al. 2018), and that "
                    "selection-corrected estimate is the reported result, not the best family's "
                    "own score")
-    # BLUEPRINT §14.3 (amendment): the readings the values settled, which the fit reads, are
-    # stated in the record ("read from the values"), each with its evidence.
-    read = _get(ctx, "read_from_values")
-    if read:
-        chosen = f"{chosen}. {read}"
+    # The readings the values settled, which the fit reads, are a sentence of their own among the
+    # predictors in the methods (BLUEPRINT §14.3, amendment; W1-R round 2's ruling R-c:
+    # ``export.methods``), never this answer's.
     # MS4: under the surveyed population, each family's design-based estimator, or its block. It
     # is the sentence's standing clause, last, so the methods text restates it when the survey
     # answer changes (:func:`restate`).
     population = _models_standing(d, state, ctx)
     return f"{chosen}. {population}" if population else chosen
+
+
+def _families_alone(sentence: str, standing: str) -> str:
+    """A families answer's ``sentence`` without the readings the values settled
+    (``readings.read_from_values_sentence``), which a version before ruling R-c appended to it: they
+    are a sentence of their own among the predictors now (``export.methods``), so the methods say
+    them once (W1-R round 3, SE-m1). They ran from their lead to the sentence's end, or to its
+    standing clause ``standing`` (the survey's estimators) where the sentence ends with it; a
+    sentence that holds no such readings, or whose end cannot be told, is left as said."""
+    from turbotab.core.readings import READ_FROM_VALUES
+
+    at = sentence.find(f" {READ_FROM_VALUES}")
+    if at < 0:
+        return sentence
+    if standing and not sentence.endswith(f" {standing}"):
+        return sentence
+    return sentence[:at] + (f" {standing}" if standing else "")
 
 
 @register_standing("select_models")
@@ -2220,10 +2393,10 @@ def _scored(d: Any) -> str:
     value = kept.get(metric) if metric else None
     if value is None:
         return ""
-    text = f": held-out {score_words(metric)} {tick(f'{value:.3f}')}"
+    text = f": held-out {score_words(metric)} {tick(table_number(value))}"
     headline = next((h for h in ("auc", "c_index") if h != metric and kept.get(h) is not None), None)
     if headline is not None:
-        text += f" ({LABELS[headline]} {tick(f'{kept[headline]:.3f}')}, the {HEADLINE_LABEL})"
+        text += f" ({LABELS[headline]} {tick(table_number(kept[headline]))}, the {HEADLINE_LABEL})"
     return text
 
 
@@ -2328,7 +2501,8 @@ def _set_intended_use(d: Any, state: Any, ctx: Any) -> str:
     (``turbotab/core/models/decision_curve.py``)."""
     from turbotab.core.models.decision_curve import intended_use_sentence
 
-    return intended_use_sentence(d, state)
+    task = getattr(state, "task", None) or _get(ctx, "detected_task")  # answered, else detected
+    return intended_use_sentence(d, state, task)
 
 
 @register_sentence("set_updating")
@@ -2552,11 +2726,18 @@ def _defer_finding(d: Any, state: Any, ctx: Any) -> str:
 
 @register_sentence("dismiss_finding")
 def _dismiss_finding(d: Any, state: Any, ctx: Any) -> str:
+    """A dismissal with its reason; with none, what the shell's "Keep as is" did (R-f 18): where a
+    repair was applied, the dismissal replaces it, so the repair is withdrawn (W1-R round 3,
+    SE-m4); else nothing changes."""
     name = _finding_name(d.finding_id, _get(ctx, "finding"))
-    head = f"{name[:1].upper()}{name[1:]} was dismissed"
+    named = f"{name[:1].upper()}{name[1:]}"
     if d.reason and d.reason.strip():
-        return f"{head}: {_as_reason(d.reason)}"
-    return f"{head}, with no reason given; it stays in the record"
+        return f"{named} was dismissed: {_as_reason(d.reason)}"
+    held = (getattr(state, "findings", None) or {}).get(d.finding_id)
+    if _attr(held, "action") == "applied":
+        return (f"The repair applied for {name} was withdrawn, so what it changed is as the table "
+                f"has it again; the finding stays in the record")
+    return f"{named} was kept as is, with nothing changed; it stays in the record"
 
 
 def kinds() -> list[str]:
@@ -2566,6 +2747,6 @@ def kinds() -> list[str]:
 
 __all__ = [
     "count", "exclusion_counts", "finish", "kinds", "listing", "machinery", "number", "plural",
-    "register_repair_sentence", "register_sentence", "sentence_for", "strip_markdown", "tick",
-    "words",
+    "register_repair_sentence", "register_sentence", "role_as", "sentence_for", "strip_markdown",
+    "table_number", "tick", "words",
 ]

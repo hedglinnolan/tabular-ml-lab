@@ -58,7 +58,7 @@ from scipy import stats
 from turbotab.core import decisions as d, estimand
 from turbotab.core.decisions import ProjectState
 from turbotab.core.tests.acceptance import references as ref
-from turbotab.core.tests.acceptance.server_drive import local_server, open_project
+from turbotab.core.tests.acceptance.server_drive import confirm_each, local_server, open_project
 from turbotab.core.tests.truths import Truth
 
 VALERI_QUOTE = ("In order to ensure identifiability of controlled direct effect, two assumptions are "
@@ -642,8 +642,8 @@ def test_6_the_estimand_question_asks_the_roles_that_rode_along(tmp_path):
         assert "fiber_g" in {u["column"] for u in offered["unconfirmed"]}
         assert "fiber_g" not in {e["column"] for e in offered["exposures"]}
         # Confirmed one by one, as their author reads them, the exposure is offered and chosen.
-        drive.decide({"kind": "confirm_readings", "items": [
-            {"reading": "role", "column": c, "value": roles[c]} for c in waiting]})
+        for body in confirm_each(roles, waiting):
+            drive.decide(body)
         _until(lambda: drive.artifact("proposals")["estimand"],
                lambda o: "fiber_g" in {e["column"] for e in o["exposures"]})
         assert drive.reach("estimand")["ask"] is None

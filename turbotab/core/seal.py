@@ -1060,16 +1060,20 @@ def slots_read_by(graph: Any, stage: str) -> set[str]:
 
 
 def post_seal_changes(records: Sequence[Any], slots: set[str]) -> list[str]:
-    """Ids of the live records made after the current seal's opening that change what is read from
-    ``slots`` now (a served fit's ``post_seal_decisions``): each writes one of them (a revert:
-    what it reverts), and none is
+    """Ids of the live records made after the current seal's opening that write what is read from
+    ``slots`` (a served fit's ``post_seal_decisions``): each writes one of them (a revert: what it
+    reverts), and none is
 
     * held: an answer whose condition fails on the answers as they stand
       (``decisions.register_kind(..., holds=)``: the energy model and the substitution while the
       goal is prediction, BEATS_PREDICT §9 ruling 5), or a revert of one; it shapes nothing;
     * a noticing set aside: a dismissal or a deferral (or a revert of one) that leaves each of
       ``slots`` as the engine keys it (``graph.key_value``: only an applied repair changes data),
-      so it withdrew no applied repair."""
+      so it withdrew no applied repair.
+
+    A live record superseded since is still listed, though what it wrote may read now as it did at
+    the opening (the goal changed and changed back lists both answers): it is a change made after
+    the opening all the same, and the methods state it as one."""
     from turbotab.core.graph import key_value
 
     ordered = sorted(records, key=lambda r: r.seq)
@@ -1131,7 +1135,10 @@ def post_seal_sentence(text: str | None, state_before: Any) -> str | None:
 
 
 def _score_text(value: float | None) -> str:
-    return "not computed" if value is None else f"{value:.3f}"
+    """A held-out score in the reported result's sentence, as the results table prints it."""
+    from turbotab.core.voice import table_number
+
+    return "not computed" if value is None else table_number(value)
 
 
 def reported_result(records: Sequence[Any], *, opened: bool, changed: bool) -> dict[str, Any] | None:

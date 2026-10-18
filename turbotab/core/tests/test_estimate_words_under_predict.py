@@ -236,6 +236,61 @@ def test_shares_that_sum_to_one_hundred_are_said_under_either_goal(purpose):
     assert any(w.startswith(", ".join(shares) + " sum to 100% on every row") for w in said), said
 
 
+TOTAL_AS_COVARIATE = (  # audit ME-02's words under Estimate, for the constructed table below
+    "energy_kcal reads as total energy and is in the model as a covariate, so each nutrient's "
+    "coefficient is at fixed total energy (the standard model), not an absolute intake. Give "
+    "energy_kcal the energy role to choose the energy model, or leave it out for the unadjusted "
+    "one.")
+
+
+def _design_warnings(tmp_path, purpose: str | None) -> list[str]:
+    """The design stage's concerns on a table where total energy is a covariate beside four
+    nutrients (W1-R R2's verifier, V2: the design concerns the shell draws)."""
+    from turbotab.core.stages.modeling import design_stage
+    from turbotab.core.tests import modeling_fixtures as mf
+
+    rng = np.random.default_rng(11)
+    n = 160
+    kcal = rng.normal(2000, 400, n)
+    frame = pd.DataFrame({"protein_g": 0.04 * kcal + rng.normal(0, 10, n),
+                          "carb_g": 0.12 * kcal + rng.normal(0, 20, n),
+                          "sugar_g": 0.05 * kcal + rng.normal(0, 8, n),
+                          "fiber_g": rng.normal(18, 4, n), "energy_kcal": kcal,
+                          "age": rng.uniform(20, 80, n), "y": rng.normal(size=n)})
+    roles = {"protein_g": "exposure", "carb_g": "exposure", "sugar_g": "exposure",
+             "fiber_g": "exposure", "energy_kcal": "covariate", "age": "covariate"}
+    paths = mf.ingest_frame(frame, tmp_path / str(purpose))
+    st = mf.state(roles=roles, target="y", task="regression", models=["linear"], purpose=purpose,
+                  split=SplitSpec(holdout=0.0, seed=0, folds=5), shape_confirmations={})
+    design = design_stage(mf.context(st, {"split": mf.split_bundle(np.arange(n), holdout=0.0),
+                                          "target_info": mf.target_info("regression", "y")},
+                                     paths))
+    return list(design.data["warnings"])
+
+
+def test_under_predict_the_design_says_nothing_of_total_energy_as_a_covariate(tmp_path):
+    """Under Predict no coefficient is read and the energy model is never asked (BEATS_PREDICT §9
+    ruling 5), so audit ME-02's concern, what each nutrient's coefficient means beside total energy
+    and how to choose the energy model, is not said."""
+    said = _design_warnings(tmp_path, "prediction")
+    assert not [w for w in said if "reads as total energy" in w], said
+
+
+@pytest.mark.parametrize("purpose", ["inference", None])
+def test_under_estimate_the_design_says_total_energy_is_a_covariate_as_before(tmp_path, purpose):
+    assert TOTAL_AS_COVARIATE in _design_warnings(tmp_path, purpose)
+
+
+def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_before():
+    """Ruling R-e: the design's concerns under Predict changed (3b), and the fit serves the
+    calibration's support (finding 10), so neither stage's cached artifact from before is served:
+    each stage's version is the one after the change."""
+    from turbotab.core.stages import build_graph
+
+    versions = {s.name: s.version for s in build_graph().stages()}
+    assert (versions["design"], versions["fit"]) == (31, 29)
+
+
 def test_the_design_spec_carries_the_goal_its_concerns_read():
     frame = _diet()
     for purpose in ("prediction", "inference", None):
@@ -376,6 +431,52 @@ def test_an_unsettled_roles_exits_and_ask_name_it_by_the_goals_word(purpose, wor
     assert readings.guess_words(r, state) == words
 
 
+ASKED = {"protein_g": "exposure", "bp_sys": "covariate"}  # recorded below high, waiting
+
+
+def _models_card(purpose: str | None):
+    from turbotab.core import ask
+
+    state = ProjectState(lens=["dietary"], target="y", task="regression", purpose=purpose,
+                         roles={**ASKED, "age": "covariate", "energy_kcal": "energy",
+                                "participant_id": "identifier"},
+                         roles_unconfirmed=list(ASKED))
+    return ask.card("models", ask.AskContext(state, {}))
+
+
+@pytest.mark.parametrize("purpose, words", [
+    ("prediction", {"protein_g": "a predictor", "bp_sys": "a predictor"}),
+    ("inference", {"protein_g": "what you study", "bp_sys": "a covariate"}),
+    (None, {"protein_g": "what you study", "bp_sys": "a covariate"})])
+def test_the_models_ask_card_asks_and_answers_in_one_goals_words(purpose, words):
+    """W1-R round 2 (R2's P4): the card's lines, its question and its buttons word each role the
+    same way, the goal's (under Predict a predictor, under Estimate as before)."""
+    card = _models_card(purpose)
+    said = {g.columns[0]: g.guess_words for g in card.groups}
+    assert said == words
+    for column, word in words.items():
+        assert f"`{column}`: {word}?" in card.text
+        assert f"Confirm `{column}` as {word}" in [e.label for e in card.exits]
+
+
+def test_the_quest_logs_ask_items_word_each_role_by_the_goal():
+    from turbotab.core.tests.test_stage_registry import record
+
+    for purpose, word in (("prediction", "a predictor"), ("inference", "a covariate")):
+        records = [record(1, {"kind": "set_lens", "lenses": ["dietary"]}),
+                   record(2, {"kind": "set_target", "column": "y"}),
+                   record(3, {"kind": "set_purpose", "purpose": purpose}),
+                   record(4, {"kind": "set_roles", "roles": {"bp_sys": "covariate",
+                                                             "age": "covariate"},
+                              "unconfirmed": ["bp_sys"]})]
+        from turbotab.core import decisions
+
+        state = decisions.fold(records)
+        log = quest.quest_log(state, records, steps_until(None), asked=[quest.fit_waits(state)])
+        line = next(l for s in log.stages for l in s.lines if l.key == "ask:models")
+        assert [(i.column, i.words) for i in line.items] == [("bp_sys", word)], purpose
+
+
 def test_the_role_words_are_the_estimates_without_a_state():
     """A caller that passes no goal reads today's words: the strictest case, as before."""
     assert readings.role_words("exposure") == "what you study"
@@ -418,6 +519,17 @@ def test_under_estimate_the_roles_card_is_as_before():
     assert _roles_entry(None)["one_liner"].startswith("Only study factors, covariates and the energy")
 
 
+def test_the_dietary_lens_offers_the_energy_model_and_substitution_for_estimating_effects():
+    """R-f 13: the lens is chosen before the goal, and neither the energy model nor the
+    substitution is asked under Predict (BEATS_PREDICT §9 ruling 5), so the option says what they
+    are for. The other lenses' options say what they did."""
+    lens = next(e for e in entries_now() if e["key"] == "lens")
+    options = {o["value"]: o["consequence"] for o in lens["options"]}
+    assert options["dietary"] == ("Checks energy units and implausible intakes; for estimating "
+                                  "effects, offers energy adjustment and substitution curves.")
+    assert "effects" not in options["clinical"]
+
+
 def test_under_predict_only_the_roles_card_changes():
     before = {e["key"]: e for e in entries_now()}
     after = {e["key"]: e for e in entries_now("prediction")}
@@ -440,3 +552,49 @@ def test_the_predict_roles_card_fits_the_teaching_budgets():
         assert voice.words(t.definition) <= B["term_definition"], t.term
         assert t.definition.endswith(".")
     assert not voice.machinery(entry.one_liner)
+
+
+# W1-R round 3 (SE-B3): what the card says the omics steps skip.
+SKIP = "the omics screen, normalization and batch correction skip"
+
+
+def test_under_predict_the_roles_card_says_the_omics_steps_skip_a_covariate():
+    """Under Predict a covariate does not enter the models "like any other": the card says which
+    steps skip it, of a covariate and of the energy column, and nothing else changes."""
+    entry = _roles_entry("prediction")
+    options = {o["value"]: o["consequence"] for o in entry["options"]}
+    terms = {t["term"]: t["definition"] for t in entry["terms"]}
+    for text in (options["covariate"], options["energy"], terms["covariate"]):
+        assert "like any other" not in text, text
+        assert SKIP in text, text
+    # silent: the Predictor column, which those steps act on, is said as before
+    assert options["exposure"] == "A column the model reads to predict the outcome."
+    assert SKIP not in terms["predictor"]
+
+
+def test_the_omics_steps_the_card_names_act_on_predictor_columns_alone():
+    """Each claim of the card, read from the code on one constructed state: the screened elastic
+    net's screen (prediction only), the omics normalization an applied ``omics_scale`` repair
+    records, and reference ComBat each take the Predictor columns (role ``exposure``) and skip a
+    covariate and the energy column."""
+    from types import SimpleNamespace
+
+    import turbotab.core.methods.omics  # noqa: F401 - registers the screened family
+    from turbotab.core.decisions import BatchSpec, FindingDisposition
+    from turbotab.core.methods.batch import design_batch
+    from turbotab.core.methods.omics import FINDING, design_normalization
+    from turbotab.core.models.base import get_family
+
+    roles = {"g1": "exposure", "g2": "exposure", "age": "covariate", "kcal": "energy",
+             "plate": "design"}
+    predictors = ["g1", "g2", "age", "kcal"]
+    [(_name, screen)] = get_family("screened_elastic_net").preprocess(
+        SimpleNamespace(predictors=predictors, roles=roles))
+    assert list(screen.columns) == ["g1", "g2"]
+    scale = {FINDING: FindingDisposition(action="applied", option="log_cpm",
+                                         params={"kind": "counts", "columns": predictors})}
+    state = ProjectState(lens=["genomics"], target="y", purpose="prediction", roles=roles,
+                         findings=scale, batch=BatchSpec(column="plate", method="reference_combat"))
+    inputs = [*predictors, "plate"]
+    assert design_normalization(state, inputs)["columns"] == ["g1", "g2"]
+    assert design_batch(state, inputs, predictors, None)["columns"] == ["g1", "g2"]

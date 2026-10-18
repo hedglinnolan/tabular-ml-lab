@@ -607,6 +607,8 @@ export interface paths {
          * Get Teaching
          * @description One entry per question, in asking order: the question, its one line, each option's
          *     consequence, the terms it uses, and the pack content behind it with evidence badges.
+         *     ``purpose``: the project's declared goal; under ``prediction`` the roles card says
+         *     "predictors" and names no study factor. Without it, the cards as under Estimate.
          */
         get: operations["get_teaching_api_teaching_get"];
         put?: never;
@@ -7040,7 +7042,7 @@ export interface components {
          *     answered, by the person's own answer or by "Confirm all" (``confirmed_by``, the
          *     ``confirm_sweep`` record). ``changed``: the lines set for the person anew, or stated otherwise,
          *     since that confirmation. ``id`` is the crosswalk's card; ``heading`` and ``action`` are its
-         *     words ("Here are the 6 other choices set for you", "Confirm all 6").
+         *     words ("The 6 choices set for you", "Confirm all 6").
          */
         Sweep: {
             /** Lines */
@@ -17837,7 +17839,9 @@ export interface operations {
     };
     get_teaching_api_teaching_get: {
         parameters: {
-            query?: never;
+            query?: {
+                purpose?: ("prediction" | "inference") | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -17851,6 +17855,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TeachingEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

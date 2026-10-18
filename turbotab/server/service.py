@@ -207,20 +207,6 @@ class SentenceFacts:
         return None
 
     @cached_property
-    def read_from_values(self) -> str | None:
-        """The methods record's line for the readings the values settled, no question asked
-        (BLUEPRINT §14.3, amendment: settlement is visible in the methods record)."""
-        try:
-            from turbotab.core.readings import read_from_data, read_from_values_sentence
-
-            items = read_from_data(self._ctx.state, roles=self._artifact("roles"),
-                                   target_info=self._artifact("target_info"),
-                                   proposals=self._artifact("proposals"), store=self.datastore)
-        except Exception:  # noqa: BLE001 - a sentence never fails a decision; it says less
-            return None
-        return read_from_values_sentence(items) or None
-
-    @cached_property
     def repeats(self) -> dict[str, Any] | None:
         roles = self._artifact("roles")
         repeats = roles.get("repeats") if isinstance(roles, dict) else None
@@ -2059,6 +2045,8 @@ class ProjectService:
             key = fresh_key(stage)
             return self._artifact(pid, stage, key) if key else None
 
+        from turbotab.core.readings import read_from_values_sentence
+
         path = self.workspace.decisions_path(pid)
         return Source(
             name=meta.name, engine_version=__version__, records=records, state=state,
@@ -2066,7 +2054,8 @@ class ProjectService:
             artifact=artifact, bundle=bundle, methods=self.methods(pid),
             inputs=self._export_inputs(pid, meta, state),
             decisions_jsonl=path.read_bytes() if path.is_file() else b"",
-            stage_versions={s.name: s.version for s in self.engine.graph.stages()})
+            stage_versions={s.name: s.version for s in self.engine.graph.stages()},
+            read_from_values=read_from_values_sentence(self._read_from_data(pid, state)) or None)
 
     def _export_inputs(self, pid: str, meta: ProjectMeta, state: ProjectState) -> list[Any]:
         """Every file the analysis read: the table's own, each joined file, each imported

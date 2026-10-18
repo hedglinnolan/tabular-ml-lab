@@ -201,9 +201,9 @@ def wholly_unoffered(c: Any, purpose: str) -> bool:
 
 def relation_purposes(c: Any, r: Any) -> tuple[str, ...]:
     """The purposes ``r``, a relation ``c`` declares, can fire under: its declared ones less each
-    under which ``c`` is offered not at all (:func:`wholly_unoffered`: the substitution's curves
-    under prediction). Empty for a relation that applies only there, which the reference and the
-    packets leave out."""
+    under which the Router does not ask the one question that records ``c``'s options
+    (:func:`wholly_unoffered`: the substitution question under prediction). Empty for a relation
+    that applies only there, which the reference and the packets leave out."""
     return tuple(p for p in r.purposes if not wholly_unoffered(c, p))
 
 

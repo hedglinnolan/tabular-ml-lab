@@ -708,7 +708,11 @@ def design_stage(ctx: StageContext) -> Bundle:
                                step=shared.named_steps.get("energy"))
     described.terms = formed_meanings(described.terms, form)
     seen_set = set(seen)
-    for c in total_energy_columns(spec.predictors, spec.roles):
+    # Under Predict no coefficient is read and the energy model is never asked (BEATS_PREDICT §9
+    # ruling 5; W1-R round 2, R2's P2), so what a nutrient's coefficient means beside total energy
+    # is not said.
+    for c in total_energy_columns(spec.predictors, spec.roles) if state.purpose != "prediction" \
+            else ():
         role = spec.roles.get(c)
         if role != "energy" and c in seen_set and described.text:
             # Audit ME-02 (repair round): total energy kept as a covariate is the standard model,

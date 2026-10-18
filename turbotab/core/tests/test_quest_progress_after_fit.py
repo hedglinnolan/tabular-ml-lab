@@ -383,3 +383,44 @@ def test_no_declaration_is_named_reopened_by_an_earlier_answer_after_the_fact():
                         continue
                     assert line.reopened_by.decision_id == newest, (
                         seed, snap.index, new.key, line.key, line.reopened_by.kind)
+
+
+# ── W1-R round 3 (SE-M1): ruling R-a's Results leg ───────────────────────────────
+#
+# Under Predict an open noticing placed outside Results waits for the triage in Results, so it
+# leaves its own stage's count (FOUNDATION §7). One placed in Results is Results' own line: it
+# counts there, open or answered. Here a noticing decided at the seal's question (``open_seal``,
+# a Results question) is added to the findings the NHANES fixture serves, open, then answered.
+
+AT_THE_SEAL = {"id": "pack::probe::at_the_seal", "severity": "warning",
+               "summary": "A noticing decided at the held-out rows", "affected_columns": ["sugar"],
+               "routes_to": "open_seal"}
+
+
+def _results_with(purpose: str, finding: dict | None) -> QuestStage:
+    from turbotab.core.interview import route
+
+    state, _artifacts, records = path_fuzzer.answered_through(path_fuzzer.NHANES, purpose)
+    fit = fit_press.fit_lock(state, records, pressed=True, held=False, estimate=None, opened=True)
+    artifacts = path_fuzzer.artifacts_for(state, path_fuzzer.NHANES, records)
+    served = artifacts.get("findings") or {}
+    findings = {**served, "findings": [*(served.get("findings") or []),
+                                       *([finding] if finding else [])]}
+    stages = {"fit": {"status": "fresh"}}
+    log = quest.quest_log(state, records, route(state, stages, artifacts, records), stages,
+                          findings=findings, columns=path_fuzzer.NHANES.columns,
+                          artifacts=artifacts, fit=fit)
+    return next(s for s in log.stages if s.key == "results")
+
+
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_a_noticing_placed_in_results_counts_in_results_open_or_answered(purpose):
+    without = _results_with(purpose, None).progress
+    opened = _results_with(purpose, AT_THE_SEAL)
+    [line] = [l for l in opened.lines if l.key == AT_THE_SEAL["id"]]
+    assert (line.status, line.counted) == ("open", True)
+    assert opened.progress == Progress(answered=without.answered, required=without.required + 1,
+                                       complete=False)
+    answered = _results_with(purpose, {**AT_THE_SEAL, "answered_by": "r-dismissed"})
+    assert answered.progress.required == without.required + 1
+    assert answered.progress.answered == without.answered + 1

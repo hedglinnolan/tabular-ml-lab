@@ -680,9 +680,15 @@ def test_a3_the_users_codes_reach_the_fit_as_one_indicator_per_level(tmp_path):
                 fixture=f"p3, smoking as {truth}"))
             drive_unsettled(drive, plan, roles={"participant_id": "identifier"})
             error = fit_refused_without_a_number(drive, plan["models"])
-            block = error["exits"][0]["decision"]
-            assert block["kind"] == "confirm_readings"
-            shown = {(i["column"], i["value"]) for i in block["items"]}
+            # The guess is offered as shown, in a block of the other readings or, beside roles that
+            # wait (each confirmed on its own: W1-R round 2's ruling R-b), on its own.
+            shown = set()
+            for e in error["exits"]:
+                d = e["decision"] or {}
+                if d.get("kind") == "confirm_readings":
+                    shown |= {(i["column"], i["value"]) for i in d["items"]}
+                elif d.get("kind") == "confirm_reading":
+                    shown.add((d["column"], d["value"]))
             assert ("smoking", "code") in shown, shown
             age_asked(drive)
             drive.decide(plan["models"])
@@ -1425,7 +1431,9 @@ def test_e2_the_ask_lists_each_reading_once_by_consequence_with_families_grouped
     """The unsettled readings a consumer needs are listed once, ordered by consequence (which rows
     belong together, then roles, then codes by how many indicators they would make), a homogeneous
     family (one kind, one guess, one name pattern) as one line; the block exit lists each reading
-    with its best guess."""
+    with its best guess. A role proposed below high is a line of its own and rides in no block
+    (BLUEPRINT §14 rule 2; W1-R round 2's ruling R-b): forty genes waiting for their roles are
+    forty lines, and forty of their codes or amounts one."""
     genes = [R.Reading((f"ENSG{i:011d}",), "role", "exposure") for i in range(40)]
     codes = [R.Reading(("smoking",), "code_or_count", "code", evidence="`3` whole-number values"),
              R.Reading(("_STATE",), "code_or_count", "amount", evidence="`51` whole-number values")]
@@ -1434,9 +1442,18 @@ def test_e2_the_ask_lists_each_reading_once_by_consequence_with_families_grouped
     assert [r.kind for r in listed][:2] == ["cluster", "role"] and len(listed) == 43
     assert [r.column for r in listed if r.kind == "code_or_count"] == ["_STATE", "smoking"]
     groups = R.families(listed)
-    assert len(groups) == 4 and len(groups[1]) == 40
+    assert len(groups) == 43 and all(len(g) == 1 for g in groups)
     text = R.ask_text(listed)
-    assert text.count("40 columns like `ENSG") == 1 and text.count("smoking") == 1
+    assert text.count("`ENSG") == 40 and text.count("smoking") == 1
+    block = R.ask_exits(listed)[0]["decision"]
+    assert block["kind"] == "confirm_readings"
+    assert [(i["reading"], i["column"]) for i in block["items"]] == [
+        ("cluster", "hhid"), ("code_or_count", "_STATE"), ("code_or_count", "smoking")]
+    amounts = [R.Reading((f"ENSG{i:011d}",), "code_or_count", "amount") for i in range(40)]
+    listed = R.ordered([*codes, *amounts, cluster])
+    groups = R.families(listed)
+    assert sorted(len(g) for g in groups) == [1, 1, 1, 40]
+    assert R.ask_text(listed).count("40 columns like `ENSG") == 1
     block = R.ask_exits(listed)[0]["decision"]
     assert block["kind"] == "confirm_readings" and len(block["items"]) == 43
 

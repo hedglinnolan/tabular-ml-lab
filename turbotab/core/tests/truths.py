@@ -47,16 +47,24 @@ def asked(exits: list[dict[str, Any]]) -> list[tuple[str, str]]:
 
 def answers(error: dict[str, Any], truth: Truth) -> list[dict[str, Any]]:
     """The decisions that answer a refusal's questions from ``truth``: one ``confirm_readings``
-    listing every reading asked, each with its declared value; for an energy column whose unit or
-    days are asked (``set_column_unit`` exits), the unit and days declared; for a column whose values
-    below a detection limit are asked (``apply_repair`` exits of a ``below_detection__<column>``
-    finding), the offered repair the truth names. Empty when the refusal asks for no reading."""
+    listing every reading asked, each with its declared value, except that among several a role is
+    confirmed on its own (a role a refusal asks was proposed below high, and the server refuses a
+    block that lists one: BLUEPRINT §14 rule 2, W1-R round 2's ruling R-b); for an energy column
+    whose unit or days are asked (``set_column_unit`` exits), the unit and days declared; for a
+    column whose values below a detection limit are asked (``apply_repair`` exits of a
+    ``below_detection__<column>`` finding), the offered repair the truth names. Empty when the
+    refusal asks for no reading."""
     exits = error.get("exits") or []
     out: list[dict[str, Any]] = []
     readings = asked(exits)
-    if readings:
+    own = [(k, c) for k, c in readings if k == "role"] if len(readings) > 1 else []
+    for k, c in own:
+        out.append({"kind": "confirm_reading", "reading": k, "column": c,
+                    "value": truth.answer(k, c)})
+    block = [(k, c) for k, c in readings if (k, c) not in own]
+    if block:
         out.append({"kind": "confirm_readings", "items": [
-            {"reading": k, "column": c, "value": truth.answer(k, c)} for k, c in readings]})
+            {"reading": k, "column": c, "value": truth.answer(k, c)} for k, c in block]})
     units = []
     for item in exits:
         d = item.get("decision") or {}

@@ -14,6 +14,8 @@ import json
 import typing
 from pathlib import Path
 
+import pytest
+
 from turbotab.core import decisions, quest, readings, sweep
 from turbotab.core.readings import Reading
 from turbotab.core.tests.test_stage_registry import record, stage, steps_until
@@ -142,6 +144,11 @@ def _decisions(line: quest.QuestLine) -> list[dict]:
     return [o.decision for i in line.items for o in i.options if o.decision is not None]
 
 
+# What each waiting column's line offers instead of its proposal under Predict: the ledger's
+# changes (``readings.ROLE_CHANGES``) whose words differ from the proposal's and from each other's.
+UNDER_PREDICT_INSTEAD = {"bp_sys": {"excluded"}, "waist": {"excluded"}, "cycle": {"covariate"}}
+
+
 def test_each_way_forward_confirms_exactly_one_column_with_its_own_confirm_role():
     log = _log(_records(WAITING), artifacts={"roles": PROPOSALS})
     assert len(_role_lines(log)) == len(WAITING)
@@ -151,10 +158,12 @@ def test_each_way_forward_confirms_exactly_one_column_with_its_own_confirm_role(
         assert found, column
         assert all(d == {"kind": "confirm_role", "column": column, "role": d["role"]}
                    for d in found), found
-        # the proposal first, then the roles the ledger offers instead, each once
+        # the proposal first, then the roles the ledger offers instead, each once: under Predict
+        # (this log's goal) those that read differently, so not a covariate's "what you study"
+        # nor an exclusion's second predictor role (SE-m2)
         roles = [d["role"] for d in found]
         assert roles[0] == ROLES[column] and len(set(roles)) == len(roles)
-        assert set(roles[1:]) == set(readings.ROLE_CHANGES[ROLES[column]])
+        assert set(roles[1:]) == UNDER_PREDICT_INSTEAD[column]
 
 
 # ── why it waits names only what its presses do (the verifier's P4) ───────────
@@ -167,14 +176,18 @@ EVERY_KIND = {"SEQN": "identifier", "bp_sys": "covariate", "diet": "exposure",
               "cycle": "excluded"}
 
 
-def _kinds_log() -> quest.QuestLog:
+def _kinds_records() -> list:
     waiting = [c for c in EVERY_KIND if c != "SEQN"]
-    records = [
+    return [
         record(1, {"kind": "set_lens", "lenses": ["clinical"]}),
         record(2, {"kind": "set_target", "column": "glucose"}),
         record(3, {"kind": "set_purpose", "purpose": "prediction"}),
         record(4, {"kind": "set_roles", "roles": dict(EVERY_KIND), "unconfirmed": waiting}),
     ]
+
+
+def _kinds_log() -> quest.QuestLog:
+    records = _kinds_records()
     return quest.quest_log(decisions.fold(records), records, steps_until("exclusions"))
 
 
@@ -211,17 +224,79 @@ def test_a_role_lines_reason_names_the_role_its_only_change_records():
         assert fit.startswith(first + " ")
         labels = [o.label for o in line.items[0].options]
         for role in others:
-            words = readings.role_words(role)
+            words = readings.role_words(role, "prediction")  # the log's goal
             assert f"`{column}` is {words}" in labels
             assert words in last, (column, line.reason)
 
 
-def test_an_exclusion_lines_reason_offers_keeping_it_in_the_model():
+def test_an_exclusion_lines_reason_offers_putting_it_in_the_model():
     [line] = [l for l in _role_lines(_kinds_log()) if l.items[0].column == "cycle"]
-    # Every press but the confirmation puts the column in the model as a predictor.
+    # Every press but the confirmation puts the column in the model as a predictor. While it waits
+    # it is in no model (it is no predictor, and unsettled), so the clause names what the press
+    # does, not a model it is already in (W1-R R1's verifier, P4).
     assert _instead(line) and set(_instead(line)) <= set(readings.PREDICTOR_ROLES)
-    assert "leave it out" not in line.reason
-    assert line.reason.endswith("or keep it in the model.")
+    assert "cycle" not in readings.predictor_columns(decisions.fold(_kinds_records()))
+    assert "leave it out" not in line.reason and "keep it" not in line.reason
+    assert line.reason.endswith("or put it in the model.")
+
+
+# ── a role line in the goal's words (W1-R round 3, SE-m2) ─────────────────────
+#
+# Under Predict an exposure and a covariate are each "a predictor" (``readings.role_words``), as
+# the models ask card and the record say. A role line says its proposal, its confirmation and each
+# other press in the same words, and offers no press that reads as the proposal or as another
+# press (the values' readings drop the same, ``readings.read_from_data``). The words are the
+# ledger's, written out here per goal.
+
+
+def _kinds_under(purpose: str) -> dict[str, quest.QuestLine]:
+    records = [r if r.decision.kind != "set_purpose" else record(3, {"kind": "set_purpose",
+                                                                       "purpose": purpose})
+               for r in _kinds_records()]
+    log = quest.quest_log(decisions.fold(records), records, steps_until("exclusions"))
+    return {l.items[0].column: l for l in _role_lines(log)}
+
+
+@pytest.mark.parametrize("purpose, want", [
+    ("prediction", {
+        "bp_sys": ("proposed as a predictor",
+                   ["Confirm `bp_sys` as a predictor", "`bp_sys` is left out of the models"]),
+        "diet": ("proposed as a predictor",
+                 ["Confirm `diet` as a predictor", "`diet` is left out of the models"]),
+        "cycle": ("proposed as left out of the models",
+                  ["Confirm `cycle` as left out of the models", "`cycle` is a predictor"]),
+        "imputed_waist": ("proposed as a flag on another column",
+                          ["Confirm `imputed_waist` as a flag on another column",
+                           "`imputed_waist` is a predictor"])}),
+    ("inference", {
+        "bp_sys": ("proposed as a covariate",
+                   ["Confirm `bp_sys` as a covariate", "`bp_sys` is what you study",
+                    "`bp_sys` is left out of the models"]),
+        "diet": ("proposed as what you study",
+                 ["Confirm `diet` as what you study", "`diet` is a covariate",
+                  "`diet` is left out of the models"]),
+        "cycle": ("proposed as left out of the models",
+                  ["Confirm `cycle` as left out of the models", "`cycle` is a covariate",
+                   "`cycle` is what you study"]),
+        "imputed_waist": ("proposed as a flag on another column",
+                          ["Confirm `imputed_waist` as a flag on another column",
+                           "`imputed_waist` is a covariate"])})])
+def test_a_role_line_words_its_role_by_the_goal(purpose, want):
+    lines = _kinds_under(purpose)
+    for column, (words, labels) in want.items():
+        item = lines[column].items[0]
+        assert (item.words, [o.label for o in item.options]) == (words, labels), column
+    # why the flag's line waits names its one other press in the same words as its button
+    flag = lines["imputed_waist"].reason
+    assert flag.endswith(f"or record it as {readings.role_words('covariate', purpose)}.")
+
+
+def test_under_predict_no_press_reads_as_the_proposal_or_as_another_press():
+    for column, line in _kinds_under("prediction").items():
+        labels = [o.label for o in line.items[0].options]
+        changes = [label.partition(" is ")[2] for label in labels[1:]]
+        proposed = line.items[0].words.removeprefix("proposed as ")
+        assert proposed not in changes and len(set(changes)) == len(changes), (column, labels)
 
 
 def test_confirm_all_holds_none_of_them():
@@ -291,6 +366,13 @@ def _fixture() -> dict:
     # Why a line waits names what its presses do, which differs by role: one template per role.
     templates = quest.role_line_text("{column}", "{role}", "{other}")
     del templates["reason"]
+    # The words, reasons and choices under each goal (SE-m2): with no goal and under inference,
+    # Estimate's; under prediction an exposure and a covariate are each a predictor, and a choice
+    # that reads as the proposal is not offered. The lines are this log's, under prediction.
+    goals = {"prediction": {
+        "reasons": {r: quest.role_line_reason("{column}", r, "prediction") for r in every},
+        "words": {r: readings.role_words(r, "prediction") for r in every},
+        "choices": {r: quest.role_choices(r, "prediction") for r in every}}}
     return {
         "about": "Written by turbotab/core/tests/test_quest_unconfirmed_roles.py from core/quest.py "
                  "(_role_lines): never edit by hand.",
@@ -302,6 +384,7 @@ def _fixture() -> dict:
         "reasons": {r: quest.role_line_reason("{column}", r) for r in every},
         "words": {r: readings.role_words(r) for r in every},
         "choices": {r: quest.role_choices(r) for r in every},
+        "under": goals,
         "lines": [l.model_dump(mode="json") for l in _role_lines(log)],
     }
 

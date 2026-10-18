@@ -18,6 +18,28 @@ def test_teaching_answers_one_entry_per_question(client):
     assert all(s["evidence"]["source"].startswith("research/") for s in energy["drawer"]["sections"])
 
 
+def test_the_roles_card_is_served_in_the_goals_words(client):
+    """W1-R round 2 (R2's P3a, the walkthrough's finding 3c): ``?purpose=prediction`` serves the
+    roles card that names no study factor (``content.ROLES_UNDER_PREDICT``); with no goal, or under
+    inference, every card is as before, so a client that names none reads what it read."""
+    from turbotab.core.teaching.content import ROLES, ROLES_UNDER_PREDICT
+
+    default = client.get("/api/teaching").json()
+    predict = client.get("/api/teaching", params={"purpose": "prediction"}).json()
+    infer = client.get("/api/teaching", params={"purpose": "inference"}).json()
+    assert infer == default
+    roles = {key: next(e for e in served if e["key"] == "roles")
+             for key, served in (("default", default), ("predict", predict))}
+    assert roles["default"]["one_liner"] == ROLES["one_liner"]
+    assert roles["predict"]["one_liner"] == ROLES_UNDER_PREDICT["one_liner"]
+    assert [o["label"] for o in roles["predict"]["options"]] == [
+        o["label"] for o in ROLES_UNDER_PREDICT["options"]]
+    # only the roles card differs
+    assert [e["key"] for e in predict] == [e["key"] for e in default]
+    assert [e["key"] for e, f in zip(default, predict) if e != f] == ["roles"]
+    assert client.get("/api/teaching", params={"purpose": "describe"}).status_code == 422
+
+
 def test_findings_carry_their_lever_over_http(client):
     pid = open_by_path(client)  # a project of its own: the shared one's lens stays unanswered
     response = client.post(f"/api/projects/{pid}/decisions", json={"kind": "set_lens", "lenses": ["dietary"]})

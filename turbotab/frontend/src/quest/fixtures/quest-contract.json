@@ -486,7 +486,7 @@
        "answered": false,
        "changed": [],
        "confirmed_by": null,
-       "heading": "Here is the other choice set for you",
+       "heading": "The choice set for you",
        "id": "other:confirm-sweep:question",
        "lines": 1
       }
@@ -625,8 +625,8 @@
       "name": "Who's in",
       "progress": {
        "answered": 4,
-       "complete": false,
-       "required": 5
+       "complete": true,
+       "required": 4
       },
       "reached": true,
       "reopened": [],
@@ -756,7 +756,7 @@
        "answered": false,
        "changed": [],
        "confirmed_by": null,
-       "heading": "Here are the 3 other choices set for you",
+       "heading": "The 3 choices set for you",
        "id": "other:confirm-sweep",
        "lines": 3
       }
@@ -1185,7 +1185,7 @@
        "answered": false,
        "changed": [],
        "confirmed_by": null,
-       "heading": "Here is the other choice set for you",
+       "heading": "The choice set for you",
        "id": "other:confirm-sweep:question",
        "lines": 1
       }
@@ -1324,8 +1324,8 @@
       "name": "Who's in",
       "progress": {
        "answered": 4,
-       "complete": false,
-       "required": 5
+       "complete": true,
+       "required": 4
       },
       "reached": true,
       "reopened": [],
@@ -1443,7 +1443,7 @@
        "answered": false,
        "changed": [],
        "confirmed_by": null,
-       "heading": "Here are the 3 other choices set for you",
+       "heading": "The 3 choices set for you",
        "id": "other:confirm-sweep",
        "lines": 3
       }
@@ -2541,35 +2541,35 @@
  ],
  "sweep_words": {
   "1": [
-   "Here is the other choice set for you",
+   "The choice set for you",
    "Confirm it"
   ],
   "2": [
-   "Here are the 2 other choices set for you",
+   "The 2 choices set for you",
    "Confirm all 2"
   ],
   "3": [
-   "Here are the 3 other choices set for you",
+   "The 3 choices set for you",
    "Confirm all 3"
   ],
   "4": [
-   "Here are the 4 other choices set for you",
+   "The 4 choices set for you",
    "Confirm all 4"
   ],
   "5": [
-   "Here are the 5 other choices set for you",
+   "The 5 choices set for you",
    "Confirm all 5"
   ],
   "6": [
-   "Here are the 6 other choices set for you",
+   "The 6 choices set for you",
    "Confirm all 6"
   ],
   "7": [
-   "Here are the 7 other choices set for you",
+   "The 7 choices set for you",
    "Confirm all 7"
   ],
   "8": [
-   "Here are the 8 other choices set for you",
+   "The 8 choices set for you",
    "Confirm all 8"
   ]
  },
