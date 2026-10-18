@@ -6,7 +6,46 @@
  * item, whose ways forward are each one `confirm_role` of that column. Pure; RoleCard.tsx draws it.
  * fixture.json is the engine's own (turbotab/core/tests/test_quest_unconfirmed_roles.py writes it).
  */
+import { PREDICTOR_ROLES, type Role } from "../../../api/m1-types";
 import type { QuestLine, QuestLog, ReadItem, ReadOption, Refusal } from "../../../api/schema";
+import FIXTURE from "./fixture.json";
+
+/**
+ * What the predictor roles' names differ by under Predict in a project with these lenses
+ * (core/readings.py `predict_kind`, whose lens lists the fixture holds): the energy-aware fill under
+ * the dietary lens, normalization and batch correction under an assay lens, both, or neither.
+ */
+export type PredictKind = keyof typeof FIXTURE.under.prediction.kinds;
+
+export function predictKind(lenses: readonly string[] | null | undefined): PredictKind {
+  const { dietary, assay } = FIXTURE.under.prediction.lenses;
+  const on = new Set(lenses ?? []);
+  const d = dietary.some((k) => on.has(k));
+  const a = assay.some((k) => on.has(k));
+  return d && a ? "both" : d ? "dietary" : a ? "assay" : "neither";
+}
+
+/** One predictor role under Predict as the roles card names it (core/readings.py
+ *  `predictor_groups`): `one` in a role line's words, `head` the group's name for one column and
+ *  for many, and `note` the steps that treat it differently, as a sentence. */
+export interface PredictorGroup {
+  one: string;
+  head: readonly [string, string];
+  note: string;
+}
+
+/** The three predictor roles' groups under Predict in a project with these lenses: the engine's
+ *  words (the roles ruling of 2026-10-17), from the fixture its test writes. */
+export function predictorGroups(lenses: readonly string[] | null | undefined): Record<"exposure" | "energy" | "covariate", PredictorGroup> {
+  const g = FIXTURE.under.prediction.kinds[predictKind(lenses)].groups;
+  const group = (x: { one: string; head: string[]; note: string }): PredictorGroup => ({ one: x.one, head: [x.head[0]!, x.head[1]!], note: x.note });
+  return { exposure: group(g.exposure), energy: group(g.energy), covariate: group(g.covariate) };
+}
+
+/** Whether a role enters the models as a predictor (core/readings.py PREDICTOR_ROLES). */
+export function isPredictorRole(role: string): boolean {
+  return (PREDICTOR_ROLES as readonly string[]).includes(role as Role);
+}
 
 /** The crosswalk card a column's role line carries (core/quest.py ROLE_LINE, `confirm_role`'s). */
 export const ROLE_LINE_ID = "decision:confirm_role";
@@ -62,10 +101,21 @@ export function waitingRoles(log: QuestLog): QuestLine[] {
   return log.stages.flatMap((s) => s.lines).filter((l) => isRoleLine(l) && l.status === "open");
 }
 
-/** How many columns wait (the walkthrough's ruling words); null when none does. The count is the
- *  served lines'. */
+/** The waiting role lines whose column was proposed in a predictor role (W1-T): each would enter
+ *  the models once confirmed, so it is not a predictor yet. A flag, a time, a design column, an
+ *  identifier and a column proposed as left out never enter them as proposed, so none is counted. */
+export function waitingPredictors(log: QuestLog): QuestLine[] {
+  return waitingRoles(log).filter((l) => isPredictorRole(roleItem(l)?.value ?? ""));
+}
+
+/** "3 columns wait for their own confirmation": how many wait, without a period. */
+export function waitingClause(n: number): string {
+  return n === 1 ? "1 column waits for its own confirmation" : `${n.toLocaleString("en-US")} columns wait for their own confirmation`;
+}
+
+/** How many columns proposed as predictors wait (the walkthrough's ruling words; count them with
+ *  `waitingPredictors`); null when none does. The count is the served lines'. */
 export function waitingSentence(n: number): string | null {
   if (n <= 0) return null;
-  if (n === 1) return "1 column waits for its own confirmation and is not a predictor yet.";
-  return `${n.toLocaleString("en-US")} columns wait for their own confirmation and are not predictors yet.`;
+  return `${waitingClause(n)} and ${n === 1 ? "is not a predictor" : "are not predictors"} yet.`;
 }

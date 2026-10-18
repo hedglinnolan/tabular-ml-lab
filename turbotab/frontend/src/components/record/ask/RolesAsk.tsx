@@ -12,6 +12,7 @@ import type { Decision } from "../../../api/schema";
 import { useStageFocus, type StageFocus } from "../../../state/focus";
 import { buildColumnIndex, filterColumns } from "../../../util/filterColumns";
 import { cx } from "../../../util/format";
+import { predictorGroups } from "../../../quest/cards/roles/roles";
 import { V } from "../../Prose";
 import { Question } from "../Question";
 import { Taught } from "../teach";
@@ -31,27 +32,30 @@ const GROUP: Record<Role, [one: string, many: string]> = {
 };
 
 /**
- * The card's own words by goal (W1-R finding 3c: under prediction the card says predictors). Under
- * prediction what you study is a predictor like the others, in the served roles card's words
- * (core/teaching/content.py ROLES_UNDER_PREDICT: "Only predictors, covariates and the energy column
- * enter the models"); otherwise the words stand as they did.
+ * The card's own words under Estimate (and with no goal), as they stood: what you study, energy and
+ * the covariates become predictors.
  */
-const WORDS = {
-  estimate: {
-    exposure: ["Exposure", "Exposures"] as [string, string],
-    counted: ["exposure", "exposures"] as [string, string],
-    become: (n: number) => (n === 1 ? "column becomes a predictor" : "columns become predictors"),
-    note: "predictors",
-    title: "Records every column's role. Only exposures, covariates and energy become predictors.",
-  },
-  predict: {
-    exposure: ["Predictor", "Predictors"] as [string, string],
-    counted: ["predictor", "predictors"] as [string, string],
-    become: (n: number) => (n === 1 ? "column enters the models" : "columns enter the models"),
-    note: "enter the models",
-    title: "Records every column's role. Only predictors, covariates and energy enter the models.",
-  },
+const ESTIMATE = {
+  become: (n: number) => (n === 1 ? "column becomes a predictor" : "columns become predictors"),
+  note: "predictors",
+  title: "Records every column's role. Only exposures, covariates and energy become predictors.",
 };
+
+/**
+ * Under prediction every predictor role is a predictor (the roles ruling of 2026-10-17): the card
+ * counts the columns that enter the models as predictors, and names each predictor role's group by
+ * what treats it differently in the project, its note saying which steps do (core/readings.py
+ * `predictor_groups`, by the project's lenses: nutrients and the energy-aware fill under the dietary
+ * lens, assay features and normalization and batch correction under an assay lens, the screened
+ * elastic net's screen in every project). The words are the engine's (roles/fixture.json).
+ */
+const PREDICT = {
+  become: (n: number) => (n === 1 ? "column enters the models as a predictor" : "columns enter the models as predictors"),
+};
+
+/** "Nutrients, total energy and characteristics": the predictor groups in a sentence. */
+const listed = (words: string[]) =>
+  words.length < 3 ? words.join(" and ") : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 
 /** Chips shown per group before "N more". */
 const SHOWN = 14;
@@ -62,15 +66,20 @@ export function RolesAsk({
   artifact,
   current,
   purpose = null,
+  lenses = null,
   ...p
 }: AskProps & {
   artifact: RolesArtifact;
   current: Record<string, Role> | null;
-  /** The project's goal: under prediction the card says predictors (`WORDS`). */
+  /** The project's goal: under prediction the card says predictors (`PREDICT`). */
   purpose?: string | null;
+  /** The project's lenses: under prediction they name the predictor roles' groups. */
+  lenses?: readonly string[] | null;
 }) {
-  const words = purpose === "prediction" ? WORDS.predict : WORDS.estimate;
-  const groupName = (role: Role, n: number) => (role === "exposure" ? words.exposure : GROUP[role])[n === 1 ? 0 : 1];
+  const predict = purpose === "prediction";
+  const named = predict ? predictorGroups(lenses) : null;
+  const group = (role: Role) => (named && (role === "exposure" || role === "energy" || role === "covariate") ? named[role] : null);
+  const groupName = (role: Role, n: number) => (group(role)?.head ?? GROUP[role])[n === 1 ? 0 : 1]!;
   const proposed = useMemo(
     () => Object.fromEntries(artifact.columns.map((col) => [col.column, col.proposed])),
     [artifact],
@@ -93,7 +102,9 @@ export function RolesAsk({
     [artifact],
   );
 
-  const roleLabel = (r: Role) => taught(p.entry, r)?.label ?? GROUP[r][0];
+  const roleLabel = (r: Role) => group(r)?.head[0] ?? taught(p.entry, r)?.label ?? GROUP[r][0];
+  /** What a role does, on its button: under prediction a predictor role's group note. */
+  const roleTitle = (r: Role) => group(r)?.note ?? taught(p.entry, r)?.consequence;
   // ``unconfirmed`` is the server's to fill (BLUEPRINT §14): the proposals below high this answer
   // records as proposed, read from the roles it showed.
   const decisionFor = (roles: Record<string, Role>): Decision => ({
@@ -146,15 +157,21 @@ export function RolesAsk({
         : `Confirm the roles of ${fmtCount(artifact.columns.length)} columns`
       : `Record these roles (${changed.length} changed)`;
 
+  const counted = (role: Role, estimate: [string, string]) => {
+    const n = count(role);
+    if (!n) return null;
+    const words = group(role)?.head.map((w) => w.toLowerCase()) ?? estimate;
+    return `${fmtCount(n)} ${words[n === 1 ? 0 : 1]}`;
+  };
   const summary = [
-    count("exposure")
-      ? `${fmtCount(count("exposure"))} ${words.counted[count("exposure") === 1 ? 0 : 1]}`
-      : null,
-    energyCols.length ? `energy \`${energyCols[0]}\`` : null,
-    count("covariate")
-      ? `${fmtCount(count("covariate"))} ${count("covariate") === 1 ? "covariate" : "covariates"}`
-      : null,
+    counted("exposure", ["exposure", "exposures"]),
+    energyCols.length ? `${named ? named.energy.head[0].toLowerCase() : "energy"} \`${energyCols[0]}\`` : null,
+    counted("covariate", ["covariate", "covariates"]),
   ].filter(Boolean);
+  const become = (n: number) => (predict ? PREDICT : ESTIMATE).become(n);
+  const title = named
+    ? `Records every column's role. ${listed([named.exposure.head[1], named.energy.head[0].toLowerCase(), named.covariate.head[1].toLowerCase()])} enter the models as predictors.`
+    : ESTIMATE.title;
 
   return (
     <Question
@@ -163,7 +180,7 @@ export function RolesAsk({
       data={
         <>
           <Taught
-            text={`\`${fmtCount(nPredictors)}\` ${words.become(nPredictors)}${summary.length ? `: ${summary.join(", ")}` : ""}.`}
+            text={`\`${fmtCount(nPredictors)}\` ${become(nPredictors)}${summary.length ? `: ${summary.join(", ")}` : ""}.`}
           />
           {artifact.repeats ? (
             <>
@@ -220,7 +237,7 @@ export function RolesAsk({
                     : fmtCount(columns.length)}
                 </span>
                 <span className={c.groupNote}>
-                  {predictor ? words.note : "kept out of the models"}
+                  {group(role)?.note ?? (predictor ? ESTIMATE.note : "kept out of the models")}
                 </span>
               </div>
               <ul className={cx(c.chips, all && columns.length > 60 && c.chipsScroll)}>
@@ -318,7 +335,7 @@ export function RolesAsk({
                           type="button"
                           className={c.roleButton}
                           aria-pressed={draft[col.column] === r}
-                          title={taught(p.entry, r)?.consequence}
+                          title={roleTitle(r)}
                           onPointerMove={() => preview(f)}
                           onFocus={() => setFocus(f)}
                           onClick={() => choose(col.column, r)}
@@ -347,7 +364,7 @@ export function RolesAsk({
           <RecordButton
             disabled={p.pending}
             onClick={recordAll}
-            title={words.title}
+            title={title}
             testId="record-roles"
           >
             {confirmLabel}

@@ -591,7 +591,7 @@
               }
             },
             {
-              "label": "`bp_sys` is a measure",
+              "label": "`bp_sys` is a nutrient",
               "decision": {
                 "kind": "confirm_role",
                 "column": "bp_sys",
@@ -636,7 +636,7 @@
           "evidence": "the reason the roles stage gives for `waist`",
           "options": [
             {
-              "label": "`waist` is a measure",
+              "label": "`waist` is a nutrient",
               "decision": {
                 "kind": "confirm_role",
                 "column": "waist",
@@ -742,7 +742,7 @@
               }
             },
             {
-              "label": "`cycle_begin_year` is a measure",
+              "label": "`cycle_begin_year` is a nutrient",
               "decision": {
                 "kind": "confirm_role",
                 "column": "cycle_begin_year",

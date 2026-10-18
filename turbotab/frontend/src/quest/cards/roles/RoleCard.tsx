@@ -4,7 +4,7 @@
  * for it, and why it waits (the engine's words on the line), and records one `confirm_role` per
  * press: the role as proposed, or another the engine offers for it. No press confirms several
  * columns, a refusal's ways forward included (roles.ts `ownOptions`, `ownRefusal`). Beneath, how
- * many columns still wait, from the quest log.
+ * many columns proposed as predictors still wait, from the quest log.
  */
 import { useState } from "react";
 import { isRefusalError } from "../../../api/client";
@@ -16,7 +16,7 @@ import type { LineCardProps } from "../../contracts";
 import { said } from "../../words";
 import c from "../cards.module.css";
 import { Readings } from "../Readings";
-import { ownOptions, ownRefusal, roleItem, waitingRoles, waitingSentence } from "./roles";
+import { ownOptions, ownRefusal, roleItem, waitingPredictors, waitingSentence } from "./roles";
 import r from "./roles.module.css";
 
 export function RoleCard({ pid, line }: LineCardProps) {
@@ -28,7 +28,9 @@ export function RoleCard({ pid, line }: LineCardProps) {
   // A role line without its reading is drawn as the reading rows it carries, never a blank.
   if (!item) return <Readings pid={pid} line={line} />;
   const options = ownOptions(item);
-  const waiting = log ? waitingSentence(waitingRoles(log).length) : null;
+  // How many columns proposed as predictors wait, as the Columns panel says it (W1-T: a flag or a
+  // column proposed as left out is no predictor once confirmed, so it is not counted).
+  const waiting = log ? waitingSentence(waitingPredictors(log).length) : null;
   const record = (decision: Decision) => {
     setRefusal(null);
     setFailure(null);

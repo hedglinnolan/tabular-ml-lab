@@ -23,9 +23,11 @@ export function openStageKey(log: QuestLog): string {
  * Whether a reached stage that is not complete is passed for the triage (finding 6): where open
  * noticings travel (`noticingsTravel`: under Predict, and before the goal is chosen), outside the
  * triage's stage (`triageStage`), its only counted Decides still to answer are noticings and no
- * Confirm sweep waits, so its Continue is enabled (`primaryFor`). The engine may count those
- * noticings in the stage's progress, so the stage reads incomplete; it is not where the analysis
- * is. Under Estimate nothing is passed: a noticing is decided in its own stage.
+ * Confirm sweep waits, so its Continue is enabled (`primaryFor`). Under Predict the engine leaves
+ * an open noticing outside Results out of its stage's count (ruling R-a, core/quest.py
+ * `quest_log`), so such a stage is served complete; before the goal is chosen the engine counts
+ * those noticings in the stage's progress, so the stage reads incomplete, yet it is not where the
+ * analysis is. Under Estimate nothing is passed: a noticing is decided in its own stage.
  */
 export function passedForTriage(log: QuestLog, stage: QuestStage): boolean {
   if (!noticingsTravel(log) || !stage.reached || stage.key === triageStage(log)) return false;
@@ -73,8 +75,10 @@ export function nextStageKey(log: QuestLog, key: string): string | null {
 
 /** One segment of the progress bar (FOUNDATION §3): empty when the stage is not reached (never
  *  "0 of N"); else its objectives answered of required; dropped back while a reopen stands.
- *  `complete` is whether it reads as done (`readsDone`): a reached stage that asks nothing is
- *  empty, not done, until the analysis comes to it (finding 25). */
+ *  `complete` is the served field (GET /quest's progress, reached and complete), which the bar
+ *  marks as it is (`data-complete`); `done` is whether it reads as done (`readsDone`, marked
+ *  `data-done`): a reached stage that asks nothing is empty, not done, until the analysis comes to
+ *  it (finding 25). */
 export interface Segment {
   key: string;
   name: string;
@@ -82,6 +86,7 @@ export interface Segment {
   answered: number | null;
   required: number | null;
   complete: boolean;
+  done: boolean;
   /** Why it dropped back, in the engine's words (one per reopening). */
   reopened: string[];
 }
@@ -93,7 +98,8 @@ export function segments(log: QuestLog): Segment[] {
     reached: s.reached,
     answered: s.reached && s.progress ? s.progress.answered : null,
     required: s.reached && s.progress ? s.progress.required : null,
-    complete: readsDone(log, s),
+    complete: s.reached && !!s.progress?.complete,
+    done: readsDone(log, s),
     reopened: s.reopened.map((r) => r.sentence),
   }));
 }
@@ -102,7 +108,7 @@ export function segments(log: QuestLog): Segment[] {
  *  nothing is empty until then. */
 export function filled(seg: Segment): number {
   if (!seg.reached || seg.answered === null || seg.required === null) return 0;
-  if (seg.complete) return 1;
+  if (seg.done) return 1;
   if (seg.required === 0) return 0;
   return Math.min(1, seg.answered / seg.required);
 }

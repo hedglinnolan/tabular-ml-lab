@@ -16,7 +16,7 @@ import type {
 import type { DecisionKind, ProjectView } from "../../api/schema";
 import { StaleVeil, type VeilState } from "../../motion/StaleVeil";
 import { useQuest } from "../../api/queries";
-import { waitingRoles, waitingSentence } from "../../quest/cards/roles/roles";
+import { waitingClause, waitingPredictors, waitingSentence } from "../../quest/cards/roles/roles";
 import { useStageFocus } from "../../state/focus";
 import { StageFailure, rootFailure } from "../Failure";
 import { StageRetry } from "../StageRetry";
@@ -175,12 +175,15 @@ function Provenance({ text }: { text: string }) {
 /**
  * The columns as recorded: the lineage of the predictors, and how many columns wait for their own
  * role confirmation, which are not predictors yet (the walkthrough of 2026-10-17, finding 1): the
- * count is the quest log's open role lines (core/quest.py `_role_lines`), never one counted here.
+ * count is the quest log's open role lines (core/quest.py `_role_lines`), never one counted here,
+ * of columns proposed in a predictor role (W1-T: a flag never enters the models, so it is not
+ * counted). Where no column is a predictor yet, the sentence says "yet" once.
  */
 export function ColumnsCard({ view, data, full }: { view: ProjectView; data: LiveData; full: boolean }) {
   const { toggle } = useStageFocus();
   const quest = useQuest(data.pid).data;
-  const waiting = quest ? waitingSentence(waitingRoles(quest).length) : null;
+  const nWaiting = quest ? waitingPredictors(quest).length : 0;
+  const waiting = waitingSentence(nWaiting);
   const warnings = data.design?.warnings ?? [];
   const lineage =
     data.design?.lineage ??
@@ -199,7 +202,7 @@ export function ColumnsCard({ view, data, full }: { view: ProjectView; data: Liv
         </header>
         <p className={s.captionText} data-testid={waiting ? "columns-waiting" : undefined}>
           {waiting
-            ? `No column is a predictor yet: ${waiting}`
+            ? `No column is a predictor yet: ${waitingClause(nWaiting)}.`
             : "No column is a predictor yet: the roles question decides which columns enter the model."}
         </p>
       </section>

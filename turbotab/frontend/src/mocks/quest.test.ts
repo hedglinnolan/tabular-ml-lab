@@ -115,6 +115,21 @@ describe("the mock's quest log", () => {
     expect(after.every((l) => l.status === "answered")).toBe(true);
   });
 
+  it("leaves an open noticing out of its stage's count under Predict, and counts it under Estimate (ruling R-a)", () => {
+    // One constructed open noticing with a repair, so it is a Decide of Your data.
+    const noticing = { id: "test::r-a", summary: "A noticing.", title: "A noticing.", routes_to: null, repairs: [{}] } as unknown as Finding;
+    const data = (view: ProjectView, findings: Finding[]) => mockQuest(view, findings, false).stages.find((s) => s.key === "data")!;
+    const estimate = { ...AT_OPENING, state: { ...AT_OPENING.state, purpose: "inference" as const } };
+    for (const view of [AT_OPENING, estimate]) {
+      const without = data(view, []).progress!;
+      const withIt = data(view, [noticing]);
+      expect(withIt.lines.find((l) => l.key === noticing.id)).toMatchObject({ label: "Decide", status: "open", counted: true });
+      const predict = view.state.purpose === "prediction";
+      expect(withIt.progress!.required, view.state.purpose ?? "none").toBe(without.required + (predict ? 0 : 1));
+      expect(withIt.progress!.complete).toBe(predict ? without.complete : false);
+    }
+  });
+
   it("lists no role line where the roles answer left nothing unconfirmed", () => {
     const view = { ...AT_OPENING, state: { ...AT_OPENING.state, roles_unconfirmed: [] } };
     expect(mockRoleLines(view)).toEqual([]);

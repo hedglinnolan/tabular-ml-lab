@@ -367,6 +367,7 @@ export const AskFor = ({
           artifact={roles.artifact}
           current={(state.roles as Record<string, Role> | null) ?? null}
           purpose={state.purpose}
+          lenses={state.lens}
         />
       ) : (
         waitingFor("roles", "Then each column's role is asked.")

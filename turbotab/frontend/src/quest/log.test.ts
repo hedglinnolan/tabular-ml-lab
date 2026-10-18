@@ -393,12 +393,17 @@ describe("a stage not reached yet (P4)", () => {
 });
 
 /**
- * Where the analysis is, beside open noticings (finding 6): the engine counts a stage's open
- * noticings in its progress, but under Predict they travel to the triage, so outside the triage's
- * stage a stage whose only lines still to answer are noticings is passed (its Continue is enabled)
- * and is not where the analysis is: the shell lands past it, and a stage not reached yet leads past
- * it. In the triage's own stage, beside a question still open, and outside Predict (W1-R R3 P5),
- * the noticing holds the stage as before.
+ * Where the analysis is, beside open noticings (finding 6): under Predict they travel to the triage,
+ * so outside the triage's stage a stage whose only lines still to answer are noticings is passed
+ * (its Continue is enabled) and is not where the analysis is: the shell lands past it, and a stage
+ * not reached yet leads past it. Under Predict the engine leaves such a noticing out of its stage's
+ * count (ruling R-a, core/quest.py `quest_log`), so the stage is served complete; before the goal
+ * is chosen the engine counts it in its stage, as under Estimate, and the shell passes the stage
+ * itself (`passedForTriage`, W1-R M1). In the triage's own stage, beside a question still open,
+ * and outside Predict (W1-R R3 P5), the noticing holds the stage as before.
+ *
+ * The logs are the contract's, served under Predict; a log under another goal is served as the
+ * engine serves it there, its open noticings counted in their stage's progress (`counted`).
  */
 describe("where the analysis is, beside open noticings (finding 6)", () => {
   /** Your question answered and confirmed, so Who's in, with only its noticing open, comes first. */
@@ -410,12 +415,28 @@ describe("where the analysis is, beside open noticings (finding 6)", () => {
     }).log;
   };
   const unansweredOf = (s: QuestStage) => s.lines.filter((l) => l.label === "Decide" && l.counted && (l.status === "open" || l.status === "waiting"));
+  const openNoticingsOf = (s: QuestStage) => unansweredOf(s).filter((l) => l.source === "finding" && l.status === "open");
+  /** The Predict log served under `purpose` instead: outside Predict the engine counts each stage's
+   *  open noticings in its progress (ruling R-a holds under Predict alone). */
+  const servedUnder = (log: QuestLog, purpose: string | null): QuestLog => ({
+    ...log,
+    fit: { ...log.fit!, purpose },
+    stages: log.stages.map((s) => {
+      const n = openNoticingsOf(s).length;
+      // Results' own are counted under Predict too (it is the triage's stage).
+      if (!s.progress || !n || s.key === "results") return s;
+      const required = s.progress.required + n;
+      return { ...s, progress: { ...s.progress, required, complete: s.progress.answered >= required } };
+    }),
+  } as QuestLog);
+  /** Who's in's only lines still to answer are its noticings, served as the log's goal has them:
+   *  under Predict complete (R-a), otherwise counted and so not complete. */
   const onlyNoticing = (log: QuestLog) => {
     const whos = stageOf(log, "whos_in")!;
     const left = unansweredOf(whos);
-    expect(whos.progress?.complete).toBe(false);
     expect(left.length).toBeGreaterThan(0);
-    expect(left.every((l) => l.source === "finding")).toBe(true);
+    expect(left.every((l) => l.source === "finding" && l.status === "open")).toBe(true);
+    expect(whos.progress?.complete).toBe(log.fit?.purpose === "prediction");
   };
   /** The first reached stage after Who's in that is not complete, read off the log. */
   const pastWhosIn = (log: QuestLog) => {
@@ -425,8 +446,8 @@ describe("where the analysis is, beside open noticings (finding 6)", () => {
 
   it("lands past a stage whose only open lines are noticings that travel to the triage", () => {
     const log = questionDone(LOG);
-    onlyNoticing(log);
     expect(LOG.fit?.purpose).toBe("prediction");
+    onlyNoticing(log);
     const at = pastWhosIn(log);
     expect(at.key).toBe("models");
     expect(openStageKey(log)).toBe(at.key);
@@ -444,25 +465,34 @@ describe("where the analysis is, beside open noticings (finding 6)", () => {
   });
 
   it("stays at a stage whose noticing has a question still open beside it, or a sweep still to confirm", () => {
-    const log = withStage(questionDone(LOG), "whos_in", (l) => (l.key === "missing" ? { ...l, status: "open", decision_id: null } : l)).log;
+    // Each served as the engine counts it: the question reopened is one answered fewer, the sweep
+    // one more required (core/quest.py `quest_log`).
+    const whos = stageOf(LOG, "whos_in")!.progress!;
+    const log = withStage(questionDone(LOG), "whos_in", (l) => (l.key === "missing" ? { ...l, status: "open", decision_id: null } : l), {
+      progress: { answered: whos.answered - 1, required: whos.required, complete: false },
+    }).log;
+    expect(stageOf(log, "whos_in")!.lines.some((l) => l.source === "finding" && l.status === "open")).toBe(true);
     expect(openStageKey(log)).toBe("whos_in");
     const sweep = { ...stageOf(LOG, "question")!.sweep!, id: "other:confirm-sweep:whos_in", lines: 1, answered: false };
-    const swept = withStage(questionDone(LOG), "whos_in", (l) => l, { sweep }).log;
+    const swept = withStage(questionDone(LOG), "whos_in", (l) => l, {
+      sweep,
+      progress: { answered: whos.answered, required: whos.required + 1, complete: false },
+    }).log;
     expect(openStageKey(swept)).toBe("whos_in");
   });
 
   it("stays at a stage whose only open lines are noticings under Estimate (W1-R R3 P5)", () => {
-    const log = questionDone(LOG);
-    onlyNoticing(log);
-    const estimate = { ...log, fit: { ...LOG.fit!, purpose: "inference" } } as QuestLog;
+    const estimate = servedUnder(questionDone(LOG), "inference");
+    onlyNoticing(estimate);
     expect(openStageKey(estimate)).toBe("whos_in");
   });
 
   it("lands past that stage before the goal is chosen, as under Predict (W1-R M1)", () => {
-    const log = questionDone(LOG);
-    onlyNoticing(log);
-    const unchosen = { ...log, fit: { ...LOG.fit!, purpose: null } } as QuestLog;
-    expect(openStageKey(unchosen)).toBe(pastWhosIn(log).key);
+    // The engine counts the noticing in Who's in with no goal chosen, so the stage is served not
+    // complete: the shell passes it itself.
+    const unchosen = servedUnder(questionDone(LOG), null);
+    onlyNoticing(unchosen);
+    expect(openStageKey(unchosen)).toBe(pastWhosIn(questionDone(LOG)).key);
   });
 
   it("stays at Models under Estimate, where the noticing is decided, and passes it for Results under Predict", () => {
@@ -644,7 +674,9 @@ describe("a stage that reads as done (finding 25)", () => {
     expect(readsDone(log, writeup)).toBe(false);
     expect(readsDone(log, stageOf(log, "first_look")!)).toBe(false);
     const seg = segments(log).find((x) => x.key === "writeup")!;
-    expect(seg.complete).toBe(false);
+    // It does not read as done, while the served field says what GET /quest says
+    expect(seg.done).toBe(false);
+    expect(seg.complete).toBe(true);
     expect(filled(seg)).toBe(0);
   });
 
@@ -656,6 +688,7 @@ describe("a stage that reads as done (finding 25)", () => {
     expect(first).toMatchObject({ reached: true, progress: { required: 0, complete: true } });
     expect(readsDone(LOG, first)).toBe(true);
     const seg = segments(LOG).find((x) => x.key === "first_look")!;
+    expect(seg.done).toBe(true);
     expect(seg.complete).toBe(true);
     expect(filled(seg)).toBe(1);
     // Only Who's in answered past it is enough.
@@ -683,6 +716,7 @@ describe("a stage that reads as done (finding 25)", () => {
     expect(readsDone(done, stageOf(done, "first_look")!)).toBe(true);
     expect(readsDone(done, stageOf(done, "writeup")!)).toBe(true);
     const seg = segments(done).find((x) => x.key === "writeup")!;
+    expect(seg.done).toBe(true);
     expect(seg.complete).toBe(true);
     expect(filled(seg)).toBe(1);
   });

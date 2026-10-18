@@ -21,6 +21,7 @@ import {
 } from "../../api/m1-types";
 import type { Decision, ProjectView, Refusal } from "../../api/schema";
 import { artifactAt, expandView, viewsOf, type M3Fixture } from "../../mocks/m3";
+import { predictorGroups } from "../../quest/cards/roles/roles";
 import { StageFocusProvider } from "../../state/focus";
 import { AskFor } from "./AskFor";
 import { Record } from "./Record";
@@ -253,7 +254,10 @@ describe("the Record holds every stage the cards read while it is mounted, with 
  * and under prediction its own words say predictors; under any other goal both stand as before.
  * The Predict entry is the captured one with its one-liner and exposure option worded as
  * content.py's ROLES_UNDER_PREDICT and `_PREDICT_OPTIONS` word them, so which entry the card read
- * is seen on the card and its role menu.
+ * is seen on the card and its role menu. Under prediction every predictor role is a predictor (the
+ * roles ruling of 2026-10-17): the card counts the columns that enter the models as predictors and
+ * names each predictor role's group, and its button, by the project's lenses (core/readings.py
+ * `predictor_groups`, the roles fixture's words), whatever label the entry serves.
  */
 describe("the roles card, by the project's goal (finding 3c)", () => {
   const { view: base, f } = openViewFor("roles");
@@ -292,13 +296,35 @@ describe("the roles card, by the project's goal (finding 3c)", () => {
     const view = withGoal("prediction");
     const { exposures, predictors } = roles(view);
     expect(exposures.length).toBeGreaterThan(1);
+    const groups = predictorGroups(view.state.lens);
     const card = renderRoles(view);
     const block = card.getByTestId("question-roles");
-    expect(block.textContent).toContain(`${predictors.length} columns enter the models: ${exposures.length} predictors`);
+    expect(block.textContent).toContain(`${predictors.length} columns enter the models as predictors: ${exposures.length} ${groups.exposure.head[1].toLowerCase()}`);
     expect(block.textContent).not.toMatch(/exposures?\b/);
-    expect(block.querySelector('[data-role="exposure"]')!.textContent).toContain("Predictors");
+    const group = block.querySelector('[data-role="exposure"]')!;
+    expect(group.textContent).toContain(groups.exposure.head[1]);
+    expect(group.textContent).toContain(groups.exposure.note);
     fireEvent.click(card.getByTestId(`role-chip-${exposures[0]!.column}`));
-    expect(card.getByTestId("role-exposure").textContent).toContain("Predictor");
+    expect(card.getByTestId("role-exposure").textContent).toContain(groups.exposure.head[0]);
+    expect(card.getByTestId("role-exposure").getAttribute("title")).toBe(groups.exposure.note);
+  });
+
+  it("names a dietary project's groups as nutrients, total energy and characteristics, each with the steps that treat it apart", () => {
+    const view = { ...withGoal("prediction"), state: { ...withGoal("prediction").state, lens: ["dietary"] } } as ProjectView;
+    const { exposures, predictors } = roles(view);
+    const card = renderRoles(view);
+    const block = card.getByTestId("question-roles");
+    expect(block.textContent).toContain(`${predictors.length} columns enter the models as predictors: ${exposures.length} nutrients`);
+    const exposure = block.querySelector('[data-role="exposure"]')!.textContent!;
+    expect(exposure).toContain("Nutrients");
+    expect(exposure).toContain("The energy-aware fill fills a missing amount of one that carries energy from total energy");
+    expect(exposure).toContain("the screened elastic net's screen may leave any of them out");
+    const covariates = block.querySelector('[data-role="covariate"]');
+    expect(covariates!.textContent).toContain("Characteristics");
+    expect(covariates!.textContent).toContain("The energy-aware fill fills them without total energy");
+    expect(card.getByTestId("record-roles").getAttribute("title")).toBe(
+      "Records every column's role. Nutrients, total energy and characteristics enter the models as predictors.",
+    );
   });
 
   it("reads the words with no goal named under any other goal, as before", () => {
@@ -311,6 +337,9 @@ describe("the roles card, by the project's goal (finding 3c)", () => {
     const served = SHARED.teaching.find((e) => e.key === "roles")!.options.find((o) => o.value === "exposure")!.label;
     expect(card.getByTestId("role-exposure").textContent).toContain(served);
     expect(card.getByTestId("role-exposure").textContent).not.toContain("Predictor");
+    // Estimate's words stand: no group of the Predict roles card is named
+    expect(block.querySelector('[data-role="exposure"]')!.textContent).toContain("Exposures");
+    expect(block.textContent).not.toContain("energy-aware fill");
   });
 });
 

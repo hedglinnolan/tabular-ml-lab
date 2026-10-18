@@ -11,7 +11,7 @@
  * declaration's stage, label, order and name, the sweep words and the Fit lock's sentences come
  * from src/quest/fixtures/quest-contract.json (written by the engine's renderer-contract test); a
  * column's own role line's words, choices and place from src/quest/cards/roles/fixture.json (written
- * by the engine's test of those lines).
+ * by the engine's test of those lines), under the project's goal and, under prediction, its lenses.
  * What the mock decides itself is said where it does: which declarations apply (the Predict and
  * Estimate walks'), which stages are reached, and when a finding is settled. Every number is the
  * mock's.
@@ -35,6 +35,7 @@ import type {
 import type { MethodsSections, MethodsText } from "../api/m3-types";
 import type { RolesArtifact } from "../api/m1-types";
 import ROLES from "../quest/cards/roles/fixture.json";
+import { predictKind } from "../quest/cards/roles/roles";
 import { CONTRACT } from "../quest/fixtures/contract";
 import type { MockServer } from "./db";
 
@@ -68,15 +69,31 @@ function line(p: Partial<QuestLine> & Pick<QuestLine, "id" | "key" | "source" | 
 const latest = (records: readonly DecisionRecord[], test: (d: DecisionRecord["decision"]) => boolean) =>
   [...records].reverse().find((r) => test(r.decision));
 
-const WORDS: Record<string, string> = ROLES.words;
-const CHOICES: Record<string, string[]> = ROLES.choices;
-/** Why a role line waits, by the proposed role: its last clause names what that role's presses do. */
-const REASONS: Record<string, string> = ROLES.reasons;
-const fill = (template: string, column: string, role: string, other = "") =>
-  template
-    .replaceAll("{column}", column)
-    .replaceAll("{role}", WORDS[role] ?? role)
-    .replaceAll("{other}", WORDS[other] ?? other);
+/**
+ * A role line's words under the project's goal (core/quest.py `role_line_text`): with no goal and
+ * under inference, Estimate's; under prediction each predictor role by the roles card's group for it
+ * in a project with these lenses (the roles ruling of 2026-10-17), each change's label the engine's
+ * own (the energy column's says it leaves the energy role). `reasons`: why a line waits, by the
+ * proposed role, its last clause naming what that role's presses do.
+ */
+function roleWords(purpose: string | null | undefined, lenses: readonly string[] | null | undefined) {
+  const T = ROLES.templates;
+  const estimate = {
+    words: ROLES.words as Record<string, string>,
+    reasons: ROLES.reasons as Record<string, string>,
+    choices: ROLES.choices as Record<string, string[]>,
+    change: (_role: string, other: string) => T.change.replaceAll("{other}", (ROLES.words as Record<string, string>)[other] ?? other),
+  };
+  if (purpose !== "prediction") return estimate;
+  const k = ROLES.under.prediction.kinds[predictKind(lenses)];
+  const changes = k.changes as Record<string, Record<string, string>>;
+  return {
+    words: k.words as Record<string, string>,
+    reasons: k.reasons as Record<string, string>,
+    choices: k.choices as Record<string, string[]>,
+    change: (role: string, other: string) => changes[role]?.[other] ?? T.change.replaceAll("{other}", other),
+  };
+}
 
 /**
  * Your data's role lines (core/quest.py `_role_lines`; the walkthrough of 2026-10-17, finding 1):
@@ -92,6 +109,9 @@ export function mockRoleLines(view: ProjectView, reasons: Readonly<Record<string
   const step = interview.find((s) => s.key === "roles");
   if (!named.size || step?.status === "open" || step?.status === "waiting") return [];
   const T = ROLES.templates;
+  const W = roleWords(state.purpose, state.lens);
+  const fill = (template: string, column: string, role: string) =>
+    template.replaceAll("{column}", column).replaceAll("{role}", W.words[role] ?? role);
   const confirmedBy = (column: string) =>
     latest(
       decisions,
@@ -110,7 +130,7 @@ export function mockRoleLines(view: ProjectView, reasons: Readonly<Record<string
       const option = (r: string, label: string) => ({ label, decision: { kind: "confirm_role", column, role: r } as Record<string, unknown> });
       const options = [
         ...(waiting ? [option(role, fill(T.confirm, column, role))] : []),
-        ...(CHOICES[role] ?? ["covariate"]).map((other) => option(other, fill(T.change, column, role, other))),
+        ...(W.choices[role] ?? ["covariate"]).map((other) => option(other, fill(W.change(role, other), column, role))),
       ];
       return [
         line({
@@ -123,7 +143,7 @@ export function mockRoleLines(view: ProjectView, reasons: Readonly<Record<string
           counted: true,
           order: ROLES.place.order + i / 1000,
           decision_id: waiting ? null : (confirmedBy(column)?.id ?? null),
-          reason: waiting && REASONS[role] ? fill(REASONS[role], column, role) : null,
+          reason: waiting && W.reasons[role] ? fill(W.reasons[role], column, role) : null,
           items: [
             {
               kind: "role",
@@ -287,7 +307,11 @@ export function mockQuest(
         }
       : null;
     const reached = i <= 4 ? i <= reachedBefore : resultsOpen;
-    const counted = lines.filter((l) => l.label === "Decide" && l.counted);
+    // Ruling R-a (core/quest.py `quest_log`): under Predict an open noticing waits for the triage in
+    // Results, not for the stage it is placed in, so outside Results its stage's count leaves it out.
+    const counted = lines.filter(
+      (l) => l.label === "Decide" && l.counted && !(predict && s.key !== "results" && l.source === "finding" && l.status === "open"),
+    );
     const required = counted.length + (sweep ? 1 : 0);
     const answered = counted.filter((l) => l.status === "answered").length + (sweep?.answered ? 1 : 0);
     return {

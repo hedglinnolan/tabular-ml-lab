@@ -12,9 +12,12 @@ import type { QuestLine, QuestLog, ReadItem, Refusal } from "../../../api/schema
 import { CONTRACT } from "../../fixtures/contract";
 import FIXTURE from "./fixture.json";
 import { RoleCard } from "./RoleCard";
-import { isRoleLine, ownOptions, ownRefusal, roleItem, ROLE_LINE_ID, waitingRoles, waitingSentence } from "./roles";
+import { isRoleLine, ownOptions, ownRefusal, predictKind, roleItem, ROLE_LINE_ID, waitingClause, waitingPredictors, waitingRoles, waitingSentence } from "./roles";
 
 const LINES = FIXTURE.lines as unknown as QuestLine[];
+/** The lines' own words: a dietary project's under prediction, as the NHANES capture's are (the
+ *  roles ruling of 2026-10-17: under Predict each predictor role by the roles card's group). */
+const WORDS = FIXTURE.under.prediction.kinds[predictKind(["dietary"])];
 const lineFor = (column: string) => LINES.find((l) => roleItem(l)?.column === column)!;
 const PID = "roles-test";
 
@@ -63,7 +66,7 @@ describe("a column's role line", () => {
   it("offers only its own column's confirm_role, the role as proposed first, never a block or another column", () => {
     const item = roleItem(lineFor("bp_sys"))!;
     const own = ownOptions(item);
-    expect(own.map((o) => o.role)).toEqual(["covariate", ...FIXTURE.choices.covariate]);
+    expect(own.map((o) => o.role)).toEqual(["covariate", ...WORDS.choices.covariate]);
     expect(own[0]!.confirms).toBe(true);
     const crowded: ReadItem = {
       ...item,
@@ -97,8 +100,12 @@ describe("a column's role line", () => {
   it("says how many columns wait, from the served lines, and nothing once none does", () => {
     const log = logWith(LINES);
     expect(waitingRoles(log).map((l) => roleItem(l)!.column)).toEqual(["bp_sys", "imputed_waist", "cycle_begin_year"]);
-    expect(waitingSentence(waitingRoles(log).length)).toBe("3 columns wait for their own confirmation and are not predictors yet.");
+    // Of those, only the column proposed in a predictor role is not a predictor yet (W1-T): the flag
+    // and the column proposed as left out enter no model as proposed.
+    expect(waitingPredictors(log).map((l) => roleItem(l)!.column)).toEqual(["bp_sys"]);
+    expect(waitingSentence(3)).toBe("3 columns wait for their own confirmation and are not predictors yet.");
     expect(waitingSentence(1)).toBe("1 column waits for its own confirmation and is not a predictor yet.");
+    expect(waitingClause(2)).toBe("2 columns wait for their own confirmation");
     expect(waitingSentence(0)).toBeNull();
   });
 });
@@ -109,19 +116,19 @@ describe("the role card", () => {
     mount(line);
     const card = screen.getByTestId("role-bp_sys");
     expect(card).toHaveTextContent("The role of bp_sys");
-    expect(card).toHaveTextContent("bp_sys proposed as a covariate");
+    expect(card).toHaveTextContent("bp_sys proposed as a characteristic");
     expect(screen.getByTestId("role-evidence")).toHaveTextContent(roleItem(line)!.evidence.replaceAll("`", ""));
     expect(screen.getByTestId("role-reason")).toHaveTextContent(line.reason!.replaceAll("`", ""));
-    expect(screen.getByTestId("roles-waiting")).toHaveTextContent("3 columns wait for their own confirmation and are not predictors yet.");
+    expect(screen.getByTestId("roles-waiting")).toHaveTextContent(/^1 column waits for its own confirmation and is not a predictor yet\.$/);
     const buttons = screen.getAllByRole("button");
-    expect(buttons.map((b) => b.textContent)).toEqual(["Confirm bp_sys as a covariate", "bp_sys is what you study", "bp_sys is left out of the models"]);
-    fireEvent.click(screen.getByRole("button", { name: "Confirm bp_sys as a covariate" }));
+    expect(buttons.map((b) => b.textContent)).toEqual(["Confirm bp_sys as a characteristic", "bp_sys is a nutrient", "bp_sys is left out of the models"]);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm bp_sys as a characteristic" }));
     await waitFor(() => expect(posted()).toEqual([{ kind: "confirm_role", column: "bp_sys", role: "covariate" }]));
   });
 
   it("changes the role with one press too", async () => {
     mount(lineFor("cycle_begin_year"));
-    fireEvent.click(screen.getByRole("button", { name: "cycle_begin_year is a covariate" }));
+    fireEvent.click(screen.getByRole("button", { name: "cycle_begin_year is a characteristic" }));
     await waitFor(() => expect(posted()).toEqual([{ kind: "confirm_role", column: "cycle_begin_year", role: "covariate" }]));
   });
 
@@ -129,9 +136,9 @@ describe("the role card", () => {
     const waist = lineFor("waist");
     expect(waist.status).toBe("answered");
     mount(waist, logWith([waist]));
-    expect(screen.getByTestId("role-waist")).toHaveTextContent("waist is a covariate");
+    expect(screen.getByTestId("role-waist")).toHaveTextContent("waist is a characteristic");
     expect(screen.queryByRole("button", { name: /^Confirm/ })).toBeNull();
-    expect(screen.getAllByRole("button")).toHaveLength(FIXTURE.choices.covariate.length);
+    expect(screen.getAllByRole("button")).toHaveLength(WORDS.choices.covariate.length);
     expect(screen.queryByTestId("roles-waiting")).toBeNull();
   });
 });

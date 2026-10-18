@@ -412,8 +412,10 @@ def _fixture() -> dict:
     proposals = {"columns": [
         {"column": c, "proposed": r, "confidence": "medium" if c in waiting else "high",
          "reason": f"the reason the roles stage gives for `{c}`"} for c, r in roles.items()]}
+    # The capture's lens (src/mocks/fixtures/m3-nhanes-prediction.json): under Predict a role line's
+    # words follow the lenses, so the lines are worded as the capture's are.
     records = [
-        record(1, {"kind": "set_lens", "lenses": ["clinical"]}),
+        record(1, {"kind": "set_lens", "lenses": ["dietary"]}),
         record(2, {"kind": "set_target", "column": "glucose"}),
         record(3, {"kind": "set_purpose", "purpose": "prediction"}),
         record(4, {"kind": "set_roles", "roles": roles, "unconfirmed": waiting}),
@@ -434,7 +436,7 @@ def _fixture() -> dict:
     # (``readings.predict_kind``), and a choice that reads as the proposal is not offered. Each
     # kind holds its lines' whole words by role, the changes' labels included (the energy column's
     # says it leaves the energy role), and the roles card's groups. The lines are this log's, a
-    # clinical project's, under prediction.
+    # dietary project's, under prediction.
     lenses = {"both": ["dietary", "genomics"], "dietary": ["dietary"], "assay": ["genomics"],
               "neither": ["clinical"]}
     assert {k: readings.predict_kind(v) for k, v in lenses.items()} == {k: k for k in lenses}
