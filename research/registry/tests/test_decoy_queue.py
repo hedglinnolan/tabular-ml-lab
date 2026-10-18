@@ -4,7 +4,8 @@ them in a grading queue, and the false-promotion rate of the two-referee gate ov
 * Each generator changes what its kind says and nothing else, and returns None where it does not
   apply; the truth is the construction.
 * The queue holds every candidate and every decoy once, under neutral ids, shows a referee only the
-  merits fields, keeps each decoy out of its sibling's batch, and seals its key by its SHA-256.
+  merits fields, keeps each decoy out of its sibling's batch (dealing two batches where one would
+  do, and refusing one batch that would hold a decoy), and seals its key by its SHA-256.
 * The score's rate is the share of false decoys the gate promoted, its Wilson interval
   statsmodels' own; the gate is the registry's (``turbotab.core.claims.referee_gate``), so an
   author's or a fork's verdict does not count, and one referee who does not uphold blocks. The
@@ -190,6 +191,31 @@ def test_no_decoy_shares_a_batch_with_its_sibling(tmp_path):
     decoy_items = [it for it in key["items"] if it["kind"] == "decoy"]
     assert len(decoy_items) == 8
     assert all(batch[it["sibling"]] != it["batch"] for it in decoy_items)
+
+
+@pytest.mark.parametrize("batches", [None, 2])
+def test_a_queue_small_enough_for_one_batch_is_dealt_in_two_keeping_each_decoy_from_its_sibling(
+        tmp_path, batches):
+    """Eight candidates and two decoys are ten items, under a dozen. One batch would put each decoy
+    beside the candidate it was made from, so the queue deals two (RG-V2-2)."""
+    key = decoy_queue.build(_pool()[:8], tmp_path / "queue", decoys=2, seed=5, batches=batches)
+    batch = {it["orig"]: it["batch"] for it in key["items"]}
+    decoy_items = [it for it in key["items"] if it["kind"] == "decoy"]
+    assert len(decoy_items) == 2 and set(batch.values()) == {1, 2}
+    assert all(batch[it["sibling"]] != it["batch"] for it in decoy_items)
+    assert sorted(p.name for p in (tmp_path / "queue" / "batches").iterdir()) == [
+        "batch_01.jsonl", "batch_02.jsonl"]
+
+
+def test_one_batch_is_refused_where_a_decoy_would_share_it_with_its_sibling(tmp_path):
+    with pytest.raises(ValueError, match="only its sibling's batch"):
+        decoy_queue.build(_pool()[:8], tmp_path / "queue", decoys=2, seed=5, batches=1)
+    assert not (tmp_path / "queue").exists(), "a refused queue writes nothing"
+
+
+def test_one_batch_is_built_where_the_queue_holds_no_decoy(tmp_path):
+    key = decoy_queue.build(_pool()[:8], tmp_path / "queue", decoys=0, seed=5, batches=1)
+    assert key["decoys"] == [] and {it["batch"] for it in key["items"]} == {1}
 
 
 def test_the_key_is_sealed_by_its_sha_256_and_the_queue_repeats_by_seed(tmp_path):
@@ -421,6 +447,16 @@ def test_the_command_line_builds_a_queue_from_the_registry_and_prints_its_rate(t
     assert "real candidates promoted: 27 of 27" in printed
     saved = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
     assert saved["false_promotion"]["rate"] == pytest.approx(1 / 6)
+
+
+def test_the_command_line_refuses_one_batch_that_would_hold_a_decoy_beside_its_sibling(
+        tmp_path, capsys):
+    cands, out = tmp_path / "candidates.jsonl", tmp_path / "queue"
+    decoy_queue.write_jsonl(cands, _pool()[:8])
+    assert decoy_queue.main(["build", "--candidates", str(cands), "--out", str(out),
+                             "--decoys", "2", "--batches", "1"]) == 1
+    assert "only its sibling's batch" in capsys.readouterr().err
+    assert not out.exists()
 
 
 def test_the_command_line_refuses_the_rate_and_exits_1_while_a_false_decoy_is_undecided(

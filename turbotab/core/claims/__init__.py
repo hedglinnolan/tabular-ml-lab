@@ -14,8 +14,8 @@ its evidence covers, and the tests that hold the code to it.
   referee and audit names the part's fingerprint as it read it (:func:`checked`), and counts only
   while the part stands so. Every grade change is a line of the history with its date, grader and
   reason, which the generator writes, and meta-test 8 refuses a grade that differs from its last
-  line; a part its sentence no longer asserts is :data:`RETIRED` through such a line, never
-  dropped.
+  line, and a swarm claim's author, grader or referee edited after the history recorded it; a part
+  its sentence no longer asserts is :data:`RETIRED` through such a line, never dropped.
 * **The registry** (``_registry``): :class:`Registry`, and the default one, :data:`REGISTRY`, which
   :func:`registry` fills by scanning this package. Each public module here, ``claims/<area>.py``,
   declares one area's claims with :func:`register`; a private module (``_name``) is the registry's

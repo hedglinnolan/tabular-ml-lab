@@ -14,7 +14,9 @@ that shape serves, a research swarm's candidates or the claims backtest's invent
 
 ``build`` generates decoys from the candidates (``decoys.generate``: a quarter as many as there are
 candidates unless ``--decoys`` says), gives every item a neutral id in an order the seed shuffles,
-and deals them into batches of about a dozen, no decoy in its sibling's batch. It writes
+and deals them into batches of about a dozen, no decoy in its sibling's batch: a queue with decoys
+is dealt into two or more, and ``--batches 1`` with any decoy is refused, writing nothing, since
+its one batch would hold each decoy beside the candidate it was made from. It writes
 ``DIR/batches/batch_NN.jsonl``, what a referee sees (the id and the merits fields alone), and
 ``DIR/key.json``, which item is real and which a decoy, with its kind, sibling, author and why it
 is false, sealed by its SHA-256 in ``DIR/key.sha256``. Show a referee its batch, never the key.
@@ -123,7 +125,8 @@ def build(candidates: Sequence[dict[str, Any]], out: Path, decoys: int | None = 
     random.Random(seed + 99).shuffle(order)
     for number, i in enumerate(order, 1):
         items[i]["rid"] = f"K-{number:03d}"
-    nb = batches or max(1, math.ceil(len(items) / PER_BATCH))
+    # A decoy needs a batch other than its sibling's, so a queue with decoys has two or more.
+    nb = batches or max(2 if made else 1, math.ceil(len(items) / PER_BATCH))
     rng = random.Random(seed + 7)
     shuffled = items[:]
     rng.shuffle(shuffled)
@@ -134,7 +137,11 @@ def build(candidates: Sequence[dict[str, Any]], out: Path, decoys: int | None = 
         groups[b].append(it)
         where[it["orig"]] = b
     for it in [x for x in shuffled if x["kind"] == "decoy"]:
-        free = [k for k in range(nb) if k != where.get(it["sibling"])] or list(range(nb))
+        free = [k for k in range(nb) if k != where.get(it["sibling"])]
+        if not free:
+            raise ValueError(f"{nb} batch leaves the decoy {it['orig']} only its sibling's batch, "
+                             f"beside {it['sibling']}, the candidate it was made from, where a "
+                             "referee would read the two together: deal two or more batches")
         b = min(free, key=lambda k: (sum(x["kind"] == "decoy" for x in groups[k]),
                                      len(groups[k]), k))
         groups[b].append(it)

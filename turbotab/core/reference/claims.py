@@ -36,7 +36,9 @@ refused. A part the history never recorded cannot enter retired, and a swarm cla
 retired only by someone other than its author. A change without what it needs is refused, and so
 is a swarm claim's part entering above unsupported; where any is refused, the generator writes
 nothing and it and ``--check`` exit 1. Meta-test 8 refuses a grade that differs from its part's
-last line, and a part dropped without a line that retires it.
+last line, a part dropped without a line that retires it, and a swarm claim whose author, a
+referee, or the grader of a part above unsupported while its grade stands differs from what the
+history recorded.
 
 ``turbotab/core/claims/status.json``, the frozen status file, holds each claim's id, derived status
 and content hash. The shipped app holds no tests, so a status cannot be derived there: a sentence
@@ -205,7 +207,10 @@ def render(reg: Registry) -> str:
         "part rises above judgment only once two distinct referees, neither its author nor a "
         "fork, upheld it at that grade, and someone other than its author checked its basis "
         "against the source. Each of them read the part as it now stands (its sentence, regime, "
-        "decision, grade and basis), on or after the day it took its previous grade.",
+        "decision, grade and basis), on or after the day it took its previous grade. Once the "
+        "history records a version of a swarm claim, its author stays as recorded, the grader of "
+        "a part above unsupported changes only with its grade, and every referee stays as "
+        "recorded: a later verdict is a referee added, never one edited or removed.",
         "- **Grade**: each part of a sentence is graded on its own (" + ", ".join(
             f"*{g}*" for g in GRADES) + ", strongest first), and the sentence shows its weakest "
         "part's. Above judgment, someone other than the author grades. A part's grade moves "
