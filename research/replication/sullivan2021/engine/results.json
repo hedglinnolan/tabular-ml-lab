@@ -31,7 +31,58 @@
   "exports_200": 87,
   "seconds": 3624,
   "median_seconds": 41,
-  "fitted_models": 174
+  "fitted_models": 174,
+  "groups": {
+   "unstated": {
+    "projects": 54,
+    "fitted_models": 108,
+    "seconds": 2242,
+    "median_seconds": 41.0
+   },
+   "alternative": {
+    "projects": 11,
+    "fitted_models": 22,
+    "seconds": 443,
+    "median_seconds": 41
+   },
+   "ladder": {
+    "projects": 15,
+    "fitted_models": 30,
+    "seconds": 627,
+    "median_seconds": 41
+   },
+   "m4_reading": {
+    "projects": 3,
+    "fitted_models": 6,
+    "seconds": 139,
+    "median_seconds": 45
+   },
+   "table4": {
+    "projects": 4,
+    "fitted_models": 8,
+    "seconds": 173,
+    "median_seconds": 43.0
+   }
+  }
+ },
+ "sas_df_adjusted": {
+  "about": "SAS SURVEYREG's default VADJUST=DF as recalled, the variance times (n - 1)/(n - k): not applied to any reported SE; measured here",
+  "runs": 87,
+  "largest_se_change": {
+   "run": "pir_bands_missing-insulin",
+   "relative": 0.0012978590796060008
+  },
+  "largest_se_change_base_runs": {
+   "run": "m4t4-insulin",
+   "relative": 0.0011300715550741636
+  },
+  "runs_with_a_printed_se": 78,
+  "se_match_changes": [
+   "age_bands_M2-glucose"
+  ],
+  "printed_se_change_changes": [
+   "age_bands_M2-glucose"
+  ]
  },
  "runs": {
   "age_bands-bmi": {
@@ -95,13 +146,20 @@
     "se_rel_diff": 3.5216274341109965e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0004585203136172,
+    "se": 0.08562558663521912,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.02092793496268386,
     "se": -0.00024677001125529563,
     "n": 0,
     "beta_in_printed_units": 0.20927934962683858,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "age_bands-glucose": {
@@ -165,13 +223,20 @@
     "se_rel_diff": 1.1390888232654106e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 16,
+    "factor": 1.0010997473905145,
+    "se": 0.420855607726125,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.1827628002615893,
     "se": 0.0010948383360967484,
     "n": 0,
     "beta_in_printed_units": 1.827628002615893,
     "printed_beta_changes": true,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "age_bands-hba1c": {
@@ -235,13 +300,20 @@
     "se_rel_diff": 1.0847989173612405e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 16,
+    "factor": 1.0005073481241655,
+    "se": 0.009895415568009023,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.008537606234294698,
     "se": 0.00036215236560446264,
     "n": 0,
     "beta_in_printed_units": 0.8537606234294698,
     "printed_beta_changes": true,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "age_bands-insulin": {
@@ -305,13 +377,20 @@
     "se_rel_diff": 2.6645352591003757e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 16,
+    "factor": 1.0011290508281687,
+    "se": 0.17736867131962847,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.033272952109267284,
     "se": -0.0050020131887064945,
     "n": 0,
     "beta_in_printed_units": -0.33272952109267284,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "age_bands_M2-glucose": {
@@ -375,13 +454,20 @@
     "se_rel_diff": 1.2789769243681803e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 13,
+    "factor": 1.0008708274509457,
+    "se": 0.4351989751689475,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.2062701659493702,
     "se": 0.001124929236958061,
     "n": 0,
     "beta_in_printed_units": 2.062701659493702,
     "printed_beta_changes": true,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": true
    }
   },
   "age_bands_M2-hba1c": {
@@ -445,13 +531,19 @@
     "se_rel_diff": 7.51620987671231e-14,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 13,
+    "factor": 1.0004014989455134,
+    "se": 0.010464577807853835
+   },
    "shift": {
     "beta": 0.008509822771837983,
     "se": 0.0002311074400690987,
     "n": 0,
     "beta_in_printed_units": 0.8509822771837983,
     "printed_beta_changes": true,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "age_bands_M2-insulin": {
@@ -515,13 +607,20 @@
     "se_rel_diff": 9.14823772291129e-14,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 13,
+    "factor": 1.000893788350626,
+    "se": 0.2256510019618404,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.012369993062506968,
     "se": -0.0037745148549072627,
     "n": 0,
     "beta_in_printed_units": -0.12369993062506968,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "age_bands_M3-glucose": {
@@ -585,13 +684,20 @@
     "se_rel_diff": 7.709388682997087e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 16,
+    "factor": 1.0010911077986544,
+    "se": 0.44431350393757596,
+    "se_matches": false
+   },
    "shift": {
     "beta": 0.20422791402886675,
     "se": 0.0007424248744931083,
     "n": 0,
     "beta_in_printed_units": 2.0422791402886675,
     "printed_beta_changes": true,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "age_bands_M3-hba1c": {
@@ -655,13 +761,19 @@
     "se_rel_diff": 3.469002862743764e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 16,
+    "factor": 1.0005028242276748,
+    "se": 0.010276996051069437
+   },
    "shift": {
     "beta": 0.00911208021046378,
     "se": 0.0003162455516301302,
     "n": 0,
     "beta_in_printed_units": 0.911208021046378,
     "printed_beta_changes": true,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "age_bands_M3-insulin": {
@@ -725,13 +837,20 @@
     "se_rel_diff": 3.1590285942684204e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 16,
+    "factor": 1.0011199465935654,
+    "se": 0.22681735957937943,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.01891769856233827,
     "se": -0.00387550664265085,
     "n": 0,
     "beta_in_printed_units": -0.1891769856233827,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "age_spline-bmi": {
@@ -793,13 +912,20 @@
     "se_rel_diff": 6.931122342734852e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 17,
+    "factor": 1.0005240747166175,
+    "se": 0.08093793531602833,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.06184274932896594,
     "se": -0.004937573560562208,
     "n": 0,
     "beta_in_printed_units": 0.6184274932896594,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "age_spline-glucose": {
@@ -861,13 +987,20 @@
     "se_rel_diff": 3.4625635692009382e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 18,
+    "factor": 1.0012466546841943,
+    "se": 0.4142261583903293,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.07112836422280733,
     "se": -0.005588038599102507,
     "n": 0,
     "beta_in_printed_units": 0.7112836422280733,
     "printed_beta_changes": true,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "age_spline-hba1c": {
@@ -929,13 +1062,20 @@
     "se_rel_diff": 1.8006707236395414e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 18,
+    "factor": 1.0005750529016495,
+    "se": 0.009725176003364013,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.002829526233255185,
     "se": 0.00019134139912630604,
     "n": 0,
     "beta_in_printed_units": 0.28295262332551846,
     "printed_beta_changes": true,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "age_spline-insulin": {
@@ -997,13 +1137,20 @@
     "se_rel_diff": 8.359979375427429e-14,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 18,
+    "factor": 1.0012798800645544,
+    "se": 0.1816079697608154,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.0006607121937995952,
     "se": -0.0007948216586066703,
     "n": 0,
     "beta_in_printed_units": 0.006607121937995952,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "alt_energy_alone-glucose": {
@@ -1065,13 +1212,20 @@
     "se_rel_diff": 1.1177059278111301e-11,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 13,
+    "factor": 1.0008708274509457,
+    "se": 0.4272250282112809,
+    "se_matches": false
+   },
    "shift": {
     "beta": -0.01844144959490901,
     "se": -0.006842079830510661,
     "n": 0,
     "beta_in_printed_units": -0.1844144959490901,
     "printed_beta_changes": true,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "alt_energy_alone-hba1c": {
@@ -1133,13 +1287,19 @@
     "se_rel_diff": 1.038658048457819e-11,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 13,
+    "factor": 1.0004014989455134,
+    "se": 0.010099893960679146
+   },
    "shift": {
     "beta": -5.731477110491878e-05,
     "se": -0.00013343004568945778,
     "n": 0,
     "beta_in_printed_units": -0.005731477110491878,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "alt_energy_alone-insulin": {
@@ -1201,13 +1361,20 @@
     "se_rel_diff": 4.475531056868931e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 13,
+    "factor": 1.000893788350626,
+    "se": 0.23184487856183686,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.0003818156058561506,
     "se": 0.0024138306739458493,
     "n": 0,
     "beta_in_printed_units": -0.003818156058561506,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "alt_log_insulin-insulin": {
@@ -1269,13 +1436,20 @@
     "se_rel_diff": 1.5315526624704034e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0010536617659114,
+    "se": 0.011396445032794307,
+    "se_matches": false
+   },
    "shift": {
     "beta": 0.5131588994816166,
     "se": -0.1707862024363881,
     "n": 0,
     "beta_in_printed_units": 5.131588994816166,
     "printed_beta_changes": true,
-    "printed_se_changes": true
+    "printed_se_changes": true,
+    "printed_se_changes_sas_df": true
    }
   },
   "alt_no_bmi-glucose": {
@@ -1337,13 +1511,20 @@
     "se_rel_diff": 1.1723955140041653e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 14,
+    "factor": 1.0009454203776984,
+    "se": 0.45044392137527955,
+    "se_matches": false
+   },
    "shift": {
     "beta": -1.5710832377796526,
     "se": 0.030720021772450368,
     "n": 54,
     "beta_in_printed_units": -15.710832377796526,
     "printed_beta_changes": true,
-    "printed_se_changes": true
+    "printed_se_changes": true,
+    "printed_se_changes_sas_df": true
    }
   },
   "alt_no_bmi-hba1c": {
@@ -1405,13 +1586,20 @@
     "se_rel_diff": 1.6466827901240322e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 14,
+    "factor": 1.0004357371706223,
+    "se": 0.010084445875661797,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.04582706589472637,
     "se": 0.0005518082939293747,
     "n": 133,
     "beta_in_printed_units": -4.582706589472637,
     "printed_beta_changes": true,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "alt_no_bmi-insulin": {
@@ -1473,13 +1661,20 @@
     "se_rel_diff": 2.4147350785597155e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 14,
+    "factor": 1.0009704029454696,
+    "se": 0.22843056908848433,
+    "se_matches": true
+   },
    "shift": {
     "beta": -1.5253792115623623,
     "se": 0.046038462181957035,
     "n": 54,
     "beta_in_printed_units": -15.253792115623623,
     "printed_beta_changes": true,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "alt_no_diabetes-bmi": {
@@ -1541,13 +1736,20 @@
     "se_rel_diff": 1.184607967275042e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 14,
+    "factor": 1.0004957196819178,
+    "se": 0.09109786628914082,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.11532182503064137,
     "se": 0.005219616089571749,
     "n": -2155,
     "beta_in_printed_units": 1.1532182503064137,
     "printed_beta_changes": true,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "alt_no_diabetes-glucose": {
@@ -1609,13 +1811,20 @@
     "se_rel_diff": 1.616484723854228e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0011999661469695,
+    "se": 0.18605435524620026,
+    "se_matches": false
+   },
    "shift": {
     "beta": 1.7848097574353714,
     "se": -0.23346707907544098,
     "n": -987,
     "beta_in_printed_units": 17.848097574353712,
     "printed_beta_changes": true,
-    "printed_se_changes": true
+    "printed_se_changes": true,
+    "printed_se_changes_sas_df": true
    }
   },
   "alt_no_diabetes-hba1c": {
@@ -1677,13 +1886,20 @@
     "se_rel_diff": 3.7547742692822794e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0005517241799056,
+    "se": 0.005948569580530208,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.03485082379803391,
     "se": -0.003582955907087292,
     "n": -2096,
     "beta_in_printed_units": 3.485082379803391,
     "printed_beta_changes": true,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "alt_no_diabetes-insulin": {
@@ -1745,13 +1961,20 @@
     "se_rel_diff": 7.364109322338663e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.00123033705025,
+    "se": 0.1740382860494574,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.08486095990495524,
     "se": -0.008346228688751456,
     "n": -954,
     "beta_in_printed_units": 0.8486095990495524,
     "printed_beta_changes": true,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "energy_day1-glucose": {
@@ -1813,13 +2036,20 @@
     "se_rel_diff": 1.1700307389617137e-11,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0010182561369636,
+    "se": 0.4470191608381602,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.01812275196322144,
     "se": 0.003477630332857473,
     "n": 0,
     "beta_in_printed_units": 0.1812275196322144,
     "printed_beta_changes": false,
-    "printed_se_changes": true
+    "printed_se_changes": true,
+    "printed_se_changes_sas_df": true
    }
   },
   "energy_day1-hba1c": {
@@ -1881,13 +2111,19 @@
     "se_rel_diff": 3.4886094013586444e-11,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0004692790121879,
+    "se": 0.010025988041090561
+   },
    "shift": {
     "beta": 0.00013490969699953004,
     "se": 6.569968835503162e-05,
     "n": 0,
     "beta_in_printed_units": 0.013490969699953004,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "energy_day1-insulin": {
@@ -1949,13 +2185,20 @@
     "se_rel_diff": 1.4170886686315498e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.001045166392035,
+    "se": 0.22925077525004983,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.019711692949097248,
     "se": -0.001427706856856198,
     "n": 0,
     "beta_in_printed_units": 0.19711692949097248,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "insulin_crosswalk-insulin": {
@@ -2017,13 +2260,20 @@
     "se_rel_diff": 2.560618383995461e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0010536617659114,
+    "se": 0.1808735223968124,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.02287069848921075,
     "se": -0.001487508633049306,
     "n": 0,
     "beta_in_printed_units": -0.2287069848921075,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "m0-glucose": {
@@ -2084,6 +2334,12 @@
     "beta_rel_diff": 2.2226664952995634e-13,
     "se_rel_diff": 7.316369732279782e-14,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 2,
+    "factor": 1.000066381227462,
+    "se": 0.365199301503679,
+    "se_matches": true
    }
   },
   "m0-hba1c": {
@@ -2144,6 +2400,12 @@
     "beta_rel_diff": 9.523493105234593e-13,
     "se_rel_diff": 1.596500709410975e-13,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 2,
+    "factor": 1.000030591798346,
+    "se": 0.009414564998458264,
+    "se_matches": true
    }
   },
   "m0-insulin": {
@@ -2204,6 +2466,12 @@
     "beta_rel_diff": 2.3647750424515834e-14,
     "se_rel_diff": 1.6653345369377348e-14,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 2,
+    "factor": 1.0000681825930633,
+    "se": 0.21898699741416866,
+    "se_matches": true
    }
   },
   "m1-glucose": {
@@ -2264,6 +2532,12 @@
     "beta_rel_diff": 2.9753977059954195e-14,
     "se_rel_diff": 7.80486786311485e-14,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 4,
+    "factor": 1.0001991833502475,
+    "se": 0.36471255831220545,
+    "se_matches": true
    }
   },
   "m1-hba1c": {
@@ -2324,6 +2598,11 @@
     "beta_rel_diff": 5.574429806642911e-13,
     "se_rel_diff": 1.0480505352461478e-13,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 4,
+    "factor": 1.000091783818706,
+    "se": 0.009403153510478879
    }
   },
   "m1-insulin": {
@@ -2384,6 +2663,12 @@
     "beta_rel_diff": 6.8833827526759706e-15,
     "se_rel_diff": 2.2426505097428162e-13,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 4,
+    "factor": 1.0002045896294465,
+    "se": 0.2127952567635819,
+    "se_matches": true
    }
   },
   "m2-glucose": {
@@ -2444,6 +2729,12 @@
     "beta_rel_diff": 2.76667577736589e-13,
     "se_rel_diff": 8.426592756904938e-14,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 12,
+    "factor": 1.000798171588816,
+    "se": 0.43404155580008863,
+    "se_matches": false
    }
   },
   "m2-hba1c": {
@@ -2504,6 +2795,11 @@
     "beta_rel_diff": 3.228528555609955e-13,
     "se_rel_diff": 4.600764214046649e-13,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 12,
+    "factor": 1.0003680222276181,
+    "se": 0.010233035135987204
    }
   },
   "m2-insulin": {
@@ -2564,6 +2860,12 @@
     "beta_rel_diff": 2.4646951146678475e-14,
     "se_rel_diff": 3.0375701953744283e-13,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 12,
+    "factor": 1.0008192144364032,
+    "se": 0.22941179630229472,
+    "se_matches": true
    }
   },
   "m3-glucose": {
@@ -2624,6 +2926,12 @@
     "beta_rel_diff": 2.744471316873387e-13,
     "se_rel_diff": 4.857114710432597e-12,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0010182561369636,
+    "se": 0.44353798938687417,
+    "se_matches": false
    }
   },
   "m3-hba1c": {
@@ -2684,6 +2992,11 @@
     "beta_rel_diff": 2.7400304247748863e-13,
     "se_rel_diff": 1.794786541609028e-12,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0004692790121879,
+    "se": 0.009960257521250678
    }
   },
   "m3-insulin": {
@@ -2744,6 +3057,12 @@
     "beta_rel_diff": 3.730349362740526e-14,
     "se_rel_diff": 1.6651124923328098e-12,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.001045166392035,
+    "se": 0.23067997429813047,
+    "se_matches": true
    }
   },
   "m4-glucose": {
@@ -2804,6 +3123,12 @@
     "beta_rel_diff": 5.24913446042774e-13,
     "se_rel_diff": 5.42788036739239e-13,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 13,
+    "factor": 1.0008715864524982,
+    "se": 0.33819106932931486,
+    "se_matches": false
    }
   },
   "m4-hba1c": {
@@ -2864,6 +3189,12 @@
     "beta_rel_diff": 4.3920422854171193e-13,
     "se_rel_diff": 8.471001677889944e-14,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 13,
+    "factor": 1.0004017946991302,
+    "se": 0.007449085869953098,
+    "se_matches": true
    }
   },
   "m4-insulin": {
@@ -2924,6 +3255,12 @@
     "beta_rel_diff": 2.4868995751603507e-14,
     "se_rel_diff": 3.4217073618947325e-13,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 13,
+    "factor": 1.0008945879230497,
+    "se": 0.2248407031427413,
+    "se_matches": false
    }
   },
   "m4t4-glucose": {
@@ -2984,6 +3321,12 @@
     "beta_rel_diff": 7.971401316808624e-13,
     "se_rel_diff": 5.329070518200751e-13,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 16,
+    "factor": 1.0011007157982688,
+    "se": 0.35586384665760384,
+    "se_matches": true
    }
   },
   "m4t4-hba1c": {
@@ -3044,6 +3387,12 @@
     "beta_rel_diff": 3.955724636739433e-13,
     "se_rel_diff": 7.650546862691954e-13,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 16,
+    "factor": 1.0005077259284259,
+    "se": 0.007310160644760425,
+    "se_matches": true
    }
   },
   "m4t4-insulin": {
@@ -3104,6 +3453,12 @@
     "beta_rel_diff": 4.164446565368962e-13,
     "se_rel_diff": 1.0891287871572786e-13,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 16,
+    "factor": 1.0011300715550742,
+    "se": 0.18975577830554322,
+    "se_matches": true
    }
   },
   "pir_bands-bmi": {
@@ -3167,13 +3522,20 @@
     "se_rel_diff": 1.1335377081422848e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0004585203136172,
+    "se": 0.0859554974943629,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.003360270900829798,
     "se": 8.298964638685236e-05,
     "n": 0,
     "beta_in_printed_units": 0.03360270900829798,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands-glucose": {
@@ -3237,13 +3599,20 @@
     "se_rel_diff": 4.383604590429968e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 16,
+    "factor": 1.0010997473905145,
+    "se": 0.42196342336029946,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.02237323809488978,
     "se": 0.0022014369912878307,
     "n": 0,
     "beta_in_printed_units": -0.2237323809488978,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands-hba1c": {
@@ -3307,13 +3676,20 @@
     "se_rel_diff": 3.248290525448283e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 16,
+    "factor": 1.0005073481241655,
+    "se": 0.009566912539426525,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.0010936473780014458,
     "se": 3.381591790280018e-05,
     "n": 0,
     "beta_in_printed_units": -0.10936473780014458,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands-insulin": {
@@ -3377,13 +3753,20 @@
     "se_rel_diff": 1.637578961322106e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 16,
+    "factor": 1.0011290508281687,
+    "se": 0.18297815031969095,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.0008357372418752451,
     "se": 0.0006011395670966757,
     "n": 0,
     "beta_in_printed_units": -0.008357372418752451,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands_M2-glucose": {
@@ -3447,13 +3830,20 @@
     "se_rel_diff": 1.0980105713542798e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 13,
+    "factor": 1.0008708274509457,
+    "se": 0.4384999993670191,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.03172346495613487,
     "se": 0.004423081313663868,
     "n": 0,
     "beta_in_printed_units": -0.3172346495613487,
     "printed_beta_changes": true,
-    "printed_se_changes": true
+    "printed_se_changes": true,
+    "printed_se_changes_sas_df": true
    }
   },
   "pir_bands_M2-hba1c": {
@@ -3517,13 +3907,19 @@
     "se_rel_diff": 2.410294186461215e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 13,
+    "factor": 1.0004014989455134,
+    "se": 0.010092882497244592
+   },
    "shift": {
     "beta": -0.0011813850157026684,
     "se": -0.0001404386951586404,
     "n": 0,
     "beta_in_printed_units": -0.11813850157026684,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands_M2-insulin": {
@@ -3587,13 +3983,20 @@
     "se_rel_diff": 1.8895995879120164e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 13,
+    "factor": 1.000893788350626,
+    "se": 0.22825484428168574,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.006134877491073887,
     "se": -0.001172997740752496,
     "n": 0,
     "beta_in_printed_units": -0.06134877491073887,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands_M3-glucose": {
@@ -3657,13 +4060,20 @@
     "se_rel_diff": 6.926681450636352e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 16,
+    "factor": 1.0010911077986544,
+    "se": 0.4468278795052586,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.033050272775617895,
     "se": 0.0032540599775274237,
     "n": 0,
     "beta_in_printed_units": -0.33050272775617895,
     "printed_beta_changes": true,
-    "printed_se_changes": true
+    "printed_se_changes": true,
+    "printed_se_changes_sas_df": true
    }
   },
   "pir_bands_M3-hba1c": {
@@ -3727,13 +4137,19 @@
     "se_rel_diff": 1.3170797785733157e-11,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 16,
+    "factor": 1.0005028242276748,
+    "se": 0.009867769328790467
+   },
    "shift": {
     "beta": -0.0010746927308229876,
     "se": -9.277550495196026e-05,
     "n": 0,
     "beta_in_printed_units": -0.10746927308229876,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands_M3-insulin": {
@@ -3797,13 +4213,20 @@
     "se_rel_diff": 2.0592416660747404e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 16,
+    "factor": 1.0011199465935654,
+    "se": 0.2295758533262926,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.007104994174685242,
     "se": -0.0011200988053589322,
     "n": 0,
     "beta_in_printed_units": -0.07104994174685242,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands_M4-glucose": {
@@ -3867,13 +4290,20 @@
     "se_rel_diff": 2.4646951146678475e-14,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 14,
+    "factor": 1.0009443215702465,
+    "se": 0.3398096459935374,
+    "se_matches": false
+   },
    "shift": {
     "beta": -0.00897068954549285,
     "se": 0.0015924958896877395,
     "n": 0,
     "beta_in_printed_units": -0.08970689545492849,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands_M4-hba1c": {
@@ -3937,13 +4367,20 @@
     "se_rel_diff": 8.08242361927114e-14,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 14,
+    "factor": 1.0004352994564012,
+    "se": 0.007365801648140545,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.0005669122602933938,
     "se": -8.349735503368916e-05,
     "n": 0,
     "beta_in_printed_units": -0.056691226029339375,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands_M4-insulin": {
@@ -4007,13 +4444,20 @@
     "se_rel_diff": 1.0247358517290195e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 14,
+    "factor": 1.0009692453347019,
+    "se": 0.22423997563609915,
+    "se_matches": false
+   },
    "shift": {
     "beta": -0.000509129502058947,
     "se": -0.0006169006003903799,
     "n": 0,
     "beta_in_printed_units": -0.00509129502058947,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands_M4t4-glucose": {
@@ -4077,13 +4521,20 @@
     "se_rel_diff": 6.052935930256353e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 17,
+    "factor": 1.0011742261494196,
+    "se": 0.35767343569289667,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.009098226952067634,
     "se": 0.0017813663946702474,
     "n": 0,
     "beta_in_printed_units": -0.09098226952067634,
     "printed_beta_changes": true,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands_M4t4-hba1c": {
@@ -4147,13 +4598,20 @@
     "se_rel_diff": 3.112843316444014e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 17,
+    "factor": 1.0005416018269926,
+    "se": 0.007334833815486333,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.0005493011005944307,
     "se": 2.44124363138502e-05,
     "n": 0,
     "beta_in_printed_units": -0.054930110059443066,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands_M4t4-insulin": {
@@ -4217,13 +4675,20 @@
     "se_rel_diff": 4.283240429003854e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 17,
+    "factor": 1.0012055459470963,
+    "se": 0.19056781715055013,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.0014836465249685182,
     "se": 0.0007967727631102706,
     "n": 0,
     "beta_in_printed_units": 0.014836465249685182,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands_missing-bmi": {
@@ -4288,13 +4753,20 @@
     "se_rel_diff": 2.370326157574709e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 18,
+    "factor": 1.0005080314111805,
+    "se": 0.0835731214204261,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.012741936407357768,
     "se": -0.00230242836084206,
     "n": 1467,
     "beta_in_printed_units": 0.12741936407357768,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands_missing-glucose": {
@@ -4359,13 +4831,20 @@
     "se_rel_diff": 1.0508260928077107e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 20,
+    "factor": 1.001263508400889,
+    "se": 0.3831603935482637,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.004187405525113652,
     "se": -0.03662156487795454,
     "n": 702,
     "beta_in_printed_units": -0.04187405525113652,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands_missing-hba1c": {
@@ -4430,13 +4909,20 @@
     "se_rel_diff": 3.766098544133456e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 20,
+    "factor": 1.0005817247097333,
+    "se": 0.009272273701311756,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.005468683758618746,
     "se": -0.00026136240115643035,
     "n": 1551,
     "beta_in_printed_units": -0.5468683758618746,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_bands_missing-insulin": {
@@ -4501,13 +4987,20 @@
     "se_rel_diff": 1.758815315611173e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 20,
+    "factor": 1.001297859079606,
+    "se": 0.18428289500221087,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.08574719720339441,
     "se": 0.0018733796746764897,
     "n": 680,
     "beta_in_printed_units": -0.8574719720339441,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_missing-bmi": {
@@ -4571,13 +5064,20 @@
     "se_rel_diff": 9.78772618509538e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 17,
+    "factor": 1.0004781257743904,
+    "se": 0.08362450963645966,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.009697524198703622,
     "se": -0.00224856785857018,
     "n": 1467,
     "beta_in_printed_units": 0.09697524198703622,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_missing-glucose": {
@@ -4641,13 +5141,20 @@
     "se_rel_diff": 2.3876456367588617e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 19,
+    "factor": 1.0011968885193554,
+    "se": 0.38127767962189285,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.016967945787106364,
     "se": -0.03847656468806476,
     "n": 702,
     "beta_in_printed_units": 0.16967945787106364,
     "printed_beta_changes": true,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_missing-hba1c": {
@@ -4711,13 +5218,20 @@
     "se_rel_diff": 2.48245868306185e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 19,
+    "factor": 1.000551082306164,
+    "se": 0.009243402928727714,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.004425632331552541,
     "se": -0.00028993346916396205,
     "n": 1551,
     "beta_in_printed_units": -0.4425632331552541,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "pir_missing-insulin": {
@@ -4781,13 +5295,20 @@
     "se_rel_diff": 1.503686064552312e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 19,
+    "factor": 1.0012294246839357,
+    "se": 0.18280169992975484,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.08443418709521722,
     "se": 0.00040658286052200343,
     "n": 680,
     "beta_in_printed_units": -0.8443418709521722,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "t4-bmi": {
@@ -4848,6 +5369,12 @@
     "beta_rel_diff": 6.716849298982197e-14,
     "se_rel_diff": 2.209898930516374e-12,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 14,
+    "factor": 1.0004257479437677,
+    "se": 0.08586965684099414,
+    "se_matches": true
    }
   },
   "t4-glucose": {
@@ -4908,6 +5435,12 @@
     "beta_rel_diff": 1.4721557306529576e-13,
     "se_rel_diff": 9.554579349924097e-13,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0010263179887662,
+    "se": 0.41972877651060336,
+    "se_matches": true
    }
   },
   "t4-hba1c": {
@@ -4968,6 +5501,12 @@
     "beta_rel_diff": 6.811218256075335e-13,
     "se_rel_diff": 6.656897255652439e-13,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0004735008889818,
+    "se": 0.009532756960320715,
+    "se_matches": true
    }
   },
   "t4-insulin": {
@@ -5028,6 +5567,12 @@
     "beta_rel_diff": 2.4502622153477205e-13,
     "se_rel_diff": 2.4699131628835858e-12,
     "n_matches": true
+   },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0010536617659114,
+    "se": 0.18236259836083482,
+    "se_matches": true
    }
   },
   "water_alt-bmi": {
@@ -5089,13 +5634,20 @@
     "se_rel_diff": 1.341149413747189e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 14,
+    "factor": 1.0004257200592372,
+    "se": 0.08590818658235651,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.001203874694790441,
     "se": 3.85157378562373e-05,
     "n": 1,
     "beta_in_printed_units": -0.01203874694790441,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "water_alt-glucose": {
@@ -5157,13 +5709,20 @@
     "se_rel_diff": 9.554579349924097e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0010263179887662,
+    "se": 0.41972877651060336,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.0,
     "se": 0.0,
     "n": 0,
     "beta_in_printed_units": 0.0,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "water_alt-hba1c": {
@@ -5225,13 +5784,20 @@
     "se_rel_diff": 6.656897255652439e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0004735008889818,
+    "se": 0.009532756960320715,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.0,
     "se": 0.0,
     "n": 0,
     "beta_in_printed_units": 0.0,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "water_alt-insulin": {
@@ -5293,13 +5859,20 @@
     "se_rel_diff": 2.4699131628835858e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0010536617659114,
+    "se": 0.18236259836083482,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.0,
     "se": 0.0,
     "n": 0,
     "beta_in_printed_units": 0.0,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "water_none-bmi": {
@@ -5361,13 +5934,20 @@
     "se_rel_diff": 2.644551244657123e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 14,
+    "factor": 1.0004252744029856,
+    "se": 0.08588049632114743,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.0008933239600319443,
     "se": 1.0875500561016715e-05,
     "n": 17,
     "beta_in_printed_units": -0.008933239600319443,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "water_none-glucose": {
@@ -5429,13 +6009,20 @@
     "se_rel_diff": 2.627564832380358e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.00102511559465,
+    "se": 0.417848006753836,
+    "se_matches": true
+   },
    "shift": {
     "beta": -0.001968463398084319,
     "se": -0.0018783400790794436,
     "n": 8,
     "beta_in_printed_units": -0.01968463398084319,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "water_none-hba1c": {
@@ -5497,13 +6084,20 @@
     "se_rel_diff": 2.37476704967321e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0004730529070127,
+    "se": 0.009517516808335222,
+    "se_matches": true
+   },
    "shift": {
     "beta": 5.2118464873199266e-05,
     "se": -1.5228679532266337e-05,
     "n": 14,
     "beta_in_printed_units": 0.005211846487319927,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "water_none-insulin": {
@@ -5565,13 +6159,20 @@
     "se_rel_diff": 3.3639757646142243e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.001052552731035,
+    "se": 0.18246588699248995,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.001420236504141581,
     "se": 0.00010338185041278147,
     "n": 7,
     "beta_in_printed_units": 0.01420236504141581,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "weights_undivided-bmi": {
@@ -5633,13 +6234,20 @@
     "se_rel_diff": 2.209898930516374e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 14,
+    "factor": 1.0004257479437677,
+    "se": 0.08586965684099414,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.0,
     "se": 0.0,
     "n": 0,
     "beta_in_printed_units": 0.0,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "weights_undivided-glucose": {
@@ -5701,13 +6309,20 @@
     "se_rel_diff": 9.554579349924097e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0010263179887662,
+    "se": 0.41972877651060336,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.0,
     "se": 0.0,
     "n": 0,
     "beta_in_printed_units": 0.0,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "weights_undivided-hba1c": {
@@ -5769,13 +6384,20 @@
     "se_rel_diff": 6.656897255652439e-13,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0004735008889818,
+    "se": 0.009532756960320715,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.0,
     "se": 0.0,
     "n": 0,
     "beta_in_printed_units": 0.0,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   },
   "weights_undivided-insulin": {
@@ -5837,13 +6459,20 @@
     "se_rel_diff": 2.4699131628835858e-12,
     "n_matches": true
    },
+   "sas_df_adjusted": {
+    "parameters": 15,
+    "factor": 1.0010536617659114,
+    "se": 0.18236259836083482,
+    "se_matches": true
+   },
    "shift": {
     "beta": 0.0,
     "se": 0.0,
     "n": 0,
     "beta_in_printed_units": 0.0,
     "printed_beta_changes": false,
-    "printed_se_changes": false
+    "printed_se_changes": false,
+    "printed_se_changes_sas_df": false
    }
   }
  }

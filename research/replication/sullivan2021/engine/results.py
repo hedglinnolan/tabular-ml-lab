@@ -8,12 +8,19 @@ each matches at the paper's printed precision; for a variant, the run it varies 
 and model with the plan file's stated answers) and its shift in β and SE; the analytic rows' CSV
 (its SHA-256 and row count, for the verifier); the answers kept through a "keep it, recorded" exit;
 and the run's seconds. Nothing here refits or changes a number: each is read from the captures.
+Two numbers are computed from them, each named as such: the SE under SAS SURVEYREG's default
+variance multiplier, which neither the engine nor SU-R's R applies (``sas_df_adjusted``), and each
+group's seconds (``totals.groups``), so the report reads its totals and medians rather than
+retyping them.
 
     scripts/py research/replication/sullivan2021/engine/results.py
 """
 from __future__ import annotations
 
+import csv
 import json
+import math
+import statistics
 import sys
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
@@ -54,6 +61,24 @@ def paper_for(outcome: str, model: str) -> dict[str, Any] | None:
                 "p": cell[2] if len(cell) > 2 else None,
                 "places": p["precision"]["ladder"][outcome], "source": "Appendix Table 2"}
     return None
+
+
+def parameters(rows_file: str) -> int:
+    """The model's coefficients, its intercept included: one per ``x:`` column of the run's
+    analytic-rows CSV (the engine's model matrix), as ``check_rows.refit`` builds the design."""
+    with (REPO / rows_file).open(newline="") as fh:
+        header = next(csv.reader(fh))
+    return 1 + sum(c.startswith("x:") for c in header)
+
+
+def sas_df_adjusted(se: float, n: int, k: int) -> dict[str, Any]:
+    """The SE under SAS SURVEYREG's default ``VADJUST=DF`` as recalled (the variance times
+    ``(n - 1)/(n - k)``, ``n`` the rows with a positive weight and ``k`` the coefficients), which the
+    paper's SAS 9.4 would apply unless told otherwise (not checked against SAS's documentation
+    here) and neither the engine nor SU-R's ``svyglm`` applies. A measured option, not a reported
+    number: every SE the report compares with the paper is the engine's."""
+    factor = math.sqrt((n - 1) / (n - k))
+    return {"parameters": k, "factor": factor, "se": se * factor}
 
 
 def base_of(run: dict[str, Any]) -> str | None:
@@ -112,6 +137,11 @@ def gather() -> dict[str, Any]:
         entry["base"] = base_of(run)
         if primary is not None and (d.get("rows") or {}).get("file"):
             entry["rows_refit"] = refit(path.stem)  # check_rows.py: the CSV refit by numpy
+            entry["sas_df_adjusted"] = sas_df_adjusted(entry["se"], entry["n"],
+                                                       parameters(d["rows"]["file"]))
+            if paper is not None and paper["se"] is not None:
+                adjusted = rounded(entry["sas_df_adjusted"]["se"], paper["places"][1])
+                entry["sas_df_adjusted"]["se_matches"] = adjusted == paper["se"]
         out[path.stem] = entry
     for name, e in out.items():
         b = out.get(e.get("base") or "")
@@ -126,6 +156,10 @@ def gather() -> dict[str, Any]:
                           rounded(e["beta"], places[0]) != rounded(b["beta"], places[0]),
                           "printed_se_changes": None if not places else
                           rounded(e["se"], places[1]) != rounded(b["se"], places[1])}
+            if places and "sas_df_adjusted" in e and "sas_df_adjusted" in b:
+                e["shift"]["printed_se_changes_sas_df"] = (
+                    rounded(e["sas_df_adjusted"]["se"], places[1])
+                    != rounded(b["sas_df_adjusted"]["se"], places[1]))
     return out
 
 
@@ -133,6 +167,13 @@ def main() -> int:
     runs = gather()
     template = json.loads(TEMPLATE.read_text()) if TEMPLATE.exists() else {}
     seconds = [r["seconds"] for r in runs.values()]
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for r in runs.values():
+        groups.setdefault(r["group"], []).append(r)
+    adjusted = {k: r["sas_df_adjusted"] for k, r in runs.items() if "sas_df_adjusted" in r}
+    largest = max(adjusted, key=lambda k: adjusted[k]["factor"]) if adjusted else None
+    base_runs = [k for k in adjusted if not runs[k].get("variant")]
+    largest_base = max(base_runs, key=lambda k: adjusted[k]["factor"]) if base_runs else None
     doc = {
         "about": ("The Sullivan 2021 replication through TurboTab's Estimate lane (results.py, from "
                   "run.py's captures). beta is -1 x the engine's coefficient on the raw DBQ700 "
@@ -144,9 +185,29 @@ def main() -> int:
         "template": {"joined": template.get("joined"), "join_seconds": template.get("seconds"),
                      "join_seconds_total": round(sum((template.get("seconds") or {}).values()), 1)},
         "totals": {"runs": len(runs), "exports_200": sum(r["export"] == 200 for r in runs.values()),
-                   "seconds": sum(seconds), "median_seconds": sorted(seconds)[len(seconds) // 2]
-                   if seconds else None,
-                   "fitted_models": sum(2 for r in runs.values() if "beta" in r)},
+                   "seconds": sum(seconds),
+                   "median_seconds": statistics.median(seconds) if seconds else None,
+                   "fitted_models": sum(2 for r in runs.values() if "beta" in r),
+                   "groups": {g: {"projects": len(rs),
+                                  "fitted_models": sum(2 for r in rs if "beta" in r),
+                                  "seconds": sum(r["seconds"] for r in rs),
+                                  "median_seconds": statistics.median(r["seconds"] for r in rs)}
+                              for g, rs in groups.items()}},
+        "sas_df_adjusted": {
+            "about": ("SAS SURVEYREG's default VADJUST=DF as recalled, the variance times "
+                      "(n - 1)/(n - k): not applied to any reported SE; measured here"),
+            "runs": len(adjusted),
+            "largest_se_change": None if largest is None else
+            {"run": largest, "relative": adjusted[largest]["factor"] - 1},
+            "largest_se_change_base_runs": None if largest_base is None else
+            {"run": largest_base, "relative": adjusted[largest_base]["factor"] - 1},
+            "runs_with_a_printed_se": sum("se_matches" in a for a in adjusted.values()),
+            "se_match_changes": sorted(
+                k for k, a in adjusted.items() if "se_matches" in a
+                and a["se_matches"] != runs[k]["at_printed_precision"]["se_matches"]),
+            "printed_se_change_changes": sorted(
+                k for k, r in runs.items() if "printed_se_changes_sas_df" in (r.get("shift") or {})
+                and r["shift"]["printed_se_changes_sas_df"] != r["shift"]["printed_se_changes"])},
         "runs": runs,
     }
     OUT.write_text(json.dumps(doc, indent=1, ensure_ascii=False) + "\n")
