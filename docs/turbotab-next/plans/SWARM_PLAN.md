@@ -18,9 +18,9 @@ Nolan's answers of 2026-10-16. Nothing here is built yet. The swarm runs only af
   nothing more is tried. A run that tries nothing is flagged.
 - **Where:** on your machine, at times you set, throttled at night. Analysts have no token cap,
   but every run's spend is measured and reported.
-- **What we decide first:** which analyst model and effort to use, measured in a small pilot
-  before any volume. **Your call:** whether Haiku may be one of the models tried, since it is
-  below your "nothing below Sonnet" rule. Until you say so, the pilot uses Sonnet only.
+- **What we decide first:** whether the cheapest analyst is good enough, measured in a small
+  pilot before any volume. Nolan ruled on 2026-10-18 that the pilot uses Haiku ("Use Haiku 5-5
+  for the pilot"), lifting his "nothing below Sonnet" rule for the pilot's analysts only.
 
 ## 1. What the swarm is for
 
@@ -181,15 +181,18 @@ Menke 2015 waits for a Describe purpose, which the engine does not have yet.
 **The model-and-effort comparison**, the pilot's first experiment. Nolan asked on 2026-10-16
 whether the best analyst model and effort are settled. They are not: nothing has measured them.
 
+Nolan's ruling of 2026-10-18 ("Use Haiku 5-5 for the pilot") sets the analysts' model. The
+newest Haiku in the orchestrator's model list is Haiku 4.5, with no Haiku 5.5, so the pilot uses
+Haiku 4.5 unless a Haiku 5.5 exists when it starts.
+
 | Configuration | Runs | Why |
 |---|---|---|
-| Sonnet 5.5, medium effort | each dataset × 3 analysts | the cheapest under the Sonnet floor |
-| Sonnet 5.5, high effort | each dataset × 3 analysts | whether effort buys exploration |
-| Opus 5.5, high effort | each dataset × 1 | the ceiling: what a cheaper analyst loses |
-| Haiku 4.5, high effort | each dataset × 3, **only if Nolan lifts the floor** | the cheapest overall |
+| Haiku, high effort | each dataset × 3 analysts | the pilot's analysts |
+| Opus 5.5, high effort | each dataset × 1 | the ceiling: what the cheaper analyst loses, and whether a stuck run is the engine's or the analyst's |
 
-That is about 42 runs, or 60 with Haiku. Three analysts per dataset measure the spread between
-analysts, which is the many-analysts quantity itself.
+That is about 24 runs. Three analysts per dataset measure the spread between analysts, which is
+the many-analysts quantity itself. The Sonnet 5.5 configurations (medium and high effort) run only
+if Haiku fails §7, and only after Nolan is told.
 
 **Each configuration is scored on:**
 - protocol (seal violations, which must be zero; every attempt has a reason);
@@ -202,8 +205,8 @@ analysts, which is the many-analysts quantity itself.
   a driver defect or an analyst failure);
 - spend (fresh and cached tokens, fits, wall time per run).
 
-The pilot picks the cheapest configuration that meets §7. If none does, that is the finding, and
-the plan comes back to Nolan.
+If Haiku meets §7, it is the analysts' model. If it does not, that is the finding, and the plan
+comes back to Nolan before any Sonnet run.
 
 **Compute:** the runs are heavy runs, scheduled with Nolan, two workers each, under the
 quiet-hours throttle (`heavy-runs-wake-the-bedroom`). The fit budget per run is set from the first
@@ -268,9 +271,7 @@ The corpus never reaches a user. A pattern in it becomes advice only through the
 
 ## 10. Open for Nolan
 
-- **Haiku for analysts.** It is below your "nothing below Sonnet" rule of 2026-10-09. The pilot
-  could measure whether it explores and reasons well enough at a fraction of the cost. Until you
-  say yes, it is left out.
+- **Haiku for analysts:** ruled 2026-10-18, "Use Haiku 5-5 for the pilot" (§6).
 
 Everything else here is the orchestrator's call, under your delegation of methods and
 architecture, and is recorded so you can overrule it:
