@@ -1731,22 +1731,30 @@ def role_line_reason(column: str, role: str, purpose: str | None = None,
     models; putting it in the model where it was proposed as left out and every press makes it a
     predictor (while it waits it is in no model); else recording it as each role a press records (a
     flag, a time, a design column or a cluster changes only to a covariate), in a role line's words
-    under the declared ``purpose`` for a project with these ``lenses``."""
+    under the declared ``purpose`` for a project with these ``lenses``.
+
+    A flag enters no model, waiting or confirmed, so its line never says it cannot set the
+    predictors (the re-walk's N2): what waiting holds back is the fit, which asks every role that
+    rode along (``readings.predictors_or_ask``), since recorded as a press's role instead the column
+    would enter the model."""
     from turbotab.core.readings import PREDICTOR_ROLES, role_line_words, unsettled_message
 
     choices = role_choices(role, purpose, lenses)
     if "excluded" in choices:
         return unsettled_message([column], ROLE_WAITS_FOR)
+    said = " or ".join(role_line_words(c, purpose, lenses) for c in choices)
     if role == "excluded" and choices and all(c in PREDICTOR_ROLES for c in choices):
         instead = ", or put it in the model"
     elif choices:
-        instead = ", or record it as " + " or ".join(role_line_words(c, purpose, lenses)
-                                                    for c in choices)
+        instead = f", or record it as {said}"
     else:
         instead = ""
+    waits = f", so it cannot set {ROLE_WAITS_FOR} yet."
+    if role == "flag" and choices and all(c in PREDICTOR_ROLES for c in choices):
+        waits = (f". As {role_line_words(role, purpose, lenses)} it enters no model, but the fit "
+                 f"waits for it, since as {said} it would.")
     return (f"`{column}` was proposed below high confidence and recorded with the other roles, not "
-            f"confirmed on its own, so it cannot set {ROLE_WAITS_FOR} yet. Confirm it after reading "
-            f"why it was proposed{instead}.")
+            f"confirmed on its own{waits} Confirm it after reading why it was proposed{instead}.")
 
 
 def role_line_text(column: str, role: str, other: str = "",
