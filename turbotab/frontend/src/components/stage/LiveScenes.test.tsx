@@ -3,19 +3,21 @@
  * says how many columns proposed as predictors wait for their own role confirmation and are not
  * predictors yet (W1-T: a flag is never one, so it is not counted), counted from the quest log's
  * served role lines (core/quest.py `_role_lines`, here the engine's own lines
- * in src/quest/cards/roles/fixture.json), and says nothing of it where none waits. Where every
- * column waits, its empty sentence names those confirmations instead of the roles question.
+ * in src/quest/cards/roles/fixture.json), each column of a group's line among them (ruling R-g),
+ * and says nothing of it where none waits. Where every column waits, its empty sentence names those
+ * confirmations instead of the roles question. The count comes with the stage's data, from the
+ * quest log the stage's parent reads (U9): the card asks the server nothing.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 import type { CohortArtifact } from "../../api/m1-stage-types";
-import { keys } from "../../api/queries";
 import type { ProjectView, QuestLine, QuestLog } from "../../api/schema";
 import { expandView, viewsOf, type M3Fixture } from "../../mocks/m3";
 import ROLES from "../../quest/cards/roles/fixture.json";
 import { CONTRACT } from "../../quest/fixtures/contract";
 import { StageFocusProvider } from "../../state/focus";
+import { waitingPredictorColumns } from "../../quest/cards/roles/roles";
 import { ColumnsCard, type LiveData } from "./LiveScenes";
 
 const FIXTURES = import.meta.glob<M3Fixture>("../../mocks/fixtures/m3-nhanes-prediction.json", { eager: true, import: "default" });
@@ -36,10 +38,12 @@ function logWith(lines: QuestLine[]): QuestLog {
   return log;
 }
 
-/** The live data with the cohort's predictors as `predictors`, before any design. */
-function data(predictors: string[]): LiveData {
+/** The live data with the cohort's predictors as `predictors`, before any design, and the waiting
+ *  count the stage's parent passes (`waiting`). */
+function data(predictors: string[], waiting: number | null): LiveData {
   const cohort = { predictors, steps: [] } as unknown as CohortArtifact;
   return {
+    waitingPredictors: waiting,
     pid: PID,
     cohort: { artifact: cohort, veil: "fresh" },
     splitVeil: "fresh",
@@ -52,13 +56,13 @@ function data(predictors: string[]): LiveData {
   };
 }
 
-function mount(log: QuestLog, predictors: string[]) {
+/** The card as the quest shell's Tapestry draws it: the waiting count from the quest log it reads. */
+function mount(log: QuestLog | null, predictors: string[]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-  qc.setQueryData(keys.quest(PID), log);
   render(
     <QueryClientProvider client={qc}>
       <StageFocusProvider>
-        <ColumnsCard view={VIEW} data={data(predictors)} full={false} />
+        <ColumnsCard view={VIEW} data={data(predictors, log ? waitingPredictorColumns(log) : null)} full={false} />
       </StageFocusProvider>
     </QueryClientProvider>,
   );
@@ -101,14 +105,25 @@ describe("the Columns panel and the roles that wait (finding 1)", () => {
       ["bp_sys", "covariate"],
       ["imputed_waist", "flag"],
       ["cycle_begin_year", "excluded"],
+      ["hdl", "covariate"],
     ]);
-    mount(logWith(LINES), ["age", "bmi"]);
+    const lone = LINES.filter((l) => l.key !== "confirm_roles:hdl");
+    mount(logWith(lone), ["age", "bmi"]);
     expect(screen.getByTestId("columns-waiting")).toHaveTextContent(/^1 column waits for its own confirmation and is not a predictor yet\.$/);
   });
 
-  it("says it of several columns in the plural", () => {
-    mount(logWith([...LINES, predictorLine("hdl")]), ["age", "bmi"]);
-    expect(screen.getByTestId("columns-waiting")).toHaveTextContent(/^2 columns wait for their own confirmation and are not predictors yet\.$/);
+  it("says it of several columns in the plural, each column of a group's line counted", () => {
+    // bp_sys on its own line, and the two lab values of one group's line (ruling R-g)
+    const group = OPEN.find((l) => l.key === "confirm_roles:hdl")!;
+    const n = 1 + group.items.filter((i) => i.kind === "role").length;
+    mount(logWith(LINES), ["age", "bmi"]);
+    expect(screen.getByTestId("columns-waiting")).toHaveTextContent(new RegExp(`^${n} columns wait for their own confirmation and are not predictors yet\\.$`));
+  });
+
+  it("asks the server nothing: a card drawn with no quest log says nothing of them (U9)", () => {
+    mount(null, ["age", "bmi"]);
+    expect(screen.queryByTestId("columns-waiting")).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("says nothing of it where no role line is open", () => {
@@ -117,12 +132,13 @@ describe("the Columns panel and the roles that wait (finding 1)", () => {
   });
 
   it("says nothing of it where the only open role lines are a flag's and an exclusion's", () => {
-    mount(logWith(LINES.filter((l) => l.items[0]!.column !== "bp_sys")), ["age", "bmi"]);
+    mount(logWith(LINES.filter((l) => l.items[0]!.column !== "bp_sys" && l.key !== "confirm_roles:hdl")), ["age", "bmi"]);
     expect(screen.queryByTestId("columns-waiting")).toBeNull();
   });
 
   it("names the confirmations that wait, not the roles question, where no column is a predictor yet, saying yet once", () => {
-    mount(logWith([...LINES, predictorLine("hdl")]), []);
+    const lone = LINES.filter((l) => l.key !== "confirm_roles:hdl");
+    mount(logWith([...lone, predictorLine("ldl")]), []);
     const said = screen.getByTestId("columns-waiting");
     expect(said).toHaveTextContent(/^No column is a predictor yet: 2 columns wait for their own confirmation\.$/);
     expect(said.textContent!.match(/\byet\b/g)).toHaveLength(1);

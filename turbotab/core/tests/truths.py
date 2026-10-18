@@ -45,11 +45,27 @@ def asked(exits: list[dict[str, Any]]) -> list[tuple[str, str]]:
     return out
 
 
+def group_presses(exits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The presses among a refusal's or an ask's exits that confirm one group of roles proposed
+    below high confidence whole (ruling R-g: a ``confirm_readings`` of two or more roles, the only
+    block of such roles the server accepts)."""
+    out = []
+    for item in exits:
+        d = item.get("decision") or {}
+        items = d.get("items") or []
+        if d.get("kind") == "confirm_readings" and len(items) > 1 \
+                and all(i.get("reading") == "role" for i in items):
+            out.append(d)
+    return out
+
+
 def answers(error: dict[str, Any], truth: Truth) -> list[dict[str, Any]]:
     """The decisions that answer a refusal's questions from ``truth``: one ``confirm_readings``
     listing every reading asked, each with its declared value, except that among several a role is
-    confirmed on its own (a role a refusal asks was proposed below high, and the server refuses a
-    block that lists one: BLUEPRINT §14 rule 2, W1-R round 2's ruling R-b); for an energy column
+    not in that block (a role a refusal asks was proposed below high, and the server refuses a
+    block that lists one beside other readings: BLUEPRINT §14 rule 2): a group the refusal confirms
+    in one press (ruling R-g, :func:`group_presses`) is confirmed in that press where the truth gives
+    each of its columns the role it proposes, and every other role on its own; for an energy column
     whose unit or days are asked (``set_column_unit`` exits), the unit and days declared; for a
     column whose values below a detection limit are asked (``apply_repair`` exits of a
     ``below_detection__<column>`` finding), the offered repair the truth names. Empty when the
@@ -58,10 +74,16 @@ def answers(error: dict[str, Any], truth: Truth) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     readings = asked(exits)
     own = [(k, c) for k, c in readings if k == "role"] if len(readings) > 1 else []
+    for press in group_presses(exits):
+        listed = [("role", i["column"]) for i in press["items"]]
+        if all(truth.answer(k, c) == i["value"] for (k, c), i in zip(listed, press["items"])) \
+                and all(p in own for p in listed):
+            out.append({"kind": "confirm_readings", "items": [dict(i) for i in press["items"]]})
+            own = [p for p in own if p not in listed]
     for k, c in own:
         out.append({"kind": "confirm_reading", "reading": k, "column": c,
                     "value": truth.answer(k, c)})
-    block = [(k, c) for k, c in readings if (k, c) not in own]
+    block = [(k, c) for k, c in readings if k != "role" or len(readings) == 1]
     if block:
         out.append({"kind": "confirm_readings", "items": [
             {"reading": k, "column": c, "value": truth.answer(k, c)} for k, c in block]})

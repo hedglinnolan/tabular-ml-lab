@@ -16,12 +16,14 @@ import { keys } from "../../api/queries";
 import {
   QUESTION_KEYS,
   type InterviewStep,
+  type PredictorGroups,
   type QuestionKey,
   type TeachingEntry,
 } from "../../api/m1-types";
 import type { Decision, ProjectView, Refusal } from "../../api/schema";
-import { artifactAt, expandView, viewsOf, type M3Fixture } from "../../mocks/m3";
-import { predictorGroups } from "../../quest/cards/roles/roles";
+import { artifactAt, expandView, servedAt, viewsOf, type M3Fixture } from "../../mocks/m3";
+import { mockPredictorGroups } from "../../mocks/roleWords";
+import { servedGroups } from "../../quest/cards/roles/roles";
 import { StageFocusProvider } from "../../state/focus";
 import { AskFor } from "./AskFor";
 import { Record } from "./Record";
@@ -109,7 +111,8 @@ function client(view: ProjectView, f: M3Fixture) {
       key: status.key,
       fresh: status.status === "fresh",
       status: status.status,
-      artifact: artifactAt(f, stage, status.key),
+      // as the server serves it now: the roles stage's with its predictor groups (U6)
+      artifact: servedAt(f, stage, status.key, view),
     });
   }
   return qc;
@@ -303,9 +306,15 @@ describe("the roles card, by the project's goal (finding 3c)", () => {
   const withGoal = (purpose: string, view: ProjectView = base) => ({ ...view, state: { ...view.state, purpose } }) as ProjectView;
   const withState = (view: ProjectView, state: Partial<ProjectView["state"]>) => ({ ...view, state: { ...view.state, ...state } }) as ProjectView;
   /** The roles card, with the words for each goal seeded where the hook would read them. */
-  function renderRoles(view: ProjectView, fixture: M3Fixture = f) {
+  function renderRoles(view: ProjectView, fixture: M3Fixture = f, served?: (groups: PredictorGroups) => PredictorGroups) {
     const qc = client(view, fixture);
     qc.setQueryData(keys.teaching("prediction"), PREDICT);
+    if (served) {
+      // the predictor groups as another server serves them for this project (U6)
+      const key = keys.stage(PID, "roles");
+      const found = qc.getQueryData(key) as { artifact: { predictor_groups: PredictorGroups } };
+      qc.setQueryData(key, { ...found, artifact: { ...found.artifact, predictor_groups: served(found.artifact.predictor_groups) } });
+    }
     const out = render(
       <QueryClientProvider client={qc}>
         <StageFocusProvider>
@@ -338,7 +347,7 @@ describe("the roles card, by the project's goal (finding 3c)", () => {
     expect(exposures.length).toBeGreaterThan(1);
     // the causal capture's outcome reads as a regression, and no column holds the energy role
     expect(Object.values(all)).not.toContain("energy");
-    const groups = predictorGroups(view.state.lens, { task: "regression", roles: all });
+    const groups = servedGroups(mockPredictorGroups(view.state.lens, "regression", Object.keys(all)), all)!;
     expect(groups.exposure.note).toBe("The screened elastic net's screen may leave any of them out.");
     const card = renderRoles(view);
     const block = card.getByTestId("question-roles");
@@ -394,16 +403,25 @@ describe("the roles card, by the project's goal (finding 3c)", () => {
     }
   });
 
-  it("names the energy-aware fill wherever a column holds the energy role, under any lens (P2)", () => {
+  it("names the energy-aware fill only where it would run, under any lens (P2, V3)", () => {
     // The causal capture's clinical project, with one of its predictors given the energy role: the
-    // fill runs on such a project (core/methods/missing.py `energy_fill` reads no lens), so each
-    // group names it; with no column in that role, none does.
+    // fill reads no lens (core/methods/missing.py `energy_fill`) but runs only where a Predictor
+    // column carries energy, which the server reads and serves (`energy_bearing`). Served as
+    // carrying energy, the other predictors make it run, so each group names it; with none served
+    // as carrying energy (the capture's own lab columns), or no column in the energy role, none does.
     const view = withGoal("prediction");
     const { exposures, all } = roles(view);
     const kcal = exposures[exposures.length - 1]!.column;
+    const others = exposures.slice(0, -1).map((c) => c.column);
     const withEnergy = withState(view, { roles: { ...all, [kcal]: "energy" } as ProjectView["state"]["roles"] });
+    const bearing = (columns: string[]) => (groups: PredictorGroups): PredictorGroups => ({ ...groups, energy_bearing: columns });
+    {
+      const card = renderRoles(withEnergy, f, bearing([]));
+      const said = notes(card.getByTestId("question-roles"));
+      for (const text of Object.values(said)) expect(text.toLowerCase()).not.toContain(FILL);
+    }
     for (const [project, named] of [[withEnergy, true], [view, false]] as const) {
-      const card = renderRoles(project);
+      const card = renderRoles(project, f, bearing(others));
       const said = notes(card.getByTestId("question-roles"));
       expect(Object.keys(said).length).toBe(named ? 3 : 2);
       for (const [role, text] of Object.entries(said)) {
@@ -414,7 +432,7 @@ describe("the roles card, by the project's goal (finding 3c)", () => {
     }
     // The fill follows the roles as the card holds them: moving the energy column to the
     // characteristics silences it, and the Total energy button names it as the role it would give.
-    const card = renderRoles(withEnergy);
+    const card = renderRoles(withEnergy, f, bearing(others));
     fireEvent.click(card.getByTestId(`role-chip-${kcal}`));
     fireEvent.click(card.getByTestId("role-covariate"));
     const after = notes(card.getByTestId("question-roles"));
@@ -423,6 +441,27 @@ describe("the roles card, by the project's goal (finding 3c)", () => {
     fireEvent.click(card.getByTestId(`role-chip-${kcal}`));
     expect(card.getByTestId("role-energy").getAttribute("title")).toContain("The energy-aware fill fills the measures that carry energy from it");
     expect(card.getByTestId("role-exposure").getAttribute("title")!.toLowerCase()).not.toContain(FILL);
+  });
+
+  it("draws the predictor groups the server serves, not the fixture's (U6)", () => {
+    // A project whose served groups differ from the ones the fixture holds: the card draws the
+    // served names and notes, on the card and on a role's button.
+    const view = withGoal("prediction");
+    const { exposures, predictors } = roles(view);
+    const word = (one: string, many: string, note: string) => ({ one, head: [one[0]!.toUpperCase() + one.slice(1), many], note });
+    const other = {
+      exposure: word("a served feature", "Served features", "A served note for the features."),
+      energy: word("served energy", "Served energy", "A served note for energy."),
+      covariate: word("a served trait", "Served traits", "A served note for the traits."),
+    };
+    const card = renderRoles(view, f, (g) => ({ ...g, fill: other, no_fill: other }));
+    const block = card.getByTestId("question-roles");
+    expect(block.textContent).toContain(`${predictors.length} columns enter the models as predictors: ${exposures.length} served features`);
+    expect(block.querySelector('[data-role="exposure"]')!.textContent).toContain("A served note for the features.");
+    expect(block.textContent).not.toContain("Measures");
+    fireEvent.click(card.getByTestId(`role-chip-${exposures[0]!.column}`));
+    expect(card.getByTestId("role-exposure").getAttribute("title")).toBe("A served note for the features.");
+    expect(card.getByTestId("role-covariate").textContent).toContain("A served trait");
   });
 
   it("reads the words with no goal named under any other goal, as before", () => {

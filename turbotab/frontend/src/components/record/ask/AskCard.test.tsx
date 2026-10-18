@@ -106,15 +106,17 @@ describe("the ask card", () => {
   });
 
   /**
-   * BLUEPRINT §14 rule 2 (ruling R-b, 2026-10-17): a role proposed below high confidence needs its
-   * own confirmation and never rides along in a block. The card's role lines are such roles (the
-   * ask card asks only readings not settled), so each column's role is a line of its own, its
-   * press records that one role alone, and no press records a role with anything else. Built as
-   * the engine serves the Models ask under Predict at W1-R R1's verification: `bp_sys` alone and
-   * the imputed flags as one family (readings.families groups five or more alike), here beside two
-   * code-or-amount lines.
+   * BLUEPRINT §14 rule 2 (ruling R-g of 2026-10-17, which replaces R-b's one per column): a role
+   * proposed below high confidence never rides along in a block with other readings. The card's
+   * role lines are such roles (the ask card asks only readings not settled): the engine serves each
+   * as a line of its own, or, where its roles stage proposed several columns with one role, one
+   * confidence and one reason (one judgment of the recognizer: ask.py `with_proposals`), the whole
+   * group as one line. A line's press records exactly its columns' roles, as proposed, and no press
+   * records a role with anything else. Built as the engine serves the Models ask under Predict:
+   * `bp_sys` alone and six imputed flags proposed alike as one group, here beside two code-or-amount
+   * lines.
    */
-  describe("below-high roles, one at a time (ruling R-b)", () => {
+  describe("below-high roles, one line per judgment (ruling R-g)", () => {
     const FLAGS = ["imputed_bp", "imputed_hdl", "imputed_height", "imputed_tg", "imputed_waist", "imputed_weight"];
     const role = (columns: string[], guess: string) => ({ kind: "role", columns, guess, guess_words: guess === "flag" ? "a flag on another column" : "a covariate", evidence: "proposed below high confidence" });
     const code = (column: string) => ({ kind: "code_or_count", columns: [column], guess: "amount", guess_words: "an amount", evidence: "whole numbers from 20 to 230" });
@@ -129,27 +131,35 @@ describe("the ask card", () => {
     /** The readings a decision records, as `reading:column`. */
     const read = (d: Decision) => (d.kind === "confirm_readings" ? d.items.map((i) => `${i.reading}:${i.column}`) : []);
 
-    it("gives each column's role its own line, whose press records that one role alone", () => {
+    it("gives each judgment one line, whose one press records its columns' roles as proposed", () => {
       const record = renderCard(CARD);
       const lines = screen.getAllByTestId("ask-line").filter((l) => l.getAttribute("data-kind") === "role");
-      expect(lines).toHaveLength(1 + FLAGS.length);
+      expect(lines).toHaveLength(2);
+      const served = [["bp_sys"], FLAGS];
       for (const [n, line] of lines.entries()) {
-        fireEvent.click(within(line).getByTestId("ask-confirm"));
-        const column = ["bp_sys", ...FLAGS][n]!;
+        const button = within(line).getByTestId("ask-confirm");
+        fireEvent.click(button);
+        const value = n === 0 ? "covariate" : "flag";
         expect(record.mock.calls.at(-1)![0]).toEqual({
           kind: "confirm_readings",
-          items: [{ reading: "role", column, value: column === "bp_sys" ? "covariate" : "flag" }],
+          items: served[n]!.map((column) => ({ reading: "role", column, value })),
         });
+        // the group's press says what it confirms, and its role is not changed here
+        if (n === 1) {
+          expect(button).toHaveTextContent(`Confirm these ${FLAGS.length} as a flag on another column`);
+          expect(within(line).queryByTestId("ask-change")).toBeNull();
+        }
       }
     });
 
-    it("offers no press that records a role with any other reading", () => {
+    it("offers no press that records a role with any other reading, or with another line's", () => {
       const record = renderCard(CARD);
       for (const b of screen.getAllByRole("button")) fireEvent.click(b);
       expect(record.mock.calls.length).toBeGreaterThan(0);
+      const lines = [["role:bp_sys"], FLAGS.map((c) => `role:${c}`)];
       for (const [d] of record.mock.calls) {
         const items = read(d);
-        if (items.some((x) => x.startsWith("role:"))) expect(items, JSON.stringify(d)).toHaveLength(1);
+        if (items.some((x) => x.startsWith("role:"))) expect(lines, JSON.stringify(d)).toContainEqual(items);
       }
     });
 

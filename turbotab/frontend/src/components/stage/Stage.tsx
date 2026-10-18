@@ -61,6 +61,13 @@ export interface StageProps {
    * refused press does).
    */
   recordHere?: boolean;
+  /**
+   * How many columns proposed as predictors wait for their role's confirmation, counted from the
+   * quest log the screen already reads (the quest shell: roles.ts `waitingPredictorColumns`), which
+   * the Columns card says; null (today's screen, a prototype drawn from fixtures) says nothing of
+   * them, and no card asks the server for it (U9).
+   */
+  waitingPredictors?: number | null;
 }
 
 type Scene =
@@ -90,7 +97,7 @@ const LIVE_TITLE: Record<string, [string, string]> = {
   results: ["Results", "what the recorded pipeline fitted"],
 };
 
-export function Stage({ pid, view, focus, onFocus, fitWithheld = null, recordHere = true }: StageProps) {
+export function Stage({ pid, view, focus, onFocus, fitWithheld = null, recordHere = true, waitingPredictors = null }: StageProps) {
   const seq = stateSeq(view);
   const { reduced } = useMotionPrefs();
   const t = useTransitions();
@@ -136,6 +143,7 @@ export function Stage({ pid, view, focus, onFocus, fitWithheld = null, recordHer
     fit: { artifact: fitWithheld ? null : fit.artifact, veil: fit.veil },
     substitution: { artifact: substitution.artifact, veil: substitution.veil },
     fitWithheld,
+    waitingPredictors,
   };
 
   // ── what the stage wants to show, and whether it is ready ──

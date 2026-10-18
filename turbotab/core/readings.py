@@ -105,7 +105,9 @@ CODE_LEVELS = 10
 @dataclass(frozen=True)
 class Reading:
     """One interpretation of the data. ``corroborated``: the values agree with it (a name alone
-    never does). ``state``: ``proposed``, or ``confirmed`` when the user recorded it."""
+    never does). ``state``: ``proposed``, or ``confirmed`` when the user recorded it.
+    ``judgment``: for a role that waits, the one proposal it shares with the other columns of its
+    group (ruling R-g, :func:`with_proposals`), so the ask lists the group as one line."""
 
     subject: tuple[str, ...]
     kind: str
@@ -114,6 +116,7 @@ class Reading:
     evidence: str = ""
     corroborated: bool = False
     state: str = "proposed"
+    judgment: str | None = None
 
     @property
     def column(self) -> str:
@@ -1405,8 +1408,9 @@ def role_words(role: str | None, purpose: str | None = None) -> str:
 # project can run it:
 # * the energy-aware fill (``methods.missing.energy_fill``): under a single fill, a Predictor column
 #   that carries energy is filled from its line on the column with the energy role, and every
-#   other column by its median; named wherever a column holds the energy role, under any lens
-#   (the roles stage proposes total energy under every lens);
+#   other column by its median; named, under any lens (the roles stage proposes total energy under
+#   every lens), only where it would run: a column holds the energy role and a Predictor column
+#   carries energy (:func:`fill_runs`, W1-T's V3);
 # * the screened elastic net's screen (``methods.omics``, ``ScreenedElasticNet.preprocess``): it
 #   screens the Predictor columns and passes every other; named where that family is on the Predict
 #   shelf, which holds every family that can model the task (``models.base.rank``,
@@ -1459,8 +1463,21 @@ def screen_on_shelf(task: str | None) -> bool:
 
 
 def holds_energy(roles: Mapping[str, str] | None) -> bool:
-    """Whether a column holds the energy role in these roles, so the energy-aware fill can run."""
+    """Whether a column holds the energy role in these roles."""
     return any(str(r) == "energy" for r in (roles or {}).values())
+
+
+def fill_runs(roles: Mapping[str, str] | None) -> bool:
+    """Whether the energy-aware fill can run with these roles (``methods.missing.energy_fill``,
+    W1-T's V3): a column holds the energy role and a Predictor column carries energy
+    (``stages.rows.energy_bearing``, read from its name). Under Predict no energy answer names the
+    nutrients, so these are the ones it fills; with none of them it does not run, whatever holds
+    the energy role."""
+    from turbotab.core.stages.rows import energy_bearing
+
+    found = roles or {}
+    return holds_energy(found) and any(
+        str(r) == "exposure" and energy_bearing(str(c)) for c, r in found.items())
 
 
 def predict_steps(lenses: Iterable[str] | None, task: str | None = None,
@@ -1468,7 +1485,7 @@ def predict_steps(lenses: Iterable[str] | None, task: str | None = None,
     """The steps that read the Predictor role alone in a project with these lenses, this task and
     these roles: each only where the project can run it."""
     kind = predict_kind(lenses)
-    return (((FILL,) if holds_energy(roles) else ()) + ((SCREEN,) if screen_on_shelf(task) else ())
+    return (((FILL,) if fill_runs(roles) else ()) + ((SCREEN,) if screen_on_shelf(task) else ())
             + ((NORMALIZATION, BATCH) if kind in ("both", "assay") else ()))
 
 
@@ -1523,6 +1540,27 @@ def predictor_groups(lenses: Iterable[str] | None, task: str | None = None,
     }
 
 
+def served_groups(lenses: Iterable[str] | None, task: str | None,
+                  columns: Iterable[str]) -> dict[str, Any]:
+    """The predictor groups a project's roles card draws under Predict, served beside the roles
+    stage's proposals (W1 part 2's U6: the card reads them from the server, never from a test's
+    fixture): for the project's ``lenses`` and ``task``, each role's group (:func:`predictor_groups`)
+    where the energy-aware fill would run and where it would not (``fill``, ``no_fill``), and the
+    ``columns`` that carry energy (``stages.rows.energy_bearing``), so the card tells which applies to
+    the roles it draws (:func:`fill_runs`: one holds the energy role, and a Predictor column carries
+    energy)."""
+    from turbotab.core.stages.rows import energy_bearing
+
+    def drawn(roles: Mapping[str, str]) -> dict[str, dict[str, Any]]:
+        return {r: {"one": g.one, "head": list(g.head), "note": g.note}
+                for r, g in predictor_groups(lenses, task, roles).items()}
+
+    # Roles chosen only to make the fill run (an energy column beside a nutrient that carries
+    # energy) and not: the groups read nothing else of the roles.
+    return {"fill": drawn({"energy": "energy", "fat_g": "exposure"}), "no_fill": drawn({}),
+            "energy_bearing": [str(c) for c in columns if energy_bearing(str(c))]}
+
+
 def role_line_words(role: str | None, purpose: str | None = None,
                     lenses: Iterable[str] | None = None) -> str:
     """A role in a role line's words: under Predict a predictor role by its group in a project with
@@ -1530,6 +1568,171 @@ def role_line_words(role: str | None, purpose: str | None = None,
     if purpose == "prediction" and str(role) in PREDICTOR_ROLES:
         return predictor_groups(lenses)[str(role)].one
     return role_words(role, purpose)
+
+
+# Each role as several columns hold it, the counterpart of ``_ROLE_WORDS`` for a group ("Confirm
+# these 6 as flags on other columns").
+_ROLE_WORDS_MANY = {
+    "exposure": "what you study", "covariate": "covariates", "energy": "total energy intake",
+    "identifier": "the unit's identifiers", "cluster": "clusters of units",
+    "design": "part of the survey design", "time": "the time of each row",
+    "flag": "flags on other columns", "excluded": "left out of the models",
+}
+
+
+def role_group_words(role: str | None, purpose: str | None = None,
+                     lenses: Iterable[str] | None = None) -> str:
+    """A role as a group of columns holds it, in a role line's words (:func:`role_line_words`):
+    under Predict a predictor role by its group's name for many ("assay features",
+    "characteristics"), else the role's words for many."""
+    if purpose == "prediction" and str(role) in PREDICTOR_ROLES:
+        return predictor_groups(lenses)[str(role)].head[1].lower()
+    return _ROLE_WORDS_MANY.get(str(role), str(role))
+
+
+# ── one judgment of the recognizer (ruling R-g of 2026-10-17) ─────────────────
+#
+# BLUEPRINT §14 rule 2 and the gate's criterion: a misrecognition proposed at medium or low "with
+# its evidence visible and confirmed individually" is caught by the user; the danger is a proposal
+# below high riding along in a bulk "confirm all". Roles proposed below high that share one
+# proposal, the same proposed role, the same confidence and the same reason word for word (the
+# roles stage's proposal fields), are one judgment of the recognizer: one group, read once and
+# confirmed in one press (the 300 genes of an expression table, each "A measured feature"). A reason
+# that differs in any word, its interpolated evidence included, is a judgment of its own, so a group
+# never hides a column the recognizer judged on its own evidence. A press confirms one whole group,
+# or one column on its own (``decisions._roles_confirmed_one_at_a_time``); each column it confirms
+# is recorded where its own confirmation would be, so every consumer reads it unchanged.
+
+
+@dataclass(frozen=True)
+class RoleGroup:
+    """One judgment: the ``role``, ``confidence`` and ``reason`` the roles stage proposed; ``rode``
+    each column it proposed that way which the roles answer recorded exactly as proposed (before
+    that answer, each such proposal), and ``waiting`` those not settled since, in the proposals'
+    order."""
+
+    role: str
+    confidence: str
+    reason: str
+    rode: tuple[str, ...]
+    waiting: tuple[str, ...]
+
+
+def role_groups(state: Any, artifact: Any) -> list[RoleGroup]:
+    """The judgments of the roles stage's proposals in ``artifact`` (its Bundle, its dict or its
+    proposals' list) below high confidence, each once, in the proposals' order: after a roles answer
+    its columns that rode along (``roles_unconfirmed``, recorded as proposed), before it every column
+    so proposed. No proposals at hand: none (each waiting column is then a group of its own)."""
+    proposals = list(artifact) if isinstance(artifact, list) else proposals_of(artifact)
+    roles = getattr(state, "roles", None) or {}
+    named = set(getattr(state, "roles_unconfirmed", None) or ())
+    target = getattr(state, "target", None)
+    found: dict[tuple[str, str, str], list[str]] = {}
+    for p in proposals:
+        column, confidence = str(p.get("column")), p.get("confidence")
+        if confidence not in ATTENTION or column == target:
+            continue
+        role = str(p.get("proposed"))
+        if roles and (column not in named or str(roles.get(column)) != role):
+            continue
+        found.setdefault((role, str(confidence), str(p.get("reason") or "")), []).append(column)
+    out = []
+    for (role, confidence, reason), columns in found.items():
+        if roles:
+            waiting = [c for c in columns if not settled(role_reading(state, c))]
+        else:
+            waiting = [c for c in columns if confirmation(state, "role", c) is None]
+        out.append(RoleGroup(role, confidence, reason, tuple(columns), tuple(waiting)))
+    return out
+
+
+def with_proposals(readings: Iterable[Reading], state: Any, artifact: Any) -> list[Reading]:
+    """The readings an ask lists, each waiting role of a group the ask lists whole (every one of
+    its waiting columns, two or more) marked with its group's judgment and read with its proposal:
+    its confidence and its reason as the evidence. :func:`families` then lists the group as one line
+    and :func:`ask_exits` confirms it in one press (ruling R-g). A role whose group the ask lists
+    only in part keeps a line and a press of its own; no proposals at hand, every one does."""
+    listed = [r for r in readings if r is not None]
+    asked = {r.column for r in listed if r.kind == "role" and not r.settled}
+    whole = {}
+    for g in role_groups(state, artifact) if artifact is not None and asked else ():
+        if len(g.waiting) > 1 and set(g.waiting) <= asked:
+            for c in g.waiting:
+                whole[c] = g
+    out = []
+    for r in listed:
+        g = whole.get(r.column) if r.kind == "role" and not r.settled else None
+        if g is None or str(r.value) != g.role:
+            out.append(r)
+            continue
+        out.append(Reading(r.subject, r.kind, r.value, g.confidence, g.reason, False, "proposed",
+                           judgment=f"{g.role}\n{g.confidence}\n{g.reason}"))
+    return out
+
+
+def judged_exits(exits: Iterable[Mapping[str, Any]], readings: Iterable[Reading],
+                 state: Any = None) -> list[dict[str, Any]]:
+    """A consumer's ways forward with each judged group's columns (:func:`with_proposals`)
+    confirmed in its one press (ruling R-g): each confirmation of one of them as its proposed role
+    gives way to the group's press, once, where the first did; every other way forward is kept."""
+    judged: dict[str, list[Reading]] = {}
+    for r in readings:
+        if r is not None and r.kind == "role" and r.judgment is not None:
+            judged.setdefault(r.judgment, []).append(r)
+    of = {r.column: (j, r) for j, group in judged.items() if len(group) > 1 for r in group}
+    out: list[dict[str, Any]] = []
+    pressed: set[str] = set()
+    for e in exits:
+        d = e.get("decision")
+        d = d.model_dump(mode="json") if hasattr(d, "model_dump") else d
+        mine = of.get(str((d or {}).get("column"))) if isinstance(d, Mapping) and (
+            d.get("kind") == "confirm_reading" and d.get("reading") == "role"
+            or d.get("kind") == "confirm_role") else None
+        value = (d or {}).get("value", (d or {}).get("role")) if mine is not None else None
+        if mine is None or str(value) != str(mine[1].value):
+            out.append(dict(e))
+            continue
+        if mine[0] in pressed:
+            continue
+        pressed.add(mine[0])
+        group = judged[mine[0]]
+        out.append({"label": group_press_label(len(group), str(group[0].value),
+                                               _get(state, "purpose"), _get(state, "lens")),
+                    "decision": group_press([g.column for g in group], str(group[0].value))})
+    return out
+
+
+def group_press_label(n: int | str, role: str, purpose: str | None = None,
+                      lenses: Iterable[str] | None = None) -> str:
+    """What one group's press confirms: "Confirm these 300 as assay features" (the goal's words,
+    :func:`role_group_words`). ``n`` may be a template's placeholder."""
+    count = f"{n:,}" if isinstance(n, int) else str(n)
+    return f"Confirm these {count} as {role_group_words(role, purpose, lenses)}"
+
+
+def group_press(columns: Sequence[str], role: str) -> dict[str, Any]:
+    """The decision one group's press records: a ``confirm_readings`` of exactly its columns, each
+    with the proposed ``role`` (the engine accepts no other block of roles below high)."""
+    from turbotab.core.decisions import ConfirmReadings
+
+    return ConfirmReadings(items=[{"reading": "role", "column": c, "value": str(role)}
+                                  for c in columns]).model_dump(mode="json")
+
+
+def group_phrase(columns: Sequence[str], role: str, confidence: str, reason: str,
+                 purpose: str | None = None, lenses: Iterable[str] | None = None) -> str:
+    """One group named in a sentence: how many, its first columns, the role in the goal's words,
+    the confidence, below high, and the shared reason ("the 300 columns `a`, `b` and 298 more,
+    proposed as assay features at medium confidence, below high, for one reason ("…")"); a group of
+    one, its column and its proposal."""
+    from turbotab.core.voice import listing as named
+
+    if len(columns) == 1:
+        return (f"`{columns[0]}`, proposed as {role_line_words(role, purpose, lenses)} at "
+                f"{confidence} confidence, below high")
+    return (f"the {len(columns):,} columns {named(list(columns), 3)}, proposed as "
+            f"{role_group_words(role, purpose, lenses)} at {confidence} confidence, below high, "
+            f"for one reason (\"{reason}\")")
 
 
 # The same finding, in a role's evidence: two of the roles stage's high-confidence reasons
@@ -1699,15 +1902,17 @@ ROLE_ALTERNATIVES: dict[str, tuple[tuple[str, str], ...]] = {
 
 def confirm_exits(state: Any, columns: Sequence[str]) -> list[dict[str, Any]]:
     """One exit per unsettled role: its own confirmation, never one for all of them, and beside
-    it each alternative the values cannot exclude (:data:`ROLE_ALTERNATIVES`)."""
+    it each alternative the values cannot exclude (:data:`ROLE_ALTERNATIVES`). The role is said in
+    a role line's words (:func:`role_line_words`: under Predict the roles card's group)."""
     roles = getattr(state, "roles", None) or {}
     purpose = _get(state, "purpose")
+    lenses = _get(state, "lens")
     out = []
     for c in columns:
         if c not in roles:
             continue
         out.append(confirm_exit("role", c, roles[c],
-                                f"Confirm `{c}` as {role_words(roles[c], purpose)}"))
+                                f"Confirm `{c}` as {role_line_words(roles[c], purpose, lenses)}"))
         for other, words in ROLE_ALTERNATIVES.get(str(roles[c]), ()):
             out.append(confirm_exit("role", c, other, f"`{c}` is {words}"))
     return out
@@ -2976,14 +3181,29 @@ def read_from_data(state: Any, *, roles: Any = None, target_info: Any = None,
                       "evidence": str(evidence or ""), "change": change})
 
     purpose = _get(state, "purpose")
+    lenses = [str(k) for k in _get(state, "lens") or ()]
+    fill = fill_runs(recorded or {str(p.get("column")): str(p.get("proposed"))
+                                  for p in proposals_of(roles)})
     for p in proposals_of(roles):
         column, role = str(p.get("column")), str(p.get("proposed"))
         if p.get("confidence") != "high" or column in own:
             continue
         if recorded and recorded.get(column) != role:
             continue  # the user's own answer, not the values'
-        # A change that reads as the role it changes (under Predict, an exposure and a covariate
-        # are each a predictor) is no change the person can read, so it is not offered.
+        if purpose == "prediction":
+            # W1-T's V1: under Predict a role reads as the role lines say it, by the roles card's
+            # groups, and each press is a role line's own (``quest.role_line_text``): a move between
+            # the groups, the energy column's naming the fill only where it runs.
+            from turbotab.core.quest import role_choices, role_line_text
+
+            add("role", column, role, f"is {role_line_words(role, purpose, lenses)}",
+                role_evidence(str(p.get("reason") or ""), purpose),
+                [confirm_exit("role", column, alt,
+                              role_line_text(column, role, alt, purpose, lenses, fill)["change"])
+                 for alt in role_choices(role, purpose, lenses)])
+            continue
+        # A change that reads as the role it changes is no change the person can read, so it is
+        # not offered.
         said = role_words(role, purpose)
         changes: list[tuple[str, str]] = []
         for alt in ROLE_CHANGES.get(role, ("covariate",)):
@@ -3151,21 +3371,28 @@ def ordered(readings: Iterable[Reading]) -> list[Reading]:
 
 def one_at_a_time(r: Reading) -> bool:
     """A role proposed below high confidence and not settled since: BLUEPRINT §14 rule 2, it
-    "needs its own confirmation; it never rides along in a bulk 'confirm all'", so it is asked on a
-    line of its own and confirmed by a press of its own, never in a family or a block (W1-R round 2,
-    ruling R-b)."""
+    "needs its own confirmation; it never rides along in a bulk 'confirm all'", so it is never in a
+    block with other readings, and it is asked on a line of its own and confirmed by a press of its
+    own, unless the ask lists its whole group (ruling R-g, :func:`with_proposals`): then the group
+    is one line, confirmed in one press."""
     return r.kind == "role" and not r.settled
 
 
 def families(readings: Iterable[Reading]) -> list[list[Reading]]:
     """The readings in order, a homogeneous family (one kind, one guess, one name pattern, at
     least :data:`FAMILY_MIN` of them: a lab panel's codes or amounts) as one group. A role that
-    waits (:func:`one_at_a_time`) is a group of its own, however many like it wait."""
+    waits (:func:`one_at_a_time`) is a group of its own, however many like it wait, unless it
+    shares a judgment (ruling R-g, :func:`with_proposals`): the columns of one judgment, two or
+    more, are one group."""
     groups: dict[tuple[str, str, str], list[Reading]] = {}
     order: list[tuple[str, str, str]] = []
     for r in ordered(readings):
-        k = (r.kind, str(r.value), _pattern(r.column)) if not one_at_a_time(r) else \
-            (r.kind, str(r.value), f"`{r.column}`")
+        if not one_at_a_time(r):
+            k = (r.kind, str(r.value), _pattern(r.column))
+        elif r.judgment is not None:
+            k = (r.kind, str(r.value), f"judgment:{r.judgment}")
+        else:
+            k = (r.kind, str(r.value), f"`{r.column}`")
         if k not in groups:
             groups[k] = []
             order.append(k)
@@ -3173,7 +3400,7 @@ def families(readings: Iterable[Reading]) -> list[list[Reading]]:
     out: list[list[Reading]] = []
     for k in order:
         g = groups[k]
-        if len(g) >= FAMILY_MIN:
+        if len(g) >= FAMILY_MIN or (len(g) > 1 and g[0].judgment is not None):
             out.append(g)
         else:
             out.extend([r] for r in g)
@@ -3188,10 +3415,11 @@ _GUESS_WORDS = {"code": "codes for categories", "amount": "an amount", "yes": "r
 
 
 def guess_words(r: Reading, state: Any = None) -> str:
-    """``r``'s best guess in words; a role's under the goal ``state`` declares (:func:`role_words`;
-    no state: Estimate's words, the strictest case)."""
+    """``r``'s best guess in words; a role's under the goal ``state`` declares, in a role line's
+    words for the project's lenses (:func:`role_line_words`: under Predict a predictor role by the
+    roles card's group, W1-T's V1; no state: Estimate's words, the strictest case)."""
     if r.kind == "role":
-        return role_words(r.value, _get(state, "purpose"))
+        return role_line_words(r.value, _get(state, "purpose"), _get(state, "lens"))
     if r.kind == "day_count":
         return f"{r.value} day{'s' if str(r.value) != '1' else ''}" if r.value else "how many days?"
     if r.kind == "sex_coding" and r.value:
@@ -3250,7 +3478,7 @@ def labeled(readings: Iterable[Reading], state: Any = None) -> list[Reading]:
         evidence = f"{r.evidence}; {said}" if r.evidence else said
         value = guess if guess is not None else r.value
         out.append(Reading(r.subject, r.kind, value, r.confidence, evidence, r.corroborated,
-                           r.state))
+                           r.state, r.judgment if value == r.value else None))
     return out
 
 
@@ -3262,7 +3490,11 @@ def ask_text(readings: Iterable[Reading], state: Any = None) -> str:
     lines = []
     for group in families(readings):
         r = group[0]
-        if len(group) > 1:
+        if len(group) > 1 and r.judgment is not None:
+            words = role_group_words(r.value, _get(state, "purpose"), _get(state, "lens"))
+            lines.append(f"{len(group):,} columns like `{r.column}`: {words}? ({r.evidence}; one "
+                         f"reason for all {len(group):,}, at {r.confidence} confidence)")
+        elif len(group) > 1:
             lines.append(f"{len(group):,} columns like `{r.column}`: {guess_words(r, state)}?")
         else:
             why = f" ({r.evidence})" if r.evidence else ""
@@ -3315,7 +3547,25 @@ def ask_exits(readings: Iterable[Reading], state: Any = None) -> list[dict[str, 
     block = block_exit(others)
     if block is not None and len(others) > 1:
         out.append(block)
+    judged: dict[str, list[Reading]] = {}
     for r in listed:
+        if r.kind == "role" and r.judgment is not None:
+            judged.setdefault(r.judgment, []).append(r)
+    pressed: set[str] = set()
+    for r in listed:
+        group = judged.get(str(r.judgment)) if r.kind == "role" else None
+        if group is not None and len(group) > 1:
+            # Ruling R-g: one judgment's columns are confirmed in one press; each keeps only the
+            # alternatives the values cannot exclude, one column per press.
+            if r.judgment not in pressed:
+                pressed.add(str(r.judgment))
+                out.append({"label": group_press_label(len(group), str(r.value),
+                                                       _get(state, "purpose"),
+                                                       _get(state, "lens")),
+                            "decision": group_press([g.column for g in group], str(r.value))})
+            out += [confirm_exit("role", r.column, other, f"`{r.column}` is {words}")
+                    for other, words in ROLE_ALTERNATIVES.get(str(r.value), ())]
+            continue
         if r.kind == "code_or_count":
             for value in _alternatives(r):
                 out.append(code_or_count_exits(r.column)[0 if value == "amount" else 1])
@@ -3715,6 +3965,8 @@ __all__ = [
     "code_or_count_exits", "code_or_count_reading", "confirm_exit", "confirm_exits",
     "confirmation", "confirmed_codes", "day_count_candidates", "day_count_reading",
     "is_settled", "key", "listing", "names_several_days", "one_at_a_time",
+    "RoleGroup", "group_phrase", "group_press", "group_press_label", "role_group_words",
+    "role_groups", "served_groups", "fill_runs", "judged_exits", "with_proposals",
     "outcome_unit_reading", "predictor_columns", "predictors_or_ask", "proposals_of", "reading",
     "repeat_kind_reading", "rode_along", "stated_reading", "task_reading", "role_evidence",
     "role_reading", "role_words", "settled",

@@ -796,6 +796,30 @@ def _role_move(column: str, before: str, after: str, state: Any) -> str:
     return f"{tick(column)} became {role_as(after, state)}"
 
 
+def _role_line_change(column: str, before: str | None, after: str, state: Any) -> str:
+    """A role line's press under Predict, said as the line's own label says it (``quest.role_line_text``,
+    W1-T's V2): its confirmation as the role it was recorded with, in the roles card's group's words
+    ("a characteristic"); a move between the card's groups as a move (:func:`_role_move`); the
+    energy column's move as leaving the energy role; a move into a group from a role that enters no
+    model as a move into it; and any other role as recorded in that role's words."""
+    from turbotab.core.readings import PREDICTOR_ROLES, predictor_groups, role_line_words
+
+    lenses = getattr(state, "lens", None)
+    if before is None or before == after:  # before the roles answer, a proposal confirmed
+        return f"{tick(column)} was confirmed as {role_line_words(after, 'prediction', lenses)}"
+    heads = {role: g.head[0] for role, g in predictor_groups(lenses).items()}
+    if before in _PREDICTORS and after in _PREDICTORS:
+        return _role_move(column, str(before), after, state)
+    if after in PREDICTOR_ROLES and before == "energy":
+        return f"{tick(column)} left the energy role for the {heads[after]} role"
+    if after in PREDICTOR_ROLES:
+        return f"{tick(column)} moved to the {heads[after]} role"
+    said = role_line_words(after, "prediction", lenses)
+    if before == "energy":
+        return f"{tick(column)} left the energy role and was recorded as {said}"
+    return f"{tick(column)} was recorded as {said}"
+
+
 @register_sentence("set_roles")
 def _set_roles(d: Any, state: Any, ctx: Any) -> str:
     return _set_roles_text(d, state, _after(state, d))
@@ -863,7 +887,13 @@ def _set_roles_body(d: Any, state: Any) -> str:
 
 @register_sentence("confirm_role")
 def _confirm_role(d: Any, state: Any, ctx: Any) -> str:
-    """BLUEPRINT §14 rule 2: an individual confirmation, recorded as one."""
+    """BLUEPRINT §14 rule 2: an individual confirmation, recorded as one. Under Predict it is said
+    as the role line's press that recorded it (:func:`_role_line_change`): a move between the
+    roles card's groups as a move, never as a confirmation of the role it was proposed as."""
+    if _under_predict(state):
+        before = (getattr(state, "roles", None) or {}).get(d.column)
+        return (f"{_role_line_change(d.column, before, str(d.role), state)} on its own, after "
+                f"the evidence for its proposal was read")
     return (f"{tick(d.column)} was confirmed as {role_as(d.role, state)} on its own, "
             f"after the evidence for its proposal was read")
 
@@ -885,7 +915,22 @@ def _confirm_reading(d: Any, state: Any, ctx: Any) -> str:
 @register_sentence("confirm_readings")
 def _confirm_readings(d: Any, state: Any, ctx: Any) -> str:
     """BLUEPRINT §14.2: a block confirmation, each listed reading with the value it showed; a
-    homogeneous family (one kind, one value) said once with its count."""
+    homogeneous family (one kind, one value) said once with its count. One group's press (ruling
+    R-g: the block lists exactly one judgment's waiting columns, read against the roles stage's
+    proposals, ``ctx``'s ``roles``) is said in one sentence: the count, the first columns, the role
+    in the goal's words, its confidence below high, the shared reason, and that it was confirmed as
+    a group."""
+    from turbotab.core.decisions import group_confirmed
+
+    group = group_confirmed(d, state, _get(ctx, "roles"))
+    if group is not None:
+        from turbotab.core.readings import group_phrase
+
+        columns = [i.column for i in d.items]
+        said = group_phrase(columns, group.role, group.confidence, group.reason,
+                            getattr(state, "purpose", None), getattr(state, "lens", None))
+        return (f"{said[:1].upper()}{said[1:]}, were confirmed together as one group, after the "
+                f"evidence for their proposal was read")
     groups: dict[tuple[str, str], list[str]] = {}
     for item in d.items:
         groups.setdefault((item.reading, item.value), []).append(item.column)
@@ -910,7 +955,14 @@ def _confirmed(reading: str, column: str, value: Any, state: Any = None) -> str:
     col = tick(column)
     value = str(value)
     d = SimpleNamespace(reading=reading)
-    if d.reading == "role":
+    if d.reading == "role" and _under_predict(state):
+        # Under Predict in the roles card's groups' words, as the ask and the role lines say it
+        # (``readings.role_line_words``; W1-T's V1).
+        from turbotab.core.readings import role_line_words
+
+        said = (f"{col} was confirmed as "
+                f"{role_line_words(value, 'prediction', getattr(state, 'lens', None))}")
+    elif d.reading == "role":
         said = f"{col} was confirmed as {role_as(value, state)}"
     elif d.reading == "cluster":
         said = (f"{col} was confirmed as marking rows that belong together, so the intervals "

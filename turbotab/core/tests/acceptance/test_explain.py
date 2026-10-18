@@ -795,16 +795,20 @@ def test_3e_the_floor_reads_the_fits_verdict_against_the_baseline(regression):
         assert family["floor"]["passed"] == (verdict == "better")
 
 
-def test_3f_the_top_exposures_are_the_exposures_the_best_family_leans_on(regression):
-    """Under prediction the curves are of the exposures (by role), on their final scale, ordered
-    by mean |SHAP| in the family with the best cross-validated score (ties by its importance
-    table's rank).
+def test_3f_the_top_predictors_are_the_predictor_role_columns_the_best_family_leans_on(regression):
+    """Under prediction the curves are of the columns in a predictor role (W1 part 2's U7: every
+    predictor role is a predictor there, so the curves choose among the energy column and the
+    covariates too, not the Predictor role alone), on their final scale (the residual model's
+    adjusted nutrients), a number each, ordered by mean |SHAP| in the family with the best
+    cross-validated score (ties by its importance table's rank), up to the cap.
 
     The best score is the lowest MSE (MS6's regression primary; lower is better). Taking the
     highest picked the worst passing family, boosted trees, whose top three matched the elastic
     net's on macOS by chance (fat_total_adj 0.438 and carb_adj 0.411 in the elastic net) and not
     on Linux CI."""
     from turbotab.core.models.metrics import higher_is_better
+    from turbotab.core.models.pipeline import DesignSpec
+    from turbotab.core.readings import PREDICTOR_ROLES
 
     fit = regression.out["fit"].data
     primary = fit["primary_metric"]
@@ -815,10 +819,24 @@ def test_3f_the_top_exposures_are_the_exposures_the_best_family_leans_on(regress
     weights = {i["input"]: i["mean_abs"] for i in family["importance"]}
     rank = {i["input"]: i["rank"] for i in family["importance"]}
     shown = [c["input"] for c in regression.art["curves"]]
-    exposures = [f"{n}_adj" if n in ("protein", "carb", "fat_total") else n for n in mf.NUTRIENTS]
-    want = sorted(exposures, key=lambda a: (-weights.get(a, 0.0), rank.get(a, math.inf)))
+    spec = DesignSpec.from_dict(regression.out["design"].objects["spec"])
+    raw = regression.rows(regression.fit_ids()[:20])
+    numbers = set(raw.select_dtypes("number").columns)
+    roles = regression.state.roles
+    final = [f"{c}_adj" if f"{c}_adj" in weights else c for c in spec.predictors
+             if roles.get(c) in PREDICTOR_ROLES and c in numbers]
+    want = sorted(final, key=lambda a: (-weights.get(a, 0.0), rank.get(a, math.inf)))
     assert shown == want[:E.TOP_EXPOSURES]
-    assert E.SCALE_SAYS in regression.art["relations"]
+    # The final scale is said where a curve is on one (the residual model's ``_adj`` columns), and
+    # only there: the firing side is the declared exposure's, below.
+    assert (E.SCALE_SAYS in regression.art["relations"]) == any(a.endswith("_adj") for a in shown)
+
+
+def test_3f_the_final_scale_is_said_where_a_curve_is_drawn_on_one(inference):
+    """The declared exposure, protein, is read by the residual energy model as ``protein_adj``: its
+    curve is on that scale, and the explanations say so."""
+    assert [c["input"] for c in inference.art["curves"]] == ["protein_adj"]
+    assert E.SCALE_SAYS in inference.art["relations"]
 
 
 def _two_families(purpose: str, versus: dict | None = None):

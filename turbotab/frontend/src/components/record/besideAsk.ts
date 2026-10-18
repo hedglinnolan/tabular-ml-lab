@@ -3,7 +3,8 @@
  * walkthrough: the readings shown once). The Record's answer to a press on an asked question
  * (AskFor) and the shell's stage, whose card is the one place a choice is recorded (Stage
  * `recordHere={false}`), both say it this way. And a refusal's ways forward never confirm a
- * column's role together with other readings (`oneRoleAtATime`), wherever it is said.
+ * column's role together with other readings (`oneRoleAtATime`), wherever it is said, but in one
+ * group's press (ruling R-g).
  */
 import type { Refusal } from "../../api/schema";
 
@@ -31,15 +32,19 @@ export function besideAsk(refusal: Refusal): Refusal {
 
 /**
  * Whether an exit confirms a column's role together with other readings in one press. A role the
- * ledger still asks was proposed below high confidence, which needs its own confirmation and never
- * rides along in a block (BLUEPRINT §14 rule 2; ruling R-b of 2026-10-17): no press anywhere
- * confirms it with others ("Confirm each of the 7 as shown"). A confirmation of one role alone is
- * its own, and a block of other readings (codes or amounts) is not one of these.
+ * ledger still asks was proposed below high confidence, which never rides along in a block
+ * (BLUEPRINT §14 rule 2): no press anywhere confirms it with other readings ("Confirm each of the 7
+ * as shown"). A confirmation of one role alone is its own, a block of other readings (codes or
+ * amounts) is not one of these, and neither is one group's press (ruling R-g of 2026-10-17): a block
+ * of roles alone, each as one proposed role, which the engine offers only for the columns its roles
+ * stage proposed alike and accepts for no other.
  */
 export function confirmsRoleInBlock(exit: Exit): boolean {
-  const d = exit.decision as { kind?: string; items?: { reading?: string }[] } | null;
+  const d = exit.decision as { kind?: string; items?: { reading?: string; value?: string }[] } | null;
   if (d?.kind !== "confirm_readings" || !d.items || d.items.length < 2) return false;
-  return d.items.some((i) => i.reading === "role");
+  if (!d.items.some((i) => i.reading === "role")) return false;
+  const oneGroup = d.items.every((i) => i.reading === "role" && i.value === d.items![0]!.value);
+  return !oneGroup;
 }
 
 /** The refusal with no exit that confirms a role in a block (`confirmsRoleInBlock`). */

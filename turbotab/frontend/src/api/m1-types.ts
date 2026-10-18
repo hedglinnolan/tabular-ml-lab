@@ -98,6 +98,8 @@ export const PREDICTOR_ROLES: readonly Role[] = ["exposure", "energy", "covariat
 
 export type RoleProposal = S["RoleProposal"];
 export type RolesArtifact = S["RolesArtifact"];
+/** The predictor groups the server serves beside the proposals (W1 part 2's U6). */
+export type PredictorGroups = S["PredictorGroups"];
 export type MissingColumn = S["MissingColumn"];
 export type MissingReading = S["MissingReading"];
 export type LeaveOut = S["LeaveOut"];

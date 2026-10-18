@@ -28,6 +28,7 @@ import type { DecisionRecord, Lens, ProjectState, Scalar, Task } from "../api/sc
 import type { HoldoutDetail } from "../api/m3-types";
 import { CONTRACT } from "../quest/fixtures/contract";
 import type { MockColumn, MockDataset } from "./datasets";
+import { mockPredictorGroups } from "./roleWords";
 import { findColumn, isNumericDtype, nMissing, nUnique } from "./stats";
 
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
@@ -243,7 +244,9 @@ export function rolesArtifact(ds: MockDataset, state: ProjectState): RolesArtifa
     const max = Math.max(...counts.values());
     if (max > 1) repeats = { column: id.column, n_units: counts.size, max_rows_per_unit: max };
   }
-  return { columns, repeats, categorical: [] };
+  // The groups the server serves beside the proposals for the project's lenses and task (U6).
+  const predictor_groups = mockPredictorGroups(lens, state.task ?? null, columns.map((c) => c.column));
+  return { columns, repeats, categorical: [], predictor_groups };
 }
 
 /** The roles in force: the record's, else what the roles stage proposes. */

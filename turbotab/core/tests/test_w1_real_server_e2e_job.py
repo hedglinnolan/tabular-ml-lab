@@ -84,19 +84,28 @@ def test_a_held_fit_is_pressed_never_skipped():
 
 
 def test_the_real_server_defects_m1_measures_stay_visible():
-    """The M1 journey's guarantees the real server's stage breaks today are held by known-defect
-    tests (test.fail, or a fixme naming the screens), never only annotated; the mock asserts each
-    inline, as before."""
+    """The M1 journey's guarantees stay visible, never only annotated. Since the journey went
+    Predict (b20fc210) it asks no energy question, whose preview showed the two stage defects the
+    real server had (a term's card over an option, the distribution card's Save over the
+    primary's): the journey says so, and asks the energy question nowhere. What it measures now is
+    held as strictly as before or more: a screen over 300 KB is a known-defect fixme that names it
+    on the real server and a failure on the mock; the primary's Save is measured on both backends,
+    asserted uncovered on both (no longer only on the mock) and pressed by pointer on both."""
     spec = (E2E / "m1-journey.spec.ts").read_text("utf-8")
     assert 'test.describe.configure({ mode: "serial" })' in spec
-    for title, marker in (("a term's card covers no option", "test.fail(true"),
-                          ("nothing covers the primary plot's Save", "test.fail(true"),
-                          ("every review screen stays under 300 KB", "test.fixme(over.length > 0")):
-        start = spec.index(f'test("{title}"')
-        body = spec[start:spec.index("\n});", start)]
-        assert marker in body and "expect(" in body, title
-    # The mock still fails on each, as before.
+    start = spec.index('test("every review screen stays under 300 KB"')
+    body = spec[start:spec.index("\n});", start)]
+    assert "test.fixme(over.length > 0" in body and "expect(" in body
+    # The mock still fails on an oversized screen, as before.
     assert "if (!REAL) expect(bytes" in spec
-    assert 'if (!REAL) expect(defects.saveCoveredBy, "nothing covers the primary\'s Save").toBeNull()' in spec
-    assert 'if (!REAL) expect(covered, "the term card covers an option").toEqual([])' in spec
-    assert "if (!REAL) return primarySave.click()" in spec
+    # The Save: measured, and asserted on both backends.
+    assert "measurements.save_covered_by = saveCoveredBy;" in spec
+    held = 'expect(saveCoveredBy, "nothing covers the primary\'s Save").toBeNull();'
+    line = next(l for l in spec.splitlines() if held in l)
+    assert line.strip() == held, "the Save's check is no longer guarded by a backend"
+    assert "const openSave = async () => primarySave.click();" in spec
+    # The term card's defect is named as not measured, because Predict asks no energy question,
+    # which the journey asserts is not on the screen.
+    assert "a term's card covering an option" in spec and "prediction does not ask that question" \
+        in " ".join(spec.split())
+    assert 'getByTestId("question-energy_adjustment")).toHaveCount(0)' in spec

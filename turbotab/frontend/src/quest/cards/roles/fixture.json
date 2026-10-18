@@ -14,6 +14,59 @@
     "confirm": "Confirm `{column}` as {role}",
     "change": "`{column}` is {other}"
   },
+  "group": {
+    "key": "confirm_roles:{column}",
+    "item": "role_group",
+    "name": "the roles of {columns}",
+    "head": {
+      "waiting": "{n} columns proposed as {many} at {confidence} confidence, below high, for one reason",
+      "settled": "{n} columns confirmed as {many} at {confidence} confidence, below high, for one reason"
+    },
+    "many": {
+      "identifier": "the unit's identifiers",
+      "exposure": "what you study",
+      "energy": "total energy intake",
+      "covariate": "covariates",
+      "design": "part of the survey design",
+      "flag": "flags on other columns",
+      "time": "the time of each row",
+      "excluded": "left out of the models",
+      "cluster": "clusters of units"
+    },
+    "reasons": {
+      "identifier": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "exposure": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "energy": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "covariate": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "design": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a covariate on its own.",
+      "flag": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a covariate on its own.",
+      "time": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a covariate on its own.",
+      "excluded": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or put any one of them in the model on its own.",
+      "cluster": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a covariate on its own."
+    },
+    "reasons_two": {
+      "identifier": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "exposure": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "energy": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "covariate": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "design": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a covariate on its own.",
+      "flag": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a covariate on its own.",
+      "time": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a covariate on its own.",
+      "excluded": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or put any one of them in the model on its own.",
+      "cluster": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a covariate on its own."
+    },
+    "press": {
+      "identifier": "Confirm these {n} as the unit's identifiers",
+      "exposure": "Confirm these {n} as what you study",
+      "energy": "Confirm these {n} as total energy intake",
+      "covariate": "Confirm these {n} as covariates",
+      "design": "Confirm these {n} as part of the survey design",
+      "flag": "Confirm these {n} as flags on other columns",
+      "time": "Confirm these {n} as the time of each row",
+      "excluded": "Confirm these {n} as left out of the models",
+      "cluster": "Confirm these {n} as clusters of units"
+    }
+  },
   "reasons": {
     "identifier": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
     "exposure": "`{column}` was proposed below high confidence and recorded with the other roles, not confirmed on its own, so it cannot set the model's predictors yet. Confirm it after reading why it was proposed, or leave it out.",
@@ -179,7 +232,7 @@
           },
           "groups": {
             "screen": {
-              "energy": {
+              "fill": {
                 "exposure": {
                   "one": "a nutrient or assay feature",
                   "head": [
@@ -205,7 +258,7 @@
                   "note": "The energy-aware fill fills them without total energy; the screened elastic net's screen keeps every one; normalization and batch correction leave them as they are."
                 }
               },
-              "no energy": {
+              "no_fill": {
                 "exposure": {
                   "one": "a nutrient or assay feature",
                   "head": [
@@ -233,7 +286,7 @@
               }
             },
             "no screen": {
-              "energy": {
+              "fill": {
                 "exposure": {
                   "one": "a nutrient or assay feature",
                   "head": [
@@ -259,7 +312,7 @@
                   "note": "The energy-aware fill fills them without total energy; normalization and batch correction leave them as they are."
                 }
               },
-              "no energy": {
+              "no_fill": {
                 "exposure": {
                   "one": "a nutrient or assay feature",
                   "head": [
@@ -285,6 +338,52 @@
                   "note": "Normalization and batch correction leave them as they are."
                 }
               }
+            }
+          },
+          "group": {
+            "many": {
+              "identifier": "the unit's identifiers",
+              "exposure": "nutrients and assay features",
+              "energy": "total energy",
+              "covariate": "characteristics",
+              "design": "part of the survey design",
+              "flag": "flags on other columns",
+              "time": "the time of each row",
+              "excluded": "left out of the models",
+              "cluster": "clusters of units"
+            },
+            "reasons": {
+              "identifier": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "exposure": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "energy": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "covariate": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "design": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "flag": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "time": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "excluded": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or put any one of them in the model on its own.",
+              "cluster": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own."
+            },
+            "reasons_two": {
+              "identifier": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "exposure": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "energy": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "covariate": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "design": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "flag": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "time": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "excluded": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or put any one of them in the model on its own.",
+              "cluster": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own."
+            },
+            "press": {
+              "identifier": "Confirm these {n} as the unit's identifiers",
+              "exposure": "Confirm these {n} as nutrients and assay features",
+              "energy": "Confirm these {n} as total energy",
+              "covariate": "Confirm these {n} as characteristics",
+              "design": "Confirm these {n} as part of the survey design",
+              "flag": "Confirm these {n} as flags on other columns",
+              "time": "Confirm these {n} as the time of each row",
+              "excluded": "Confirm these {n} as left out of the models",
+              "cluster": "Confirm these {n} as clusters of units"
             }
           }
         },
@@ -381,7 +480,7 @@
           },
           "groups": {
             "screen": {
-              "energy": {
+              "fill": {
                 "exposure": {
                   "one": "a nutrient",
                   "head": [
@@ -407,7 +506,7 @@
                   "note": "The energy-aware fill fills them without total energy; the screened elastic net's screen keeps every one."
                 }
               },
-              "no energy": {
+              "no_fill": {
                 "exposure": {
                   "one": "a nutrient",
                   "head": [
@@ -435,7 +534,7 @@
               }
             },
             "no screen": {
-              "energy": {
+              "fill": {
                 "exposure": {
                   "one": "a nutrient",
                   "head": [
@@ -461,7 +560,7 @@
                   "note": "The energy-aware fill fills them without total energy."
                 }
               },
-              "no energy": {
+              "no_fill": {
                 "exposure": {
                   "one": "a nutrient",
                   "head": [
@@ -487,6 +586,52 @@
                   "note": ""
                 }
               }
+            }
+          },
+          "group": {
+            "many": {
+              "identifier": "the unit's identifiers",
+              "exposure": "nutrients",
+              "energy": "total energy",
+              "covariate": "characteristics",
+              "design": "part of the survey design",
+              "flag": "flags on other columns",
+              "time": "the time of each row",
+              "excluded": "left out of the models",
+              "cluster": "clusters of units"
+            },
+            "reasons": {
+              "identifier": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "exposure": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "energy": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "covariate": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "design": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "flag": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "time": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "excluded": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or put any one of them in the model on its own.",
+              "cluster": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own."
+            },
+            "reasons_two": {
+              "identifier": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "exposure": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "energy": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "covariate": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "design": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "flag": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "time": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "excluded": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or put any one of them in the model on its own.",
+              "cluster": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own."
+            },
+            "press": {
+              "identifier": "Confirm these {n} as the unit's identifiers",
+              "exposure": "Confirm these {n} as nutrients",
+              "energy": "Confirm these {n} as total energy",
+              "covariate": "Confirm these {n} as characteristics",
+              "design": "Confirm these {n} as part of the survey design",
+              "flag": "Confirm these {n} as flags on other columns",
+              "time": "Confirm these {n} as the time of each row",
+              "excluded": "Confirm these {n} as left out of the models",
+              "cluster": "Confirm these {n} as clusters of units"
             }
           }
         },
@@ -583,7 +728,7 @@
           },
           "groups": {
             "screen": {
-              "energy": {
+              "fill": {
                 "exposure": {
                   "one": "an assay feature",
                   "head": [
@@ -609,7 +754,7 @@
                   "note": "The energy-aware fill fills them without total energy; the screened elastic net's screen keeps every one; normalization and batch correction leave them as they are."
                 }
               },
-              "no energy": {
+              "no_fill": {
                 "exposure": {
                   "one": "an assay feature",
                   "head": [
@@ -637,7 +782,7 @@
               }
             },
             "no screen": {
-              "energy": {
+              "fill": {
                 "exposure": {
                   "one": "an assay feature",
                   "head": [
@@ -663,7 +808,7 @@
                   "note": "The energy-aware fill fills them without total energy; normalization and batch correction leave them as they are."
                 }
               },
-              "no energy": {
+              "no_fill": {
                 "exposure": {
                   "one": "an assay feature",
                   "head": [
@@ -689,6 +834,52 @@
                   "note": "Normalization and batch correction leave them as they are."
                 }
               }
+            }
+          },
+          "group": {
+            "many": {
+              "identifier": "the unit's identifiers",
+              "exposure": "assay features",
+              "energy": "total energy",
+              "covariate": "characteristics",
+              "design": "part of the survey design",
+              "flag": "flags on other columns",
+              "time": "the time of each row",
+              "excluded": "left out of the models",
+              "cluster": "clusters of units"
+            },
+            "reasons": {
+              "identifier": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "exposure": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "energy": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "covariate": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "design": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "flag": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "time": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "excluded": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or put any one of them in the model on its own.",
+              "cluster": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own."
+            },
+            "reasons_two": {
+              "identifier": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "exposure": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "energy": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "covariate": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "design": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "flag": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "time": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "excluded": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or put any one of them in the model on its own.",
+              "cluster": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own."
+            },
+            "press": {
+              "identifier": "Confirm these {n} as the unit's identifiers",
+              "exposure": "Confirm these {n} as assay features",
+              "energy": "Confirm these {n} as total energy",
+              "covariate": "Confirm these {n} as characteristics",
+              "design": "Confirm these {n} as part of the survey design",
+              "flag": "Confirm these {n} as flags on other columns",
+              "time": "Confirm these {n} as the time of each row",
+              "excluded": "Confirm these {n} as left out of the models",
+              "cluster": "Confirm these {n} as clusters of units"
             }
           }
         },
@@ -785,7 +976,7 @@
           },
           "groups": {
             "screen": {
-              "energy": {
+              "fill": {
                 "exposure": {
                   "one": "a measure",
                   "head": [
@@ -811,7 +1002,7 @@
                   "note": "The energy-aware fill fills them without total energy; the screened elastic net's screen keeps every one."
                 }
               },
-              "no energy": {
+              "no_fill": {
                 "exposure": {
                   "one": "a measure",
                   "head": [
@@ -839,7 +1030,7 @@
               }
             },
             "no screen": {
-              "energy": {
+              "fill": {
                 "exposure": {
                   "one": "a measure",
                   "head": [
@@ -865,7 +1056,7 @@
                   "note": "The energy-aware fill fills them without total energy."
                 }
               },
-              "no energy": {
+              "no_fill": {
                 "exposure": {
                   "one": "a measure",
                   "head": [
@@ -891,6 +1082,52 @@
                   "note": ""
                 }
               }
+            }
+          },
+          "group": {
+            "many": {
+              "identifier": "the unit's identifiers",
+              "exposure": "measures",
+              "energy": "total energy",
+              "covariate": "characteristics",
+              "design": "part of the survey design",
+              "flag": "flags on other columns",
+              "time": "the time of each row",
+              "excluded": "left out of the models",
+              "cluster": "clusters of units"
+            },
+            "reasons": {
+              "identifier": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "exposure": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "energy": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "covariate": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "design": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "flag": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "time": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "excluded": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or put any one of them in the model on its own.",
+              "cluster": "These {n} columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm all {n} in one press after reading why they were proposed, or record any one of them as a characteristic on its own."
+            },
+            "reasons_two": {
+              "identifier": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "exposure": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "energy": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "covariate": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+              "design": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "flag": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "time": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own.",
+              "excluded": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or put any one of them in the model on its own.",
+              "cluster": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or record any one of them as a characteristic on its own."
+            },
+            "press": {
+              "identifier": "Confirm these {n} as the unit's identifiers",
+              "exposure": "Confirm these {n} as measures",
+              "energy": "Confirm these {n} as total energy",
+              "covariate": "Confirm these {n} as characteristics",
+              "design": "Confirm these {n} as part of the survey design",
+              "flag": "Confirm these {n} as flags on other columns",
+              "time": "Confirm these {n} as the time of each row",
+              "excluded": "Confirm these {n} as left out of the models",
+              "cluster": "Confirm these {n} as clusters of units"
             }
           }
         }
@@ -1087,6 +1324,103 @@
                 "kind": "confirm_role",
                 "column": "cycle_begin_year",
                 "role": "exposure"
+              }
+            }
+          ]
+        }
+      ],
+      "changed_since": null
+    },
+    {
+      "id": "decision:confirm_role",
+      "key": "confirm_roles:hdl",
+      "source": "reading",
+      "label": "Decide",
+      "name": "the roles of `hdl` and `triglycerides`",
+      "status": "open",
+      "counted": true,
+      "order": 30.004,
+      "decision_id": null,
+      "reason": "These 2 columns were proposed below high confidence for one reason and recorded with the other roles, not confirmed, so they cannot set the model's predictors yet. Confirm both in one press after reading why they were proposed, or leave any one of them out on its own.",
+      "waiting_for": [],
+      "computing": [],
+      "reopened_by": null,
+      "would_change": null,
+      "changes_nothing": null,
+      "items": [
+        {
+          "kind": "role_group",
+          "column": "hdl",
+          "value": "covariate",
+          "words": "2 columns proposed as characteristics at medium confidence, below high, for one reason",
+          "evidence": "A laboratory value named like a person's characteristic.",
+          "options": [
+            {
+              "label": "Confirm these 2 as characteristics",
+              "decision": {
+                "kind": "confirm_readings",
+                "items": [
+                  {
+                    "reading": "role",
+                    "column": "hdl",
+                    "value": "covariate"
+                  },
+                  {
+                    "reading": "role",
+                    "column": "triglycerides",
+                    "value": "covariate"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "kind": "role",
+          "column": "hdl",
+          "value": "covariate",
+          "words": "proposed as a characteristic",
+          "evidence": "",
+          "options": [
+            {
+              "label": "Move `hdl` to the nutrients",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "hdl",
+                "role": "exposure"
+              }
+            },
+            {
+              "label": "`hdl` is left out of the models",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "hdl",
+                "role": "excluded"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "role",
+          "column": "triglycerides",
+          "value": "covariate",
+          "words": "proposed as a characteristic",
+          "evidence": "",
+          "options": [
+            {
+              "label": "Move `triglycerides` to the nutrients",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "triglycerides",
+                "role": "exposure"
+              }
+            },
+            {
+              "label": "`triglycerides` is left out of the models",
+              "decision": {
+                "kind": "confirm_role",
+                "column": "triglycerides",
+                "role": "excluded"
               }
             }
           ]

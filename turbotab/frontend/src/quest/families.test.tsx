@@ -314,25 +314,33 @@ describe("a refused press answered in full (W1-R R3 P4)", () => {
 });
 
 /**
- * Ruling R-b (BLUEPRINT §14 rule 2): a role proposed below high confidence is confirmed on its own,
- * so a refusal's way forward that confirms several roles in one press ("Confirm each of the 7 as
- * shown", the engine's `_models_read_settled_readings` at W1-R R1's verification) is not offered;
- * one that confirms a single role, or a block of readings that are not roles, still is.
+ * BLUEPRINT §14 rule 2 (ruling R-g, which replaces R-b's one per column): a role proposed below high
+ * confidence never rides along in a block with other readings, so a refusal's way forward that
+ * confirms several roles of different proposals in one press ("Confirm each of the 7 as shown",
+ * the engine's `_models_read_settled_readings` at W1-R R1's verification) is not offered; one that
+ * confirms a single role, one group's press (roles alone, each as one proposed role: the engine
+ * offers it only for the columns its roles stage proposed alike, and accepts no other), or a block
+ * of readings that are not roles, still is.
  */
-describe("a refusal's ways forward, one role at a time (ruling R-b)", () => {
-  const ROLES = ["bp_sys", "imputed_bp", "imputed_hdl"];
+describe("a refusal's ways forward, one judgment per press (ruling R-g)", () => {
+  const FLAGS = ["imputed_bp", "imputed_hdl"];
   const roles = (columns: string[], value: string) =>
     ({ kind: "confirm_readings", items: columns.map((column) => ({ reading: "role", column, value })) }) as Decision;
   const SINGLE = { label: "Confirm `bp_sys` as a predictor", decision: roles(["bp_sys"], "covariate") };
+  const GROUP = { label: `Confirm these ${FLAGS.length} as flags on other columns`, decision: roles(FLAGS, "flag") };
+  const SEVERAL = {
+    kind: "confirm_readings",
+    items: [{ reading: "role", column: "bp_sys", value: "covariate" }, ...FLAGS.map((column) => ({ reading: "role", column, value: "flag" }))],
+  } as Decision;
   const ROLE_REFUSAL: Refusal = {
     error: {
       code: "reading_unsettled",
       message: "The fit reads each column's role, and 3 were proposed below high confidence.",
-      exits: [{ label: `Confirm each of the ${ROLES.length} as shown`, decision: roles(ROLES, "flag") }, SINGLE, ROLES_EXIT],
+      exits: [{ label: "Confirm each of the 3 as shown", decision: SEVERAL }, SINGLE, GROUP, ROLES_EXIT],
     },
   };
 
-  it("offers no exit that confirms several roles together, and keeps the rest", async () => {
+  it("offers no exit that confirms roles of different proposals together, and keeps the rest", async () => {
     shell({ ...VIEW, interview: VIEW.interview.map((s) => (s.key === "models" ? { ...s, ask: null } : s)) });
     vi.spyOn(api, "decide").mockRejectedValue(new RefusalError(ROLE_REFUSAL));
     chooseTwo();
@@ -342,11 +350,12 @@ describe("a refusal's ways forward, one role at a time (ruling R-b)", () => {
       within(note)
         .getAllByTestId("refusal-exit")
         .map((b) => b.textContent),
-    ).toEqual([exitText(SINGLE), exitText(ROLES_EXIT)]);
+    ).toEqual([exitText(SINGLE), exitText(GROUP), exitText(ROLES_EXIT)]);
   });
 
-  it("tells a block of roles from one role alone and from a block of other readings", () => {
+  it("tells a block of roles from one role alone, one group's press and a block of other readings", () => {
     expect(confirmsRoleInBlock(ROLE_REFUSAL.error.exits[0]!)).toBe(true);
+    expect(confirmsRoleInBlock(GROUP)).toBe(false);
     expect(confirmsRoleInBlock(SINGLE)).toBe(false);
     expect(confirmsRoleInBlock(REFUSAL.error.exits[0]!)).toBe(false);
     expect(confirmsRoleInBlock(ROLES_EXIT)).toBe(false);

@@ -12,7 +12,7 @@ import type { Decision } from "../../../api/schema";
 import { useStageFocus, type StageFocus } from "../../../state/focus";
 import { buildColumnIndex, filterColumns } from "../../../util/filterColumns";
 import { cx } from "../../../util/format";
-import { predictorGroups } from "../../../quest/cards/roles/roles";
+import { servedGroups } from "../../../quest/cards/roles/roles";
 import { V } from "../../Prose";
 import { Question } from "../Question";
 import { Taught } from "../teach";
@@ -46,10 +46,12 @@ const ESTIMATE = {
  * counts the columns that enter the models as predictors, and names each predictor role's group by
  * the project's lenses (nutrients under the dietary lens, assay features under an assay lens), its
  * note naming each step that treats it differently only where the project can run it
- * (core/readings.py `predictor_groups`): the energy-aware fill while a column holds the energy role,
- * under any lens; the screened elastic net's screen where the project's task puts that family on the
- * shelf (a regression or a yes/no outcome); normalization and batch correction under an assay lens.
- * The words are the engine's (roles/fixture.json).
+ * (core/readings.py `predictor_groups`): the energy-aware fill where a column holds the energy role
+ * and a Predictor column carries energy, under any lens; the screened elastic net's screen where the
+ * project's task puts that family on the shelf (a regression or a yes/no outcome); normalization and
+ * batch correction under an assay lens. The words are the ones the server serves beside the
+ * proposals for the project's lenses and task (`predictor_groups`; W1 part 2's U6), never a
+ * fixture's.
  */
 const PREDICT = {
   become: (n: number) => (n === 1 ? "column enters the models as a predictor" : "columns enter the models as predictors"),
@@ -68,24 +70,18 @@ export function RolesAsk({
   artifact,
   current,
   purpose = null,
-  lenses = null,
-  task = null,
   ...p
 }: AskProps & {
   artifact: RolesArtifact;
   current: Record<string, Role> | null;
-  /** The project's goal: under prediction the card says predictors (`PREDICT`). */
+  /** The project's goal: under prediction the card says predictors (`PREDICT`), and names the
+   *  predictor roles' groups as the server serves them for the project's lenses and task. */
   purpose?: string | null;
-  /** The project's lenses: under prediction they name the predictor roles' groups. */
-  lenses?: readonly string[] | null;
-  /** The project's task, as answered or as the outcome reads: under prediction it sets whether the
-   *  screened elastic net's screen is on the shelf, so whether a group's note names it. */
-  task?: string | null;
 }) {
   const predict = purpose === "prediction";
-  /** The predictor groups under prediction with these roles: a note names the energy-aware fill
-   *  only while one of them holds the energy role. */
-  const groupsOf = (roles: Record<string, Role>) => (predict ? predictorGroups(lenses, { task, roles }) : null);
+  /** The predictor groups under prediction with these roles, as served: a note names the
+   *  energy-aware fill only where it would run with them. */
+  const groupsOf = (roles: Record<string, Role>) => (predict ? servedGroups(artifact.predictor_groups, roles) : null);
   const groupIn = (groups: ReturnType<typeof groupsOf>, role: Role) =>
     groups && (role === "exposure" || role === "energy" || role === "covariate") ? groups[role] : null;
   const proposed = useMemo(

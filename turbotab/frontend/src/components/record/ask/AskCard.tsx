@@ -9,9 +9,11 @@
  *   card does not list (§14.1). Each line's value can be changed before it is confirmed. Once the
  *   user has confirmed guesses line by line, one block confirms every line shown (§11.4 rule 4:
  *   a shortcut unlocks with mastery, never with a setting), but a column's role: a role proposed
- *   below high confidence needs its own confirmation and never rides along in a block (§14 rule
- *   2; ruling R-b), so each such column is a line of its own, confirmed alone, and no block
- *   lists one.
+ *   below high confidence never rides along in a block (§14 rule 2), so no block lists one. A
+ *   role line the server serves for several columns is one judgment of the recognizer (ruling R-g:
+ *   the columns the roles stage proposed with one role, one confidence and one reason word for
+ *   word, ask.py `with_proposals`), confirmed whole in its one press, its role as proposed (the
+ *   engine accepts no other block of them); any other role is a line of its own.
  *
  *   The consumer's own ways forward, where its refusal names them (a value below a detection
  *   limit, an energy column's unit and days), are offered as the server words them.
@@ -105,16 +107,17 @@ export function confirmLine(group: AskGroup, value: string): Decision | null {
 }
 
 /**
- * The card's lines, in the server's order: each group as served, but a role family, one line per
- * column. The card asks only readings not settled, and a role reading is unsettled while it was
- * proposed below high confidence and not confirmed: it needs its own confirmation and never rides
- * along in a block (BLUEPRINT §14 rule 2; ruling R-b).
+ * The card's lines, in the server's order, each group as served. The card asks only readings not
+ * settled, and a role reading is unsettled while it was proposed below high confidence and not
+ * confirmed: the server serves such a role as a line of its own, or, where the roles stage proposed
+ * several columns alike, the whole group as one line (ruling R-g), which its one press confirms.
  */
 export function linesOf(groups: AskGroup[]): AskGroup[] {
-  return groups.flatMap((g) =>
-    g.kind === "role" && g.columns.length > 1 ? g.columns.map((column) => ({ ...g, columns: [column] })) : [g],
-  );
+  return groups;
 }
+
+/** A role line for several columns: one judgment, confirmed whole as proposed (ruling R-g). */
+export const isRoleGroup = (group: AskGroup) => group.kind === "role" && group.columns.length > 1;
 
 /** Every line the card shows, each with the value it shows: one block that lists them all, but
  *  no role, which is confirmed on its own line alone (§14 rule 2; ruling R-b). */
@@ -177,7 +180,9 @@ export function AskCard({
       <ol className={g.askList}>
         {lines.map((grp, i) => {
           const value = values[i] ?? grp.guess ?? "";
-          const choices = choicesFor(grp);
+          // A group's columns are confirmed as proposed, in one press; each is moved on its own line
+          // in Your data (ruling R-g), so the group's role is not changed here.
+          const choices = isRoleGroup(grp) ? [] : choicesFor(grp);
           const decision = confirmLine(grp, value);
           const changed = values[i] !== undefined && values[i] !== grp.guess;
           const words = changed ? (choices.find((ch) => ch.value === value)?.label ?? value) : grp.guess_words;
@@ -218,7 +223,11 @@ export function AskCard({
                     data-testid="ask-confirm"
                     title="Records exactly the readings on this line, each with the value it shows."
                   >
-                    {grp.columns.length > 1 ? `Confirm the ${fmtCount(grp.columns.length)}` : "Confirm"}
+                    {isRoleGroup(grp)
+                      ? `Confirm these ${fmtCount(grp.columns.length)} as ${grp.guess_words}`
+                      : grp.columns.length > 1
+                        ? `Confirm the ${fmtCount(grp.columns.length)}`
+                        : "Confirm"}
                   </button>
                 ) : null}
               </span>

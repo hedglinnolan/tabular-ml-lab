@@ -1151,7 +1151,9 @@ class Setting:
     unit_name: str | None = None
     exposures: Sequence[str] = ()  # raw columns asked for; empty: the top ones
     declared: Sequence[str] = ()  # under inference: the declared exposure(s)
-    candidates: Sequence[str] = ()  # raw columns that may be a top exposure
+    # raw columns a default curve may be drawn for: the Predictor columns under Estimate, every
+    # predictor-role column under Predict (``stages.explain``; U7)
+    candidates: Sequence[str] = ()
     curve_method: str = "ale"
     reseeds: int = RESEEDS
     seed: int = 0
@@ -1821,7 +1823,9 @@ def _explained_columns_are_predictors(decision: Any, ctx: Any) -> None:
             "not_a_predictor",
             f"{named} {'is' if len(absent) == 1 else 'are'} not among the model's predictors, so "
             f"there is no curve to draw.",
-            exits=[{"label": "Draw the top study factors' curves",
+            exits=[{"label": ("Draw the top predictors' curves"
+                              if getattr(state, "purpose", None) == "prediction" else
+                              "Draw the top study factors' curves"),
                     "decision": _keep(decision, exposures=[])}])
 
 
@@ -1852,8 +1856,10 @@ def decision_sentence(d: Any, state: Any) -> str:
         of = " and ".join(f"`{c}`" for c in d.exposures) if len(d.exposures) <= 2 else \
             ", ".join(f"`{c}`" for c in d.exposures[:-1]) + f" and `{d.exposures[-1]}`"
     else:
-        of = ("the declared exposure" if getattr(state, "purpose", None) == "inference" else
-              "the top exposures")
+        # Under prediction the default curves choose among every predictor-role column (U7).
+        purpose = getattr(state, "purpose", None)
+        of = ("the declared exposure" if purpose == "inference" else
+              "the top predictors" if purpose == "prediction" else "the top exposures")
     stability = (f", with their stability over {d.reseeds} refits on bootstrap resamples"
                  if d.reseeds else ", without a check of their stability across refits")
     tail = "these describe the models' predictions, not causal effects"

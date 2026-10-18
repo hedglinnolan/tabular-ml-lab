@@ -863,7 +863,9 @@ def build_graph() -> Graph:
             # the file's order; the paragraph names only the families that drew curves.
             # explain 4 (EXPLORE repair, ruling 13): under inference no cross-validated score is
             # read, so no floor gates a curve or quotes a score.
-            Stage("explain", 4, ("working", "fit", "design", "target_info"),
+            # explain 5 (W1 part 2's U7): under prediction the default curves choose among every
+            # predictor-role column, not the Predictor role alone, by the same rule and cap.
+            Stage("explain", 5, ("working", "fit", "design", "target_info"),
                   (*EXPLAIN_READS, *ROLE_READS, *WP17_READS), explain_stage, heavy=True,
                   requires=("explain", "models", "purpose"),
                   label="Explaining each fitted model", serves=ESTIMATE),

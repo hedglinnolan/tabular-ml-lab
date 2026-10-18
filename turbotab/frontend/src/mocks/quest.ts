@@ -35,7 +35,7 @@ import type {
 import type { MethodsSections, MethodsText } from "../api/m3-types";
 import type { RolesArtifact } from "../api/m1-types";
 import ROLES from "../quest/cards/roles/fixture.json";
-import { predictKind } from "../quest/cards/roles/roles";
+import { predictKind } from "./roleWords";
 import { CONTRACT } from "../quest/fixtures/contract";
 import type { MockServer } from "./db";
 
@@ -74,8 +74,8 @@ const latest = (records: readonly DecisionRecord[], test: (d: DecisionRecord["de
  * under inference, Estimate's; under prediction each predictor role by the roles card's group for it
  * in a project with these lenses (the roles ruling of 2026-10-17), each change's label the engine's
  * own (a move between the card's groups; the energy column's says the energy-aware fill no longer
- * reads it). `reasons`: why a line waits, by the
- * proposed role, its last clause naming what that role's presses do.
+ * reads it). `reasons`: why a line waits, by the proposed role, its last clause naming what that
+ * role's presses do. `group`: a group line's words (ruling R-g), by role.
  */
 function roleWords(purpose: string | null | undefined, lenses: readonly string[] | null | undefined) {
   const T = ROLES.templates;
@@ -84,6 +84,7 @@ function roleWords(purpose: string | null | undefined, lenses: readonly string[]
     reasons: ROLES.reasons as Record<string, string>,
     choices: ROLES.choices as Record<string, string[]>,
     change: (_role: string, other: string) => T.change.replaceAll("{other}", (ROLES.words as Record<string, string>)[other] ?? other),
+    group: ROLES.group as GroupWords,
   };
   if (purpose !== "prediction") return estimate;
   const k = ROLES.under.prediction.kinds[predictKind(lenses)];
@@ -93,23 +94,46 @@ function roleWords(purpose: string | null | undefined, lenses: readonly string[]
     reasons: k.reasons as Record<string, string>,
     choices: k.choices as Record<string, string[]>,
     change: (role: string, other: string) => changes[role]?.[other] ?? T.change.replaceAll("{other}", other),
+    group: k.group as GroupWords,
   };
+}
+
+interface GroupWords {
+  many: Record<string, string>;
+  reasons: Record<string, string>;
+  reasons_two: Record<string, string>;
+  press: Record<string, string>;
+}
+
+/** The roles stage's proposal of a column as the mock reads it: its reason, and its confidence
+ *  where the artifact is served (a reason alone groups nothing: ruling R-g reads all three). */
+export type Proposed = Readonly<Record<string, string | { reason: string; confidence: string }>>;
+
+/** "`a`, `b` and 298 more", as core/voice.py `listing` names a group's first columns. */
+function firstColumns(columns: readonly string[]): string {
+  const ticked = columns.map((c) => `\`${c}\``);
+  if (ticked.length <= 3) return ticked.length < 2 ? (ticked[0] ?? "") : `${ticked.slice(0, -1).join(", ")} and ${ticked.at(-1)}`;
+  return `${ticked.slice(0, 2).join(", ")} and ${(ticked.length - 2).toLocaleString("en-US")} more`;
 }
 
 /**
  * Your data's role lines (core/quest.py `_role_lines`; the walkthrough of 2026-10-17, finding 1):
- * each column the roles answer recorded below high confidence as proposed (`roles_unconfirmed`) is a
- * counted Decide of its own, open until a confirmation of its own role, then answered by that
- * record; none while the roles question is asked again. The engine moves a column's recorded role
+ * each column the roles answer recorded below high confidence as proposed (`roles_unconfirmed`) waits
+ * in a counted Decide, open until a confirmation of its role, then answered by that record; none
+ * while the roles question is asked again. Columns the roles stage proposed with one role, one
+ * confidence and one reason word for word are one judgment (ruling R-g): one line, its first item
+ * the group's reading with its one press, then each column with its moves; a column confirmed on a
+ * press of its own leaves the group for a line of its own. The engine moves a column's recorded role
  * to the role confirmed for it, so a confirmation here is the column's role. The evidence is the
- * roles stage's reason for the proposal (`reasons`), else the ledger's own reading's.
+ * roles stage's reason for the proposal (`proposed`), else the ledger's own reading's.
  */
-export function mockRoleLines(view: ProjectView, reasons: Readonly<Record<string, string>> = {}): QuestLine[] {
+export function mockRoleLines(view: ProjectView, proposed: Proposed = {}): QuestLine[] {
   const { state, decisions, interview } = view;
   const named = new Set(state.roles_unconfirmed ?? []);
   const step = interview.find((s) => s.key === "roles");
   if (!named.size || step?.status === "open" || step?.status === "waiting") return [];
   const T = ROLES.templates;
+  const G = ROLES.group;
   const W = roleWords(state.purpose, state.lens);
   const fill = (template: string, column: string, role: string) =>
     template.replaceAll("{column}", column).replaceAll("{role}", W.words[role] ?? role);
@@ -121,52 +145,127 @@ export function mockRoleLines(view: ProjectView, reasons: Readonly<Record<string
         (d.kind === "confirm_reading" && d.reading === "role" && d.column === column) ||
         (d.kind === "confirm_readings" && d.items.some((i) => i.reading === "role" && i.column === column)),
     );
-  return Object.entries(state.roles ?? {})
-    .filter(([column]) => named.has(column))
-    .flatMap(([column, recorded], i) => {
-      if (column === state.target) return [];
-      const confirmed = state.role_confirmations?.[column] ?? null;
-      const role = String(confirmed ?? recorded);
-      const waiting = confirmed === null;
-      const option = (r: string, label: string) => ({ label, decision: { kind: "confirm_role", column, role: r } as Record<string, unknown> });
-      const options = [
-        ...(waiting ? [option(role, fill(T.confirm, column, role))] : []),
-        ...(W.choices[role] ?? ["covariate"]).map((other) => option(other, fill(W.change(role, other), column, role))),
-      ];
-      return [
+  const inGroupPress = (column: string) => {
+    const d = confirmedBy(column)?.decision;
+    return d?.kind === "confirm_readings" && d.items.filter((i) => i.reading === "role").length > 1;
+  };
+  const reasonOf = (column: string) => {
+    const p = proposed[column];
+    return typeof p === "string" ? p : p?.reason;
+  };
+  const option = (column: string, r: string, label: string) => ({ label, decision: { kind: "confirm_role", column, role: r } as Record<string, unknown> });
+  const columns = Object.entries(state.roles ?? {}).filter(([column]) => named.has(column) && column !== state.target);
+  // The judgments: the columns recorded as proposed, by role, confidence and reason.
+  const judged = new Map<string, string[]>();
+  for (const [column, recorded] of columns) {
+    const p = proposed[column];
+    if (!p || typeof p === "string") continue;
+    const key = [String(recorded), p.confidence, p.reason].join("\n");
+    judged.set(key, [...(judged.get(key) ?? []), column]);
+  }
+  const grouped = new Map<string, string[]>();
+  for (const members of judged.values()) {
+    const kept = members.filter((c) => (state.role_confirmations?.[c] ?? null) === null || inGroupPress(c));
+    if (kept.length > 1) for (const c of kept) grouped.set(c, kept);
+  }
+  const lines: QuestLine[] = [];
+  const done = new Set<string>();
+  columns.forEach(([column, recorded], i) => {
+    const order = ROLES.place.order + i / 1000;
+    const members = grouped.get(column);
+    if (members) {
+      if (done.has(column)) return;
+      members.forEach((c) => done.add(c));
+      const role = String(recorded);
+      const p = proposed[column] as { reason: string; confidence: string };
+      const waiting = members.filter((c) => (state.role_confirmations?.[c] ?? null) === null);
+      const n = (k: number) => k.toLocaleString("en-US");
+      const head = (waiting.length ? G.head.waiting : G.head.settled)
+        .replaceAll("{n}", n(members.length))
+        .replaceAll("{many}", W.group.many[role] ?? role)
+        .replaceAll("{confidence}", p.confidence);
+      const press = waiting.length
+        ? [
+            {
+              label: (W.group.press[role] ?? "").replaceAll("{n}", n(waiting.length)),
+              decision: { kind: "confirm_readings", items: waiting.map((c) => ({ reading: "role", column: c, value: role })) } as Record<string, unknown>,
+            },
+          ]
+        : [];
+      const why = waiting.length === 2 ? W.group.reasons_two[role] : (W.group.reasons[role] ?? "").replaceAll("{n}", n(waiting.length));
+      const all = judged.get([role, p.confidence, p.reason].join("\n")) ?? members;
+      lines.push(
         line({
           id: ROLES.place.id,
-          key: ROLES.key.replace("{column}", column),
+          key: G.key.replace("{column}", all[0] ?? column),
           source: "reading",
           label: "Decide",
-          name: fill(T.name, column, role),
-          status: waiting ? "open" : "answered",
+          name: G.name.replace("{columns}", firstColumns(members)),
+          status: waiting.length ? "open" : "answered",
           counted: true,
-          order: ROLES.place.order + i / 1000,
-          decision_id: waiting ? null : (confirmedBy(column)?.id ?? null),
-          reason: waiting && W.reasons[role] ? fill(W.reasons[role], column, role) : null,
+          order,
+          decision_id: waiting.length ? null : (confirmedBy(members[0]!)?.id ?? null),
+          reason: waiting.length ? (why ?? null) : null,
           items: [
-            {
-              kind: "role",
-              column,
-              value: role,
-              words: fill(waiting ? T.proposed : T.settled, column, role),
-              evidence: reasons[column] || ROLES.unread_evidence,
-              options,
-            },
+            { kind: G.item, column: members[0]!, value: role, words: head, evidence: p.reason, options: press },
+            ...members.map((c) => {
+              const settled = (state.role_confirmations?.[c] ?? null) !== null;
+              return {
+                kind: "role",
+                column: c,
+                value: role,
+                words: fill(settled ? T.settled : T.proposed, c, role),
+                evidence: "",
+                options: (W.choices[role] ?? ["covariate"]).map((other) => option(c, other, fill(W.change(role, other), c, role))),
+              };
+            }),
           ],
         }),
-      ];
-    });
+      );
+      return;
+    }
+    const confirmed = state.role_confirmations?.[column] ?? null;
+    const role = String(confirmed ?? recorded);
+    const waiting = confirmed === null;
+    const options = [
+      ...(waiting ? [option(column, role, fill(T.confirm, column, role))] : []),
+      ...(W.choices[role] ?? ["covariate"]).map((other) => option(column, other, fill(W.change(role, other), column, role))),
+    ];
+    lines.push(
+      line({
+        id: ROLES.place.id,
+        key: ROLES.key.replace("{column}", column),
+        source: "reading",
+        label: "Decide",
+        name: fill(T.name, column, role),
+        status: waiting ? "open" : "answered",
+        counted: true,
+        order,
+        decision_id: waiting ? null : (confirmedBy(column)?.id ?? null),
+        reason: waiting && W.reasons[role] ? fill(W.reasons[role], column, role) : null,
+        items: [
+          {
+            kind: "role",
+            column,
+            value: role,
+            words: fill(waiting ? T.proposed : T.settled, column, role),
+            evidence: reasonOf(column) || ROLES.unread_evidence,
+            options,
+          },
+        ],
+      }),
+    );
+  });
+  return lines;
 }
 
-/** The quest log of a mock project's view, Fit pressed or not; `reasons`: the roles stage's reason
- *  for each column's proposal, where its artifact is served. */
+/** The quest log of a mock project's view, Fit pressed or not; `proposed`: the roles stage's reason
+ *  (and confidence) for each column's proposal, where its artifact is served. */
 export function mockQuest(
   view: ProjectView,
   findings: readonly Finding[] | null,
   pressed: boolean,
-  reasons: Readonly<Record<string, string>> = {},
+  reasons: Proposed = {},
 ): QuestLog {
   const { state, decisions, interview } = view;
   const predict = state.purpose === "prediction";
@@ -607,14 +706,17 @@ async function findingsOf(pid: string, view: ProjectView): Promise<Finding[] | n
   return result.artifact?.findings ?? null;
 }
 
-/** The roles stage's reason for each column's proposal, where its artifact is served. */
-async function reasonsOf(pid: string, view: ProjectView): Promise<Record<string, string>> {
+/** The roles stage's reason and confidence for each column's proposal, where its artifact is
+ *  served. */
+async function reasonsOf(pid: string, view: ProjectView): Promise<Proposed> {
   const st = view.stages.roles;
   if (!view.state.roles_unconfirmed?.length || !st || st.status === "idle" || st.status === "blocked") return {};
   const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/stages/roles`);
   if (!res.ok) return {};
   const result = (await res.json()) as StageResult<RolesArtifact>;
-  return Object.fromEntries((result.artifact?.columns ?? []).map((p) => [p.column, p.reason]));
+  return Object.fromEntries(
+    (result.artifact?.columns ?? []).map((p) => [p.column, { reason: p.reason, confidence: p.confidence }]),
+  );
 }
 
 async function questOf(pid: string): Promise<{ view: ProjectView; log: QuestLog } | null> {

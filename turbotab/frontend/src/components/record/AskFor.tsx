@@ -367,10 +367,6 @@ export const AskFor = ({
           artifact={roles.artifact}
           current={(state.roles as Record<string, Role> | null) ?? null}
           purpose={state.purpose}
-          lenses={state.lens}
-          // The task as answered, else as the outcome's reading has it (core/estimand.py
-          // `effective_task`): under prediction it sets whether the screen is on the shelf.
-          task={state.task ?? (ti && ti.column === state.target ? ti.task : null)}
         />
       ) : (
         waitingFor("roles", "Then each column's role is asked.")

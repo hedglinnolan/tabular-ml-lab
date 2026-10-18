@@ -3325,28 +3325,114 @@ def _below_high_roles(decision: "ConfirmReadings", ctx: Any) -> list[ReadingItem
     return out
 
 
-def _roles_confirmed_one_at_a_time(decision: "ConfirmReadings", ctx: Any) -> None:
-    """BLUEPRINT §14 rule 2 (W1-R round 2, ruling R-b): a role proposed below high confidence "needs
-    its own confirmation; it never rides along in a bulk 'confirm all'", so a block that lists one
-    beside any other reading is refused, whoever posts it, with each such role's own confirmation
-    as the way forward and the other readings still one block. One reading alone is its own
-    confirmation."""
-    if len(decision.items) < 2:
-        return
+def _role_groups_of(decision: "ConfirmReadings", ctx: Any) -> list[Any]:
+    """The judgments of the roles stage (``readings.role_groups``) behind each role a block lists
+    that waits (:func:`_below_high_roles`), each once in the block's order, with its columns that
+    wait: a waiting column no proposal at hand groups is a group of its own (the strictest case)."""
+    from turbotab.core.readings import RoleGroup, role_groups
+
     waiting = _below_high_roles(decision, ctx)
     if not waiting:
-        return
-    from turbotab.core.readings import role_words
-    from turbotab.core.voice import listing
+        return []
+    opener = _ctx(ctx, "artifact")
+    try:
+        artifact = opener("roles") if callable(opener) else None
+    except Exception:  # noqa: BLE001 - no proposals at hand: each column on its own
+        artifact = None
+    if artifact is None:
+        shown = _ctx(ctx, "shown")  # the newest proposals the client was shown, stale or not
+        try:
+            artifact = shown("roles") if callable(shown) else None
+        except Exception:  # noqa: BLE001 - nothing was shown
+            artifact = None
+    found = {c: g for g in role_groups(_state(ctx), artifact) for c in g.waiting}
+    out: list[Any] = []
+    for item in waiting:
+        group = found.get(item.column) or RoleGroup(item.value, "", "", (item.column,),
+                                                    (item.column,))
+        if group not in out:
+            out.append(group)
+    return out
 
-    purpose = getattr(_state(ctx), "purpose", None)
-    names = [i.column for i in waiting]
-    one = len(names) == 1
-    exits: list[dict[str, Any]] = [
-        {"label": f"Confirm `{i.column}` as {role_words(i.value, purpose)}",
-         "decision": ConfirmReading(reading="role", column=i.column, value=i.value)}
-        for i in waiting]
-    rest = [i for i in decision.items if i not in waiting]
+
+def _one_group(decision: "ConfirmReadings", ctx: Any) -> Any:
+    """The group a block confirms whole, each of its waiting columns with the proposed role and
+    nothing else (ruling R-g), or None."""
+    groups = _role_groups_of(decision, ctx)
+    if len(groups) != 1 or len(groups[0].waiting) < 2:
+        return None
+    group = groups[0]
+    listed = {(i.reading, i.column, i.value) for i in decision.items}
+    whole = {("role", c, group.role) for c in group.waiting}
+    return group if listed == whole and len(decision.items) == len(whole) else None
+
+
+def group_confirmed(decision: Any, state: Any, artifact: Any) -> Any:
+    """The judgment (``readings.RoleGroup``) a ``confirm_readings`` recorded on ``state`` confirmed
+    whole as one group's press, read against the roles stage's proposals in ``artifact``; None for
+    any other block, or with no proposals at hand (the record then says each reading, as a block's
+    sentence does)."""
+    if getattr(decision, "kind", None) != "confirm_readings" or len(decision.items) < 2 \
+            or artifact is None:
+        return None
+    return _one_group(decision, {"state": state, "artifact": lambda stage: (
+        artifact if stage == "roles" else None)})
+
+
+def _roles_confirmed_one_at_a_time(decision: "ConfirmReadings", ctx: Any) -> None:
+    """BLUEPRINT §14 rule 2 and the gate's criterion (ruling R-g, which replaces R-b's one per
+    column): a role proposed below high confidence never rides along in a bulk "confirm all". Roles
+    proposed below high that share one proposal (one role, one confidence, one reason word for word:
+    ``readings.role_groups``) are one judgment of the recognizer, confirmed in one press. So a block
+    that lists exactly one group's waiting columns, each with its proposed role, is accepted; one
+    reading alone is its own confirmation. Any other block that lists a role waiting is refused,
+    whoever posts it: columns of two or more groups, a group beside any other reading, or two or
+    more of a group's columns but not all of them. The way forward is each group's own press (a
+    group of one, its own confirmation; a column listed with another role, its own confirmation as
+    listed), and the other readings still one block. The sentence says what is refused and names
+    each group."""
+    if len(decision.items) < 2:
+        return
+    groups = _role_groups_of(decision, ctx)
+    if not groups or _one_group(decision, ctx) is not None:
+        return
+    from turbotab.core.readings import group_phrase, group_press, group_press_label, \
+        role_line_words
+
+    state = _state(ctx)
+    purpose = getattr(state, "purpose", None)
+    lenses = [str(k) for k in getattr(state, "lens", None) or ()]
+    waiting = _below_high_roles(decision, ctx)
+    listed = {i.column: i for i in waiting}
+    exits: list[dict[str, Any]] = []
+    named: list[str] = []
+    for group in groups:
+        mine = [c for c in group.waiting if c in listed]
+        as_proposed = [c for c in mine if listed[c].value == group.role]
+        whole = group_phrase(group.waiting, group.role, group.confidence, group.reason, purpose,
+                             lenses) if group.confidence else (
+            f"`{group.waiting[0]}`, proposed below high confidence")
+        if len(group.waiting) > 1 and len(mine) < len(group.waiting):
+            named.append(f"{len(mine):,} of {whole}")
+        else:
+            named.append(whole)
+        if as_proposed:
+            if len(group.waiting) == 1:
+                c = group.waiting[0]
+                words = role_line_words(group.role, purpose, lenses)
+                exits.append({"label": f"Confirm `{c}` as {words}",
+                              "decision": ConfirmReading(reading="role", column=c, value=group.role)})
+            else:
+                exits.append({"label": group_press_label(len(group.waiting), group.role, purpose,
+                                                         lenses),
+                              "decision": group_press(group.waiting, group.role)})
+        for c in mine:
+            if listed[c].value != group.role:
+                exits.append({"label": f"Confirm `{c}` as "
+                                       f"{role_line_words(listed[c].value, purpose, lenses)}",
+                              "decision": ConfirmReading(reading="role", column=c,
+                                                         value=listed[c].value)})
+    rest = [i for i in decision.items if i.column not in listed or i.reading != "role"]
     if len(rest) == 1:
         exits.append({"label": f"Confirm `{rest[0].column}` as listed",
                       "decision": ConfirmReading(reading=rest[0].reading, column=rest[0].column,
@@ -3354,11 +3440,12 @@ def _roles_confirmed_one_at_a_time(decision: "ConfirmReadings", ctx: Any) -> Non
     elif rest:
         exits.append({"label": f"Confirm the other {len(rest):,} as listed",
                       "decision": ConfirmReadings(items=rest)})
+    others = f"; and {len(rest):,} other reading{'s' if len(rest) != 1 else ''}" if rest else ""
     raise Refusal(
         "roles_one_at_a_time",
-        f"{listing(names)} {'was' if one else 'were'} proposed below high confidence, so "
-        f"{'it' if one else 'each'} is confirmed on its own, after the evidence for its proposal "
-        f"is read, never in one press with other readings.",
+        "One press confirms one whole group of roles proposed below high confidence for one "
+        "reason, or one column on its own, never more, after the evidence for its proposal is "
+        f"read, so this block is refused. It lists {'; '.join(named)}{others}.",
         exits=exits)
 
 

@@ -635,14 +635,21 @@ def test_6_the_estimand_question_asks_the_roles_that_rode_along(tmp_path):
         card = step["ask"]
         assert card["consumer"] == "what you study and its effect"
         assert {c for g in card["groups"] for c in g["columns"]} == set(waiting)
+        # Each waiting role is confirmable in one press: its own, or its group's where the roles
+        # stage proposed it with others alike (ruling R-g: a block of roles alone, one proposal).
         confirms = {(e["decision"]["column"], e["decision"]["value"])
                     for e in card["exits"] if (e["decision"] or {}).get("kind") == "confirm_reading"}
+        confirms |= {(i["column"], i["value"]) for e in card["exits"]
+                     if (e["decision"] or {}).get("kind") == "confirm_readings"
+                     and all(i["reading"] == "role" for i in e["decision"]["items"])
+                     for i in e["decision"]["items"]}
         assert {(c, roles[c]) for c in waiting} <= confirms
         offered = drive.artifact("proposals")["estimand"]
         assert "fiber_g" in {u["column"] for u in offered["unconfirmed"]}
         assert "fiber_g" not in {e["column"] for e in offered["exposures"]}
-        # Confirmed one by one, as their author reads them, the exposure is offered and chosen.
-        for body in confirm_each(roles, waiting):
+        # Confirmed as their author reads them, each group in its one press, the exposure is offered
+        # and chosen.
+        for body in confirm_each(roles, waiting, drive.artifact("roles")):
             drive.decide(body)
         _until(lambda: drive.artifact("proposals")["estimand"],
                lambda o: "fiber_g" in {e["column"] for e in o["exposures"]})

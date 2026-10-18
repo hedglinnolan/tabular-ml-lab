@@ -356,18 +356,21 @@ def _proposals() -> dict:
     ]}
 
 
-def test_under_predict_a_role_read_from_the_values_says_predictor():
-    """An exposure and a covariate are both predictors under Predict (BEATS_PREDICT C1: a
-    predictor is the engine's covariate), so neither offers the other: the change would read
-    "is a predictor" beside "is a predictor"."""
+def test_under_predict_a_role_read_from_the_values_says_its_group():
+    """W1-T's V1 (U8a): under Predict a role the values settled reads as the role lines say it, by
+    the roles card's groups (the roles ruling of 2026-10-17: under the dietary lens a nutrient and a
+    characteristic), and its presses are the role lines' own: a move between the groups, or out of
+    the models. Written out here from the ruling's words."""
     state = _state("prediction", roles={"protein_g": "exposure", "age": "covariate"})
     items = {i["column"]: i for i in readings.read_from_data(state, roles=_proposals())}
-    assert items["protein_g"]["words"] == items["age"]["words"] == "is a predictor"
+    assert items["protein_g"]["words"] == "is a nutrient"
+    assert items["age"]["words"] == "is a characteristic"
     assert [e["label"] for e in items["protein_g"]["change"]] == [
-        "`protein_g` is left out of the models"]
-    assert [e["label"] for e in items["age"]["change"]] == ["`age` is left out of the models"]
+        "Move `protein_g` to the characteristics", "`protein_g` is left out of the models"]
+    assert [e["label"] for e in items["age"]["change"]] == [
+        "Move `age` to the nutrients", "`age` is left out of the models"]
     said = readings.read_from_values_sentence(list(items.values()))
-    assert "`protein_g` is a predictor (rises with total energy" in said
+    assert "`protein_g` is a nutrient (rises with total energy" in said
     assert not any(w in said for w in STUDY_WORDS)
 
 
@@ -428,8 +431,9 @@ def test_under_predict_the_values_readings_say_the_roles_stages_evidence_with_no
                                         f"energy (r = {r:.2f})."), c
     assert items["protein_g"]["evidence"].startswith("A nutrient that carries energy; its energy "
                                                      "and the others' add up to `energy_kcal`")
-    for c in ("age", "protein_g", "carbohydrate_g", "fat_g"):
-        assert items[c]["words"] == "is a predictor", c
+    assert items["age"]["words"] == "is a characteristic"
+    for c in ("protein_g", "carbohydrate_g", "fat_g"):
+        assert items[c]["words"] == "is a nutrient", c
     said = readings.read_from_values_sentence(list(items.values())).lower()
     for word in (*STUDY_WORDS, "studied", "adjusted for", "covariate"):
         assert word not in said, word
@@ -455,11 +459,13 @@ def test_under_predict_a_left_out_column_offers_one_way_into_the_models():
     labels = {p: [e["label"] for e in readings.read_from_data(
         _state(p, roles={"note": "excluded"}), roles=proposals)[0]["change"]]
         for p in ("prediction", "inference")}
-    assert labels == {"prediction": ["`note` is a predictor"],
+    # under Predict each way in is a move into one of the roles card's groups (U8a)
+    assert labels == {"prediction": ["Move `note` to the characteristics",
+                                     "Move `note` to the nutrients"],
                       "inference": ["`note` is a covariate", "`note` is what you study"]}
 
 
-@pytest.mark.parametrize("purpose, words", [("prediction", "a predictor"),
+@pytest.mark.parametrize("purpose, words", [("prediction", "a nutrient"),
                                             ("inference", "what you study"),
                                             (None, "what you study")])
 def test_an_unsettled_roles_exits_and_ask_name_it_by_the_goals_word(purpose, words):
@@ -491,12 +497,13 @@ def _models_card(purpose: str | None):
 
 
 @pytest.mark.parametrize("purpose, words", [
-    ("prediction", {"protein_g": "a predictor", "bp_sys": "a predictor"}),
+    ("prediction", {"protein_g": "a nutrient", "bp_sys": "a characteristic"}),
     ("inference", {"protein_g": "what you study", "bp_sys": "a covariate"}),
     (None, {"protein_g": "what you study", "bp_sys": "a covariate"})])
 def test_the_models_ask_card_asks_and_answers_in_one_goals_words(purpose, words):
     """W1-R round 2 (R2's P4): the card's lines, its question and its buttons word each role the
-    same way, the goal's (under Predict a predictor, under Estimate as before)."""
+    same way, the goal's (under Predict the roles card's group, as the role lines say it: U8a;
+    under Estimate as before)."""
     card = _models_card(purpose)
     said = {g.columns[0]: g.guess_words for g in card.groups}
     assert said == words
@@ -508,7 +515,7 @@ def test_the_models_ask_card_asks_and_answers_in_one_goals_words(purpose, words)
 def test_the_quest_logs_ask_items_word_each_role_by_the_goal():
     from turbotab.core.tests.test_stage_registry import record
 
-    for purpose, word in (("prediction", "a predictor"), ("inference", "a covariate")):
+    for purpose, word in (("prediction", "a characteristic"), ("inference", "a covariate")):
         records = [record(1, {"kind": "set_lens", "lenses": ["dietary"]}),
                    record(2, {"kind": "set_target", "column": "y"}),
                    record(3, {"kind": "set_purpose", "purpose": purpose}),
@@ -621,20 +628,84 @@ SHELF_HAS_SCREEN = {"regression": True, "binary": True, "multiclass": False, "or
                     "time_to_event": False}
 
 
+# What the served card says each step does to each predictor role (U7), clause by clause: each is
+# read from the code by the test after it.
+SAID = {
+    "exposure": ("A predictor: may be screened out, normalized, batch-corrected, filled from total "
+                 "energy if it carries energy."),
+    "energy": ("Total energy, a predictor: filled by its median, it fills nutrients; never screened, "
+               "normalized or batch-corrected."),
+    "covariate": ("A predictor such as age: filled without total energy; never screened, "
+                  "normalized or batch-corrected."),
+}
+
+
 def test_under_predict_the_served_roles_card_names_every_step_that_reads_the_predictor_role():
     """The served card is the same in every project, so each predictor option names all four steps
-    (W1-S se: the energy-aware fill was left out), within the teaching budgets (above)."""
+    (W1-S se: the energy-aware fill was left out) and says what each does to that role (U7: the
+    fill never "skipped" a covariate; it fills one by its median), within the teaching budgets
+    (above)."""
     entry = _roles_entry("prediction")
-    options = {o["value"]: o["consequence"] for o in entry["options"]}
+    options = {o["value"]: o["consequence"] for o in entry["options"] if o["value"] in SAID}
     terms = {t["term"]: t["definition"] for t in entry["terms"]}
-    steps = "the energy-aware fill, screen, normalization and batch correction"
-    assert options["exposure"] == f"A predictor that {steps} act on."
-    assert options["covariate"] == f"A predictor such as age, which {steps} skip."
-    assert options["energy"] == ("Total energy, a predictor the energy-aware fill reads; screen, "
-                                 "normalization and batch correction skip it.")
-    assert terms["covariate"].endswith(f"; {steps} skip it.")
+    assert options == SAID
+    assert terms["covariate"] == ("A predictor such as age or sex. Every model reads it; it is "
+                                  "filled without total energy, never screened, normalized or "
+                                  "batch-corrected.")
     for text in (*options.values(), *terms.values()):
         assert "omics screen" not in text and "like any other" not in text, text
+        assert "skip" not in text, text
+
+
+def test_each_step_the_served_roles_card_names_does_to_each_role_what_it_says():
+    """U7, read from the code on one constructed frame and state: the energy-aware fill fills a
+    Predictor column that carries energy from its line on total energy (carbohydrate is an exact
+    line, 0.1 of 2,800), a Predictor column that carries none and a covariate by their medians
+    ("filled without total energy"), and total energy by its median; the screened elastic net's
+    screen takes the Predictor columns alone ("may be screened out"; the others are "never
+    screened"); normalization and reference ComBat adjust the Predictor columns alone."""
+    from types import SimpleNamespace
+
+    import turbotab.core.methods.omics  # noqa: F401 - registers the screened family
+    from turbotab.core.decisions import BatchSpec, FindingDisposition
+    from turbotab.core.methods.batch import design_batch
+    from turbotab.core.methods.missing import EnergyAwareImputer, energy_fill
+    from turbotab.core.methods.omics import FINDING, design_normalization
+    from turbotab.core.models.base import get_family
+
+    roles = {"carb_g": "exposure", "g1": "exposure", "age": "covariate", "kcal": "energy"}
+    predictors = list(roles)
+    assert "filled from total energy if it carries energy" in SAID["exposure"]
+    fill = energy_fill(None, predictors, roles, predictors)
+    assert fill == {"energy": "kcal", "nutrients": ["carb_g"]}  # g1 carries no energy
+    kcal = np.array([1000.0, 1200.0, 1400.0, 2800.0, 3000.0, 1600.0])
+    frame = pd.DataFrame({"carb_g": 0.1 * kcal, "g1": [3.0, 1.0, 4.0, 1.0, 5.0, 9.0],
+                          "age": [30.0, 40.0, 50.0, 60.0, 70.0, 80.0], "kcal": kcal})
+    frame.loc[3, ["carb_g", "g1", "age"]] = np.nan
+    frame.loc[5, "kcal"] = np.nan
+    out = pd.DataFrame(np.asarray(EnergyAwareImputer(energy="kcal", nutrients=fill["nutrients"])
+                                  .fit(frame).transform(frame), dtype=float), columns=predictors)
+    assert out.loc[3, "carb_g"] == pytest.approx(280.0)  # its line on total energy
+    observed = frame.drop(index=[3])
+    assert out.loc[3, "g1"] == pytest.approx(float(observed["g1"].median()))
+    assert "filled without total energy" in SAID["covariate"]
+    assert out.loc[3, "age"] == pytest.approx(float(observed["age"].median()))
+    assert "filled by its median, it fills nutrients" in SAID["energy"]
+    assert out.loc[5, "kcal"] == pytest.approx(float(frame["kcal"].dropna().median()))
+    [(_name, screen)] = get_family("screened_elastic_net").preprocess(
+        SimpleNamespace(predictors=predictors, roles=roles))
+    assert list(screen.columns) == ["carb_g", "g1"]
+    findings = {FINDING: FindingDisposition(action="applied", option="log_cpm",
+                                            params={"kind": "counts", "columns": predictors})}
+    state = ProjectState(lens=["genomics"], target="y", purpose="prediction",
+                         roles={**roles, "plate": "design"}, findings=findings,
+                         batch=BatchSpec(column="plate", method="reference_combat"))
+    assert design_normalization(state, [*predictors, "plate"])["columns"] == ["carb_g", "g1"]
+    assert design_batch(state, [*predictors, "plate"], predictors, None)["columns"] == [
+        "carb_g", "g1"]
+    for role in ("energy", "covariate"):
+        assert "never screened, normalized or batch-corrected" in SAID[role]
+    assert "may be screened out, normalized, batch-corrected" in SAID["exposure"]
 
 
 @pytest.mark.parametrize("lenses, task, roles, names, steps", [
@@ -804,3 +875,149 @@ def test_normalization_and_batch_correction_the_assay_card_names_act_on_predicto
     inputs = [*predictors, "plate"]
     assert design_normalization(state, inputs)["columns"] == ["g1", "g2"]
     assert design_batch(state, inputs, predictors, None)["columns"] == ["g1", "g2"]
+
+
+# ── W1-T's V3: the energy-aware fill is named only where it would run ─────────
+
+
+@pytest.mark.parametrize("roles, runs", [
+    # a clinical project with kcal as total energy and no predictor that carries energy
+    ({"kcal": "energy", "bp_sys": "exposure", "age": "covariate"}, False),
+    # the same beside a nutrient that does
+    ({"kcal": "energy", "fat_g": "exposure", "age": "covariate"}, True)])
+def test_the_energy_aware_fill_is_named_only_where_it_would_run(roles, runs):
+    """``methods.missing.energy_fill`` returns None when no Predictor column carries energy, so the
+    notes, the energy column's role line and its values' reading name the fill only where it runs
+    (read from the code here, both ways)."""
+    from turbotab.core import decisions
+    from turbotab.core.methods.missing import energy_fill
+    from turbotab.core.tests.test_stage_registry import record
+
+    predictors = list(roles)
+    assert (energy_fill(None, predictors, roles, predictors) is not None) == runs
+    assert (readings.FILL in readings.predict_steps(["clinical"], "regression", roles)) == runs
+    for group in readings.predictor_groups(["clinical"], "regression", roles).values():
+        assert (readings.FILL in group.note.lower()) == runs, group.note
+    said = "(the energy-aware fill no longer reads it)"
+    records = [record(1, {"kind": "set_lens", "lenses": ["clinical"]}),
+               record(2, {"kind": "set_target", "column": "y"}),
+               record(3, {"kind": "set_purpose", "purpose": "prediction"}),
+               record(4, {"kind": "set_roles", "roles": roles, "unconfirmed": ["kcal"]})]
+    log = quest.quest_log(decisions.fold(records), records, steps_until("exclusions"))
+    [line] = [l for s in log.stages for l in s.lines if l.key == quest.role_line_key("kcal")]
+    labels = [o.label for o in line.items[0].options]
+    assert labels[1] == "Move `kcal` to the characteristics" + (f" {said}" if runs else "")
+    proposals = {"columns": [{"column": c, "proposed": r, "confidence": "high", "reason": "read"}
+                             for c, r in roles.items()]}
+    state = ProjectState(lens=["clinical"], target="y", purpose="prediction", roles=roles)
+    kcal = next(i for i in readings.read_from_data(state, roles=proposals) if i["column"] == "kcal")
+    assert kcal["words"] == "is total energy"
+    assert [e["label"] for e in kcal["change"]][0] == \
+        "Move `kcal` to the characteristics" + (f" {said}" if runs else "")
+
+
+def test_under_estimate_the_energy_columns_values_reading_is_as_before():
+    roles = {"kcal": "energy", "fat_g": "exposure", "age": "covariate"}
+    proposals = {"columns": [{"column": c, "proposed": r, "confidence": "high", "reason": "read"}
+                             for c, r in roles.items()]}
+    for purpose in ("inference", None):
+        state = ProjectState(lens=["clinical"], target="y", purpose=purpose, roles=roles)
+        kcal = next(i for i in readings.read_from_data(state, roles=proposals)
+                    if i["column"] == "kcal")
+        assert kcal["words"] == "is total energy intake"
+        assert [e["label"] for e in kcal["change"]] == ["`kcal` is a covariate",
+                                                        "`kcal` is left out of the models"]
+
+
+# ── W1-T's V2 (U8b): a role line's press is recorded as the press says it ────
+
+
+@pytest.mark.parametrize("column, role, said", [
+    ("bp_sys", "covariate", "`bp_sys` was confirmed as a characteristic"),
+    ("bp_sys", "exposure", "`bp_sys` moved from the Characteristic role to the Nutrient role"),
+    ("kcal", "covariate", "`kcal` left the energy role for the Characteristic role"),
+    ("cycle", "covariate", "`cycle` moved to the Characteristic role"),
+    ("bp_sys", "excluded", "`bp_sys` was recorded as left out of the models")])
+def test_under_predict_a_role_lines_press_is_recorded_as_its_label_says_it(column, role, said):
+    """The press "Move `bp_sys` to the nutrients" was recorded as "`bp_sys` was confirmed as a
+    predictor on its own", the words of confirming the proposal. Under Predict the record names the
+    roles card's groups (dietary lens: nutrients and characteristics): a confirmation as the group,
+    a move between groups as a move, the energy column's as leaving the energy role."""
+    from turbotab.core import voice
+
+    state = ProjectState(lens=["dietary"], target="y", purpose="prediction",
+                         roles={"bp_sys": "covariate", "kcal": "energy", "fat_g": "exposure",
+                                "cycle": "excluded"},
+                         roles_unconfirmed=["bp_sys", "kcal", "cycle"])
+    sentence = voice.sentence_for({"kind": "confirm_role", "column": column, "role": role}, state)
+    assert sentence == f"{said} on its own, after the evidence for its proposal was read."
+
+
+def test_under_estimate_a_role_lines_press_is_recorded_as_before():
+    from turbotab.core import voice
+
+    state = ProjectState(lens=["dietary"], target="y", purpose="inference",
+                         roles={"bp_sys": "covariate"}, roles_unconfirmed=["bp_sys"])
+    for role, words in (("covariate", "a covariate"), ("exposure", "an exposure")):
+        assert voice.sentence_for({"kind": "confirm_role", "column": "bp_sys", "role": role},
+                                  state) == (f"`bp_sys` was confirmed as {words} on its own, after "
+                                             f"the evidence for its proposal was read.")
+
+
+# ── U7: the explanations' default curves under Predict ────────────────────────
+
+
+def _default_curves(purpose: str | None) -> tuple[list[str], list[str]]:
+    """A linear model on four predictors, one per predictor role and two covariates, ``age``
+    weighing most: the default curves' inputs under ``purpose`` and the order numpy gives the
+    candidates by mean |SHAP| (a linear model's is |β| times the mean absolute deviation)."""
+    from sklearn.linear_model import LinearRegression
+    from sklearn.pipeline import Pipeline
+
+    from turbotab.core.models import explain as E
+    from turbotab.core.stages.explain import curve_candidates
+
+    rng = np.random.default_rng(31)
+    n = 300
+    X = pd.DataFrame({"protein": rng.normal(70, 15, n), "age": rng.uniform(20, 80, n),
+                      "kcal": rng.normal(2000, 400, n), "bmi": rng.normal(27, 4, n)})
+    y = (0.05 * X["protein"] + 2.0 * X["age"] + 0.01 * X["kcal"] + 0.3 * X["bmi"]
+         + rng.normal(0, 5, n)).to_numpy()
+    roles = {"protein": "exposure", "age": "covariate", "kcal": "energy", "bmi": "covariate",
+             "sid": "identifier"}
+    candidates = curve_candidates(list(X.columns), roles, purpose)
+    linear = Pipeline([("model", LinearRegression())]).fit(X, y)
+    fam = E.FamilyFit(key="linear", label="Linear model", fitted=linear, unfitted=linear,
+                      versus={"verdict": "better"}, score=25.0, baseline=900.0)
+    art = E.explain([fam], E.Setting(task="regression", purpose=purpose, target="y", event=None,
+                                     X=X, y=y, reseeds=0, candidates=candidates,
+                                     metric_label="MSE", baseline_label="the outcome's average"),
+                    lambda *a: None)
+    beta = dict(zip(X.columns, linear[-1].coef_))
+    weight = {c: abs(beta[c]) * float(np.mean(np.abs(X[c] - X[c].mean()))) for c in candidates}
+    return [c.input for c in art.curves], sorted(candidates, key=lambda c: -weight[c])
+
+
+def test_under_predict_the_default_curves_choose_among_every_predictor_role_column():
+    from turbotab.core.models import explain as E
+    from turbotab.core.stages.explain import curve_candidates
+
+    roles = {"protein": "exposure", "age": "covariate", "kcal": "energy", "sid": "identifier",
+             "imputed_bmi": "flag"}
+    assert curve_candidates(["protein", "age", "kcal"], roles, "prediction") == [
+        "protein", "age", "kcal"]
+    shown, want = _default_curves("prediction")
+    # the same rule as among the Predictor columns (the best family's importance), the cap kept
+    assert shown == want[:E.TOP_EXPOSURES] and len(want) > E.TOP_EXPOSURES
+    assert shown[0] == "age"
+
+
+@pytest.mark.parametrize("purpose", ["inference", None])
+def test_under_estimate_the_default_curves_choose_among_the_predictor_columns_as_before(purpose):
+    from turbotab.core.stages.explain import curve_candidates
+
+    roles = {"protein": "exposure", "age": "covariate", "kcal": "energy"}
+    assert curve_candidates(["protein", "age", "kcal"], roles, purpose) == ["protein"]
+    if purpose is None:
+        shown, want = _default_curves(purpose)
+        assert shown == want == ["protein"]

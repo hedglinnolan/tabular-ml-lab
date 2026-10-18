@@ -199,6 +199,19 @@ class SentenceFacts:
         return self._ctx.store() if self._ctx.store else None
 
     @cached_property
+    def roles(self) -> Any:
+        """The roles stage's proposals, fresh, else the newest a client was shown (as a block of
+        roles is validated against them): a group's press is said with the proposal its columns
+        share (ruling R-g; ``voice._confirm_readings``)."""
+        found = self._artifact("roles")
+        if found is not None or not self._ctx.shown:
+            return found
+        try:
+            return self._ctx.shown("roles")
+        except Exception:  # noqa: BLE001 - a sentence never fails a decision
+            return None
+
+    @cached_property
     def detected_task(self) -> str | None:
         info = self._artifact("target_info")
         state = self._ctx.state
@@ -1651,6 +1664,19 @@ class ProjectService:
         target = folded.target
         return vouch(out, read_seen(self.workspace.project_dir(pid)).get(target or "", []), target)
 
+    def _served_roles(self, pid: str, data: dict[str, Any]) -> dict[str, Any]:
+        """The roles stage's proposals with the predictor groups the roles card draws under Predict
+        (W1 part 2's U6; ``readings.served_groups``): for the project's lenses and its task, as
+        answered or as the outcome reads (``estimand.effective_task``), where the energy-aware fill
+        would run and where not, and the columns that carry energy. They are read as served, so
+        the task the outcome reads names them without the stage computing again."""
+        from turbotab.core.readings import proposals_of, served_groups
+
+        state = self.log(pid).state()
+        task = estimand.effective_task(state, self._fresh(pid, "target_info", public=True))
+        columns = [str(p.get("column")) for p in proposals_of(data)]
+        return {**data, "predictor_groups": served_groups(state.lens, task, columns)}
+
     def _served_design(self, pid: str, data: dict[str, Any], key: str) -> dict[str, Any]:
         """The design as a client may see it (audit ME-03): under inference the energy-dropped
         residual's coefficient gap waits for the plan's lock, which the stage does not read; once
@@ -1903,7 +1929,9 @@ class ProjectService:
                   # TRUST: the band's refits say which rows they resample: the analyzed rows,
                   # as the participant flow counts them now (the table's rows bound them).
                   "set_substitution": {"n_analyzed": facts.n_cohort, "n_rows": facts.n_rows}}
-        return methods_text(records, {"detected_task": facts.detected_task, "counts": stages})
+        # A group's press (ruling R-g) is restated with the proposal its columns share.
+        return methods_text(records, {"detected_task": facts.detected_task, "counts": stages,
+                                      "roles": facts.roles})
 
     def _flow_counts(self, pid: str) -> dict[str, Any]:
         """The counts the participant flow has now, by the decision kind whose sentence states them
@@ -1968,6 +1996,8 @@ class ProjectService:
             artifact = {"value": artifact}
         if stage == "fit" and artifact is not None:
             artifact = self._served_fit(pid, artifact, key)
+        if stage == "roles" and artifact is not None:
+            artifact = self._served_roles(pid, artifact)
         if stage == "design" and artifact is not None and key:
             artifact = self._served_design(pid, artifact, key)
         if artifact is not None and stage in estimand.ESTIMATE_STAGES:

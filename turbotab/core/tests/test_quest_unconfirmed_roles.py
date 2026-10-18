@@ -447,13 +447,17 @@ def test_the_fits_ask_keeps_a_block_of_several_codes_or_amounts():
 
 def _fixture() -> dict:
     """Your data's role lines on the NHANES columns the capture under Predict left waiting (two
-    open, one confirmed since, a flag), and the words and choices they are made of, by role."""
+    open, one confirmed since, a flag, and two lab values the roles stage proposed with one reason,
+    one group: ruling R-g), and the words and choices they are made of, by role."""
     roles = {"SEQN": "identifier", "age": "covariate", "bp_sys": "covariate",
-             "waist": "covariate", "imputed_waist": "flag", "cycle_begin_year": "excluded"}
-    waiting = ["bp_sys", "waist", "imputed_waist", "cycle_begin_year"]
+             "waist": "covariate", "imputed_waist": "flag", "cycle_begin_year": "excluded",
+             "hdl": "covariate", "triglycerides": "covariate"}
+    waiting = ["bp_sys", "waist", "imputed_waist", "cycle_begin_year", "hdl", "triglycerides"]
+    one_reason = "A laboratory value named like a person's characteristic."
     proposals = {"columns": [
         {"column": c, "proposed": r, "confidence": "medium" if c in waiting else "high",
-         "reason": f"the reason the roles stage gives for `{c}`"} for c, r in roles.items()]}
+         "reason": one_reason if c in ("hdl", "triglycerides") else
+         f"the reason the roles stage gives for `{c}`"} for c, r in roles.items()]}
     # The capture's lens (src/mocks/fixtures/m3-nhanes-prediction.json): under Predict a role line's
     # words follow the lenses, so the lines are worded as the capture's are.
     records = [
@@ -489,24 +493,35 @@ def _fixture() -> dict:
     screen_tasks = [t for t in tasks if readings.screen_on_shelf(t)]
     shelves = {"screen": screen_tasks[0],
                "no screen": next(t for t in tasks if t not in screen_tasks)}
-    energy = {"energy": {"{column}": "energy"}, "no energy": {}}
 
     def kind(lens: list[str]) -> dict:
         def changes(r: str) -> dict[str, str]:
             return {o: quest.role_line_text("{column}", r, o, "prediction", lens)["change"]
                     for o in quest.role_choices(r, "prediction", lens)}
 
-        def groups(task: str, roles: dict[str, str]) -> dict:
-            return {r: {"one": g.one, "head": list(g.head), "note": g.note}
-                    for r, g in readings.predictor_groups(lens, task, roles).items()}
+        def groups(task: str) -> dict:
+            # The groups the server serves beside the proposals (``readings.served_groups``), for
+            # roles where the energy-aware fill runs and where it does not.
+            served = readings.served_groups(lens, task, ())
+            return {"fill": served["fill"], "no_fill": served["no_fill"]}
 
         return {
             "reasons": {r: quest.role_line_reason("{column}", r, "prediction", lens) for r in every},
             "words": {r: readings.role_line_words(r, "prediction", lens) for r in every},
             "choices": {r: quest.role_choices(r, "prediction", lens) for r in every},
             "changes": {r: changes(r) for r in every},
-            "groups": {s: {e: groups(task, roles) for e, roles in energy.items()}
-                       for s, task in shelves.items()},
+            "groups": {s: groups(task) for s, task in shelves.items()},
+            "group": group_words("prediction", lens),
+        }
+
+    def group_words(purpose: str | None, lens: list[str] | None = None) -> dict:
+        """A group line's words by role (ruling R-g): its role for many, why it waits (two
+        columns read "both"), and its one press."""
+        return {
+            "many": {r: readings.role_group_words(r, purpose, lens) for r in every},
+            "reasons": {r: quest.role_group_reason("{n}", r, purpose, lens) for r in every},
+            "reasons_two": {r: quest.role_group_reason(2, r, purpose, lens) for r in every},
+            "press": {r: readings.group_press_label("{n}", r, purpose, lens) for r in every},
         }
 
     goals = {"prediction": {
@@ -521,6 +536,14 @@ def _fixture() -> dict:
         "key": quest.role_line_key("{column}"),
         "unread_evidence": unread.items[0].evidence,
         "templates": templates,
+        # A group of columns proposed alike (ruling R-g): one line, its first item the group's
+        # reading with its one press, then each column's own reading with its moves.
+        "group": {"key": quest.role_group_key("{column}"), "item": quest.ROLE_GROUP_ITEM,
+                  "name": quest.role_group_name("{columns}"),
+                  "head": {"waiting": quest.role_group_head("{n}", "{many}", "{confidence}"),
+                           "settled": quest.role_group_head("{n}", "{many}", "{confidence}",
+                                                            False)},
+                  **group_words(None)},
         "reasons": {r: quest.role_line_reason("{column}", r) for r in every},
         "words": {r: readings.role_words(r) for r in every},
         "choices": {r: quest.role_choices(r) for r in every},

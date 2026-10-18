@@ -14,6 +14,12 @@ each settled six flags and a covariate in one press. Now:
   confidence, whoever posts it, with an exit that confirms each such role on its own; a block of
   other readings, or one role on its own, is accepted.
 
+Ruling R-g (2026-10-17) replaced R-b's one press per column: the columns the roles stage proposed
+with one role, one confidence and one reason word for word are one group, confirmed in one press
+(``test_role_groups.py``). The tests here hold where no such group is at hand: with no proposals
+given, each waiting column is a group of its own (the strictest case), and a proposal of its own
+reason is one too.
+
 Every expectation is from construction: which columns the roles answer recorded as proposed below
 high (``roles_unconfirmed``), or which proposals the roles stage made below high, is written here.
 """

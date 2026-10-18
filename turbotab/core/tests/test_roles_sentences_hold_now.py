@@ -96,7 +96,10 @@ def test_with_nothing_waiting_the_roles_sentence_names_no_wait(tmp_path):
 # ── finding 3c: a role in the goal's words, as the goal stands ─────────────────
 
 
-def test_under_predict_each_confirmation_names_a_predictor(tmp_path):
+def test_under_predict_each_confirmation_names_its_group(tmp_path):
+    """W1-T's V2 (U8b): under Predict a role's confirmation names the roles card's group for it in
+    the project, as its role line's press does (the roles ruling of 2026-10-17: under the dietary
+    lens a nutrient and a characteristic)."""
     log = _log(tmp_path, *HEAD, SetPurpose(purpose="prediction"),
                SetRoles(roles=ROLES, unconfirmed=WAITING),
                ConfirmRole(column="bp_sys", role="covariate"),
@@ -104,14 +107,14 @@ def test_under_predict_each_confirmation_names_a_predictor(tmp_path):
                ConfirmReadings(items=[ReadingItem(reading="role", column="waist",
                                                   value="covariate")]))
     assert _recorded(log, "confirm_role") == [
-        "`bp_sys` was confirmed as a predictor on its own, after the evidence for its proposal was "
-        "read."]
+        "`bp_sys` was confirmed as a characteristic on its own, after the evidence for its "
+        "proposal was read."]
     assert _recorded(log, "confirm_reading") == [
-        "`protein_g` was confirmed as a predictor, on its own, after the evidence for its reading "
+        "`protein_g` was confirmed as a nutrient, on its own, after the evidence for its reading "
         "was read."]
     assert _recorded(log, "confirm_readings") == [
         "Confirmed together, each as the question showed it: `waist` was confirmed as a "
-        "predictor."]
+        "characteristic."]
 
 
 def test_under_estimate_each_confirmation_names_the_role_as_before(tmp_path):
@@ -129,8 +132,8 @@ def test_under_estimate_each_confirmation_names_the_role_as_before(tmp_path):
 
 def test_roles_recorded_before_the_goal_are_worded_by_the_goal_in_the_methods(tmp_path):
     """Your data comes before Your question: the roles and their confirmations are recorded with no
-    goal, in Estimate's words. Once the goal is prediction the methods say "predictor"; the Record
-    keeps each sentence as said."""
+    goal, in Estimate's words. Once the goal is prediction the methods say "predictor", and a
+    confirmation names the roles card's group (U8b); the Record keeps each sentence as said."""
     log = _log(tmp_path, *HEAD, SetRoles(roles=ROLES, unconfirmed=WAITING),
                ConfirmRole(column="bp_sys", role="covariate"))
     as_said = _recorded(log, "set_roles") + _recorded(log, "confirm_role")
@@ -142,8 +145,8 @@ def test_roles_recorded_before_the_goal_are_worded_by_the_goal_in_the_methods(tm
                sentence=lambda x, before: voice.sentence_for(x, before, None))
     assert _said(log, "set_roles") == [f"{PREDICT_BODY}{_waits(['waist', 'protein_g'])}"]
     assert _said(log, "confirm_role") == [
-        "`bp_sys` was confirmed as a predictor on its own, after the evidence for its proposal was "
-        "read."]
+        "`bp_sys` was confirmed as a characteristic on its own, after the evidence for its "
+        "proposal was read."]
     assert _recorded(log, "set_roles") + _recorded(log, "confirm_role") == as_said
     # back under Estimate, the words are Estimate's again
     log.append(SetPurpose(purpose="inference"),

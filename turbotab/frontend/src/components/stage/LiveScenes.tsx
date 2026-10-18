@@ -15,8 +15,7 @@ import type {
 } from "../../api/m1-stage-types";
 import type { DecisionKind, ProjectView } from "../../api/schema";
 import { StaleVeil, type VeilState } from "../../motion/StaleVeil";
-import { useQuest } from "../../api/queries";
-import { waitingClause, waitingPredictors, waitingSentence } from "../../quest/cards/roles/roles";
+import { waitingClause, waitingSentence } from "../../quest/cards/roles/roles";
 import { useStageFocus } from "../../state/focus";
 import { StageFailure, rootFailure } from "../Failure";
 import { StageRetry } from "../StageRetry";
@@ -40,6 +39,11 @@ export interface LiveData extends ResultsData {
   /** Why no fit is shown yet, when the screen withholds it (StageProps `fitWithheld`); the fit's
    *  artifact is then null here, whether or not it is computed. */
   fitWithheld?: string | null;
+  /** How many columns proposed as predictors wait for their role's confirmation, as the quest log
+   *  the stage's parent already reads counts them (StageProps `waitingPredictors`; roles.ts
+   *  `waitingPredictorColumns`); null where the parent reads no quest log, so the card says nothing
+   *  of them and asks the server nothing. */
+  waitingPredictors?: number | null;
 }
 
 /** The participant flow as recorded: the cohort's steps, then the split's fork. */
@@ -177,12 +181,14 @@ function Provenance({ text }: { text: string }) {
  * role confirmation, which are not predictors yet (the walkthrough of 2026-10-17, finding 1): the
  * count is the quest log's open role lines (core/quest.py `_role_lines`), never one counted here,
  * of columns proposed in a predictor role (W1-T: a flag never enters the models, so it is not
- * counted). Where no column is a predictor yet, the sentence says "yet" once.
+ * counted), each column of a group's line among them (ruling R-g). It comes with the stage's data
+ * from the quest log its parent already reads (`LiveData.waitingPredictors`), so a card drawn from
+ * fixtures asks the server nothing (U9). Where no column is a predictor yet, the sentence says
+ * "yet" once.
  */
 export function ColumnsCard({ view, data, full }: { view: ProjectView; data: LiveData; full: boolean }) {
   const { toggle } = useStageFocus();
-  const quest = useQuest(data.pid).data;
-  const nWaiting = quest ? waitingPredictors(quest).length : 0;
+  const nWaiting = data.waitingPredictors ?? 0;
   const waiting = waitingSentence(nWaiting);
   const warnings = data.design?.warnings ?? [];
   const lineage =

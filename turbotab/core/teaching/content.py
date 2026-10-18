@@ -770,15 +770,21 @@ ROLES = {
 # carries energy from total energy and every other column without it. The roles ruling of
 # 2026-10-17: every predictor role is a predictor, so the card says three roles enter the models
 # as predictors, and each option names every step that reads the Predictor role alone
-# (``readings.predict_steps``). These are the words for any project; the card names each group in
-# the project's own words (``readings.predictor_groups``, which the shell's roles fixture holds).
-_STEPS = "the energy-aware fill, screen, normalization and batch correction"
+# (``readings.predict_steps``), saying what each does to it (W1 part 2's U7: the fill fills a
+# covariate without total energy, by its median where it is a number; it never "skips" one). These
+# are the words for any project; the card names each group in the project's own words
+# (``readings.predictor_groups``, which the server serves with the roles stage's artifact). Each
+# clause is read from the code by ``tests/test_estimate_words_under_predict.py``.
 _PREDICT_OPTIONS = {
-    "exposure": option("exposure", "Predictor", f"A predictor that {_STEPS} act on."),
+    "exposure": option("exposure", "Predictor",
+                       "A predictor: may be screened out, normalized, batch-corrected, filled from "
+                       "total energy if it carries energy."),
     "energy": option("energy", "Energy",
-                     "Total energy, a predictor the energy-aware fill reads; screen, normalization "
-                     "and batch correction skip it."),
-    "covariate": option("covariate", "Covariate", f"A predictor such as age, which {_STEPS} skip."),
+                     "Total energy, a predictor: filled by its median, it fills nutrients; never "
+                     "screened, normalized or batch-corrected."),
+    "covariate": option("covariate", "Covariate",
+                        "A predictor such as age: filled without total energy; never screened, "
+                        "normalized or batch-corrected."),
 }
 ROLES_UNDER_PREDICT = {
     **ROLES,
@@ -788,8 +794,9 @@ ROLES_UNDER_PREDICT = {
     "terms": [
         term("predictor", "A column the model reads to predict the outcome, such as a nutrient "
                           "intake or age."),
-        term("covariate", f"A predictor such as age or sex. Under prediction every model reads "
-                          f"it; {_STEPS} skip it."),
+        term("covariate", "A predictor such as age or sex. Every model reads it; it is filled "
+                          "without total energy, never screened, normalized or "
+                          "batch-corrected."),
         *(t for t in ROLES["terms"] if t["term"] == "identifier"),
     ],
 }

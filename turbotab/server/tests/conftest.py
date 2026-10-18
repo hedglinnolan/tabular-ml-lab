@@ -328,9 +328,10 @@ def truth_of(pid: str) -> Any:
 
 def answer_settled(client: TestClient, pid: str, key: str | None, answer: dict) -> Any:
     """Post ``answer``; after roles, confirm each one that rode along, with the role the answer
-    gave it, on its own (the server refuses a block that confirms several: BLUEPRINT §14 rule 2);
-    when the answer is refused only for readings to settle, answer them from the fixture's truth
-    and post it again."""
+    gave it: each group of one proposal in its one press, every other column on its own (the
+    server refuses any other block: BLUEPRINT §14 rule 2, ruling R-g; ``confirm_each``); when the
+    answer is refused only for readings to settle, answer them from the fixture's truth and post it
+    again."""
     from turbotab.core.tests.acceptance.server_drive import confirm_each
     from turbotab.core.tests.truths import answer_refusal
 
@@ -339,7 +340,9 @@ def answer_settled(client: TestClient, pid: str, key: str | None, answer: dict) 
     if response.status_code == 200 and answer.get("kind") == "set_roles":
         record = client.get(f"/api/projects/{pid}").json()["decisions"][-1]
         waiting = record["decision"].get("unconfirmed") or []
-        for body in confirm_each(answer["roles"], waiting):
+        proposals = (client.get(f"/api/projects/{pid}/stages/roles").json()["artifact"]
+                     if len(waiting) > 1 else None)
+        for body in confirm_each(answer["roles"], waiting, proposals):
             r = client.post(url, json=body)
             assert r.status_code == 200, r.text
     truth = truth_of(pid)

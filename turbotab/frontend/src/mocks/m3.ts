@@ -18,6 +18,7 @@
  */
 import { http, HttpResponse, type HttpHandler } from "msw";
 import type { DecisionRecord, ProjectView, StageStatus } from "../api/schema";
+import { mockPredictorGroups } from "./roleWords";
 
 // ── the fixtures, loaded on demand ───────────────────────────────────────────
 
@@ -115,6 +116,27 @@ export function artifactAt(f: M3Fixture, stage: string, key: string | null): unk
   return v;
 }
 
+/**
+ * A captured stage's artifact as the server serves it now: the roles stage's carries the predictor
+ * groups the server adds as it serves them (W1 part 2's U6; core/readings.py `served_groups`), for
+ * the view's lenses and its task (as answered, else as the captured outcome reads), where a capture
+ * taken before them has none. Every other artifact as captured.
+ */
+export function servedAt(
+  f: M3Fixture,
+  stage: string,
+  key: string | null,
+  view: { state: ProjectView["state"]; stages: Record<string, { key: string | null } | undefined> },
+): unknown {
+  const a = artifactAt(f, stage, key);
+  if (stage !== "roles" || !isObject(a) || "predictor_groups" in a) return a;
+  const { state } = view;
+  const ti = artifactAt(f, "target_info", view.stages.target_info?.key ?? null) as { column?: string; task?: string } | null;
+  const task = state.task ?? (ti && ti.column === state.target ? (ti.task ?? null) : null);
+  const columns = ((a.columns as { column: string }[] | undefined) ?? []).map((c) => c.column);
+  return { ...a, predictor_groups: mockPredictorGroups(state.lens, task, columns) };
+}
+
 /** The full ProjectView of a compact one: decisions from the log, every status stamped `at`. */
 export function expandView(f: M3Fixture, v: CompactView, pid: string, at: string): ProjectView {
   const stages: ProjectView["stages"] = {};
@@ -179,7 +201,7 @@ export class Replay {
       key: status.key,
       fresh: status.status === "fresh",
       status: status.status,
-      artifact: none ? null : artifactAt(this.f, name, status.key),
+      artifact: none ? null : servedAt(this.f, name, status.key, v),
     };
   }
   /** What the capture answered to `d` from here: a move, or the refusal it gave. */

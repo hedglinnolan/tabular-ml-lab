@@ -33690,6 +33690,66 @@
         "title": "PositivityView",
         "type": "object"
       },
+      "PredictorGroupWords": {
+        "description": "One predictor role's group on the roles card under Predict (``readings.PredictorGroup``):\n``one`` in a role line's words, ``head`` its name for one column and for many, ``note`` the\nsteps that treat it differently in the project, as a sentence (empty where it runs none).",
+        "properties": {
+          "one": {
+            "title": "One",
+            "type": "string"
+          },
+          "head": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Head",
+            "type": "array"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "one",
+          "head",
+          "note"
+        ],
+        "title": "PredictorGroupWords",
+        "type": "object"
+      },
+      "PredictorGroups": {
+        "description": "The predictor groups the roles card draws under Predict, for the project's lenses and task\n(W1 part 2's U6; ``readings.served_groups``): each role's group where the energy-aware fill\nwould run (``fill``) and where not (``no_fill``), and the columns that carry energy, so the card\ntells which applies to the roles it draws (one holds the energy role and a Predictor column\ncarries energy).",
+        "properties": {
+          "fill": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PredictorGroupWords"
+            },
+            "title": "Fill",
+            "type": "object"
+          },
+          "no_fill": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PredictorGroupWords"
+            },
+            "title": "No Fill",
+            "type": "object"
+          },
+          "energy_bearing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Energy Bearing",
+            "type": "array"
+          }
+        },
+        "required": [
+          "fill",
+          "no_fill",
+          "energy_bearing"
+        ],
+        "title": "PredictorGroups",
+        "type": "object"
+      },
       "ProfileArtifact": {
         "description": "The ``profile`` artifact.",
         "properties": {
@@ -34583,7 +34643,7 @@
         "type": "object"
       },
       "RolesArtifact": {
-        "description": "The ``roles`` artifact: a proposed role for every column but the outcome.",
+        "description": "The ``roles`` artifact: a proposed role for every column but the outcome. The server adds\n``predictor_groups`` as it serves them (the stage does not compute it).",
         "properties": {
           "columns": {
             "items": {
@@ -34608,12 +34668,24 @@
             },
             "title": "Categorical",
             "type": "array"
+          },
+          "predictor_groups": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PredictorGroups"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
           "columns",
           "repeats",
-          "categorical"
+          "categorical",
+          "predictor_groups"
         ],
         "title": "RolesArtifact",
         "type": "object"

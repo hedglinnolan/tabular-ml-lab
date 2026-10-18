@@ -14,6 +14,7 @@ import type { ProjectView, QuestLog } from "../api/schema";
 import { Stage } from "../components/stage/Stage";
 import { ManuscriptBody, kit as k } from "../kit";
 import { useStageFocus, type StageFocus } from "../state/focus";
+import { waitingPredictorColumns } from "./cards/roles/roles";
 import { FitControl } from "./Fit";
 import { fitWithheld, type FitPosition } from "./log";
 import { ResultsTapestry } from "./results";
@@ -77,6 +78,7 @@ export function Tapestry({
           onFocus={flowchart ? NOOP : setFocus}
           fitWithheld={fitWithheld(log)}
           recordHere={false}
+          waitingPredictors={waitingPredictorColumns(log)}
         />
       </div>
       {flowchart ? <FitControl pid={pid} log={log} fit={view.stages.fit} /> : null}

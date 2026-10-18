@@ -12790,6 +12790,40 @@ export interface components {
             reason: string | null;
         };
         /**
+         * PredictorGroupWords
+         * @description One predictor role's group on the roles card under Predict (``readings.PredictorGroup``):
+         *     ``one`` in a role line's words, ``head`` its name for one column and for many, ``note`` the
+         *     steps that treat it differently in the project, as a sentence (empty where it runs none).
+         */
+        PredictorGroupWords: {
+            /** One */
+            one: string;
+            /** Head */
+            head: string[];
+            /** Note */
+            note: string;
+        };
+        /**
+         * PredictorGroups
+         * @description The predictor groups the roles card draws under Predict, for the project's lenses and task
+         *     (W1 part 2's U6; ``readings.served_groups``): each role's group where the energy-aware fill
+         *     would run (``fill``) and where not (``no_fill``), and the columns that carry energy, so the card
+         *     tells which applies to the roles it draws (one holds the energy role and a Predictor column
+         *     carries energy).
+         */
+        PredictorGroups: {
+            /** Fill */
+            fill: {
+                [key: string]: components["schemas"]["PredictorGroupWords"];
+            };
+            /** No Fill */
+            no_fill: {
+                [key: string]: components["schemas"]["PredictorGroupWords"];
+            };
+            /** Energy Bearing */
+            energy_bearing: string[];
+        };
+        /**
          * ProfileArtifact
          * @description The ``profile`` artifact.
          */
@@ -13109,7 +13143,8 @@ export interface components {
         };
         /**
          * RolesArtifact
-         * @description The ``roles`` artifact: a proposed role for every column but the outcome.
+         * @description The ``roles`` artifact: a proposed role for every column but the outcome. The server adds
+         *     ``predictor_groups`` as it serves them (the stage does not compute it).
          */
         RolesArtifact: {
             /** Columns */
@@ -13117,6 +13152,8 @@ export interface components {
             repeats: components["schemas"]["Repeats"] | null;
             /** Categorical */
             categorical: components["schemas"]["CategoricalProposal"][];
+            /** @default null */
+            predictor_groups: components["schemas"]["PredictorGroups"] | null;
         };
         /**
          * RowComparison

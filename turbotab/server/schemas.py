@@ -520,12 +520,36 @@ class CategoricalProposal(Model):
     reason: str
 
 
+class PredictorGroupWords(Model):
+    """One predictor role's group on the roles card under Predict (``readings.PredictorGroup``):
+    ``one`` in a role line's words, ``head`` its name for one column and for many, ``note`` the
+    steps that treat it differently in the project, as a sentence (empty where it runs none)."""
+
+    one: str
+    head: list[str]
+    note: str
+
+
+class PredictorGroups(Model):
+    """The predictor groups the roles card draws under Predict, for the project's lenses and task
+    (W1 part 2's U6; ``readings.served_groups``): each role's group where the energy-aware fill
+    would run (``fill``) and where not (``no_fill``), and the columns that carry energy, so the card
+    tells which applies to the roles it draws (one holds the energy role and a Predictor column
+    carries energy)."""
+
+    fill: dict[str, PredictorGroupWords]
+    no_fill: dict[str, PredictorGroupWords]
+    energy_bearing: list[str]
+
+
 class RolesArtifact(Model):
-    """The ``roles`` artifact: a proposed role for every column but the outcome."""
+    """The ``roles`` artifact: a proposed role for every column but the outcome. The server adds
+    ``predictor_groups`` as it serves them (the stage does not compute it)."""
 
     columns: list[RoleProposal]
     repeats: Repeats | None
     categorical: list[CategoricalProposal]
+    predictor_groups: PredictorGroups | None = None
 
 
 class RowComparison(Model):
