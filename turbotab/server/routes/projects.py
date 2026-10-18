@@ -15,9 +15,11 @@ from turbotab.server.routes import get_service, get_settings, refusal, require_l
 from turbotab.server.schemas import (
     CreateProject,
     Decision,
+    FitsLog,
     ProjectSummary,
     ProjectView,
     ReadingsCard,
+    Results,
     StageResult,
     StageStatus,
 )
@@ -160,6 +162,39 @@ def cancel_fit(request: Request, pid: str) -> FitLock:
     again; once an estimate has been served the lock stands. Returns the lock as the quest log
     shows it."""
     return get_service(request).cancel_fit(pid)
+
+
+@router.get(
+    "/projects/{pid}/fits",
+    response_model=FitsLog,
+    responses={404: refusal("No such project")},
+)
+def fits(request: Request, pid: str) -> dict:
+    """Every fit that completed, one record per fit key in the order the keys turned fresh, each
+    written once and never rewritten (SWARM_ENGINE_PLAN E1): its purpose, outcome and key, the
+    plan's digest and the records in force it was computed from, the press of Fit in force, its
+    families, the seconds its job ran and the server's workers, and per family the cross-validated
+    summary (Predict) or the exposure's rows with their intervals (Estimate). Each number is the
+    fit's as ``GET /stages/fit`` serves it now: none before Fit under Predict, no held-out score
+    until the seal is opened, no estimate before the plan's lock under Estimate. Under Predict, a
+    record scored on the same folds as the one before it carries each family's paired movement
+    against it; otherwise ``movement_why`` says why it has none."""
+    return get_service(request).fits(pid)
+
+
+@router.get(
+    "/projects/{pid}/results",
+    response_model=Results,
+    responses={404: refusal("No such project")},
+)
+def results(request: Request, pid: str) -> dict:
+    """What the Results screens show, joined into one document, each field the served artifact's
+    own value and gated as the stage route gates it (SWARM_ENGINE_PLAN E2). Under Predict: each
+    family's cross-validated summary, the declared result and, once the seal is opened, its
+    held-out scores with their intervals and calibration. Under Estimate: the estimand, each
+    family's rows of the exposure from the fit, and from the effects stage its sequence fits,
+    marginal contrast and E-values."""
+    return get_service(request).results(pid)
 
 
 @router.get(

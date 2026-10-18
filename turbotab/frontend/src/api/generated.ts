@@ -228,6 +228,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/fits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fits
+         * @description Every fit that completed, one record per fit key in the order the keys turned fresh, each
+         *     written once and never rewritten (SWARM_ENGINE_PLAN E1): its purpose, outcome and key, the
+         *     plan's digest and the records in force it was computed from, the press of Fit in force, its
+         *     families, the seconds its job ran and the server's workers, and per family the cross-validated
+         *     summary (Predict) or the exposure's rows with their intervals (Estimate). Each number is the
+         *     fit's as ``GET /stages/fit`` serves it now: none before Fit under Predict, no held-out score
+         *     until the seal is opened, no estimate before the plan's lock under Estimate. Under Predict, a
+         *     record scored on the same folds as the one before it carries each family's paired movement
+         *     against it; otherwise ``movement_why`` says why it has none.
+         */
+        get: operations["fits_api_projects__pid__fits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Results
+         * @description What the Results screens show, joined into one document, each field the served artifact's
+         *     own value and gated as the stage route gates it (SWARM_ENGINE_PLAN E2). Under Predict: each
+         *     family's cross-validated summary, the declared result and, once the seal is opened, its
+         *     held-out scores with their intervals and calibration. Under Estimate: the estimand, each
+         *     family's rows of the exposure from the fit, and from the effects stage its sequence fits,
+         *     marginal contrast and E-values.
+         */
+        get: operations["results_api_projects__pid__results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/record": {
         parameters: {
             query?: never;
@@ -2173,6 +2226,29 @@ export interface components {
             estimate_seconds: number | null;
             /** Reason */
             reason: string;
+        };
+        /**
+         * FitsLog
+         * @description Every fit's record, in the order the fits completed.
+         */
+        FitsLog: {
+            /** Records */
+            records: components["schemas"]["ServedFit"][];
+        };
+        /**
+         * FoldMovement
+         * @description One family's movement against the previous record: ``movement`` from
+         *     :func:`materiality.paired_folds` (``|mean Δ| / SD(Δ)`` of the primary metric's fold scores, this
+         *     fit's less the previous one's), or None and ``why``.
+         */
+        FoldMovement: {
+            /** Family */
+            family: string;
+            /** Against */
+            against: string;
+            movement: components["schemas"]["Movement"] | null;
+            /** Why */
+            why: string | null;
         };
         /**
          * FollowUpSpec
@@ -4211,6 +4287,90 @@ export interface components {
              */
             action: "keep_labeled" | "period_hazard_ratios" | "without_influential";
         };
+        /** ResultEValue */
+        ResultEValue: {
+            /** Feature */
+            feature: string;
+            /** E Value */
+            e_value: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ResultFamily
+         * @description One family's results, each field the served artifact's own value.
+         */
+        ResultFamily: {
+            /** Family */
+            family: string;
+            /** Label */
+            label: string | null;
+            /**
+             * Cv
+             * @default {}
+             */
+            cv: {
+                [key: string]: unknown;
+            };
+            /** Holdout */
+            holdout: {
+                [key: string]: number | null;
+            } | null;
+            /** Intervals */
+            intervals: {
+                [key: string]: unknown;
+            } | null;
+            /** Calibration */
+            calibration: {
+                [key: string]: unknown;
+            } | null;
+            /** Effect */
+            effect: {
+                [key: string]: unknown;
+            }[] | null;
+            /**
+             * Sequence
+             * @default []
+             */
+            sequence: {
+                [key: string]: unknown;
+            }[];
+            /** Marginal */
+            marginal: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * E Values
+             * @default []
+             */
+            e_values: components["schemas"]["ResultEValue"][];
+        };
+        /**
+         * Results
+         * @description What the Results screens show, as one document (``GET /projects/{pid}/results``).
+         */
+        Results: {
+            /** Purpose */
+            purpose: ("prediction" | "inference") | null;
+            fit: components["schemas"]["StageServed"];
+            effects: components["schemas"]["StageServed"] | null;
+            /** Withheld */
+            withheld: string | null;
+            /** Holdout Sealed */
+            holdout_sealed: boolean;
+            /** Final Model */
+            final_model: string | null;
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            } | null;
+            /** Estimand */
+            estimand: {
+                [key: string]: unknown;
+            } | null;
+            /** Families */
+            families: components["schemas"]["ResultFamily"][];
+        };
         /** Revert */
         Revert: {
             /**
@@ -4513,6 +4673,73 @@ export interface components {
             label: string;
             /** Rules */
             rules: (components["schemas"]["ExclusionRule-Output"] | components["schemas"]["GoldbergRule-Output"])[];
+        };
+        /**
+         * ServedFit
+         * @description One fit's record (``turbotab/core/runs.py``'s ``FitRecord``) as a client is served it: its
+         *     numbers are the fit's at ``fit_key`` as ``GET /stages/fit`` serves it now, so each is withheld
+         *     exactly where the stage route withholds it, and ``withheld`` says why.
+         */
+        ServedFit: {
+            /** Id */
+            id: string;
+            /** Seq */
+            seq: number;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Purpose */
+            purpose: ("prediction" | "inference") | null;
+            /** Target */
+            target: string | null;
+            /** Fit Key */
+            fit_key: string;
+            /** Plan Digest */
+            plan_digest: string | null;
+            /** Decisions */
+            decisions: number[] | null;
+            /** Press */
+            press: {
+                [key: string]: unknown;
+            } | null;
+            /** Families */
+            families: string[];
+            /** Seconds */
+            seconds: number | null;
+            /** Workers */
+            workers: number;
+            /** Primary Metric */
+            primary_metric: string | null;
+            /** Folds */
+            folds: string | null;
+            /** Seed */
+            seed: number | null;
+            /** Scores */
+            scores: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /** Holdout */
+            holdout: {
+                [key: string]: {
+                    [key: string]: number | null;
+                } | null;
+            } | null;
+            /** Effects */
+            effects: {
+                [key: string]: {
+                    [key: string]: unknown;
+                }[] | null;
+            };
+            /** Movement */
+            movement: components["schemas"]["FoldMovement"][];
+            /** Movement Why */
+            movement_why: string | null;
+            /** Withheld */
+            withheld: string | null;
         };
         /**
          * SetAdjustment
@@ -6938,6 +7165,21 @@ export interface components {
             artifact: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * StageServed
+         * @description Which artifact of a stage a document read: its key, and whether it is the current one.
+         */
+        StageServed: {
+            /** Key */
+            key: string | null;
+            /** Fresh */
+            fresh: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "idle" | "queued" | "running" | "fresh" | "stale" | "blocked" | "error";
         };
         /** StageStatus */
         StageStatus: {
@@ -17076,6 +17318,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FitLock"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fits_api_projects__pid__fits_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitsLog"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    results_api_projects__pid__results_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Results"];
                 };
             };
             /** @description No such project */

@@ -867,6 +867,112 @@
         }
       }
     },
+    "/api/projects/{pid}/fits": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Fits",
+        "description": "Every fit that completed, one record per fit key in the order the keys turned fresh, each\nwritten once and never rewritten (SWARM_ENGINE_PLAN E1): its purpose, outcome and key, the\nplan's digest and the records in force it was computed from, the press of Fit in force, its\nfamilies, the seconds its job ran and the server's workers, and per family the cross-validated\nsummary (Predict) or the exposure's rows with their intervals (Estimate). Each number is the\nfit's as ``GET /stages/fit`` serves it now: none before Fit under Predict, no held-out score\nuntil the seal is opened, no estimate before the plan's lock under Estimate. Under Predict, a\nrecord scored on the same folds as the one before it carries each family's paired movement\nagainst it; otherwise ``movement_why`` says why it has none.",
+        "operationId": "fits_api_projects__pid__fits_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitsLog"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/results": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Results",
+        "description": "What the Results screens show, joined into one document, each field the served artifact's\nown value and gated as the stage route gates it (SWARM_ENGINE_PLAN E2). Under Predict: each\nfamily's cross-validated summary, the declared result and, once the seal is opened, its\nheld-out scores with their intervals and calibration. Under Estimate: the estimand, each\nfamily's rows of the exposure from the fit, and from the effects stage its sequence fits,\nmarginal contrast and E-values.",
+        "operationId": "results_api_projects__pid__results_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Results"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{pid}/record": {
       "get": {
         "tags": [
@@ -6818,6 +6924,66 @@
         "title": "FitLock",
         "description": "Fit and the plan's lock, as the quest log shows them (FOUNDATION §7: \"Plan fixed at 14:02\",\nwith the plan's SHA-256 as its quiet label)."
       },
+      "FitsLog": {
+        "properties": {
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/ServedFit"
+            },
+            "type": "array",
+            "title": "Records"
+          }
+        },
+        "type": "object",
+        "required": [
+          "records"
+        ],
+        "title": "FitsLog",
+        "description": "Every fit's record, in the order the fits completed."
+      },
+      "FoldMovement": {
+        "properties": {
+          "family": {
+            "type": "string",
+            "title": "Family"
+          },
+          "against": {
+            "type": "string",
+            "title": "Against"
+          },
+          "movement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Movement"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "family",
+          "against",
+          "movement",
+          "why"
+        ],
+        "title": "FoldMovement",
+        "description": "One family's movement against the previous record: ``movement`` from\n:func:`materiality.paired_folds` (``|mean Δ| / SD(Δ)`` of the primary metric's fold scores, this\nfit's less the previous one's), or None and ``why``."
+      },
       "FollowUpSpec": {
         "properties": {
           "time_column": {
@@ -12546,6 +12712,257 @@
         "title": "RespondDiagnostic",
         "description": "The recorded response to a failed diagnostic of the primary model (``models/effects.py``)."
       },
+      "ResultEValue": {
+        "properties": {
+          "feature": {
+            "type": "string",
+            "title": "Feature"
+          },
+          "e_value": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "E Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "feature",
+          "e_value"
+        ],
+        "title": "ResultEValue"
+      },
+      "ResultFamily": {
+        "properties": {
+          "family": {
+            "type": "string",
+            "title": "Family"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "cv": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Cv",
+            "default": {}
+          },
+          "holdout": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holdout"
+          },
+          "intervals": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intervals"
+          },
+          "calibration": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibration"
+          },
+          "effect": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effect"
+          },
+          "sequence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Sequence",
+            "default": []
+          },
+          "marginal": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marginal"
+          },
+          "e_values": {
+            "items": {
+              "$ref": "#/components/schemas/ResultEValue"
+            },
+            "type": "array",
+            "title": "E Values",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "family",
+          "label",
+          "cv",
+          "holdout",
+          "intervals",
+          "calibration",
+          "effect",
+          "sequence",
+          "marginal",
+          "e_values"
+        ],
+        "title": "ResultFamily",
+        "description": "One family's results, each field the served artifact's own value."
+      },
+      "Results": {
+        "properties": {
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "prediction",
+                  "inference"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "fit": {
+            "$ref": "#/components/schemas/StageServed"
+          },
+          "effects": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StageServed"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "withheld": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withheld"
+          },
+          "holdout_sealed": {
+            "type": "boolean",
+            "title": "Holdout Sealed"
+          },
+          "final_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Model"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "estimand": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimand"
+          },
+          "families": {
+            "items": {
+              "$ref": "#/components/schemas/ResultFamily"
+            },
+            "type": "array",
+            "title": "Families"
+          }
+        },
+        "type": "object",
+        "required": [
+          "purpose",
+          "fit",
+          "effects",
+          "withheld",
+          "holdout_sealed",
+          "final_model",
+          "result",
+          "estimand",
+          "families"
+        ],
+        "title": "Results",
+        "description": "What the Results screens show, as one document (``GET /projects/{pid}/results``)."
+      },
       "Revert": {
         "properties": {
           "kind": {
@@ -13409,6 +13826,257 @@
         ],
         "title": "SensitivityAnalysis",
         "description": "One analysis beside the primary: the same model on the rows these rules keep instead."
+      },
+      "ServedFit": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "prediction",
+                  "inference"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "fit_key": {
+            "type": "string",
+            "title": "Fit Key"
+          },
+          "plan_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Digest"
+          },
+          "decisions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decisions"
+          },
+          "press": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Press"
+          },
+          "families": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Families"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          },
+          "workers": {
+            "type": "integer",
+            "title": "Workers"
+          },
+          "primary_metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Metric"
+          },
+          "folds": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folds"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "scores": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Scores"
+          },
+          "holdout": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holdout"
+          },
+          "effects": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Effects"
+          },
+          "movement": {
+            "items": {
+              "$ref": "#/components/schemas/FoldMovement"
+            },
+            "type": "array",
+            "title": "Movement"
+          },
+          "movement_why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Movement Why"
+          },
+          "withheld": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withheld"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "seq",
+          "at",
+          "purpose",
+          "target",
+          "fit_key",
+          "plan_digest",
+          "decisions",
+          "press",
+          "families",
+          "seconds",
+          "workers",
+          "primary_metric",
+          "folds",
+          "seed",
+          "scores",
+          "holdout",
+          "effects",
+          "movement",
+          "movement_why",
+          "withheld"
+        ],
+        "title": "ServedFit",
+        "description": "One fit's record (``turbotab/core/runs.py``'s ``FitRecord``) as a client is served it: its\nnumbers are the fit's at ``fit_key`` as ``GET /stages/fit`` serves it now, so each is withheld\nexactly where the stage route withholds it, and ``withheld`` says why."
       },
       "SetAdjustment-Input": {
         "properties": {
@@ -18719,6 +19387,46 @@
           "artifact"
         ],
         "title": "StageResult"
+      },
+      "StageServed": {
+        "properties": {
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "fresh": {
+            "type": "boolean",
+            "title": "Fresh"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "queued",
+              "running",
+              "fresh",
+              "stale",
+              "blocked",
+              "error"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "fresh",
+          "status"
+        ],
+        "title": "StageServed",
+        "description": "Which artifact of a stage a document read: its key, and whether it is the current one."
       },
       "StageStatus": {
         "properties": {

@@ -38,6 +38,7 @@ from turbotab.core.interview import InterviewStep  # noqa: F401
 from turbotab.core.interview import QuestionKey  # noqa: F401
 from turbotab.core.jobs import JobView  # noqa: F401
 from turbotab.core.repairs import RepairOption  # noqa: F401 - re-exported contract model
+from turbotab.core.runs import FoldMovement  # noqa: F401 - the record of every fit (E1)
 from turbotab.core.seal import Chronology, SealBasis, SealPlan  # noqa: F401 - the seal's shapes
 from turbotab.core.custom_sound import LabeledQuestion  # noqa: F401 - WP17's two labels
 from turbotab.core.teaching import TeachingEntry  # noqa: F401 - re-exported contract model
@@ -108,6 +109,95 @@ class StageResult(Model):
     fresh: bool
     status: StatusName
     artifact: dict[str, Any] | None
+
+
+# ── the record of every fit and the results (SWARM_ENGINE_PLAN §2 E1, E2) ─────
+
+
+class ServedFit(Model):
+    """One fit's record (``turbotab/core/runs.py``'s ``FitRecord``) as a client is served it: its
+    numbers are the fit's at ``fit_key`` as ``GET /stages/fit`` serves it now, so each is withheld
+    exactly where the stage route withholds it, and ``withheld`` says why."""
+
+    id: str
+    seq: int  # completion order, from 1
+    at: datetime  # when the fit turned fresh
+    purpose: Purpose | None
+    target: str | None
+    fit_key: str
+    plan_digest: str | None  # plan_lock.digest(plan_lock.plan_of(state)) of the answers it read
+    decisions: list[int] | None  # the seqs of the records in force when it completed
+    press: dict[str, Any] | None  # the press of Fit in force, as kept beside the project
+    families: list[str]
+    seconds: float | None  # from its job running to its key turning fresh; null when not seen
+    workers: int  # the server's job worker processes
+    primary_metric: str | None
+    folds: str | None  # the SHA-256 of the training rows' folds (``runs.folds_digest``)
+    seed: int | None  # the split's seed
+    # Predict: each family's cross-validated summary (the fit's ``cv``; empty while withheld).
+    scores: dict[str, dict[str, Any]]
+    # Each family's held-out scores, as the fit serves them; null until the seal is opened
+    # (M2_CONTRACT §3).
+    holdout: dict[str, dict[str, float | None] | None] | None
+    # Estimate: each family's rows of the exposure, with their intervals; null while withheld.
+    effects: dict[str, list[dict[str, Any]] | None]
+    # Predict: each family's movement against the previous record (materiality.paired_folds),
+    # where both fits' scores are served; ``movement_why`` says why the record has none.
+    movement: list[FoldMovement]
+    movement_why: str | None
+    withheld: str | None
+
+
+class FitsLog(Model):
+    """Every fit's record, in the order the fits completed."""
+
+    records: list[ServedFit]
+
+
+class StageServed(Model):
+    """Which artifact of a stage a document read: its key, and whether it is the current one."""
+
+    key: str | None
+    fresh: bool
+    status: StatusName
+
+
+class ResultEValue(Model):
+    feature: str
+    e_value: dict[str, Any]  # the effects stage's ``EValueResult``
+
+
+class ResultFamily(Model):
+    """One family's results, each field the served artifact's own value."""
+
+    family: str
+    label: str | None
+    # Predict: the fit's cross-validated summary, and once the seal is opened its held-out scores,
+    # their intervals and calibration (``holdout_detail``).
+    cv: dict[str, Any] = {}
+    holdout: dict[str, float | None] | None = None
+    intervals: dict[str, Any] | None = None
+    calibration: dict[str, Any] | None = None
+    # Estimate: the fit's rows of the exposure, and the effects stage's sequence fits, marginal
+    # contrast and E-values.
+    effect: list[dict[str, Any]] | None = None
+    sequence: list[dict[str, Any]] = []
+    marginal: dict[str, Any] | None = None
+    e_values: list[ResultEValue] = []
+
+
+class Results(Model):
+    """What the Results screens show, as one document (``GET /projects/{pid}/results``)."""
+
+    purpose: Purpose | None
+    fit: StageServed
+    effects: StageServed | None  # read under Estimate
+    withheld: str | None  # why the estimates or scores are withheld now, as the stages say it
+    holdout_sealed: bool
+    final_model: str | None  # Predict: the family declared final at the opening
+    result: dict[str, Any] | None  # Predict: the declared result (``FitArtifact.result``)
+    estimand: dict[str, Any] | None  # Estimate: the fit's estimand annotation
+    families: list[ResultFamily]
 
 
 # ── data reads ───────────────────────────────────────────────────────────────
