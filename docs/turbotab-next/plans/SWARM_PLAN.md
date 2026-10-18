@@ -181,13 +181,12 @@ Menke 2015 waits for a Describe purpose, which the engine does not have yet.
 **The model-and-effort comparison**, the pilot's first experiment. Nolan asked on 2026-10-16
 whether the best analyst model and effort are settled. They are not: nothing has measured them.
 
-Nolan's ruling of 2026-10-18 ("Use Haiku 5-5 for the pilot") sets the analysts' model. The
-newest Haiku in the orchestrator's model list is Haiku 4.5, with no Haiku 5.5, so the pilot uses
-Haiku 4.5 unless a Haiku 5.5 exists when it starts.
+Nolan's ruling of 2026-10-18 ("Use Haiku 5-5 for the pilot") sets the analysts' model: Haiku
+5.5. Its model ID is checked before the first run.
 
 | Configuration | Runs | Why |
 |---|---|---|
-| Haiku, high effort | each dataset × 3 analysts | the pilot's analysts |
+| Haiku 5.5, high effort | each dataset × 3 analysts | the pilot's analysts |
 | Opus 5.5, high effort | each dataset × 1 | the ceiling: what the cheaper analyst loses, and whether a stuck run is the engine's or the analyst's |
 
 That is about 24 runs. Three analysts per dataset measure the spread between analysts, which is
