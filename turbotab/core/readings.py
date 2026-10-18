@@ -1651,23 +1651,32 @@ def with_proposals(readings: Iterable[Reading], state: Any, artifact: Any) -> li
     """The readings an ask lists, each waiting role of a group the ask lists whole (every one of
     its waiting columns, two or more) marked with its group's judgment and read with its proposal:
     its confidence and its reason as the evidence. :func:`families` then lists the group as one line
-    and :func:`ask_exits` confirms it in one press (ruling R-g). A role whose group the ask lists
-    only in part keeps a line and a press of its own; no proposals at hand, every one does."""
+    and :func:`ask_exits` confirms it in one press (ruling R-g), its columns in the proposals' order
+    where the first of them was listed, so its press is the press its role line offers
+    (:func:`group_press`). A role whose group the ask lists only in part keeps a line and a press of
+    its own; no proposals at hand, every one does."""
     listed = [r for r in readings if r is not None]
-    asked = {r.column for r in listed if r.kind == "role" and not r.settled}
+    waiting = {r.column: r for r in listed if r.kind == "role" and not r.settled}
     whole = {}
-    for g in role_groups(state, artifact) if artifact is not None and asked else ():
-        if len(g.waiting) > 1 and set(g.waiting) <= asked:
+    for g in role_groups(state, artifact) if artifact is not None and waiting else ():
+        # every column of it asked, each as proposed (a guess moved elsewhere is its own)
+        if len(g.waiting) > 1 and all(c in waiting and str(waiting[c].value) == g.role
+                                      for c in g.waiting):
             for c in g.waiting:
                 whole[c] = g
-    out = []
+    out: list[Reading] = []
+    done: set[int] = set()  # each group once, by identity (hashing 20,000 columns per gene is not)
     for r in listed:
         g = whole.get(r.column) if r.kind == "role" and not r.settled else None
-        if g is None or str(r.value) != g.role:
+        if g is None:
             out.append(r)
             continue
-        out.append(Reading(r.subject, r.kind, r.value, g.confidence, g.reason, False, "proposed",
-                           judgment=f"{g.role}\n{g.confidence}\n{g.reason}"))
+        if id(g) in done:
+            continue
+        done.add(id(g))
+        out += [Reading(waiting[c].subject, "role", waiting[c].value, g.confidence, g.reason, False,
+                        "proposed", judgment=f"{g.role}\n{g.confidence}\n{g.reason}")
+                for c in g.waiting]
     return out
 
 
@@ -2161,14 +2170,16 @@ def scale_items(state: Any) -> set[str]:
 
 def predictors_or_ask(state: Any, info: Mapping[str, Any] | None = None,
                       order: Sequence[str] | None = None, drop: Iterable[str] = (), *,
-                      store: Any = None) -> list[str]:
+                      store: Any = None, artifact: Any = None) -> list[str]:
     """The fit's predictor set, once every reading it rests on is settled; else :class:`Unsettled`
     with the ask (:func:`ask_exits`): every recorded role that rode along (it decides whether its
     column is in the model or out), and each predictor's code-or-amount reading the fit uses
     (:func:`code_question`: one indicator per level or one slope), the roles first. A column whose
     role is waiting is asked its code-or-amount reading too when its proposed role is a predictor,
-    so both are asked at once (the role by its own press, :func:`one_at_a_time`). A column the plan
-    does not fit as its own values is not asked
+    so both are asked at once (the role by its own press, :func:`one_at_a_time`). With the roles
+    stage's ``artifact`` at hand, the roles of one judgment are asked as one group and confirmed in
+    one press (ruling R-g, :func:`with_proposals`); without it, each by its own press. A column the
+    plan does not fit as its own values is not asked
     (:func:`energy_plan`: total energy the energy answer "none" leaves out; the columns an energy
     method computes with, amounts by that answer); one the user confirmed as codes there is
     refused, since that answer would be ignored."""
@@ -2247,6 +2258,8 @@ def predictors_or_ask(state: Any, info: Mapping[str, Any] | None = None,
                 [e for c in limits for e in detection_exits(c, facts[c])])
     if role_readings or codes:
         needed = [r for r in role_readings if r is not None] + codes
+        if artifact is not None:  # ruling R-g: one judgment's roles, one line and one press
+            needed = with_proposals(needed, state, artifact)
         if role_readings:
             message = (unsettled_message(waiting, "the model's predictors") + " The fit waits for "
                        "them: a column whose role nobody confirmed would enter or leave the model "
@@ -3566,15 +3579,16 @@ def ask_exits(readings: Iterable[Reading], state: Any = None) -> list[dict[str, 
     ask's order. A role that waits is in no block (:func:`one_at_a_time`): its own confirmation is
     its only way forward, so no press settles two of them. A codebook label moves a guess as
     :func:`ask_text` shows it (:func:`labeled`)."""
-    listed = ordered(labeled(readings, state) if state is not None else readings)
+    given = labeled(readings, state) if state is not None else list(readings)
+    listed = ordered(given)
     out: list[dict[str, Any]] = []
     others = [r for r in listed if not one_at_a_time(r)]
     block = block_exit(others)
     if block is not None and len(others) > 1:
         out.append(block)
     judged: dict[str, list[Reading]] = {}
-    for r in listed:
-        if r.kind == "role" and r.judgment is not None:
+    for r in given:  # a judgment's columns in the order given (:func:`with_proposals`'s)
+        if r is not None and r.kind == "role" and r.judgment is not None:
             judged.setdefault(r.judgment, []).append(r)
     pressed: set[str] = set()
     for r in listed:

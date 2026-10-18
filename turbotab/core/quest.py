@@ -257,7 +257,8 @@ class Asked:
     """A consumer's refusal to read what nobody settled (``readings.Unsettled``: "it asks, never
     guesses"), measured on the state where the table is at hand (:func:`fit_waits`): the Router
     question whose consumer refused (``ask.CONSUMERS``; ``models`` is the fit), the refusal's own
-    words, the readings it waits on and its ways forward (one confirmation per reading)."""
+    words, the readings it waits on and its ways forward (one confirmation per reading, except a
+    judgment's roles asked whole, confirmed in one press: ruling R-g, :func:`fit_waits`)."""
 
     question: str
     message: str
@@ -265,20 +266,22 @@ class Asked:
     exits: tuple[Mapping[str, Any], ...] = ()
 
 
-def fit_waits(state: Any, info: Mapping[str, Any] | None = None, store: Any = None
-              ) -> Asked | None:
+def fit_waits(state: Any, info: Mapping[str, Any] | None = None, store: Any = None,
+              artifact: Any = None) -> Asked | None:
     """The fit's refusal on ``state`` (``readings.predictors_or_ask``, as the fit, the causal lane
     and the time-varying lane each call it), or None when every reading it rests on is settled.
     ``info`` is the table's column summaries and ``store`` the table, as those consumers read
     them. Every kind of refusal it raises is one (a role, codes or amounts, a detection limit, a
-    comma, an energy source's unit, a codes answer the energy or scales answer contradicts)."""
+    comma, an energy source's unit, a codes answer the energy or scales answer contradicts).
+    ``artifact``, the roles stage's: the roles of one judgment wait as one group with one press
+    (ruling R-g, as ``decisions._models_read_settled_readings`` refuses select_models)."""
     from turbotab.core.decisions import left_out
     from turbotab.core.readings import Unsettled, predictors_or_ask
 
     if state is None or not getattr(state, "roles", None):
         return None
     try:
-        predictors_or_ask(state, info, drop=left_out(state), store=store)
+        predictors_or_ask(state, info, drop=left_out(state), store=store, artifact=artifact)
     except Unsettled as waiting:
         return Asked("models", str(waiting), tuple(waiting.readings),
                      tuple(dict(e) for e in waiting.exits))
@@ -1537,43 +1540,100 @@ def _ask_items(asked: Asked, state: Any) -> list[ReadItem]:
     """The readings a refusal waits on, each with the refusal's own ways forward for its column
     (a way forward that names no column, such as changing the energy answer, under each), except a
     block confirmation that lists a role: a role below high is confirmed on its own (BLUEPRINT §14
-    rule 2), never in one press with others."""
-    from turbotab.core.readings import guess_words
+    rule 2), never in one press with others, unless the refusal asks its whole judgment (ruling
+    R-g, ``readings.with_proposals``). Then the group is one item (:data:`ROLE_GROUP_ITEM`, as a
+    group's role line reads it: how many, the role, the confidence and the shared reason, its first
+    columns named) carrying the group's one press, and each of its columns follows as a role item
+    with its own presses, which move it alone."""
+    from turbotab.core.readings import first_columns, guess_words, role_group_words
 
-    def column_of(exit_: Mapping[str, Any]) -> str | None:
+    def decided(exit_: Mapping[str, Any]) -> Any:
         decision = exit_.get("decision")
         if decision is not None and hasattr(decision, "model_dump"):
             decision = decision.model_dump(mode="json")
+        return decision
+
+    def column_of(exit_: Mapping[str, Any]) -> str | None:
+        decision = decided(exit_)
         return str(decision.get("column")) if isinstance(decision, Mapping) and \
             decision.get("column") is not None else None
 
     def option(exit_: Mapping[str, Any]) -> ReadOption:
-        decision = exit_.get("decision")
-        if decision is not None and hasattr(decision, "model_dump"):
-            decision = decision.model_dump(mode="json")
-        return ReadOption(label=str(exit_.get("label")), decision=decision)
+        return ReadOption(label=str(exit_.get("label")), decision=decided(exit_))
 
     def several_roles(exit_: Mapping[str, Any]) -> bool:
         # BLUEPRINT §14 rule 2: a role proposed below high never rides along in one press with
         # other readings. A block confirmation that lists one (``readings.block_exit``) is not
         # offered; each role keeps its own confirmation, and a block of other readings stays.
-        decision = exit_.get("decision")
-        if decision is not None and hasattr(decision, "model_dump"):
-            decision = decision.model_dump(mode="json")
+        decision = decided(exit_)
         if not isinstance(decision, Mapping) or decision.get("kind") != "confirm_readings":
             return False
         return any(_get(i, "reading") == "role" for i in decision.get("items") or ())
 
+    # Ruling R-g: the roles the refusal asks whole as one judgment (two or more), by judgment.
+    judged: dict[str, list[Any]] = {}
+    for r in asked.readings:
+        if getattr(r, "kind", None) == "role" and getattr(r, "judgment", None) is not None:
+            judged.setdefault(str(r.judgment), []).append(r)
+    groups = {j: g for j, g in judged.items() if len(g) > 1}
+    member = {str(r.column): j for j, g in groups.items() for r in g}
+
+    def press_of(exit_: Mapping[str, Any]) -> str | None:
+        # The judgment whose one press this is: a block of exactly its columns, each as proposed.
+        decision = decided(exit_)
+        if not several_roles(exit_):
+            return None
+        got = [(str(_get(i, "reading")), str(_get(i, "column")), str(_get(i, "value")))
+               for i in decision.get("items") or ()]
+        j = member.get(got[0][1]) if got else None
+        if j is None:
+            return None
+        whole = {("role", str(r.column), str(r.value)) for r in groups[j]}
+        return j if set(got) == whole and len(got) == len(whole) else None
+
+    purpose = getattr(state, "purpose", None)
+    lenses = [str(k) for k in getattr(state, "lens", None) or ()]
+
+    def words_of(r: Any) -> str:
+        try:
+            return str(guess_words(r, state))  # a role in the goal's words (W1-R round 2, R2's P4)
+        except Exception:  # noqa: BLE001 - a reading the ledger cannot word keeps its value
+            return str(getattr(r, "value", ""))
+
     items = []
+    listed: set[str] = set()
     for r in asked.readings:
         column = str(getattr(r, "column", ""))
+        j = member.get(column) if getattr(r, "kind", None) == "role" else None
+        if j is not None:
+            if j in listed:
+                continue
+            listed.add(j)
+            group = groups[j]
+            columns = [str(g.column) for g in group]
+            many = role_group_words(group[0].value, purpose, lenses)
+            items.append(ReadItem(
+                kind=ROLE_GROUP_ITEM, column=columns[0], value=str(group[0].value),
+                words=f"{first_columns(columns)}: "
+                      f"{role_group_head(len(columns), many, str(group[0].confidence))}",
+                evidence=str(group[0].evidence or ""),
+                options=[option(e) for e in asked.exits if press_of(e) == j]))
+            # each column as a group's role line lists it ("proposed as …", ``role_line_text``),
+            # worded once for the group: 20,000 genes are one role
+            proposed = role_line_text(columns[0], str(group[0].value), purpose=purpose,
+                                      lenses=lenses)["proposed"]
+            own: dict[str, list[ReadOption]] = {}
+            in_group = set(columns)
+            for e in asked.exits:
+                c = column_of(e)
+                if c in in_group and not several_roles(e):
+                    own.setdefault(c, []).append(option(e))
+            items += [ReadItem(kind="role", column=c, value=str(group[0].value), words=proposed,
+                               evidence="", options=own.get(c, [])) for c in columns]
+            continue
         mine = [e for e in asked.exits if column_of(e) in (column, None) and not several_roles(e)]
-        try:
-            words = guess_words(r, state)  # a role in the goal's words (W1-R round 2, R2's P4)
-        except Exception:  # noqa: BLE001 - a reading the ledger cannot word keeps its value
-            words = str(getattr(r, "value", ""))
         items.append(ReadItem(kind=str(getattr(r, "kind", "")), column=column,
-                              value=str(getattr(r, "value", "")), words=str(words),
+                              value=str(getattr(r, "value", "")), words=words_of(r),
                               evidence=str(getattr(r, "evidence", "") or ""),
                               options=[option(e) for e in mine]))
     return items

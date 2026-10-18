@@ -112,6 +112,46 @@ export function groupPress(line: Pick<QuestLine, "items" | "status">): ReadOptio
   return head.options.find((o) => confirmsWhole(o.decision, columns, head.value)) ?? null;
 }
 
+/** The columns a group's first item confirms in its one press (its `confirm_readings`, each as the
+ *  role proposed), in the engine's order; empty once no press waits. */
+function pressedColumns(head: ReadItem): string[] {
+  for (const o of head.options) {
+    const d = o.decision as Partial<GroupDecision> | null | undefined;
+    if (d && d.kind === "confirm_readings" && Array.isArray(d.items) && d.items.every((i) => i.reading === "role" && i.value === head.value)) {
+      return d.items.map((i) => i.column);
+    }
+  }
+  return [];
+}
+
+/** One reading row of a line, or a group's (ruling R-g): its first item and the columns it confirms. */
+export interface ReadingBlock {
+  head: ReadItem;
+  members: ReadItem[];
+}
+
+/**
+ * A reading line's items as rows (Readings.tsx): a group's first item (`role_group`) with the role
+ * items its one press lists, which follow it (core/quest.py `_ask_items`: the fit's refusal asks a
+ * judgment whole), as one block; every other item a block of its own.
+ */
+export function readingBlocks(items: readonly ReadItem[]): ReadingBlock[] {
+  const out: ReadingBlock[] = [];
+  let i = 0;
+  while (i < items.length) {
+    const head = items[i]!;
+    i += 1;
+    const listed = head.kind === ROLE_GROUP_ITEM ? new Set(pressedColumns(head)) : new Set<string>();
+    const members: ReadItem[] = [];
+    while (i < items.length && items[i]!.kind === "role" && listed.has(items[i]!.column)) {
+      members.push(items[i]!);
+      i += 1;
+    }
+    out.push({ head, members });
+  }
+  return out;
+}
+
 interface RoleDecision {
   kind: "confirm_role";
   column: string;

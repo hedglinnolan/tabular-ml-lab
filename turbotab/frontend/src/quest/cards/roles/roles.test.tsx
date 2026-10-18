@@ -11,6 +11,7 @@ import { keys } from "../../../api/queries";
 import type { QuestLine, QuestLog, ReadItem, Refusal } from "../../../api/schema";
 import { CONTRACT } from "../../fixtures/contract";
 import FIXTURE from "./fixture.json";
+import { Readings } from "../Readings";
 import { RoleCard } from "./RoleCard";
 import { predictKind } from "../../../mocks/roleWords";
 import {
@@ -21,6 +22,7 @@ import {
   memberItems,
   ownOptions,
   ownRefusal,
+  readingBlocks,
   roleItem,
   ROLE_LINE_ID,
   waitingClause,
@@ -235,5 +237,41 @@ describe("a group's role line (ruling R-g)", () => {
       },
     } as unknown as Refusal;
     expect(groupRefusal(refusal, line).error.exits.map((e) => e.label)).toEqual(["Confirm these 2", "`hdl` is left out of the models", "Change the roles"]);
+  });
+});
+
+describe("the fit's ask line lists a group as one row (ruling R-g)", () => {
+  // core/quest.py `_ask_items` serves a judgment the fit's refusal asks whole as a group's line
+  // holds it: its first item (`role_group`, with the one press) and its columns as role items.
+  const group = lineFor("hdl");
+  const lone = LINES.find((l) => !groupItem(l) && l.status === "open")!;
+  const ask: QuestLine = { ...group, source: "question", key: "ask:models", items: [...group.items, ...lone.items] };
+  const head = groupItem(group)!;
+  const columns = memberItems(group).map((i) => i.column);
+
+  it("blocks a group's first item with the columns its press lists, every other item alone", () => {
+    expect(readingBlocks(ask.items).map((b) => [b.head.kind, b.members.map((m) => m.column)])).toEqual([
+      ["role_group", columns],
+      ["role", []],
+    ]);
+    // silent: with no press to list them, the role items are rows of their own
+    const pressless = [{ ...head, options: [] }, ...memberItems(group)];
+    expect(readingBlocks(pressless).map((b) => b.members.length)).toEqual([0, 0, 0]);
+  });
+
+  it("draws the group's one press, and its columns a click away", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <Readings pid={PID} line={ask} />
+      </QueryClientProvider>,
+    );
+    const press = groupPress(group)!;
+    expect(screen.getAllByRole("button", { name: press.label })).toHaveLength(1);
+    expect(screen.queryByText(new RegExp(`^${columns[1]} `))).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: `List the ${columns.length} columns` }));
+    for (const m of memberItems(group)) expect(screen.getByText(`${m.column} ${m.words}`)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: press.label }));
+    await waitFor(() => expect(posted()).toEqual([press.decision]));
   });
 });

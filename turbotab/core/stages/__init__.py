@@ -865,7 +865,9 @@ def build_graph() -> Graph:
             # read, so no floor gates a curve or quotes a score.
             # explain 5 (W1 part 2's U7): under prediction the default curves choose among every
             # predictor-role column, not the Predictor role alone, by the same rule and cap.
-            Stage("explain", 5, ("working", "fit", "design", "target_info"),
+            # explain 6 (U7's repair): under prediction the adjusted scale is said of the adjusted
+            # predictors' curves alone, beside a covariate's on its own scale.
+            Stage("explain", 6, ("working", "fit", "design", "target_info"),
                   (*EXPLAIN_READS, *ROLE_READS, *WP17_READS), explain_stage, heavy=True,
                   requires=("explain", "models", "purpose"),
                   label="Explaining each fitted model", serves=ESTIMATE),

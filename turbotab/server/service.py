@@ -1147,7 +1147,7 @@ class ProjectService:
             if older is not None:
                 made = read_meta(cache, name, older).get("created_at")
                 shown_at[name] = datetime.fromisoformat(made) if made else None
-        asked = self._asked(pid, state, stages)
+        asked = self._asked(pid, state, stages, artifacts.get("roles"))
         log = quest_log(state, records, steps, stages, findings=findings, columns=columns,
                         artifacts=artifacts, shown_at=shown_at,
                         readings=self._read_from_data(pid, state),
@@ -1155,10 +1155,12 @@ class ProjectService:
         return _QuestInputs(log=log, state=state, records=records, steps=steps, findings=findings,
                             asked=asked)
 
-    def _asked(self, pid: str, state: ProjectState, stages: dict[str, StageStatus]
-               ) -> tuple[Any, ...]:
+    def _asked(self, pid: str, state: ProjectState, stages: dict[str, StageStatus],
+               roles: Any = None) -> tuple[Any, ...]:
         """TRUST: what waits on an answer, measured on the table as the fit and the causal lane
-        read it (``quest.fit_waits``: the store's own column summaries). Empty before ingest."""
+        read it (``quest.fit_waits``: the store's own column summaries). Empty before ingest.
+        ``roles``, the roles stage's fresh artifact: one judgment's roles wait in one press, as
+        select_models's refusal offers them (ruling R-g)."""
         from turbotab.core.quest import fit_waits
 
         ingest = stages.get("ingest")
@@ -1172,7 +1174,7 @@ class ProjectService:
                     for c in store.info().columns}
         except Exception:  # noqa: BLE001 - a table that cannot be read refuses nothing here
             return ()
-        found = fit_waits(state, info, store)
+        found = fit_waits(state, info, store, roles)
         return (found,) if found is not None else ()
 
     def _store_or_none(self, pid: str) -> Any:

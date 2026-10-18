@@ -774,17 +774,20 @@ ROLES = {
 # covariate without total energy, by its median where it is a number; it never "skips" one). These
 # are the words for any project; the card names each group in the project's own words
 # (``readings.predictor_groups``, which the server serves with the roles stage's artifact). Each
-# clause is read from the code by ``tests/test_estimate_words_under_predict.py``.
+# clause names its step (U7's repair): "screened out" is the screened elastic net's screen and
+# "assay-normalized" the assay normalization (log-CPM, PQN), never the standardizing every penalized
+# family runs on all its inputs (``models.pipeline``), which no clause denies. Each clause is read
+# from the code by ``tests/test_estimate_words_under_predict.py``.
 _PREDICT_OPTIONS = {
     "exposure": option("exposure", "Predictor",
-                       "A predictor: may be screened out, normalized, batch-corrected, filled from "
-                       "total energy if it carries energy."),
+                       "A predictor: may be screened out, assay-normalized, batch-corrected, filled "
+                       "from total energy if it carries energy."),
     "energy": option("energy", "Energy",
-                     "Total energy, a predictor: filled by its median, it fills nutrients; never "
-                     "screened, normalized or batch-corrected."),
+                     "Total energy, a predictor: filled by its median, fills nutrients; never "
+                     "screened out, assay-normalized or batch-corrected."),
     "covariate": option("covariate", "Covariate",
-                        "A predictor such as age: filled without total energy; never screened, "
-                        "normalized or batch-corrected."),
+                        "A predictor such as age: filled without total energy; never screened out, "
+                        "assay-normalized or batch-corrected."),
 }
 ROLES_UNDER_PREDICT = {
     **ROLES,
@@ -795,7 +798,7 @@ ROLES_UNDER_PREDICT = {
         term("predictor", "A column the model reads to predict the outcome, such as a nutrient "
                           "intake or age."),
         term("covariate", "A predictor such as age or sex. Every model reads it; it is filled "
-                          "without total energy, never screened, normalized or "
+                          "without total energy, never screened out, assay-normalized or "
                           "batch-corrected."),
         *(t for t in ROLES["terms"] if t["term"] == "identifier"),
     ],

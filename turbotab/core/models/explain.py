@@ -1520,11 +1520,13 @@ def explain(families: Sequence[FamilyFit], s: Setting, refit: Refit,
         works.append(w)
     notes: list[str] = []
     curves: list[InputCurves] = []
+    inference = s.purpose == "inference"
     if works:
-        say(0.92, "Drawing each study factor's curve per family")
+        # Under prediction a curve is a predictor's, whatever its role (W1 part 2's U7).
+        say(0.92, "Drawing each study factor's curve per family" if inference else
+            "Drawing the predictors' curves per family")
         inputs, notes = _exposure_inputs(s, works)
         curves = _curves(s, works, inputs, _roles(s, works[0].anat.sources), units)
-    inference = s.purpose == "inference"
     if not inference and works:
         notes.append(SELECTION_NOTE)
     fired = []  # each relation of the contract, said where it took effect
@@ -1533,7 +1535,9 @@ def explain(families: Sequence[FamilyFit], s: Setting, refit: Refit,
     if works and s.units is not None and s.reseeds > 0:
         fired.append(UNITS_SAYS)
     if any(c.input not in works[0].anat.as_raw for c in curves):
-        fired.append(SCALE_SAYS)
+        # Under prediction the curves may be a covariate's or total energy's beside a transformed
+        # predictor's, so the scale is said of the transformed predictors' curves alone.
+        fired.append(SCALE_SAYS if inference else PREDICT_SCALE_SAYS)
     if inference:
         fired += [LOCK_SAYS, TERMS_SAYS] + ([FILL_SAYS] if s.multiple_imputation else [])
     artifact = ExplainArtifact(
@@ -1691,6 +1695,12 @@ UNITS_SAYS = ("Rows that repeat within a unit are resampled as whole units in th
               "measure stability.")
 SCALE_SAYS = ("Each curve is drawn on the final scale of what you study, as the model reads it after "
               "energy adjustment or normalization, the scale its form is declared on.")
+# Under prediction a curve may be of any predictor (W1 part 2's U7), age's on its own scale beside
+# an energy-adjusted intake's: the final scale is said of the transformed predictors' curves alone.
+PREDICT_SCALE_SAYS = ("A curve of a predictor the model reads adjusted, such as an energy-adjusted "
+                      "intake or a normalized assay value, is drawn on the adjusted scale the model "
+                      "reads, the scale its form is declared on; every other curve is on its "
+                      "column's own scale.")
 EFFECT_SAYS = ("An explanation describes a fitted model's predictions, not what changing an "
                "intake would do, so it is never reported as an effect.")
 LOCK_SAYS = ("Under inference the explanations wait until what you study, its effect and the "
@@ -1749,7 +1759,9 @@ CONTRACT = register_contract(MethodContract(
     relations=(
         Relation("implies", "performance_floor", FLOOR_SAYS, purposes=("prediction",)),
         Relation("implies", "unit_resampling", UNITS_SAYS),
-        Relation("implies", "domain_transform", SCALE_SAYS),
+        Relation("implies", "domain_transform", SCALE_SAYS, purposes=("inference",)),
+        Relation("implies", "domain_transform", PREDICT_SCALE_SAYS, purposes=("prediction",),
+                 id="domain_transform_under_prediction"),
         Relation("conflicts", "effect_estimate", EFFECT_SAYS, rung="refused", when=("as_effect",)),
         Relation("implies", "plan_lock", LOCK_SAYS, purposes=("inference",)),
         Relation("implies", "adjustment_terms", TERMS_SAYS, purposes=("inference",)),

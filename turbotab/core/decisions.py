@@ -3449,10 +3449,21 @@ def _roles_confirmed_one_at_a_time(decision: "ConfirmReadings", ctx: Any) -> Non
         exits=exits)
 
 
+def _roles_artifact(ctx: Any) -> Any:
+    """The roles stage's artifact, its proposals, where the context holds it; else None."""
+    opener = _ctx(ctx, "artifact")
+    try:
+        return opener("roles") if callable(opener) else None
+    except Exception:  # noqa: BLE001 - no proposals at hand
+        return None
+
+
 def _models_read_settled_readings(decision: Any, ctx: Any) -> None:
     """BLUEPRINT §14.1: a fit is a number-changing consumer of every role (a column enters the
     model or leaves it by its role) and of each whole-number predictor's code-or-amount reading.
-    While one rode along unconfirmed, the fit asks, one exit per reading."""
+    While one rode along unconfirmed, the fit asks, one exit per reading, except that the roles of
+    one judgment are confirmed in one press where the roles stage's proposals are at hand (ruling
+    R-g, ``readings.with_proposals``)."""
     from turbotab.core.readings import Unsettled, predictors_or_ask
 
     state = _state(ctx)
@@ -3460,7 +3471,7 @@ def _models_read_settled_readings(decision: Any, ctx: Any) -> None:
         return
     try:
         predictors_or_ask(state, _ctx(ctx, "column_info"), drop=left_out(state),
-                          store=_store_of(ctx))
+                          store=_store_of(ctx), artifact=_roles_artifact(ctx))
     except Unsettled as waiting:
         raise Refusal("reading_unsettled", str(waiting), exits=[
             *waiting.exits,

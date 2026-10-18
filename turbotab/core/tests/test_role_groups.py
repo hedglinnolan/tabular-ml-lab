@@ -322,6 +322,104 @@ def test_the_models_ask_card_lists_a_whole_group_as_one_line_with_one_press():
     assert all(len(g.columns) == 1 for g in alone.groups if g.kind == "role")
 
 
+# ── the fit's refusal: one press per judgment where the proposals are at hand ──
+
+
+def _confirms(exits) -> list[dict]:
+    """The refusal's ways forward that record a decision, as plain dicts."""
+    out = []
+    for e in exits:
+        d = e.get("decision") if isinstance(e, dict) else getattr(e, "decision", None)
+        if d is not None:
+            out.append(_decided(d))
+    return out
+
+
+def _check_one_press_per_judgment(found: list[dict], state, proposals=PROPOSALS) -> None:
+    """Each judgment of two or more is confirmed by its one press, exactly its columns as proposed,
+    and by no press of one column; a group of one by its own confirmation; each press accepted."""
+    for (role, _confidence, _reason), columns in _judgments(proposals).items():
+        own = [d for d in found if d["kind"] == "confirm_reading" and d["column"] in columns
+               and d["value"] == role]
+        if len(columns) > 1:
+            assert found.count(_press(columns, role)) == 1, columns
+            assert not own, own
+        else:
+            assert len(own) == 1, columns
+    blocks = [d for d in found if d["kind"] == "confirm_readings"]
+    assert len(blocks) == len([v for v in _judgments(proposals).values() if len(v) > 1])
+    for d in [*blocks, *(d for d in found if d["kind"] == "confirm_reading")]:
+        validate(d, _ctx(state, proposals))
+
+
+def test_the_fits_refusal_confirms_each_whole_judgment_in_one_press():
+    """The W1-U verifier's P4: the fit's refusal offered one confirmation per waiting column (300
+    on the depth table). With the roles stage's proposals at hand it offers each judgment's one
+    press, as select_models's refusal does (the validator's context holds them)."""
+    state = decisions.fold(_records())
+    with pytest.raises(readings.Unsettled) as waiting:
+        readings.predictors_or_ask(state, artifact=PROPOSALS)
+    _check_one_press_per_judgment(_confirms(waiting.value.exits), state)
+    with pytest.raises(Refusal) as refused:
+        decisions._models_read_settled_readings(decisions.SelectModels(models=["linear"]),
+                                                _ctx(state))
+    assert refused.value.code == "reading_unsettled"
+    _check_one_press_per_judgment(_confirms(refused.value.exits), state)
+
+
+def test_the_quest_logs_ask_line_lists_each_judgment_as_one_item_with_its_one_press():
+    """The quest log's ask:models line (from ``quest.fit_waits``, the server's roles artifact
+    passed in): each judgment of two or more is one group item, how many and the first columns
+    named, carrying its one press; its columns follow, each with only its own presses; a group of
+    one keeps its column's own line."""
+    records = _records()
+    state = decisions.fold(records)
+    asked = quest.fit_waits(state, artifact=PROPOSALS)
+    log = quest.quest_log(state, records, steps_until(None), asked=[asked])
+    line = next(l for s in log.stages for l in s.lines if l.key == "ask:models")
+    heads = [i for i in line.items if i.kind == quest.ROLE_GROUP_ITEM]
+    judged = [(k, v) for k, v in _judgments(PROPOSALS).items() if len(v) > 1]
+    assert len(heads) == len(judged)
+    for head in heads:
+        (role, confidence, reason), columns = next((k, v) for k, v in judged
+                                                   if v[0] == head.column)
+        [press] = head.options
+        assert press.decision == _press(columns, role)
+        assert press.label == readings.group_press_label(len(columns), role, "prediction",
+                                                         ["genomics"])
+        assert head.evidence == reason
+        assert head.words.startswith(readings.first_columns(columns) + ": ")
+        assert f"{len(columns)} columns proposed as" in head.words and confidence in head.words
+        at = line.items.index(head)
+        members = line.items[at + 1:at + 1 + len(columns)]
+        assert [(m.kind, m.column) for m in members] == [("role", c) for c in columns]
+        assert not [o for m in members for o in m.options
+                    if o.decision and o.decision["kind"] == "confirm_readings"]
+    presses = [o.decision for i in line.items for o in i.options if o.decision]
+    _check_one_press_per_judgment(presses, state)
+
+
+def test_silent_a_judgment_asked_only_in_part_or_without_the_proposals_keeps_a_press_per_column():
+    """Both ways: a refusal that asks only some of a judgment's columns, or that has no proposals
+    at hand, offers each column its own confirmation and no block of roles."""
+    state = decisions.fold(_records())
+    part = [readings.role_reading(state, g) for g in GENES[:3]]
+    listed = readings.with_proposals(part, state, PROPOSALS)
+    assert all(r.judgment is None for r in listed)
+    exits = readings.judged_exits(readings.ask_exits(listed, state), listed, state)
+    asked = quest.Asked("models", "waits", tuple(listed), tuple(exits))
+    for found in (_confirms(exits),
+                  [o.decision for i in quest._ask_items(asked, state) for o in i.options]):
+        assert sorted((d["kind"], d["column"]) for d in found) == [
+            ("confirm_reading", g) for g in GENES[:3]]
+    alone = quest.fit_waits(state)
+    found = _confirms(alone.exits)
+    assert not [d for d in found if d["kind"] == "confirm_readings"]
+    assert {d["column"] for d in found} == set(WAITING)
+    items = quest._ask_items(alone, state)
+    assert not [i for i in items if i.kind == quest.ROLE_GROUP_ITEM]
+
+
 # ── the record and the methods: one sentence per group ───────────────────────
 
 
@@ -382,6 +480,14 @@ def test_on_the_omics_depth_table_the_genes_are_one_line_and_one_press(tmp_path)
     assert press.decision == _press(below, "exposure")
     assert press.label == f"Confirm these {len(below):,} as assay features"
     validate(press.decision, _ctx(decisions.fold(records), out))
+    # the fit's refusal (the quest log's ask:models line) offers the same one press for the genes
+    asked = quest.fit_waits(decisions.fold(records), artifact=out)
+    offered = _confirms(asked.exits)
+    assert offered.count(_press(below, "exposure")) == 1
+    assert not [d for d in offered if d["kind"] == "confirm_reading" and d["column"] in below]
+    [head] = [i for i in quest._ask_items(asked, decisions.fold(records))
+              if i.kind == quest.ROLE_GROUP_ITEM]
+    assert [o.decision for o in head.options] == [_press(below, "exposure")]
     after = [*records, record(5, press.decision)]
     assert not readings.unsettled(decisions.fold(after))
     assert stage(_log(after, out), "data").progress.complete
@@ -415,3 +521,7 @@ def test_waiting_columns_with_different_reasons_are_each_their_own_line(tmp_path
                    if o.decision and o.decision["kind"] == "confirm_readings"]
         # one press per line, and it confirms that line's columns alone
         assert len(presses) == (1 if len(line.items) > 1 else 0)
+    # the fit's refusal offers each judgment's one press, and each lone column its own
+    state = decisions.fold(records)
+    _check_one_press_per_judgment(_confirms(quest.fit_waits(state, artifact=out).exits), state,
+                                  out)

@@ -628,15 +628,16 @@ SHELF_HAS_SCREEN = {"regression": True, "binary": True, "multiclass": False, "or
                     "time_to_event": False}
 
 
-# What the served card says each step does to each predictor role (U7), clause by clause: each is
-# read from the code by the test after it.
+# What the served card says each step does to each predictor role (U7), clause by clause, each
+# step named (U7's repair, P3: "assay-normalized", never a bare "normalized" that would deny the
+# standardizing every penalized family runs): each is read from the code by the test after it.
 SAID = {
-    "exposure": ("A predictor: may be screened out, normalized, batch-corrected, filled from total "
-                 "energy if it carries energy."),
-    "energy": ("Total energy, a predictor: filled by its median, it fills nutrients; never screened, "
-               "normalized or batch-corrected."),
-    "covariate": ("A predictor such as age: filled without total energy; never screened, "
-                  "normalized or batch-corrected."),
+    "exposure": ("A predictor: may be screened out, assay-normalized, batch-corrected, filled from "
+                 "total energy if it carries energy."),
+    "energy": ("Total energy, a predictor: filled by its median, fills nutrients; never screened "
+               "out, assay-normalized or batch-corrected."),
+    "covariate": ("A predictor such as age: filled without total energy; never screened out, "
+                  "assay-normalized or batch-corrected."),
 }
 
 
@@ -650,11 +651,16 @@ def test_under_predict_the_served_roles_card_names_every_step_that_reads_the_pre
     terms = {t["term"]: t["definition"] for t in entry["terms"]}
     assert options == SAID
     assert terms["covariate"] == ("A predictor such as age or sex. Every model reads it; it is "
-                                  "filled without total energy, never screened, normalized or "
-                                  "batch-corrected.")
+                                  "filled without total energy, never screened out, "
+                                  "assay-normalized or batch-corrected.")
     for text in (*options.values(), *terms.values()):
         assert "omics screen" not in text and "like any other" not in text, text
         assert "skip" not in text, text
+
+
+def _covariate_term() -> str:
+    return next(t["definition"] for t in _roles_entry("prediction")["terms"]
+                if t["term"] == "covariate")
 
 
 def test_each_step_the_served_roles_card_names_does_to_each_role_what_it_says():
@@ -663,7 +669,10 @@ def test_each_step_the_served_roles_card_names_does_to_each_role_what_it_says():
     line, 0.1 of 2,800), a Predictor column that carries none and a covariate by their medians
     ("filled without total energy"), and total energy by its median; the screened elastic net's
     screen takes the Predictor columns alone ("may be screened out"; the others are "never
-    screened"); normalization and reference ComBat adjust the Predictor columns alone."""
+    screened out"); the assay normalization and reference ComBat adjust the Predictor columns
+    alone ("assay-normalized", "batch-corrected"). U7's repair (P3): the standardizing a penalized
+    family runs reads every input, a covariate and total energy too, so no clause denies it: each
+    names the assay normalization, never a bare "normalized"."""
     from types import SimpleNamespace
 
     import turbotab.core.methods.omics  # noqa: F401 - registers the screened family
@@ -690,7 +699,7 @@ def test_each_step_the_served_roles_card_names_does_to_each_role_what_it_says():
     assert out.loc[3, "g1"] == pytest.approx(float(observed["g1"].median()))
     assert "filled without total energy" in SAID["covariate"]
     assert out.loc[3, "age"] == pytest.approx(float(observed["age"].median()))
-    assert "filled by its median, it fills nutrients" in SAID["energy"]
+    assert "filled by its median, fills nutrients" in SAID["energy"]
     assert out.loc[5, "kcal"] == pytest.approx(float(frame["kcal"].dropna().median()))
     [(_name, screen)] = get_family("screened_elastic_net").preprocess(
         SimpleNamespace(predictors=predictors, roles=roles))
@@ -704,8 +713,30 @@ def test_each_step_the_served_roles_card_names_does_to_each_role_what_it_says():
     assert design_batch(state, [*predictors, "plate"], predictors, None)["columns"] == [
         "carb_g", "g1"]
     for role in ("energy", "covariate"):
-        assert "never screened, normalized or batch-corrected" in SAID[role]
-    assert "may be screened out, normalized, batch-corrected" in SAID["exposure"]
+        assert "never screened out, assay-normalized or batch-corrected" in SAID[role]
+    assert "may be screened out, assay-normalized, batch-corrected" in SAID["exposure"]
+    # The standardizing: a penalized family's steps end by scaling every column it is handed, the
+    # covariate and total energy among them (numpy's mean and population SD of the filled values),
+    # so a bare "never normalized" would be false of them; no clause says it.
+    from sklearn.pipeline import Pipeline
+
+    from turbotab.core.models.pipeline import DesignSpec, family_steps
+
+    complete = frame.dropna()
+    spec = DesignSpec(predictors=predictors, inputs=predictors, categorical=[],
+                      numeric=predictors, energy=None, impute=True, roles=roles)
+    for key in ("ridge", "elastic_net"):
+        assert get_family(key).needs_scaling
+        steps = family_steps(spec, get_family(key), "regression")
+        assert steps[-1][0] == "scale"
+        scaled = np.asarray(Pipeline(steps).fit_transform(complete), dtype=float)
+        for role in ("covariate", "energy"):
+            column = next(c for c, r in roles.items() if r == role)
+            raw = complete[column].to_numpy()
+            assert scaled[:, predictors.index(column)] == pytest.approx(
+                (raw - raw.mean()) / raw.std())
+    for text in (*SAID.values(), _covariate_term()):
+        assert "normalized" not in text.replace("assay-normalized", ""), text
 
 
 @pytest.mark.parametrize("lenses, task, roles, names, steps", [
