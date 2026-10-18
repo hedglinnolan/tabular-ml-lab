@@ -18,7 +18,9 @@ import ROLES from "../../quest/cards/roles/fixture.json";
 import { CONTRACT } from "../../quest/fixtures/contract";
 import { StageFocusProvider } from "../../state/focus";
 import { servedGroups, waitingPredictorColumns } from "../../quest/cards/roles/roles";
+import { keys } from "../../api/queries";
 import { ColumnsCard, inGroupWords, predictorsLineage, type LiveData } from "./LiveScenes";
+import { Stage } from "./Stage";
 
 const FIXTURES = import.meta.glob<M3Fixture>("../../mocks/fixtures/m3-nhanes-prediction.json", { eager: true, import: "default" });
 const JOURNEY = Object.values(FIXTURES)[0]!;
@@ -117,8 +119,9 @@ describe("the lineage's groups in the roles card's words under Predict (N3)", ()
   const view = { ...VIEW, state: { ...VIEW.state, roles } } as ProjectView;
   const head = (role: string) => SERVED.no_fill[role]!.head.map((w) => w.toLowerCase());
 
-  /** The card drawn, its lineage given a box to draw in (jsdom measures none), as Lineage.test does. */
-  function draw(groups: ReturnType<typeof servedGroups>) {
+  /** The card drawn under `purpose` (the journey's own, Predict, unless named), its lineage given a
+   *  box to draw in (jsdom measures none), as Lineage.test does. */
+  function draw(groups: ReturnType<typeof servedGroups>, purpose?: string) {
     const observed: ResizeObserverCallback[] = [];
     vi.stubGlobal(
       "ResizeObserver",
@@ -135,7 +138,11 @@ describe("the lineage's groups in the roles card's words under Predict (N3)", ()
     render(
       <QueryClientProvider client={qc}>
         <StageFocusProvider>
-          <ColumnsCard view={view} data={{ ...data(predictors, null), predictorGroups: groups }} full={false} />
+          <ColumnsCard
+            view={purpose ? ({ ...view, state: { ...view.state, purpose } } as ProjectView) : view}
+            data={{ ...data(predictors, null), predictorGroups: groups }}
+            full={false}
+          />
         </StageFocusProvider>
       </QueryClientProvider>,
     );
@@ -155,8 +162,9 @@ describe("the lineage's groups in the roles card's words under Predict (N3)", ()
     expect(text).not.toMatch(/covariate column|exposure column|energy column/);
   });
 
-  it("keeps Estimate's words where no groups are served", () => {
-    draw(null);
+  it("keeps Estimate's words under Estimate, where no groups are served", () => {
+    expect(view.state.purpose).toBe("prediction"); // the journey's goal, set aside here
+    draw(null, "inference");
     const text = document.body.textContent ?? "";
     expect(text).toContain("8 covariate columns");
     expect(text).toContain("5 exposure columns");
@@ -168,6 +176,123 @@ describe("the lineage's groups in the roles card's words under Predict (N3)", ()
     const labels = named.nodes.filter((n) => n.lane === "raw").map((n) => n.label);
     expect(labels).toEqual([`8 ${head("covariate")[1]}`, `5 ${head("exposure")[1]}`, `${head("energy")[0]}: 1 column`]);
     expect(inGroupWords(engine, null)).toBe(engine);
+  });
+
+  /**
+   * W1-W round 1, P1: a folded group's count is its lane's columns (core/models/lineage.py
+   * `collapse`: `count = len(ids)` per lane), so in the model matrix it counts matrix columns, not
+   * characteristics. Built as `collapse` folds a wide table (above COLLAPSE_AT = 40 raw columns, the
+   * touched columns past SHOWN = 12 by role and signature): 14 imputed nutrients (12 kept, 2
+   * folded), 3 categorical characteristics one-hot to 4 columns each (3 raw, 3 adjusted, 3 × 4 = 12
+   * matrix columns) and 30 kept characteristics; the nodes and their ids are the ones `collapse`
+   * returns for that table (checked by running it). Under Predict the raw lane names the
+   * characteristics, each lane after it the group's columns; under Estimate the engine's words
+   * stand, which count columns in every lane.
+   */
+  it("names a folded group past the raw lane by its columns, never as that many characteristics (P1)", () => {
+    const group = (lane: "raw" | "adjusted" | "matrix", role: "exposure" | "covariate", g: number, count: number) => ({
+      id: `${lane}:group:${role}:${g}`,
+      column: null,
+      lane,
+      role,
+      label: `${count} ${role} column${count === 1 ? "" : "s"}`,
+      formula: null,
+      group: role,
+      count,
+    });
+    const nodes = [
+      group("raw", "exposure", 0, 2), group("adjusted", "exposure", 0, 2), group("matrix", "exposure", 0, 2),
+      group("raw", "covariate", 1, 3), group("adjusted", "covariate", 1, 3), group("matrix", "covariate", 1, 3 * 4),
+      group("raw", "covariate", 2, 30), group("adjusted", "covariate", 2, 30), group("matrix", "covariate", 2, 30),
+    ];
+    const engine = { nodes, links: [], collapsed: true } as unknown as Parameters<typeof inGroupWords>[0];
+    const named = inGroupWords(engine, servedGroups({ ...SERVED, energy_bearing: [] }, roles));
+    const label = (id: string) => named.nodes.find((n) => n.id === id)!.label;
+    const [, many] = head("covariate");
+    expect(label("raw:group:covariate:1")).toBe(`3 ${many}`);
+    expect(label("adjusted:group:covariate:1")).toBe(`${many}: 3 columns`);
+    expect(label("matrix:group:covariate:1")).toBe(`${many}: 12 columns`);
+    expect(label("matrix:group:covariate:2")).toBe(`${many}: 30 columns`);
+    expect(label("matrix:group:exposure:0")).toBe(`${head("exposure")[1]}: 2 columns`);
+    // No lane past the raw one counts its columns as characteristics or nutrients.
+    for (const n of named.nodes.filter((x) => x.lane !== "raw"))
+      expect(n.label).not.toMatch(new RegExp(`^\\d+ (${many}|${head("exposure")[1]})$`));
+    // Estimate: the engine's words, which count columns in every lane, unchanged.
+    expect(inGroupWords(engine, null)).toBe(engine);
+    expect(engine.nodes.find((n) => n.id === "matrix:group:covariate:1")!.label).toBe("12 covariate columns");
+  });
+
+  /**
+   * W1-W round 1, P2: the groups reached the Columns card only through the quest shell's Tapestry,
+   * so the Classic screen (`<Stage pid view focus onFocus/>`, no groups) said "8 covariate columns"
+   * under Predict beside a roles card in the served group words. The stage reads them itself, from
+   * the goal and the roles stage it shares with the roles card. Drawn here as the Classic screen
+   * mounts it, the roles stage's result and the cohort's put in the query cache by construction: the
+   * served groups under Predict; while the roles stage's result is not at hand, the predictors' own
+   * word, never Estimate's role words; under Estimate the engine's words as before.
+   */
+  describe("through the stage, as every screen mounts it (P2)", () => {
+    function stageWith(purpose: string, rolesResult: boolean) {
+      const observed: ResizeObserverCallback[] = [];
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          constructor(private cb: ResizeObserverCallback) {}
+          observe() {
+            observed.push(this.cb);
+          }
+          unobserve() {}
+          disconnect() {}
+        },
+      );
+      const fresh = { status: "fresh", key: "k" };
+      const v = {
+        ...view,
+        state: { ...view.state, purpose },
+        decisions: [],
+        interview: [],
+        stages: { cohort: fresh, roles: fresh },
+      } as unknown as ProjectView;
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+      qc.setQueryData(keys.stage(PID, "cohort"), { key: "k", fresh: true, artifact: { predictors, steps: [] } });
+      if (rolesResult)
+        qc.setQueryData(keys.stage(PID, "roles"), {
+          key: "k",
+          fresh: true,
+          artifact: { columns: [], repeats: [], categorical: [], predictor_groups: { ...SERVED, energy_bearing: [] } },
+        });
+      render(
+        <QueryClientProvider client={qc}>
+          <StageFocusProvider>
+            <Stage pid={PID} view={v} focus={{ kind: "live" }} onFocus={() => {}} />
+          </StageFocusProvider>
+        </QueryClientProvider>,
+      );
+      act(() => {
+        for (const cb of observed) cb([{ contentRect: { width: 900, height: 380 } } as ResizeObserverEntry], {} as ResizeObserver);
+      });
+      return document.querySelector('[data-card="lineage"]')?.textContent ?? "";
+    }
+
+    it("names the groups as the roles card does under Predict, with no groups passed", () => {
+      const text = stageWith("prediction", true);
+      expect(text).toContain(`8 ${head("covariate")[1]}`);
+      expect(text).toContain(`5 ${head("exposure")[1]}`);
+      expect(text).not.toMatch(/covariate|exposure/);
+    });
+
+    it("never says Estimate's role words under Predict while the roles stage's result is not at hand", () => {
+      const text = stageWith("prediction", false);
+      expect(text).toContain("8 predictors");
+      expect(text).toContain("5 predictors");
+      expect(text).not.toMatch(/covariate|exposure/);
+    });
+
+    it("keeps the engine's words under Estimate", () => {
+      const text = stageWith("inference", true);
+      expect(text).toContain("8 covariate columns");
+      expect(text).toContain("5 exposure columns");
+    });
   });
 });
 

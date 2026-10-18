@@ -46,23 +46,35 @@ export interface LiveData extends ResultsData {
   waitingPredictors?: number | null;
   /** Under Predict, the predictor groups the server serves for the project (roles.ts
    *  `servedGroups`), which the lineage names its groups by, as the roles card does (the re-walk's
-   *  N3); null under Estimate, or where the parent reads none: the engine's words stand. */
+   *  N3); the stage reads them from the roles stage it shares with the roles card. Null under
+   *  Estimate, and under Predict while the roles stage's result is not at hand. */
   predictorGroups?: ServedGroups;
 }
 
 type ServedGroups = ReturnType<typeof servedGroups>;
 
+/** A predictor role's group named in the predictors' own word, while no group is served. */
+const PREDICTORS: readonly [string, string] = ["predictor", "predictors"];
+
 /**
  * A lineage's collapsed predictor groups named as the roles card names them under Predict (the
- * re-walk's N3: never "13 covariate columns" or "7 exposure columns"): `n` and the group's name for
- * many ("13 characteristics"), or for a name that is one word for one or many, the name and the
- * count of columns ("total energy: 1 column"). Any other node, and every node with no groups
- * served, is as drawn.
+ * re-walk's N3: never "13 covariate columns" or "7 exposure columns"). A folded node counts its own
+ * lane's columns (core/models/lineage.py `collapse`), one per characteristic only in the raw lane:
+ * there it is `n` and the group's name for many ("13 characteristics"); in every lane after it,
+ * where an encoding can make several columns of one, the group's name and its count of columns
+ * ("characteristics: 12 columns"; W1-W round 1, P1), which is how a name that is one word for one or
+ * many reads in every lane ("total energy: 1 column"). Under Predict with no groups served (the
+ * roles stage's result not yet at hand), a predictor role's group is named in the predictors' word
+ * ("13 predictors"). Any other node, and every node under Estimate (`predict` false), is as drawn.
  */
-export function inGroupWords(lineage: LineageData, groups: ServedGroups | null | undefined): LineageData {
-  if (!groups) return lineage;
+export function inGroupWords(
+  lineage: LineageData,
+  groups: ServedGroups | null | undefined,
+  predict: boolean = !!groups,
+): LineageData {
+  if (!predict) return lineage;
   const named = (group: string | null): readonly [string, string] | null =>
-    group === "exposure" || group === "energy" || group === "covariate" ? groups[group].head : null;
+    group === "exposure" || group === "energy" || group === "covariate" ? (groups ? groups[group].head : PREDICTORS) : null;
   return {
     ...lineage,
     nodes: lineage.nodes.map((n) => {
@@ -70,8 +82,9 @@ export function inGroupWords(lineage: LineageData, groups: ServedGroups | null |
       if (!head) return n;
       const [one, many] = [head[0].toLowerCase(), head[1].toLowerCase()];
       const count = n.count;
+      const columns = `${fmtInt(count)} ${count === 1 ? "column" : "columns"}`;
       const label =
-        one === many ? `${one}: ${fmtInt(count)} ${count === 1 ? "column" : "columns"}` : `${fmtInt(count)} ${count === 1 ? one : many}`;
+        one !== many && n.lane === "raw" ? `${fmtInt(count)} ${count === 1 ? one : many}` : `${count === 1 ? one : many}: ${columns}`;
       return { ...n, label };
     }),
   };
@@ -226,7 +239,7 @@ export function ColumnsCard({ view, data, full }: { view: ProjectView; data: Liv
     data.design?.lineage ??
     (data.cohort.artifact ? predictorsLineage(data.cohort.artifact.predictors, view.state.roles) : null);
   if (!drawn) return null;
-  const lineage = inGroupWords(drawn, data.predictorGroups);
+  const lineage = inGroupWords(drawn, data.predictorGroups, view.state.purpose === "prediction");
   const provenance = recordedSentences(view, COLUMN_KINDS);
   const rawRows = lineage.nodes.filter((n) => n.lane === "raw").length;
   const open = view.interview.find((i) => i.status === "open");

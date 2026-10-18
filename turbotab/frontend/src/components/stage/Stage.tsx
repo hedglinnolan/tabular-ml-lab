@@ -21,6 +21,7 @@ import type { StageFocus } from "../../state/focus";
 import { useDecide } from "../../api/queries";
 import type { Decision, ProjectView, Refusal } from "../../api/schema";
 import { useMotionPrefs, useTransitions } from "../../motion/prefs";
+import { servedGroups } from "../../quest/cards/roles/roles";
 import { besideAsk } from "../record/besideAsk";
 import { stateSeq, useEvidence, useM1Stage, usePreview, type Answer } from "./data";
 import { ColumnsScene, ModelsScene, NowScene, ResultsScene, RowsScene, type LiveData } from "./LiveScenes";
@@ -68,10 +69,6 @@ export interface StageProps {
    * them, and no card asks the server for it (U9).
    */
   waitingPredictors?: number | null;
-  /** Under Predict, the predictor groups the server serves for the project, which the Columns card
-   *  names the lineage's groups by (LiveData `predictorGroups`; the re-walk's N3); null draws the
-   *  engine's words. */
-  predictorGroups?: LiveData["predictorGroups"];
 }
 
 type Scene =
@@ -109,7 +106,6 @@ export function Stage({
   fitWithheld = null,
   recordHere = true,
   waitingPredictors = null,
-  predictorGroups = null,
 }: StageProps) {
   const seq = stateSeq(view);
   const { reduced } = useMotionPrefs();
@@ -143,6 +139,12 @@ export function Stage({
   const fit = useM1Stage(pid, view, "fit");
   const substitution = useM1Stage(pid, view, "substitution");
   const findings = useM1Stage(pid, view, "findings", focus.kind === "finding");
+  // Under Predict the Columns card names the lineage's groups as the roles card does, by the
+  // groups the server serves beside the roles stage's proposals, on every screen that mounts the
+  // stage (the re-walk's N3; W1-W round 1, P2).
+  const predict = view.state.purpose === "prediction";
+  const roles = useM1Stage(pid, view, "roles", predict);
+  const predictorGroups = predict ? servedGroups(roles.artifact?.predictor_groups, view.state.roles) : null;
 
   const live: LiveData = {
     pid,
