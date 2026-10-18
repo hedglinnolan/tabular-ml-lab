@@ -141,7 +141,7 @@ def test_every_compute_stage_sits_in_one_stage():
     from turbotab.core.stages import build_graph
 
     names = [s.name for s in build_graph().stages()]
-    assert len(names) == len(set(names)) == 30
+    assert len(names) == len(set(names)) == 31
     assert set(quest.COMPUTE) == set(names)
     assert {home for home, _item in quest.COMPUTE.values()} <= set(SEVEN)
 

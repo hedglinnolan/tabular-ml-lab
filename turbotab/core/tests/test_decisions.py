@@ -161,6 +161,26 @@ def test_records_are_json_lines_with_utc_times_and_survive_reopening(tmp_path):
     assert again[0] == rec and again[0].at.tzinfo == timezone.utc
 
 
+def test_a_note_holds_at_most_2000_characters_and_one_longer_records_nothing(tmp_path):
+    """SWARM_ENGINE_PLAN E4: a decision's note is its reason, in at most 2,000 characters (the
+    plan's limit). One at the limit is kept whole; one character more is refused and nothing is
+    written; a blank note is no note."""
+    path = tmp_path / "decisions.jsonl"
+    log = DecisionLog(path)
+    whole = "why " * 499 + "why!"
+    assert len(whole) == 2000
+    assert log.append(SetTarget(column="a"), note=whole).note == whole
+    with pytest.raises(Refusal) as refused:
+        log.append(SetTarget(column="b"), note=whole + "!")
+    assert refused.value.code == "note_too_long"
+    assert "2,000" in refused.value.message and "2,001" in refused.value.message
+    assert [r.decision.column for r in DecisionLog(path).records()] == ["a"]
+    assert log.append(SetTarget(column="c"), note="   ").note is None
+    with pytest.raises(Refusal):
+        d.check_note("x" * 2001)
+    assert d.check_note(None) is None and d.check_note(" a reason ") == "a reason"
+
+
 def test_concurrent_appends_from_threads_get_distinct_sequence_numbers(log):
     threads = [
         threading.Thread(target=lambda i=i: log.append(SetTarget(column=f"c{i}")))

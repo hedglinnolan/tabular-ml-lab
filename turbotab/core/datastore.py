@@ -124,22 +124,30 @@ class DatasetInfo:
     ingest_seconds: float
     fingerprint: str
     warnings: list[str] = field(default_factory=list)
+    # The SHA-256 of the source file's bytes as read (SWARM_ENGINE_PLAN E5), the hash a publisher
+    # states for a file, beside the BLAKE2b ``fingerprint``. It is the source's own even when files
+    # are joined to it (the fingerprint then covers them too); None for a table no source file was
+    # read into (a stage's own Parquet), or one read before it was recorded.
+    source_sha256: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {"n_rows": int(self.n_rows), "n_cols": int(self.n_cols),
                 "columns": [c.to_dict() for c in self.columns],
                 "source_bytes": int(self.source_bytes),
+                "source_sha256": self.source_sha256,
                 "parquet_bytes": int(self.parquet_bytes),
                 "ingest_seconds": float(self.ingest_seconds),
                 "fingerprint": self.fingerprint, "warnings": list(self.warnings)}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "DatasetInfo":
+        sha = d.get("source_sha256")
         return cls(n_rows=int(d["n_rows"]), n_cols=int(d["n_cols"]),
                    columns=[ColumnInfo.from_dict(c) for c in d["columns"]],
                    source_bytes=int(d["source_bytes"]), parquet_bytes=int(d["parquet_bytes"]),
                    ingest_seconds=float(d["ingest_seconds"]), fingerprint=str(d["fingerprint"]),
-                   warnings=list(d.get("warnings") or []))
+                   warnings=list(d.get("warnings") or []),
+                   source_sha256=str(sha) if sha else None)
 
 
 def _gb(n: int) -> str:
@@ -299,6 +307,20 @@ def fingerprint_file(path: Path, stop: threading.Event | None = None) -> str:
                 return ""
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _hash_source(path: Path, stop: threading.Event | None = None) -> tuple[str, str]:
+    """``(blake2b-128, sha256)`` of the file's bytes, hex, in one streamed pass: the fingerprint
+    (:func:`fingerprint_file`'s) and the SHA-256 the ingest records; empty strings when ``stop``
+    is set before the end."""
+    blake, sha = hashlib.blake2b(digest_size=16), hashlib.sha256()
+    with open(path, "rb") as fh:
+        while chunk := fh.read(1 << 20):
+            if stop is not None and stop.is_set():
+                return "", ""
+            blake.update(chunk)
+            sha.update(chunk)
+    return blake.hexdigest(), sha.hexdigest()
 
 
 def pandas_style_names(raw: Sequence[Any]) -> tuple[list[str], list[str]]:
@@ -1385,7 +1407,7 @@ def ingest(source: Path, dest_parquet: Path, *,
 
     def hash_source() -> None:
         try:
-            hashed["value"] = fingerprint_file(source, stop)
+            hashed["value"], hashed["sha256"] = _hash_source(source, stop)
         except BaseException as exc:  # noqa: BLE001 — carried to the caller
             hashed["error"] = exc
 
@@ -1466,7 +1488,8 @@ def ingest(source: Path, dest_parquet: Path, *,
     info = DatasetInfo(n_rows=n_rows, n_cols=len(columns), columns=columns,
                        source_bytes=source.stat().st_size, parquet_bytes=dest.stat().st_size,
                        ingest_seconds=round(time.perf_counter() - started, 3),
-                       fingerprint=fingerprint, warnings=warnings)
+                       fingerprint=fingerprint, warnings=warnings,
+                       source_sha256=hashed["sha256"])
     if labels:
         _write_json_atomic(_labels_path(dest), {"version": SIDECAR_VERSION, "sources": labels})
     _write_json_atomic(_sidecar_path(dest), {"version": SIDECAR_VERSION,

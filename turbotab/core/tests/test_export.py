@@ -358,6 +358,33 @@ def test_the_replay_refuses_a_file_that_differs_naming_both_hashes(tmp_path):
     json.dumps(report.model_dump())
 
 
+PROVENANCE = {"url": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/GLU_J.xpt",
+              "release_date": "2019-11-01", "license": "Public domain (17 U.S.C. 105)"}
+
+
+def test_an_input_echoes_where_it_came_from_only_when_given(tmp_path):
+    """SWARM_ENGINE_PLAN E5: an input's URL, release date and license, as given at upload, are
+    echoed into ``provenance.json``'s inputs; an input given none has exactly the keys it had."""
+    import hashlib
+
+    from turbotab.core.export.source import input_file
+
+    data = tmp_path / "GLU_J.csv"
+    data.write_bytes(b"seqn,lbxglu\n1,98\n2,104\n")
+    sha = hashlib.sha256(data.read_bytes()).hexdigest()
+    given = input_file("table", "GLU_J.csv", data, None, provenance=PROVENANCE).to_json()
+    assert given == {"role": "table", "name": "GLU_J.csv", "path": str(data), "bytes": 23,
+                     "sha256": sha, "file_id": None, **PROVENANCE}
+    some = input_file("joined file", "GLU_J.csv", data, None, file_id="f0123456789",
+                      provenance={"license": PROVENANCE["license"]}).to_json()
+    assert some["license"] == PROVENANCE["license"] and "url" not in some
+    plain = input_file("table", "GLU_J.csv", data, None).to_json()
+    assert set(plain) == {"role", "name", "path", "bytes", "sha256", "file_id"}
+    # The replay checks an input by its SHA-256 alone: the echoed fields change nothing there.
+    [check] = replay.verify_inputs({"inputs": [given]})
+    assert check.matches and check.sha256 == sha
+
+
 def test_the_performance_table_keeps_the_fits_unweighted_label():
     """MS4 and EXPLORE (ruling 13): under prediction with survey weights the fit's own scores are
     unweighted and labeled so (its models' note); the bundle keeps the label on every row and says

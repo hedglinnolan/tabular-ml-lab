@@ -37,7 +37,9 @@ from turbotab.core.interview import InterviewStep  # noqa: F401
 # widens exactly when the interview does (the teaching also covers the repairs and seal cards).
 from turbotab.core.interview import QuestionKey  # noqa: F401
 from turbotab.core.jobs import JobView  # noqa: F401
+from turbotab.core.models.artifacts import AtOpening  # noqa: F401 - the opening's scores (WP16)
 from turbotab.core.repairs import RepairOption  # noqa: F401 - re-exported contract model
+from turbotab.core.runs import FoldMovement  # noqa: F401 - the record of every fit (E1)
 from turbotab.core.seal import Chronology, SealBasis, SealPlan  # noqa: F401 - the seal's shapes
 from turbotab.core.custom_sound import LabeledQuestion  # noqa: F401 - WP17's two labels
 from turbotab.core.teaching import TeachingEntry  # noqa: F401 - re-exported contract model
@@ -108,6 +110,130 @@ class StageResult(Model):
     fresh: bool
     status: StatusName
     artifact: dict[str, Any] | None
+
+
+# ── the record of every fit and the results (SWARM_ENGINE_PLAN §2 E1, E2) ─────
+
+
+class ServedFit(Model):
+    """One fit's record (``turbotab/core/runs.py``'s ``FitRecord``) as a client is served it: its
+    numbers are the fit's at ``fit_key`` as ``GET /stages/fit`` would serve that fit now, its gate
+    read for the record's own goal, outcome, fit under the plan's lock and held-out rows, and
+    ``withheld`` and ``holdout_why`` say why a number is not served. ``plan_digest`` is the plan
+    when the fit completed: a lock recorded later on this same fit can record another digest, when
+    an answer the fit does not read (the model sequence) came in between."""
+
+    id: str
+    seq: int  # completion order, from 1
+    at: datetime  # when the fit turned fresh
+    purpose: Purpose | None
+    target: str | None
+    fit_key: str
+    # plan_lock.digest(plan_lock.plan_of(state)) of the answers when it completed (the docstring)
+    plan_digest: str | None
+    decisions: list[int] | None  # the seqs of the records in force when it completed
+    press: dict[str, Any] | None  # the press of Fit in force, as kept beside the project
+    families: list[str]
+    seconds: float | None  # from its job running to its key turning fresh; null when not seen
+    workers: int  # the server's job worker processes
+    primary_metric: str | None
+    folds: str | None  # the SHA-256 of the training rows' folds (``runs.folds_digest``)
+    seed: int | None  # the split's seed
+    # The SHA-256 of the rows the split held out (``runs.held_out_digest``); null when none are.
+    held_out: str | None
+    # Predict: each family's cross-validated summary (the fit's ``cv``; empty while withheld).
+    scores: dict[str, dict[str, Any]]
+    # Each family's held-out scores, as the fit serves them, once its outcome's seal is opened and
+    # only where it was scored on the rows that opening opened (M2_CONTRACT §3); else null, and
+    # ``holdout_why`` says why.
+    holdout: dict[str, dict[str, float | None] | None] | None
+    holdout_why: str | None
+    # Predict, beside the held-out scores, each the fit's as the stage route would serve it: whether
+    # this fit is not the one the seal's opening was recorded on; and, where its held-out scores
+    # are served or it is the current fit, the scores the first opening recorded (the reported
+    # result) with whether the scores served are those, and the final model's note.
+    changed_after_seal: bool
+    at_opening: AtOpening | None
+    final_note: str | None
+    # Estimate: each family's rows of the exposure, with their intervals, under the estimand the
+    # fit was computed for; null while withheld.
+    effects: dict[str, list[dict[str, Any]] | None]
+    # Predict: each family's movement against the previous record (materiality.paired_folds),
+    # where both fits' scores are served; ``movement_why`` says why the record has none.
+    movement: list[FoldMovement]
+    movement_why: str | None
+    withheld: str | None
+
+
+class FitsLog(Model):
+    """Every fit's record, in the order the fits completed."""
+
+    records: list[ServedFit]
+
+
+class StageServed(Model):
+    """Which artifact of a stage a document read: its key, and whether it is the current one."""
+
+    key: str | None
+    fresh: bool
+    status: StatusName
+
+
+class ResultEValue(Model):
+    feature: str
+    e_value: dict[str, Any]  # the effects stage's ``EValueResult``
+
+
+class ResultFamily(Model):
+    """One family's results, each field the served artifact's own value."""
+
+    family: str
+    label: str | None
+    # Predict: the fit's cross-validated summary, and once the seal is opened its held-out scores,
+    # their intervals and calibration (``holdout_detail``).
+    cv: dict[str, Any] = {}
+    holdout: dict[str, float | None] | None = None
+    intervals: dict[str, Any] | None = None
+    calibration: dict[str, Any] | None = None
+    # Estimate: the fit's rows of the exposure, and the effects stage's sequence fits, marginal
+    # contrast and E-values.
+    effect: list[dict[str, Any]] | None = None
+    sequence: list[dict[str, Any]] = []
+    marginal: dict[str, Any] | None = None
+    e_values: list[ResultEValue] = []
+
+
+class ResultsSplit(Model):
+    """How the split drew the held-out rows, as ``GET /stages/split`` serves it: the Results screen
+    marks the held-out scores exploratory beside them from these."""
+
+    stage: StageServed
+    basis: SealBasis | None
+    chronology: Chronology | None
+    exploratory: bool | None
+
+
+class Results(Model):
+    """What the Results screens show, as one document (``GET /projects/{pid}/results``)."""
+
+    purpose: Purpose | None
+    fit: StageServed
+    effects: StageServed | None  # read under Estimate
+    withheld: str | None  # why the estimates or scores are withheld now, as the stages say it
+    holdout_sealed: bool
+    final_model: str | None  # Predict: the family declared final at the opening
+    result: dict[str, Any] | None  # Predict: the declared result (``FitArtifact.result``)
+    # Predict, beside the held-out scores, each the served fit's: the scores the first opening of
+    # the outcome's seal recorded (the reported result) and whether the scores served are those,
+    # the final model's note, whether the fit changed after the opening, and the post-seal
+    # decisions that changed it.
+    at_opening: AtOpening | None
+    final_note: str | None
+    changed_after_seal: bool
+    post_seal_decisions: list[str]
+    split: ResultsSplit | None  # Predict: the split's basis, as its stage serves it
+    estimand: dict[str, Any] | None  # Estimate: the fit's estimand annotation
+    families: list[ResultFamily]
 
 
 # ── data reads ───────────────────────────────────────────────────────────────
@@ -207,6 +333,9 @@ class AddedFile(Model):
     name: str
     source_kind: SourceKind
     fingerprint: str
+    # The SHA-256 of the file's bytes as read, beside its fingerprint (SWARM_ENGINE_PLAN E5); null
+    # for a file added before it was recorded.
+    sha256: str | None = None
     n_rows: int
     n_cols: int
     columns: list[str]
@@ -334,6 +463,46 @@ class Refusal(Model):
     error: RefusalDetail
 
 
+# ── analyst mode (SWARM_ENGINE_PLAN E4) ──────────────────────────────────────
+
+
+class ClaimRendered(Model):
+    """One render of a claim for the project (``claims.render_log``), in any mode."""
+
+    # ``register`` on the wire; the attribute is renamed only because pydantic's models have a
+    # ``register`` of their own.
+    model_config = ConfigDict(populate_by_name=True)
+
+    at: datetime
+    id: str = Field(description="The claim asked for")
+    sentence_register: str = Field(alias="register", description="card or methods")
+    status: str | None = Field(description="Its frozen status as read; null where the render "
+                                            "stopped before it was read")
+    grade: str | None = Field(description="The weakest part's grade of the claim that rendered")
+    fallback: str | None = Field(description="The claim that rendered in its place, outside its "
+                                              "regime; null when it rendered itself")
+    version: int | None
+    hash: str | None = Field(description="The content hash its frozen status is kept under")
+    refused: str | None = Field(description="Why no sentence rendered; null when one did")
+
+
+class PreviewLogged(Model):
+    """One preview asked for in analyst mode: a decision's (``…/preview``), or a join's
+    (``…/join-preview``), logged as the ``join_files`` decision it previews."""
+
+    at: datetime
+    decision: Decision | None = Field(description="The decision previewed, as asked; null for a "
+                                                   "join whose fields do not read as one")
+    refused: str | None = Field(description="The refusal's code; null when it previewed")
+
+
+class AnalystLog(Model):
+    """What the analyst saw, oldest first."""
+
+    claims: list[ClaimRendered]
+    previews: list[PreviewLogged]
+
+
 # ── the file browser ─────────────────────────────────────────────────────────
 
 
@@ -369,6 +538,10 @@ class DatasetInfo(Model):
     n_cols: int
     columns: list[ColumnInfo]
     source_bytes: int
+    # The SHA-256 of the source file's bytes as read (SWARM_ENGINE_PLAN E5), beside the BLAKE2b
+    # ``fingerprint``; the source's own even with files joined to it (the fingerprint then covers
+    # them too). Null for a file read before it was recorded.
+    source_sha256: str | None = None
     parquet_bytes: int
     ingest_seconds: float
     fingerprint: str

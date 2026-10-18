@@ -720,7 +720,8 @@ def noticing_stage(thread: str) -> str:
 # Each compute stage -> the quest stage that shows its result, with the crosswalk card that shows
 # it (CROSSWALK.md, "Engine stages and quest stages", its "Shown in" column). Every estimate stage
 # shows in Results, after Fit (``estimand.ESTIMATE_STAGES``); the substitution curve has no card
-# of its own yet (disagreement 13: Results draws it).
+# of its own yet (disagreement 13: Results draws it), nor has which decisions mattered under
+# Estimate (``mattered``, SWARM_ENGINE_PLAN E3: served at GET /projects/{pid}/mattered).
 COMPUTE: dict[str, tuple[str, str | None]] = {
     "ingest": ("data", "record:ingest-facts"),
     "oriented": ("data", "q:orientation"),
@@ -754,6 +755,7 @@ COMPUTE: dict[str, tuple[str, str | None]] = {
     "modification": ("results", "exhibit:effect_modification"),
     "explain": ("results", "exhibit:shap_importance"),
     "evaluation": ("results", "exhibit:decision_curve"),
+    "mattered": ("results", None),
 }
 
 
