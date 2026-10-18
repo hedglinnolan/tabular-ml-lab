@@ -3208,7 +3208,8 @@ None declared.
 |---|---|---|---|---|---|
 | implies | `performance_floor` | any option | prediction | A family whose cross-validated score does not beat the no-predictor baseline draws no curve, and says why. |  |
 | implies | `unit_resampling` | any option | prediction, inference | Rows that repeat within a unit are resampled as whole units in the refits that measure stability. |  |
-| implies | `domain_transform` | any option | prediction, inference | Each curve is drawn on the final scale of what you study, as the model reads it after energy adjustment or normalization, the scale its form is declared on. |  |
+| implies | `domain_transform` | any option | inference | Each curve is drawn on the final scale of what you study, as the model reads it after energy adjustment or normalization, the scale its form is declared on. |  |
+| implies | `domain_transform` (id `domain_transform_under_prediction`) | any option | prediction | A curve of a predictor the model reads adjusted, such as an energy-adjusted intake or a normalized assay value, is drawn on the adjusted scale the model reads, the scale its form is declared on; every other curve is on its column's own scale. |  |
 | conflicts | `effect_estimate` | `as_effect` | prediction, inference | An explanation describes a fitted model's predictions, not what changing an intake would do, so it is never reported as an effect. *(rung: refused, with an exit)* |  |
 | implies | `plan_lock` | any option | inference | Under inference the explanations wait until what you study, its effect and the adjustment set are answered, and their first display locks the analysis plan. |  |
 | implies | `adjustment_terms` | any option | inference | Under inference the covariates' attributions are labeled adjustment terms, not effect estimates. |  |
