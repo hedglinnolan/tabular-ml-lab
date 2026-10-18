@@ -146,6 +146,19 @@ Model definitions:
 - M2: age, sex, race, education and PIR.
 - M3: M2 plus smoking, recreational physical activity and **total energy**.
 - M4: **M2** plus the medication for the risk factor (glucose-lowering drugs for glucose, insulin and HbA1c).
+  - **Stated, but not what the printed numbers show** (2026-10-18). The supplement's footnote to
+    Appendix Table 2 says this verbatim ("Model 4: Model 2 plus use of medication(s) that affect
+    risk factor"; read from the supplement PDF with PDFKit). The blind R reference (SU-R,
+    `research/replication/sullivan2021/reference_r/`) does not reproduce the printed M4 values with
+    that model. Glucose comes to −2.01 (0.34) against the printed −1.1 (0.36). The Table 4 model
+    (with BMI, smoking and activity) plus glucose-lowering medication reproduces all six printed M4
+    values and both printed p values (−1.06 (0.357), p 0.0044; −0.41 (0.190), p 0.033; −0.027
+    (0.007)). That reading was the fifth of five tried after the stated one missed, so it is
+    evidence of what the paper ran, not a result. The replication reports both, labeled.
+  - The supplement's Appendix Table 1 (HEI-2015 scores) defines its own M3 with BMI and its M4 with
+    total energy. Its ladder is not Appendix Table 2's.
+  - Table 1's glucose-lowering medication use, Poor → Excellent: 10.4, 11.6, 9.8, 7.2, 5.9%
+    (survey weighted).
 
 β per rating step (SE):
 
